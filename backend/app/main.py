@@ -5,6 +5,7 @@ from app.masters.router import router as masters_router
 from app.numbering.router import router as numbering_router
 from app.assets.router import router as assets_router
 from app.lifecycle.router import router as lifecycle_router
+from app.reports.router import router as reports_router
 
 app = FastAPI(title="CityKart Asset Manager API")
 app.include_router(auth_router)
@@ -13,6 +14,7 @@ app.include_router(masters_router)
 app.include_router(numbering_router)
 app.include_router(assets_router)
 app.include_router(lifecycle_router)
+app.include_router(reports_router)
 
 
 @app.get("/api/health")
