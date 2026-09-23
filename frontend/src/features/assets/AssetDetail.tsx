@@ -17,12 +17,20 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface Asset {
   id: number;
   asset_code: string;
   description: string;
   status: string;
+  company_id: number;
 }
 
 interface HolderOption {
@@ -57,11 +65,15 @@ export function AssetDetail({ assetId }: { assetId: number }) {
     queryKey: ["assets", assetId, "events"],
     queryFn: () => apiClient.get<AssetEvent[]>(`/assets/${assetId}/events`),
   });
-  // Fetched unconditionally (not gated on a dialog being open) so the holder <select> already
-  // has its options by the time an action dialog needing a holder is opened.
+  // Fetched as soon as the asset loads (not gated on a dialog being open) so the holder Select
+  // already has its options by the time an action dialog needing a holder is opened. Scoped to
+  // the asset's own company -- an unscoped `/holders` list would grow into a long, cross-company
+  // list once there's production data (same scoping AddAssetForm.tsx already applies to its own
+  // Initial Holder select).
   const { data: holders = [] } = useQuery({
-    queryKey: ["holders", "all"],
-    queryFn: () => apiClient.get<HolderOption[]>("/holders"),
+    queryKey: ["holders", asset?.company_id],
+    queryFn: () => apiClient.get<HolderOption[]>(`/holders?company_id=${asset!.company_id}`),
+    enabled: asset?.company_id != null,
   });
 
   function setField<K extends keyof ActionFormState>(key: K, value: ActionFormState[K]) {
@@ -165,20 +177,18 @@ export function AssetDetail({ assetId }: { assetId: number }) {
             {activeAction?.needsHolder && (
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="holder-select">Holder</Label>
-                <select
-                  id="holder-select"
-                  aria-label="Holder"
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                  value={form.holderId}
-                  onChange={(e) => setField("holderId", e.target.value)}
-                >
-                  <option value="">Select…</option>
-                  {holders.map((h) => (
-                    <option key={h.id} value={h.id}>
-                      {h.name}
-                    </option>
-                  ))}
-                </select>
+                <Select value={form.holderId || undefined} onValueChange={(v) => setField("holderId", v)}>
+                  <SelectTrigger id="holder-select" aria-label="Holder">
+                    <SelectValue placeholder="Select…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {holders.map((h) => (
+                      <SelectItem key={h.id} value={String(h.id)}>
+                        {h.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             )}
 
