@@ -1,8 +1,13 @@
 import { test, expect, type Page } from "@playwright/test";
-import { seedTestCompany } from "./fixtures";
+import { newSeedRegistry, seedTestCompany, teardownTestCompany, type SeedRegistry } from "./fixtures";
 
 async function loginAs(page: Page, companyId: number, empCode: string, password: string) {
   await page.goto("/login");
+  await fillLogin(page, companyId, empCode, password);
+}
+
+// Fills and submits the login form already on screen (keeps any ?next= in the URL).
+async function fillLogin(page: Page, companyId: number, empCode: string, password: string) {
   await page.getByLabel("Company", { exact: true }).selectOption(String(companyId));
   await page.getByLabel("User ID", { exact: true }).fill(empCode);
   await page.getByLabel("Password", { exact: true }).fill(password);
@@ -17,9 +22,22 @@ async function selectRadix(page: Page, label: string, optionText: string) {
   await page.getByRole("option", { name: optionText, exact: true }).click();
 }
 
+// Filled in by seedTestCompany as it creates each row, so the afterEach below can
+// deactivate everything -- including after a failed test or a half-finished seed.
+let registry: SeedRegistry | null = null;
+
+test.afterEach(async ({ baseURL }) => {
+  if (registry) {
+    const reg = registry;
+    registry = null;
+    await teardownTestCompany(baseURL!, reg);
+  }
+});
+
 test("full custody journey: procure, allot, return, allot again", async ({ page, baseURL }) => {
   test.setTimeout(120_000);
-  const ctx = await seedTestCompany(baseURL!);
+  registry = newSeedRegistry();
+  const ctx = await seedTestCompany(baseURL!, registry);
 
   // ---- Log in as the bootstrap ADMIN and add an asset ----
   await loginAs(page, ctx.company.id, ctx.admin.empCode, ctx.admin.password);
@@ -38,11 +56,23 @@ test("full custody journey: procure, allot, return, allot again", async ({ page,
   const assetCode = (await createdItem.textContent())!.trim();
   expect(assetCode.startsWith("E2E/")).toBe(true);
 
+  // ---- Expired/invalid access token: the app refreshes it via the httpOnly
+  // refresh cookie and retries, instead of dying after 15 minutes ----
+  const BROKEN_TOKEN = "expired.or.invalid.token";
+  await page.evaluate((broken) => {
+    const stored = JSON.parse(sessionStorage.getItem("ckam-auth")!);
+    stored.state.accessToken = broken;
+    sessionStorage.setItem("ckam-auth", JSON.stringify(stored));
+  }, BROKEN_TOKEN);
+
   // ---- Asset Register: filter to this asset and verify row-click navigation ----
   await page.goto("/assets");
   await page.getByLabel("Search", { exact: true }).fill(assetCode);
   const row = page.locator("tr", { hasText: assetCode });
   await expect(row).toBeVisible();
+  await expect(page.getByText("Showing 1–1 of 1 asset", { exact: true })).toBeVisible();
+  const refreshedToken = await page.evaluate(() => JSON.parse(sessionStorage.getItem("ckam-auth")!).state.accessToken);
+  expect(refreshedToken).not.toBe(BROKEN_TOKEN);
   // Click the description cell (not the code <a> or the checkbox, both of which
   // stopPropagation on the row's own onClick) to exercise AssetRegister's row-level
   // `onClick={() => window.location.href = ...}` navigation, not the plain <a href>.
@@ -78,6 +108,17 @@ test("full custody journey: procure, allot, return, allot again", async ({ page,
   await expect(timelineItems.nth(2)).toContainText(`Returned to ${ctx.stock.name}`);
   await expect(timelineItems.nth(3)).toContainText(`Allotted to ${ctx.store.name}`);
 
+  // ---- QR label flow: scanning the label while logged out goes via /login and
+  // lands back on the asset (not the dashboard) ----
+  const assetPath = new URL(page.url()).pathname;
+  await page.getByRole("button", { name: "Log out", exact: true }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await page.goto(assetPath);
+  await expect(page).toHaveURL(new RegExp(`/login\\?next=${encodeURIComponent(assetPath)}$`));
+  await fillLogin(page, ctx.company.id, ctx.admin.empCode, ctx.admin.password);
+  await expect(page).toHaveURL(new RegExp(`${assetPath}$`));
+  await expect(page.getByText(assetCode, { exact: true })).toBeVisible();
+
   // ---- Log out, log in as the EMPLOYEE holder: no currently-held assets ----
   // (the asset's custody ended at the STORE holder, not the employee, so the
   // employee's read-only "My Assets" view -- scoped server-side to
@@ -85,6 +126,27 @@ test("full custody journey: procure, allot, return, allot again", async ({ page,
   await page.getByRole("button", { name: "Log out", exact: true }).click();
   await expect(page).toHaveURL(/\/login$/);
   await loginAs(page, ctx.company.id, ctx.employee.emp_code, ctx.employeePassword);
+
+  // The employee signed in with the admin-issued temporary password, so the app
+  // forces a password change before anything else is reachable.
+  await expect(page).toHaveURL(/\/change-password$/);
+  await page.goto("/my-assets"); // trying to skip it just bounces back
+  await expect(page).toHaveURL(/\/change-password/);
+  await page.getByLabel("Current password", { exact: true }).fill(ctx.employeePassword);
+  await page.getByLabel("New password", { exact: true }).fill("E2e-Own-Passw0rd");
+  await page.getByLabel("Confirm new password", { exact: true }).fill("E2e-Own-Passw0rd");
+  await page.getByRole("button", { name: "Change password", exact: true }).click();
   await expect(page).toHaveURL(/\/my-assets$/);
   await expect(page.getByText(assetCode, { exact: true })).not.toBeVisible();
+
+  // ---- Session really over (no refresh cookie, invalid access token): back to
+  // /login, remembering the page ----
+  await page.context().clearCookies();
+  await page.evaluate((broken) => {
+    const stored = JSON.parse(sessionStorage.getItem("ckam-auth")!);
+    stored.state.accessToken = broken;
+    sessionStorage.setItem("ckam-auth", JSON.stringify(stored));
+  }, BROKEN_TOKEN);
+  await page.goto("/my-assets");
+  await expect(page).toHaveURL(/\/login\?next=%2Fmy-assets$/);
 });
