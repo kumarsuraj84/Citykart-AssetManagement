@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 
 
 class LoginRequest(BaseModel):
@@ -18,9 +18,21 @@ class LoginResponse(BaseModel):
     company_id: int
 
 
+MIN_PASSWORD_LENGTH = 8
+
+
 class ChangePasswordRequest(BaseModel):
     old_password: str
-    new_password: str
+    new_password: str = Field(min_length=MIN_PASSWORD_LENGTH)
+
+    @model_validator(mode="after")
+    def _must_differ(self):
+        # The whole point of a forced first-login change is that the temporary
+        # (admin-relayed) password stops working -- "changing" it to itself would
+        # clear must_change_password without that ever happening.
+        if self.new_password == self.old_password:
+            raise ValueError("new password must be different from the old password")
+        return self
 
 
 class CompanyOption(BaseModel):

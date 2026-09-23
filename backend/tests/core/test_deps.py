@@ -39,5 +39,5 @@ async def test_get_current_holder_rejects_refresh_token():
     # the call would blow up on session.get if the type check were skipped).
     token = create_refresh_token(holder_id=1)
     with pytest.raises(HTTPException) as exc:
-        await get_current_holder(token=token, session=None)
+        await get_current_holder(request=None, token=token, session=None)
     assert exc.value.status_code == 401
