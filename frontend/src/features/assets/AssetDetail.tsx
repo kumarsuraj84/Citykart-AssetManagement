@@ -4,6 +4,7 @@ import { apiClient } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
 import { actionsFor, type ActionDef } from "./actionRules";
 import { Timeline, type AssetEvent } from "./Timeline";
+import { DocumentsTab } from "./DocumentsTab";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -161,11 +162,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
         </TabsContent>
 
         <TabsContent value="documents">
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-sm text-muted-foreground">Documents (Task 21)</p>
-            </CardContent>
-          </Card>
+          <DocumentsTab assetId={assetId} />
         </TabsContent>
       </Tabs>
 
