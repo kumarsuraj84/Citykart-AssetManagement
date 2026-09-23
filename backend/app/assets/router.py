@@ -63,8 +63,8 @@ async def list_assets(
     holder_id: int | None = Query(None),
     company_id: int | None = Query(None),
     q: str | None = Query(None),
-    limit: int = Query(50, le=200),
-    offset: int = Query(0),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     session: AsyncSession = Depends(get_session),
     holder=Depends(get_current_holder),
 ):

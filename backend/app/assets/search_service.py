@@ -1,4 +1,4 @@
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.assets.models import Asset
 
@@ -33,7 +33,11 @@ async def search_assets(
             Asset.invoice_number.ilike(pattern), Asset.pi_number.ilike(pattern),
         ))
 
-    total = len((await session.execute(stmt)).scalars().all())
+    # COUNT(*) in the database over the same filtered query, rather than
+    # materialising every matching row just to len() it -- at the spec's
+    # 20,000-asset target that was loading the whole register on every page view.
+    count_stmt = select(func.count()).select_from(stmt.order_by(None).subquery())
+    total = (await session.execute(count_stmt)).scalar_one()
     page_stmt = stmt.order_by(Asset.id.desc()).limit(limit).offset(offset)
     items = (await session.execute(page_stmt)).scalars().all()
     return items, total

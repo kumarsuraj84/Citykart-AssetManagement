@@ -1,5 +1,6 @@
 from datetime import date, timedelta
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import status as http_status  # aliased: export_assets has a `status` query param
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +18,12 @@ from app.reports.schemas import DashboardOut
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+# Safety cap on the asset-register Excel export, sized well above the spec's
+# 20,000-asset design target (§8). An export that would exceed it is refused with a
+# 422 telling the user to filter -- never silently truncated (the previous hidden
+# limit of 10,000 rows quietly dropped everything past it).
+EXPORT_MAX_ROWS = 50_000
 
 
 @router.get("/dashboard", response_model=DashboardOut)
@@ -54,7 +61,16 @@ async def export_assets(
         allowed = None
     else:
         allowed = scoped_company_ids(holder)
-    items, _total = await search_assets(session, allowed, status, category_id, holder_id, company_id, q, limit=10000, offset=0)
+    items, total = await search_assets(
+        session, allowed, status, category_id, holder_id, company_id, q, limit=EXPORT_MAX_ROWS, offset=0,
+    )
+    if total > EXPORT_MAX_ROWS:
+        # Refuse loudly rather than hand back a silently truncated register.
+        raise HTTPException(
+            http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"This export would contain {total} assets, more than the {EXPORT_MAX_ROWS}-row limit; "
+            "narrow it with filters (status, category, holder, company, search).",
+        )
     return Response(
         content=assets_to_xlsx(items),
         media_type=XLSX_MEDIA_TYPE,
@@ -72,9 +88,9 @@ async def export_movements(
     """Staff only (403 for a HOLDER): the log names every holder in the company, and a
     HOLDER may only see their own currently-held assets (spec §6). Company-scoped the
     same way as the dashboard (`scoped_company_ids`): a non-ADMIN role only ever gets
-    movement rows for assets in their own company, ADMIN is unrestricted. Joins in the asset code and the from/to holder names so the
-    exported "Asset Code"/"From Holder"/"To Holder" columns hold what they say, not raw
-    internal ids."""
+    movement rows for assets in their own company, ADMIN is unrestricted. Joins in the
+    asset code and the from/to holder names so the exported "Asset Code"/"From Holder"/
+    "To Holder" columns hold what they say, not raw internal ids."""
     from_holder = aliased(Holder)
     to_holder = aliased(Holder)
     stmt = (
