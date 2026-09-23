@@ -3,7 +3,11 @@ from pydantic import BaseModel
 
 class LoginRequest(BaseModel):
     company_id: int
-    emp_code: str
+    # Either the holder's Employee Code OR their email address. Many holders
+    # (stores, stock locations, installed-equipment locations) have no email
+    # at all, so email can only be an *additional* way in, never a
+    # replacement for emp_code -- see the lookup in router.py::login.
+    login_id: str
     password: str
 
 

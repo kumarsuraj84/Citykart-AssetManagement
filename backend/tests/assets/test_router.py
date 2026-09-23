@@ -33,7 +33,7 @@ async def _setup(session, suffix):
 
 
 async def _login(client, company_id, emp_code):
-    resp = await client.post("/api/auth/login", json={"company_id": company_id, "emp_code": emp_code, "password": "Passw0rd!"})
+    resp = await client.post("/api/auth/login", json={"company_id": company_id, "login_id": emp_code, "password": "Passw0rd!"})
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 

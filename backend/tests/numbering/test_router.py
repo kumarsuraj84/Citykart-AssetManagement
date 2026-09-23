@@ -17,7 +17,7 @@ async def test_create_code_rule(client):
         session.add(holder)
         await session.commit()
 
-    resp = await client.post("/api/auth/login", json={"company_id": co.id, "emp_code": "NADMIN", "password": "Passw0rd!"})
+    resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": "NADMIN", "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     create_resp = await client.post("/api/code-rules", json={
@@ -41,7 +41,7 @@ async def test_write_access_is_admin_only(client):
         session.add(holder)
         await session.commit()
 
-    resp = await client.post("/api/auth/login", json={"company_id": co.id, "emp_code": "NVIEWER", "password": "Passw0rd!"})
+    resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": "NVIEWER", "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     create_resp = await client.post("/api/code-rules", json={

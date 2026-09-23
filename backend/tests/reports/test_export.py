@@ -46,7 +46,7 @@ async def test_export_assets_xlsx_and_qr_png(client):
         asset_id = assets[0].id
         asset_code = assets[0].asset_code
 
-    resp = await client.post("/api/auth/login", json={"company_id": co.id, "emp_code": "ITA-EXP1", "password": "Passw0rd!"})
+    resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": "ITA-EXP1", "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     export_resp = await client.get("/api/reports/export/assets", headers=headers)
@@ -114,7 +114,7 @@ async def test_export_assets_and_movements_scope_by_company():
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.post("/api/auth/login", json={"company_id": co_a.id, "emp_code": "ITT-SC2A", "password": "Passw0rd!"})
+        resp = await client.post("/api/auth/login", json={"company_id": co_a.id, "login_id": "ITT-SC2A", "password": "Passw0rd!"})
         headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
         assets_xlsx = (await client.get("/api/reports/export/assets", headers=headers)).content
@@ -202,7 +202,7 @@ async def test_export_assets_pins_holder_to_only_their_own_held_asset():
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.post("/api/auth/login", json={"company_id": co.id, "emp_code": "HLDX-SC4", "password": "Passw0rd!"})
+        resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": "HLDX-SC4", "password": "Passw0rd!"})
         headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
         export_resp = await client.get("/api/reports/export/assets", headers=headers)
@@ -243,7 +243,7 @@ async def test_qr_png_404_for_holder_who_does_not_hold_the_asset():
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.post("/api/auth/login", json={"company_id": co.id, "emp_code": "EMP-SC3", "password": "Passw0rd!"})
+        resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": "EMP-SC3", "password": "Passw0rd!"})
         headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
         qr_resp = await client.get(f"/api/assets/{asset_id}/qr.png", headers=headers)

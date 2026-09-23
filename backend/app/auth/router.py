@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
 from app.core.deps import get_current_holder
@@ -28,8 +28,15 @@ async def list_login_companies(session: AsyncSession = Depends(get_session)):
 
 @router.post("/login", response_model=LoginResponse)
 async def login(body: LoginRequest, response: Response, session: AsyncSession = Depends(get_session)):
-    stmt = select(Holder).where(Holder.company_id == body.company_id, Holder.emp_code == body.emp_code)
-    holder = (await session.execute(stmt)).scalar_one_or_none()
+    # login_id may be either the holder's Employee Code OR their email address
+    # (case-insensitively) -- many holders (stores, stock locations,
+    # installed-equipment locations) have no email at all, so this must never
+    # require email; it only adds an alternative for holders who have one.
+    stmt = select(Holder).where(
+        Holder.company_id == body.company_id,
+        or_(Holder.emp_code == body.login_id, func.lower(Holder.email) == func.lower(body.login_id)),
+    )
+    holder = (await session.execute(stmt)).scalars().first()
     if holder is None or not holder.is_active or holder.password_hash is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
 

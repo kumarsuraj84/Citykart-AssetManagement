@@ -38,7 +38,7 @@ async def test_allot_via_events_endpoint(client):
         await session.commit()
         asset_id = assets[0].id
 
-    resp = await client.post("/api/auth/login", json={"company_id": co.id, "emp_code": "ITA-LR1", "password": "Passw0rd!"})
+    resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": "ITA-LR1", "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     event_resp = await client.post(f"/api/assets/{asset_id}/events", json={

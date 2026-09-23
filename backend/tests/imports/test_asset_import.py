@@ -42,7 +42,7 @@ async def test_preview_and_commit_import(client):
         session.add_all([stock, it_admin, rule])
         await session.commit()
 
-    resp = await client.post("/api/auth/login", json={"company_id": co.id, "emp_code": "ITA-IMP1", "password": "Passw0rd!"})
+    resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": "ITA-IMP1", "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     xlsx = _build_workbook([

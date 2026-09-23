@@ -38,7 +38,7 @@ async def test_search_by_serial_and_scoped_bulk_move(client):
         await session.commit()
         asset_ids = [a.id for a in assets]
 
-    resp = await client.post("/api/auth/login", json={"company_id": co.id, "emp_code": "ITA-SR1", "password": "Passw0rd!"})
+    resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": "ITA-SR1", "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     search_resp = await client.get("/api/assets?q=SR-SEARCH-1", headers=headers)

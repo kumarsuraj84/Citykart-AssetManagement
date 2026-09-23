@@ -40,7 +40,7 @@ async def test_upload_and_list_document(client, tmp_path, monkeypatch):
         await session.commit()
         asset_id = assets[0].id
 
-    resp = await client.post("/api/auth/login", json={"company_id": co.id, "emp_code": "ITA-DOC1", "password": "Passw0rd!"})
+    resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": "ITA-DOC1", "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     file_bytes = io.BytesIO(b"%PDF-1.4 fake invoice content")
@@ -110,7 +110,7 @@ async def test_oversized_file_is_rejected(client, tmp_path, monkeypatch):
     async with SessionLocal() as session:
         co, it_admin, _other, asset_id = await _setup_asset(session, "CKS-DOC-SIZE")
 
-    resp = await client.post("/api/auth/login", json={"company_id": co.id, "emp_code": it_admin.emp_code, "password": "Passw0rd!"})
+    resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": it_admin.emp_code, "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     oversized = io.BytesIO(b"0" * (10 * 1024 * 1024 + 1))
@@ -142,7 +142,7 @@ async def test_oversized_upload_is_rejected_via_bounded_read(client, tmp_path, m
     async with SessionLocal() as session:
         co, it_admin, _other, asset_id = await _setup_asset(session, "CKS-DOC-BOUND")
 
-    resp = await client.post("/api/auth/login", json={"company_id": co.id, "emp_code": it_admin.emp_code, "password": "Passw0rd!"})
+    resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": it_admin.emp_code, "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     huge = io.BytesIO(b"0" * (2 * MAX_SIZE_BYTES))
@@ -169,7 +169,7 @@ async def test_invalid_doc_type_is_rejected_cleanly(client, tmp_path, monkeypatc
     async with SessionLocal() as session:
         co, it_admin, _other, asset_id = await _setup_asset(session, "CKS-DOC-TYPE")
 
-    resp = await client.post("/api/auth/login", json={"company_id": co.id, "emp_code": it_admin.emp_code, "password": "Passw0rd!"})
+    resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": it_admin.emp_code, "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     file_bytes = io.BytesIO(b"%PDF-1.4 fake invoice content")
@@ -192,7 +192,7 @@ async def test_disallowed_extension_is_rejected(client, tmp_path, monkeypatch):
     async with SessionLocal() as session:
         co, it_admin, _other, asset_id = await _setup_asset(session, "CKS-DOC-EXT")
 
-    resp = await client.post("/api/auth/login", json={"company_id": co.id, "emp_code": it_admin.emp_code, "password": "Passw0rd!"})
+    resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": it_admin.emp_code, "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     bad_file = io.BytesIO(b"#!/bin/sh\necho hi")
@@ -215,7 +215,7 @@ async def test_holder_out_of_scope_cannot_download(client, tmp_path, monkeypatch
     async with SessionLocal() as session:
         co, it_admin, other_employee, asset_id = await _setup_asset(session, "CKS-DOC-SCOPE")
 
-    admin_resp = await client.post("/api/auth/login", json={"company_id": co.id, "emp_code": it_admin.emp_code, "password": "Passw0rd!"})
+    admin_resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": it_admin.emp_code, "password": "Passw0rd!"})
     admin_headers = {"Authorization": f"Bearer {admin_resp.json()['access_token']}"}
 
     file_bytes = io.BytesIO(b"%PDF-1.4 fake invoice content")
@@ -230,7 +230,7 @@ async def test_holder_out_of_scope_cannot_download(client, tmp_path, monkeypatch
     # other_employee is a HOLDER-role user who does not currently hold this asset
     # (the IT_STOCK holder does). They must not be able to download its document,
     # even though they know the (guessable, sequential) document id.
-    holder_resp = await client.post("/api/auth/login", json={"company_id": co.id, "emp_code": other_employee.emp_code, "password": "Passw0rd!"})
+    holder_resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": other_employee.emp_code, "password": "Passw0rd!"})
     holder_headers = {"Authorization": f"Bearer {holder_resp.json()['access_token']}"}
 
     download_resp = await client.get(f"/api/documents/{doc_id}/download", headers=holder_headers)

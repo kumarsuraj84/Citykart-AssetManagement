@@ -84,7 +84,7 @@ async def test_import_to_non_stock_holder_succeeds_with_allotted_status(client):
         await session.commit()
         await session.refresh(employee)
 
-    resp = await client.post("/api/auth/login", json={"company_id": co.id, "emp_code": "ITA-F1", "password": "Passw0rd!"})
+    resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": "ITA-F1", "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     xlsx = _build_workbook([
@@ -122,7 +122,7 @@ async def test_apply_event_failure_mid_batch_is_reported_not_500(client):
     and the rest of the batch must still import."""
     co, it_admin, stock = await _seed_company("F2")
 
-    resp = await client.post("/api/auth/login", json={"company_id": co.id, "emp_code": "ITA-F2", "password": "Passw0rd!"})
+    resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": "ITA-F2", "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     xlsx = _build_workbook([
@@ -163,7 +163,7 @@ async def test_malformed_purchase_date_is_a_preview_time_row_error_not_a_commit_
     same error rather than raising an uncaught ValueError / 500."""
     co, it_admin, stock = await _seed_company("F3")
 
-    resp = await client.post("/api/auth/login", json={"company_id": co.id, "emp_code": "ITA-F3", "password": "Passw0rd!"})
+    resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": "ITA-F3", "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     xlsx = _build_workbook([

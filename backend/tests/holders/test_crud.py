@@ -19,7 +19,7 @@ async def _admin_headers(client, company_code="CKS6"):
         session.add(holder)
         await session.commit()
 
-    resp = await client.post("/api/auth/login", json={"company_id": co.id, "emp_code": "HADMIN", "password": "Passw0rd!"})
+    resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": "HADMIN", "password": "Passw0rd!"})
     token = resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}, co.id, loc.id, dept.id
 
@@ -35,7 +35,7 @@ async def _login_as(client, company_id, location_id, department_id, emp_code, ro
         await session.commit()
         holder_id = holder.id
 
-    resp = await client.post("/api/auth/login", json={"company_id": company_id, "emp_code": emp_code, "password": password})
+    resp = await client.post("/api/auth/login", json={"company_id": company_id, "login_id": emp_code, "password": password})
     token = resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}, holder_id
 

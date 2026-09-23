@@ -20,7 +20,7 @@ async def _admin_headers(client, company_code="CKM7"):
         await session.commit()
 
     resp = await client.post("/api/auth/login", json={
-        "company_id": co.id, "emp_code": "MADMIN", "password": "Passw0rd!",
+        "company_id": co.id, "login_id": "MADMIN", "password": "Passw0rd!",
     })
     token = resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}

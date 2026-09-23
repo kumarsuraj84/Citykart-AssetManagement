@@ -35,7 +35,7 @@ async def test_dashboard_counts_and_warranty_alert(client):
         }, quantity=1, actor=it_admin)
         await session.commit()
 
-    resp = await client.post("/api/auth/login", json={"company_id": co.id, "emp_code": "ITA-DB1", "password": "Passw0rd!"})
+    resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": "ITA-DB1", "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     dash_resp = await client.get("/api/reports/dashboard", headers=headers)
@@ -115,7 +115,7 @@ async def test_dashboard_scopes_by_company_and_long_allocation_alert():
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp_a = await client.post("/api/auth/login", json={"company_id": co_a.id, "emp_code": "ITA-DB2A", "password": "Passw0rd!"})
+        resp_a = await client.post("/api/auth/login", json={"company_id": co_a.id, "login_id": "ITA-DB2A", "password": "Passw0rd!"})
         headers_a = {"Authorization": f"Bearer {resp_a.json()['access_token']}"}
 
         dash_a = (await client.get("/api/reports/dashboard", headers=headers_a)).json()
