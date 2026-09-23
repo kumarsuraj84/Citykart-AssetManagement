@@ -8,7 +8,9 @@
 1. Copy `.env.example` to `.env` and set `POSTGRES_PASSWORD`, `JWT_SECRET`, `BASE_URL` (e.g. `http://assets.citykart.local:3211`), `BACKUP_DIR`.
 2. `docker compose up -d --build`
 3. Run migrations: `docker compose exec api alembic upgrade head`
-4. Create the first ADMIN holder: `docker compose exec api python -m scripts.seed_admin --company-code E2E --password 'Passw0rd!'` (change the password before going live — the script is idempotent, safe to re-run). See `backend/scripts/seed_admin.py`.
+4. Create the first ADMIN holder:
+   - **For this deployment**, the real owner account (Ankur Pahwa, Citykart Stores) is created with `docker compose exec api python -m scripts.create_owner`. It is idempotent (safe to re-run) and on its *first* run only, prints a one-time temporary password to stdout — relay it to the account owner out-of-band and have them change it, since `must_change_password` is set and forces a real password at first login. Re-running the script never touches an already-created holder's password. See `backend/scripts/create_owner.py`.
+   - For dev/E2E setups needing a generic, throwaway admin instead, use `docker compose exec api python -m scripts.seed_admin --company-code E2E --password 'Passw0rd!'` (change the password before going live — also idempotent). See `backend/scripts/seed_admin.py`.
 5. Visit `http://<server-ip>:3211/` and log in.
 
 ## Day-to-day
