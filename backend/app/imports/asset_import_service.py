@@ -1,10 +1,11 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from io import BytesIO
 import openpyxl
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.holders.models import Holder
 from app.lifecycle.service import apply_event
+from app.lifecycle.state_machine import LifecycleError
 from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter
 from app.numbering.service import generate_code, get_active_rule
 from app.assets.models import Asset
@@ -29,6 +30,26 @@ async def _lookup(session: AsyncSession, model, **filters):
     for key, value in filters.items():
         stmt = stmt.where(getattr(model, key) == value)
     return (await session.execute(stmt)).scalars().first()
+
+
+def _parse_purchase_date(value) -> date:
+    """Parses/validates the workbook's raw purchase_date cell value into a `date`.
+
+    Shared by `_validate_rows` (so both preview and commit apply the exact same rule)
+    rather than left for `commit_import` to parse on its own -- a malformed date used to
+    pass preview as "valid" and then raise an uncaught ValueError inside commit_import's
+    loop, silently 500-ing a request that preview had just told the caller was clean.
+    """
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        try:
+            return datetime.strptime(value, "%Y-%m-%d").date()
+        except ValueError:
+            raise ValueError(f"purchase_date '{value}' is not a valid date (expected YYYY-MM-DD)")
+    raise ValueError(f"purchase_date '{value}' is not a valid date (expected YYYY-MM-DD)")
 
 
 async def _validate_rows(session: AsyncSession, content: bytes) -> tuple[list[dict], list[dict]]:
@@ -65,6 +86,11 @@ async def _validate_rows(session: AsyncSession, content: bytes) -> tuple[list[di
         if not description:
             errors.append({"row": row_idx, "message": "description is required"})
             continue
+        try:
+            purchase_date = _parse_purchase_date(purchase_date)
+        except ValueError as exc:
+            errors.append({"row": row_idx, "message": str(exc)})
+            continue
 
         valid_rows.append({
             "row": row_idx, "legacy_asset_code": legacy_code, "company": company, "cost_center": cost_center,
@@ -94,39 +120,47 @@ async def commit_import(session: AsyncSession, content: bytes, actor: Holder) ->
             "subcategory.code": r["subcategory"].code, "company.code": r["company"].code, "location.code": "",
             "yyyy": "", "yy": "", "mm": "",
         }
-        code = await generate_code(session, rule, tokens)
         purchase_date = r["purchase_date"]
-        if isinstance(purchase_date, str):
-            purchase_date = datetime.strptime(purchase_date, "%Y-%m-%d").date()
-        elif hasattr(purchase_date, "date"):
-            purchase_date = purchase_date.date()
-
-        asset = Asset(
-            asset_code=code, legacy_asset_code=r["legacy_asset_code"], company_id=r["company"].id,
-            cost_center_id=r["cost_center"].id, category_id=r["category"].id, subcategory_id=r["subcategory"].id,
-            description=r["description"], purchase_date=purchase_date,
-            # Initial status set directly here, not through apply_event -- this is the same
-            # documented exception used by app.assets.service.procure_assets: a freshly
-            # inserted row needs a non-null status/holder before the state machine has
-            # anything to transition from. apply_event is called immediately below to
-            # record the IMPORTED ledger event and is the sole writer for every
-            # transition after this one.
-            status=_status_for_holder_type(r["holder"].holder_type),
-            current_holder_id=r["holder"].id, status_since=purchase_date,
-            created_by=actor.id, updated_by=actor.id,
-        )
-        session.add(asset)
-        await session.flush()
-        await apply_event(
-            session, asset, "IMPORTED", to_holder_id=r["holder"].id, actor=actor,
-            event_date=datetime.combine(purchase_date, datetime.min.time()).replace(tzinfo=timezone.utc),
-            remarks=f"Imported from legacy code {r['legacy_asset_code']}",
-        )
-        imported += 1
+        try:
+            # Each row's insert + ledger event runs inside its own SAVEPOINT: if
+            # apply_event raises LifecycleError (e.g. a future-dated row, or any other
+            # transition the state machine rejects), rolling back just this savepoint
+            # discards that row's partially-flushed Asset insert (and the code-counter
+            # increment from generate_code, which ran inside the same savepoint) without
+            # aborting the whole commit -- matching the per-item try/except pattern
+            # app.assets.router.bulk_move already uses for apply_event failures, so one
+            # bad row degrades to a reported error instead of a bare 500 for the entire
+            # batch.
+            async with session.begin_nested():
+                code = await generate_code(session, rule, tokens)
+                asset = Asset(
+                    asset_code=code, legacy_asset_code=r["legacy_asset_code"], company_id=r["company"].id,
+                    cost_center_id=r["cost_center"].id, category_id=r["category"].id, subcategory_id=r["subcategory"].id,
+                    description=r["description"], purchase_date=purchase_date,
+                    # Initial status set directly here, not through apply_event -- this is
+                    # the same documented exception used by app.assets.service.procure_assets:
+                    # a freshly inserted row needs a non-null status/holder before the state
+                    # machine has anything to transition from. It is always IN_STOCK here
+                    # (never derived from the target holder's type) because apply_event's
+                    # IMPORTED transition is only defined FROM IN_STOCK -- apply_event,
+                    # called immediately below, derives and writes the real post-import
+                    # status from the holder's type, exactly like procure_assets does for
+                    # PROCURED. Precomputing e.g. ALLOTTED/INSTALLED here would make every
+                    # non-IT_STOCK row's IMPORTED transition invalid before it even runs.
+                    status="IN_STOCK",
+                    current_holder_id=r["holder"].id, status_since=purchase_date,
+                    created_by=actor.id, updated_by=actor.id,
+                )
+                session.add(asset)
+                await session.flush()
+                await apply_event(
+                    session, asset, "IMPORTED", to_holder_id=r["holder"].id, actor=actor,
+                    event_date=datetime.combine(purchase_date, datetime.min.time()).replace(tzinfo=timezone.utc),
+                    remarks=f"Imported from legacy code {r['legacy_asset_code']}",
+                )
+            imported += 1
+        except LifecycleError as exc:
+            errors.append({"row": r["row"], "message": str(exc)})
 
     await session.flush()
     return {"imported": imported, "errors": errors}
-
-
-def _status_for_holder_type(holder_type: str) -> str:
-    return {"EMPLOYEE": "ALLOTTED", "STORE": "ALLOTTED", "INSTALLED": "INSTALLED", "IT_STOCK": "IN_STOCK"}[holder_type]
