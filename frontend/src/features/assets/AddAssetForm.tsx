@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -72,17 +72,14 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
     queryFn: () => apiClient.get<Option[]>(`/holders?holder_type=IT_STOCK&company_id=${companyId}`),
   });
 
-  // Pre-fill the initial holder from the company's own (already-scoped)
-  // IT_STOCK holder list once it loads, matching the design's "defaulted to
-  // that company's IT_STOCK holder". This is not a guess: it comes from real,
-  // company-scoped data, is visible in the dropdown, and the admin can still
-  // change it before saving -- unlike a hidden backend fallback across
-  // multiple locations, which is exactly what was removed server-side.
-  useEffect(() => {
-    if (!form.initialHolderId && stockHolders.length > 0) {
-      setForm((f) => (f.initialHolderId ? f : { ...f, initialHolderId: String(stockHolders[0].id) }));
-    }
-  }, [stockHolders, form.initialHolderId]);
+  // The Initial Holder select intentionally starts blank (see emptyForm) and
+  // is never auto-filled, even when the company has exactly one IT_STOCK
+  // holder. `HolderService.list` has no stable ordering, and a company can
+  // have more than one IT_STOCK holder (one per location) -- auto-picking
+  // "the first one returned" would silently recreate the exact guessing risk
+  // that Task 15/16 deliberately removed server-side, just moved up to this
+  // screen. The admin must explicitly choose one; `canSave` below blocks
+  // submission until they do.
 
   function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -94,7 +91,12 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
   const totalCost = purchaseCost + taxAmount;
 
   const hasHolderOption = stockHolders.length > 0;
-  const canSave = form.description.trim().length > 0 && form.initialHolderId !== "" && form.purchaseDate !== "";
+  const canSave =
+    form.description.trim().length > 0 &&
+    form.categoryId !== "" &&
+    form.costCenterId !== "" &&
+    form.initialHolderId !== "" &&
+    form.purchaseDate !== "";
 
   const saveMutation = useMutation({
     mutationFn: () =>
