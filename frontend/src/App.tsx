@@ -1,0 +1,49 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { LoginForm } from "./routes/login";
+import { apiClient } from "./lib/api-client";
+import { useAuthStore } from "./lib/auth-store";
+
+const queryClient = new QueryClient();
+
+// TODO(task 7+): load the company list from the API instead of hard-coding it.
+const companies = [{ id: 1, name: "Citykart Stores" }];
+
+interface LoginResponse {
+  access_token: string;
+  must_change_password: boolean;
+}
+
+function LoginPage() {
+  const setAuth = useAuthStore((s) => s.setAuth);
+
+  async function handleLogin(values: { companyId: number; empCode: string; password: string }) {
+    const result = await apiClient.post<LoginResponse>("/auth/login", {
+      company_id: values.companyId,
+      emp_code: values.empCode,
+      password: values.password,
+    });
+    setAuth({
+      accessToken: result.access_token,
+      // TODO(task 7+): decode role from the JWT once claims are defined.
+      role: "",
+      companyId: values.companyId,
+      mustChangePassword: result.must_change_password,
+    });
+  }
+
+  return (
+    <main className="flex min-h-screen items-center justify-center p-4">
+      <LoginForm companies={companies} onSubmit={handleLogin} />
+    </main>
+  );
+}
+
+function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <LoginPage />
+    </QueryClientProvider>
+  );
+}
+
+export default App;

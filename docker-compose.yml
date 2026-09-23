@@ -28,6 +28,13 @@ services:
     volumes:
       - uploads:/data/uploads
 
+  web:
+    build: ./frontend
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+
 volumes:
   db_data:
   uploads:

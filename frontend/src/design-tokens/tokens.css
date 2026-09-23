@@ -1,0 +1,160 @@
+/*
+ * Unified Family Design Tokens — CSS variables
+ * Drop-in for any project. Import once at the top of your global stylesheet:
+ *   @import "./design-tokens/tokens.css";
+ * All values are OKLCH. Light theme only.
+ */
+
+:root {
+  /* ── Color: surfaces ────────────────────────────── */
+  --background:         oklch(0.985 0.006 240);
+  --foreground:         oklch(0.20 0.04 250);
+  --surface:            oklch(1 0 0);
+  --surface-2:          oklch(0.965 0.012 235);
+  --card:               oklch(1 0 0);
+  --popover:            oklch(0.995 0.004 240);
+  --border:             oklch(0.90 0.015 235);
+  --input:              oklch(0.92 0.012 235);
+  --muted:              oklch(0.955 0.012 235);
+  --muted-foreground:   oklch(0.48 0.04 250);
+
+  /* ── Color: brand (sky-blue → navy → teal) ───────── */
+  --primary:            oklch(0.465 0.083 218);   /* brand teal (#026478) */
+  --primary-foreground: oklch(0.99 0 0);
+  --primary-soft:       oklch(0.93 0.04 218);  /* light lilac-indigo tint */
+  --ring:               oklch(0.45 0.09 218);
+  --teal:               oklch(0.465 0.083 218); /* #026478 brand teal accent */
+  --header:             oklch(0.36 0.08 213);   /* deep teal — table header / demo bar */
+
+  /* ── Color: status (exceptions only) ────────────── */
+  --destructive:        oklch(0.58 0.22 25);
+  --success:            oklch(0.62 0.16 160);
+  --warning:            oklch(0.78 0.15 75);
+  --info:               oklch(0.68 0.12 230);
+
+  /* ── Color: status soft (pastel fills for heatmaps, chips, tags) ── */
+  --success-soft:        oklch(0.94 0.045 160);
+  --warning-soft:        oklch(0.95 0.060 85);
+  --destructive-soft:    oklch(0.93 0.055 25);
+  --info-soft:           oklch(0.93 0.045 230);
+  --on-success-soft:     oklch(0.45 0.12 160);
+  --on-warning-soft:     oklch(0.47 0.10 75);
+  --on-destructive-soft: oklch(0.50 0.18 25);
+  --on-info-soft:        oklch(0.45 0.11 230);
+
+  /* ── Chart categorical palette (pastel, sober) ── */
+  --chart-1:             oklch(0.80 0.08 210);   /* teal */
+  --chart-2:             oklch(0.74 0.10 205);   /* cyan */
+  --chart-3:             oklch(0.85 0.10 80);    /* amber */
+  --chart-4:             oklch(0.82 0.10 150);   /* green */
+  --chart-5:             oklch(0.68 0.10 240);   /* indigo */
+
+  /* ── Row / cell state (tables & grids) ── */
+  --row-exception:       oklch(0.58 0.22 25);    /* left accent on exception rows */
+  --row-exception-bg:    oklch(0.975 0.03 25);   /* exception row tint */
+  --row-selected-bg:     oklch(0.955 0.03 218);  /* selected row tint (teal) */
+  --cell-editable-ring:  oklch(0.45 0.09 218);   /* editable cell hover/focus ring */
+
+  /* ── Per-metric column tinting (plan / actual / variance / contrib) ── */
+  --metric-plan:         oklch(0.465 0.083 218); --metric-plan-bg:     oklch(0.968 0.02 218);
+  --metric-actual:       oklch(0.62 0.16 160);   --metric-actual-bg:   oklch(0.968 0.03 160);
+  --metric-variance:     oklch(0.62 0.14 60);    --metric-variance-bg: oklch(0.975 0.03 85);
+  --metric-contrib:      oklch(0.55 0.20 265);   --metric-contrib-bg:  oklch(0.965 0.02 245);
+
+  /* ── Trust-mode (AI governance) ── */
+  --trust-auto:          oklch(0.62 0.16 160);   /* green  · full auto */
+  --trust-assist:        oklch(0.68 0.12 230);   /* blue   · assisted */
+  --trust-safe:          oklch(0.78 0.15 75);    /* amber  · safe/manual */
+
+  /* ── Module / section accents (launcher hub, nav grouping) ── */
+  --section-1: oklch(0.55 0.10 218);  /* sales · teal */
+  --section-2: oklch(0.50 0.13 245);  /* stock · cyan */
+  --section-3: oklch(0.58 0.13 160);  /* allocation · green */
+  --section-4: oklch(0.60 0.13 60);   /* finance · amber */
+  --section-5: oklch(0.52 0.13 245);  /* footfall · indigo */
+  --section-6: oklch(0.55 0.10 235);  /* admin · blue */
+
+  /* ── Colored shadows (status elevation) ── */
+  --shadow-primary: 0 8px 20px -6px oklch(0.465 0.083 218 / 0.26);
+  --shadow-success: 0 8px 20px -6px oklch(0.62 0.16 160 / 0.24);
+  --shadow-warning: 0 8px 20px -6px oklch(0.78 0.15 75 / 0.24);
+  --shadow-danger:  0 8px 20px -6px oklch(0.58 0.22 25 / 0.24);
+
+  /* ── Action accents (specialty CTAs, one per screen) ── */
+  --cta:                oklch(0.62 0.16 165);   /* emerald · Start / Go */
+  --cta-foreground:     oklch(0.99 0 0);
+  --gradient-cta:       linear-gradient(135deg, oklch(0.58 0.15 170), oklch(0.66 0.14 190));
+  --ai:                 oklch(0.50 0.13 245);   /* deep family blue · AI actions */
+  --ai-foreground:      oklch(0.99 0 0);
+  --gradient-ai:        linear-gradient(135deg, oklch(0.43 0.14 245), oklch(0.62 0.20 275));
+
+  /* ── Avatar palette (deterministic: hash name → 1..6) ── */
+  --avatar-1: oklch(0.68 0.15 200);  /* teal    */
+  --avatar-2: oklch(0.62 0.18 155);  /* green   */
+  --avatar-3: oklch(0.65 0.17 55);   /* amber   */
+  --avatar-4: oklch(0.62 0.20 25);   /* coral   */
+  --avatar-5: oklch(0.60 0.11 205);  /* cyan */
+  --avatar-6: oklch(0.55 0.20 265);  /* indigo  */
+
+
+  /* ── Signature gradients ────────────────────────── */
+  --gradient-primary:       linear-gradient(135deg,
+                              oklch(0.602 0.139 242.6) 0%,    /* #1488cc sky-blue */
+                              oklch(0.242 0.152 265.1) 56%,   /* #020966 navy */
+                              oklch(0.465 0.083 217.9) 100%); /* #026478 teal */
+  --gradient-primary-hover: linear-gradient(135deg,
+                              oklch(0.552 0.139 242.6) 0%,
+                              oklch(0.192 0.152 265.1) 56%,
+                              oklch(0.415 0.083 217.9) 100%);
+  --gradient-surface:       linear-gradient(180deg, oklch(1 0 0 / 0.75), oklch(0.96 0.012 250 / 0.55));
+  --gradient-page:          radial-gradient(1200px 600px at 8% -12%, oklch(0.55 0.13 243 / 0.18), transparent 60%),
+                            radial-gradient(900px 500px at 100% 8%, oklch(0.50 0.09 218 / 0.18), transparent 60%),
+                            linear-gradient(180deg, oklch(0.985 0.006 250), oklch(0.965 0.012 250));
+
+  /* ── Typography ─────────────────────────────────── */
+  --font-sans:    "Inter", system-ui, sans-serif;
+  --font-numeric: "IBM Plex Mono", ui-monospace, monospace;
+  --fs-xs: 12px; --fs-sm: 13px; --fs-base: 15.5px; --fs-lg: 17px;
+  --fs-xl: 19px; --fs-2xl: 26px; --fs-3xl: clamp(2rem, 3.2vw, 2.75rem);
+  --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600; --fw-bold: 650;
+  --lh-tight: 1.1; --lh-snug: 1.3; --lh-normal: 1.55;
+
+  /* ── Spacing rhythm ─────────────────────────────── */
+  --space-tight:   0.5rem;
+  --space-cozy:    0.875rem;
+  --space-base:    1rem;
+  --space-section: 1.75rem;
+
+  /* ── Radius ─────────────────────────────────────── */
+  --radius:      0.75rem;
+  --radius-sm:   0.5rem;
+  --radius-md:   0.625rem;
+  --radius-lg:   0.75rem;
+  --radius-xl:   1rem;
+  --radius-2xl:  1.25rem;
+  --radius-3xl:  1.5rem;
+  --radius-pill: 999px;
+
+  /* ── Shadows (soft structure, brand-blue tinted) ──────── */
+  --shadow-xs:    0 1px 2px oklch(0.30 0.08 250 / 0.06);
+  --shadow-sm:    0 2px 6px oklch(0.30 0.08 250 / 0.08), 0 1px 2px oklch(0.30 0.08 250 / 0.05);
+  --shadow-md:    0 8px 20px -6px oklch(0.30 0.08 250 / 0.14), 0 2px 6px oklch(0.30 0.08 250 / 0.06);
+  --shadow-lg:    0 18px 40px -12px oklch(0.30 0.10 250 / 0.22), 0 4px 12px oklch(0.30 0.10 250 / 0.08);
+  --shadow-glow:  0 0 0 4px oklch(0.45 0.10 218 / 0.18);
+  --shadow-inset: inset 0 1px 0 oklch(1 0 0 / 0.6), inset 0 -1px 0 oklch(0.30 0.08 250 / 0.06);
+
+  /* ── Motion ─────────────────────────────────────── */
+  --dur-fast: 140ms;
+  --dur-base: 220ms;
+  --dur-slow: 360ms;
+  --ease-out:    cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* ── Layout grid ────────────────────────────────── */
+  --bp-sm: 640px; --bp-md: 768px; --bp-lg: 1024px; --bp-xl: 1280px; --bp-2xl: 1536px;
+  --container-max: 1200px;
+  --container-prose: 72ch;
+  --gutter-mobile:  16px;
+  --gutter-tablet:  24px;
+  --gutter-desktop: 32px;
+}
