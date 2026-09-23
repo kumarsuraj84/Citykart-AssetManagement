@@ -11,10 +11,30 @@ class HolderService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def list(self, company_id: int | None = None, holder_type: str | None = None):
+    async def list(
+        self,
+        holder_type: str | None = None,
+        allowed_company_ids: list[int] | None = None,
+        requested_company_id: int | None = None,
+    ):
+        """`allowed_company_ids` is the caller's server-side scope from
+        `scoped_company_ids()`: None means unrestricted (ADMIN), a list means
+        the caller may only ever see those companies. When restricted, the
+        scope is enforced unconditionally and `requested_company_id` is only
+        honored if it falls inside that scope -- a foreign company_id passed
+        by a non-ADMIN caller is silently ignored rather than followed, so a
+        non-ADMIN can never enumerate another company's holders regardless of
+        query params. An unrestricted (ADMIN) caller's `requested_company_id`
+        is applied as-is.
+        """
         stmt = select(Holder).where(Holder.is_active.is_(True))
-        if company_id is not None:
-            stmt = stmt.where(Holder.company_id == company_id)
+        if allowed_company_ids is not None:
+            if requested_company_id is not None and requested_company_id in allowed_company_ids:
+                stmt = stmt.where(Holder.company_id == requested_company_id)
+            else:
+                stmt = stmt.where(Holder.company_id.in_(allowed_company_ids))
+        elif requested_company_id is not None:
+            stmt = stmt.where(Holder.company_id == requested_company_id)
         if holder_type is not None:
             stmt = stmt.where(Holder.holder_type == holder_type)
         return (await self.session.execute(stmt)).scalars().all()
