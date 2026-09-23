@@ -12,7 +12,7 @@ describe("LoginForm", () => {
     fireEvent.click(screen.getByRole("button", { name: /log in/i }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({
-      companyId: 1, empCode: "ADMIN1", password: "Passw0rd!",
+      companyId: 1, loginId: "ADMIN1", password: "Passw0rd!",
     }));
   });
 });

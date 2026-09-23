@@ -61,10 +61,10 @@ function LoginPage() {
     queryFn: () => apiClient.get<CompanyOption[]>("/auth/companies"),
   });
 
-  async function handleLogin(values: { companyId: number; empCode: string; password: string }) {
+  async function handleLogin(values: { companyId: number; loginId: string; password: string }) {
     const result = await apiClient.post<LoginResponse>("/auth/login", {
       company_id: values.companyId,
-      emp_code: values.empCode,
+      login_id: values.loginId,
       password: values.password,
     });
     setAuth({

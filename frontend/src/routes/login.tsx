@@ -4,7 +4,7 @@ import { z } from "zod";
 
 const schema = z.object({
   companyId: z.coerce.number(),
-  empCode: z.string().min(1, "User ID is required"),
+  loginId: z.string().min(1, "User ID is required"),
   password: z.string().min(1, "Password is required"),
 });
 type FormInput = z.input<typeof schema>;
@@ -32,8 +32,12 @@ export function LoginForm({
       </select>
 
       <label htmlFor="emp-code">User ID</label>
-      <input id="emp-code" {...register("empCode")} />
-      {errors.empCode && <span role="alert">{errors.empCode.message}</span>}
+      {/* Hint kept OUTSIDE the <label> so the accessible name stays exactly
+          "User ID" (E2E and unit tests both look it up by that exact label
+          text) -- the hint just clarifies that either identifier works. */}
+      <span className="text-xs text-muted-foreground">(Emp Code or Email)</span>
+      <input id="emp-code" {...register("loginId")} />
+      {errors.loginId && <span role="alert">{errors.loginId.message}</span>}
 
       <label htmlFor="password">Password</label>
       <input id="password" type="password" {...register("password")} />

@@ -103,7 +103,7 @@ export async function seedTestCompany(baseURL: string): Promise<SeedContext> {
 
   const login = await api<{ access_token: string }>(baseURL, "POST", "/api/auth/login", undefined, {
     company_id: companyId,
-    emp_code: "SEEDADMIN",
+    login_id: "SEEDADMIN",
     password: adminPassword,
   });
   const token = login.access_token;
