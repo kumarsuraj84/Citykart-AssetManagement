@@ -18,6 +18,9 @@ from app.lifecycle.state_machine import LifecycleError, label_for_event, transit
     ("IN_STOCK", "SCRAPPED", None, "IT_TEAM", "SCRAPPED"),
     ("ALLOTTED", "LOST", None, "IT_TEAM", "LOST"),
     ("LOST", "FOUND", "IT_STOCK", "ADMIN", "IN_STOCK"),
+    ("IN_STOCK", "PROCURED", "IT_STOCK", "IT_TEAM", "IN_STOCK"),
+    ("IN_STOCK", "PROCURED", "EMPLOYEE", "IT_TEAM", "ALLOTTED"),
+    ("IN_STOCK", "IMPORTED", "IT_STOCK", "IT_TEAM", "IN_STOCK"),
     ("ALLOTTED", "CORRECTION", None, "ADMIN", "ALLOTTED"),   # correction never changes status...
     ("DISPOSED", "CORRECTION", None, "ADMIN", "DISPOSED"),   # ...even on a terminal asset
 ])
@@ -34,6 +37,7 @@ def test_allowed_transitions(current, event, to_type, role, expected):
     ("SCRAPPED", "MOVED", "EMPLOYEE", "IT_TEAM"),
     ("LOST", "MOVED", "EMPLOYEE", "IT_TEAM"),            # only FOUND allowed from LOST
     ("LOST", "FOUND", "IT_STOCK", "IT_TEAM"),            # FOUND is admin-only
+    ("LOST", "FOUND", "EMPLOYEE", "ADMIN"),              # FOUND must return to IT_STOCK
     ("IN_STOCK", "RECEIVED_FROM_REPAIR", "IT_STOCK", "IT_TEAM"),  # not under repair
     ("ALLOTTED", "CORRECTION", None, "IT_TEAM"),         # CORRECTION is admin-only
 ])
@@ -48,6 +52,7 @@ def test_forbidden_transitions_raise(current, event, to_type, role):
     ("MOVED", "EMPLOYEE", "IT_STOCK", "Returned to {to}"),
     ("MOVED", "STORE", "IT_STOCK", "Returned to {to}"),
     ("MOVED", "IT_STOCK", "INSTALLED", "Installed at {to}"),
+    ("MOVED", "INSTALLED", "EMPLOYEE", "Allotted to {to}"),
     ("MOVED", "EMPLOYEE", "STORE", "Transferred from {from} to {to}"),
     ("PROCURED", None, "IT_STOCK", "Procured into {to}"),
 ])

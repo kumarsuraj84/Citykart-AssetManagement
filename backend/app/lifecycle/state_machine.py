@@ -13,7 +13,7 @@ _TERMINAL_STATUSES = {"DISPOSED", "SOLD", "SCRAPPED"}
 
 # current_status -> set of event_types allowed from it
 _ALLOWED_EVENTS = {
-    "IN_STOCK": {"MOVED", "SENT_FOR_REPAIR", "DISPOSED", "SOLD", "SCRAPPED", "LOST"},
+    "IN_STOCK": {"PROCURED", "IMPORTED", "MOVED", "SENT_FOR_REPAIR", "DISPOSED", "SOLD", "SCRAPPED", "LOST"},
     "ALLOTTED": {"MOVED", "SENT_FOR_REPAIR", "LOST"},
     "INSTALLED": {"MOVED", "SENT_FOR_REPAIR", "LOST"},
     "UNDER_REPAIR": {"RECEIVED_FROM_REPAIR", "SCRAPPED"},
@@ -43,7 +43,7 @@ def transition(current_status: str, event_type: str, to_holder_type: str | None,
     if event_type == "FOUND" and actor_role != "ADMIN":
         raise LifecycleError("only ADMIN may mark a LOST asset as FOUND")
 
-    if event_type == "MOVED":
+    if event_type in ("PROCURED", "IMPORTED", "MOVED"):
         if to_holder_type not in _STOCK_LIKE_STATUS_BY_HOLDER_TYPE:
             raise LifecycleError(f"unknown holder type '{to_holder_type}'")
         return _STOCK_LIKE_STATUS_BY_HOLDER_TYPE[to_holder_type]
@@ -57,6 +57,11 @@ def transition(current_status: str, event_type: str, to_holder_type: str | None,
         return _STOCK_LIKE_STATUS_BY_HOLDER_TYPE[to_holder_type]
 
     if event_type == "FOUND":
+        if to_holder_type not in _STOCK_LIKE_STATUS_BY_HOLDER_TYPE:
+            raise LifecycleError(f"unknown holder type '{to_holder_type}'")
+        result_status = _STOCK_LIKE_STATUS_BY_HOLDER_TYPE[to_holder_type]
+        if result_status != "IN_STOCK":
+            raise LifecycleError("FOUND asset must be returned to IT_STOCK, not another holder type")
         return "IN_STOCK"
 
     if event_type in ("DISPOSED", "SOLD", "SCRAPPED"):
@@ -97,10 +102,10 @@ def label_for_event(event_type: str, from_holder_type: str | None, to_holder_typ
             return "Returned to {to}"
         if to_status == "INSTALLED":
             return "Installed at {to}"
-        if from_status == "IN_STOCK" and to_status == "ALLOTTED":
+        if to_status == "ALLOTTED":
+            if from_status == "ALLOTTED":
+                return "Transferred from {from} to {to}"
             return "Allotted to {to}"
-        if from_status == "ALLOTTED" and to_status == "ALLOTTED":
-            return "Transferred from {from} to {to}"
         return "Moved to {to}"
 
     raise LifecycleError(f"unhandled event '{event_type}'")
