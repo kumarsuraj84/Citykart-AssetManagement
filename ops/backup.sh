@@ -1,5 +1,9 @@
 #!/bin/sh
-set -eu
+# pipefail is required: without it, `pg_dump | gzip > file` exits 0 even if
+# pg_dump itself fails (bad auth, connection drop), because gzip still
+# succeeds on empty/partial input -- producing a small-but-valid .gz file
+# and a false "Backup complete" report. See docs/deployment.md.
+set -eu -o pipefail
 STAMP=$(date +%Y%m%d_%H%M%S)
 OUT_DIR="/backups"
 mkdir -p "$OUT_DIR"

@@ -1,6 +1,6 @@
 import argparse
 import asyncio
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import SessionLocal
 from app.core.security import hash_password
@@ -27,7 +27,13 @@ async def ensure_seed_admin(session: AsyncSession, company_code: str = "E2E", pa
         session.add(department)
         await session.flush()
 
-    holder = (await session.execute(select(Holder).where(Holder.emp_code == "SEEDADMIN"))).scalars().first()
+    # Scoped by company_id too: Holder's real uniqueness constraint is
+    # (company_id, emp_code), not emp_code alone, so a global lookup here
+    # would silently reuse another company's SEEDADMIN holder instead of
+    # creating one scoped to this company_code.
+    holder = (
+        await session.execute(select(Holder).where(and_(Holder.company_id == company.id, Holder.emp_code == "SEEDADMIN")))
+    ).scalars().first()
     if holder is None:
         holder = Holder(
             company_id=company.id, emp_code="SEEDADMIN", name="Seed Admin", holder_type="EMPLOYEE",
