@@ -129,9 +129,90 @@ async def test_export_assets_and_movements_scope_by_company():
             f"/api/reports/export/movements?from_date={from_date}&to_date={to_date}", headers=headers,
         )).content
         wb2 = openpyxl.load_workbook(BytesIO(movements_xlsx))
-        move_codes = [row[0] for row in wb2.active.iter_rows(min_row=2, values_only=True)]
+        header2 = [c.value for c in next(wb2.active.iter_rows(min_row=1, max_row=1))]
+        assert header2 == ["Asset Code", "Event", "Date", "From Holder", "To Holder", "Remarks"]
+        move_rows = list(wb2.active.iter_rows(min_row=2, values_only=True))
+        move_codes = [row[0] for row in move_rows]
         assert asset_a_code in move_codes
         assert asset_b_code not in move_codes
+
+        # The "From Holder"/"To Holder" columns must hold the actual holder names
+        # (joined in by the router), not the raw from_holder_id/to_holder_id -- a
+        # regression back to raw ids would still pass the asset-code-only assertions
+        # above, so this checks those two columns directly against the real names of
+        # the holders the MOVED event above actually recorded.
+        [moved_row_a] = [row for row in move_rows if row[0] == asset_a_code and row[1] == "MOVED"]
+        from_holder_col, to_holder_col = moved_row_a[3], moved_row_a[4]
+        assert from_holder_col == "IT Stock-SC2A"
+        assert to_holder_col == "Employee A"
+        assert not isinstance(from_holder_col, int)
+        assert not isinstance(to_holder_col, int)
+
+
+async def test_export_assets_pins_holder_to_only_their_own_held_asset():
+    """A HOLDER calling GET /api/reports/export/assets must get exactly the asset(s)
+    they currently hold -- never another employee's asset in the same company, and
+    never anything from a different company. This is the same
+    `holder_id = holder.id; allowed = None` branch `list_assets` (Task 19) uses, but
+    it's a separately-maintained copy of that logic in the export endpoint, so it
+    needs its own proof rather than relying on `list_assets`'s tests."""
+    from httpx import AsyncClient, ASGITransport
+    from app.main import app
+    from app.lifecycle.service import apply_event
+
+    async with SessionLocal() as session:
+        co, cat, sub, cc, loc, dept, stock, admin = await _setup_company(session, "SC4A")
+        co_other, cat_o, sub_o, cc_o, _loc_o, _dept_o, stock_o, admin_o = await _setup_company(session, "SC4B")
+
+        holder_x = Holder(company_id=co.id, emp_code="HLDX-SC4", name="Holder X", holder_type="EMPLOYEE",
+                           location_id=loc.id, department_id=dept.id, role="HOLDER",
+                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        holder_y = Holder(company_id=co.id, emp_code="HLDY-SC4", name="Holder Y", holder_type="EMPLOYEE",
+                           location_id=loc.id, department_id=dept.id, role="HOLDER",
+                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        session.add_all([holder_x, holder_y])
+        rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/CK_",
+                         suffix_template="", start_number=1, pad_width=0)
+        session.add(rule)
+        await session.commit()
+
+        # Asset 1: same company, ends up held by holder_x (the caller below).
+        [asset_x] = await procure_assets(session, {
+            "company_id": co.id, "cost_center_id": cc.id, "category_id": cat.id, "subcategory_id": sub.id,
+            "description": "Holder X's Laptop", "purchase_date": date(2025, 12, 10), "initial_holder_id": stock.id,
+        }, quantity=1, actor=admin)
+        await apply_event(session, asset_x, "MOVED", to_holder_id=holder_x.id, actor=admin)
+
+        # Asset 2: same company, held by a *different* employee (holder_y) -- must not
+        # appear in holder_x's export even though it's the same company.
+        [asset_y] = await procure_assets(session, {
+            "company_id": co.id, "cost_center_id": cc.id, "category_id": cat.id, "subcategory_id": sub.id,
+            "description": "Holder Y's Laptop", "purchase_date": date(2025, 12, 10), "initial_holder_id": stock.id,
+        }, quantity=1, actor=admin)
+        await apply_event(session, asset_y, "MOVED", to_holder_id=holder_y.id, actor=admin)
+
+        # Asset 3: a different company entirely.
+        [asset_other_co] = await procure_assets(session, {
+            "company_id": co_other.id, "cost_center_id": cc_o.id, "category_id": cat_o.id, "subcategory_id": sub_o.id,
+            "description": "Other Company Laptop", "purchase_date": date(2025, 12, 10), "initial_holder_id": stock_o.id,
+        }, quantity=1, actor=admin_o)
+
+        await session.commit()
+        code_x, code_y, code_other = asset_x.asset_code, asset_y.asset_code, asset_other_co.asset_code
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/api/auth/login", json={"company_id": co.id, "emp_code": "HLDX-SC4", "password": "Passw0rd!"})
+        headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+        export_resp = await client.get("/api/reports/export/assets", headers=headers)
+        assert export_resp.status_code == 200
+        wb = openpyxl.load_workbook(BytesIO(export_resp.content))
+        codes = [row[0] for row in wb.active.iter_rows(min_row=2, values_only=True)]
+
+        assert codes == [code_x]
+        assert code_y not in codes
+        assert code_other not in codes
 
 
 async def test_qr_png_404_for_holder_who_does_not_hold_the_asset():
