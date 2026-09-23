@@ -33,7 +33,7 @@ services:
     depends_on:
       - api
     ports:
-      - "80:80"
+      - "3211:80"
 
   # NOTE on base image: the `db` service above uses `postgres:17`, which is
   # Debian-based and ships neither `apk` nor a cron daemon — an

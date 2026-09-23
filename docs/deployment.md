@@ -2,14 +2,14 @@
 
 ## Prerequisites
 - Docker + Docker Compose v2 installed on the server.
-- Ports 80 (web) and optionally 5432 (Postgres, for admin access only) open on the LAN.
+- Ports 3211 (web) and optionally 5432 (Postgres, for admin access only) open on the LAN.
 
 ## First-time setup
-1. Copy `.env.example` to `.env` and set `POSTGRES_PASSWORD`, `JWT_SECRET`, `BASE_URL` (e.g. `http://assets.citykart.local`), `BACKUP_DIR`.
+1. Copy `.env.example` to `.env` and set `POSTGRES_PASSWORD`, `JWT_SECRET`, `BASE_URL` (e.g. `http://assets.citykart.local:3211`), `BACKUP_DIR`.
 2. `docker compose up -d --build`
 3. Run migrations: `docker compose exec api alembic upgrade head`
 4. Create the first ADMIN holder: `docker compose exec api python -m scripts.seed_admin --company-code E2E --password 'Passw0rd!'` (change the password before going live — the script is idempotent, safe to re-run). See `backend/scripts/seed_admin.py`.
-5. Visit `http://<server-ip>/` and log in.
+5. Visit `http://<server-ip>:3211/` and log in.
 
 ## Day-to-day
 - Logs: `docker compose logs -f api`
@@ -56,4 +56,4 @@ and the restore would then collide with it (see the warning in "Restore" above).
    b. Bring up `db` and `api` **without running migrations**: `docker compose up -d db api` (the `db` volume is brand-new here, so it already has no schema — do not run `alembic upgrade head`).
    c. Follow "Restore" above (steps 1–4) to load the two backup files onto this fresh, schema-less database. This applies the schema (at the migration head it was dumped at) and the data together, and step 4 there confirms `alembic current` afterward.
    d. `docker compose up -d --build` to bring up `web` as well.
-   e. Visit `http://<server-ip>/` and log in with an account from the restored data — skip the seed-admin step from First-time setup, since the restore already brought over the admin holder(s).
+   e. Visit `http://<server-ip>:3211/` and log in with an account from the restored data — skip the seed-admin step from First-time setup, since the restore already brought over the admin holder(s).
