@@ -4,8 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.assets.models import Asset
 from app.holders.models import Holder
 from app.lifecycle.service import apply_event
-from app.masters.models import CostCenter, AssetCategory, AssetSubcategory
-from app.numbering.service import generate_code, get_active_rule
+from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Location
+from app.numbering.service import build_code_tokens, generate_code, get_active_rule
 
 
 async def _get_initial_holder(session: AsyncSession, company_id: int, initial_holder_id: int | None) -> Holder:
@@ -33,24 +33,36 @@ async def procure_assets(session: AsyncSession, data: dict, quantity: int, actor
     """Behind "Add Asset": creates `quantity` identical assets (the "buying 20 mice" case),
     each with its own generated asset_code and its own PROCURED ledger entry recorded
     through apply_event — the only function allowed to write status/current_holder_id.
+
+    Raises ValueError (bad/missing master data, no code rule, unresolvable code-rule
+    token) or LifecycleError (e.g. a future purchase date); POST /api/assets turns
+    both into a 422.
     """
     company_id = data["company_id"]
+    company = await session.get(Company, company_id)
+    if company is None:
+        raise ValueError(f"company {company_id} not found")
     rule = await get_active_rule(session, company_id)
 
     cost_center = await session.get(CostCenter, data["cost_center_id"])
+    if cost_center is None:
+        raise ValueError(f"cost center {data['cost_center_id']} not found")
+    if cost_center.company_id != company_id:
+        raise ValueError("cost center must belong to the same company as the asset")
     category = await session.get(AssetCategory, data["category_id"])
+    if category is None:
+        raise ValueError(f"category {data['category_id']} not found")
     subcategory = await session.get(AssetSubcategory, data["subcategory_id"]) if data.get("subcategory_id") else None
+    if subcategory is not None and subcategory.category_id != category.id:
+        raise ValueError("sub-category does not belong to the selected category")
 
-    tokens = {
-        "cost_center.code": cost_center.code if cost_center else "",
-        "category.code": category.code if category else "",
-        "subcategory.code": subcategory.code if subcategory else "",
-        "company.code": "",
-        "location.code": "",
-        "yyyy": str(data["purchase_date"].year),
-        "yy": str(data["purchase_date"].year)[-2:],
-        "mm": f"{data['purchase_date'].month:02d}",
-    }
+    holder = await _get_initial_holder(session, company_id, data.get("initial_holder_id"))
+    location = await session.get(Location, holder.location_id)
+
+    tokens = build_code_tokens(
+        company=company, location=location, cost_center=cost_center, category=category,
+        subcategory=subcategory, purchase_date=data["purchase_date"],
+    )
 
     # Decimal arithmetic throughout (never float) to avoid binary floating-point rounding
     # errors in money math. Decimal(str(x)) rather than Decimal(x) so an incoming float/int
@@ -59,8 +71,6 @@ async def procure_assets(session: AsyncSession, data: dict, quantity: int, actor
     tax_percent = Decimal(str(data.get("tax_percent") or 0))
     tax_amount = (purchase_cost * tax_percent / Decimal(100)).quantize(Decimal("0.01"))
     total_cost = purchase_cost + tax_amount
-
-    holder = await _get_initial_holder(session, company_id, data.get("initial_holder_id"))
 
     event_date = datetime.combine(data["purchase_date"], datetime.min.time()).replace(tzinfo=timezone.utc)
 

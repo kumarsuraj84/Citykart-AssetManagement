@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
-from app.core.deps import get_current_holder, require_role, scoped_company_ids
+from app.core.deps import ensure_company_in_scope, get_current_holder, require_role, scoped_company_ids
 from app.assets.models import Asset
 from app.assets.schemas import AssetCreateIn, AssetOut
 from app.assets.search_service import search_assets
@@ -38,8 +38,18 @@ async def create_asset(
     session: AsyncSession = Depends(get_session),
     actor=Depends(require_role("ADMIN", "IT_TEAM")),
 ):
+    # Write-scope check: an IT_TEAM actor can only *read* their own company's data,
+    # so they must not be able to create assets in any other company either.
+    ensure_company_in_scope(actor, body.company_id)
     data = body.model_dump(exclude={"quantity"})
-    assets = await procure_assets(session, data, quantity=body.quantity, actor=actor)
+    try:
+        assets = await procure_assets(session, data, quantity=body.quantity, actor=actor)
+    except (ValueError, LifecycleError) as exc:
+        # e.g. no active code rule, an unresolvable code-rule token, initial holder /
+        # cost center from another company, a future purchase date -- all problems
+        # with the request, not server faults, so a clean 422 instead of a raw 500.
+        await session.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
     await session.commit()
     for a in assets:
         await session.refresh(a)
