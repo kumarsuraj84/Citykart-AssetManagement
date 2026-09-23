@@ -3,8 +3,10 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AssetDetail } from "./AssetDetail";
 import { apiClient } from "../../lib/api-client";
+import { useAuthStore } from "../../lib/auth-store";
 
 vi.mock("../../lib/api-client");
+vi.mock("../../lib/auth-store");
 
 function renderWithClient(ui: React.ReactElement) {
   const qc = new QueryClient();
@@ -56,5 +58,32 @@ describe("AssetDetail", () => {
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/assets/1/events", expect.objectContaining({
       event_type: "MOVED", to_holder_id: 5,
     })));
+  });
+
+  it("hides all action buttons for HOLDER-role viewers", async () => {
+    (useAuthStore as any).mockImplementation((selector: any) => {
+      const state = { role: "HOLDER", accessToken: null, companyId: null, mustChangePassword: false };
+      return selector ? selector(state) : state;
+    });
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (path === "/assets/1") {
+        return Promise.resolve({
+          id: 1,
+          asset_code: "FA/HO01/IT/LAP/CK_1",
+          description: "Laptop",
+          status: "IN_STOCK",
+          company_id: 1,
+        });
+      }
+      if (path === "/assets/1/events") return Promise.resolve([]);
+      if (path.startsWith("/holders")) return Promise.resolve([{ id: 5, name: "Ankur" }]);
+      return Promise.resolve([]);
+    });
+
+    renderWithClient(<AssetDetail assetId={1} />);
+
+    await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK_1")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /move \/ allot/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 });

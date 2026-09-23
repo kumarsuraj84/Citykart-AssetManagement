@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
+import { useAuthStore } from "../../lib/auth-store";
 import { actionsFor, type ActionDef } from "./actionRules";
 import { Timeline, type AssetEvent } from "./Timeline";
 import { Badge } from "@/components/ui/badge";
@@ -54,6 +55,7 @@ const emptyActionForm: ActionFormState = {
 
 export function AssetDetail({ assetId }: { assetId: number }) {
   const qc = useQueryClient();
+  const role = useAuthStore((s) => s.role);
   const [activeAction, setActiveAction] = useState<ActionDef | null>(null);
   const [form, setForm] = useState<ActionFormState>(emptyActionForm);
 
@@ -123,7 +125,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
             </div>
             <Badge>{asset.status.replace(/_/g, " ")}</Badge>
           </div>
-          {actions.length > 0 && (
+          {role !== "HOLDER" && actions.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {actions.map((a) => (
                 <Button key={a.eventType + a.label} variant="secondary" onClick={() => openAction(a)}>
