@@ -1,0 +1,33 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: ckam
+      POSTGRES_USER: ckam
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ckam_dev_pw}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ckam"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://ckam:${POSTGRES_PASSWORD:-ckam_dev_pw}@db:5432/ckam
+      JWT_SECRET: ${JWT_SECRET:-dev_secret_change_me}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - uploads:/data/uploads
+
+volumes:
+  db_data:
+  uploads:
