@@ -20,7 +20,9 @@ function renderWithClient(ui: React.ReactElement) {
 // below don't trip an unmocked window.fetch; the QR-specific test overrides it.
 beforeEach(() => {
   (useAuthStore as any).getState = vi.fn().mockReturnValue({ accessToken: null });
-  window.fetch = vi.fn().mockResolvedValue({ ok: false, status: 401 }) as any;
+  // 404, not 401: a 401 would (correctly) send authFetch into its refresh-then-
+  // redirect-to-login path, which isn't what these tests are about.
+  window.fetch = vi.fn().mockResolvedValue({ ok: false, status: 404 }) as any;
   window.URL.createObjectURL = vi.fn().mockReturnValue("blob:mock-qr");
   window.URL.revokeObjectURL = vi.fn();
 });

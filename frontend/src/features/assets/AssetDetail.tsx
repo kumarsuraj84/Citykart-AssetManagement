@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
+import { authFetch } from "../../lib/auth-fetch";
 import { useAuthStore } from "../../lib/auth-store";
 import { actionsFor, type ActionDef } from "./actionRules";
 import { Timeline, type AssetEvent } from "./Timeline";
@@ -54,8 +55,6 @@ const emptyActionForm: ActionFormState = {
   remarks: "",
 };
 
-const BASE = import.meta.env.VITE_API_BASE ?? "/api";
-
 export function AssetDetail({ assetId }: { assetId: number }) {
   const qc = useQueryClient();
   const role = useAuthStore((s) => s.role);
@@ -71,11 +70,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
     let objectUrl: string | null = null;
     let cancelled = false;
     async function loadQr() {
-      const token = useAuthStore.getState().accessToken;
-      const res = await fetch(`${BASE}/assets/${assetId}/qr.png`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        credentials: "include",
-      });
+      const res = await authFetch(`/assets/${assetId}/qr.png`);
       if (!res.ok || cancelled) return;
       const blob = await res.blob();
       objectUrl = URL.createObjectURL(blob);
@@ -104,7 +99,9 @@ export function AssetDetail({ assetId }: { assetId: number }) {
   const { data: holders = [] } = useQuery({
     queryKey: ["holders", asset?.company_id],
     queryFn: () => apiClient.get<HolderOption[]>(`/holders?company_id=${asset!.company_id}`),
-    enabled: asset?.company_id != null,
+    // Only staff get action dialogs that need this list; a HOLDER may not list
+    // holders at all (the API returns 403 -- other people's contact details).
+    enabled: asset?.company_id != null && role !== "HOLDER",
   });
 
   function setField<K extends keyof ActionFormState>(key: K, value: ActionFormState[K]) {

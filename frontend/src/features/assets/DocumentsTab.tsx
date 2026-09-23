@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
+import { downloadFile } from "../../lib/auth-fetch";
 import { useAuthStore } from "../../lib/auth-store";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -32,8 +33,6 @@ const DOC_TYPES = [
   { value: "other", label: "Other" },
 ];
 
-const BASE = import.meta.env.VITE_API_BASE ?? "/api";
-
 function formatSize(bytes: number): string {
   return `${Math.round(bytes / 1024)} KB`;
 }
@@ -55,21 +54,12 @@ export function DocumentsTab({ assetId }: { assetId: number }) {
   const uploadMutation = useMutation({
     mutationFn: async () => {
       if (!selectedFile) throw new Error("Choose a file first.");
-      const token = useAuthStore.getState().accessToken;
       const formData = new FormData();
       formData.append("file", selectedFile);
       formData.append("doc_type", docType);
-      const res = await fetch(`${BASE}/assets/${assetId}/documents`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        credentials: "include",
-        body: formData,
-      });
-      if (!res.ok) {
-        const detail = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(detail.detail ?? `Upload failed: ${res.status}`);
-      }
-      return res.json();
+      // apiClient sends FormData as multipart and goes through authFetch (bearer
+      // token + refresh-on-401), like every other authenticated request.
+      return apiClient.post(`/assets/${assetId}/documents`, formData);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["assets", assetId, "documents"] });
@@ -81,21 +71,7 @@ export function DocumentsTab({ assetId }: { assetId: number }) {
   async function handleDownload(doc: Doc) {
     setDownloadError(null);
     try {
-      const token = useAuthStore.getState().accessToken;
-      const res = await fetch(`${BASE}/documents/${doc.id}/download`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error(`Download failed: ${res.status}`);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = doc.file_name;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      await downloadFile(`/documents/${doc.id}/download`, doc.file_name);
     } catch (err) {
       setDownloadError(err instanceof Error ? err.message : "Download failed.");
     }

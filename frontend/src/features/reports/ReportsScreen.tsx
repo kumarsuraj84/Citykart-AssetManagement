@@ -1,11 +1,9 @@
 import { useState } from "react";
-import { useAuthStore } from "../../lib/auth-store";
+import { downloadFile } from "../../lib/auth-fetch";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
-const BASE = import.meta.env.VITE_API_BASE ?? "/api";
 
 function toDateInput(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -18,27 +16,12 @@ function defaultFromDate(): string {
 }
 
 // Authenticated exports can't just be a plain <a href="/api/..."> link: every other
-// request in this app carries its bearer token as an Authorization header (see
-// lib/api-client.ts and AssetDetail's own DocumentsTab download), and a browser
-// navigating a bare href never attaches that header, so the download would 401.
-// This mirrors DocumentsTab.tsx's handleDownload: fetch with the token, then hand the
-// browser a blob to save under a real filename.
-async function downloadXlsx(path: string, filename: string): Promise<void> {
-  const token = useAuthStore.getState().accessToken;
-  const res = await fetch(`${BASE}${path}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    credentials: "include",
-  });
-  if (!res.ok) throw new Error(`Export failed: ${res.status}`);
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+// request in this app carries its bearer token as an Authorization header, and a
+// browser navigating a bare href never attaches that header, so the download would
+// 401. downloadFile (lib/auth-fetch.ts) fetches with the token (refreshing it if
+// needed) and hands the browser a blob to save under a real filename.
+function downloadXlsx(path: string, filename: string): Promise<void> {
+  return downloadFile(path, filename, "Export failed");
 }
 
 export function ReportsScreen() {
