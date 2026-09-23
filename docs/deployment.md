@@ -17,6 +17,9 @@
 - Logs: `docker compose logs -f api`
 - Restart: `docker compose restart api web`
 - Update: `git pull && docker compose up -d --build`
+- Running the backend test suite: **never** against this stack's `ckam` database — see
+  [backend/README.md](../backend/README.md#running-the-test-suite) for the dedicated `ckam_test` database
+  to use instead.
 
 ## Backups
 - Nightly automatic backup to `${BACKUP_DIR}`, 14-day retention, run by the `backup` service (cron, `0 2 * * *`) — see `docker-compose.yml` and `ops/backup.sh`.

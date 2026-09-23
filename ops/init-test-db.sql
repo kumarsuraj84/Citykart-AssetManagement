@@ -1,0 +1,12 @@
+-- Creates a second, dedicated database for the backend test suite,
+-- alongside the app's real `ckam` database (POSTGRES_DB) on the same
+-- Postgres instance. backend/tests/conftest.py refuses to run against any
+-- database whose name doesn't end in "_test" (see its
+-- _assert_safe_test_database), so pytest must be pointed at this database,
+-- never at `ckam`, to avoid TRUNCATEing real data.
+--
+-- Postgres only runs files in /docker-entrypoint-initdb.d on first init of
+-- an empty data volume. For an existing `db_data` volume that predates this
+-- file, create the database once by hand instead:
+--   docker compose exec db psql -U ckam -d ckam -c "CREATE DATABASE ckam_test OWNER ckam;"
+CREATE DATABASE ckam_test OWNER ckam;
