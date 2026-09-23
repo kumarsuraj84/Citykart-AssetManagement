@@ -56,14 +56,38 @@ function asOptionArray(data: unknown): Option[] {
   return Array.isArray(data) ? (data as Option[]) : [];
 }
 
+// Server-side pagination (spec §7.3): GET /api/assets returns one page plus the
+// total count of every matching asset.
+export const PAGE_SIZE = 50;
+
 export function AssetRegister() {
   const qc = useQueryClient();
-  const [q, setQ] = useState("");
-  const [status, setStatus] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [holderId, setHolderId] = useState("");
-  const [companyId, setCompanyId] = useState("");
+  const [q, setQRaw] = useState("");
+  const [status, setStatusRaw] = useState("");
+  const [categoryId, setCategoryIdRaw] = useState("");
+  const [holderId, setHolderIdRaw] = useState("");
+  const [companyId, setCompanyIdRaw] = useState("");
+  const [page, setPageRaw] = useState(0);
   const [selected, setSelected] = useState<number[]>([]);
+
+  // Selection is per visible page: changing page or filters clears it, so a bulk
+  // move can never act on rows the user can no longer see.
+  function setPage(next: number) {
+    setPageRaw(next);
+    setSelected([]);
+  }
+  // Any filter change starts again from the first page.
+  function resettingPage<T>(setter: (v: T) => void) {
+    return (v: T) => {
+      setter(v);
+      setPage(0);
+    };
+  }
+  const setQ = resettingPage(setQRaw);
+  const setStatus = resettingPage(setStatusRaw);
+  const setCategoryId = resettingPage(setCategoryIdRaw);
+  const setHolderId = resettingPage(setHolderIdRaw);
+  const setCompanyId = resettingPage(setCompanyIdRaw);
   const [moveOpen, setMoveOpen] = useState(false);
   const [moveHolderId, setMoveHolderId] = useState("");
   // A snapshot of the selected rows taken when the Move dialog opens, so that if the
@@ -78,13 +102,19 @@ export function AssetRegister() {
     ...(categoryId ? { category_id: categoryId } : {}),
     ...(holderId ? { holder_id: holderId } : {}),
     ...(companyId ? { company_id: companyId } : {}),
+    limit: String(PAGE_SIZE),
+    offset: String(page * PAGE_SIZE),
   }).toString();
 
   const { data, isLoading } = useQuery({
-    queryKey: ["assets", "register", q, status, categoryId, holderId, companyId],
+    queryKey: ["assets", "register", q, status, categoryId, holderId, companyId, page],
     queryFn: () => apiClient.get<{ items: AssetRow[]; total: number }>(`/assets?${queryString}`),
   });
   const items = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const firstRow = total === 0 ? 0 : page * PAGE_SIZE + 1;
+  const lastRow = page * PAGE_SIZE + items.length;
 
   const { data: categoriesData } = useQuery({
     queryKey: ["masters", "categories"],
@@ -295,6 +325,28 @@ export function AssetRegister() {
           )}
         </TableBody>
       </Table>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+        <span className="text-muted-foreground" aria-live="polite">
+          Showing {firstRow}–{lastRow} of {total.toLocaleString()} asset{total === 1 ? "" : "s"}
+        </span>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setPage(page - 1)} disabled={page === 0 || isLoading}>
+            Previous
+          </Button>
+          <span>
+            Page {page + 1} of {pageCount}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage(page + 1)}
+            disabled={page + 1 >= pageCount || isLoading}
+          >
+            Next
+          </Button>
+        </div>
+      </div>
 
       <Dialog open={moveOpen} onOpenChange={(open) => !open && closeMove()}>
         <DialogContent>

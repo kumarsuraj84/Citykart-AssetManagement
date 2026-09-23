@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AssetRegister } from "./AssetRegister";
@@ -19,6 +19,8 @@ async function pickSelectOption(label: RegExp | string, optionName: RegExp | str
   const option = await screen.findByRole("option", { name: optionName });
   fireEvent.click(option);
 }
+
+beforeEach(() => vi.clearAllMocks());
 
 describe("AssetRegister", () => {
   it("lists assets and searches by the query box", async () => {
@@ -49,6 +51,48 @@ describe("AssetRegister", () => {
     await pickSelectOption(/status/i, /in stock/i);
 
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("status=IN_STOCK")));
+  });
+
+  it("pages through the register with limit/offset and shows the total", async () => {
+    const rows = (start: number, n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        id: start + i,
+        asset_code: `FA/CK_${start + i}`,
+        description: "Laptop",
+        status: "IN_STOCK",
+      }));
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (path.startsWith("/assets")) {
+        const params = new URLSearchParams(path.split("?")[1]);
+        const offset = Number(params.get("offset"));
+        const limit = Number(params.get("limit"));
+        const total = 120;
+        return Promise.resolve({ items: rows(offset + 1, Math.min(limit, total - offset)), total });
+      }
+      return Promise.resolve([]);
+    });
+
+    renderWithClient(<AssetRegister />);
+    await waitFor(() => expect(screen.getByText("FA/CK_1")).toBeInTheDocument());
+    expect(apiClient.get).toHaveBeenCalledWith(expect.stringMatching(/limit=50.*offset=0|offset=0.*limit=50/));
+    expect(screen.getByText(/showing 1–50 of 120/i)).toBeInTheDocument();
+    expect(screen.getByText(/page 1 of 3/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /previous/i })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    await waitFor(() => expect(screen.getByText("FA/CK_51")).toBeInTheDocument());
+    expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("offset=50"));
+    expect(screen.getByText(/showing 51–100 of 120/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    await waitFor(() => expect(screen.getByText("FA/CK_101")).toBeInTheDocument());
+    expect(screen.getByText(/showing 101–120 of 120/i)).toBeInTheDocument();
+    expect(screen.getByText(/page 3 of 3/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /next/i })).toBeDisabled();
+
+    // Changing a filter goes back to the first page.
+    fireEvent.change(screen.getByLabelText(/search/i), { target: { value: "CK" } });
+    await waitFor(() => expect(apiClient.get).toHaveBeenLastCalledWith(expect.stringMatching(/q=CK.*offset=0/)));
   });
 
   it("keeps the bulk-move dialog open and shows per-asset reasons on a partial failure", async () => {
