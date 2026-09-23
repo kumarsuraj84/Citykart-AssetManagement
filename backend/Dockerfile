@@ -3,6 +3,7 @@ WORKDIR /app
 COPY pyproject.toml ./
 RUN pip install --no-cache-dir -e ".[dev]"
 COPY app ./app
+COPY scripts ./scripts
 COPY tests ./tests
 COPY alembic.ini ./
 EXPOSE 8000
