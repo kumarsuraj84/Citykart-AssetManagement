@@ -72,10 +72,11 @@ test("full custody journey: procure, allot, return, allot again", async ({ page,
   await page.getByRole("tab", { name: "History", exact: true }).click();
   const timelineItems = page.locator("ol > li");
   await expect(timelineItems).toHaveCount(4);
-  await expect(timelineItems.nth(0)).toContainText("PROCURED");
-  await expect(timelineItems.nth(1)).toContainText("MOVED");
-  await expect(timelineItems.nth(2)).toContainText("MOVED");
-  await expect(timelineItems.nth(3)).toContainText("MOVED");
+  // Human-readable custody labels built server-side with the real holder names.
+  await expect(timelineItems.nth(0)).toContainText(`Procured into ${ctx.stock.name}`);
+  await expect(timelineItems.nth(1)).toContainText(`Allotted to ${ctx.employee.name}`);
+  await expect(timelineItems.nth(2)).toContainText(`Returned to ${ctx.stock.name}`);
+  await expect(timelineItems.nth(3)).toContainText(`Allotted to ${ctx.store.name}`);
 
   // ---- Log out, log in as the EMPLOYEE holder: no currently-held assets ----
   // (the asset's custody ended at the STORE holder, not the employee, so the

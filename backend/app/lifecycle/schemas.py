@@ -22,3 +22,8 @@ class AssetEventOut(BaseModel):
     remarks: str | None
     reference_no: str | None
     recorded_by: int
+    # Human-readable custody wording with real holder names substituted in, e.g.
+    # "Allotted to Ankur Pahwa" (built server-side from label_for_event; see
+    # app.lifecycle.router._with_labels). Defaults to "" only so the model can be
+    # validated from an ORM row before the router fills it in.
+    label: str = ""
