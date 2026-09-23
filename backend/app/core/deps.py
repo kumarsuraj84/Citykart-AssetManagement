@@ -16,6 +16,8 @@ async def get_current_holder(
         payload = decode_token(token)
     except ValueError:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
+    if payload.get("type") != "access":
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
     holder = await session.get(Holder, int(payload["sub"]))
     if holder is None or not holder.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Account not found or inactive")

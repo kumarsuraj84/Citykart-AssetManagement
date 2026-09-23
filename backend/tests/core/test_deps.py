@@ -1,6 +1,7 @@
 import pytest
 from fastapi import HTTPException
-from app.core.deps import require_role, scoped_company_ids
+from app.core.deps import get_current_holder, require_role, scoped_company_ids
+from app.core.security import create_refresh_token
 
 
 class _FakeHolder:
@@ -29,3 +30,14 @@ def test_require_role_allows_matching_role():
     checker = require_role("ADMIN", "IT_TEAM")
     result = checker(_FakeHolder("IT_TEAM", 1))
     assert result.role == "IT_TEAM"
+
+
+async def test_get_current_holder_rejects_refresh_token():
+    # A refresh token is a real, validly-signed JWT but must never authenticate
+    # like an access token — get_current_holder must reject it on the "type"
+    # claim before it ever reaches the DB lookup (session=None proves this:
+    # the call would blow up on session.get if the type check were skipped).
+    token = create_refresh_token(holder_id=1)
+    with pytest.raises(HTTPException) as exc:
+        await get_current_holder(token=token, session=None)
+    assert exc.value.status_code == 401

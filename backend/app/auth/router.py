@@ -36,9 +36,12 @@ async def login(body: LoginRequest, response: Response, session: AsyncSession = 
     holder.locked_until = None
     await session.commit()
 
-    access = create_access_token(holder.id, holder.role, holder.company_id)
+    company_scope = None if holder.role == "ADMIN" else holder.company_id
+    access = create_access_token(holder.id, holder.role, company_scope)
     refresh = create_refresh_token(holder.id)
-    response.set_cookie("refresh_token", refresh, httponly=True, samesite="lax", max_age=8 * 3600)
+    response.set_cookie(
+        "refresh_token", refresh, httponly=True, secure=True, samesite="lax", max_age=8 * 3600
+    )
     return LoginResponse(access_token=access, must_change_password=holder.must_change_password)
 
 

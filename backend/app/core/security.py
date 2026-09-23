@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError
+from argon2.exceptions import Argon2Error, InvalidHash
 from jose import jwt, JWTError
 from app.core.config import settings
 
@@ -12,15 +12,24 @@ def hash_password(raw: str) -> str:
 
 
 def verify_password(raw: str, hashed: str) -> bool:
+    """Return False for any verification failure: a genuine mismatch, or a
+    malformed/empty hash (e.g. InvalidHash, which is not an Argon2Error
+    subclass and must be caught separately) rather than raising a 500."""
     try:
         return _hasher.verify(hashed, raw)
-    except VerifyMismatchError:
+    except (Argon2Error, InvalidHash):
         return False
 
 
 def create_access_token(holder_id: int, role: str, company_scope: int | None) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_access_minutes)
-    payload = {"sub": str(holder_id), "role": role, "company_scope": company_scope, "exp": expire}
+    payload = {
+        "sub": str(holder_id),
+        "role": role,
+        "company_scope": company_scope,
+        "type": "access",
+        "exp": expire,
+    }
     return jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
 
 
