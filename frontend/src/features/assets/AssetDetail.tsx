@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
@@ -54,11 +54,39 @@ const emptyActionForm: ActionFormState = {
   remarks: "",
 };
 
+const BASE = import.meta.env.VITE_API_BASE ?? "/api";
+
 export function AssetDetail({ assetId }: { assetId: number }) {
   const qc = useQueryClient();
   const role = useAuthStore((s) => s.role);
   const [activeAction, setActiveAction] = useState<ActionDef | null>(null);
   const [form, setForm] = useState<ActionFormState>(emptyActionForm);
+  const [qrUrl, setQrUrl] = useState<string | null>(null);
+
+  // Same reason as DocumentsTab's authenticated download: every request in this app
+  // carries its bearer token as an Authorization header, so a bare
+  // <img src="/api/assets/{id}/qr.png"> would 401 -- fetch it with the token instead
+  // and hand the browser a blob URL to render.
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    async function loadQr() {
+      const token = useAuthStore.getState().accessToken;
+      const res = await fetch(`${BASE}/assets/${assetId}/qr.png`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        credentials: "include",
+      });
+      if (!res.ok || cancelled) return;
+      const blob = await res.blob();
+      objectUrl = URL.createObjectURL(blob);
+      if (!cancelled) setQrUrl(objectUrl);
+    }
+    loadQr();
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [assetId]);
 
   const { data: asset } = useQuery({
     queryKey: ["assets", assetId],
@@ -124,7 +152,13 @@ export function AssetDetail({ assetId }: { assetId: number }) {
               <CardTitle className="font-mono text-lg">{asset.asset_code}</CardTitle>
               <p className="text-sm text-muted-foreground">{asset.description}</p>
             </div>
-            <Badge>{asset.status.replace(/_/g, " ")}</Badge>
+            <div className="flex items-center gap-3">
+              <Badge>{asset.status.replace(/_/g, " ")}</Badge>
+              {qrUrl && <img src={qrUrl} alt="Asset QR code" width={96} height={96} />}
+              <Button variant="outline" onClick={() => window.print()}>
+                Print Label
+              </Button>
+            </div>
           </div>
           {role !== "HOLDER" && actions.length > 0 && (
             <div className="flex flex-wrap gap-2">
