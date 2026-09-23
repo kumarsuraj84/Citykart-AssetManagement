@@ -32,9 +32,17 @@ async def login(body: LoginRequest, response: Response, session: AsyncSession = 
     # (case-insensitively) -- many holders (stores, stock locations,
     # installed-equipment locations) have no email at all, so this must never
     # require email; it only adds an alternative for holders who have one.
-    stmt = select(Holder).where(
-        Holder.company_id == body.company_id,
-        or_(Holder.emp_code == body.login_id, func.lower(Holder.email) == func.lower(body.login_id)),
+    # A partial unique index (company_id, lower(email)) WHERE email IS NOT
+    # NULL -- see migration 0005_holder_email_unique.py -- makes a duplicate
+    # email within one company structurally impossible; .order_by(Holder.id)
+    # here is cheap defense in depth, independent of that constraint.
+    stmt = (
+        select(Holder)
+        .where(
+            Holder.company_id == body.company_id,
+            or_(Holder.emp_code == body.login_id, func.lower(Holder.email) == func.lower(body.login_id)),
+        )
+        .order_by(Holder.id)
     )
     holder = (await session.execute(stmt)).scalars().first()
     if holder is None or not holder.is_active or holder.password_hash is None:
