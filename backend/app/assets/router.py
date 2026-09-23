@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +12,7 @@ from app.assets.search_service import search_assets
 from app.assets.service import procure_assets
 from app.lifecycle.service import apply_event
 from app.lifecycle.state_machine import LifecycleError
+from app.reports.export_service import asset_qr_png
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
 
@@ -146,3 +148,17 @@ async def delete_asset_entry_mistake(
     asset.deleted_at = datetime.now(timezone.utc)
     asset.updated_by = actor.id
     await session.commit()
+
+
+@router.get("/{asset_id}/qr.png")
+async def asset_qr(
+    asset_id: int,
+    session: AsyncSession = Depends(get_session),
+    holder=Depends(get_current_holder),
+):
+    """Goes through the same `_get_scoped_asset` every other `/api/assets/{id}/...`
+    route uses (Task 16), so a HOLDER who doesn't currently hold this asset gets 404
+    here exactly like they would from GET /api/assets/{id} -- a QR code is not a
+    backdoor around asset scoping."""
+    await _get_scoped_asset(asset_id, session, holder)
+    return Response(content=asset_qr_png(asset_id), media_type="image/png")
