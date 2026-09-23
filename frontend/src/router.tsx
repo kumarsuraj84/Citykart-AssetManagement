@@ -198,7 +198,7 @@ function SetupMenu({ role }: { role: string | null }) {
   );
 }
 
-export function AppShell() {
+function AppShell() {
   const role = useAuthStore((s) => s.role);
   const navigate = useNavigate();
   const canWrite = role !== null && WRITE_ROLES.includes(role);

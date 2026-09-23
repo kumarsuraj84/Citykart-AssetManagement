@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -44,17 +44,19 @@ export function CodeRuleScreen() {
   const activeRule = Array.isArray(rules) ? (rules.find((r) => r.company_id === null) ?? null) : null;
 
   // Prefill the form from the saved rule when it (first) loads, or when a save
-  // produced a different active rule -- so what you see is what is in force.
-  useEffect(() => {
-    if (!activeRule) return;
+  // produced a different active rule -- so what you see is what is in force. Keyed
+  // on the rule id only (adjusting state during render, not in an effect): re-syncing
+  // on every refetch would clobber edits in progress.
+  const [syncedRuleId, setSyncedRuleId] = useState<number | null>(null);
+  if (activeRule && activeRule.id !== syncedRuleId) {
+    setSyncedRuleId(activeRule.id);
     setForm({
       prefixTemplate: activeRule.prefix_template,
       suffixTemplate: activeRule.suffix_template,
       startNumber: activeRule.start_number,
       padWidth: activeRule.pad_width,
     });
-    // Keyed on the rule id only: re-syncing on every refetch would clobber edits in progress.
-  }, [activeRule?.id]);
+  }
 
   const saveMutation = useMutation({
     mutationFn: () => {
