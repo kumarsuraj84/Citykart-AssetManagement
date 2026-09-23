@@ -35,6 +35,32 @@ services:
     ports:
       - "80:80"
 
+  # NOTE on base image: the `db` service above uses `postgres:17`, which is
+  # Debian-based and ships neither `apk` nor a cron daemon — an
+  # `apk add ... || true` fallback there would silently no-op and the
+  # nightly job would never actually run. `postgres:17-alpine` is used here
+  # instead: it ships the *same* PostgreSQL 17.11 client tools (pg_dump/psql
+  # match the server exactly) plus BusyBox `crond`, `tar` and `gzip`
+  # out of the box, verified by running the image directly and confirming a
+  # `* * * * *` crontab entry actually fired under `crond -f`. No package
+  # install is required or attempted.
+  backup:
+    image: postgres:17-alpine
+    entrypoint: >
+      sh -c "echo '0 2 * * * /scripts/backup.sh >> /var/log/ckam-backup.log 2>&1' > /etc/crontabs/root;
+             touch /var/log/ckam-backup.log;
+             crond -f -l 2"
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-ckam_dev_pw}
+    volumes:
+      - ./ops/backup.sh:/scripts/backup.sh:ro
+      - ./ops/restore.sh:/scripts/restore.sh:ro
+      - uploads:/data/uploads
+      - ${BACKUP_DIR:-./backups}:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   db_data:
   uploads:
