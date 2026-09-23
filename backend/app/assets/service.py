@@ -1,6 +1,5 @@
 from datetime import datetime, timezone
 from decimal import Decimal
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.assets.models import Asset
 from app.holders.models import Holder
@@ -9,27 +8,24 @@ from app.masters.models import CostCenter, AssetCategory, AssetSubcategory
 from app.numbering.service import generate_code, get_active_rule
 
 
-async def _resolve_initial_holder(session: AsyncSession, company_id: int, initial_holder_id: int | None) -> Holder:
-    """Resolve the holder newly procured assets land in: the explicit `initial_holder_id`
-    when given, otherwise the company's default IT_STOCK holder (spec: assets are procured
-    "into stock" unless the caller says otherwise).
-    """
-    if initial_holder_id is not None:
-        holder = await session.get(Holder, initial_holder_id)
-        if holder is None:
-            raise ValueError(f"initial holder {initial_holder_id} not found")
-        if holder.company_id != company_id:
-            raise ValueError("initial holder must belong to the same company as the asset")
-        return holder
+async def _get_initial_holder(session: AsyncSession, company_id: int, initial_holder_id: int | None) -> Holder:
+    """Resolve the holder newly procured assets land in.
 
-    stmt = (
-        select(Holder)
-        .where(Holder.company_id == company_id, Holder.holder_type == "IT_STOCK", Holder.is_active.is_(True))
-        .order_by(Holder.id)
-    )
-    holder = (await session.execute(stmt)).scalars().first()
+    `initial_holder_id` is required, not defaulted: a company can have multiple IT_STOCK
+    holders (one per location, e.g. "IT Stock-HO", "IT Stock-WH-F", "IT Stock-WH-K" per
+    the design spec's seed data), so there is no safe way to pick one automatically —
+    guessing risks silently misfiling a purchase into the wrong location's stock with no
+    error and no warning. The real caller (the Add Asset screen) always has the admin
+    explicitly pick a stock location from a dropdown, so this is never actually optional
+    in practice.
+    """
+    if initial_holder_id is None:
+        raise ValueError("initial_holder_id is required")
+    holder = await session.get(Holder, initial_holder_id)
     if holder is None:
-        raise ValueError(f"no default IT_STOCK holder configured for company {company_id}")
+        raise ValueError(f"initial holder {initial_holder_id} not found")
+    if holder.company_id != company_id:
+        raise ValueError("initial holder must belong to the same company as the asset")
     return holder
 
 
@@ -64,7 +60,7 @@ async def procure_assets(session: AsyncSession, data: dict, quantity: int, actor
     tax_amount = (purchase_cost * tax_percent / Decimal(100)).quantize(Decimal("0.01"))
     total_cost = purchase_cost + tax_amount
 
-    holder = await _resolve_initial_holder(session, company_id, data.get("initial_holder_id"))
+    holder = await _get_initial_holder(session, company_id, data.get("initial_holder_id"))
 
     event_date = datetime.combine(data["purchase_date"], datetime.min.time()).replace(tzinfo=timezone.utc)
 
