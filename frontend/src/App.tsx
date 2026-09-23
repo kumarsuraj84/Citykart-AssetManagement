@@ -33,7 +33,8 @@ function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-4">
+    <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-4">
+      <img src="/logo.png" alt="CityKart Asset Management" className="h-16 w-auto" />
       <LoginForm companies={companies} onSubmit={handleLogin} />
     </main>
   );
