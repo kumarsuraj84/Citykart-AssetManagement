@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
-from app.core.deps import get_current_holder, require_role, scoped_company_ids
+from app.core.deps import STAFF_ROLES, get_current_holder, require_role, scoped_company_ids
 from app.holders.service import HolderService
 from app.holders.schemas import CompanyAccessIn, HolderIn, HolderOut, ResetPasswordOut
 
@@ -13,8 +13,10 @@ async def list_holders(
     company_id: int | None = Query(None),
     holder_type: str | None = Query(None),
     session: AsyncSession = Depends(get_session),
-    holder=Depends(get_current_holder),
+    holder=Depends(require_role(*STAFF_ROLES)),
 ):
+    # Staff only: the list carries every holder's email/phone, and a HOLDER may
+    # only see their own currently-held assets (spec §6) -- 403 for them.
     allowed_company_ids = scoped_company_ids(holder)
     return await HolderService(session).list(
         holder_type=holder_type,

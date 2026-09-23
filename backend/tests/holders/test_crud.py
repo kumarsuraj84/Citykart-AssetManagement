@@ -94,9 +94,10 @@ async def test_non_admin_holder_list_scoped_to_own_company(client):
     }, headers=headers_b)
     assert create_resp.status_code == 201
 
-    # A plain, non-ADMIN caller in company A.
+    # A plain, non-ADMIN caller in company A. VIEWER, not HOLDER: a HOLDER may not
+    # list holders at all (403, see tests/reports/test_holder_role_access.py).
     viewer_headers, _ = await _login_as(
-        client, company_a, location_a, department_a, emp_code="VIEWERA", role="HOLDER",
+        client, company_a, location_a, department_a, emp_code="VIEWERA", role="VIEWER",
     )
 
     resp = await client.get(f"/api/holders?company_id={company_b}", headers=viewer_headers)

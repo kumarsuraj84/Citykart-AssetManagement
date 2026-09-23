@@ -7,7 +7,7 @@ from sqlalchemy.orm import aliased
 from app.assets.models import Asset
 from app.assets.search_service import search_assets
 from app.core.db import get_session
-from app.core.deps import get_current_holder, scoped_company_ids
+from app.core.deps import STAFF_ROLES, get_current_holder, require_role, scoped_company_ids
 from app.holders.models import Holder
 from app.lifecycle.models import AssetEvent
 from app.reports.dashboard_service import dashboard_data
@@ -22,11 +22,13 @@ XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.s
 @router.get("/dashboard", response_model=DashboardOut)
 async def dashboard(
     session: AsyncSession = Depends(get_session),
-    holder=Depends(get_current_holder),
+    holder=Depends(require_role(*STAFF_ROLES)),
 ):
-    """Scoped exactly like the asset register (Task 19): `scoped_company_ids` returns
-    None for ADMIN (unrestricted, sees every company combined) and the caller's own
-    company id otherwise, so a non-ADMIN never sees another company's KPI numbers."""
+    """Staff only: a HOLDER sees only the assets they hold (spec §6), never
+    company-wide KPIs/alerts, so they get 403 here. Scoped exactly like the asset
+    register (Task 19): `scoped_company_ids` returns None for ADMIN (unrestricted,
+    sees every company combined) and the caller's own company id otherwise, so a
+    non-ADMIN never sees another company's KPI numbers."""
     allowed = scoped_company_ids(holder)
     return await dashboard_data(session, allowed)
 
@@ -65,11 +67,12 @@ async def export_movements(
     from_date: date = Query(...),
     to_date: date = Query(...),
     session: AsyncSession = Depends(get_session),
-    holder=Depends(get_current_holder),
+    holder=Depends(require_role(*STAFF_ROLES)),
 ):
-    """Company-scoped the same way as the dashboard (`scoped_company_ids`): a HOLDER or
-    other non-ADMIN role only ever gets movement rows for assets in their own company,
-    ADMIN is unrestricted. Joins in the asset code and the from/to holder names so the
+    """Staff only (403 for a HOLDER): the log names every holder in the company, and a
+    HOLDER may only see their own currently-held assets (spec §6). Company-scoped the
+    same way as the dashboard (`scoped_company_ids`): a non-ADMIN role only ever gets
+    movement rows for assets in their own company, ADMIN is unrestricted. Joins in the asset code and the from/to holder names so the
     exported "Asset Code"/"From Holder"/"To Holder" columns hold what they say, not raw
     internal ids."""
     from_holder = aliased(Holder)
