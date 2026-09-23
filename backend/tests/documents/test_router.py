@@ -3,6 +3,7 @@ from datetime import date
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.assets.service import procure_assets
+from app.documents.service import MAX_SIZE_BYTES
 from app.masters.models import Company, CostCenter, AssetCategory, AssetSubcategory, Location, Department
 from app.holders.models import Holder
 from app.numbering.models import CodeRule
@@ -117,6 +118,65 @@ async def test_oversized_file_is_rejected(client, tmp_path, monkeypatch):
         f"/api/assets/{asset_id}/documents",
         files={"file": ("big.pdf", oversized, "application/pdf")},
         data={"doc_type": "invoice"},
+        headers=headers,
+    )
+    assert upload_resp.status_code == 422
+
+    list_resp = await client.get(f"/api/assets/{asset_id}/documents", headers=headers)
+    assert list_resp.json() == []
+
+
+async def test_oversized_upload_is_rejected_via_bounded_read(client, tmp_path, monkeypatch):
+    """Regression test for the fix-round-1 finding: the upload endpoint used to do a
+    single unbounded `await file.read()` before checking MAX_SIZE_BYTES, so an
+    arbitrarily large body would be fully buffered in memory before rejection (a DoS
+    vector). It now reads in fixed-size chunks and aborts the instant the running
+    total exceeds the limit. This sends 2x the limit -- comfortably more than the
+    single-chunk-over-the-line case `test_oversized_file_is_rejected` already covers
+    -- to make sure the chunked path is what's actually being exercised and that a
+    much-too-large body still gets a clean, prompt 422 rather than hanging or
+    erroring some other way."""
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
+
+    async with SessionLocal() as session:
+        co, it_admin, _other, asset_id = await _setup_asset(session, "CKS-DOC-BOUND")
+
+    resp = await client.post("/api/auth/login", json={"company_id": co.id, "emp_code": it_admin.emp_code, "password": "Passw0rd!"})
+    headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+    huge = io.BytesIO(b"0" * (2 * MAX_SIZE_BYTES))
+    upload_resp = await client.post(
+        f"/api/assets/{asset_id}/documents",
+        files={"file": ("huge.pdf", huge, "application/pdf")},
+        data={"doc_type": "invoice"},
+        headers=headers,
+    )
+    assert upload_resp.status_code == 422
+
+    list_resp = await client.get(f"/api/assets/{asset_id}/documents", headers=headers)
+    assert list_resp.json() == []
+
+
+async def test_invalid_doc_type_is_rejected_cleanly(client, tmp_path, monkeypatch):
+    """Regression test for the fix-round-1 finding: doc_type used to be accepted as
+    any string, so a value over 20 chars would pass the endpoint and then blow up as
+    an unhandled 500 against the DB's String(20) column. It's now validated against
+    DOC_TYPES up front and rejected with a clean 422."""
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
+
+    async with SessionLocal() as session:
+        co, it_admin, _other, asset_id = await _setup_asset(session, "CKS-DOC-TYPE")
+
+    resp = await client.post("/api/auth/login", json={"company_id": co.id, "emp_code": it_admin.emp_code, "password": "Passw0rd!"})
+    headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+    file_bytes = io.BytesIO(b"%PDF-1.4 fake invoice content")
+    upload_resp = await client.post(
+        f"/api/assets/{asset_id}/documents",
+        files={"file": ("invoice.pdf", file_bytes, "application/pdf")},
+        data={"doc_type": "not_a_real_doc_type_and_way_over_twenty_characters"},
         headers=headers,
     )
     assert upload_resp.status_code == 422
