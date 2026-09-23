@@ -8,8 +8,12 @@ services:
     volumes:
       - db_data:/var/lib/postgresql/data
       - ./ops/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
+    # Published on the host's loopback interface only: reachable from the server
+    # itself (psql/pgAdmin for admin work) but NOT from other devices on the LAN.
+    # To deliberately expose it, change to "${DB_PORT:-5432}:5432" (see
+    # docs/deployment.md, "Ports").
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ckam"]
       interval: 5s
@@ -21,11 +25,20 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://ckam:${POSTGRES_PASSWORD:-ckam_dev_pw}@db:5432/ckam
       JWT_SECRET: ${JWT_SECRET:-dev_secret_change_me}
+      # Public URL of the web app (nginx, port 3211) -- printed QR labels encode
+      # ${BASE_URL}/assets/{id}. Must be the real LAN hostname/IP in production.
+      BASE_URL: ${BASE_URL:-http://localhost:3211}
+      # Secure attribute on the refresh-token cookie. Keep false for plain-HTTP LAN
+      # use (browsers never send Secure cookies over HTTP); true behind HTTPS.
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
     depends_on:
       db:
         condition: service_healthy
+    # Loopback only, like `db`: LAN users go through nginx on the web port, which
+    # is the one entry point with the upload-size limit etc. Direct API access
+    # from the host (curl, /docs) still works on 127.0.0.1.
     ports:
-      - "8000:8000"
+      - "127.0.0.1:${API_PORT:-8000}:8000"
     volumes:
       - uploads:/data/uploads
 
@@ -34,7 +47,7 @@ services:
     depends_on:
       - api
     ports:
-      - "3211:80"
+      - "${WEB_PORT:-3211}:80"
 
   # NOTE on base image: the `db` service above uses `postgres:17`, which is
   # Debian-based and ships neither `apk` nor a cron daemon — an
