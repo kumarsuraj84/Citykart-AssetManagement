@@ -20,6 +20,32 @@ async def _make_admin(session, company_code="CKS3", emp_code="ADMIN1"):
     return co, holder
 
 
+async def test_list_login_companies_is_public_and_excludes_inactive(client):
+    async with SessionLocal() as session:
+        active_co = Company(code="CKS-PUB1", name="Auth Companies Active Co")
+        inactive_co = Company(code="CKS-PUB2", name="Auth Companies Inactive Co")
+        session.add_all([active_co, inactive_co])
+        await session.flush()
+        inactive_co.is_active = False
+        await session.commit()
+        active_id, inactive_id = active_co.id, inactive_co.id
+
+    # Deliberately no Authorization header at all -- the login screen's company
+    # picker must be reachable before anyone has a token, so this must NOT 401.
+    resp = await client.get("/api/auth/companies")
+    assert resp.status_code == 200
+    body = resp.json()
+
+    ids = {c["id"] for c in body}
+    assert active_id in ids
+    assert inactive_id not in ids  # soft-deleted/inactive companies are excluded
+
+    active_entry = next(c for c in body if c["id"] == active_id)
+    assert active_entry == {"id": active_id, "name": "Auth Companies Active Co"}
+    # Response shape is exactly {id, name} -- no code/is_active/other fields leak out.
+    assert set(active_entry.keys()) == {"id", "name"}
+
+
 async def test_login_success(client):
     async with SessionLocal() as session:
         co, holder = await _make_admin(session)
