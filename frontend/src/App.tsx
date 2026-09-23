@@ -11,6 +11,8 @@ const companies = [{ id: 1, name: "Citykart Stores" }];
 interface LoginResponse {
   access_token: string;
   must_change_password: boolean;
+  role: string;
+  company_id: number;
 }
 
 function LoginPage() {
@@ -24,9 +26,8 @@ function LoginPage() {
     });
     setAuth({
       accessToken: result.access_token,
-      // TODO(task 7+): decode role from the JWT once claims are defined.
-      role: "",
-      companyId: values.companyId,
+      role: result.role,
+      companyId: result.company_id,
       mustChangePassword: result.must_change_password,
     });
   }

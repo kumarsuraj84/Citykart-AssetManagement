@@ -42,7 +42,12 @@ async def login(body: LoginRequest, response: Response, session: AsyncSession = 
     response.set_cookie(
         "refresh_token", refresh, httponly=True, secure=True, samesite="lax", max_age=8 * 3600
     )
-    return LoginResponse(access_token=access, must_change_password=holder.must_change_password)
+    return LoginResponse(
+        access_token=access,
+        must_change_password=holder.must_change_password,
+        role=holder.role,
+        company_id=holder.company_id,
+    )
 
 
 @router.post("/change-password", status_code=204)

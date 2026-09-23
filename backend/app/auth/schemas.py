@@ -10,6 +10,8 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     access_token: str
     must_change_password: bool
+    role: str
+    company_id: int
 
 
 class ChangePasswordRequest(BaseModel):

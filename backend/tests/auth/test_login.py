@@ -31,6 +31,8 @@ async def test_login_success(client):
     body = resp.json()
     assert "access_token" in body
     assert body["must_change_password"] is False
+    assert body["role"] == "ADMIN"
+    assert body["company_id"] == co.id
     assert "refresh_token" in resp.cookies
 
 
