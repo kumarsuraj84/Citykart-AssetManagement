@@ -13,6 +13,12 @@
 | `db` (PostgreSQL) | `${DB_PORT:-5432}` | `127.0.0.1` only | the server itself (psql, pgAdmin over SSH tunnel) |
 | `api` (FastAPI, bypasses nginx) | `${API_PORT:-8000}` | `127.0.0.1` only | the server itself (curl, `/docs`) |
 
+If a host port is already taken, `docker compose up` fails with "ports are not available" and that service
+does not start. This happens in particular when the machine also runs a native (non-Docker) PostgreSQL on 5432
+— then set `DB_PORT` (and/or `API_PORT`, `WEB_PORT`) in `.env` to a free port, e.g. `DB_PORT=25432`, and
+connect from the host with `psql -h 127.0.0.1 -p 25432 -U ckam ckam`. (`docker compose exec db psql -U ckam ckam`
+needs no published port at all.)
+
 Postgres and the raw API are deliberately **not** reachable from other LAN devices: the database is
 password-only, and the direct API path skips nginx (and its upload limit). If you genuinely need one of
 them from another machine, prefer an SSH tunnel (`ssh -L 5432:127.0.0.1:5432 user@server`). Only if that
@@ -81,7 +87,7 @@ COMPOSE_PROJECT_NAME=ckam-e2e E2E_BASE_URL=http://localhost:13211 npx playwright
 cd .. && COMPOSE_PROJECT_NAME=ckam-e2e docker compose down -v
 ```
 
-(Some Windows hosts reserve ports like 5433; pick any free high ports.)
+(Pick host ports nothing else uses — e.g. a native PostgreSQL may already hold 5432/5433.)
 
 ## Backups
 
