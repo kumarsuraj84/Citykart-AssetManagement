@@ -10,10 +10,29 @@ service uses.** `backend/tests/conftest.py` truncates every application table be
 
 Always run tests against the dedicated `ckam_test` database instead. `docker-compose.yml` creates it
 automatically alongside `ckam` on the same `db` service (via `ops/init-test-db.sql`, on first init of a
-fresh `db_data` volume — see that file for the one-off manual command if your volume predates it):
+fresh `db_data` volume — see that file for the one-off manual command if your volume predates it).
+
+The test suite does **not** create tables itself (it only truncates them), so `ckam_test` needs the schema.
+Bring it to the current migration head first — once after creating it, and again after every `git pull`
+that adds a migration (it is a no-op when already up to date):
+
+```bash
+docker compose exec -T -e DATABASE_URL=postgresql+asyncpg://ckam:${POSTGRES_PASSWORD:-ckam_dev_pw}@db:5432/ckam_test api alembic upgrade head
+```
+
+Then run the suite:
 
 ```bash
 docker compose exec -T -e DATABASE_URL=postgresql+asyncpg://ckam:${POSTGRES_PASSWORD:-ckam_dev_pw}@db:5432/ckam_test api python -m pytest -q
+```
+
+Note that the `api` container runs the code it was **built** with. To test uncommitted local changes without
+rebuilding, run a one-off container with your checkout mounted over `/app` (still against `ckam_test`):
+
+```bash
+docker compose run --rm --no-deps -T -v "$(pwd)/backend:/app" \
+  -e DATABASE_URL=postgresql+asyncpg://ckam:${POSTGRES_PASSWORD:-ckam_dev_pw}@db:5432/ckam_test \
+  api python -m pytest -q
 ```
 
 As a backstop, `conftest.py` itself refuses to run (raising `UnsafeTestDatabaseError` before touching any
