@@ -6,12 +6,24 @@ from app.core.db import get_session
 from app.core.deps import get_current_holder
 from app.core.security import create_access_token, create_refresh_token, hash_password, verify_password
 from app.holders.models import Holder
-from app.auth.schemas import ChangePasswordRequest, LoginRequest, LoginResponse
+from app.masters.models import Company
+from app.auth.schemas import ChangePasswordRequest, CompanyOption, LoginRequest, LoginResponse
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 MAX_FAILED_ATTEMPTS = 5
 LOCKOUT_MINUTES = 15
+
+
+@router.get("/companies", response_model=list[CompanyOption])
+async def list_login_companies(session: AsyncSession = Depends(get_session)):
+    """Deliberately unauthenticated -- the login screen's company picker needs this
+    list *before* anyone has a token. Only id+name are exposed (same fields already
+    visible in the picker itself), nothing sensitive. Replaces the hard-coded
+    single-company list App.tsx previously shipped with (see its old TODO)."""
+    stmt = select(Company).where(Company.is_active.is_(True)).order_by(Company.name)
+    rows = (await session.execute(stmt)).scalars().all()
+    return [CompanyOption(id=c.id, name=c.name) for c in rows]
 
 
 @router.post("/login", response_model=LoginResponse)

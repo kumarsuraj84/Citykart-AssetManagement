@@ -17,3 +17,8 @@ class LoginResponse(BaseModel):
 class ChangePasswordRequest(BaseModel):
     old_password: str
     new_password: str
+
+
+class CompanyOption(BaseModel):
+    id: int
+    name: str

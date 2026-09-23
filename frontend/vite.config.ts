@@ -17,5 +17,10 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test-setup.ts"],
+    // Playwright's own specs live under e2e/ (*.spec.ts) and are run by
+    // `npx playwright test`, not vitest -- without this exclusion vitest's
+    // default include glob also picks them up and tries to execute them as
+    // unit tests (no baseURL/fixtures/browser, so they fail outright).
+    exclude: ["node_modules/**", "e2e/**"],
   },
 });
