@@ -1,6 +1,37 @@
 import pytest
+import pytest_asyncio
+from sqlalchemy import text
 from httpx import AsyncClient, ASGITransport
 from app.main import app
+from app.core.db import Base, engine
+
+
+# loop_scope="session" matches asyncio_default_test_loop_scope (see the
+# comment on that setting in pyproject.toml): this fixture uses the same
+# app.core.db.engine (and its pooled asyncpg connections) as the tests, so it
+# must run on the same event loop the tests run on, not pytest-asyncio's
+# per-function default fixture loop, or connection checkout fails with
+# "attached to a different loop".
+@pytest_asyncio.fixture(autouse=True, scope="function", loop_scope="session")
+async def _truncate_tables():
+    """Give every test a clean, empty database.
+
+    Truncates all application tables (everything registered on
+    Base.metadata) before each test function runs, so tests never need to
+    hand-pick "unique" data to avoid colliding with leftovers from a
+    previous test run or a previous test module. `alembic_version` is
+    excluded since it is Alembic's own bookkeeping table, not app data.
+    CASCADE handles FK ordering automatically.
+    """
+    # Base.metadata.tables (not sorted_tables) since CASCADE handles FK
+    # ordering for us and this app has mutually-dependent FKs (AuditMixin's
+    # created_by/updated_by -> holder.id) that sorted_tables can't order.
+    table_names = [name for name in Base.metadata.tables if name != "alembic_version"]
+    if table_names:
+        quoted = ", ".join(f'"{name}"' for name in table_names)
+        async with engine.begin() as conn:
+            await conn.execute(text(f"TRUNCATE TABLE {quoted} RESTART IDENTITY CASCADE;"))
+    yield
 
 
 @pytest.fixture
