@@ -25,6 +25,8 @@ from app.core.db import Base
 import app.masters.models  # noqa: F401
 import app.holders.models  # noqa: F401
 import app.numbering.models  # noqa: F401
+import app.assets.models  # noqa: F401
+import app.lifecycle.models  # noqa: F401
 
 target_metadata = Base.metadata
 
