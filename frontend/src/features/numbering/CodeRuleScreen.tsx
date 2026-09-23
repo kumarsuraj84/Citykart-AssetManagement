@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -35,17 +35,40 @@ export function CodeRuleScreen() {
   const qc = useQueryClient();
   const [form, setForm] = useState({ prefixTemplate: "", suffixTemplate: "", startNumber: 1, padWidth: 0 });
 
-  useQuery({ queryKey: ["code-rules"], queryFn: () => apiClient.get<CodeRule[]>("/code-rules") });
+  // This screen edits the global rule (company_id null). The API keeps exactly one
+  // active rule per scope, so the global entry in the active list IS the rule to edit.
+  const { data: rules } = useQuery({
+    queryKey: ["code-rules"],
+    queryFn: () => apiClient.get<CodeRule[]>("/code-rules"),
+  });
+  const activeRule = Array.isArray(rules) ? (rules.find((r) => r.company_id === null) ?? null) : null;
+
+  // Prefill the form from the saved rule when it (first) loads, or when a save
+  // produced a different active rule -- so what you see is what is in force.
+  useEffect(() => {
+    if (!activeRule) return;
+    setForm({
+      prefixTemplate: activeRule.prefix_template,
+      suffixTemplate: activeRule.suffix_template,
+      startNumber: activeRule.start_number,
+      padWidth: activeRule.pad_width,
+    });
+    // Keyed on the rule id only: re-syncing on every refetch would clobber edits in progress.
+  }, [activeRule?.id]);
 
   const saveMutation = useMutation({
-    mutationFn: () =>
-      apiClient.post("/code-rules", {
+    mutationFn: () => {
+      const body = {
         company_id: null,
         prefix_template: form.prefixTemplate,
         suffix_template: form.suffixTemplate,
         start_number: form.startNumber,
         pad_width: form.padWidth,
-      }),
+      };
+      // Edit the existing rule in place; only the very first save creates one.
+      // (Previously every Save POSTed another active rule.)
+      return activeRule ? apiClient.put(`/code-rules/${activeRule.id}`, body) : apiClient.post("/code-rules", body);
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["code-rules"] }),
   });
 
@@ -58,6 +81,12 @@ export function CodeRuleScreen() {
   return (
     <div className="flex flex-col gap-4">
       <h1 className="text-xl font-semibold">Asset Code Rule</h1>
+      <p className="text-sm text-muted-foreground">
+        {activeRule
+          ? "Editing the rule currently used to number new assets."
+          : "No code rule yet -- assets can't be added until one is saved."}{" "}
+        Tokens: {Object.keys(SAMPLE_TOKENS).map((t) => `{${t}}`).join(" ")}
+      </p>
 
       <div className="flex flex-col gap-4 max-w-md">
         <div className="flex flex-col gap-1.5">
@@ -107,8 +136,16 @@ export function CodeRuleScreen() {
         Preview: <span data-testid="code-preview" className="font-mono">{preview}</span>
       </div>
 
-      <div>
-        <Button onClick={() => saveMutation.mutate()}>Save</Button>
+      <div className="flex items-center gap-3">
+        <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !form.prefixTemplate}>
+          Save
+        </Button>
+        {saveMutation.isSuccess && <span className="text-sm text-muted-foreground">Saved.</span>}
+        {saveMutation.isError && (
+          <span className="text-sm text-destructive">
+            {saveMutation.error instanceof Error ? saveMutation.error.message : "Save failed."}
+          </span>
+        )}
       </div>
     </div>
   );
