@@ -9,10 +9,17 @@ from alembic import context
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
-config.set_main_option(
-    "sqlalchemy.url",
-    os.environ.get("DATABASE_URL", "postgresql+psycopg2://ckam:ckam_dev_pw@localhost:5432/ckam"),
+
+# Alembic runs migrations synchronously, so it needs a sync driver even though
+# the app's own DATABASE_URL uses the async `asyncpg` driver. Swap the driver
+# here for Alembic's private use only — the app's runtime engine is untouched.
+_database_url = os.environ.get(
+    "DATABASE_URL", "postgresql+psycopg2://ckam:ckam_dev_pw@localhost:5432/ckam"
 )
+_sync_database_url = _database_url.replace(
+    "postgresql+asyncpg://", "postgresql+psycopg2://"
+)
+config.set_main_option("sqlalchemy.url", _sync_database_url)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
