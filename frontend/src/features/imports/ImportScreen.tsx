@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { apiClient } from "../../lib/api-client";
+import { downloadFile } from "../../lib/auth-fetch";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,13 +12,17 @@ interface PreviewResult {
   errors: { row: number; message: string }[];
 }
 
-const BASE = import.meta.env.VITE_API_BASE ?? "/api";
+interface CommitResult {
+  imported: number;
+  errors?: { row: number; message: string }[];
+}
 
 export function ImportScreen() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
-  const [result, setResult] = useState<{ imported: number } | null>(null);
+  const [result, setResult] = useState<CommitResult | null>(null);
+  const [templateError, setTemplateError] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [commitError, setCommitError] = useState<string | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
@@ -48,12 +53,23 @@ export function ImportScreen() {
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await apiClient.post<{ imported: number }>("/imports/assets/commit", form);
+      const res = await apiClient.post<CommitResult>("/imports/assets/commit", form);
       setResult(res);
     } catch (err) {
       setCommitError(err instanceof Error ? err.message : "Commit failed.");
     } finally {
       setIsCommitting(false);
+    }
+  }
+
+  // A bare <a href="/api/imports/assets/template"> is requested by the browser
+  // without the bearer token and 401s -- same fix as DocumentsTab/ReportsScreen.
+  async function downloadTemplate() {
+    setTemplateError(null);
+    try {
+      await downloadFile("/imports/assets/template", "asset_import_template.xlsx", "Template download failed");
+    } catch (err) {
+      setTemplateError(err instanceof Error ? err.message : "Template download failed.");
     }
   }
 
@@ -87,10 +103,11 @@ export function ImportScreen() {
             Preview
           </Button>
 
-          <Button variant="secondary" asChild>
-            <a href={`${BASE}/imports/assets/template`}>Download Template</a>
+          <Button variant="secondary" onClick={downloadTemplate}>
+            Download Template
           </Button>
 
+          {templateError && <p className="w-full text-sm text-destructive">{templateError}</p>}
           {previewError && <p className="w-full text-sm text-destructive">{previewError}</p>}
         </CardContent>
       </Card>
@@ -137,6 +154,15 @@ export function ImportScreen() {
         <Card>
           <CardContent className="pt-6">
             <p className="text-sm">Imported {result.imported} assets.</p>
+            {result.errors && result.errors.length > 0 && (
+              <ul className="mt-2 list-disc pl-5 text-sm text-destructive">
+                {result.errors.map((e) => (
+                  <li key={`${e.row}-${e.message}`}>
+                    Row {e.row}: {e.message}
+                  </li>
+                ))}
+              </ul>
+            )}
           </CardContent>
         </Card>
       )}
