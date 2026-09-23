@@ -43,7 +43,16 @@ async def ensure_owner(session: AsyncSession) -> dict:
     # Location and Department are shared/global masters (not company-scoped
     # per app/masters/models.py), so they are looked up by their own
     # unique keys, not scoped to the company.
-    location = (await session.execute(select(Location).where(Location.code == LOCATION_CODE))).scalars().first()
+    #
+    # Location is looked up by NAME, not by LOCATION_CODE ("HO"): the DB's
+    # actual unique constraint on Location is `code`, but that code is an
+    # arbitrary value this script invents. If "Head Office" already exists
+    # under a different code (e.g. created earlier via the Setup UI), a
+    # code-only lookup would silently miss it and create a duplicate
+    # "Head Office" row. "Head Office" is the human-meaningful identity
+    # that matters here, so reuse whatever's found by name regardless of
+    # its code, and only create a new row if no such name exists at all.
+    location = (await session.execute(select(Location).where(Location.name == LOCATION_NAME))).scalars().first()
     if location is None:
         location = Location(code=LOCATION_CODE, name=LOCATION_NAME)
         session.add(location)

@@ -81,3 +81,32 @@ async def test_create_owner_is_idempotent_and_does_not_touch_password_on_rerun()
         assert holder_after_second.id == first["holder_id"]
         # Re-running must never silently reset a real admin's password.
         assert holder_after_second.password_hash == password_hash_after_first
+
+
+async def test_create_owner_reuses_existing_head_office_location_under_different_code():
+    """Location's real DB-enforced uniqueness is on `code`, but this
+    script invents its own code ("HO"). If "Head Office" already exists
+    under some other code (e.g. created earlier via the Setup UI), the
+    script must reuse that row by name, not create a duplicate "Head
+    Office" location under "HO"."""
+    async with SessionLocal() as session:
+        existing_location = Location(code="OFFICE-01", name="Head Office")
+        session.add(existing_location)
+        await session.flush()
+        existing_location_id = existing_location.id
+        await session.commit()
+
+    async with SessionLocal() as session:
+        result = await ensure_owner(session)
+        await session.commit()
+
+    assert result["location_id"] == existing_location_id
+
+    async with SessionLocal() as session:
+        locations = (await session.execute(select(Location).where(Location.name == "Head Office"))).scalars().all()
+        assert len(locations) == 1
+        assert locations[0].id == existing_location_id
+        assert locations[0].code == "OFFICE-01"  # untouched, not overwritten
+
+        holder = await session.get(Holder, result["holder_id"])
+        assert holder.location_id == existing_location_id
