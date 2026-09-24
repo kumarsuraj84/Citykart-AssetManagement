@@ -581,18 +581,18 @@ condition below.
 ## 34. Final Git State
 
 - Branch: `worktree-ckam-build`
-- Preflight correction commit: `683dacd`
-- Shared-primitives commit: `9b6167c`
-- Dashboard/Asset Register migration commit: `8c31688`
-- Governance/report commit: *(this report is committed together with the
-  governance doc updates — see the corrected §34 entry immediately below,
-  added in a small follow-up commit once that commit's real hash was known,
-  the same pattern used to correct AM-02's own Final Git State in §3 above)*
-- `git status` before the final commit: 5 governance docs modified, 1 new
-  report file — otherwise clean.
+- Starting HEAD (pre-AM-03): `81a380f`
+- Preflight correction commit: `683dacd` — `docs(ai): AM-03 preflight -- correct AM-02 final HEAD and stale UI-stage reference`
+- Shared-primitives commit: `9b6167c` — `feat(ui): AM-03 -- shared PageHeader/DataTable/StatusBadge/EmptyState/ErrorState/AsyncButton/FormField primitives`
+- Dashboard/Asset Register migration commit: `8c31688` — `feat(ui): AM-03 -- migrate Dashboard and Asset Register to the shared UI foundation`
+- Governance/report commit: `b84c170` — `docs(ai): AM-03 report + governance updates`
+- **Ending HEAD: `b84c170`**
+- `git status` after all four commits: clean
 
-*(Corrected in a follow-up commit once the governance/report commit's real
-hash was known — see below.)*
+*(This exact line — naming the commit that contains it — was added in one
+small immediate follow-up commit after `b84c170`, since a commit's own hash
+cannot be known before it exists; the same pattern used to correct AM-02's
+own Final Git State placeholder, see §3 above.)*
 
 ## 35. Final Verdict
 
