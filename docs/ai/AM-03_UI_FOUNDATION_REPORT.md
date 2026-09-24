@@ -586,13 +586,17 @@ condition below.
 - Shared-primitives commit: `9b6167c` — `feat(ui): AM-03 -- shared PageHeader/DataTable/StatusBadge/EmptyState/ErrorState/AsyncButton/FormField primitives`
 - Dashboard/Asset Register migration commit: `8c31688` — `feat(ui): AM-03 -- migrate Dashboard and Asset Register to the shared UI foundation`
 - Governance/report commit: `b84c170` — `docs(ai): AM-03 report + governance updates`
-- **Ending HEAD: `b84c170`**
-- `git status` after all four commits: clean
+- Final-hash correction commit: `8c411eb` — `docs(ai): AM-03 report -- record the actual final commit hashes`
+- **Ending HEAD: `8c411eb`**
+- `git status` after all five commits: clean
 
 *(This exact line — naming the commit that contains it — was added in one
-small immediate follow-up commit after `b84c170`, since a commit's own hash
-cannot be known before it exists; the same pattern used to correct AM-02's
-own Final Git State placeholder, see §3 above.)*
+small immediate follow-up commit (`8c411eb`) after `b84c170`, since a
+commit's own hash cannot be known before it exists; the same pattern used
+to correct AM-02's own Final Git State placeholder, see §3 above. An
+earlier version of this correction pass itself mistakenly still wrote
+`b84c170` here instead of `8c411eb` — a real copy-paste error, caught and
+fixed during the AM-04 preflight, not a false alarm.)*
 
 ## 35. Final Verdict
 
