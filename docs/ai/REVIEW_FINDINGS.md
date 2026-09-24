@@ -43,23 +43,31 @@ message / `DECISIONS.md`, don't just leave it checked off here).
     fully (`AM-01_DATA_INTEGRITY_REPORT.md` §9) without resolving it: it's
     genuinely either "needed for a shared multi-company asset team" or
     "dormant scaffolding," and that call needs a business answer, not a
-    technical guess.
+    technical guess. Still open as of AM-02 — explicitly out of scope there too.
 11. **`get_active_rule`'s per-metric/company-specific vs. global-fallback
     ordering** has no dedicated unit test beyond integration coverage.
-12. **`holder.holder_type`, `holder.role`, `custom_field.field_type` have no
-    validation at all** — a client can submit any string and it's silently
-    accepted (confirmed by test in AM-01, `tests/core/test_closed_value_integrity.py`).
-    Proposed fix (not applied): a router-level check mirroring
-    `documents/router.py`'s existing `doc_type not in DOC_TYPES` pattern.
-    `asset_event.event_type` is, by contrast, already indirectly protected
-    (an unrecognized value can't match any status's allowed-event set, so it
-    422s cleanly) — also confirmed by test.
-13. **8 closed-value columns have no DB-level CHECK/ENUM** — `asset.status`,
-    `asset_event.event_type`, `asset_event.status_after`, `holder.holder_type`,
-    `holder.role`, `asset_document.doc_type`, `custom_field.field_type` are
-    all plain VARCHAR. Proposed as a future low-risk migration (current data
-    is 100% conformant) — not applied in AM-01 per its explicit "propose,
-    don't silently add" instruction.
+12. **5 closed-value columns still have no DB-level CHECK/ENUM** —
+    `asset.status`, `asset_event.event_type`, `asset_event.status_after` are
+    deliberately left unconstrained (they're the surface most likely to gain
+    a new legal value if a future stage adds an approval workflow —
+    reasoned, not oversight, per the AM-02 migration's docstring);
+    `asset_document.doc_type` was simply out of AM-02's scope (only
+    `holder.holder_type`/`holder.role`/`custom_field.field_type` were
+    confirmed-gap items from AM-01). All plain VARCHAR at the DB level.
+13. **Import template and export column list have no procurement/custom-field
+    columns** — the API fully supports them (AM-02), but neither the import
+    preview/commit path nor `assets_to_xlsx` includes vendor/PO/invoice/PI/
+    brand/model/serial/warranty/custom-field columns. Deliberately deferred
+    (AM-02 §13/§14), not a brittle stopgap.
+14. **`category_id`, `subcategory_id`, `purchase_date` have no edit path**
+    after asset creation (AM-02 §17) — a real, evidenced gap (what if a
+    category was picked wrong at creation?), deliberately left open since
+    safely exposing it needs more design than AM-02's scope.
+15. **No generic field-change audit for editable descriptive fields** —
+    `PUT /api/assets/{id}` (AM-02) updates `updated_by`/`updated_at` only,
+    no before/after value log the way `asset_event` provides for lifecycle
+    changes. Flag if procurement-edit traceability becomes a real
+    requirement.
 
 ## Resolved this session (kept here for traceability, remove once stale)
 
@@ -80,3 +88,10 @@ message / `DECISIONS.md`, don't just leave it checked off here).
 - Company/cost-centre cross-company mismatch — confirmed already prevented
   on both the Add Asset and Import paths; the Import path lacked test
   coverage for it, now added (AM-01).
+- `holder.holder_type`, `holder.role`, `custom_field.field_type` had no
+  validation at all — fixed at both the API (422 on unrecognized value) and
+  database (CHECK constraint, migration `3a44505b6b10`) levels (AM-02).
+- Procurement fields (vendor, PO, invoice, PI Number/date, brand, model,
+  serial number, warranty, custom fields) existed in the database and on
+  create but were never returned by `AssetOut` — fixed; also added the
+  first general asset-edit endpoint (`PUT /api/assets/{id}`) (AM-02).

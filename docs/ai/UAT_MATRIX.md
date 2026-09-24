@@ -10,6 +10,16 @@ not a visible UI change). See `AM-01_DATA_INTEGRITY_REPORT.md` for the full
 backend verification evidence (170/170 tests, migration + trigger + index
 verification on both databases).
 
+**AM-02 (2026-09-24) was also a backend-only stage** — expanded `AssetOut`,
+a new `PUT /api/assets/{id}` endpoint, custom-field value validation, and
+closed-value validation/CHECK constraints. No UI redesign, no frontend file
+touched at all (confirmed — see `AM-02_ASSET_DATA_MODEL_REPORT.md` §24), so
+the per-route rows below are unchanged from AM-01. The Add Asset, Asset
+Detail, and Register screens still only render the original field subset —
+the newly-exposed procurement/custom-field data has no UI consumer yet by
+design (AM-02 explicitly deferred UI wiring). Full backend verification:
+184/184 tests, migration + trigger verification on both databases.
+
 Legend: ✅ verified this session · 🟡 spot-checked only (not full UAT) · ⬜ not yet checked · N/A not applicable
 
 Functional = backend/frontend tests pass. Design = real-browser visual check.
@@ -43,5 +53,6 @@ return, allot again` covers login → add asset → search → lifecycle actions
 QR/logout redirect → forced password change → logout. Confirmed the seeded
 test company is cleanly torn down afterward.
 
-**Backend:** 170/170 passing (as of AM-01; was 163/163 at AM-00). **Frontend:** 56/56 passing (17 files),
-typecheck clean.
+**Backend:** 184/184 passing (as of AM-02; was 170/170 at AM-01, 163/163 at
+AM-00). **Frontend:** 56/56 passing (17 files), typecheck clean (unchanged —
+AM-02 touched no frontend file).

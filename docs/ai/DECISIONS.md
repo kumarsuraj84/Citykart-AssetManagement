@@ -2,6 +2,39 @@
 
 Newest first. These override older spec/plan text where they conflict.
 
+## 2026-09-24 — AM-02 scope locked (asset data model + procurement + custom fields)
+
+1. **PI Number is CityKart's internal/reference number for a payment made to
+   a vendor** — explicitly not Proforma Invoice, no evidence anywhere in the
+   codebase or legacy data suggested that reading. Locked; do not
+   reinterpret without new evidence.
+2. **Procurement fields were already complete in the data model** — the real
+   AM-02 gap was that `AssetOut` didn't return them, and no edit endpoint
+   existed. Both fixed. No new procurement columns were needed or added.
+3. **Custom Fields (UDF) reuse the existing `CustomField` table and
+   `Asset.custom_fields` JSON column** — no new normalized value table. The
+   JSON approach already satisfies duplicate-prevention (by construction)
+   and safe history (definitions are soft-delete only). Supported types:
+   `text`, `number`, `date`, `dropdown`, `checkbox`. `is_required` exists on
+   the definition but is **not** enforced yet — deliberately deferred, since
+   nothing writes custom field values through any UI yet.
+4. **`holder.holder_type`, `holder.role`, `custom_field.field_type` are now
+   closed-value at both the API (422) and database (CHECK constraint)
+   levels.** `asset.status`/`asset_event.event_type`/`asset_event.status_after`
+   deliberately do **not** get a CHECK constraint — they're the surface most
+   likely to gain a new legal value if a future stage adds an approval
+   workflow.
+5. **`category_id`, `subcategory_id`, `purchase_date` are not yet editable**
+   after asset creation — they feed code-generation tokens and lifecycle
+   date invariants; exposing them safely is a future decision, not made now.
+6. **No UI redesign in AM-02** — the frontend was not touched. The Add Asset
+   form, Asset Detail, and Register all still render only the original field
+   subset; wiring the newly-exposed fields into any screen is future work.
+7. **`holder_company_access` stays untouched** — reconfirmed, no behavior
+   change, same as AM-01.
+
+Full evidence: `docs/ai/AM-02_ASSET_DATA_MODEL_REPORT.md`.
+
 ## 2026-09-24 — V1 scope locked (AM-01 authorization)
 
 These decisions came directly from the user's review of the Product & Domain
