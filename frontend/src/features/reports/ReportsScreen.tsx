@@ -1,9 +1,33 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { apiClient } from "../../lib/api-client";
 import { downloadFile } from "../../lib/auth-fetch";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { AsyncButton } from "@/components/shared/AsyncButton";
+import { FormField } from "@/components/shared/FormField";
+
+interface Option {
+  id: number;
+  name: string;
+}
+
+function asOptionArray(data: unknown): Option[] {
+  return Array.isArray(data) ? (data as Option[]) : [];
+}
+
+// Matches backend/app/assets/models.py ASSET_STATUSES -- same closed set
+// AssetRegister's own status filter uses.
+const ASSET_STATUSES = ["IN_STOCK", "ALLOTTED", "INSTALLED", "UNDER_REPAIR", "DISPOSED", "SOLD", "SCRAPPED", "LOST"];
+const ALL = "ALL";
 
 function toDateInput(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -25,18 +49,35 @@ function downloadXlsx(path: string, filename: string): Promise<void> {
 }
 
 export function ReportsScreen() {
-  const [fromDate, setFromDate] = useState(defaultFromDate());
-  const [toDate, setToDate] = useState(toDateInput(new Date()));
+  const [status, setStatus] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [movementsFrom, setMovementsFrom] = useState(defaultFromDate());
+  const [movementsTo, setMovementsTo] = useState(toDateInput(new Date()));
+  const [changesFrom, setChangesFrom] = useState(defaultFromDate());
+  const [changesTo, setChangesTo] = useState(toDateInput(new Date()));
+
   const [assetsError, setAssetsError] = useState<string | null>(null);
   const [movementsError, setMovementsError] = useState<string | null>(null);
+  const [changesError, setChangesError] = useState<string | null>(null);
   const [assetsPending, setAssetsPending] = useState(false);
   const [movementsPending, setMovementsPending] = useState(false);
+  const [changesPending, setChangesPending] = useState(false);
+
+  const { data: categoriesData } = useQuery({
+    queryKey: ["masters", "categories"],
+    queryFn: () => apiClient.get<Option[]>("/masters/categories"),
+  });
+  const categories = asOptionArray(categoriesData);
 
   async function handleAssetsExport() {
     setAssetsError(null);
     setAssetsPending(true);
     try {
-      await downloadXlsx("/reports/export/assets", "asset_register.xlsx");
+      const params = new URLSearchParams({
+        ...(status ? { status } : {}),
+        ...(categoryId ? { category_id: categoryId } : {}),
+      }).toString();
+      await downloadXlsx(`/reports/export/assets${params ? `?${params}` : ""}`, "asset_register.xlsx");
     } catch (err) {
       setAssetsError(err instanceof Error ? err.message : "Export failed.");
     } finally {
@@ -49,7 +90,7 @@ export function ReportsScreen() {
     setMovementsPending(true);
     try {
       await downloadXlsx(
-        `/reports/export/movements?from_date=${fromDate}&to_date=${toDate}`,
+        `/reports/export/movements?from_date=${movementsFrom}&to_date=${movementsTo}`,
         "movement_log.xlsx",
       );
     } catch (err) {
@@ -59,12 +100,24 @@ export function ReportsScreen() {
     }
   }
 
+  async function handleChangesExport() {
+    setChangesError(null);
+    setChangesPending(true);
+    try {
+      await downloadXlsx(
+        `/reports/export/field-changes?from_date=${changesFrom}&to_date=${changesTo}`,
+        "field_change_audit.xlsx",
+      );
+    } catch (err) {
+      setChangesError(err instanceof Error ? err.message : "Export failed.");
+    } finally {
+      setChangesPending(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-lg font-semibold">Reports</h1>
-        <p className="text-sm text-muted-foreground">Export the asset register or the movement log to Excel.</p>
-      </div>
+      <PageHeader title="Reports" description="Export the asset register, movement log, or field-change audit to Excel." />
 
       <Card>
         <CardHeader>
@@ -72,9 +125,41 @@ export function ReportsScreen() {
           <CardDescription>Every asset currently in scope for your account, as an Excel file.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <Button onClick={handleAssetsExport} disabled={assetsPending} className="w-fit">
-            {assetsPending ? "Preparing…" : "Download Asset Register (Excel)"}
-          </Button>
+          <div className="flex flex-wrap items-end gap-3">
+            <FormField htmlFor="assets-status" label="Status" className="w-40">
+              <Select value={status || ALL} onValueChange={(v) => setStatus(v === ALL ? "" : v)}>
+                <SelectTrigger id="assets-status" aria-label="Status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All statuses</SelectItem>
+                  {ASSET_STATUSES.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s.replace(/_/g, " ")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField htmlFor="assets-category" label="Category" className="w-40">
+              <Select value={categoryId || ALL} onValueChange={(v) => setCategoryId(v === ALL ? "" : v)}>
+                <SelectTrigger id="assets-category" aria-label="Category">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All categories</SelectItem>
+                  {categories.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <AsyncButton onClick={handleAssetsExport} pending={assetsPending} pendingLabel="Preparing…" className="w-fit">
+              Download Asset Register (Excel)
+            </AsyncButton>
+          </div>
           {assetsError && <p className="text-sm text-destructive">{assetsError}</p>}
         </CardContent>
       </Card>
@@ -86,31 +171,65 @@ export function ReportsScreen() {
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <div className="flex flex-wrap items-end gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="movements-from-date">From</Label>
+            <FormField htmlFor="movements-from-date" label="From">
               <Input
                 id="movements-from-date"
                 aria-label="From"
                 type="date"
-                value={fromDate}
-                onChange={(e) => setFromDate(e.target.value)}
+                value={movementsFrom}
+                onChange={(e) => setMovementsFrom(e.target.value)}
               />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="movements-to-date">To</Label>
+            </FormField>
+            <FormField htmlFor="movements-to-date" label="To">
               <Input
                 id="movements-to-date"
                 aria-label="To"
                 type="date"
-                value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
+                value={movementsTo}
+                onChange={(e) => setMovementsTo(e.target.value)}
               />
-            </div>
-            <Button onClick={handleMovementsExport} disabled={movementsPending}>
-              {movementsPending ? "Preparing…" : "Download Movement Log (Excel)"}
-            </Button>
+            </FormField>
+            <AsyncButton onClick={handleMovementsExport} pending={movementsPending} pendingLabel="Preparing…">
+              Download Movement Log (Excel)
+            </AsyncButton>
           </div>
           {movementsError && <p className="text-sm text-destructive">{movementsError}</p>}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Field Change Audit</CardTitle>
+          <CardDescription>
+            Every edit to a descriptive/procurement field (e.g. a corrected serial number) in a date range -- separate
+            from the movement log above, which tracks custody, not data corrections.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <FormField htmlFor="changes-from-date" label="Changes From">
+              <Input
+                id="changes-from-date"
+                aria-label="Changes From"
+                type="date"
+                value={changesFrom}
+                onChange={(e) => setChangesFrom(e.target.value)}
+              />
+            </FormField>
+            <FormField htmlFor="changes-to-date" label="Changes To">
+              <Input
+                id="changes-to-date"
+                aria-label="Changes To"
+                type="date"
+                value={changesTo}
+                onChange={(e) => setChangesTo(e.target.value)}
+              />
+            </FormField>
+            <AsyncButton onClick={handleChangesExport} pending={changesPending} pendingLabel="Preparing…">
+              Download Field Change Audit (Excel)
+            </AsyncButton>
+          </div>
+          {changesError && <p className="text-sm text-destructive">{changesError}</p>}
         </CardContent>
       </Card>
     </div>

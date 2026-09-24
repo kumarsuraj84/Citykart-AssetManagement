@@ -1,21 +1,59 @@
 import { useRef, useState } from "react";
+import { FileWarning } from "lucide-react";
 import { apiClient } from "../../lib/api-client";
 import { downloadFile } from "../../lib/auth-fetch";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
+import { EmptyState } from "@/components/shared/EmptyState";
+import { AsyncButton } from "@/components/shared/AsyncButton";
+import { FormField } from "@/components/shared/FormField";
+
+interface PreviewRow {
+  row: number;
+  legacy_asset_code: string | null;
+  company: string;
+  category: string;
+  subcategory: string | null;
+  description: string;
+  holder: string;
+  quantity: number;
+}
+
+interface RowError {
+  row: number;
+  field?: string;
+  message: string;
+}
 
 interface PreviewResult {
-  valid_rows: { row: number; legacy_asset_code: string; description: string }[];
-  errors: { row: number; message: string }[];
+  valid_rows: PreviewRow[];
+  errors: RowError[];
 }
 
 interface CommitResult {
   imported: number;
-  errors?: { row: number; message: string }[];
+  errors: RowError[];
 }
+
+const PREVIEW_COLUMNS: DataTableColumn<PreviewRow>[] = [
+  { key: "row", header: "Row", cell: (r) => r.row },
+  { key: "company", header: "Company", cell: (r) => r.company },
+  {
+    key: "class",
+    header: "Category / Sub-Category",
+    cell: (r) => (r.subcategory ? `${r.category} / ${r.subcategory}` : r.category),
+  },
+  { key: "description", header: "Description", cell: (r) => r.description },
+  { key: "holder", header: "Goes Into", cell: (r) => r.holder },
+  { key: "quantity", header: "Qty", cell: (r) => r.quantity },
+];
+
+const ERROR_COLUMNS: DataTableColumn<RowError>[] = [
+  { key: "row", header: "Row", cell: (e) => e.row },
+  { key: "field", header: "Column", cell: (e) => e.field ?? "—" },
+  { key: "message", header: "Error", cellClassName: "text-destructive", cell: (e) => e.message },
+];
 
 export function ImportScreen() {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -25,6 +63,7 @@ export function ImportScreen() {
   const [templateError, setTemplateError] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [commitError, setCommitError] = useState<string | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isCommitting, setIsCommitting] = useState(false);
 
@@ -66,10 +105,13 @@ export function ImportScreen() {
   // without the bearer token and 401s -- same fix as DocumentsTab/ReportsScreen.
   async function downloadTemplate() {
     setTemplateError(null);
+    setIsDownloading(true);
     try {
       await downloadFile("/imports/assets/template", "asset_import_template.xlsx", "Template download failed");
     } catch (err) {
       setTemplateError(err instanceof Error ? err.message : "Template download failed.");
+    } finally {
+      setIsDownloading(false);
     }
   }
 
@@ -82,89 +124,98 @@ export function ImportScreen() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold">Import Assets</h1>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Import Assets"
+        description="Download the template, fill it in, then preview before committing -- nothing is saved until you confirm."
+      />
 
-      <Card>
-        <CardContent className="flex flex-wrap items-end gap-3 pt-6">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="import-file">File</Label>
-            <Input
-              id="import-file"
-              aria-label="File"
-              type="file"
-              accept=".xlsx"
-              ref={fileInputRef}
-              onChange={handleFileChange}
-            />
-          </div>
-
-          <Button onClick={doPreview} disabled={!file || isPreviewing}>
-            Preview
-          </Button>
-
-          <Button variant="secondary" onClick={downloadTemplate}>
+      <div className="flex flex-col gap-4 rounded-md border p-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">1. Download Template</h2>
+        <div>
+          <AsyncButton variant="secondary" onClick={downloadTemplate} pending={isDownloading} pendingLabel="Preparing…">
             Download Template
-          </Button>
+          </AsyncButton>
+          {templateError && <p className="mt-2 text-sm text-destructive">{templateError}</p>}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Custom Fields: add a column named <code className="font-mono">Custom:&lt;field key&gt;</code> (e.g.{" "}
+          <code className="font-mono">Custom:warranty_card</code>) -- find each field's key under{" "}
+          <span className="font-medium">Setup → Custom Fields</span>.
+        </p>
+      </div>
 
-          {templateError && <p className="w-full text-sm text-destructive">{templateError}</p>}
-          {previewError && <p className="w-full text-sm text-destructive">{previewError}</p>}
-        </CardContent>
-      </Card>
+      <div className="flex flex-col gap-4 rounded-md border p-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">2. Choose File, then Preview</h2>
+        <div className="flex flex-wrap items-end gap-3">
+          <FormField htmlFor="import-file" label="File" className="w-64">
+            <Input id="import-file" aria-label="File" type="file" accept=".xlsx" ref={fileInputRef} onChange={handleFileChange} />
+          </FormField>
+          <AsyncButton onClick={doPreview} disabled={!file} pending={isPreviewing} pendingLabel="Checking…">
+            Preview
+          </AsyncButton>
+        </div>
+        {previewError && <p className="text-sm text-destructive">{previewError}</p>}
+      </div>
 
       {preview && (
-        <Card>
-          <CardContent className="flex flex-col gap-3 pt-6">
-            <p className="text-sm text-muted-foreground">
-              {preview.valid_rows.length} valid row{preview.valid_rows.length === 1 ? "" : "s"},{" "}
-              {preview.errors.length} error{preview.errors.length === 1 ? "" : "s"}
-            </p>
+        <div className="flex flex-col gap-4 rounded-md border p-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">3. Review</h2>
+          <p className="text-sm text-muted-foreground">
+            {preview.valid_rows.length} row{preview.valid_rows.length === 1 ? "" : "s"} ready to import,{" "}
+            {preview.errors.length} row{preview.errors.length === 1 ? "" : "s"} with errors.
+          </p>
 
-            {preview.errors.length > 0 && (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Row</TableHead>
-                    <TableHead>Error</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {preview.errors.map((e) => (
-                    <TableRow key={e.row}>
-                      <TableCell>{e.row}</TableCell>
-                      <TableCell>{e.message}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-
-            <div>
-              <Button onClick={doCommit} disabled={preview.valid_rows.length === 0 || isCommitting}>
-                Commit
-              </Button>
+          {preview.valid_rows.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <h3 className="text-sm font-medium">Ready to import</h3>
+              <DataTable
+                columns={PREVIEW_COLUMNS}
+                rows={preview.valid_rows}
+                rowKey={(r) => r.row}
+                emptyState={<EmptyState title="No rows ready to import." />}
+              />
             </div>
+          )}
 
-            {commitError && <p className="text-sm text-destructive">{commitError}</p>}
-          </CardContent>
-        </Card>
+          {preview.errors.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <h3 className="text-sm font-medium">Needs attention</h3>
+              <DataTable
+                columns={ERROR_COLUMNS}
+                rows={preview.errors}
+                rowKey={(e) => `${e.row}-${e.field ?? ""}-${e.message}`}
+                emptyState={<EmptyState title="No errors." />}
+              />
+            </div>
+          )}
+
+          {preview.valid_rows.length === 0 && preview.errors.length === 0 && (
+            <EmptyState icon={FileWarning} title="No rows found in this file." description="Check the file has data below its header row." />
+          )}
+
+          <div>
+            <AsyncButton onClick={doCommit} disabled={preview.valid_rows.length === 0} pending={isCommitting} pendingLabel="Importing…">
+              Commit {preview.valid_rows.length > 0 ? `${preview.valid_rows.length} Row${preview.valid_rows.length === 1 ? "" : "s"}` : ""}
+            </AsyncButton>
+          </div>
+          {commitError && <p className="text-sm text-destructive">{commitError}</p>}
+        </div>
       )}
 
       {result && (
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm">Imported {result.imported} assets.</p>
-            {result.errors && result.errors.length > 0 && (
-              <ul className="mt-2 list-disc pl-5 text-sm text-destructive">
-                {result.errors.map((e) => (
-                  <li key={`${e.row}-${e.message}`}>
-                    Row {e.row}: {e.message}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+        <div className="flex flex-col gap-3 rounded-md border p-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">4. Result</h2>
+          <p className="text-sm">Imported {result.imported} asset{result.imported === 1 ? "" : "s"}.</p>
+          {result.errors.length > 0 && (
+            <DataTable
+              columns={ERROR_COLUMNS}
+              rows={result.errors}
+              rowKey={(e) => `${e.row}-${e.field ?? ""}-${e.message}`}
+              emptyState={<EmptyState title="No errors." />}
+            />
+          )}
+        </div>
       )}
     </div>
   );
