@@ -1,19 +1,10 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { apiClient } from "../../lib/api-client";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -28,6 +19,11 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
+import { EmptyState } from "@/components/shared/EmptyState";
+import { StatusBadge } from "@/components/shared/StatusBadge";
+import { AsyncButton } from "@/components/shared/AsyncButton";
 
 interface AssetRow {
   id: number;
@@ -62,6 +58,7 @@ export const PAGE_SIZE = 50;
 
 export function AssetRegister() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [q, setQRaw] = useState("");
   const [status, setStatusRaw] = useState("");
   const [categoryId, setCategoryIdRaw] = useState("");
@@ -106,7 +103,7 @@ export function AssetRegister() {
     offset: String(page * PAGE_SIZE),
   }).toString();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["assets", "register", q, status, categoryId, holderId, companyId, page],
     queryFn: () => apiClient.get<{ items: AssetRow[]; total: number }>(`/assets?${queryString}`),
   });
@@ -182,94 +179,109 @@ export function AssetRegister() {
     },
   });
 
+  const columns: DataTableColumn<AssetRow>[] = [
+    {
+      key: "code",
+      header: "Code",
+      cellClassName: "font-mono text-sm",
+      // A real, independently keyboard-focusable link -- the row's own onClick
+      // below is a mouse-convenience shortcut to the same destination, not the
+      // only way to reach it. stopPropagation avoids double-navigating.
+      cell: (a) => (
+        <Link to="/assets/$id" params={{ id: String(a.id) }} onClick={(e) => e.stopPropagation()}>
+          {a.asset_code}
+        </Link>
+      ),
+    },
+    { key: "description", header: "Description", cell: (a) => a.description },
+    { key: "status", header: "Status", cell: (a) => <StatusBadge status={a.status} /> },
+  ];
+
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 className="text-lg font-semibold">Asset Register</h1>
-        <p className="text-sm text-muted-foreground">Search, filter and bulk-move assets.</p>
-      </div>
+      <PageHeader title="Asset Register" description="Search, filter and bulk-move assets.">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="search">Search</Label>
+            <Input
+              id="search"
+              aria-label="Search"
+              placeholder="Asset code, serial, PO, invoice…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              className="w-64"
+            />
+          </div>
 
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="search">Search</Label>
-          <Input
-            id="search"
-            aria-label="Search"
-            placeholder="Asset code, serial, PO, invoice…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            className="w-64"
-          />
-        </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="filter-status">Status</Label>
+            <Select value={status || ALL} onValueChange={(v) => setStatus(v === ALL ? "" : v)}>
+              <SelectTrigger id="filter-status" aria-label="Status" className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All statuses</SelectItem>
+                {ASSET_STATUSES.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s.replace(/_/g, " ")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="filter-status">Status</Label>
-          <Select value={status || ALL} onValueChange={(v) => setStatus(v === ALL ? "" : v)}>
-            <SelectTrigger id="filter-status" aria-label="Status" className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>All statuses</SelectItem>
-              {ASSET_STATUSES.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s.replace(/_/g, " ")}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="filter-category">Category</Label>
+            <Select value={categoryId || ALL} onValueChange={(v) => setCategoryId(v === ALL ? "" : v)}>
+              <SelectTrigger id="filter-category" aria-label="Category" className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All categories</SelectItem>
+                {categories.map((c) => (
+                  <SelectItem key={c.id} value={String(c.id)}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="filter-category">Category</Label>
-          <Select value={categoryId || ALL} onValueChange={(v) => setCategoryId(v === ALL ? "" : v)}>
-            <SelectTrigger id="filter-category" aria-label="Category" className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>All categories</SelectItem>
-              {categories.map((c) => (
-                <SelectItem key={c.id} value={String(c.id)}>
-                  {c.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="filter-holder">Holder</Label>
+            <Select value={holderId || ALL} onValueChange={(v) => setHolderId(v === ALL ? "" : v)}>
+              <SelectTrigger id="filter-holder" aria-label="Holder" className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All holders</SelectItem>
+                {holders.map((h) => (
+                  <SelectItem key={h.id} value={String(h.id)}>
+                    {h.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="filter-holder">Holder</Label>
-          <Select value={holderId || ALL} onValueChange={(v) => setHolderId(v === ALL ? "" : v)}>
-            <SelectTrigger id="filter-holder" aria-label="Holder" className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>All holders</SelectItem>
-              {holders.map((h) => (
-                <SelectItem key={h.id} value={String(h.id)}>
-                  {h.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="filter-company">Company</Label>
+            <Select value={companyId || ALL} onValueChange={(v) => setCompanyId(v === ALL ? "" : v)}>
+              <SelectTrigger id="filter-company" aria-label="Company" className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All companies</SelectItem>
+                {companies.map((c) => (
+                  <SelectItem key={c.id} value={String(c.id)}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="filter-company">Company</Label>
-          <Select value={companyId || ALL} onValueChange={(v) => setCompanyId(v === ALL ? "" : v)}>
-            <SelectTrigger id="filter-company" aria-label="Company" className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>All companies</SelectItem>
-              {companies.map((c) => (
-                <SelectItem key={c.id} value={String(c.id)}>
-                  {c.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      </PageHeader>
 
       {selected.length > 0 && (
         <div className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2">
@@ -280,73 +292,45 @@ export function AssetRegister() {
         </div>
       )}
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-10">
-              <Checkbox
-                aria-label="Select all"
-                checked={allSelected}
-                onCheckedChange={(checked) => toggleAll(checked === true)}
-              />
-            </TableHead>
-            <TableHead>Code</TableHead>
-            <TableHead>Description</TableHead>
-            <TableHead>Status</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {items.map((a) => (
-            <TableRow key={a.id} className="cursor-pointer" onClick={() => (window.location.href = `/assets/${a.id}`)}>
-              <TableCell onClick={(e) => e.stopPropagation()}>
-                <Checkbox
-                  aria-label={`Select ${a.asset_code}`}
-                  checked={selected.includes(a.id)}
-                  onCheckedChange={(checked) => toggleOne(a.id, checked === true)}
-                />
-              </TableCell>
-              <TableCell className="font-mono text-sm">
-                <a href={`/assets/${a.id}`} onClick={(e) => e.stopPropagation()}>
-                  {a.asset_code}
-                </a>
-              </TableCell>
-              <TableCell>{a.description}</TableCell>
-              <TableCell>
-                <Badge variant="secondary">{a.status.replace(/_/g, " ")}</Badge>
-              </TableCell>
-            </TableRow>
-          ))}
-          {!isLoading && items.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={4} className="text-center text-sm text-muted-foreground">
-                No assets found.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
-
-      <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-        <span className="text-muted-foreground" aria-live="polite">
-          Showing {firstRow}–{lastRow} of {total.toLocaleString()} asset{total === 1 ? "" : "s"}
-        </span>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setPage(page - 1)} disabled={page === 0 || isLoading}>
-            Previous
-          </Button>
-          <span>
-            Page {page + 1} of {pageCount}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setPage(page + 1)}
-            disabled={page + 1 >= pageCount || isLoading}
-          >
-            Next
-          </Button>
-        </div>
-      </div>
+      <DataTable
+        columns={columns}
+        rows={items}
+        rowKey={(a) => a.id}
+        isLoading={isLoading}
+        isError={isError}
+        errorMessage="Couldn't load the asset register."
+        onRetry={() => refetch()}
+        onRowClick={(a) => navigate({ to: "/assets/$id", params: { id: String(a.id) } })}
+        emptyState={
+          <EmptyState
+            title="No assets found."
+            description={q || status || categoryId || holderId || companyId ? "Try a different search or filter." : undefined}
+          />
+        }
+        selection={{
+          isSelected: (a) => selected.includes(a.id),
+          onToggle: (a, checked) => toggleOne(a.id, checked),
+          isAllSelected: allSelected,
+          onToggleAll: toggleAll,
+          rowAriaLabel: (a) => `Select ${a.asset_code}`,
+        }}
+        pagination={{
+          summary: (
+            <>
+              Showing {firstRow}–{lastRow} of {total.toLocaleString()} asset{total === 1 ? "" : "s"}
+            </>
+          ),
+          pageLabel: (
+            <>
+              Page {page + 1} of {pageCount}
+            </>
+          ),
+          onPrevious: () => setPage(page - 1),
+          onNext: () => setPage(page + 1),
+          previousDisabled: page === 0 || isLoading,
+          nextDisabled: page + 1 >= pageCount || isLoading,
+        }}
+      />
 
       <Dialog open={moveOpen} onOpenChange={(open) => !open && closeMove()}>
         <DialogContent>
@@ -397,12 +381,14 @@ export function AssetRegister() {
             <Button variant="outline" onClick={closeMove}>
               {bulkMoveMutation.isSuccess && bulkMoveMutation.data.failed.length > 0 ? "Done" : "Cancel"}
             </Button>
-            <Button
+            <AsyncButton
               onClick={() => bulkMoveMutation.mutate()}
-              disabled={!moveHolderId || bulkMoveMutation.isPending}
+              disabled={!moveHolderId}
+              pending={bulkMoveMutation.isPending}
+              pendingLabel="Moving…"
             >
               Confirm
-            </Button>
+            </AsyncButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>

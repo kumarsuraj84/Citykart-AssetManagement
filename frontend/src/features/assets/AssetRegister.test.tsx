@@ -1,32 +1,47 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { AssetRegister } from "./AssetRegister";
+import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
+import { createAppRouter } from "../../router";
 import { apiClient } from "../../lib/api-client";
+import { useAuthStore } from "../../lib/auth-store";
 
 vi.mock("../../lib/api-client");
 
-function renderWithClient(ui: React.ReactElement) {
-  const qc = new QueryClient();
-  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+// AssetRegister navigates via the app router (AM-03 §11), so it needs a real
+// RouterProvider ancestor -- render it through the actual route tree at
+// /assets, the same pattern router.test.tsx uses for every other screen.
+function renderRegisterAt(url = "/assets") {
+  const router = createAppRouter(createMemoryHistory({ initialEntries: [url] }));
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={qc}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
+  return router;
 }
 
-// Same click-based interaction as AssetDetail.test.tsx (Task 18) and AddAssetForm.test.tsx
-// (Task 17) use for a real shadcn/ui Select: it's a Radix combobox trigger + listbox, not a
-// native <select>, so it must be driven by clicking the trigger then the option.
+// Same click-based interaction as AssetDetail.test.tsx and AddAssetForm.test.tsx use for
+// a real shadcn/ui Select: it's a Radix combobox trigger + listbox, not a native <select>.
 async function pickSelectOption(label: RegExp | string, optionName: RegExp | string) {
   fireEvent.click(screen.getByRole("combobox", { name: label }));
   const option = await screen.findByRole("option", { name: optionName });
   fireEvent.click(option);
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, mustChangePassword: false });
+});
+
+afterEach(() => useAuthStore.getState().logout());
 
 describe("AssetRegister", () => {
   it("lists assets and searches by the query box", async () => {
     (apiClient.get as any).mockResolvedValue({ items: [{ id: 1, asset_code: "FA/HO01/IT/LAP/CK_1", description: "Laptop", status: "IN_STOCK" }], total: 1 });
 
-    renderWithClient(<AssetRegister />);
+    renderRegisterAt();
     await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK_1")).toBeInTheDocument());
 
     fireEvent.change(screen.getByLabelText(/search/i), { target: { value: "CK_1" } });
@@ -45,7 +60,7 @@ describe("AssetRegister", () => {
       return Promise.resolve([]);
     });
 
-    renderWithClient(<AssetRegister />);
+    renderRegisterAt();
     await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK_1")).toBeInTheDocument());
 
     await pickSelectOption(/status/i, /in stock/i);
@@ -72,7 +87,7 @@ describe("AssetRegister", () => {
       return Promise.resolve([]);
     });
 
-    renderWithClient(<AssetRegister />);
+    renderRegisterAt();
     await waitFor(() => expect(screen.getByText("FA/CK_1")).toBeInTheDocument());
     expect(apiClient.get).toHaveBeenCalledWith(expect.stringMatching(/limit=50.*offset=0|offset=0.*limit=50/));
     expect(screen.getByText(/showing 1–50 of 120/i)).toBeInTheDocument();
@@ -116,7 +131,7 @@ describe("AssetRegister", () => {
       failed: [{ asset_id: 2, reason: "assets can only move within their own company" }],
     });
 
-    renderWithClient(<AssetRegister />);
+    renderRegisterAt();
     await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK_1")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("checkbox", { name: "Select all" }));
@@ -133,5 +148,67 @@ describe("AssetRegister", () => {
     // Cancel became Done -- another signal the dialog is in its "review the failure"
     // state rather than having auto-dismissed.
     expect(screen.getByRole("button", { name: /^done$/i })).toBeInTheDocument();
+  });
+
+  it("shows a real empty state, with filter-aware copy, when a search matches nothing", async () => {
+    (apiClient.get as any).mockImplementation((path: string) =>
+      path.startsWith("/assets") ? Promise.resolve({ items: [], total: 0 }) : Promise.resolve([]),
+    );
+    renderRegisterAt();
+    await waitFor(() => expect(screen.getByText("No assets found.")).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText(/search/i), { target: { value: "nomatch" } });
+    await waitFor(() => expect(screen.getByText(/try a different search or filter/i)).toBeInTheDocument());
+  });
+
+  it("shows an error state with a working retry action when the register fails to load", async () => {
+    (apiClient.get as any).mockImplementation((path: string) =>
+      path.startsWith("/assets") ? Promise.reject(new Error("network down")) : Promise.resolve([]),
+    );
+    renderRegisterAt();
+    await waitFor(() => expect(screen.getByText(/couldn't load the asset register/i)).toBeInTheDocument());
+
+    (apiClient.get as any).mockImplementation((path: string) =>
+      path.startsWith("/assets")
+        ? Promise.resolve({ items: [{ id: 1, asset_code: "FA/HO01/IT/LAP/CK_1", description: "Laptop", status: "IN_STOCK" }], total: 1 })
+        : Promise.resolve([]),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+    await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK_1")).toBeInTheDocument());
+  });
+
+  it("navigates to the asset via the SPA router when a row is clicked, without a full page reload", async () => {
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (path === "/assets/1") {
+        return Promise.resolve({ id: 1, asset_code: "FA/HO01/IT/LAP/CK_1", description: "Laptop", status: "IN_STOCK", company_id: 1 });
+      }
+      if (path.startsWith("/assets")) {
+        return Promise.resolve({ items: [{ id: 1, asset_code: "FA/HO01/IT/LAP/CK_1", description: "Laptop", status: "IN_STOCK" }], total: 1 });
+      }
+      return Promise.resolve([]);
+    });
+    // AssetDetail's QR image goes through authFetch -> window.fetch.
+    window.fetch = vi.fn().mockResolvedValue({ ok: false, status: 404 }) as any;
+
+    const router = renderRegisterAt();
+    await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK_1")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText("Laptop"));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/assets/1"));
+  });
+
+  it("does not navigate the row when the selection checkbox is clicked", async () => {
+    (apiClient.get as any).mockImplementation((path: string) =>
+      path.startsWith("/assets")
+        ? Promise.resolve({ items: [{ id: 1, asset_code: "FA/HO01/IT/LAP/CK_1", description: "Laptop", status: "IN_STOCK" }], total: 1 })
+        : Promise.resolve([]),
+    );
+    const router = renderRegisterAt();
+    await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK_1")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select FA/HO01/IT/LAP/CK_1" }));
+
+    expect(router.state.location.pathname).toBe("/assets");
+    expect(screen.getByRole("checkbox", { name: "Select FA/HO01/IT/LAP/CK_1" })).toBeChecked();
   });
 });
