@@ -2,6 +2,122 @@
 
 Newest first. These override older spec/plan text where they conflict.
 
+## 2026-09-24 — AM-05 scope locked (Masters + Holders + company-scoped Custom Fields)
+
+1. **`CustomField.company_id` (nullable FK to `company`): `NULL` = Global
+   (applies to every company's assets), a real id = applies only to that
+   company's assets.** Closes the operational risk AM-04 flagged (item 0 of
+   the AM-04 entry below): a required field created for one company used to
+   block asset creation in *every* company, because every Custom Field was
+   implicitly global with no way to scope it narrower. Every pre-AM-05 row
+   keeps its exact prior meaning unchanged (`NULL` = Global = "applies
+   everywhere," which is what every existing field already meant) — the
+   migration (`370399c6380e`) never rewrites an existing row's scope, it
+   only adds the column. Deliberately simpler than category/subcategory-
+   scoped UDFs, which were explicitly out of scope for this stage.
+2. **Applicability rule**: for an asset belonging to company X, the
+   applicable Custom Field definitions are every active field where
+   `company_id IS NULL` (Global) plus every active field where
+   `company_id = X`. A field scoped to a different company is, from that
+   asset's point of view, indistinguishable from a field that doesn't exist
+   at all — it can never render, never validate, never become required,
+   never block creation, for an asset it wasn't scoped to
+   (`app/assets/custom_field_values.py::applicable_custom_fields`, mirrored
+   client-side in `AddAssetForm.tsx`/`AssetDetail.tsx`). Requiredness is
+   therefore evaluated only across an asset's own applicable set, never the
+   global set of every Custom Field that exists.
+3. **`field_key` and `field_type` are immutable for the lifetime of a
+   Custom Field, no exception.** Asset values are stored in
+   `Asset.custom_fields` keyed by `field_key`, so changing it would orphan
+   every existing value under the old key; changing `field_type` could
+   invalidate values already stored under the old type's shape (e.g. a
+   `dropdown`'s stored string no longer matching a new `checkbox`'s boolean
+   expectation). Both are simply absent from `CustomFieldEditIn` — the same
+   "undeclared field is silently ignored on PUT" convention `AssetUpdateIn`
+   already established for `asset_code`/`company_id`.
+4. **A Custom Field's scope (`company_id`) may only change while no asset
+   yet holds a value for that `field_key`.** Once any asset has a value
+   under a key, re-scoping the field could make that value invisible to the
+   company that entered it (if moved away) or expose it to a company it was
+   never meant for (if moved in) — both are silent, surprising data-
+   visibility changes, so the backend rejects the PUT with a 422 naming the
+   field key (`any_asset_has_value_for`) rather than allowing it quietly.
+5. **Custom Field mutation authorization**: ADMIN may create/edit/
+   deactivate a Custom Field at any scope, Global included. IT_TEAM may
+   only create/edit/deactivate a field scoped to its own company — **never
+   Global**, since a Global field affects every company IT_TEAM isn't
+   authorized to touch. VIEWER/HOLDER may never mutate a Custom Field.
+   Enforced server-side (`_check_scope_authorization` in the new
+   `app/masters/custom_fields_router.py`) regardless of what the frontend
+   shows; the frontend additionally hides row actions IT_TEAM isn't
+   authorized for and constrains their Scope control to their own company,
+   as UX, not as the actual boundary.
+6. **Making an optional Custom Field required needs a stronger,
+   scope-aware confirmation than an ordinary field edit** — a Global
+   field's confirmation states it affects every company; a company-specific
+   field's confirmation names that one company. Never a silent row
+   checkbox toggle; both flow through the same deliberate Edit → Save →
+   confirm → PUT sequence.
+7. **Safe master-edit field policy (applies to Companies, Locations,
+   Departments, Cost Centres, Categories, Subcategories, Vendors)**: each
+   master's business code (`code`, or for Cost Centre/Subcategory also
+   their company/category relationship) is immutable after creation —
+   already referenced by assets or other masters, and never safely
+   reassignable through a generic edit form. Display names, addresses, and
+   vendor contact details (`contact_name`/`contact_phone`/`contact_email`,
+   newly surfaced in the UI this stage — the fields already existed on the
+   backend schema, unused) are freely editable. Enforced by a per-master
+   `*EditIn` Pydantic schema (narrower than the create schema) passed to
+   `build_master_router`'s new `schema_edit` parameter — an omitted field
+   is silently ignored on PUT by any role, not just a scoped one; this is
+   stronger than a per-role check, since it removes the capability from the
+   endpoint entirely rather than gating it.
+8. **Master/Custom Field/Holder deactivation stays soft, confirmed, and
+   named.** No hard deletes anywhere in this stage. Every Deactivate action
+   in the UI now opens a confirmation naming the specific record before
+   calling the existing (unchanged) soft-deactivate endpoints — a UI
+   addition, not a new backend capability.
+9. **Holder.role stays ADMIN-only to change, end to end** — reconfirmed,
+   not reopened: `PUT /api/holders/{id}` already required ADMIN only
+   (unchanged this stage); this stage adds explicit backend test coverage
+   proving IT_TEAM cannot update, deactivate, or reset the password of any
+   holder, plus a frontend-only role-change warning (current role shown,
+   an inline warning when the selected role differs from it) so a role
+   change is never silent even though the backend was already correct.
+10. **Master Change History**: `asset_field_change` remains asset-only —
+    not extended to masters. The existing `created_by`/`updated_by`/
+    `created_at`/`updated_at` `AuditMixin` standard is sufficient for
+    masters; a generic enterprise audit framework was explicitly out of
+    scope for this stage.
+11. **`holder_company_access` remains untouched** — reconfirmed, same as
+    every prior stage; not wired, not removed, not in scope.
+12. **No backend change beyond what AM-05 explicitly authorized** — one new
+    column + its migration (`370399c6380e`, additive/nullable/reversible),
+    the Custom Fields bespoke router, the per-master `*EditIn` schemas, and
+    the applicability-filtering change to `validate_custom_field_values`.
+    No change to `asset_event`, `asset_field_change`, the lifecycle state
+    machine, numbering's counter/atomicity, or category/subcategory/
+    purchase_date's non-editable status (reconfirmed, not reopened).
+
+**New governance convention, effective this stage — "no self-reference" for
+a report's Final Git State (see also the note at the top of
+`AM-05_MASTERS_HOLDERS_REPORT.md`):** a committed stage report must never
+try to record its own eventual commit hash inside itself — a report commit
+necessarily happens *after* the content is written, so any hash recorded in
+that content describing "the final commit" is either a guess or already
+stale the moment it's written, which is exactly the self-reference loop
+AM-03 and AM-04's reports both fell into (each "fixing" the hash created a
+new commit, which changed the true final hash again). From AM-05 onward, a
+committed report instead records **"REPORT CONTENT HEAD: `<hash>`"** — the
+real commit immediately before the report/governance commit, which is
+knowable and true at the moment the content is written — plus the literal
+line **"REPORT COMMIT: TO BE FILLED IN CHAT AFTER COMMIT"**. The actual
+report-commit hash and the actual final `HEAD` are read via `git log` after
+committing and stated **only in the chat response that delivers the
+report**, never chased back into the file with a further correction commit.
+
+Full evidence: `docs/ai/AM-05_MASTERS_HOLDERS_REPORT.md`.
+
 ## 2026-09-24 — AM-04 scope locked (Add Asset + Asset 360 + procurement/UDF UI + edit audit)
 
 0. **Operational risk worth flagging: Custom Fields are global across every

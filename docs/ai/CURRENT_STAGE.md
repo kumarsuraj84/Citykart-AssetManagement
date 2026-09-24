@@ -1,11 +1,13 @@
 # CKAM — Current Stage
 
-**Stage:** AM-04 (Add Asset + Asset 360 + procurement/UDF UI + edit audit) — complete, PASS.
-**Next:** awaiting explicit go-ahead on AM-05 or any other further work — do
-not start anything automatically, including Masters/Holders/Import/Reports/
-My Assets redesign, or any category/subcategory/purchase-date correction
-workflow.
+**Stage:** AM-05 (Masters + Holders + company-scoped Custom Fields) — complete, PASS.
+**Next:** awaiting explicit go-ahead on AM-06 or any other further work — do
+not start anything automatically, including Import/Reports/My Assets
+redesign, category/subcategory/purchase-date correction workflow,
+`holder_company_access`, approval workflow, AMC/insurance, depreciation, or
+physical verification.
 
+Full AM-05 evidence: `docs/ai/AM-05_MASTERS_HOLDERS_REPORT.md`.
 Full AM-04 evidence: `docs/ai/AM-04_ASSET_ENTRY_360_REPORT.md`.
 Full AM-03 evidence: `docs/ai/AM-03_UI_FOUNDATION_REPORT.md`.
 Full AM-02 evidence: `docs/ai/AM-02_ASSET_DATA_MODEL_REPORT.md`.
@@ -19,7 +21,8 @@ physical verification (but QR/barcode stays forward-compatible). Lost/Damaged
 tracks lifecycle state + reason + audit only, no recovery/write-off
 accounting. Custom Fields are **required** long-term and are now wired into
 Add Asset and Asset 360 (AM-04) with server-side required-field enforcement
-on create. Procurement traceability (including PI Number) is a locked target
+on create, and (AM-05) may be Global or scoped to one company so a required
+field never blocks a company it wasn't meant for. Procurement traceability (including PI Number) is a locked target
 requirement, now fully reachable from Add Asset/Asset 360. Auto-generated Asset Code stays
 mandatory, race-safe numbering preserved as-is. CKAM supports ≥2 companies;
 Cost Centres must match their asset's company (already enforced, now
@@ -160,13 +163,56 @@ Reassigned, plus Repair/Lost-Found/Disposed-Sold-Scrapped.
   E2E 1/1 passing (updated for the redesigned Add Asset's field labels and
   the new post-create navigation), real-browser UAT performed.
 
+## What's actually done as of AM-05
+
+- **Company-scoped Custom Fields (new business rule, closes an AM-04-
+  discovered risk):** `CustomField.company_id` (migration `370399c6380e`,
+  nullable, additive, reversible) — `NULL` = Global (every pre-AM-05 row
+  keeps this meaning unchanged), a real id = scoped to one company. Add
+  Asset and Asset 360 now only ever see Global + their own company's
+  active definitions (`applicable_custom_fields`); a field scoped to a
+  different company can never render, validate, or block creation for an
+  asset outside its scope. `field_key`/`field_type` stay immutable for
+  life; scope itself becomes immutable once any asset holds a value under
+  that field_key. Custom Fields moved off the generic master pattern onto
+  its own screen (`CustomFieldsScreen`) with a Scope selector (full for
+  ADMIN, locked to their own company for IT_TEAM, who may never manage a
+  Global field) and a stronger, scope-aware confirmation before flipping a
+  field from optional to required.
+- **Every master screen gained Edit** (previously Create+Deactivate only):
+  `MasterCrudScreen` moved onto the shared PageHeader/DataTable/
+  EmptyState/ErrorState/AsyncButton/FormField foundation, with a new
+  `editFields` config (a strict subset of `formFields`) matching each
+  master's new, narrower `*EditIn` backend schema — an immutable field
+  (`code`, a company/category relationship) is shown read-only rather than
+  silently omitted. Deactivate now confirms and names the record.
+- **Holders gained Deactivate** (previously missing entirely), moved onto
+  the same shared foundation, and Role edits now show the current role and
+  an explicit warning before saving a change — role mutation itself stays
+  ADMIN-only end to end (reconfirmed by 3 new backend tests: IT_TEAM cannot
+  update, deactivate, or reset the password of any holder).
+- **Code Rule gained a loading skeleton and error+retry state** without
+  changing numbering semantics; `get_active_rule`'s company-beats-global
+  ordering, previously untested beyond integration coverage, now has 5
+  dedicated tests.
+- Backend: 199 → 231 tests (+32: 15 Custom Field scope authorization/
+  immutability/mutation-rules, 9 asset-side applicability regression, 5
+  `get_active_rule` ordering, 3 Holder role-security). Frontend: 101 → 121
+  tests (+20: `MasterCrudScreen`, the new `CustomFieldsScreen`, Holders
+  deactivate/role-warning, Add Asset + Asset 360 company-scoping
+  regression). Typecheck clean. E2E: 1 → 2 passing (existing custody
+  journey untouched; new multi-company UDF journey proving a required
+  field scoped to one company never blocks another company's asset
+  creation). Real-browser UAT performed on the master/Custom Fields/
+  Holders/Code Rule screens.
+
 ## Deferred, awaiting your decision (not blockers, not failures)
 
 1. **`holder_company_access`**: written to, never read by authorization.
    Classified as either "needed for multi-company asset-team access" or
    "dormant/obsolete" — genuinely depends on whether CityKart's asset team is
    organizationally shared across companies. No behavioral change made in
-   AM-01, AM-02, AM-03 or AM-04.
+   AM-01 through AM-05.
 2. **Import/Export column extension**: the import template and export column
    list still don't include any procurement, custom-field, or field-change-
    audit columns, even though the API now fully supports the first two.
@@ -174,21 +220,25 @@ Reassigned, plus Repair/Lost-Found/Disposed-Sold-Scrapped.
    hack, a real future stage's work.
 3. **`category_id`/`subcategory_id`/`purchase_date` have no edit path** —
    deliberately excluded from `AssetUpdateIn`/Asset 360's Edit mode again in
-   AM-04 (§17): changing them safely needs a dedicated correction-workflow
-   design (code-generation tokens and event-ordering invariants both depend
-   on them), not a silent add to the generic edit form.
-
-4. **Shared UI foundation is now proven on 4 screens** (Dashboard, Asset
-   Register, Add Asset, Asset 360) but Holders, Import preview, My Assets,
-   and all 8 master screens still hand-roll their own markup. Migrating them
-   is real, screen-by-screen work for a future stage.
+   AM-04 (§17) and reconfirmed out of scope in AM-05: changing them safely
+   needs a dedicated correction-workflow design (code-generation tokens and
+   event-ordering invariants both depend on them), not a silent add to the
+   generic edit form.
+4. **Shared UI foundation is now proven on every screen except My Assets
+   and Import preview**, which still hand-roll their own markup. Migrating
+   them is real work for a future stage.
 5. **`AsyncButton` exists but Imports/Reports weren't touched** — they still
    hand-roll their own pending/error state for blob-download buttons.
+6. **Category/subcategory-scoped Custom Fields** were explicitly considered
+   and rejected as AM-05 scope (deliberately simpler company-only scoping
+   was chosen instead) — a future stage's decision if ever needed.
 
-None of AM-05 through AM-16 (Masters/Holders redesign, Import, Reports, My
-Assets, full responsive/accessibility pass, security regression, full UAT)
-have been started as dedicated stages yet — see `REVIEW_FINDINGS.md` for
-what's still open on each of those screens.
+None of AM-06 onward (Import, Reports, My Assets, category/subcategory/
+purchase_date correction workflow, `holder_company_access`, approval
+workflow, AMC/insurance, depreciation, physical verification, a full
+company-wide asset audit explorer) have been started as dedicated stages
+yet — see `REVIEW_FINDINGS.md` for what's still open on each of those
+screens.
 
 ## Branch / remote state
 

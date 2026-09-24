@@ -6,52 +6,47 @@ message / `DECISIONS.md`, don't just leave it checked off here).
 
 ## Design / UX (open)
 
-1. **`DataTable` exists now but is only used on 4 of ~11 tabular screens.**
-   AM-03 migrated Dashboard's 3 sub-tables and Asset Register; AM-04 added
-   Asset 360's Changes tab. My Assets, Holders, Import preview, and all 8
-   master screens (`MasterCrudScreen`) still hand-roll their own
-   header/row/empty-row markup. Target for AM-05+ (a dedicated Masters/
-   Holders/Import stage) — migrating them wasn't authorized in AM-04.
-2. **`PageHeader` exists now but is only used on 4 screens.** AM-03 migrated
-   Dashboard and Asset Register; AM-04 added Add Asset and Asset 360. Every
-   other screen still has its own ad hoc title block.
-3. **Loading/empty/error states are still inconsistent outside Dashboard,
-   Asset Register, Add Asset and Asset 360.** All four now have full
-   loading/empty/error coverage — Asset Detail's old `return null` while
-   loading is fixed (AM-04, now a real skeleton + `ErrorState` + a distinct
-   not-found treatment) — but the 8 master screens, Holders and Import still
-   show no empty-table message or error state.
-4. **No skeleton loaders outside Dashboard, Asset Register, and Asset 360.**
-5. **Heading-size drift outside Dashboard, Asset Register, Add Asset and
-   Asset 360.** All four now render their `<h1>` through the shared
-   `PageHeader` (fixed at `text-lg`) — every other screen still sets its own
-   heading markup/size with no shared rule; My Assets still has no
-   page-level heading at all.
+1. **`DataTable` is now used on every tabular screen except My Assets and
+   Import preview.** AM-03 migrated Dashboard's 3 sub-tables and Asset
+   Register; AM-04 added Asset 360's Changes tab; AM-05 migrated all 8
+   master screens (`MasterCrudScreen`), the new Custom Fields screen, and
+   Holders. My Assets and Import preview still hand-roll their own
+   header/row/empty-row markup — a future stage's work.
+2. **`PageHeader` is now used on every screen except My Assets and Import.**
+   AM-03 migrated Dashboard and Asset Register; AM-04 added Add Asset and
+   Asset 360; AM-05 added all 8 master screens, Custom Fields, Holders, and
+   Code Rule.
+3. **Loading/empty/error states are now consistent everywhere except My
+   Assets and Import.** AM-05 closed the gap this finding originally
+   flagged for the 8 master screens, Holders, and Code Rule — all now have
+   full loading/empty/error coverage via the shared components.
+4. **No skeleton loaders on My Assets or Import.** Every other screen now
+   has one (AM-05 added Code Rule's and confirmed `DataTable`'s built-in
+   skeleton rows cover every master/Holders screen).
+5. **Heading-size drift only remains on My Assets**, which still has no
+   page-level heading at all — every other screen now renders its `<h1>`
+   through the shared `PageHeader` (fixed at `text-lg`).
 6. **Duplicated async-state plumbing in Imports/Reports.** `AsyncButton` is
-   now used in Asset Register's bulk-move Confirm, Add Asset's Save, and
-   Asset 360's action/edit Save buttons, but Imports/Reports themselves
-   weren't touched (out of scope through AM-04) and still hand-roll their
+   now used in Asset Register's bulk-move Confirm, Add Asset's Save, Asset
+   360's action/edit Save buttons, and (AM-05) every master/Custom
+   Field/Holder/Code Rule Save button, but Imports/Reports themselves
+   weren't touched (out of scope through AM-05) and still hand-roll their
    own pending/error `useState` pairs for their blob-download buttons.
 7. **One hardcoded non-token color**: `text-blue-600` in `MyAssets.tsx`'s
    asset-code link (every other equivalent link elsewhere is unstyled).
-8. **`MasterCrudScreen` supports Create + Deactivate only, not Edit** —
-   unlike Holders, which has its own bespoke Edit. If a future shared
-   row-actions pattern makes "Edit" visually obvious to add here, that's new
-   functionality, not a reskin — needs an explicit decision, not a silent add.
 
 ## Technical (open)
 
-9. **`scoped_company_ids` doesn't incorporate `HolderCompanyAccess` grants**
+8. **`scoped_company_ids` doesn't incorporate `HolderCompanyAccess` grants**
     yet — an IT_TEAM/VIEWER holder with assigned cross-company access is
     currently under-scoped (sees only their own company). Under-granting,
     not over-granting — safe direction to be wrong in. AM-01 documented this
     fully (`AM-01_DATA_INTEGRITY_REPORT.md` §9) without resolving it: it's
     genuinely either "needed for a shared multi-company asset team" or
     "dormant scaffolding," and that call needs a business answer, not a
-    technical guess. Still open as of AM-03 — explicitly out of scope there too.
-10. **`get_active_rule`'s per-metric/company-specific vs. global-fallback
-    ordering** has no dedicated unit test beyond integration coverage.
-11. **5 closed-value columns still have no DB-level CHECK/ENUM** —
+    technical guess. Still open as of AM-05 (explicitly out of scope there
+    too, per its §26 — `holder_company_access` itself was untouched).
+9. **5 closed-value columns still have no DB-level CHECK/ENUM** —
     `asset.status`, `asset_event.event_type`, `asset_event.status_after` are
     deliberately left unconstrained (they're the surface most likely to gain
     a new legal value if a future stage adds an approval workflow —
@@ -59,12 +54,12 @@ message / `DECISIONS.md`, don't just leave it checked off here).
     `asset_document.doc_type` was simply out of AM-02's scope (only
     `holder.holder_type`/`holder.role`/`custom_field.field_type` were
     confirmed-gap items from AM-01). All plain VARCHAR at the DB level.
-12. **Import template and export column list have no procurement/custom-field
+10. **Import template and export column list have no procurement/custom-field
     columns** — the API fully supports them (AM-02), but neither the import
     preview/commit path nor `assets_to_xlsx` includes vendor/PO/invoice/PI/
     brand/model/serial/warranty/custom-field columns. Deliberately deferred
     (AM-02 §13/§14), not a brittle stopgap.
-13. **`category_id`, `subcategory_id`, `purchase_date` still have no edit
+11. **`category_id`, `subcategory_id`, `purchase_date` still have no edit
     path** after asset creation — reconfirmed as deliberately out of scope in
     AM-04 too (§17 of that authorization): a real, evidenced gap (what if a
     category was picked wrong at creation?), but safely exposing it needs a
@@ -143,3 +138,29 @@ message / `DECISIONS.md`, don't just leave it checked off here).
   own** — narrower than a page-overflow bug on its own, but fixed alongside
   the item above so the tab bar scrolls within itself at narrow widths
   instead of relying on the page-level fix alone.
+- **`MasterCrudScreen` supported Create + Deactivate only, not Edit** —
+  fixed (AM-05): migrated onto the shared foundation with a real Edit
+  dialog per master, driven by a new `editFields` config array that's a
+  strict subset of `formFields`; an immutable field is shown read-only
+  rather than silently omitted, so the reason it can't be changed is
+  visible. Deactivate now asks for confirmation naming the record.
+- **`get_active_rule`'s company-specific-vs-global-fallback ordering had no
+  dedicated unit test** — fixed (AM-05): 5 new tests in
+  `tests/numbering/test_get_active_rule_ordering.py` cover company-beats-
+  global, global-fallback, cross-company isolation, inactive-rule
+  exclusion, and the no-rule-configured error.
+- **A required Custom Field created for one company could block asset
+  creation in every company** (discovered during AM-04, the risk AM-05 was
+  explicitly authorized to close) — fixed: `CustomField.company_id`
+  (migration `370399c6380e`, nullable, `NULL` = Global) makes a field either
+  Global or scoped to one company; the applicable-definition set for an
+  asset is Global + its own company only (`applicable_custom_fields`),
+  never another company's fields. Covered by 15 backend authorization/
+  immutability tests, 9 backend applicability-regression tests, 1 frontend
+  regression test, and a dedicated E2E journey.
+- **Holders had no Deactivate action at all** — fixed (AM-05): added,
+  migrated onto the shared foundation, with a confirmation naming the
+  holder. Role changes now show the current role and a visible warning
+  before saving a change (never a silent reset), and IT_TEAM is confirmed
+  (by 3 new backend tests) unable to update, deactivate, or reset the
+  password of any holder — role remains ADMIN-only end to end.

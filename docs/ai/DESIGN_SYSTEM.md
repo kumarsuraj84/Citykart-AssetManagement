@@ -78,14 +78,15 @@ primitive, `collapsible="icon"`) + main content area.
 
 `frontend/src/components/shared/`: `PageHeader`, `DataTable`, `StatusBadge`,
 `EmptyState`, `ErrorState`, `AsyncButton`, `FormField`. Proven on Dashboard,
-Asset Register, Add Asset and Asset 360 (AM-03/AM-04) — see
-`REVIEW_FINDINGS.md` for which screens still need migrating. `DataTable`
-presents rows/loading-skeleton/empty/error states and an optional pagination
-footer; it never owns fetching, query state, sorting, or filtering — the
-page keeps that. `StatusBadge` maps the 8 `Asset.status` values to a
-semantic tone (info/success/warning/destructive/neutral) via the existing
-`--*-soft`/`--on-*-soft` tokens, always alongside the status name as text,
-never color alone.
+Asset Register, Add Asset and Asset 360 (AM-03/AM-04), and now (AM-05) every
+master screen (`MasterCrudScreen`), the new Custom Fields screen, Holders,
+and Code Rule — see `REVIEW_FINDINGS.md` for the two screens (My Assets,
+Import) still outstanding. `DataTable` presents rows/loading-skeleton/empty/
+error states and an optional pagination footer; it never owns fetching,
+query state, sorting, or filtering — the page keeps that. `StatusBadge` maps
+the 8 `Asset.status` values to a semantic tone (info/success/warning/
+destructive/neutral) via the existing `--*-soft`/`--on-*-soft` tokens,
+always alongside the status name as text, never color alone.
 
 ## Sectioned enterprise forms (AM-04)
 
@@ -136,15 +137,78 @@ full-replace endpoint (see `DECISIONS.md`), Edit mode always prefills every
 editable field (including the full current `custom_fields` set) before
 allowing Save — never a partial diff.
 
+## Master list screens (AM-05)
+
+`MasterCrudScreen<T>` (7 of 8 simple masters) and the bespoke
+`CustomFieldsScreen` share one pattern: `PageHeader` (title + "Add X" as the
+sole primary action) → `DataTable` (business columns + a trailing icon-only
+actions column, `Pencil`/`Trash2`, each with a row-specific `aria-label`
+like "Edit Vendor One" — never a bare "Edit" when several rows are on
+screen) → a Create `Dialog` and a separate Edit `Dialog`. A master's
+`MasterConfig` carries `editFields`, a strict subset of `formFields`
+matching its backend `*EditIn` schema; a field left out of `editFields`
+(e.g. an immutable `code`) is shown read-only at the top of the Edit dialog
+in a bordered `bg-muted/50` block with a one-line "Not editable after
+creation." note, not silently omitted — the admin can still see it, just
+not change it.
+
+## Destructive confirmation (AM-05)
+
+Deactivating a master, a Custom Field, or a Holder never fires directly
+from the row action — it opens an `AlertDialog` (`AlertDialogTitle` names
+the specific record, e.g. "Deactivate Vendor One?"; `AlertDialogDescription`
+states the effect in plain language and that it's reversible by an
+administrator) with `Cancel` / a destructive-styled `AlertDialogAction`
+(`bg-destructive text-destructive-foreground`). This is the one dialog
+pattern in the app that's allowed to skip `FormField` entirely, since it
+has no form fields.
+
+## Custom Field scope selector (AM-05)
+
+`CustomFieldsScreen`'s Scope control is role-shaped, not just
+value-shaped: ADMIN gets a real `Select` with "Global (all companies)" plus
+every company; IT_TEAM gets a disabled, read-only `Input` pre-filled with
+their own company's name — never a `Select` they could open to see (or try)
+other values they aren't authorized for. The Scope column in the list
+itself always renders a human name ("Global" or the company's name), never
+a raw `company_id`. Flipping a field from optional to required goes through
+its own `AlertDialog` confirmation before the PUT fires — worded to name
+every company for a Global field, or the one specific company for a scoped
+field, since the two have very different blast radii.
+
+## Security-sensitive Holder role editing (AM-05)
+
+`HoldersScreen`'s Edit dialog's Role `FormField` always shows a
+`helperText` naming the holder's current role ("Current role: ADMIN.
+Controls what this person can see and do in CKAM."). If the selected value
+differs from the role the dialog opened with, an inline `role="alert"`
+warning appears directly under the control ("Changing role from ADMIN to
+VIEWER will immediately change this person's access.") — text, not color
+alone, and it only ever appears as a direct consequence of the admin's own
+selection, never on an unrelated field edit (so editing a holder's phone
+number can never look like it's also touching their role).
+
+## Table row actions (AM-05)
+
+Every row-actions column across `MasterCrudScreen`, `CustomFieldsScreen`,
+and `HoldersScreen` uses the same shape: `variant="ghost" size="icon"`
+buttons from `lucide-react` (`Pencil` for Edit, `KeyRound` for Holders'
+Reset Password, `Trash2` for Deactivate), each with an explicit
+`aria-label` naming the row ("Deactivate Ankur Pahwa"), inside a
+`flex justify-end gap-1` cell — never a bare icon with no accessible name,
+never a clickable non-semantic `<div>`. An action a caller isn't authorized
+for (e.g. IT_TEAM viewing a Global or another company's Custom Field) is
+omitted from the row entirely rather than rendered disabled, since the
+distinction ("you can't do this right now" vs. "this will never be yours to
+do") matters here.
+
 ## Known gaps (not yet fixed — see `REVIEW_FINDINGS.md` for the full list)
 
-- `DataTable`/`PageHeader` exist now but are only used on 4 screens
-  (Dashboard, Asset Register, Add Asset, Asset 360) — Holders, Import
-  preview, My Assets, and the 8 master screens still hand-roll their own
-  table/header/empty-state markup. `MasterCrudScreen` is the one exception
-  among those (shared by the 8 setup screens).
-- Page `<h1>` sizing drifts between `text-xl` and `text-lg` outside the four
-  screens above (all four now render it via the shared `PageHeader`, fixed
-  at `text-lg`) — no documented rule for the rest.
-- Loading/empty/error states exist on the four screens above but not on the
-  8 master-data screens, Holders, or Import.
+- `DataTable`/`PageHeader` are now used everywhere except My Assets and
+  Import preview, which still hand-roll their own table/header/empty-state
+  markup.
+- Page `<h1>` sizing drifts between `text-xl` and `text-lg` only on My
+  Assets now — every other screen renders it via the shared `PageHeader`,
+  fixed at `text-lg`.
+- Loading/empty/error states exist everywhere now except My Assets and
+  Import.
