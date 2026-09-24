@@ -1,9 +1,11 @@
 # CKAM — Current Stage
 
-**Stage:** AM-02 (asset data model + procurement + custom field foundation) — complete, PASS.
-**Next:** awaiting explicit go-ahead on AM-03 or any other further work — do
-not start anything automatically, including UI redesign.
+**Stage:** AM-03 (UI foundation + Dashboard + Asset Register reference pattern) — complete, PASS.
+**Next:** awaiting explicit go-ahead on AM-04 or any other further work — do
+not start anything automatically, including Add Asset/Asset 360/Masters/
+Holders/Import/Reports/My Assets redesign.
 
+Full AM-03 evidence: `docs/ai/AM-03_UI_FOUNDATION_REPORT.md`.
 Full AM-02 evidence: `docs/ai/AM-02_ASSET_DATA_MODEL_REPORT.md`.
 Full AM-01 evidence: `docs/ai/AM-01_DATA_INTEGRITY_REPORT.md`.
 
@@ -64,6 +66,36 @@ Reassigned, plus Repair/Lost-Found/Disposed-Sold-Scrapped.
   database level too (migration `3a44505b6b10`, verified 100% conformant on
   live data immediately before applying).
 
+## What's actually done as of AM-03
+
+- **Shared UI foundation (new):** `components/shared/{PageHeader,DataTable,
+  StatusBadge,EmptyState,ErrorState,AsyncButton,FormField}.tsx`. `DataTable`
+  presents rows/loading-skeletons/empty/error states and an optional
+  pagination footer consistently, but does not own fetching, query state,
+  sorting, or filtering — the page still does, exactly as Asset Register
+  already did. `FormField` is a foundation-only primitive for a future
+  data-entry stage; nothing consumes it yet.
+- **Dashboard migrated:** now uses `PageHeader`/`DataTable`/`StatusBadge`/
+  `EmptyState`/`ErrorState`. Fixed a real bug: a failed fetch used to leave
+  the screen stuck on "Loading…" forever (`isLoading || !data` never
+  distinguished "still loading" from "failed") — now shows a real error
+  state with a working retry button.
+- **Asset Register migrated:** now uses the same shared components, plus a
+  genuine, explicitly-authorized behavior change — row click now navigates
+  via the SPA router (`useNavigate`) instead of `window.location.href`.
+  Confirmed via network log that clicking a row no longer re-requests
+  `index.html`/the JS bundle; confirmed the selection checkbox still does
+  not trigger row navigation. Search/filters/pagination/bulk-move/role
+  behavior/API contracts are all unchanged.
+- **No backend change of any kind** — no migration, no schema change, no
+  API contract change, no authorization change. Verified: backend suite
+  stayed at 184/184 throughout.
+- Frontend suite grew from 56 to 81 tests (23 files, +7 new test files for
+  the shared components plus additions to Dashboard/AssetRegister tests),
+  typecheck clean, E2E 1/1 passing, real-browser UAT performed at
+  1440/1024/768/375 with live data (a throwaway seed company/admin created
+  and soft-deactivated afterward, the same safe pattern E2E already uses).
+
 ## Deferred from AM-01/AM-02, awaiting your decision (not blockers, not failures)
 
 1. **`holder_company_access`**: written to, never read by authorization.
@@ -84,11 +116,18 @@ Reassigned, plus Repair/Lost-Found/Disposed-Sold-Scrapped.
    §28). Judged sufficient for this stage; flag if procurement-edit
    traceability becomes a real requirement.
 
-None of AM-03 through AM-16 (shared DataTable/PageHeader/etc., Dashboard,
-Asset Register, Asset Detail, Add Asset, Holders, Setup/masters, Import,
-Reports, My Assets, responsive/accessibility passes, security regression,
-full UAT) have been started as dedicated stages yet — see
-`REVIEW_FINDINGS.md` for what's still open on each of those screens.
+5. **Shared UI foundation is only proven on 2 screens.** `DataTable`/
+   `PageHeader` exist now but Asset Detail, Add Asset, Holders, Import
+   preview, and all 8 master screens still hand-roll their own markup.
+   Migrating them is real, screen-by-screen work for a future stage.
+6. **`AsyncButton` exists but Imports/Reports weren't touched** — they still
+   hand-roll their own pending/error state for blob-download buttons.
+
+None of AM-04 through AM-16 (Asset Detail/Asset 360, Add Asset data entry +
+UDF/procurement wiring, Holders, Setup/masters, Import, Reports, My Assets,
+full responsive/accessibility pass, security regression, full UAT) have been
+started as dedicated stages yet — see `REVIEW_FINDINGS.md` for what's still
+open on each of those screens.
 
 ## Branch / remote state
 

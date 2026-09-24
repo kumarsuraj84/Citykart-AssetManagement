@@ -20,6 +20,13 @@ the newly-exposed procurement/custom-field data has no UI consumer yet by
 design (AM-02 explicitly deferred UI wiring). Full backend verification:
 184/184 tests, migration + trigger verification on both databases.
 
+**AM-03 (2026-09-24) migrated Dashboard and Asset Register to the new shared
+UI foundation** (`PageHeader`/`DataTable`/`StatusBadge`/`EmptyState`/
+`ErrorState`/`AsyncButton`) and fixed Asset Register's row navigation to use
+the SPA router instead of `window.location.href`. No backend change, no
+migration. Only these two rows change below; every other route is
+unchanged from AM-02 and still needs its own UAT pass in a future stage.
+
 Legend: ✅ verified this session · 🟡 spot-checked only (not full UAT) · ⬜ not yet checked · N/A not applicable
 
 Functional = backend/frontend tests pass. Design = real-browser visual check.
@@ -29,8 +36,8 @@ Security = authz/scoping verified. Responsive = checked at 1440/768/375.
 |---|---|---|---|---|---|
 | `/login` | ✅ | ✅ | ✅ | ✅ | Full UAT: keyboard nav, Enter-submit, validation errors, failed-login banner, all 3 breakpoints, real login verified with owner account |
 | `/change-password` | ✅ | 🟡 | ⬜ | ⬜ | Component tests pass; visually redesigned but not device-by-device checked |
-| `/dashboard` | ✅ | 🟡 | ⬜ | ⬜ | Spot-checked at 1440 only during design-token rollout |
-| `/assets` (register) | ✅ | 🟡 | ⬜ | ⬜ | Spot-checked at 1440 only |
+| `/dashboard` | ✅ | ✅ | 🟡 | ✅ | AM-03: migrated to shared foundation, fixed the stuck-on-Loading-forever bug (now shows a real error state with retry); verified in-browser at 1440/1024/768/375 with real live data; security is backend-regression-only (no new endpoint/authz surface), not a dedicated browser authz check |
+| `/assets` (register) | ✅ | ✅ | 🟡 | ✅ | AM-03: migrated to shared foundation; row click now uses the SPA router (confirmed via network log — no document reload); checkbox click confirmed not to trigger row navigation; verified in-browser at 1440/1024/768/375 — table uses intentional horizontal scroll at 375, no clipped content; security is backend-regression-only, same caveat as Dashboard |
 | `/assets/new` (Add Asset) | ✅ | ⬜ | ⬜ | ⬜ | Not opened this session |
 | `/assets/$id` (Asset Detail) | ✅ | ⬜ | ⬜ | ⬜ | Not opened this session; known gap: no loading state (`REVIEW_FINDINGS.md` #3) |
 | `/my-assets` | ✅ | ⬜ | ⬜ | ⬜ | Not opened this session |
@@ -53,6 +60,8 @@ return, allot again` covers login → add asset → search → lifecycle actions
 QR/logout redirect → forced password change → logout. Confirmed the seeded
 test company is cleanly torn down afterward.
 
-**Backend:** 184/184 passing (as of AM-02; was 170/170 at AM-01, 163/163 at
-AM-00). **Frontend:** 56/56 passing (17 files), typecheck clean (unchanged —
-AM-02 touched no frontend file).
+**Backend:** 184/184 passing (unchanged since AM-02 — AM-03 made no backend
+change; was 170/170 at AM-01, 163/163 at AM-00). **Frontend:** 81/81 passing
+(23 files, up from 56/17 at AM-02 — 25 new tests: 7 new shared-component
+test files plus additions to `Dashboard.test.tsx` and
+`AssetRegister.test.tsx`), typecheck clean.

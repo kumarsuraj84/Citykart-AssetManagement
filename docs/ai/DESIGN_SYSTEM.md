@@ -69,12 +69,27 @@ primitive, `collapsible="icon"`) + main content area.
   `useLocation().pathname === to` (exact match, not prefix — so `/assets`
   doesn't light up while viewing `/assets/new` or an asset detail page).
 
+## Shared components (AM-03)
+
+`frontend/src/components/shared/`: `PageHeader`, `DataTable`, `StatusBadge`,
+`EmptyState`, `ErrorState`, `AsyncButton`, `FormField`. Proven on Dashboard
+and Asset Register only so far — see `REVIEW_FINDINGS.md` for which screens
+still need migrating. `DataTable` presents rows/loading-skeleton/empty/error
+states and an optional pagination footer; it never owns fetching, query
+state, sorting, or filtering — the page keeps that. `StatusBadge` maps the 8
+`Asset.status` values to a semantic tone (info/success/warning/destructive/
+neutral) via the existing `--*-soft`/`--on-*-soft` tokens, always alongside
+the status name as text, never color alone.
+
 ## Known gaps (not yet fixed — see `REVIEW_FINDINGS.md` for the full list)
 
-- No shared `DataTable`/`PageHeader`/`StatusBadge`/`EmptyState` component yet
-  — every screen hand-rolls its own table/header/empty-state markup.
-  `MasterCrudScreen` is the one exception (shared by 8 setup screens).
-- Page `<h1>` sizing drifts between `text-xl` and `text-lg` across screens
-  with no documented rule.
-- Loading/empty states exist on Dashboard and Asset Register but not on
-  Asset Detail or the 8 master-data screens.
+- `DataTable`/`PageHeader` exist now but are only used on 2 screens
+  (Dashboard, Asset Register) — every other screen (Asset Detail, Add
+  Asset, Holders, Import preview, the 8 master screens) still hand-rolls
+  its own table/header/empty-state markup. `MasterCrudScreen` is the one
+  exception among those (shared by the 8 setup screens).
+- Page `<h1>` sizing drifts between `text-xl` and `text-lg` outside
+  Dashboard/Asset Register (both now render it via the shared `PageHeader`,
+  fixed at `text-lg`) — no documented rule for the rest.
+- Loading/empty/error states exist on Dashboard and Asset Register (via
+  `DataTable`) but not on Asset Detail or the 8 master-data screens.

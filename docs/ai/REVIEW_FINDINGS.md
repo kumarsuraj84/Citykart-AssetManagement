@@ -6,24 +6,33 @@ message / `DECISIONS.md`, don't just leave it checked off here).
 
 ## Design / UX (open)
 
-1. **No shared `DataTable` component.** Every table (Dashboard sub-tables,
-   Asset Register, My Assets, Holders, Import preview, all 8 master screens)
-   hand-rolls its own header/row/empty-row markup. `MasterCrudScreen` is the
-   one exception. Target for AM-03 (AM-02 was redefined to Asset Data Model
-   + Procurement + UDF Foundation and did not touch the UI at all — this
-   stale reference is corrected as part of the AM-03 preflight).
-2. **No shared `PageHeader` pattern.** No screen has a consistent
-   title/description/search+filters/primary-action layout. Target for AM-03.
-3. **Inconsistent loading/empty states.** Dashboard and Asset Register show
-   explicit states; `AssetDetail` shows nothing (`return null`) while
-   loading; the 8 master screens and Holders show no empty-table message.
-4. **No skeleton loaders anywhere.**
-5. **Heading-size drift.** Page `<h1>` uses `text-xl` on some screens,
-   `text-lg` on others, with no documented rule; Asset Detail and My Assets
-   have no page-level heading at all.
-6. **Duplicated async-state plumbing.** Imports and Reports each hand-roll
-   3+ parallel pending/error `useState` pairs for blob-download buttons
-   instead of one shared pattern.
+1. **`DataTable` exists now but is only used on 2 of ~11 tabular screens.**
+   AM-03 built `components/shared/DataTable.tsx` and migrated Dashboard's 3
+   sub-tables and Asset Register. My Assets, Holders, Import preview, and all
+   8 master screens (`MasterCrudScreen`) still hand-roll their own
+   header/row/empty-row markup. Target for AM-04+ (a dedicated Asset 360/
+   Masters/Holders stage) — migrating them wasn't authorized in AM-03.
+2. **`PageHeader` exists now but is only used on 2 screens.** AM-03 built
+   `components/shared/PageHeader.tsx` and migrated Dashboard and Asset
+   Register. Every other screen still has its own ad hoc title block. Target
+   for AM-04+.
+3. **Loading/empty/error states are still inconsistent outside Dashboard and
+   Asset Register.** Both of those now have full loading/empty/error
+   coverage via `DataTable`/`EmptyState`/`ErrorState` (AM-03) — `AssetDetail`
+   still shows nothing (`return null`) while loading, and the 8 master
+   screens and Holders still show no empty-table message or error state.
+4. **No skeleton loaders outside Dashboard and Asset Register** — `DataTable`
+   (AM-03) shows skeleton rows while loading on those two screens only.
+5. **Heading-size drift outside Dashboard and Asset Register.** Both of
+   those now render their `<h1>` through the shared `PageHeader` (AM-03,
+   fixed at `text-lg`) — every other screen still sets its own heading
+   markup/size with no shared rule; Asset Detail and My Assets still have no
+   page-level heading at all.
+6. **Duplicated async-state plumbing in Imports/Reports.** AM-03 built the
+   shared `AsyncButton` primitive and used it in Asset Register's bulk-move
+   Confirm button, but Imports/Reports themselves weren't touched (out of
+   scope for AM-03) and still hand-roll their own pending/error `useState`
+   pairs for their blob-download buttons.
 7. **One hardcoded non-token color**: `text-blue-600` in `MyAssets.tsx`'s
    asset-code link (every other equivalent link elsewhere is unstyled).
 8. **`MasterCrudScreen` supports Create + Deactivate only, not Edit** —
@@ -33,22 +42,17 @@ message / `DECISIONS.md`, don't just leave it checked off here).
 
 ## Technical (open)
 
-9. **`AssetRegister`'s row click does a full `window.location.href` reload**
-   instead of client-side router navigation — works, but bypasses the SPA
-   router every other screen uses. Fixing it is a real (if invisible)
-   behavior change — call it out explicitly when touched, per
-   `DEVELOPMENT_GUARDRAILS.md`.
-10. **`scoped_company_ids` doesn't incorporate `HolderCompanyAccess` grants**
+9. **`scoped_company_ids` doesn't incorporate `HolderCompanyAccess` grants**
     yet — an IT_TEAM/VIEWER holder with assigned cross-company access is
     currently under-scoped (sees only their own company). Under-granting,
     not over-granting — safe direction to be wrong in. AM-01 documented this
     fully (`AM-01_DATA_INTEGRITY_REPORT.md` §9) without resolving it: it's
     genuinely either "needed for a shared multi-company asset team" or
     "dormant scaffolding," and that call needs a business answer, not a
-    technical guess. Still open as of AM-02 — explicitly out of scope there too.
-11. **`get_active_rule`'s per-metric/company-specific vs. global-fallback
+    technical guess. Still open as of AM-03 — explicitly out of scope there too.
+10. **`get_active_rule`'s per-metric/company-specific vs. global-fallback
     ordering** has no dedicated unit test beyond integration coverage.
-12. **5 closed-value columns still have no DB-level CHECK/ENUM** —
+11. **5 closed-value columns still have no DB-level CHECK/ENUM** —
     `asset.status`, `asset_event.event_type`, `asset_event.status_after` are
     deliberately left unconstrained (they're the surface most likely to gain
     a new legal value if a future stage adds an approval workflow —
@@ -56,16 +60,16 @@ message / `DECISIONS.md`, don't just leave it checked off here).
     `asset_document.doc_type` was simply out of AM-02's scope (only
     `holder.holder_type`/`holder.role`/`custom_field.field_type` were
     confirmed-gap items from AM-01). All plain VARCHAR at the DB level.
-13. **Import template and export column list have no procurement/custom-field
+12. **Import template and export column list have no procurement/custom-field
     columns** — the API fully supports them (AM-02), but neither the import
     preview/commit path nor `assets_to_xlsx` includes vendor/PO/invoice/PI/
     brand/model/serial/warranty/custom-field columns. Deliberately deferred
     (AM-02 §13/§14), not a brittle stopgap.
-14. **`category_id`, `subcategory_id`, `purchase_date` have no edit path**
+13. **`category_id`, `subcategory_id`, `purchase_date` have no edit path**
     after asset creation (AM-02 §17) — a real, evidenced gap (what if a
     category was picked wrong at creation?), deliberately left open since
     safely exposing it needs more design than AM-02's scope.
-15. **No generic field-change audit for editable descriptive fields** —
+14. **No generic field-change audit for editable descriptive fields** —
     `PUT /api/assets/{id}` (AM-02) updates `updated_by`/`updated_at` only,
     no before/after value log the way `asset_event` provides for lifecycle
     changes. Flag if procurement-edit traceability becomes a real
@@ -97,3 +101,14 @@ message / `DECISIONS.md`, don't just leave it checked off here).
   serial number, warranty, custom fields) existed in the database and on
   create but were never returned by `AssetOut` — fixed; also added the
   first general asset-edit endpoint (`PUT /api/assets/{id}`) (AM-02).
+- `AssetRegister`'s row click did a full `window.location.href` reload
+  instead of client-side router navigation — fixed via `useNavigate`
+  (AM-03); confirmed via network log that clicking a row no longer requests
+  `index.html`/JS bundle, and that clicking the row's checkbox still does
+  not navigate.
+- Shared `PageHeader`/`DataTable`/`StatusBadge`/`EmptyState`/`ErrorState`/
+  `AsyncButton` built and proven on Dashboard + Asset Register (AM-03) —
+  see items 1-6 above for what's still outstanding on the other screens.
+- Dashboard could get stuck on "Loading…" forever if the fetch failed
+  (`isLoading || !data` never distinguished "still loading" from "failed") —
+  fixed with a real `isError`/`ErrorState`/retry path (AM-03).

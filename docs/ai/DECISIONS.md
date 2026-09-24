@@ -2,6 +2,47 @@
 
 Newest first. These override older spec/plan text where they conflict.
 
+## 2026-09-24 — AM-03 scope locked (UI foundation + Dashboard + Asset Register)
+
+1. **Shared UI components own presentation/interaction, never business
+   logic.** `DataTable` doesn't fetch data, sort, or filter — the page does,
+   exactly as Asset Register already did before AM-03. `PageHeader` doesn't
+   know about roles or lifecycle. This boundary is deliberate and should
+   hold for every future screen migrated onto these primitives.
+2. **`DataTable`'s row-click and its selection/action columns are not made
+   keyboard-operable via `role="button"`/`tabIndex`/`onKeyDown` on the
+   `<tr>`.** A real, independently focusable `<Link>`/`<a>` in one column
+   provides keyboard access; the row's own `onClick` is a mouse-only
+   convenience. Nesting a synthetic interactive role on `<tr>` around a real
+   `<a>` would be invalid ARIA (a widget shouldn't contain another widget),
+   so this was a deliberate simplification, not an oversight.
+3. **Asset Register's row click now uses the SPA router
+   (`useNavigate`/`Link`) instead of `window.location.href`.** This is a
+   genuine (if invisible) behavior change, explicitly authorized for AM-03:
+   confirmed via network log that a row click no longer re-requests
+   `index.html`/the JS bundle, and that the selection checkbox still does
+   not trigger navigation.
+4. **`StatusBadge`'s tone mapping is presentation-only** and never reads
+   from or writes to `Asset.status` — IN_STOCK=info, ALLOTTED/INSTALLED=
+   success, UNDER_REPAIR=warning, DISPOSED/SOLD/SCRAPPED=neutral, LOST=
+   destructive. The status name is always shown as text, never conveyed by
+   color alone. An unrecognized status still renders (neutral tone), it's
+   never hidden or thrown on.
+5. **`FormField` and part of `AsyncButton` are foundation-only in AM-03** —
+   built for the data-entry stage that follows, not wired into any existing
+   form. Only Asset Register's bulk-move Confirm button actually uses
+   `AsyncButton` in this stage.
+6. **No backend, schema, migration, or authorization change in AM-03** — a
+   hard constraint, not just a preference; the entire stage is frontend
+   presentation only. Backend test count stayed at 184/184 throughout.
+7. **Only Dashboard and Asset Register are migrated onto the new
+   components in AM-03.** Every other screen (Asset Detail, Add Asset,
+   Holders, Import, Reports, My Assets, the 8 master screens) is unchanged
+   and still needs its own migration in a future stage — not a silent
+   scope expansion, an explicit boundary (AM-03 §9-§11/§19).
+
+Full evidence: `docs/ai/AM-03_UI_FOUNDATION_REPORT.md`.
+
 ## 2026-09-24 — AM-02 scope locked (asset data model + procurement + custom fields)
 
 1. **PI Number is CityKart's internal/reference number for a payment made to
