@@ -529,8 +529,15 @@ is yours.
 ## 31. Final Git State
 
 - Branch: `worktree-ckam-build`
-- Ending HEAD: *(recorded at commit time — see the two AM-02 commits; this report is committed together with them)*
-- `git status` before commit: 10 files (7 modified, 3 new), working tree otherwise clean
+- Starting HEAD (pre-AM-02): `b8cf95f`
+- Implementation commit: `bb5a2e1` — `feat(assets): AM-02 -- expose procurement fields, add asset edit endpoint, validate closed values` (10 files: the migration, `custom_field_values.py`, `test_am02_procurement_and_custom_fields.py`, plus 7 modified files)
+- Documentation/report commit: `81a380f` — `docs(ai): AM-02 report + governance updates` (this report + `CURRENT_STAGE.md`/`DECISIONS.md`/`REVIEW_FINDINGS.md`/`UAT_MATRIX.md`)
+- **Ending HEAD: `81a380f`**
+- `git status` after both commits: clean
+
+*(Corrected 2026-09-24 during the AM-03 preflight — this section originally
+left the ending HEAD as placeholder wording instead of the real hash; no
+technical content elsewhere in this report was changed.)*
 
 ---
 

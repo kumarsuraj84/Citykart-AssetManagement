@@ -9,9 +9,11 @@ message / `DECISIONS.md`, don't just leave it checked off here).
 1. **No shared `DataTable` component.** Every table (Dashboard sub-tables,
    Asset Register, My Assets, Holders, Import preview, all 8 master screens)
    hand-rolls its own header/row/empty-row markup. `MasterCrudScreen` is the
-   one exception. Target for AM-02.
+   one exception. Target for AM-03 (AM-02 was redefined to Asset Data Model
+   + Procurement + UDF Foundation and did not touch the UI at all — this
+   stale reference is corrected as part of the AM-03 preflight).
 2. **No shared `PageHeader` pattern.** No screen has a consistent
-   title/description/search+filters/primary-action layout.
+   title/description/search+filters/primary-action layout. Target for AM-03.
 3. **Inconsistent loading/empty states.** Dashboard and Asset Register show
    explicit states; `AssetDetail` shows nothing (`return null`) while
    loading; the 8 master screens and Holders show no empty-table message.
