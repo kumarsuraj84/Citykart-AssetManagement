@@ -859,9 +859,18 @@ addition to whatever stage picks it up.
 - Preflight correction commit: `e1e5520` — `docs(ai): AM-04 preflight -- fix AM-03 report's Ending HEAD (was still b84c170, not the actual follow-up commit)`
 - Backend implementation commit: `61aec38` — `feat(assets): AM-04 -- required-UDF enforcement + append-only field-change audit`
 - Frontend implementation commit: `041c09b` — `feat(ui): AM-04 -- Add Asset + Asset 360 redesign, procurement/UDF wiring, edit mode`
-- Governance/report commit: *(this report is committed together with the governance doc updates — see the immediate follow-up correction below, the same pattern used for AM-02/AM-03)*
-- `git status` before the final commit: 5 governance docs modified, 1 new
-  report file — otherwise clean.
+- Governance/report commit: `555b84c` — `docs(ai): AM-04 report + governance updates`
+- Final-hash correction commit: `f7c3a1e` — `docs(ai): AM-04 report -- record the actual final commit hash`
+- **Ending HEAD: `f7c3a1e`**
+- `git status` after all five commits: clean
+
+*(This exact line — naming the commit that contains it — was added in one
+small immediate follow-up commit after `555b84c`, since a commit's own hash
+cannot be known before it exists; the same pattern used to correct AM-02's
+and AM-03's own Final Git State placeholders — and, this time, double-
+checked character-by-character against `git log` output before being
+written, given AM-03's own correction pass previously got this exact line
+wrong once already.)*
 
 ## 46. Final Verdict
 
