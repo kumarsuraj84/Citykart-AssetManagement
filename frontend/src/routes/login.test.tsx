@@ -3,16 +3,27 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { LoginForm } from "./login";
 
 describe("LoginForm", () => {
-  it("submits company, user id and password", async () => {
+  it("submits user id and password", async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
-    render(<LoginForm companies={[{ id: 1, name: "Citykart Stores" }]} onSubmit={onSubmit} />);
+    render(<LoginForm onSubmit={onSubmit} />);
 
     fireEvent.change(screen.getByLabelText(/user id/i), { target: { value: "ADMIN1" } });
-    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: "Passw0rd!" } });
-    fireEvent.click(screen.getByRole("button", { name: /log in/i }));
+    fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: "Passw0rd!" } });
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({
-      companyId: 1, loginId: "ADMIN1", password: "Passw0rd!",
+      loginId: "ADMIN1", password: "Passw0rd!",
     }));
+  });
+
+  it("shows the backend's error message when login is rejected, without crashing", async () => {
+    const onSubmit = vi.fn().mockRejectedValue(new Error("Invalid credentials"));
+    render(<LoginForm onSubmit={onSubmit} />);
+
+    fireEvent.change(screen.getByLabelText(/user id/i), { target: { value: "ADMIN1" } });
+    fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: "wrong" } });
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Invalid credentials");
   });
 });

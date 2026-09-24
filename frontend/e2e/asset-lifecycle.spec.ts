@@ -1,17 +1,17 @@
 import { test, expect, type Page } from "@playwright/test";
 import { newSeedRegistry, seedTestCompany, teardownTestCompany, type SeedRegistry } from "./fixtures";
 
-async function loginAs(page: Page, companyId: number, empCode: string, password: string) {
+async function loginAs(page: Page, empCode: string, password: string) {
   await page.goto("/login");
-  await fillLogin(page, companyId, empCode, password);
+  await fillLogin(page, empCode, password);
 }
 
 // Fills and submits the login form already on screen (keeps any ?next= in the URL).
-async function fillLogin(page: Page, companyId: number, empCode: string, password: string) {
-  await page.getByLabel("Company", { exact: true }).selectOption(String(companyId));
+// The login screen no longer asks for a company -- login_id alone resolves the holder.
+async function fillLogin(page: Page, empCode: string, password: string) {
   await page.getByLabel("User ID", { exact: true }).fill(empCode);
   await page.getByLabel("Password", { exact: true }).fill(password);
-  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
 }
 
 // AddAssetForm/AssetDetail use shadcn's Radix-based <Select>, not a native <select> --
@@ -40,7 +40,7 @@ test("full custody journey: procure, allot, return, allot again", async ({ page,
   const ctx = await seedTestCompany(baseURL!, registry);
 
   // ---- Log in as the bootstrap ADMIN and add an asset ----
-  await loginAs(page, ctx.company.id, ctx.admin.empCode, ctx.admin.password);
+  await loginAs(page, ctx.admin.empCode, ctx.admin.password);
   await expect(page).toHaveURL(/\/dashboard$/);
 
   await page.goto("/assets/new");
@@ -115,7 +115,7 @@ test("full custody journey: procure, allot, return, allot again", async ({ page,
   await expect(page).toHaveURL(/\/login$/);
   await page.goto(assetPath);
   await expect(page).toHaveURL(new RegExp(`/login\\?next=${encodeURIComponent(assetPath)}$`));
-  await fillLogin(page, ctx.company.id, ctx.admin.empCode, ctx.admin.password);
+  await fillLogin(page, ctx.admin.empCode, ctx.admin.password);
   await expect(page).toHaveURL(new RegExp(`${assetPath}$`));
   await expect(page.getByText(assetCode, { exact: true })).toBeVisible();
 
@@ -125,7 +125,7 @@ test("full custody journey: procure, allot, return, allot again", async ({ page,
   // current_holder_id == their own id -- must be empty of it)
   await page.getByRole("button", { name: "Log out", exact: true }).click();
   await expect(page).toHaveURL(/\/login$/);
-  await loginAs(page, ctx.company.id, ctx.employee.emp_code, ctx.employeePassword);
+  await loginAs(page, ctx.employee.emp_code, ctx.employeePassword);
 
   // The employee signed in with the admin-issued temporary password, so the app
   // forces a password change before anything else is reachable.
