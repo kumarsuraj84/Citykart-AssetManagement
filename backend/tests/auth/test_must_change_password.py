@@ -26,7 +26,7 @@ async def _make_holder(session, must_change: bool, code="CKSM1"):
 
 async def _login(client, co, holder, password="TempPassw0rd!"):
     resp = await client.post("/api/auth/login", json={
-        "company_id": co.id, "login_id": holder.emp_code, "password": password,
+        "login_id": holder.emp_code, "password": password,
     })
     assert resp.status_code == 200
     return resp.json()

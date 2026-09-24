@@ -52,7 +52,7 @@ async def test_login_success(client):
         co, holder = await _make_admin(session)
 
     resp = await client.post("/api/auth/login", json={
-        "company_id": co.id, "login_id": holder.emp_code, "password": "Passw0rd!",
+        "login_id": holder.emp_code, "password": "Passw0rd!",
     })
     assert resp.status_code == 200
     body = resp.json()
@@ -74,7 +74,7 @@ async def test_login_success_via_email(client):
         )
 
     resp = await client.post("/api/auth/login", json={
-        "company_id": co.id, "login_id": holder.email, "password": "Passw0rd!",
+        "login_id": holder.email, "password": "Passw0rd!",
     })
     assert resp.status_code == 200
     body = resp.json()
@@ -90,7 +90,7 @@ async def test_login_via_email_is_case_insensitive(client):
         )
 
     resp = await client.post("/api/auth/login", json={
-        "company_id": co.id, "login_id": "ANKUR.PAHWA@CITYKARTSTORES.COM", "password": "Passw0rd!",
+        "login_id": "ANKUR.PAHWA@CITYKARTSTORES.COM", "password": "Passw0rd!",
     })
     assert resp.status_code == 200
     body = resp.json()
@@ -105,11 +105,78 @@ async def test_login_via_emp_code_unaffected_when_no_email(client):
         co, holder = await _make_admin(session, company_code="CKS3G", emp_code="ADMIN1G", email=None)
 
     resp = await client.post("/api/auth/login", json={
-        "company_id": co.id, "login_id": holder.emp_code, "password": "Passw0rd!",
+        "login_id": holder.emp_code, "password": "Passw0rd!",
     })
     assert resp.status_code == 200
     body = resp.json()
     assert body["company_id"] == co.id
+
+
+async def test_login_no_longer_needs_a_company_id(client):
+    """The login screen doesn't ask which company anymore -- login_id alone
+    must be enough, with no company_id in the request at all."""
+    async with SessionLocal() as session:
+        _co, holder = await _make_admin(session, company_code="CKS3H", emp_code="ADMIN1H")
+
+    resp = await client.post("/api/auth/login", json={
+        "login_id": holder.emp_code, "password": "Passw0rd!",
+    })
+    assert resp.status_code == 200
+    assert resp.json()["company_id"] == holder.company_id
+
+
+async def test_login_rejects_ambiguous_login_id_across_companies(client, caplog):
+    """Two different (both real) companies each having a holder with the same
+    emp_code is a legal DB state -- emp_code is only unique *within* a company
+    (UniqueConstraint(company_id, emp_code)). Login must never guess which one
+    the caller meant; it must fail the same way a genuinely unknown id does."""
+    import logging
+
+    async with SessionLocal() as session:
+        _co1, holder1 = await _make_admin(session, company_code="CKS3I", emp_code="SHARED1")
+        _co2, _holder2 = await _make_admin(session, company_code="CKS3J", emp_code="SHARED1")
+
+    with caplog.at_level(logging.WARNING, logger="ckam.security"):
+        resp = await client.post("/api/auth/login", json={
+            "login_id": holder1.emp_code, "password": "Passw0rd!",
+        })
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "Invalid credentials"  # same message as "no such account" -- no leak
+    assert any("different companies" in r.getMessage() for r in caplog.records)
+
+
+async def test_login_rejects_ambiguous_email_across_companies(client):
+    """Same as the emp_code case, but for the email alternative -- the unique
+    index on Holder.email is also company-scoped (migration
+    0005_holder_email_unique.py), so this is likewise a legal DB state."""
+    shared_email = "shared.person@example.com"
+    async with SessionLocal() as session:
+        _co1, holder1 = await _make_admin(
+            session, company_code="CKS3K", emp_code="ADMIN1K", email=shared_email,
+        )
+        _co2, _holder2 = await _make_admin(
+            session, company_code="CKS3L", emp_code="ADMIN1L", email=shared_email,
+        )
+
+    resp = await client.post("/api/auth/login", json={
+        "login_id": holder1.email, "password": "Passw0rd!",
+    })
+    assert resp.status_code == 401
+
+
+async def test_login_ignores_a_deactivated_companys_holder(client):
+    """A holder in a deactivated company must never authenticate, even with the
+    right emp_code and password -- this is the same defense-in-depth already
+    relied on when the E2E leftover companies were deactivated post-incident."""
+    async with SessionLocal() as session:
+        co, holder = await _make_admin(session, company_code="CKS3M", emp_code="ADMIN1M")
+        co.is_active = False
+        await session.commit()
+
+    resp = await client.post("/api/auth/login", json={
+        "login_id": holder.emp_code, "password": "Passw0rd!",
+    })
+    assert resp.status_code == 401
 
 
 async def test_login_wrong_password_locks_after_five_attempts(client):
@@ -118,12 +185,12 @@ async def test_login_wrong_password_locks_after_five_attempts(client):
 
     for _ in range(5):
         resp = await client.post("/api/auth/login", json={
-            "company_id": co.id, "login_id": holder.emp_code, "password": "wrong",
+            "login_id": holder.emp_code, "password": "wrong",
         })
         assert resp.status_code == 401
 
     resp = await client.post("/api/auth/login", json={
-        "company_id": co.id, "login_id": holder.emp_code, "password": "Passw0rd!",
+        "login_id": holder.emp_code, "password": "Passw0rd!",
     })
     assert resp.status_code == 423  # locked
 
@@ -135,13 +202,13 @@ async def test_login_failed_attempts_reset_after_success(client):
     # Fail twice - not enough to lock.
     for _ in range(2):
         resp = await client.post("/api/auth/login", json={
-            "company_id": co.id, "login_id": holder.emp_code, "password": "wrong",
+            "login_id": holder.emp_code, "password": "wrong",
         })
         assert resp.status_code == 401
 
     # A successful login must reset failed_login_count back to 0.
     resp = await client.post("/api/auth/login", json={
-        "company_id": co.id, "login_id": holder.emp_code, "password": "Passw0rd!",
+        "login_id": holder.emp_code, "password": "Passw0rd!",
     })
     assert resp.status_code == 200
 
@@ -150,12 +217,12 @@ async def test_login_failed_attempts_reset_after_success(client):
     # the lockout just being coded to allow up to 5 failures in total.
     for _ in range(3):
         resp = await client.post("/api/auth/login", json={
-            "company_id": co.id, "login_id": holder.emp_code, "password": "wrong",
+            "login_id": holder.emp_code, "password": "wrong",
         })
         assert resp.status_code == 401
 
     resp = await client.post("/api/auth/login", json={
-        "company_id": co.id, "login_id": holder.emp_code, "password": "Passw0rd!",
+        "login_id": holder.emp_code, "password": "Passw0rd!",
     })
     assert resp.status_code == 200  # still not locked
 
@@ -174,7 +241,7 @@ async def test_change_password_rejects_inactive_holder(client):
         co, holder = await _make_admin(session, company_code="CKS6", emp_code="ADMIN4")
 
     resp = await client.post("/api/auth/login", json={
-        "company_id": co.id, "login_id": holder.emp_code, "password": "Passw0rd!",
+        "login_id": holder.emp_code, "password": "Passw0rd!",
     })
     assert resp.status_code == 200
     access_token = resp.json()["access_token"]

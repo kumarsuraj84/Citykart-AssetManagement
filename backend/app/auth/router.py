@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 from sqlalchemy import func, or_, select
@@ -11,6 +12,10 @@ from app.core.security import (
 from app.holders.models import Holder
 from app.masters.models import Company
 from app.auth.schemas import ChangePasswordRequest, CompanyOption, LoginRequest, LoginResponse
+
+# Same logger name main.py configures a stderr handler for -- getLogger caches
+# by name, so this reuses that handler rather than silently going nowhere.
+logger = logging.getLogger("ckam.security")
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -62,25 +67,38 @@ async def list_login_companies(session: AsyncSession = Depends(get_session)):
 
 @router.post("/login", response_model=LoginResponse)
 async def login(body: LoginRequest, response: Response, session: AsyncSession = Depends(get_session)):
-    # login_id may be either the holder's Employee Code OR their email address
-    # (case-insensitively) -- many holders (stores, stock locations,
-    # installed-equipment locations) have no email at all, so this must never
-    # require email; it only adds an alternative for holders who have one.
-    # A partial unique index (company_id, lower(email)) WHERE email IS NOT
-    # NULL -- see migration 0005_holder_email_unique.py -- makes a duplicate
-    # email within one company structurally impossible; .order_by(Holder.id)
-    # here is cheap defense in depth, independent of that constraint.
+    # The login screen no longer asks which company to sign into -- login_id
+    # (Employee Code OR email address, case-insensitively) must resolve to
+    # exactly one holder across every ACTIVE company. emp_code and email are
+    # only unique *per company* (see migration 0005_holder_email_unique.py
+    # and Holder's own UniqueConstraint), so with more than one company it is
+    # possible, though unlikely, for the same login_id to match holders in
+    # two different companies -- e.g. two independently-run stores both using
+    # emp_code "EMP1". That is treated the same as "no match": a generic 401,
+    # never a hint that the id exists, plus a server-side warning so an admin
+    # can rename one of the colliding accounts. Silently picking one company
+    # would be a real account-takeover risk; refusing to guess is not.
     stmt = (
         select(Holder)
+        .join(Company, Holder.company_id == Company.id)
         .where(
-            Holder.company_id == body.company_id,
+            Company.is_active.is_(True),
+            Holder.is_active.is_(True),
+            Holder.password_hash.is_not(None),
             or_(Holder.emp_code == body.login_id, func.lower(Holder.email) == func.lower(body.login_id)),
         )
         .order_by(Holder.id)
     )
-    holder = (await session.execute(stmt)).scalars().first()
-    if holder is None or not holder.is_active or holder.password_hash is None:
+    matches = (await session.execute(stmt)).scalars().all()
+    if len(matches) != 1:
+        if len(matches) > 1:
+            logger.warning(
+                "Login id %r matched holders in %d different companies (holder ids: %s) -- "
+                "refusing to guess which one; rename one of the colliding emp_code/email values.",
+                body.login_id, len(matches), [h.id for h in matches],
+            )
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
+    holder = matches[0]
 
     now = datetime.now(timezone.utc)
     if holder.locked_until and holder.locked_until > now:

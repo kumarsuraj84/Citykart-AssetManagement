@@ -4,7 +4,12 @@ from app.masters.models import Company, Location, Department
 from app.holders.models import Holder
 
 
-async def _admin_headers(client, company_code="CKS6"):
+async def _admin_headers(client, company_code="CKS6", emp_code="HADMIN"):
+    # emp_code defaults to "HADMIN" for the common single-company-per-test case,
+    # but login no longer takes a company_id (the login screen doesn't ask for
+    # one -- see app/auth/router.py::login), so a test that calls this twice to
+    # set up two DIFFERENT companies must pass distinct emp_codes, or the second
+    # login becomes ambiguous across companies and correctly gets refused.
     async with SessionLocal() as session:
         co = Company(code=company_code, name="Holder Test Co")
         loc = Location(code=f"{company_code}-HO", name="HO")
@@ -12,14 +17,14 @@ async def _admin_headers(client, company_code="CKS6"):
         session.add_all([co, loc, dept])
         await session.flush()
         holder = Holder(
-            company_id=co.id, emp_code="HADMIN", name="Holder Admin",
+            company_id=co.id, emp_code=emp_code, name="Holder Admin",
             holder_type="EMPLOYEE", location_id=loc.id, department_id=dept.id,
             role="ADMIN", password_hash=hash_password("Passw0rd!"), must_change_password=False,
         )
         session.add(holder)
         await session.commit()
 
-    resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": "HADMIN", "password": "Passw0rd!"})
+    resp = await client.post("/api/auth/login", json={"login_id": emp_code, "password": "Passw0rd!"})
     token = resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}, co.id, loc.id, dept.id
 
@@ -83,8 +88,8 @@ async def test_non_admin_holder_list_scoped_to_own_company(client):
     """Finding 2 fix: GET /api/holders must never leak another company's
     holders to a non-ADMIN caller, even when they explicitly request a
     foreign company_id via the query string."""
-    headers_a, company_a, location_a, department_a = await _admin_headers(client, company_code="CKS9B")
-    headers_b, company_b, location_b, department_b = await _admin_headers(client, company_code="CKS9C")
+    headers_a, company_a, location_a, department_a = await _admin_headers(client, company_code="CKS9B", emp_code="HADMINB")
+    headers_b, company_b, location_b, department_b = await _admin_headers(client, company_code="CKS9C", emp_code="HADMINC")
 
     # A holder that exists only in company B -- would leak if scoping is broken.
     create_resp = await client.post("/api/holders", json={

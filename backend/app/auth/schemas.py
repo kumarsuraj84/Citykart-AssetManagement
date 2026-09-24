@@ -2,11 +2,16 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class LoginRequest(BaseModel):
-    company_id: int
     # Either the holder's Employee Code OR their email address. Many holders
     # (stores, stock locations, installed-equipment locations) have no email
     # at all, so email can only be an *additional* way in, never a
     # replacement for emp_code -- see the lookup in router.py::login.
+    #
+    # No company_id here on purpose: the login screen doesn't ask for a
+    # company, so login_id alone must resolve to exactly one holder across
+    # every active company -- see router.py::login for how an ambiguous
+    # match (the same emp_code or email reused in more than one company) is
+    # handled.
     login_id: str
     password: str
 

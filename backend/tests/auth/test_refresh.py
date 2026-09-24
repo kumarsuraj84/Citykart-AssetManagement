@@ -27,7 +27,7 @@ async def _make_admin(session, company_code="CKSR1", emp_code="ADMINR1"):
 
 async def _login(client, co, holder):
     resp = await client.post("/api/auth/login", json={
-        "company_id": co.id, "login_id": holder.emp_code, "password": "Passw0rd!",
+        "login_id": holder.emp_code, "password": "Passw0rd!",
     })
     assert resp.status_code == 200
     return resp
