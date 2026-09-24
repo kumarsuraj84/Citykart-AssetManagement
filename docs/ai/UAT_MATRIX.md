@@ -1,5 +1,15 @@
 # CKAM — UAT Matrix
 
+**AM-01 (2026-09-24) was a backend-only data-integrity stage** — indexes,
+historical event name snapshots, company/cost-centre integrity test
+coverage. No screen, route, or UI behavior changed, so the per-route rows
+below are unchanged from AM-00 except the Asset Detail row's timeline
+display (still functionally ✅, now additionally backed by snapshot-correct
+history — no new UAT category needed, this is a backend truthfulness fix,
+not a visible UI change). See `AM-01_DATA_INTEGRITY_REPORT.md` for the full
+backend verification evidence (170/170 tests, migration + trigger + index
+verification on both databases).
+
 Legend: ✅ verified this session · 🟡 spot-checked only (not full UAT) · ⬜ not yet checked · N/A not applicable
 
 Functional = backend/frontend tests pass. Design = real-browser visual check.
@@ -33,5 +43,5 @@ return, allot again` covers login → add asset → search → lifecycle actions
 QR/logout redirect → forced password change → logout. Confirmed the seeded
 test company is cleanly torn down afterward.
 
-**Backend:** 163/163 passing. **Frontend:** 56/56 passing (17 files),
+**Backend:** 170/170 passing (as of AM-01; was 163/163 at AM-00). **Frontend:** 56/56 passing (17 files),
 typecheck clean.

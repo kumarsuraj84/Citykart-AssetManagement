@@ -2,6 +2,65 @@
 
 Newest first. These override older spec/plan text where they conflict.
 
+## 2026-09-24 — V1 scope locked (AM-01 authorization)
+
+These decisions came directly from the user's review of the Product & Domain
+Architecture Assessment and are now locked for V1. Do not re-open them in a
+future session without an explicit new instruction — the assessment's own
+"business confirmation required" list has been answered by this entry.
+
+1. **No approval workflow in V1.** ADMIN/IT_TEAM may execute permitted
+   lifecycle transitions directly; every transaction stays fully auditable
+   via the existing append-only ledger. The architecture must not be built
+   in a way that blocks adding optional approval later, but no approval
+   engine work happens now. The lifecycle state machine itself is not
+   altered to make room for this.
+2. **Single current-holder/custody concept.** No split between "accountable
+   custodian" and "physical user" in V1 — the existing `Holder`/
+   `current_holder_id` model stays as one concept, provided its holder types
+   (`EMPLOYEE`/`STORE`/`INSTALLED`/`IT_STOCK`) genuinely represent CityKart's
+   real custody scenarios (confirmed true — see `AM-01_DATA_INTEGRITY_REPORT.md` §3.1/§8).
+3. **AMC/Insurance are future capabilities, not V1.** Keep the existing basic
+   warranty fields (`warranty_upto`) as-is; no contract-management module now.
+4. **Depreciation/accounting are out of scope.** CKAM is an operational
+   asset-management system, not a statutory fixed-asset accounting engine.
+   ThreadERP's multi-book depreciation architecture is explicitly not to be
+   copied.
+5. **Physical verification is a future capability.** Not built now, but the
+   QR/barcode architecture must remain suitable for it later (no design
+   decision should foreclose this).
+6. **Lost/Damaged tracking stays lifecycle-only in V1**: state, reason,
+   remarks, and audit/history. No employee cost-recovery, insurance
+   accounting, or write-off accounting workflows yet.
+7. **Custom Fields are REQUIRED — do not remove the master.** The real
+   problem is that it exists with zero consumers (confirmed in the AM-00
+   assessment). Wiring it into Add Asset / Asset Detail / import-export is a
+   future stage's work, not done in AM-01.
+8. **Procurement traceability is a core requirement**, including: Company,
+   Cost Centre, Vendor, PO Number, Invoice Number, Invoice Date, **PI
+   Number** (the internal reference for a payment made to a vendor — must
+   never be dropped from the data model or Asset 360), Purchase Date,
+   Purchase Cost, Serial Number, Brand, Model, Description, Category,
+   Subcategory, Warranty Upto, Asset Code. Not all fields need to be
+   mandatory; exact requiredness is defined later.
+9. **Auto-generated Asset Code stays mandatory.** The existing race-safe
+   numbering architecture (`code_counter`'s atomic UPSERT) is preserved
+   as-is unless a concrete defect is found — none was.
+10. **CKAM supports at least two CityKart companies.** An asset's Cost Centre
+    must belong to its own company — **confirmed already enforced** at both
+    asset creation (`procure_assets`) and bulk import (`commit_import`), and
+    structurally locked post-creation by the `trg_asset_no_identity_change`
+    DB trigger. Now test-covered on both paths (AM-01).
+11. **No login company selector** — already implemented (see the 2026-09-24
+    login-identity-resolution entry below); reconfirmed as the correct,
+    locked behavior, not reopened.
+12. **Core V1 lifecycle stays the existing simple one:** Procured/Registered
+    → IT Stock/Available → Assigned to User/Location → Returned to IT Stock
+    → Reassigned, plus the existing controlled cases (Repair, Lost/Found,
+    Disposed/Sold/Scrapped). Full chronological history must never be lost
+    — reinforced by AM-01's historical-snapshot fix, which stops a holder
+    rename from retroactively changing how that history displays.
+
 ## 2026-09-24 — Login has no company selector; identity resolution is fail-closed
 
 **Decision:** The login screen asks only for User ID (Emp Code or email) and

@@ -39,10 +39,27 @@ message / `DECISIONS.md`, don't just leave it checked off here).
 10. **`scoped_company_ids` doesn't incorporate `HolderCompanyAccess` grants**
     yet — an IT_TEAM/VIEWER holder with assigned cross-company access is
     currently under-scoped (sees only their own company). Under-granting,
-    not over-granting — safe direction to be wrong in, but a known gap if
-    multi-company staff access is ever needed.
+    not over-granting — safe direction to be wrong in. AM-01 documented this
+    fully (`AM-01_DATA_INTEGRITY_REPORT.md` §9) without resolving it: it's
+    genuinely either "needed for a shared multi-company asset team" or
+    "dormant scaffolding," and that call needs a business answer, not a
+    technical guess.
 11. **`get_active_rule`'s per-metric/company-specific vs. global-fallback
     ordering** has no dedicated unit test beyond integration coverage.
+12. **`holder.holder_type`, `holder.role`, `custom_field.field_type` have no
+    validation at all** — a client can submit any string and it's silently
+    accepted (confirmed by test in AM-01, `tests/core/test_closed_value_integrity.py`).
+    Proposed fix (not applied): a router-level check mirroring
+    `documents/router.py`'s existing `doc_type not in DOC_TYPES` pattern.
+    `asset_event.event_type` is, by contrast, already indirectly protected
+    (an unrecognized value can't match any status's allowed-event set, so it
+    422s cleanly) — also confirmed by test.
+13. **8 closed-value columns have no DB-level CHECK/ENUM** — `asset.status`,
+    `asset_event.event_type`, `asset_event.status_after`, `holder.holder_type`,
+    `holder.role`, `asset_document.doc_type`, `custom_field.field_type` are
+    all plain VARCHAR. Proposed as a future low-risk migration (current data
+    is 100% conformant) — not applied in AM-01 per its explicit "propose,
+    don't silently add" instruction.
 
 ## Resolved this session (kept here for traceability, remove once stale)
 
@@ -54,3 +71,12 @@ message / `DECISIONS.md`, don't just leave it checked off here).
   bumped to the 44px target height.
 - Logo file's baked-in near-white background plate removed (was invisible
   on white, visible as a halo on any tint).
+- Missing indexes on `asset.{status,current_holder_id,company_id,category_id}`
+  and `asset_event.{asset_id+event_date, event_date}` — added (AM-01).
+- Historical event display used to live-join the current Holder row for
+  from/to names, so a rename retroactively changed how past events read —
+  fixed via point-in-time name snapshots, in both the in-app timeline and
+  the movement-log export (AM-01).
+- Company/cost-centre cross-company mismatch — confirmed already prevented
+  on both the Add Asset and Import paths; the Import path lacked test
+  coverage for it, now added (AM-01).
