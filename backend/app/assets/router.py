@@ -6,10 +6,11 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
 from app.core.deps import ensure_company_in_scope, get_current_holder, require_role, scoped_company_ids
+from app.assets.custom_field_values import validate_custom_field_values
 from app.assets.models import Asset
-from app.assets.schemas import AssetCreateIn, AssetOut
+from app.assets.schemas import AssetCreateIn, AssetOut, AssetUpdateIn
 from app.assets.search_service import search_assets
-from app.assets.service import procure_assets
+from app.assets.service import compute_tax, procure_assets
 from app.lifecycle.service import apply_event
 from app.lifecycle.state_machine import LifecycleError
 from app.reports.export_service import asset_qr_png
@@ -131,6 +132,48 @@ async def get_asset(
     holder=Depends(get_current_holder),
 ):
     return await _get_scoped_asset(asset_id, session, holder)
+
+
+@router.put("/{asset_id}", response_model=AssetOut)
+async def update_asset(
+    asset_id: int,
+    body: AssetUpdateIn,
+    session: AsyncSession = Depends(get_session),
+    actor=Depends(require_role("ADMIN", "IT_TEAM")),
+):
+    """AM-02: the first general edit surface for an asset's EDITABLE DESCRIPTIVE
+    DATA (see the Asset Field Policy Matrix in docs/ai/AM-02_ASSET_DATA_MODEL_REPORT.md)
+    -- previously there was no way to correct e.g. a mistyped serial number or
+    add a PI Number after the fact without going through a lifecycle event,
+    which this deliberately is not: no asset_event row is written, no status/
+    holder change happens, nothing here touches the ledger. Identity fields
+    (asset_code/company_id/cost_center_id) aren't in AssetUpdateIn at all --
+    trg_asset_no_identity_change would reject them at the database level even
+    if they were."""
+    asset = await _get_scoped_asset(asset_id, session, actor)
+    data = body.model_dump()
+    try:
+        await validate_custom_field_values(session, data.get("custom_fields"))
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+
+    tax_amount, total_cost = compute_tax(data.get("purchase_cost"), data.get("tax_percent"))
+
+    for field in (
+        "legacy_asset_code", "brand", "model", "serial_number", "description",
+        "vendor_id", "po_number", "po_date", "invoice_number", "invoice_date",
+        "pi_number", "pi_date", "purchase_cost", "tax_percent", "warranty_upto",
+    ):
+        setattr(asset, field, data[field])
+    asset.tax_amount = tax_amount
+    asset.total_cost = total_cost
+    if data.get("custom_fields") is not None:
+        asset.custom_fields = data["custom_fields"]
+    asset.updated_by = actor.id
+
+    await session.commit()
+    await session.refresh(asset)
+    return asset
 
 
 @router.delete("/{asset_id}", status_code=204)

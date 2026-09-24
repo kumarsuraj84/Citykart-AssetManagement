@@ -1,11 +1,25 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.assets.custom_field_values import validate_custom_field_values
 from app.assets.models import Asset
 from app.holders.models import Holder
 from app.lifecycle.service import apply_event
 from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Location
 from app.numbering.service import build_code_tokens, generate_code, get_active_rule
+
+
+def compute_tax(purchase_cost, tax_percent) -> tuple[Decimal, Decimal]:
+    """Shared by procure_assets and the AM-02 asset-update endpoint so the two
+    call sites can never drift into computing tax differently. Decimal
+    arithmetic throughout (never float) to avoid binary floating-point
+    rounding errors in money math -- Decimal(str(x)), not Decimal(x), so an
+    incoming float/int is converted via its decimal string representation,
+    not its imprecise binary value."""
+    cost = Decimal(str(purchase_cost or 0))
+    percent = Decimal(str(tax_percent or 0))
+    tax_amount = (cost * percent / Decimal(100)).quantize(Decimal("0.01"))
+    return tax_amount, cost + tax_amount
 
 
 async def _get_initial_holder(session: AsyncSession, company_id: int, initial_holder_id: int | None) -> Holder:
@@ -59,18 +73,21 @@ async def procure_assets(session: AsyncSession, data: dict, quantity: int, actor
     holder = await _get_initial_holder(session, company_id, data.get("initial_holder_id"))
     location = await session.get(Location, holder.location_id)
 
+    # AM-02: validated once here, then reused verbatim for every asset this call
+    # creates (the "buying 20 mice" quantity case) -- the same custom_fields dict
+    # is attached to every row per the existing code below, so one validation
+    # pass covers all of them; a ValueError here becomes the same 422 as any
+    # other bad-input problem in this function.
+    await validate_custom_field_values(session, data.get("custom_fields"))
+
     tokens = build_code_tokens(
         company=company, location=location, cost_center=cost_center, category=category,
         subcategory=subcategory, purchase_date=data["purchase_date"],
     )
 
-    # Decimal arithmetic throughout (never float) to avoid binary floating-point rounding
-    # errors in money math. Decimal(str(x)) rather than Decimal(x) so an incoming float/int
-    # is converted via its decimal string representation, not its imprecise binary value.
     purchase_cost = Decimal(str(data.get("purchase_cost") or 0))
     tax_percent = Decimal(str(data.get("tax_percent") or 0))
-    tax_amount = (purchase_cost * tax_percent / Decimal(100)).quantize(Decimal("0.01"))
-    total_cost = purchase_cost + tax_amount
+    tax_amount, total_cost = compute_tax(purchase_cost, tax_percent)
 
     event_date = datetime.combine(data["purchase_date"], datetime.min.time()).replace(tzinfo=timezone.utc)
 

@@ -4,8 +4,21 @@ from app.core.db import get_session
 from app.core.deps import STAFF_ROLES, get_current_holder, require_role, scoped_company_ids
 from app.holders.service import HolderService
 from app.holders.schemas import CompanyAccessIn, HolderIn, HolderOut, ResetPasswordOut
+from app.holders.models import HOLDER_TYPES, ROLES
 
 router = APIRouter(prefix="/api/holders", tags=["holders"])
+
+
+def _validate_holder_fields(data: dict) -> None:
+    # AM-01 confirmed holder_type/role accepted any string with no validation at all --
+    # AM-02 closes that gap, same pattern as documents/router.py's existing doc_type
+    # check. HOLDER_TYPES/ROLES were already defined in app/holders/models.py and used
+    # everywhere else in the codebase; they just weren't checked against an incoming
+    # request body.
+    if data.get("holder_type") not in HOLDER_TYPES:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"holder_type must be one of {HOLDER_TYPES}")
+    if data.get("role") not in ROLES:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"role must be one of {ROLES}")
 
 
 @router.get("", response_model=list[HolderOut])
@@ -31,7 +44,9 @@ async def create_holder(
     session: AsyncSession = Depends(get_session),
     holder=Depends(require_role("ADMIN")),
 ):
-    return await HolderService(session).create(body.model_dump(), holder.id)
+    data = body.model_dump()
+    _validate_holder_fields(data)
+    return await HolderService(session).create(data, holder.id)
 
 
 @router.put("/{holder_id}", response_model=HolderOut)
@@ -41,7 +56,9 @@ async def update_holder(
     session: AsyncSession = Depends(get_session),
     holder=Depends(require_role("ADMIN")),
 ):
-    obj = await HolderService(session).update(holder_id, body.model_dump(), holder.id)
+    data = body.model_dump()
+    _validate_holder_fields(data)
+    obj = await HolderService(session).update(holder_id, data, holder.id)
     if obj is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     return obj

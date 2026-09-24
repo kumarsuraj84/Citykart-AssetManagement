@@ -1,46 +1,35 @@
-"""AM-01 closed-value integrity review.
+"""Closed-value integrity: 8 columns whose values are conceptually a closed
+set (an enum), but are plain VARCHAR at the database level:
 
-CKAM has 8 columns whose values are conceptually a closed set (an enum), but
-which are plain VARCHAR at the database level with no CHECK constraint or
-Postgres ENUM type -- the allowed values live only as Python tuples:
+  asset.status                    ASSET_STATUSES   (app.assets.models)
+  asset_event.event_type          EVENT_TYPES      (app.lifecycle.models)
+  asset_event.status_after        ASSET_STATUSES   (derived by transition())
+  holder.holder_type              HOLDER_TYPES     (app.holders.models)
+  holder.role                     ROLES            (app.holders.models)
+  asset_document.doc_type         DOC_TYPES        (app.documents.models)
+  custom_field.field_type         FIELD_TYPES      (app.masters.models)
 
-  asset.status                    ASSET_STATUSES        (app.assets.models)
-  asset_event.event_type          EVENT_TYPES            (app.lifecycle.models)
-  asset_event.status_after        ASSET_STATUSES         (derived by transition())
-  holder.holder_type              HOLDER_TYPES           (app.holders.models)
-  holder.role                     ROLES                  (app.holders.models)
-  asset_document.doc_type         DOC_TYPES               (app.documents.models)
-  custom_field.field_type         (no tuple defined at all -- see below)
+AM-01 found holder.holder_type, holder.role and custom_field.field_type
+accepted ANY string with no validation at all (and custom_field.field_type
+had no allowed-values tuple even defined). AM-02 closed all three gaps with
+router-level checks, same pattern as the already-existing asset_document
+.doc_type check. This file now confirms the fix (it originally documented
+the gap and said "flip this assertion once fixed" -- that's what happened).
 
-This file documents, per field, whether an API caller can currently submit an
-unrecognized value and what happens. It intentionally does NOT add validation
-where none exists -- per the AM-01 authorization, closing these gaps (Pydantic
-Literal, router-level checks, or DB CHECK constraints) is proposed separately
-in the AM-01 report, not silently applied here.
+asset.status/asset_event.status_after are still never directly settable by
+any API request body (only written by lifecycle.service.apply_event) -- no
+client-facing input surface to test. asset_event.event_type remains only
+indirectly protected (an unrecognized value can't match any status's allowed
+event set, so it 422s via LifecycleError) -- also confirmed below, unchanged
+from AM-01.
 
-Findings, one test class per field:
-
-- asset_document.doc_type: ALREADY VALIDATED (documents/router.py checks
-  `doc_type not in DOC_TYPES` -> 422) with its own existing test,
-  test_invalid_doc_type_is_rejected_cleanly in tests/documents/test_router.py.
-  Not duplicated here.
-- asset_event.event_type: INDIRECTLY protected -- transition() looks up
-  `_ALLOWED_EVENTS.get(current_status, set())`; an unrecognized event_type is
-  never a member of any status's allowed set, so it cleanly 422s via
-  LifecycleError. Confirmed below (no prior test asserted this for a
-  genuinely unknown string, only for known-event-wrong-state cases).
-- holder.holder_type, holder.role: NOT validated anywhere -- HOLDER_TYPES/
-  ROLES exist as tuples in app/holders/models.py but neither
-  app/holders/router.py nor app/holders/service.py ever checks an incoming
-  value against them. Confirmed as a real gap below.
-- custom_field.field_type: NOT validated anywhere, and no tuple exists to
-  validate against -- only a code comment (`# text|number|date|dropdown|
-  checkbox`) documents the intended values. Confirmed as a real gap below.
-- asset.status: never directly settable by any API request body (only
-  written by lifecycle.service.apply_event, itself constrained to values
-  transition() can return) -- there is no client-facing input surface to
-  test here at all.
-"""
+CHECK constraints for holder_type/role/field_type were added in AM-02
+(migration 0007) once these API-level checks made 100% conformance
+guaranteed going forward -- see docs/ai/AM-02_ASSET_DATA_MODEL_REPORT.md.
+asset.status/event_type/status_after deliberately do NOT have CHECK
+constraints -- they're the surface most likely to gain new values if a
+future stage adds e.g. an approval workflow, and a same-migration CHECK
+there would just have to be dropped again later."""
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.holders.models import Holder
@@ -72,31 +61,29 @@ async def _headers(client, emp_code):
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 
-class TestHolderTypeNotValidated:
-    async def test_an_unrecognized_holder_type_is_currently_accepted(self, client):
-        """Documents the gap: HOLDER_TYPES = ("EMPLOYEE","STORE","INSTALLED","IT_STOCK")
-        exists in app/holders/models.py but is never checked. This test asserts
-        TODAY's actual (permissive) behavior -- if it starts failing because someone
-        added real validation, that's the gap being closed, not a regression; update
-        this test to assert the 422 at that point instead."""
+class TestHolderTypeValidated:
+    async def test_an_unrecognized_holder_type_is_rejected_cleanly(self, client):
         co_id, loc_id, dept_id = await _company_with_admin("CVI1")
         headers = await _headers(client, "ADM-CVI1")
         resp = await client.post("/api/holders", json={
             "company_id": co_id, "emp_code": "BADTYPE1", "name": "Bad Type Holder",
             "holder_type": "NOT_A_REAL_TYPE", "location_id": loc_id, "department_id": dept_id,
         }, headers=headers)
-        assert resp.status_code == 201, (
-            "holder_type is currently unvalidated at both the Pydantic and service "
-            "layers -- if this now 422s, HOLDER_TYPES validation has been added; "
-            "flip this assertion and remove the gap note in the AM-01 report."
-        )
-        assert resp.json()["holder_type"] == "NOT_A_REAL_TYPE"
+        assert resp.status_code == 422
+        assert "holder_type" in resp.json()["detail"]
+
+    async def test_a_valid_holder_type_still_works(self, client):
+        co_id, loc_id, dept_id = await _company_with_admin("CVI1B")
+        headers = await _headers(client, "ADM-CVI1B")
+        resp = await client.post("/api/holders", json={
+            "company_id": co_id, "emp_code": "GOODTYPE1", "name": "Good Type Holder",
+            "holder_type": "IT_STOCK", "location_id": loc_id, "department_id": dept_id,
+        }, headers=headers)
+        assert resp.status_code == 201
 
 
-class TestHolderRoleNotValidated:
-    async def test_an_unrecognized_role_is_currently_accepted(self, client):
-        """Same gap as holder_type: ROLES = ("ADMIN","IT_TEAM","VIEWER","HOLDER") is
-        defined but never checked against an incoming value."""
+class TestHolderRoleValidated:
+    async def test_an_unrecognized_role_is_rejected_cleanly(self, client):
         co_id, loc_id, dept_id = await _company_with_admin("CVI2")
         headers = await _headers(client, "ADM-CVI2")
         resp = await client.post("/api/holders", json={
@@ -104,30 +91,29 @@ class TestHolderRoleNotValidated:
             "holder_type": "EMPLOYEE", "location_id": loc_id, "department_id": dept_id,
             "role": "SUPER_ADMIN_GOD_MODE",
         }, headers=headers)
-        assert resp.status_code == 201, (
-            "role is currently unvalidated -- if this now 422s, ROLES validation "
-            "has been added; flip this assertion and remove the gap note."
-        )
-        assert resp.json()["role"] == "SUPER_ADMIN_GOD_MODE"
+        assert resp.status_code == 422
+        assert "role" in resp.json()["detail"]
 
 
-class TestCustomFieldTypeNotValidated:
-    async def test_an_unrecognized_field_type_is_currently_accepted(self, client):
-        """No tuple of allowed field_type values even exists in code (only a comment:
-        `# text|number|date|dropdown|checkbox` in app/masters/models.py) -- this is
-        the least-protected of the closed-value fields."""
+class TestCustomFieldTypeValidated:
+    async def test_an_unrecognized_field_type_is_rejected_cleanly(self, client):
         co_id, _loc_id, _dept_id = await _company_with_admin("CVI3")
         headers = await _headers(client, "ADM-CVI3")
         resp = await client.post("/api/masters/custom-fields", json={
             "field_key": "not_a_real_field_type", "label": "Bad Field Type",
             "field_type": "interpretive_dance", "is_required": False, "sort_order": 0,
         }, headers=headers)
-        assert resp.status_code == 201, (
-            "field_type is currently unvalidated, and no allowed-values list even "
-            "exists to validate against -- if this now 422s, that has changed; "
-            "flip this assertion and remove the gap note."
-        )
-        assert resp.json()["field_type"] == "interpretive_dance"
+        assert resp.status_code == 422
+        assert "field_type" in resp.json()["detail"]
+
+    async def test_a_valid_field_type_still_works(self, client):
+        co_id, _loc_id, _dept_id = await _company_with_admin("CVI3B")
+        headers = await _headers(client, "ADM-CVI3B")
+        resp = await client.post("/api/masters/custom-fields", json={
+            "field_key": "cvi3b_asset_tag_color", "label": "Tag Color",
+            "field_type": "text", "is_required": False, "sort_order": 0,
+        }, headers=headers)
+        assert resp.status_code == 201
 
 
 class TestEventTypeIsProtectedIndirectly:
@@ -136,9 +122,7 @@ class TestEventTypeIsProtectedIndirectly:
         even though nothing validates it directly: transition() only ever looks up
         `_ALLOWED_EVENTS.get(current_status, set())`, so an event_type that isn't a
         member of ANY status's allowed set can never match -- it falls through to
-        the same LifecycleError -> 422 path a legal-but-wrong-state event uses.
-        No prior test asserted this for a value that isn't even a known EVENT_TYPES
-        member (only for real event types used from the wrong status)."""
+        the same LifecycleError -> 422 path a legal-but-wrong-state event uses."""
         async with SessionLocal() as session:
             co = Company(code="CVI4", name="CVI4 Co")
             cat = AssetCategory(code="IT-CVI4", name="IT")

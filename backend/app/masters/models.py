@@ -61,12 +61,15 @@ class Vendor(Base, AuditMixin, SoftDeleteMixin):
     contact_email: Mapped[str | None] = mapped_column(String(200))
 
 
+FIELD_TYPES = ("text", "number", "date", "dropdown", "checkbox")
+
+
 class CustomField(Base, AuditMixin, SoftDeleteMixin):
     __tablename__ = "custom_field"
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     field_key: Mapped[str] = mapped_column(String(100), unique=True)
     label: Mapped[str] = mapped_column(String(200))
-    field_type: Mapped[str] = mapped_column(String(20))  # text|number|date|dropdown|checkbox
+    field_type: Mapped[str] = mapped_column(String(20))  # one of FIELD_TYPES above
     options: Mapped[dict | None] = mapped_column(JSON)
     is_required: Mapped[bool] = mapped_column(default=False)
     sort_order: Mapped[int] = mapped_column(default=0)
