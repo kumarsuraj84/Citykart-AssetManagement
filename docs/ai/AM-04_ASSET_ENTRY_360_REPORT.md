@@ -860,19 +860,26 @@ addition to whatever stage picks it up.
 - Backend implementation commit: `61aec38` — `feat(assets): AM-04 -- required-UDF enforcement + append-only field-change audit`
 - Frontend implementation commit: `041c09b` — `feat(ui): AM-04 -- Add Asset + Asset 360 redesign, procurement/UDF wiring, edit mode`
 - Governance/report commit: `555b84c` — `docs(ai): AM-04 report + governance updates`
-- Final-hash correction commits: `a88bbe5`, then `ab73015` (this edit) — see note
-- **Ending HEAD: `ab73015`**
-- `git status` after all commits: clean
+- Final-hash correction commits: `a88bbe5`, `ab73015`, and `e784516` (which
+  itself repeated the same mistake it was trying to fix — see note)
+- **REPORT CONTENT HEAD (the commit this paragraph itself was written
+  against): `e784516`**
+- `git status` at that point: clean
 
-*(A commit cannot contain its own hash, so the very last line of a self-
-describing "Final Git State" section is structurally unable to be
-literally 100% self-referential — the best available discipline, applied
-here, is: commit, read the real hash back from `git log`, then write it
-down, rather than asserting it in advance. Two correction passes were
-needed this time (the first guessed a hash instead of reading one back,
-repeating the exact AM-03 mistake this note exists to avoid); this line
-was written after `ab73015` was committed and confirmed via `git log
---oneline -1`, and no further correction commit follows it.)*
+*(A commit cannot contain its own hash — every prior attempt at this
+section (AM-03's report, and this report's own `a88bbe5`/`ab73015`/
+`e784516` chain) tried to name its "ending HEAD" and got it wrong by
+exactly one commit each time, because writing the correction is itself a
+new commit. AM-05's authorization named this the infinite
+commit→edit→new-commit→hash-changes-again loop and ended it: from AM-05
+onward, a report's committed content names the commit it was written
+against ("REPORT CONTENT HEAD"), and the actual final hash after the
+report/governance commit is reported once, in the chat response, and
+never chased back into the file with another correction commit. This
+paragraph is the last edit this file will ever make to its own Final Git
+State — the true final AM-04 HEAD was `e784516` at the time AM-05's
+preflight fixed this, and AM-05's own commits are additional history on
+top of it, not a further correction to this section.)*
 
 ## 46. Final Verdict
 
