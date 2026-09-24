@@ -96,9 +96,18 @@ interface FieldChange {
   actor_name: string | null;
   request_id: string;
   created_at: string;
+  // AM-07: only ever populated for a controlled correction row -- NULL on
+  // an ordinary descriptive/procurement edit row. Its presence is the
+  // signal the Changes tab uses to render a row as "Correction".
+  reason: string | null;
 }
 
 interface HolderOption {
+  id: number;
+  name: string;
+}
+
+interface MasterOption {
   id: number;
   name: string;
 }
@@ -179,9 +188,22 @@ function ReadField({ label, value }: { label: string; value: ReactNode }) {
 }
 
 const CHANGE_COLUMNS: DataTableColumn<FieldChange>[] = [
+  {
+    key: "type",
+    header: "Type",
+    cell: (c) =>
+      c.reason ? (
+        <span className="rounded-full border-transparent bg-info-soft px-2 py-0.5 text-xs font-medium text-on-info-soft">
+          Correction
+        </span>
+      ) : (
+        <span className="text-xs text-muted-foreground">Edit</span>
+      ),
+  },
   { key: "field", header: "Field", cell: (c) => <span className="font-mono text-xs">{c.field_name}</span> },
   { key: "old", header: "Old Value", cell: (c) => c.old_value ?? "—" },
   { key: "new", header: "New Value", cell: (c) => c.new_value ?? "—" },
+  { key: "reason", header: "Reason", cell: (c) => c.reason ?? "—" },
   { key: "actor", header: "Changed By", cell: (c) => c.actor_name ?? `#${c.actor_id}` },
   { key: "when", header: "When", cellClassName: "text-right", cell: (c) => new Date(c.created_at).toLocaleString() },
 ];
@@ -376,6 +398,80 @@ export function AssetDetail({ assetId }: { assetId: number }) {
     },
   });
 
+  // AM-07: Correct Classification / Purchase Date -- a deliberately
+  // separate dialog from Edit mode above, never folded into it. Category/
+  // Subcategory/Purchase Date are ordinary Selects/Input here (unlike
+  // Edit mode, which never renders them as controls at all) because this
+  // dialog's entire purpose IS changing them, through the dedicated
+  // correction endpoint, never PUT /api/assets/{id}.
+  const [correctionOpen, setCorrectionOpen] = useState(false);
+  const [correctionCategoryId, setCorrectionCategoryId] = useState("");
+  const [correctionSubcategoryId, setCorrectionSubcategoryId] = useState("");
+  const [correctionPurchaseDate, setCorrectionPurchaseDate] = useState("");
+  const [correctionReason, setCorrectionReason] = useState("");
+
+  const { data: categories = [] } = useQuery({
+    queryKey: ["masters", "categories"],
+    queryFn: () => apiClient.get<MasterOption[]>("/masters/categories"),
+    enabled: correctionOpen,
+  });
+  const { data: subcategoriesRaw = [] } = useQuery({
+    queryKey: ["masters", "subcategories"],
+    queryFn: () => apiClient.get<(MasterOption & { category_id: number })[]>("/masters/subcategories"),
+    enabled: correctionOpen,
+  });
+  const correctionSubcategories = subcategoriesRaw.filter((s) => String(s.category_id) === correctionCategoryId);
+  const categoryName = (id: string) => categories.find((c) => String(c.id) === id)?.name ?? id;
+  const subcategoryName = (id: string) => (id ? subcategoriesRaw.find((s) => String(s.id) === id)?.name ?? id : "—");
+
+  function openCorrection() {
+    if (!asset) return;
+    setCorrectionCategoryId(String(asset.category_id));
+    setCorrectionSubcategoryId(asset.subcategory_id != null ? String(asset.subcategory_id) : "");
+    setCorrectionPurchaseDate(asset.purchase_date);
+    setCorrectionReason("");
+    correctionMutation.reset();
+    setCorrectionOpen(true);
+  }
+
+  function closeCorrection() {
+    setCorrectionOpen(false);
+  }
+
+  function handleCorrectionCategoryChange(value: string) {
+    setCorrectionCategoryId(value);
+    // A subcategory that doesn't belong to the newly-picked category is
+    // cleared automatically, never silently left selected and pointing at
+    // an invalid pair the server would just reject anyway.
+    const stillValid = subcategoriesRaw.some(
+      (s) => String(s.id) === correctionSubcategoryId && String(s.category_id) === value,
+    );
+    if (!stillValid) setCorrectionSubcategoryId("");
+  }
+
+  const correctionCategoryChanged = asset ? correctionCategoryId !== String(asset.category_id) : false;
+  const correctionSubcategoryChanged = asset
+    ? correctionSubcategoryId !== (asset.subcategory_id != null ? String(asset.subcategory_id) : "")
+    : false;
+  const correctionDateChanged = asset ? correctionPurchaseDate !== asset.purchase_date : false;
+  const correctionHasChange = correctionCategoryChanged || correctionSubcategoryChanged || correctionDateChanged;
+  const correctionReasonValid = correctionReason.trim().length > 0;
+
+  const correctionMutation = useMutation({
+    mutationFn: () => {
+      const body: Record<string, unknown> = { reason: correctionReason.trim() };
+      if (correctionCategoryChanged) body.category_id = Number(correctionCategoryId);
+      if (correctionSubcategoryChanged) body.subcategory_id = correctionSubcategoryId ? Number(correctionSubcategoryId) : null;
+      if (correctionDateChanged) body.purchase_date = correctionPurchaseDate;
+      return apiClient.post<Asset>(`/assets/${assetId}/corrections`, body);
+    },
+    onSuccess: (updated) => {
+      qc.setQueryData(["assets", assetId], updated);
+      qc.invalidateQueries({ queryKey: ["assets", assetId, "changes"] });
+      closeCorrection();
+    },
+  });
+
   if (assetQ.isError && assetQ.error instanceof ApiError && assetQ.error.status === 404) {
     return (
       <div className="flex flex-col gap-4">
@@ -420,7 +516,10 @@ export function AssetDetail({ assetId }: { assetId: number }) {
             {qrUrl && <img src={qrUrl} alt="Asset QR code" width={64} height={64} />}
             <Button variant="outline" size="sm" onClick={() => window.print()}>Print Label</Button>
             {canEdit && !editing && (
-              <Button variant="secondary" size="sm" onClick={startEdit}>Edit</Button>
+              <>
+                <Button variant="outline" size="sm" onClick={openCorrection}>Correct Classification</Button>
+                <Button variant="secondary" size="sm" onClick={startEdit}>Edit</Button>
+              </>
             )}
           </>
         }
@@ -709,6 +808,120 @@ export function AssetDetail({ assetId }: { assetId: number }) {
             </Button>
             <AsyncButton onClick={() => actMutation.mutate()} disabled={!canConfirm} pending={actMutation.isPending} pendingLabel="Saving…">
               Confirm
+            </AsyncButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/*
+        AM-07: a deliberately separate dialog from ordinary Edit mode above
+        -- Category/Subcategory/Purchase Date only ever change through here,
+        never through PUT /api/assets/{id}. Asset Code is shown but never
+        editable, with explicit text saying so.
+      */}
+      <Dialog open={correctionOpen} onOpenChange={(open) => !open && closeCorrection()}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Correct Classification / Purchase Date</DialogTitle>
+          </DialogHeader>
+
+          {asset && (
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1 rounded-md border bg-muted/50 px-3 py-2 text-sm">
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Asset Code</span>
+                  <span className="font-mono font-medium">{asset.asset_code}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Asset Code will not change.</p>
+              </div>
+
+              <FormField htmlFor="correction-category" label="Category">
+                <Select value={correctionCategoryId || undefined} onValueChange={handleCorrectionCategoryChange}>
+                  <SelectTrigger id="correction-category" aria-label="Category">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+
+              <FormField htmlFor="correction-subcategory" label="Sub-Category" helperText="Optional.">
+                <Select
+                  value={correctionSubcategoryId || undefined}
+                  onValueChange={(v) => setCorrectionSubcategoryId(v)}
+                >
+                  <SelectTrigger id="correction-subcategory" aria-label="Sub-Category">
+                    <SelectValue placeholder="None" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {correctionSubcategories.map((s) => (
+                      <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+
+              <FormField htmlFor="correction-purchase-date" label="Purchase Date">
+                <Input
+                  id="correction-purchase-date"
+                  aria-label="Purchase Date"
+                  type="date"
+                  value={correctionPurchaseDate}
+                  onChange={(e) => setCorrectionPurchaseDate(e.target.value)}
+                />
+              </FormField>
+
+              {correctionHasChange && (
+                <div className="flex flex-col gap-1 rounded-md border bg-muted/50 px-3 py-2 text-sm">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Impact Summary</p>
+                  {correctionCategoryChanged && (
+                    <p>Category: {categoryName(String(asset.category_id))} → {categoryName(correctionCategoryId)}</p>
+                  )}
+                  {correctionSubcategoryChanged && (
+                    <p>
+                      Sub-Category: {subcategoryName(asset.subcategory_id != null ? String(asset.subcategory_id) : "")}
+                      {" → "}
+                      {subcategoryName(correctionSubcategoryId)}
+                    </p>
+                  )}
+                  {correctionDateChanged && (
+                    <p>Purchase Date: {asset.purchase_date} → {correctionPurchaseDate}</p>
+                  )}
+                  <p className="text-muted-foreground">Asset Code: {asset.asset_code} — unchanged</p>
+                </div>
+              )}
+
+              <FormField htmlFor="correction-reason" label="Reason" required helperText="Required. Explain why this correction is needed.">
+                <Textarea
+                  id="correction-reason"
+                  aria-label="Reason"
+                  value={correctionReason}
+                  onChange={(e) => setCorrectionReason(e.target.value)}
+                />
+              </FormField>
+
+              {correctionMutation.isError && (
+                <p className="text-sm text-destructive" role="alert">
+                  {correctionMutation.error instanceof Error ? correctionMutation.error.message : "Correction failed."}
+                </p>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeCorrection}>
+              Cancel
+            </Button>
+            <AsyncButton
+              onClick={() => correctionMutation.mutate()}
+              disabled={!correctionHasChange || !correctionReasonValid}
+              pending={correctionMutation.isPending}
+              pendingLabel="Saving…"
+            >
+              Confirm Correction
             </AsyncButton>
           </DialogFooter>
         </DialogContent>

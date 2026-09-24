@@ -40,6 +40,16 @@ const CUSTOM_FIELD_DEFS = [
   { field_key: "asset_tag", label: "Asset Tag", field_type: "text", options: null, is_required: true, sort_order: 1, company_id: null },
 ];
 
+const CATEGORIES = [
+  { id: 1, name: "IT Equipment" },
+  { id: 4, name: "Furniture" },
+];
+const SUBCATEGORIES = [
+  { id: 2, name: "Laptop", category_id: 1 },
+  { id: 3, name: "Desktop", category_id: 1 },
+  { id: 8, name: "Chair", category_id: 4 },
+];
+
 function mockGets(overrides: Record<string, unknown> = {}) {
   (apiClient.get as any).mockImplementation((path: string) => {
     if (path === "/assets/1") return Promise.resolve(overrides.asset ?? FULL_ASSET);
@@ -48,6 +58,8 @@ function mockGets(overrides: Record<string, unknown> = {}) {
     if (path.startsWith("/holders")) return Promise.resolve(overrides.holders ?? [{ id: 5, name: "Ankur" }]);
     if (path.startsWith("/masters/vendors")) return Promise.resolve(overrides.vendors ?? [{ id: 7, name: "Acme Traders" }]);
     if (path.startsWith("/masters/custom-fields")) return Promise.resolve(overrides.customFieldDefs ?? CUSTOM_FIELD_DEFS);
+    if (path.startsWith("/masters/categories")) return Promise.resolve(overrides.categories ?? CATEGORIES);
+    if (path.startsWith("/masters/subcategories")) return Promise.resolve(overrides.subcategories ?? SUBCATEGORIES);
     return Promise.resolve([]);
   });
 }
@@ -330,5 +342,163 @@ describe("AssetDetail (Asset 360)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /print label/i }));
     expect(printSpy).toHaveBeenCalled();
+  });
+});
+
+describe("AssetDetail -- AM-07 asset correction", () => {
+  it("shows the Correct Classification action only for ADMIN/IT_TEAM, never VIEWER/HOLDER", async () => {
+    mockGets();
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    expect(screen.getByRole("button", { name: /correct classification/i })).toBeInTheDocument();
+  });
+
+  it("is hidden for VIEWER", async () => {
+    mockAuth("VIEWER");
+    mockGets();
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    expect(screen.queryByRole("button", { name: /correct classification/i })).not.toBeInTheDocument();
+  });
+
+  it("opens with current values prefilled, and Asset Code shown read-only", async () => {
+    mockGets();
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+
+    fireEvent.click(screen.getByRole("button", { name: /correct classification/i }));
+    const dialog = await screen.findByRole("dialog", { name: /correct classification/i });
+    expect(within(dialog).getByText("FA/HO01/IT/LAP/CK_1")).toBeInTheDocument();
+    expect(within(dialog).getByText(/asset code will not change/i)).toBeInTheDocument();
+    await waitFor(() => expect(within(dialog).getByRole("combobox", { name: "Category" })).toHaveTextContent("IT Equipment"));
+    await waitFor(() => expect(within(dialog).getByRole("combobox", { name: "Sub-Category" })).toHaveTextContent("Laptop"));
+    expect(within(dialog).getByLabelText("Purchase Date")).toHaveValue("2025-06-01");
+  });
+
+  it("ordinary Edit mode never shows Category/Subcategory/Purchase Date controls", async () => {
+    mockGets();
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
+    expect(screen.queryByLabelText("Category")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Sub-Category")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Purchase Date")).not.toBeInTheDocument();
+  });
+
+  it("Category change updates the Sub-Category options and clears an invalid old selection", async () => {
+    mockGets();
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    fireEvent.click(screen.getByRole("button", { name: /correct classification/i }));
+    await screen.findByRole("dialog", { name: /correct classification/i });
+
+    await pickSelectOption("Category", "Furniture");
+    const subcategoryTrigger = screen.getByRole("combobox", { name: "Sub-Category" });
+    expect(subcategoryTrigger).toHaveTextContent(/none/i); // Laptop no longer valid for Furniture
+
+    fireEvent.click(subcategoryTrigger);
+    expect(await screen.findByRole("option", { name: "Chair" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Laptop" })).not.toBeInTheDocument();
+  });
+
+  it("requires a reason and at least one real change before Confirm is enabled", async () => {
+    mockGets();
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    fireEvent.click(screen.getByRole("button", { name: /correct classification/i }));
+    await screen.findByRole("dialog", { name: /correct classification/i });
+
+    const confirm = screen.getByRole("button", { name: /confirm correction/i });
+    expect(confirm).toBeDisabled(); // no change yet, no reason yet
+
+    fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "Wrong category selected initially" } });
+    expect(confirm).toBeDisabled(); // reason alone isn't enough -- nothing actually changed
+
+    await pickSelectOption("Category", "Furniture");
+    await pickSelectOption("Sub-Category", "Chair");
+    expect(confirm).toBeEnabled();
+  });
+
+  it("shows an impact summary naming the old/new values and that Asset Code is unchanged", async () => {
+    mockGets();
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    fireEvent.click(screen.getByRole("button", { name: /correct classification/i }));
+    await screen.findByRole("dialog", { name: /correct classification/i });
+
+    await pickSelectOption("Category", "Furniture");
+    await pickSelectOption("Sub-Category", "Chair");
+
+    expect(screen.getByText(/impact summary/i)).toBeInTheDocument();
+    expect(screen.getByText("Category: IT Equipment → Furniture")).toBeInTheDocument();
+    expect(screen.getByText("Sub-Category: Laptop → Chair")).toBeInTheDocument();
+    expect(screen.getByText(/asset code: fa\/ho01\/it\/lap\/ck_1 — unchanged/i)).toBeInTheDocument();
+  });
+
+  it("submits only the changed fields, refreshes Asset 360, and closes the dialog on success", async () => {
+    mockGets();
+    (apiClient.post as any).mockResolvedValue({ ...FULL_ASSET, category_id: 4, subcategory_id: 8, category_name: "Furniture", subcategory_name: "Chair" });
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    fireEvent.click(screen.getByRole("button", { name: /correct classification/i }));
+    await screen.findByRole("dialog", { name: /correct classification/i });
+
+    await pickSelectOption("Category", "Furniture");
+    await pickSelectOption("Sub-Category", "Chair");
+    fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "Wrong category selected initially" } });
+    fireEvent.click(screen.getByRole("button", { name: /confirm correction/i }));
+
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/assets/1/corrections", {
+      reason: "Wrong category selected initially", category_id: 4, subcategory_id: 8,
+    }));
+    // purchase_date was never touched -- must not appear in the body at all.
+    expect((apiClient.post as any).mock.calls[0][1]).not.toHaveProperty("purchase_date");
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /correct classification/i })).not.toBeInTheDocument());
+    clickTab("Overview");
+    const overviewPanel = await screen.findByRole("tabpanel", { name: "Overview" });
+    expect(within(overviewPanel).getByText("Furniture")).toBeInTheDocument();
+  });
+
+  it("shows a server validation error inside the dialog without closing it", async () => {
+    mockGets();
+    (apiClient.post as any).mockRejectedValue(new Error("purchase date cannot be after the asset's earliest recorded event (2025-06-01)"));
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    fireEvent.click(screen.getByRole("button", { name: /correct classification/i }));
+    await screen.findByRole("dialog", { name: /correct classification/i });
+
+    fireEvent.change(screen.getByLabelText("Purchase Date"), { target: { value: "2025-06-10" } });
+    fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "trying to move it later" } });
+    fireEvent.click(screen.getByRole("button", { name: /confirm correction/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/earliest recorded event/i);
+    expect(screen.getByRole("dialog", { name: /correct classification/i })).toBeInTheDocument();
+  });
+
+  it("the Changes tab shows a correction entry distinctly, with its reason", async () => {
+    mockGets({
+      changes: [
+        {
+          id: 1, field_name: "category_id", old_value: "CAT-1 - IT Equipment (#1)", new_value: "CAT-4 - Furniture (#4)",
+          actor_id: 9, actor_name: "Admin", request_id: "r1", created_at: "2025-07-01T00:00:00Z",
+          reason: "Wrong category selected initially",
+        },
+        {
+          id: 2, field_name: "brand", old_value: "Dell", new_value: "HP",
+          actor_id: 9, actor_name: "Admin", request_id: "r2", created_at: "2025-07-02T00:00:00Z",
+          reason: null,
+        },
+      ],
+    });
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+
+    clickTab("Changes");
+    const panel = await screen.findByRole("tabpanel", { name: "Changes" });
+    expect(within(panel).getByText("Correction")).toBeInTheDocument();
+    expect(within(panel).getByText("Wrong category selected initially")).toBeInTheDocument();
+    expect(within(panel).getByText("CAT-1 - IT Equipment (#1)")).toBeInTheDocument();
+    expect(within(panel).getByText("Edit")).toBeInTheDocument();
   });
 });
