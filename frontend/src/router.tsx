@@ -1,4 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
 import {
   Link,
   Outlet,
@@ -7,19 +6,43 @@ import {
   createRoute,
   createRouter,
   redirect,
+  useLocation,
   useNavigate,
   useRouter,
 } from "@tanstack/react-router";
-import { ChevronDown } from "lucide-react";
+import {
+  LayoutDashboard,
+  Boxes,
+  ListChecks,
+  PackagePlus,
+  Upload,
+  BarChart3,
+  Building2,
+  MapPin,
+  Users2,
+  Wallet,
+  Tag,
+  Tags,
+  Truck,
+  SlidersHorizontal,
+  UserCog,
+  Hash,
+  LogOut,
+  type LucideIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
 import { apiClient } from "./lib/api-client";
 import { applySession, logoutSession, safeNextPath, type SessionPayload } from "./lib/auth-fetch";
 import { useAuthStore } from "./lib/auth-store";
@@ -43,11 +66,6 @@ import VendorsSetup from "./routes/setup/vendors";
 import CustomFieldsSetup from "./routes/setup/custom-fields";
 import HoldersSetup from "./routes/setup/holders";
 import CodeRuleSetup from "./routes/setup/code-rule";
-
-interface CompanyOption {
-  id: number;
-  name: string;
-}
 
 /** `?next=<in-app path>`: where to go after login / the forced password change
  * (e.g. the asset page a QR label pointed at before the user was logged in). */
@@ -75,36 +93,28 @@ const WRITE_ROLES = ["ADMIN", "IT_TEAM"];
 const REPORT_ROLES = ["ADMIN", "IT_TEAM", "VIEWER"];
 
 // "Setup lists" -- IT_TEAM may manage masters but not users/roles/code rule (§6).
-const MASTER_SETUP_LINKS = [
-  { to: "/setup/companies", label: "Companies" },
-  { to: "/setup/locations", label: "Locations" },
-  { to: "/setup/departments", label: "Departments" },
-  { to: "/setup/cost-centers", label: "Cost Centers" },
-  { to: "/setup/categories", label: "Categories" },
-  { to: "/setup/subcategories", label: "Sub-Categories" },
-  { to: "/setup/vendors", label: "Vendors" },
-  { to: "/setup/custom-fields", label: "Custom Fields" },
-] as const;
-const ADMIN_SETUP_LINKS = [
-  { to: "/setup/holders", label: "Holders & Users" },
-  { to: "/setup/code-rule", label: "Code Rule" },
-] as const;
+const MASTER_SETUP_LINKS: { to: string; label: string; icon: LucideIcon }[] = [
+  { to: "/setup/companies", label: "Companies", icon: Building2 },
+  { to: "/setup/locations", label: "Locations", icon: MapPin },
+  { to: "/setup/departments", label: "Departments", icon: Users2 },
+  { to: "/setup/cost-centers", label: "Cost Centers", icon: Wallet },
+  { to: "/setup/categories", label: "Categories", icon: Tag },
+  { to: "/setup/subcategories", label: "Sub-Categories", icon: Tags },
+  { to: "/setup/vendors", label: "Vendors", icon: Truck },
+  { to: "/setup/custom-fields", label: "Custom Fields", icon: SlidersHorizontal },
+];
+const ADMIN_SETUP_LINKS: { to: string; label: string; icon: LucideIcon }[] = [
+  { to: "/setup/holders", label: "Holders & Users", icon: UserCog },
+  { to: "/setup/code-rule", label: "Code Rule", icon: Hash },
+];
 
 function LoginPage() {
   const { next } = loginRoute.useSearch();
   const navigate = useNavigate();
   const router = useRouter();
-  // Real company list, fetched from the (deliberately unauthenticated) /auth/companies
-  // endpoint -- replaces the single hard-coded company id 1 this screen used to ship
-  // with (see that endpoint's own docstring for why it's safe to expose without auth).
-  const { data: companies = [] } = useQuery({
-    queryKey: ["auth", "companies"],
-    queryFn: () => apiClient.get<CompanyOption[]>("/auth/companies"),
-  });
 
-  async function handleLogin(values: { companyId: number; loginId: string; password: string }) {
+  async function handleLogin(values: { loginId: string; password: string }) {
     const result = await apiClient.post<SessionPayload>("/auth/login", {
-      company_id: values.companyId,
       login_id: values.loginId,
       password: values.password,
     });
@@ -120,9 +130,21 @@ function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-4">
-      <img src="/logo.webp" alt="CityKart Asset Management" className="h-20 w-auto" />
-      {companies.length > 0 && <LoginForm companies={companies} onSubmit={handleLogin} />}
+    <main className="flex min-h-screen flex-col items-center justify-center gap-7 bg-muted p-4">
+      <img
+        src="/logo.png"
+        alt="CityKart Asset Management"
+        className="h-auto w-64 sm:w-72 md:w-80"
+      />
+      <div className="flex w-full max-w-md flex-col items-center gap-1.5 text-center">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+          Sign in to Citykart Asset Management
+        </h1>
+        <p className="text-sm text-muted-foreground sm:text-base">
+          Your company&apos;s Asset Management platform
+        </p>
+      </div>
+      <LoginForm onSubmit={handleLogin} />
     </main>
   );
 }
@@ -151,8 +173,12 @@ function ChangePasswordPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-4">
-      <img src="/logo.webp" alt="CityKart Asset Management" className="h-20 w-auto" />
+    <main className="flex min-h-screen flex-col items-center justify-center gap-7 p-4">
+      <img
+        src="/logo.png"
+        alt="CityKart Asset Management"
+        className="h-auto w-64 sm:w-72 md:w-80"
+      />
       <ChangePasswordForm required={required} onSubmit={handleSubmit} />
       <Button variant="outline" onClick={handleLogout}>
         Log out
@@ -161,40 +187,18 @@ function ChangePasswordPage() {
   );
 }
 
-function NavLink({ to, children }: { to: string; children: React.ReactNode }) {
+function SidebarNavItem({ to, label, icon: Icon }: { to: string; label: string; icon?: LucideIcon }) {
+  const location = useLocation();
+  const isActive = location.pathname === to;
   return (
-    <Link to={to} className="hover:underline" activeProps={{ className: "underline" }}>
-      {children}
-    </Link>
-  );
-}
-
-function SetupMenu({ role }: { role: string | null }) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger className="flex items-center gap-1 hover:underline">
-        Setup <ChevronDown className="size-4" aria-hidden />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        <DropdownMenuLabel>Masters</DropdownMenuLabel>
-        {MASTER_SETUP_LINKS.map((l) => (
-          <DropdownMenuItem key={l.to} asChild>
-            <Link to={l.to}>{l.label}</Link>
-          </DropdownMenuItem>
-        ))}
-        {role === "ADMIN" && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>Administration</DropdownMenuLabel>
-            {ADMIN_SETUP_LINKS.map((l) => (
-              <DropdownMenuItem key={l.to} asChild>
-                <Link to={l.to}>{l.label}</Link>
-              </DropdownMenuItem>
-            ))}
-          </>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <SidebarMenuItem>
+      <SidebarMenuButton asChild isActive={isActive} tooltip={label}>
+        <Link to={to}>
+          {Icon && <Icon className="h-4 w-4" />}
+          <span>{label}</span>
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
   );
 }
 
@@ -210,30 +214,89 @@ function AppShell() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-        <nav aria-label="Main" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm font-medium">
-          {canReport && <NavLink to="/dashboard">Dashboard</NavLink>}
-          {canReport && <NavLink to="/assets">Assets</NavLink>}
-          {canWrite && <NavLink to="/assets/new">Add Asset</NavLink>}
-          {canWrite && <NavLink to="/import">Import</NavLink>}
-          {canReport && <NavLink to="/reports">Reports</NavLink>}
-          {canWrite && <SetupMenu role={role} />}
-          <NavLink to="/my-assets">My Assets</NavLink>
-        </nav>
-        <div className="flex items-center gap-2">
-          <Link to="/change-password" className="text-sm hover:underline">
-            Change password
-          </Link>
-          <Button variant="outline" onClick={handleLogout}>
-            Log out
-          </Button>
+    <SidebarProvider>
+      <div className="flex min-h-screen w-full flex-col">
+        {/* Light top header, matching the page canvas -- the logo has dark
+            navy/red text with no light-colored plate behind it (transparent
+            PNG), so it only reads clearly against a light background. Nav
+            lives in the sidebar below, not here. */}
+        <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b bg-background px-3">
+          <div className="flex items-center gap-2">
+            <SidebarTrigger />
+            <Link to="/" className="flex items-center gap-2 pl-1">
+              <img src="/logo.png" alt="" className="h-8 w-auto" />
+              <span className="hidden text-sm font-semibold tracking-tight text-foreground sm:inline">
+                CityKart Asset Management
+              </span>
+            </Link>
+          </div>
+          <div className="flex items-center gap-3 text-sm">
+            <Link to="/change-password" className="hidden text-muted-foreground hover:text-foreground hover:underline sm:inline">
+              Change password
+            </Link>
+            <Button variant="outline" size="sm" onClick={handleLogout} className="gap-1.5">
+              <LogOut className="h-4 w-4" />
+              Log out
+            </Button>
+          </div>
+        </header>
+
+        <div className="flex min-h-0 flex-1">
+          <Sidebar collapsible="icon" className="top-14 h-[calc(100svh-3.5rem)]">
+            <SidebarContent>
+              <nav aria-label="Main">
+                <SidebarGroup>
+                  <SidebarMenu>
+                    {canReport && <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} />}
+                    <SidebarNavItem to="/my-assets" label="My Assets" icon={Boxes} />
+                  </SidebarMenu>
+                </SidebarGroup>
+
+                {canReport && (
+                  <SidebarGroup>
+                    <SidebarGroupLabel>Assets</SidebarGroupLabel>
+                    <SidebarMenu>
+                      <SidebarNavItem to="/assets" label="Asset Register" icon={ListChecks} />
+                      {canWrite && <SidebarNavItem to="/assets/new" label="Add Asset" icon={PackagePlus} />}
+                      {canWrite && <SidebarNavItem to="/import" label="Import" icon={Upload} />}
+                      <SidebarNavItem to="/reports" label="Reports" icon={BarChart3} />
+                    </SidebarMenu>
+                  </SidebarGroup>
+                )}
+
+                {canWrite && (
+                  <SidebarGroup>
+                    <SidebarGroupLabel>Masters</SidebarGroupLabel>
+                    <SidebarMenu>
+                      {MASTER_SETUP_LINKS.map((l) => (
+                        <SidebarNavItem key={l.to} to={l.to} label={l.label} icon={l.icon} />
+                      ))}
+                    </SidebarMenu>
+                  </SidebarGroup>
+                )}
+
+                {role === "ADMIN" && (
+                  <SidebarGroup>
+                    <SidebarGroupLabel>Administration</SidebarGroupLabel>
+                    <SidebarMenu>
+                      {ADMIN_SETUP_LINKS.map((l) => (
+                        <SidebarNavItem key={l.to} to={l.to} label={l.label} icon={l.icon} />
+                      ))}
+                    </SidebarMenu>
+                  </SidebarGroup>
+                )}
+              </nav>
+            </SidebarContent>
+          </Sidebar>
+
+          <SidebarInset>
+            <main className="flex-1 p-4 md:p-6">
+              <Outlet />
+            </main>
+          </SidebarInset>
         </div>
-      </header>
-      <main className="flex-1 p-4">
-        <Outlet />
-      </main>
-    </div>
+      </div>
+    </SidebarProvider>
   );
 }
 

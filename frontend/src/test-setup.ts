@@ -24,3 +24,19 @@ if (typeof Element.prototype.releasePointerCapture !== "function") {
 if (typeof Element.prototype.scrollIntoView !== "function") {
   Element.prototype.scrollIntoView = () => {};
 }
+
+// jsdom doesn't implement matchMedia, but the shared Sidebar component's
+// use-mobile hook (AppShell's nav) calls it to detect the mobile breakpoint.
+// Without this, any test that renders AppShell throws "not a function".
+if (typeof window.matchMedia !== "function") {
+  window.matchMedia = (query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }) as unknown as MediaQueryList;
+}

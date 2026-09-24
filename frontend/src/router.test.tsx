@@ -12,7 +12,6 @@ const ASSET = { id: 123, asset_code: "FA/HO01/IT/LAP/CK_123", description: "Scan
 
 function mockApi() {
   (apiClient.get as any).mockImplementation((path: string) => {
-    if (path === "/auth/companies") return Promise.resolve([{ id: 1, name: "Citykart Stores" }]);
     if (path === "/reports/dashboard") {
       return Promise.resolve({ status_counts: {}, stock_by_location: [], warranty_alerts: [], long_allocation_alerts: [] });
     }
@@ -41,7 +40,7 @@ async function submitLogin() {
   await screen.findByLabelText(/user id/i);
   fireEvent.change(screen.getByLabelText(/user id/i), { target: { value: "CS1" } });
   fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: "Temp-Passw0rd" } });
-  fireEvent.click(screen.getByRole("button", { name: /log in/i }));
+  fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 }
 
 beforeEach(() => {
@@ -133,36 +132,30 @@ describe("login flow", () => {
 });
 
 describe("AppShell navigation", () => {
-  async function openSetup() {
-    const trigger = await screen.findByRole("button", { name: /setup/i });
-    fireEvent.keyDown(trigger, { key: "Enter" });
-    return screen.findByRole("menu");
-  }
+  // The Setup dropdown is gone -- Masters/Administration are always-visible
+  // sidebar groups now, so their links are just ordinary nav links.
 
   it("gives an ADMIN every screen, including Import, Reports and all Setup screens", async () => {
     loginAs("ADMIN");
     renderAt("/dashboard");
     const nav = await screen.findByRole("navigation", { name: "Main" });
-    for (const name of ["Dashboard", "Assets", "Add Asset", "Import", "Reports", "My Assets"]) {
-      expect(within(nav).getByRole("link", { name })).toBeInTheDocument();
-    }
-    const menu = await openSetup();
     for (const name of [
+      "Dashboard", "My Assets", "Asset Register", "Add Asset", "Import", "Reports",
       "Companies", "Locations", "Departments", "Cost Centers", "Categories", "Sub-Categories",
       "Vendors", "Custom Fields", "Holders & Users", "Code Rule",
     ]) {
-      expect(within(menu).getByRole("menuitem", { name })).toBeInTheDocument();
+      expect(within(nav).getByRole("link", { name })).toBeInTheDocument();
     }
-    expect(within(menu).getByRole("menuitem", { name: "Code Rule" })).toHaveAttribute("href", "/setup/code-rule");
+    expect(within(nav).getByRole("link", { name: "Code Rule" })).toHaveAttribute("href", "/setup/code-rule");
   });
 
   it("gives IT_TEAM the masters but not holders/users or the code rule", async () => {
     loginAs("IT_TEAM");
     renderAt("/dashboard");
-    const menu = await openSetup();
-    expect(within(menu).getByRole("menuitem", { name: "Cost Centers" })).toBeInTheDocument();
-    expect(within(menu).queryByRole("menuitem", { name: "Code Rule" })).not.toBeInTheDocument();
-    expect(within(menu).queryByRole("menuitem", { name: "Holders & Users" })).not.toBeInTheDocument();
+    const nav = await screen.findByRole("navigation", { name: "Main" });
+    expect(within(nav).getByRole("link", { name: "Cost Centers" })).toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Code Rule" })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Holders & Users" })).not.toBeInTheDocument();
   });
 
   it("gives a VIEWER read-only screens only", async () => {
@@ -172,7 +165,7 @@ describe("AppShell navigation", () => {
     expect(within(nav).getByRole("link", { name: "Reports" })).toBeInTheDocument();
     expect(within(nav).queryByRole("link", { name: "Import" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("link", { name: "Add Asset" })).not.toBeInTheDocument();
-    expect(within(nav).queryByRole("button", { name: /setup/i })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Companies" })).not.toBeInTheDocument();
   });
 
   it("gives a HOLDER only My Assets", async () => {
