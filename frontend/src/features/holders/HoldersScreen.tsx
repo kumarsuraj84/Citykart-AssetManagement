@@ -1,9 +1,9 @@
 import { useState } from "react";
+import { Users, Pencil, Trash2, KeyRound } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -19,6 +19,7 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogAction,
+  AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
 import {
   Select,
@@ -27,14 +28,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
+import { EmptyState } from "@/components/shared/EmptyState";
+import { AsyncButton } from "@/components/shared/AsyncButton";
+import { FormField } from "@/components/shared/FormField";
 
 const HOLDER_TYPES = ["EMPLOYEE", "STORE", "INSTALLED", "IT_STOCK"] as const;
 const ROLES = ["ADMIN", "IT_TEAM", "VIEWER", "HOLDER"] as const;
@@ -110,10 +108,18 @@ export function HoldersScreen() {
   const qc = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [originalRole, setOriginalRole] = useState<string | null>(null);
   const [draft, setDraft] = useState<HolderDraft>(emptyDraft);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [deactivateRow, setDeactivateRow] = useState<HolderRow | null>(null);
 
-  const { data: holders = [] } = useQuery({
+  const {
+    data: holders = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ["holders"],
     queryFn: () => apiClient.get<HolderRow[]>("/holders"),
   });
@@ -133,7 +139,7 @@ export function HoldersScreen() {
     queryFn: () => apiClient.get<Department[]>("/masters/departments"),
   });
 
-  const companyName = (id: number) => companies.find((c) => c.id === id)?.name ?? id;
+  const companyName = (id: number) => companies.find((c) => c.id === id)?.name ?? String(id);
 
   const createMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) => apiClient.post("/holders", payload),
@@ -160,18 +166,28 @@ export function HoldersScreen() {
     },
   });
 
+  const deactivateMutation = useMutation({
+    mutationFn: (id: number) => apiClient.delete(`/holders/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["holders"] });
+      setDeactivateRow(null);
+    },
+  });
+
   function setField(key: keyof HolderDraft, value: string) {
     setDraft((d) => ({ ...d, [key]: value }));
   }
 
   function openAdd() {
     setEditingId(null);
+    setOriginalRole(null);
     setDraft(emptyDraft);
     setFormOpen(true);
   }
 
   function openEdit(h: HolderRow) {
     setEditingId(h.id);
+    setOriginalRole(h.role);
     setDraft({
       company_id: String(h.company_id),
       emp_code: h.emp_code,
@@ -189,6 +205,7 @@ export function HoldersScreen() {
   function closeForm() {
     setFormOpen(false);
     setEditingId(null);
+    setOriginalRole(null);
     setDraft(emptyDraft);
   }
 
@@ -201,44 +218,67 @@ export function HoldersScreen() {
     }
   }
 
+  const roleChanged = originalRole !== null && draft.role !== originalRole;
+  const savePending = createMutation.isPending || updateMutation.isPending;
+
+  const columns: DataTableColumn<HolderRow>[] = [
+    { key: "emp_code", header: "Emp Code", cell: (h) => h.emp_code },
+    { key: "name", header: "Name", cell: (h) => h.name },
+    { key: "holder_type", header: "Type", cell: (h) => h.holder_type },
+    { key: "role", header: "Role", cell: (h) => h.role },
+    { key: "company", header: "Company", cell: (h) => companyName(h.company_id) },
+    {
+      key: "__actions",
+      header: <span className="sr-only">Actions</span>,
+      headerClassName: "w-32 text-right",
+      cellClassName: "text-right",
+      cell: (h) => (
+        <div className="flex justify-end gap-1">
+          <Button variant="ghost" size="icon" aria-label={`Edit ${h.name}`} onClick={() => openEdit(h)}>
+            <Pencil className="h-4 w-4" aria-hidden="true" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={`Reset password for ${h.name}`}
+            onClick={() => resetMutation.mutate(h.id)}
+          >
+            <KeyRound className="h-4 w-4" aria-hidden="true" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={`Deactivate ${h.name}`}
+            onClick={() => setDeactivateRow(h)}
+          >
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Users</h1>
-        <Button onClick={openAdd}>Add</Button>
-      </div>
+      <PageHeader title="Holders" actions={<Button onClick={openAdd}>Add</Button>} />
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Emp Code</TableHead>
-            <TableHead>Name</TableHead>
-            <TableHead>Type</TableHead>
-            <TableHead>Role</TableHead>
-            <TableHead>Company</TableHead>
-            <TableHead />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {holders.map((h) => (
-            <TableRow key={h.id}>
-              <TableCell>{h.emp_code}</TableCell>
-              <TableCell>{h.name}</TableCell>
-              <TableCell>{h.holder_type}</TableCell>
-              <TableCell>{h.role}</TableCell>
-              <TableCell>{companyName(h.company_id)}</TableCell>
-              <TableCell className="flex justify-end gap-2">
-                <Button variant="outline" size="sm" onClick={() => openEdit(h)}>
-                  Edit
-                </Button>
-                <Button size="sm" onClick={() => resetMutation.mutate(h.id)}>
-                  Reset Password
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+      <DataTable<HolderRow>
+        columns={columns}
+        rows={holders}
+        rowKey={(h) => h.id}
+        isLoading={isLoading}
+        isError={isError}
+        errorMessage={error instanceof Error ? error.message : undefined}
+        onRetry={() => refetch()}
+        emptyState={
+          <EmptyState
+            icon={Users}
+            title="No holders yet"
+            description="Add employees, stores, or stock locations that can hold assets."
+            action={<Button onClick={openAdd}>Add</Button>}
+          />
+        }
+      />
 
       <Dialog open={formOpen} onOpenChange={(open) => (open ? setFormOpen(true) : closeForm())}>
         <DialogContent>
@@ -247,8 +287,7 @@ export function HoldersScreen() {
           </DialogHeader>
 
           <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="company_id">Company</Label>
+            <FormField htmlFor="company_id" label="Company">
               <Select value={draft.company_id || undefined} onValueChange={(v) => setField("company_id", v)}>
                 <SelectTrigger id="company_id" aria-label="Company">
                   <SelectValue />
@@ -261,30 +300,27 @@ export function HoldersScreen() {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            </FormField>
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="emp_code">Emp Code</Label>
+            <FormField htmlFor="emp_code" label="Emp Code">
               <Input
                 id="emp_code"
                 aria-label="Emp Code"
                 value={draft.emp_code}
                 onChange={(e) => setField("emp_code", e.target.value)}
               />
-            </div>
+            </FormField>
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="name">Name</Label>
+            <FormField htmlFor="name" label="Name">
               <Input
                 id="name"
                 aria-label="Name"
                 value={draft.name}
                 onChange={(e) => setField("name", e.target.value)}
               />
-            </div>
+            </FormField>
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="holder_type">Type</Label>
+            <FormField htmlFor="holder_type" label="Type">
               <Select value={draft.holder_type || undefined} onValueChange={(v) => setField("holder_type", v)}>
                 <SelectTrigger id="holder_type" aria-label="Type">
                   <SelectValue />
@@ -297,10 +333,9 @@ export function HoldersScreen() {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            </FormField>
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="location_id">Location</Label>
+            <FormField htmlFor="location_id" label="Location">
               <Select value={draft.location_id || undefined} onValueChange={(v) => setField("location_id", v)}>
                 <SelectTrigger id="location_id" aria-label="Location">
                   <SelectValue />
@@ -313,10 +348,9 @@ export function HoldersScreen() {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            </FormField>
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="department_id">Department</Label>
+            <FormField htmlFor="department_id" label="Department">
               <Select value={draft.department_id || undefined} onValueChange={(v) => setField("department_id", v)}>
                 <SelectTrigger id="department_id" aria-label="Department">
                   <SelectValue />
@@ -329,30 +363,35 @@ export function HoldersScreen() {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            </FormField>
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="email">Email</Label>
+            <FormField htmlFor="email" label="Email">
               <Input
                 id="email"
                 aria-label="Email"
                 value={draft.email}
                 onChange={(e) => setField("email", e.target.value)}
               />
-            </div>
+            </FormField>
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="phone">Phone</Label>
+            <FormField htmlFor="phone" label="Phone">
               <Input
                 id="phone"
                 aria-label="Phone"
                 value={draft.phone}
                 onChange={(e) => setField("phone", e.target.value)}
               />
-            </div>
+            </FormField>
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="role">Role</Label>
+            <FormField
+              htmlFor="role"
+              label="Role"
+              helperText={
+                editingId != null
+                  ? `Current role: ${originalRole}. Controls what this person can see and do in CKAM.`
+                  : "Controls what this person can see and do in CKAM."
+              }
+            >
               <Select value={draft.role || undefined} onValueChange={(v) => setField("role", v)}>
                 <SelectTrigger id="role" aria-label="Role">
                   <SelectValue />
@@ -365,14 +404,21 @@ export function HoldersScreen() {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+              {roleChanged && (
+                <p className="text-xs font-medium text-warning" role="alert">
+                  Changing role from {originalRole} to {draft.role} will immediately change this person's access.
+                </p>
+              )}
+            </FormField>
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={closeForm}>
               Cancel
             </Button>
-            <Button onClick={handleSave}>Save</Button>
+            <AsyncButton onClick={handleSave} pending={savePending} pendingLabel="Saving…">
+              Save
+            </AsyncButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -394,6 +440,28 @@ export function HoldersScreen() {
           <p className="font-mono text-lg">{tempPassword}</p>
           <AlertDialogFooter>
             <AlertDialogAction onClick={() => setTempPassword(null)}>Close</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={deactivateRow !== null} onOpenChange={(open) => !open && setDeactivateRow(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Deactivate {deactivateRow?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deactivateRow?.name} will no longer be able to sign in or be assigned assets. Assets already in
+              their custody and their history are not affected. This can be reversed later by an administrator.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deactivateMutation.isPending}
+              onClick={() => deactivateRow && deactivateMutation.mutate(deactivateRow.id)}
+            >
+              Deactivate
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

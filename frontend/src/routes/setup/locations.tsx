@@ -13,6 +13,7 @@ export default function LocationsSetup() {
       config={{
         resource: "locations",
         title: "Locations",
+        singular: "Location",
         columns: [
           { key: "code", label: "Code" },
           { key: "name", label: "Name" },
@@ -20,6 +21,10 @@ export default function LocationsSetup() {
         ],
         formFields: [
           { key: "code", label: "Code" },
+          { key: "name", label: "Name" },
+          { key: "address", label: "Address" },
+        ],
+        editFields: [
           { key: "name", label: "Name" },
           { key: "address", label: "Address" },
         ],

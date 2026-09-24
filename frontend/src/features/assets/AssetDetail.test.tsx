@@ -37,7 +37,7 @@ const FULL_ASSET = {
 };
 
 const CUSTOM_FIELD_DEFS = [
-  { field_key: "asset_tag", label: "Asset Tag", field_type: "text", options: null, is_required: true, sort_order: 1 },
+  { field_key: "asset_tag", label: "Asset Tag", field_type: "text", options: null, is_required: true, sort_order: 1, company_id: null },
 ];
 
 function mockGets(overrides: Record<string, unknown> = {}) {
@@ -143,6 +143,44 @@ describe("AssetDetail (Asset 360)", () => {
     expect(within(panel).getByText("TAG-1")).toBeInTheDocument();
     // Not silently hidden just because no active definition matches it anymore.
     expect(within(panel).getByText("kept for history")).toBeInTheDocument();
+  });
+
+  it("AM-05: only Global and this asset's own company's custom fields are editable -- another company's field never appears, and its stored value is still shown read-only", async () => {
+    const scopedAsset = {
+      ...FULL_ASSET,
+      // company_id: 1 (from FULL_ASSET). A value under a key whose
+      // definition is scoped to a DIFFERENT company -- e.g. because it was
+      // re-scoped after this asset's value was recorded -- must behave like
+      // the AM-04 retired-field precedent: preserved and visible, never
+      // editable here.
+      custom_fields: { asset_tag: "TAG-1", other_company_field: "kept for history" },
+    };
+    const scopedDefs = [
+      { field_key: "asset_tag", label: "Asset Tag", field_type: "text", options: null, is_required: true, sort_order: 1, company_id: null },
+      { field_key: "own_company_tag", label: "Own Company Tag", field_type: "text", options: null, is_required: false, sort_order: 2, company_id: 1 },
+      { field_key: "other_company_field", label: "Other Company Field", field_type: "text", options: null, is_required: true, sort_order: 3, company_id: 2 },
+    ];
+    mockGets({ asset: scopedAsset, customFieldDefs: scopedDefs });
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+
+    // Read-only tab: the retained value under the other company's field key is still shown.
+    clickTab("Custom Fields");
+    const panel = await screen.findByRole("tabpanel", { name: "Custom Fields" });
+    expect(within(panel).getByText("kept for history")).toBeInTheDocument();
+
+    // Edit mode: Global + own-company fields are editable; the other company's field is not offered at all.
+    fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
+    expect(screen.getByLabelText("Asset Tag")).toBeInTheDocument();
+    expect(screen.getByLabelText("Own Company Tag")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Other Company Field")).not.toBeInTheDocument();
+
+    // Saving is never blocked by the other company's required field, and the
+    // retained value under its key is preserved verbatim rather than dropped.
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => expect(apiClient.put).toHaveBeenCalled());
+    const [, body] = (apiClient.put as any).mock.calls[0];
+    expect(body.custom_fields.other_company_field).toBe("kept for history");
   });
 
   it("displays the lifecycle timeline under History", async () => {

@@ -11,8 +11,10 @@ export default function DepartmentsSetup() {
       config={{
         resource: "departments",
         title: "Departments",
+        singular: "Department",
         columns: [{ key: "name", label: "Name" }],
         formFields: [{ key: "name", label: "Name" }],
+        editFields: [{ key: "name", label: "Name" }],
       }}
     />
   );

@@ -28,6 +28,7 @@ describe("CodeRuleScreen", () => {
     (apiClient.get as any).mockResolvedValue([]);
     renderWithClient(<CodeRuleScreen />);
 
+    await waitFor(() => expect(screen.getByLabelText(/prefix template/i)).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText(/prefix template/i), {
       target: { value: "FA/{cost_center.code}/{category.code}/{subcategory.code}/CK_" },
     });
@@ -71,6 +72,7 @@ describe("CodeRuleScreen", () => {
     (apiClient.post as any).mockResolvedValue({ ...EXISTING, id: 1 });
     renderWithClient(<CodeRuleScreen />);
 
+    await waitFor(() => expect(screen.getByLabelText(/prefix template/i)).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText(/prefix template/i), { target: { value: "FA/{category.code}/" } });
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
 

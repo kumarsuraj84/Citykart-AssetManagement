@@ -19,14 +19,16 @@ export default function SubcategoriesSetup() {
     queryKey: ["masters", "categories"],
     queryFn: () => apiClient.get<Category[]>("/masters/categories"),
   });
+  const categoryName = (id: unknown) => categories.find((c) => c.id === id)?.name ?? String(id);
 
   return (
     <MasterCrudScreen<Subcategory>
       config={{
         resource: "subcategories",
         title: "Asset Subcategories",
+        singular: "Subcategory",
         columns: [
-          { key: "category_id", label: "Category" },
+          { key: "category_id", label: "Category", format: categoryName },
           { key: "code", label: "Code" },
           { key: "name", label: "Name" },
         ],
@@ -40,6 +42,7 @@ export default function SubcategoriesSetup() {
           { key: "code", label: "Code" },
           { key: "name", label: "Name" },
         ],
+        editFields: [{ key: "name", label: "Name" }],
       }}
     />
   );

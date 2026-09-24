@@ -81,6 +81,10 @@ interface CustomFieldDef {
   options: { choices?: string[] } | null;
   is_required: boolean;
   sort_order: number;
+  // AM-05: null = Global (applies to every company); a real id = applies
+  // only to that company's assets. See app/assets/custom_field_values.py
+  // on the backend for the matching applicability rule.
+  company_id: number | null;
 }
 
 interface FieldChange {
@@ -241,9 +245,19 @@ export function AssetDetail({ assetId }: { assetId: number }) {
     queryKey: ["masters", "custom-fields"],
     queryFn: () => apiClient.get<CustomFieldDef[]>("/masters/custom-fields"),
   });
+  // AM-05: only fields applicable to THIS asset's company -- Global
+  // (company_id null) plus this company's own -- are offered for editing
+  // here. A value already stored under a key that falls outside this set
+  // (e.g. its field was later scoped to a different company) still shows
+  // via the read-only Custom Fields tab and is preserved by
+  // buildEditCustomFieldsPayload's activeDefsByKey fallback below -- it's
+  // only kept out of the *editable* set, never hidden.
   const customFieldDefs = useMemo(
-    () => [...customFieldDefsRaw].sort((a, b) => a.sort_order - b.sort_order),
-    [customFieldDefsRaw],
+    () =>
+      customFieldDefsRaw
+        .filter((d) => d.company_id === null || d.company_id === asset?.company_id)
+        .sort((a, b) => a.sort_order - b.sort_order),
+    [customFieldDefsRaw, asset?.company_id],
   );
   const activeDefsByKey = useMemo(
     () => new Map(customFieldDefs.map((d) => [d.field_key, d])),

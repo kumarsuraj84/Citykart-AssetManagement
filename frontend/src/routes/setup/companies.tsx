@@ -12,6 +12,7 @@ export default function CompaniesSetup() {
       config={{
         resource: "companies",
         title: "Companies",
+        singular: "Company",
         columns: [
           { key: "code", label: "Code" },
           { key: "name", label: "Name" },
@@ -20,6 +21,7 @@ export default function CompaniesSetup() {
           { key: "code", label: "Code" },
           { key: "name", label: "Name" },
         ],
+        editFields: [{ key: "name", label: "Name" }],
       }}
     />
   );

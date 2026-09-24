@@ -31,6 +31,10 @@ interface CustomFieldDef {
   options: { choices?: string[] } | null;
   is_required: boolean;
   sort_order: number;
+  // AM-05: null = Global (applies to every company); a real id = applies
+  // only to that company's assets. See app/assets/custom_field_values.py
+  // on the backend for the matching applicability rule.
+  company_id: number | null;
 }
 
 interface CreatedAsset {
@@ -132,9 +136,17 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
   const costCenters = costCentersQ.data ?? [];
   const vendors = vendorsQ.data ?? [];
   const stockHolders = stockHoldersQ.data ?? [];
+  // AM-05: only fields applicable to THIS asset's company -- Global
+  // (company_id null) plus this company's own -- ever render, are
+  // validated, or count toward requiredness here. A field scoped to a
+  // different company must behave as if it doesn't exist for this form,
+  // matching the backend's applicable_custom_fields (app/assets/custom_field_values.py).
   const customFields = useMemo(
-    () => [...(customFieldsQ.data ?? [])].sort((a, b) => a.sort_order - b.sort_order),
-    [customFieldsQ.data],
+    () =>
+      (customFieldsQ.data ?? [])
+        .filter((f) => f.company_id === null || f.company_id === companyId)
+        .sort((a, b) => a.sort_order - b.sort_order),
+    [customFieldsQ.data, companyId],
   );
   const visibleSubcategories = form.categoryId
     ? subcategories.filter((s) => s.category_id === Number(form.categoryId))

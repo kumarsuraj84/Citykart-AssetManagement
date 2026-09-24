@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { HoldersScreen } from "./HoldersScreen";
 import { apiClient } from "../../lib/api-client";
@@ -7,7 +7,7 @@ import { apiClient } from "../../lib/api-client";
 vi.mock("../../lib/api-client");
 
 function renderWithClient(ui: React.ReactElement) {
-  const qc = new QueryClient();
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
 }
 
@@ -106,7 +106,7 @@ describe("HoldersScreen", () => {
     renderWithClient(<HoldersScreen />);
 
     await waitFor(() => expect(screen.getByText("Ankur")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^edit ankur$/i }));
 
     // Prefilled from the existing row.
     expect(screen.getByLabelText("Emp Code")).toHaveValue("CS6872");
@@ -127,6 +127,61 @@ describe("HoldersScreen", () => {
         phone: null,
         role: "HOLDER",
       }),
+    );
+  });
+
+  it("shows a loading skeleton, then an empty state with an Add action when there are no holders", async () => {
+    mockGets([]);
+    renderWithClient(<HoldersScreen />);
+
+    await waitFor(() => expect(screen.getByText(/no holders yet/i)).toBeInTheDocument());
+    expect(screen.getAllByRole("button", { name: /^add$/i }).length).toBeGreaterThan(0);
+  });
+
+  it("shows an error state with a retry that refetches", async () => {
+    (apiClient.get as any).mockImplementationOnce((path: string) => {
+      if (path === "/holders") return Promise.reject(new Error("holders down"));
+      return Promise.resolve([]);
+    });
+    renderWithClient(<HoldersScreen />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("holders down");
+
+    mockGets();
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+    await waitFor(() => expect(screen.getByText("Ankur")).toBeInTheDocument());
+  });
+
+  it("deactivates a holder only after confirming in the dialog", async () => {
+    mockGets();
+    (apiClient.delete as any).mockResolvedValue(undefined);
+
+    renderWithClient(<HoldersScreen />);
+    await waitFor(() => expect(screen.getByText("Ankur")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /^deactivate ankur$/i }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("Ankur");
+    expect(apiClient.delete).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /^deactivate$/i }));
+    await waitFor(() => expect(apiClient.delete).toHaveBeenCalledWith("/holders/1"));
+  });
+
+  it("warns before saving a role change, and role is not reset by unrelated field edits", async () => {
+    mockGets();
+    (apiClient.put as any).mockResolvedValue({ ...HOLDER, name: "Ankur K" });
+
+    renderWithClient(<HoldersScreen />);
+    await waitFor(() => expect(screen.getByText("Ankur")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /^edit ankur$/i }));
+
+    // Editing an unrelated field does not touch the prefilled role.
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Ankur K" } });
+    expect(screen.queryByText(/will immediately change this person's access/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() =>
+      expect(apiClient.put).toHaveBeenCalledWith("/holders/1", expect.objectContaining({ role: "HOLDER" })),
     );
   });
 });

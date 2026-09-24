@@ -24,11 +24,11 @@ function renderFormAt(url = "/assets/new") {
 }
 
 const CUSTOM_FIELDS = [
-  { id: 1, field_key: "asset_tag", label: "Asset Tag", field_type: "text", options: null, is_required: true, sort_order: 1 },
-  { id: 2, field_key: "ram_gb", label: "RAM (GB)", field_type: "number", options: null, is_required: false, sort_order: 2 },
-  { id: 3, field_key: "delivered_on", label: "Delivered On", field_type: "date", options: null, is_required: false, sort_order: 3 },
-  { id: 4, field_key: "color", label: "Color", field_type: "dropdown", options: { choices: ["Black", "Silver"] }, is_required: false, sort_order: 4 },
-  { id: 5, field_key: "refurbished", label: "Refurbished?", field_type: "checkbox", options: null, is_required: false, sort_order: 5 },
+  { id: 1, field_key: "asset_tag", label: "Asset Tag", field_type: "text", options: null, is_required: true, sort_order: 1, company_id: null },
+  { id: 2, field_key: "ram_gb", label: "RAM (GB)", field_type: "number", options: null, is_required: false, sort_order: 2, company_id: null },
+  { id: 3, field_key: "delivered_on", label: "Delivered On", field_type: "date", options: null, is_required: false, sort_order: 3, company_id: null },
+  { id: 4, field_key: "color", label: "Color", field_type: "dropdown", options: { choices: ["Black", "Silver"] }, is_required: false, sort_order: 4, company_id: null },
+  { id: 5, field_key: "refurbished", label: "Refurbished?", field_type: "checkbox", options: null, is_required: false, sort_order: 5, company_id: null },
 ];
 
 function mockGets({ holders = [{ id: 4, name: "IT Stock-HO" }], customFields = [] as unknown[] } = {}) {
@@ -155,6 +155,41 @@ describe("AddAssetForm", () => {
 
     fireEvent.change(screen.getByLabelText(/asset tag/i), { target: { value: "TAG-1" } });
     await waitFor(() => expect(screen.getByRole("button", { name: /save/i })).toBeEnabled());
+  });
+
+  it("AM-05: only Global and this company's own custom fields render -- another company's required field never blocks Save", async () => {
+    // useAuthStore companyId is 1 (see beforeEach).
+    const scopedFields = [
+      { id: 1, field_key: "global_notes", label: "Global Notes", field_type: "text", options: null, is_required: false, sort_order: 1, company_id: null },
+      { id: 2, field_key: "own_company_tag", label: "Own Company Tag", field_type: "text", options: null, is_required: false, sort_order: 2, company_id: 1 },
+      { id: 3, field_key: "other_company_required", label: "Other Company Required", field_type: "text", options: null, is_required: true, sort_order: 3, company_id: 2 },
+    ];
+    mockGets({ customFields: scopedFields });
+    (apiClient.post as any).mockResolvedValue([
+      { id: 20, asset_code: "FA/HO01/IT/LAP/CK_1" },
+      { id: 21, asset_code: "FA/HO01/IT/LAP/CK_2" },
+    ]);
+
+    renderFormAt();
+    fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Test Laptop" } });
+    await pickSelectOption(/^category$/i, "IT Equipment");
+    await pickSelectOption(/cost centre/i, "Head Office");
+    await pickSelectOption(/goes into/i, "IT Stock-HO");
+
+    expect(await screen.findByText("Global Notes")).toBeInTheDocument();
+    expect(screen.getByText("Own Company Tag")).toBeInTheDocument();
+    expect(screen.queryByText("Other Company Required")).not.toBeInTheDocument();
+
+    // Company 2's required field must never block a Company 1 asset from saving.
+    await waitFor(() => expect(screen.getByRole("button", { name: /save/i })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith(
+        "/assets",
+        expect.objectContaining({ custom_fields: expect.not.objectContaining({ other_company_required: expect.anything() }) }),
+      ),
+    );
   });
 
   it("navigates to the new asset's Asset 360 page after a single-asset creation", async () => {

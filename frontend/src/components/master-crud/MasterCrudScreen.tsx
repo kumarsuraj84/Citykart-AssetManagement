@@ -1,10 +1,10 @@
 import { useState } from "react";
+import { Inbox, Pencil, Trash2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import type { MasterConfig, FormField } from "./types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -21,13 +21,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
+import { EmptyState } from "@/components/shared/EmptyState";
+import { AsyncButton } from "@/components/shared/AsyncButton";
+import { FormField as FormFieldShell } from "@/components/shared/FormField";
 
 function buildPayload(formFields: FormField[], draft: Record<string, unknown>) {
   const payload: Record<string, unknown> = {};
@@ -46,14 +53,79 @@ function buildPayload(formFields: FormField[], draft: Record<string, unknown>) {
   return payload;
 }
 
+function buildDraftFromRow(formFields: FormField[], row: Record<string, unknown>) {
+  const draft: Record<string, unknown> = {};
+  for (const field of formFields) {
+    draft[field.key] = row[field.key] ?? (field.type === "checkbox" ? false : "");
+  }
+  return draft;
+}
+
+/** Best-effort human label for a row in confirmation copy -- every current
+ * master has a `name` (Department has nothing else at all); `code` is the
+ * fallback for the rare case a future master doesn't. */
+function rowLabel(row: Record<string, unknown>): string {
+  return String(row.name ?? row.code ?? `#${row.id}`);
+}
+
+function MasterFormField({
+  field,
+  value,
+  onChange,
+}: {
+  field: FormField;
+  value: unknown;
+  onChange: (value: unknown) => void;
+}) {
+  if (field.type === "select") {
+    return (
+      <Select value={value !== undefined ? String(value) : undefined} onValueChange={onChange}>
+        <SelectTrigger id={field.key} aria-label={field.label}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {(field.options ?? []).map((opt) => (
+            <SelectItem key={String(opt.value)} value={String(opt.value)}>
+              {opt.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    );
+  }
+  if (field.type === "checkbox") {
+    return (
+      <Checkbox
+        id={field.key}
+        aria-label={field.label}
+        checked={Boolean(value)}
+        onCheckedChange={(checked) => onChange(checked === true)}
+      />
+    );
+  }
+  return (
+    <Input
+      id={field.key}
+      aria-label={field.label}
+      type={field.type === "number" ? "number" : "text"}
+      value={(value as string) ?? ""}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
+}
+
 export function MasterCrudScreen<T extends object>({
   config,
 }: {
   config: MasterConfig<T>;
 }) {
   const qc = useQueryClient();
-  const [formOpen, setFormOpen] = useState(false);
-  const [draft, setDraft] = useState<Record<string, unknown>>({});
+  const singular = config.singular ?? config.title;
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createDraft, setCreateDraft] = useState<Record<string, unknown>>({});
+  const [editRow, setEditRow] = useState<Row | null>(null);
+  const [editDraft, setEditDraft] = useState<Record<string, unknown>>({});
+  const [deactivateRow, setDeactivateRow] = useState<Row | null>(null);
 
   // Every master record carries an `id` even though T itself is not
   // constrained to `{ id: number }` — constraining T directly on the
@@ -62,7 +134,13 @@ export function MasterCrudScreen<T extends object>({
   // type argument, such as MasterCrudScreen.test.tsx.
   type Row = T & { id: number };
 
-  const { data: items = [] } = useQuery({
+  const {
+    data: items = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ["masters", config.resource],
     queryFn: () => apiClient.get<Row[]>(`/masters/${config.resource}`),
   });
@@ -72,119 +150,196 @@ export function MasterCrudScreen<T extends object>({
       apiClient.post(`/masters/${config.resource}`, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["masters", config.resource] });
-      setFormOpen(false);
-      setDraft({});
+      setCreateOpen(false);
+      setCreateDraft({});
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: number; payload: Record<string, unknown> }) =>
+      apiClient.put(`/masters/${config.resource}/${id}`, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["masters", config.resource] });
+      setEditRow(null);
+      setEditDraft({});
     },
   });
 
   const deactivateMutation = useMutation({
     mutationFn: (id: number) => apiClient.delete(`/masters/${config.resource}/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["masters", config.resource] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["masters", config.resource] });
+      setDeactivateRow(null);
+    },
   });
 
-  function setField(key: string, value: unknown) {
-    setDraft((d) => ({ ...d, [key]: value }));
+  function openCreate() {
+    setCreateDraft({});
+    setCreateOpen(true);
   }
 
-  function handleSave() {
-    createMutation.mutate(buildPayload(config.formFields, draft));
+  function openEdit(row: Row) {
+    setEditDraft(buildDraftFromRow(config.editFields, row as Record<string, unknown>));
+    setEditRow(row);
   }
 
-  function handleOpenChange(open: boolean) {
-    setFormOpen(open);
-    if (!open) setDraft({});
+  function handleCreateSave() {
+    createMutation.mutate(buildPayload(config.formFields, createDraft));
   }
+
+  function handleEditSave() {
+    if (!editRow) return;
+    updateMutation.mutate({ id: editRow.id, payload: buildPayload(config.editFields, editDraft) });
+  }
+
+  const readOnlyFields = config.formFields.filter(
+    (f) => !config.editFields.some((ef) => ef.key === f.key),
+  );
+
+  const columns: DataTableColumn<Row>[] = [
+    ...config.columns.map((c) => ({
+      key: String(c.key),
+      header: c.label,
+      cell: (row: Row) => (c.format ? c.format(row[c.key], row) : String(row[c.key] ?? "")),
+    })),
+    {
+      key: "__actions",
+      header: <span className="sr-only">Actions</span>,
+      headerClassName: "w-24 text-right",
+      cellClassName: "text-right",
+      cell: (row: Row) => (
+        <div className="flex justify-end gap-1">
+          <Button variant="ghost" size="icon" aria-label={`Edit ${rowLabel(row as Record<string, unknown>)}`} onClick={() => openEdit(row)}>
+            <Pencil className="h-4 w-4" aria-hidden="true" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={`Deactivate ${rowLabel(row as Record<string, unknown>)}`}
+            onClick={() => setDeactivateRow(row)}
+          >
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">{config.title}</h1>
-        <Button onClick={() => setFormOpen(true)}>Add</Button>
-      </div>
+      <PageHeader
+        title={config.title}
+        actions={<Button onClick={openCreate}>Add {singular}</Button>}
+      />
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            {config.columns.map((c) => (
-              <TableHead key={String(c.key)}>{c.label}</TableHead>
-            ))}
-            <TableHead />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {items.map((item) => (
-            <TableRow key={item.id}>
-              {config.columns.map((c) => (
-                <TableCell key={String(c.key)}>{String(item[c.key] ?? "")}</TableCell>
-              ))}
-              <TableCell className="text-right">
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => deactivateMutation.mutate(item.id)}
-                >
-                  Remove
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+      <DataTable<Row>
+        columns={columns}
+        rows={items}
+        rowKey={(row) => row.id}
+        isLoading={isLoading}
+        isError={isError}
+        errorMessage={error instanceof Error ? error.message : undefined}
+        onRetry={() => refetch()}
+        emptyState={
+          <EmptyState
+            icon={Inbox}
+            title={`No ${config.title.toLowerCase()} yet`}
+            description={`Create your first ${singular.toLowerCase()} to get started.`}
+            action={<Button onClick={openCreate}>Add {singular}</Button>}
+          />
+        }
+      />
 
-      <Dialog open={formOpen} onOpenChange={handleOpenChange}>
+      <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) setCreateDraft({}); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add {config.title}</DialogTitle>
+            <DialogTitle>Add {singular}</DialogTitle>
           </DialogHeader>
 
           <div className="flex flex-col gap-4">
             {config.formFields.map((f) => (
-              <div key={f.key} className="flex flex-col gap-1.5">
-                <Label htmlFor={f.key}>{f.label}</Label>
-                {f.type === "select" ? (
-                  <Select
-                    value={draft[f.key] !== undefined ? String(draft[f.key]) : undefined}
-                    onValueChange={(value) => setField(f.key, value)}
-                  >
-                    <SelectTrigger id={f.key} aria-label={f.label}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(f.options ?? []).map((opt) => (
-                        <SelectItem key={String(opt.value)} value={String(opt.value)}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : f.type === "checkbox" ? (
-                  <Checkbox
-                    id={f.key}
-                    aria-label={f.label}
-                    checked={Boolean(draft[f.key])}
-                    onCheckedChange={(checked) => setField(f.key, checked === true)}
-                  />
-                ) : (
-                  <Input
-                    id={f.key}
-                    aria-label={f.label}
-                    type={f.type === "number" ? "number" : "text"}
-                    value={(draft[f.key] as string) ?? ""}
-                    onChange={(e) => setField(f.key, e.target.value)}
-                  />
-                )}
-              </div>
+              <FormFieldShell key={f.key} htmlFor={f.key} label={f.label}>
+                <MasterFormField
+                  field={f}
+                  value={createDraft[f.key]}
+                  onChange={(value) => setCreateDraft((d) => ({ ...d, [f.key]: value }))}
+                />
+              </FormFieldShell>
             ))}
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => handleOpenChange(false)}>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSave}>Save</Button>
+            <AsyncButton onClick={handleCreateSave} pending={createMutation.isPending} pendingLabel="Saving…">
+              Save
+            </AsyncButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={editRow !== null} onOpenChange={(open) => { if (!open) { setEditRow(null); setEditDraft({}); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit {singular}</DialogTitle>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-4">
+            {readOnlyFields.length > 0 && editRow && (
+              <div className="flex flex-col gap-1 rounded-md border bg-muted/50 px-3 py-2 text-sm">
+                {readOnlyFields.map((f) => (
+                  <div key={f.key} className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">{f.label}</span>
+                    <span className="font-medium">{String((editRow as Record<string, unknown>)[f.key] ?? "")}</span>
+                  </div>
+                ))}
+                <p className="text-xs text-muted-foreground">Not editable after creation.</p>
+              </div>
+            )}
+            {config.editFields.map((f) => (
+              <FormFieldShell key={f.key} htmlFor={`edit-${f.key}`} label={f.label}>
+                <MasterFormField
+                  field={{ ...f, key: `edit-${f.key}` }}
+                  value={editDraft[f.key]}
+                  onChange={(value) => setEditDraft((d) => ({ ...d, [f.key]: value }))}
+                />
+              </FormFieldShell>
+            ))}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditRow(null)}>
+              Cancel
+            </Button>
+            <AsyncButton onClick={handleEditSave} pending={updateMutation.isPending} pendingLabel="Saving…">
+              Save
+            </AsyncButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={deactivateRow !== null} onOpenChange={(open) => { if (!open) setDeactivateRow(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Deactivate {deactivateRow ? rowLabel(deactivateRow as Record<string, unknown>) : ""}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This {singular.toLowerCase()} will no longer appear in lists or be available for new records. It can be
+              restored later by an administrator; nothing that already references it is affected.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deactivateMutation.isPending}
+              onClick={() => deactivateRow && deactivateMutation.mutate(deactivateRow.id)}
+            >
+              Deactivate
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

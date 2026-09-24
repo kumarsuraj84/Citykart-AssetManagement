@@ -12,6 +12,7 @@ export default function CategoriesSetup() {
       config={{
         resource: "categories",
         title: "Asset Categories",
+        singular: "Category",
         columns: [
           { key: "code", label: "Code" },
           { key: "name", label: "Name" },
@@ -20,6 +21,7 @@ export default function CategoriesSetup() {
           { key: "code", label: "Code" },
           { key: "name", label: "Name" },
         ],
+        editFields: [{ key: "name", label: "Name" }],
       }}
     />
   );

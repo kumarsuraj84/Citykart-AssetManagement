@@ -1,9 +1,12 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { ErrorState } from "@/components/shared/ErrorState";
+import { AsyncButton } from "@/components/shared/AsyncButton";
+import { FormField } from "@/components/shared/FormField";
 
 const SAMPLE_TOKENS: Record<string, string> = {
   "cost_center.code": "HO01",
@@ -37,7 +40,13 @@ export function CodeRuleScreen() {
 
   // This screen edits the global rule (company_id null). The API keeps exactly one
   // active rule per scope, so the global entry in the active list IS the rule to edit.
-  const { data: rules } = useQuery({
+  const {
+    data: rules,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ["code-rules"],
     queryFn: () => apiClient.get<CodeRule[]>("/code-rules"),
   });
@@ -82,73 +91,91 @@ export function CodeRuleScreen() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold">Asset Code Rule</h1>
-      <p className="text-sm text-muted-foreground">
-        {activeRule
-          ? "Editing the rule currently used to number new assets."
-          : "No code rule yet -- assets can't be added until one is saved."}{" "}
-        Tokens: {Object.keys(SAMPLE_TOKENS).map((t) => `{${t}}`).join(" ")}
-      </p>
+      <PageHeader
+        title="Asset Code Rule"
+        description={
+          isLoading
+            ? undefined
+            : `${
+                activeRule
+                  ? "Editing the rule currently used to number new assets."
+                  : "No code rule yet -- assets can't be added until one is saved."
+              } Tokens: ${Object.keys(SAMPLE_TOKENS).map((t) => `{${t}}`).join(" ")}`
+        }
+      />
 
-      <div className="flex flex-col gap-4 max-w-md">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="prefix-template">Prefix Template</Label>
-          <Input
-            id="prefix-template"
-            aria-label="Prefix Template"
-            value={form.prefixTemplate}
-            onChange={(e) => setField("prefixTemplate", e.target.value)}
-          />
+      {isError ? (
+        <ErrorState message={error instanceof Error ? error.message : undefined} onRetry={() => refetch()} />
+      ) : isLoading ? (
+        <div className="flex max-w-md flex-col gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-9 w-full" />
+          ))}
         </div>
+      ) : (
+        <>
+          <div className="flex flex-col gap-4 max-w-md">
+            <FormField htmlFor="prefix-template" label="Prefix Template">
+              <Input
+                id="prefix-template"
+                aria-label="Prefix Template"
+                value={form.prefixTemplate}
+                onChange={(e) => setField("prefixTemplate", e.target.value)}
+              />
+            </FormField>
 
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="suffix-template">Suffix Template</Label>
-          <Input
-            id="suffix-template"
-            aria-label="Suffix Template"
-            value={form.suffixTemplate}
-            onChange={(e) => setField("suffixTemplate", e.target.value)}
-          />
-        </div>
+            <FormField htmlFor="suffix-template" label="Suffix Template">
+              <Input
+                id="suffix-template"
+                aria-label="Suffix Template"
+                value={form.suffixTemplate}
+                onChange={(e) => setField("suffixTemplate", e.target.value)}
+              />
+            </FormField>
 
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="start-number">Start Number</Label>
-          <Input
-            id="start-number"
-            aria-label="Start Number"
-            type="number"
-            value={form.startNumber}
-            onChange={(e) => setField("startNumber", Number(e.target.value))}
-          />
-        </div>
+            <FormField htmlFor="start-number" label="Start Number">
+              <Input
+                id="start-number"
+                aria-label="Start Number"
+                type="number"
+                value={form.startNumber}
+                onChange={(e) => setField("startNumber", Number(e.target.value))}
+              />
+            </FormField>
 
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="pad-width">Pad Width (0 = no padding)</Label>
-          <Input
-            id="pad-width"
-            aria-label="Pad Width (0 = no padding)"
-            type="number"
-            value={form.padWidth}
-            onChange={(e) => setField("padWidth", Number(e.target.value))}
-          />
-        </div>
-      </div>
+            <FormField htmlFor="pad-width" label="Pad Width (0 = no padding)">
+              <Input
+                id="pad-width"
+                aria-label="Pad Width (0 = no padding)"
+                type="number"
+                value={form.padWidth}
+                onChange={(e) => setField("padWidth", Number(e.target.value))}
+              />
+            </FormField>
+          </div>
 
-      <div className="rounded-md border border-input bg-muted/40 px-3 py-2 text-sm">
-        Preview: <span data-testid="code-preview" className="font-mono">{preview}</span>
-      </div>
+          <div className="rounded-md border border-input bg-muted/40 px-3 py-2 text-sm max-w-md">
+            Preview: <span data-testid="code-preview" className="font-mono">{preview}</span>
+          </div>
 
-      <div className="flex items-center gap-3">
-        <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !form.prefixTemplate}>
-          Save
-        </Button>
-        {saveMutation.isSuccess && <span className="text-sm text-muted-foreground">Saved.</span>}
-        {saveMutation.isError && (
-          <span className="text-sm text-destructive">
-            {saveMutation.error instanceof Error ? saveMutation.error.message : "Save failed."}
-          </span>
-        )}
-      </div>
+          <div className="flex items-center gap-3">
+            <AsyncButton
+              onClick={() => saveMutation.mutate()}
+              disabled={!form.prefixTemplate}
+              pending={saveMutation.isPending}
+              pendingLabel="Saving…"
+            >
+              Save
+            </AsyncButton>
+            {saveMutation.isSuccess && <span className="text-sm text-muted-foreground">Saved.</span>}
+            {saveMutation.isError && (
+              <span className="text-sm text-destructive">
+                {saveMutation.error instanceof Error ? saveMutation.error.message : "Save failed."}
+              </span>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
