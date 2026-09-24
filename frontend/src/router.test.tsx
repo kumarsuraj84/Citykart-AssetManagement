@@ -8,7 +8,19 @@ import { useAuthStore } from "./lib/auth-store";
 
 vi.mock("./lib/api-client");
 
-const ASSET = { id: 123, asset_code: "FA/HO01/IT/LAP/CK_123", description: "Scanned Laptop", status: "IN_STOCK", company_id: 1 };
+// Shaped like AssetDetailOut (AM-04) -- AssetDetail reads every one of these
+// fields unconditionally, so a route-guard test that renders it needs the
+// full shape even though these tests don't otherwise care about it.
+const ASSET = {
+  id: 123, asset_code: "FA/HO01/IT/LAP/CK_123", legacy_asset_code: null, description: "Scanned Laptop",
+  status: "IN_STOCK", company_id: 1, cost_center_id: 1, category_id: 1, subcategory_id: null,
+  brand: null, model: null, serial_number: null, vendor_id: null, po_number: null, po_date: null,
+  invoice_number: null, invoice_date: null, pi_number: null, pi_date: null, purchase_cost: null,
+  tax_percent: null, tax_amount: null, total_cost: null, purchase_date: "2025-01-01", warranty_upto: null,
+  current_holder_id: 1, status_since: "2025-01-01", custom_fields: {},
+  category_name: null, subcategory_name: null, cost_center_name: null, vendor_name: null,
+  current_holder_name: "IT Stock-HO", current_holder_type: "IT_STOCK", location_name: null, department_name: null,
+};
 
 function mockApi() {
   (apiClient.get as any).mockImplementation((path: string) => {
@@ -17,6 +29,7 @@ function mockApi() {
     }
     if (path === "/assets/123") return Promise.resolve(ASSET);
     if (path.startsWith("/assets")) return Promise.resolve({ items: [], total: 0 });
+    if (path === "/assets/123/changes") return Promise.resolve([]);
     return Promise.resolve([]);
   });
 }
@@ -86,7 +99,7 @@ describe("login flow", () => {
     await submitLogin();
 
     await waitFor(() => expect(router.state.location.pathname).toBe("/assets/123"));
-    expect(await screen.findByText("FA/HO01/IT/LAP/CK_123")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_123" })).toBeInTheDocument();
   });
 
   it("lands on the role's home page when there is no next", async () => {

@@ -1,5 +1,19 @@
 import { authFetch } from "./auth-fetch";
 
+/** Same as a plain Error everywhere existing `instanceof Error` checks look
+ * (message-only) -- `status` is additive, so a screen that needs to tell a
+ * 404 apart from any other failure (AM-04: Asset 360's not-found treatment)
+ * can, without changing anything about how every other caller already
+ * handles errors. */
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   // FormData (multipart uploads, e.g. the Excel import screen) must be sent
   // as-is: JSON.stringify-ing it would produce "[object FormData]", and
@@ -16,7 +30,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   if (!res.ok) {
     const detail = await res.json().catch(() => ({ detail: res.statusText }));
     const message = typeof detail.detail === "string" ? detail.detail : undefined;
-    throw new Error(message ?? `Request failed: ${res.status}`);
+    throw new ApiError(message ?? `Request failed: ${res.status}`, res.status);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;

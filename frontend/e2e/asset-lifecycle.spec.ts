@@ -47,14 +47,20 @@ test("full custody journey: procure, allot, return, allot again", async ({ page,
   await selectRadix(page, "Category", ctx.category.name);
   await selectRadix(page, "Sub-Category", ctx.subcategory.name);
   await page.getByLabel("Description", { exact: true }).fill("E2E Test Laptop");
-  await selectRadix(page, "Cost Center", ctx.costCenter.name);
-  await selectRadix(page, "Initial Holder", ctx.stock.name);
+  await selectRadix(page, "Cost Centre", ctx.costCenter.name);
+  await selectRadix(page, "Goes Into", ctx.stock.name);
   await page.getByRole("button", { name: "Save", exact: true }).click();
 
-  const createdItem = page.locator("ul li", { hasText: "E2E/" }).first();
-  await expect(createdItem).toBeVisible();
-  const assetCode = (await createdItem.textContent())!.trim();
-  expect(assetCode.startsWith("E2E/")).toBe(true);
+  // AM-04: creating exactly one asset navigates straight to its Asset 360
+  // page (Asset Code is always server-generated -- read it back from there,
+  // not guessed or parsed out of a client-side list). Match on the real code
+  // pattern, not just heading level 1 -- Asset 360's own loading skeleton
+  // renders a placeholder "Asset" heading first, and the real one only
+  // appears once the asset itself has loaded.
+  await expect(page).toHaveURL(/\/assets\/\d+$/);
+  const heading = page.getByRole("heading", { level: 1, name: /^E2E\// });
+  await expect(heading).toBeVisible();
+  const assetCode = (await heading.textContent())!.trim();
 
   // ---- Expired/invalid access token: the app refreshes it via the httpOnly
   // refresh cookie and retries, instead of dying after 15 minutes ----
@@ -75,10 +81,10 @@ test("full custody journey: procure, allot, return, allot again", async ({ page,
   expect(refreshedToken).not.toBe(BROKEN_TOKEN);
   // Click the description cell (not the code <a> or the checkbox, both of which
   // stopPropagation on the row's own onClick) to exercise AssetRegister's row-level
-  // `onClick={() => window.location.href = ...}` navigation, not the plain <a href>.
+  // onClick, which navigates via the SPA router (AM-03) -- not a full page reload.
   await row.getByText("E2E Test Laptop", { exact: true }).click();
   await expect(page).toHaveURL(/\/assets\/\d+$/);
-  await expect(page.getByText(assetCode, { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: assetCode })).toBeVisible();
 
   // ---- Allot to the test EMPLOYEE holder ----
   await page.getByRole("button", { name: "Move / Allot", exact: true }).click();
@@ -117,7 +123,7 @@ test("full custody journey: procure, allot, return, allot again", async ({ page,
   await expect(page).toHaveURL(new RegExp(`/login\\?next=${encodeURIComponent(assetPath)}$`));
   await fillLogin(page, ctx.admin.empCode, ctx.admin.password);
   await expect(page).toHaveURL(new RegExp(`${assetPath}$`));
-  await expect(page.getByText(assetCode, { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: assetCode })).toBeVisible();
 
   // ---- Log out, log in as the EMPLOYEE holder: no currently-held assets ----
   // (the asset's custody ended at the STORE holder, not the employee, so the

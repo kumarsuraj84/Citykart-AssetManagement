@@ -1,25 +1,83 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AssetDetail } from "./AssetDetail";
-import { apiClient } from "../../lib/api-client";
+import { apiClient, ApiError } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
 
-vi.mock("../../lib/api-client");
+// Keeps the real ApiError class (so `instanceof ApiError` checks inside
+// AssetDetail work against the same class this test constructs) while still
+// mocking apiClient's own methods, unlike a plain vi.mock(...) automock
+// which would replace both.
+vi.mock("../../lib/api-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/api-client")>();
+  return { ...actual, apiClient: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() } };
+});
 vi.mock("../../lib/auth-store");
 
 function renderWithClient(ui: React.ReactElement) {
-  const qc = new QueryClient();
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
 }
 
-// The QR image fetches /assets/{id}/qr.png with the bearer token itself (same reason
-// as ReportsScreen's exports: a plain <img src="/api/..."> never carries the
-// Authorization header this app relies on everywhere else, so it would just 401).
-// Stub it to a harmless failed response by default so the two pre-existing tests
-// below don't trip an unmocked window.fetch; the QR-specific test overrides it.
+const FULL_ASSET = {
+  id: 1, asset_code: "FA/HO01/IT/LAP/CK_1", legacy_asset_code: "OLD-001", description: "Laptop",
+  status: "IN_STOCK", company_id: 1, cost_center_id: 3, category_id: 1, subcategory_id: 2,
+  brand: "Dell", model: "Latitude 5440", serial_number: "SN-ABC123",
+  vendor_id: 7, po_number: "PO-1001", po_date: "2025-05-20",
+  invoice_number: "INV-2001", invoice_date: "2025-05-25",
+  pi_number: "PI-3001", pi_date: "2025-05-22",
+  purchase_cost: 60000, tax_percent: 18, tax_amount: 10800, total_cost: 70800,
+  purchase_date: "2025-06-01", warranty_upto: "2027-06-01",
+  current_holder_id: 5, status_since: "2025-06-01",
+  custom_fields: { asset_tag: "TAG-1", retired_field: "kept for history" },
+  category_name: "IT Equipment", subcategory_name: "Laptop", cost_center_name: "Head Office",
+  vendor_name: "Acme Traders", current_holder_name: "IT Stock-HO", current_holder_type: "IT_STOCK",
+  location_name: "Head Office", department_name: "IT",
+};
+
+const CUSTOM_FIELD_DEFS = [
+  { field_key: "asset_tag", label: "Asset Tag", field_type: "text", options: null, is_required: true, sort_order: 1 },
+];
+
+function mockGets(overrides: Record<string, unknown> = {}) {
+  (apiClient.get as any).mockImplementation((path: string) => {
+    if (path === "/assets/1") return Promise.resolve(overrides.asset ?? FULL_ASSET);
+    if (path === "/assets/1/events") return Promise.resolve(overrides.events ?? []);
+    if (path === "/assets/1/changes") return Promise.resolve(overrides.changes ?? []);
+    if (path.startsWith("/holders")) return Promise.resolve(overrides.holders ?? [{ id: 5, name: "Ankur" }]);
+    if (path.startsWith("/masters/vendors")) return Promise.resolve(overrides.vendors ?? [{ id: 7, name: "Acme Traders" }]);
+    if (path.startsWith("/masters/custom-fields")) return Promise.resolve(overrides.customFieldDefs ?? CUSTOM_FIELD_DEFS);
+    return Promise.resolve([]);
+  });
+}
+
+function mockAuth(role: string) {
+  (useAuthStore as any).getState = vi.fn().mockReturnValue({ role, accessToken: null });
+  (useAuthStore as any).mockImplementation((selector: any) => {
+    const state = { role, accessToken: null, companyId: 1, mustChangePassword: false };
+    return selector ? selector(state) : state;
+  });
+}
+
+async function pickSelectOption(label: RegExp | string, optionName: RegExp | string) {
+  fireEvent.click(screen.getByRole("combobox", { name: label }));
+  const option = await screen.findByRole("option", { name: optionName });
+  fireEvent.click(option);
+}
+
+// Radix Tabs (activationMode="automatic", the default) switches the active
+// tab on focus, not on click -- a real browser click also focuses the
+// button, but jsdom's fireEvent.click alone does not, so drive it directly.
+function clickTab(name: string) {
+  const tab = screen.getByRole("tab", { name });
+  fireEvent.click(tab);
+  tab.focus();
+}
+
 beforeEach(() => {
-  (useAuthStore as any).getState = vi.fn().mockReturnValue({ accessToken: null });
+  vi.clearAllMocks();
+  mockAuth("ADMIN");
   // 404, not 401: a 401 would (correctly) send authFetch into its refresh-then-
   // redirect-to-login path, which isn't what these tests are about.
   window.fetch = vi.fn().mockResolvedValue({ ok: false, status: 404 }) as any;
@@ -27,42 +85,170 @@ beforeEach(() => {
   window.URL.revokeObjectURL = vi.fn();
 });
 
-// Same click-based interaction as AddAssetForm.test.tsx (Task 17) and HoldersScreen's own tests
-// (Task 10) use for a real shadcn/ui Select: it's a Radix combobox trigger + listbox, not a
-// native <select>, so it must be driven by clicking the trigger then the option -- a plain
-// fireEvent.change on it is a no-op.
-async function pickSelectOption(label: RegExp | string, optionName: RegExp | string) {
-  fireEvent.click(screen.getByRole("combobox", { name: label }));
-  const option = await screen.findByRole("option", { name: optionName });
-  fireEvent.click(option);
-}
+describe("AssetDetail (Asset 360)", () => {
+  it("shows a loading state, not a blank screen, before the asset arrives", () => {
+    (apiClient.get as any).mockImplementation(() => new Promise(() => {})); // never resolves
+    const { container } = renderWithClient(<AssetDetail assetId={1} />);
+    expect(container.querySelector(".animate-pulse")).not.toBeNull();
+  });
 
-describe("AssetDetail", () => {
-  it("only shows actions valid for the current status and posts the chosen action", async () => {
-    (apiClient.get as any).mockImplementation((path: string) => {
-      if (path === "/assets/1") {
-        return Promise.resolve({
-          id: 1,
-          asset_code: "FA/HO01/IT/LAP/CK_1",
-          description: "Laptop",
-          status: "IN_STOCK",
-          company_id: 1,
-        });
-      }
-      if (path === "/assets/1/events") return Promise.resolve([]);
-      if (path.startsWith("/holders")) return Promise.resolve([{ id: 5, name: "Ankur" }]);
-      return Promise.resolve([]);
+  it("shows an error state with a working retry action on a genuine fetch failure", async () => {
+    (apiClient.get as any).mockRejectedValue(new Error("network down"));
+    renderWithClient(<AssetDetail assetId={1} />);
+
+    // AssetDetail's own retry policy retries a non-404 failure up to twice
+    // (with react-query's default backoff) before giving up -- allow for that
+    // real delay rather than asserting on an artificially instant failure.
+    expect(await screen.findByRole("alert", {}, { timeout: 8000 })).toHaveTextContent(/couldn't load this asset/i);
+
+    mockGets();
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+    expect(await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" })).toBeInTheDocument();
+  });
+
+  it("shows a not-found treatment, not a generic error, for a 404", async () => {
+    (apiClient.get as any).mockRejectedValue(new ApiError("Not Found", 404));
+    renderWithClient(<AssetDetail assetId={1} />);
+    expect(await screen.findByText(/asset not found/i)).toBeInTheDocument();
+  });
+
+  it("displays procurement fields including PI Number, and custody, on the real data", async () => {
+    mockGets();
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+
+    clickTab("Procurement");
+    const procurementPanel = await screen.findByRole("tabpanel", { name: "Procurement" });
+    expect(within(procurementPanel).getByText("PI-3001")).toBeInTheDocument();
+    expect(within(procurementPanel).getByText("Acme Traders")).toBeInTheDocument();
+    expect(within(procurementPanel).getByText("PO-1001")).toBeInTheDocument();
+    expect(within(procurementPanel).getByText("INV-2001")).toBeInTheDocument();
+    expect(within(procurementPanel).getByText("2027-06-01")).toBeInTheDocument();
+
+    clickTab("Custody");
+    const custodyPanel = await screen.findByRole("tabpanel", { name: "Custody" });
+    expect(within(custodyPanel).getByText("IT Stock-HO")).toBeInTheDocument();
+    // "Head Office" is legitimately both the location and the cost centre in this fixture.
+    expect(within(custodyPanel).getAllByText("Head Office")).toHaveLength(2);
+  });
+
+  it("displays custom field values, including a value whose definition was later retired", async () => {
+    mockGets();
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+
+    clickTab("Custom Fields");
+    const panel = await screen.findByRole("tabpanel", { name: "Custom Fields" });
+    expect(within(panel).getByText("Asset Tag")).toBeInTheDocument();
+    expect(within(panel).getByText("TAG-1")).toBeInTheDocument();
+    // Not silently hidden just because no active definition matches it anymore.
+    expect(within(panel).getByText("kept for history")).toBeInTheDocument();
+  });
+
+  it("displays the lifecycle timeline under History", async () => {
+    mockGets({ events: [{ id: 1, event_type: "PROCURED", event_date: "2025-06-01T00:00:00Z", status_after: "IN_STOCK", remarks: null, reference_no: null, label: "Procured" }] });
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+
+    clickTab("History");
+    expect(await screen.findByText("Procured")).toBeInTheDocument();
+  });
+
+  it("displays the field-change audit under Changes, distinct from lifecycle History", async () => {
+    mockGets({
+      changes: [{ id: 1, field_name: "brand", old_value: "Dell", new_value: "HP", actor_id: 9, actor_name: "Admin", request_id: "r1", created_at: "2025-07-01T00:00:00Z" }],
     });
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+
+    clickTab("Changes");
+    const panel = await screen.findByRole("tabpanel", { name: "Changes" });
+    expect(within(panel).getByText("brand")).toBeInTheDocument();
+    expect(within(panel).getByText("Dell")).toBeInTheDocument();
+    expect(within(panel).getByText("HP")).toBeInTheDocument();
+    expect(within(panel).getByText("Admin")).toBeInTheDocument();
+  });
+
+  it("preserves the Documents tab", async () => {
+    mockGets();
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+
+    clickTab("Documents");
+    expect(await screen.findByText(/no documents uploaded/i)).toBeInTheDocument();
+  });
+
+  it("shows the Edit action for ADMIN/IT_TEAM but not for VIEWER or HOLDER", async () => {
+    mockGets();
+    const { unmount } = renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    expect(screen.getByRole("button", { name: /^edit$/i })).toBeInTheDocument();
+    unmount();
+
+    mockAuth("VIEWER");
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    expect(screen.queryByRole("button", { name: /^edit$/i })).not.toBeInTheDocument();
+  });
+
+  it("never renders an editable control for an immutable/lifecycle field while editing", async () => {
+    mockGets();
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+
+    fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
+    expect(await screen.findByRole("button", { name: /^save$/i })).toBeInTheDocument();
+
+    for (const forbidden of [/^category$/i, /^sub-category$/i, /cost centre/i, /purchase date/i, /^status$/i]) {
+      expect(screen.queryByLabelText(forbidden)).not.toBeInTheDocument();
+    }
+    // The asset code itself is never a form control anywhere on this page.
+    expect(screen.queryByDisplayValue("FA/HO01/IT/LAP/CK_1")).not.toBeInTheDocument();
+  });
+
+  it("saves an edit through PUT /api/assets/{id} and refreshes the displayed data", async () => {
+    mockGets();
+    (apiClient.put as any).mockResolvedValue({ ...FULL_ASSET, brand: "HP" });
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+
+    fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
+    const brandInput = await screen.findByLabelText(/^brand$/i);
+    fireEvent.change(brandInput, { target: { value: "HP" } });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(apiClient.put).toHaveBeenCalledWith(
+      "/assets/1",
+      expect.objectContaining({ description: "Laptop", pi_number: "PI-3001" }),
+    ));
+    // Back to the read view, showing the just-saved value.
+    fireEvent.click(await screen.findByRole("tab", { name: "Overview" }));
+    expect(screen.getByText("HP")).toBeInTheDocument();
+  });
+
+  it("shows a save-error message instead of losing the edit silently", async () => {
+    mockGets();
+    (apiClient.put as any).mockRejectedValue(new Error("missing required custom field(s): asset_tag"));
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+
+    fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^save$/i }));
+
+    expect(await screen.findByText(/missing required custom field/i)).toBeInTheDocument();
+  });
+
+  it("only shows actions valid for the current status and posts the chosen action", async () => {
+    mockGets();
     (apiClient.post as any).mockResolvedValue({ id: 99, status_after: "ALLOTTED" });
 
     renderWithClient(<AssetDetail assetId={1} />);
 
-    await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK_1")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" })).toBeInTheDocument());
     expect(screen.getByRole("button", { name: /move \/ allot/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /receive from repair/i })).not.toBeInTheDocument();
 
-    // Holders are scoped to the asset's own company, not fetched unscoped -- matches the
-    // Initial Holder select's scoping in AddAssetForm.tsx.
+    // Holders are scoped to the asset's own company, not fetched unscoped.
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/holders?company_id=1"));
 
     fireEvent.click(screen.getByRole("button", { name: /move \/ allot/i }));
@@ -74,63 +260,30 @@ describe("AssetDetail", () => {
     })));
   });
 
-  it("hides all action buttons for HOLDER-role viewers", async () => {
-    (useAuthStore as any).mockImplementation((selector: any) => {
-      const state = { role: "HOLDER", accessToken: null, companyId: null, mustChangePassword: false };
-      return selector ? selector(state) : state;
-    });
-    (apiClient.get as any).mockImplementation((path: string) => {
-      if (path === "/assets/1") {
-        return Promise.resolve({
-          id: 1,
-          asset_code: "FA/HO01/IT/LAP/CK_1",
-          description: "Laptop",
-          status: "IN_STOCK",
-          company_id: 1,
-        });
-      }
-      if (path === "/assets/1/events") return Promise.resolve([]);
-      if (path.startsWith("/holders")) return Promise.resolve([{ id: 5, name: "Ankur" }]);
-      return Promise.resolve([]);
-    });
+  it("hides all lifecycle action buttons, and the Edit action, for HOLDER-role viewers", async () => {
+    mockAuth("HOLDER");
+    mockGets();
 
     renderWithClient(<AssetDetail assetId={1} />);
 
-    await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK_1")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" })).toBeInTheDocument());
     expect(screen.queryByRole("button", { name: /move \/ allot/i })).not.toBeInTheDocument();
-    // Still zero *lifecycle action* buttons for a HOLDER -- but Print Label (Task 24) is
-    // a read-only label/QR action available to every role, not gated behind
-    // `actionsFor`, so it's the one button a HOLDER does see.
-    expect(screen.getAllByRole("button")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: /^edit$/i })).not.toBeInTheDocument();
+    // Print Label is a read-only action available to every role.
     expect(screen.getByRole("button", { name: /print label/i })).toBeInTheDocument();
   });
 
   it("shows a QR code image and a working Print Label button", async () => {
-    (apiClient.get as any).mockImplementation((path: string) => {
-      if (path === "/assets/1") {
-        return Promise.resolve({
-          id: 1,
-          asset_code: "FA/HO01/IT/LAP/CK_1",
-          description: "Laptop",
-          status: "IN_STOCK",
-          company_id: 1,
-        });
-      }
-      if (path === "/assets/1/events") return Promise.resolve([]);
-      if (path.startsWith("/holders")) return Promise.resolve([]);
-      return Promise.resolve([]);
-    });
-    (useAuthStore as any).getState = vi.fn().mockReturnValue({ accessToken: "test-token" });
+    mockGets();
+    (useAuthStore as any).getState = vi.fn().mockReturnValue({ role: "ADMIN", accessToken: "test-token" });
     const qrBlob = new Blob(["fake-png-bytes"]);
     window.fetch = vi.fn().mockResolvedValue({ ok: true, blob: () => Promise.resolve(qrBlob) }) as any;
     const printSpy = vi.spyOn(window, "print").mockImplementation(() => {});
 
     renderWithClient(<AssetDetail assetId={1} />);
 
-    await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK_1")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" })).toBeInTheDocument());
 
-    // The image is fetched with the bearer token (not a bare <img src="/api/...">,
-    // which would 401) and rendered from the resulting blob's object URL.
     await waitFor(() => expect(window.fetch).toHaveBeenCalledWith(
       expect.stringContaining("/assets/1/qr.png"),
       expect.objectContaining({ headers: { Authorization: "Bearer test-token" } }),
