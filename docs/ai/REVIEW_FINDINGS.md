@@ -6,33 +6,32 @@ message / `DECISIONS.md`, don't just leave it checked off here).
 
 ## Design / UX (open)
 
-1. **`DataTable` exists now but is only used on 2 of ~11 tabular screens.**
-   AM-03 built `components/shared/DataTable.tsx` and migrated Dashboard's 3
-   sub-tables and Asset Register. My Assets, Holders, Import preview, and all
-   8 master screens (`MasterCrudScreen`) still hand-roll their own
-   header/row/empty-row markup. Target for AM-04+ (a dedicated Asset 360/
-   Masters/Holders stage) — migrating them wasn't authorized in AM-03.
-2. **`PageHeader` exists now but is only used on 2 screens.** AM-03 built
-   `components/shared/PageHeader.tsx` and migrated Dashboard and Asset
-   Register. Every other screen still has its own ad hoc title block. Target
-   for AM-04+.
-3. **Loading/empty/error states are still inconsistent outside Dashboard and
-   Asset Register.** Both of those now have full loading/empty/error
-   coverage via `DataTable`/`EmptyState`/`ErrorState` (AM-03) — `AssetDetail`
-   still shows nothing (`return null`) while loading, and the 8 master
-   screens and Holders still show no empty-table message or error state.
-4. **No skeleton loaders outside Dashboard and Asset Register** — `DataTable`
-   (AM-03) shows skeleton rows while loading on those two screens only.
-5. **Heading-size drift outside Dashboard and Asset Register.** Both of
-   those now render their `<h1>` through the shared `PageHeader` (AM-03,
-   fixed at `text-lg`) — every other screen still sets its own heading
-   markup/size with no shared rule; Asset Detail and My Assets still have no
+1. **`DataTable` exists now but is only used on 4 of ~11 tabular screens.**
+   AM-03 migrated Dashboard's 3 sub-tables and Asset Register; AM-04 added
+   Asset 360's Changes tab. My Assets, Holders, Import preview, and all 8
+   master screens (`MasterCrudScreen`) still hand-roll their own
+   header/row/empty-row markup. Target for AM-05+ (a dedicated Masters/
+   Holders/Import stage) — migrating them wasn't authorized in AM-04.
+2. **`PageHeader` exists now but is only used on 4 screens.** AM-03 migrated
+   Dashboard and Asset Register; AM-04 added Add Asset and Asset 360. Every
+   other screen still has its own ad hoc title block.
+3. **Loading/empty/error states are still inconsistent outside Dashboard,
+   Asset Register, Add Asset and Asset 360.** All four now have full
+   loading/empty/error coverage — Asset Detail's old `return null` while
+   loading is fixed (AM-04, now a real skeleton + `ErrorState` + a distinct
+   not-found treatment) — but the 8 master screens, Holders and Import still
+   show no empty-table message or error state.
+4. **No skeleton loaders outside Dashboard, Asset Register, and Asset 360.**
+5. **Heading-size drift outside Dashboard, Asset Register, Add Asset and
+   Asset 360.** All four now render their `<h1>` through the shared
+   `PageHeader` (fixed at `text-lg`) — every other screen still sets its own
+   heading markup/size with no shared rule; My Assets still has no
    page-level heading at all.
-6. **Duplicated async-state plumbing in Imports/Reports.** AM-03 built the
-   shared `AsyncButton` primitive and used it in Asset Register's bulk-move
-   Confirm button, but Imports/Reports themselves weren't touched (out of
-   scope for AM-03) and still hand-roll their own pending/error `useState`
-   pairs for their blob-download buttons.
+6. **Duplicated async-state plumbing in Imports/Reports.** `AsyncButton` is
+   now used in Asset Register's bulk-move Confirm, Add Asset's Save, and
+   Asset 360's action/edit Save buttons, but Imports/Reports themselves
+   weren't touched (out of scope through AM-04) and still hand-roll their
+   own pending/error `useState` pairs for their blob-download buttons.
 7. **One hardcoded non-token color**: `text-blue-600` in `MyAssets.tsx`'s
    asset-code link (every other equivalent link elsewhere is unstyled).
 8. **`MasterCrudScreen` supports Create + Deactivate only, not Edit** —
@@ -65,15 +64,12 @@ message / `DECISIONS.md`, don't just leave it checked off here).
     preview/commit path nor `assets_to_xlsx` includes vendor/PO/invoice/PI/
     brand/model/serial/warranty/custom-field columns. Deliberately deferred
     (AM-02 §13/§14), not a brittle stopgap.
-13. **`category_id`, `subcategory_id`, `purchase_date` have no edit path**
-    after asset creation (AM-02 §17) — a real, evidenced gap (what if a
-    category was picked wrong at creation?), deliberately left open since
-    safely exposing it needs more design than AM-02's scope.
-14. **No generic field-change audit for editable descriptive fields** —
-    `PUT /api/assets/{id}` (AM-02) updates `updated_by`/`updated_at` only,
-    no before/after value log the way `asset_event` provides for lifecycle
-    changes. Flag if procurement-edit traceability becomes a real
-    requirement.
+13. **`category_id`, `subcategory_id`, `purchase_date` still have no edit
+    path** after asset creation — reconfirmed as deliberately out of scope in
+    AM-04 too (§17 of that authorization): a real, evidenced gap (what if a
+    category was picked wrong at creation?), but safely exposing it needs a
+    dedicated correction-workflow design, not a silent add to the generic
+    edit form. A future stage's work.
 
 ## Resolved this session (kept here for traceability, remove once stale)
 
@@ -112,3 +108,38 @@ message / `DECISIONS.md`, don't just leave it checked off here).
 - Dashboard could get stuck on "Loading…" forever if the fetch failed
   (`isLoading || !data` never distinguished "still loading" from "failed") —
   fixed with a real `isError`/`ErrorState`/retry path (AM-03).
+- **No generic field-change audit for editable descriptive fields** — fixed
+  (AM-04): a new append-only `asset_field_change` table (migration
+  `a409768dc2cf`, same DB-trigger-enforced append-only pattern as
+  `asset_event`) records one row per genuinely-changed field on every
+  `PUT /api/assets/{id}`, in the same transaction as the edit, readable via
+  `GET /api/assets/{id}/changes` and shown in Asset 360's own "Changes" tab,
+  kept visually distinct from lifecycle History.
+- **`AssetDetail` used to `return null` while loading, with no error or
+  not-found state at all** — fixed (AM-04): a real skeleton while loading, a
+  distinct not-found treatment for a 404, and `ErrorState`+retry for any
+  other failure.
+- **Add Asset only exposed the original 9-field subset even though the API
+  has supported full procurement/UDF data since AM-02** — fixed (AM-04):
+  redesigned onto the shared UI foundation with all procurement fields
+  (including PI Number), asset details, commercial fields, and dynamically-
+  rendered active Custom Fields, sectioned and grouped rather than one flat
+  form.
+- **`CustomField.is_required` had no enforcement anywhere** — fixed (AM-04):
+  enforced server-side on create (always) and on edit only when the edit
+  itself replaces `custom_fields` (so an old asset predating a newly-required
+  field is never blocked from an unrelated edit) — see `DECISIONS.md`.
+- **No way to correct a mistyped procurement/descriptive field from the UI**
+  (the AM-02 `PUT` endpoint existed but had no frontend consumer) — fixed
+  (AM-04): Asset 360's role-gated (ADMIN/IT_TEAM) Edit mode, which can never
+  touch identity or lifecycle fields (they're simply not in the edit form).
+- **Asset 360's page could overflow its viewport at 768px** — found during
+  AM-04's own mandatory browser UAT: the app shell's `SidebarInset` had no
+  `min-w-0`, so a page with wide-enough content (Asset 360's header actions
+  row) silently forced the whole page wider than 768px instead of wrapping.
+  Fixed in the shared `components/ui/sidebar.tsx`, verified not to regress
+  Dashboard/Asset Register/Add Asset at the same width — see `DECISIONS.md`.
+- **Asset 360's 7-tab `TabsList` had no horizontal-scroll container of its
+  own** — narrower than a page-overflow bug on its own, but fixed alongside
+  the item above so the tab bar scrolls within itself at narrow widths
+  instead of relying on the page-level fix alone.

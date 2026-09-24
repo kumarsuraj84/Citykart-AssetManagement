@@ -2,6 +2,118 @@
 
 Newest first. These override older spec/plan text where they conflict.
 
+## 2026-09-24 — AM-04 scope locked (Add Asset + Asset 360 + procurement/UDF UI + edit audit)
+
+0. **Operational risk worth flagging: Custom Fields are global across every
+   company** (confirmed in AM-02, unchanged here) **and `is_required` now
+   actually blocks asset creation everywhere it applies (new in AM-04).**
+   An ADMIN in any one company marking a Custom Field required immediately
+   affects every company's Add Asset flow, not just their own — discovered
+   concretely during this stage's own browser UAT (a required field created
+   to exercise the UI blocked the E2E suite's unrelated fixture company
+   until deactivated again). This was already true architecturally since
+   Custom Fields were made global, but had no practical consequence until
+   `is_required` had real teeth. Not a bug — a genuine characteristic of the
+   current single-global-Custom-Field-set design worth keeping in mind
+   before anyone adds a required field in the live app; per-company or
+   per-category-scoped Custom Fields were never in scope for any stage so
+   far and would be a real, separate design decision if ever needed.
+1. **Required-UDF enforcement rule.** On asset **create**, every active
+   `CustomField.is_required=true` must have a valid value — enforced
+   unconditionally, server-side (`procure_assets` always calls
+   `validate_custom_field_values(..., enforce_required=True)`), never
+   relying on frontend validation alone. On **edit**
+   (`PUT /api/assets/{id}`), required-completeness is enforced **only when
+   the edit itself includes `custom_fields`** — an existing asset that
+   predates a newly-added required field must never be blocked from an
+   unrelated edit (e.g. fixing a serial number) just because it has no value
+   for that field yet. Since `AssetUpdateIn` is a full-replace PUT (see item
+   2 below), Asset 360's Edit mode always submits the complete current
+   `custom_fields` set, so every edit made through that UI does enforce
+   completeness — which is the correct, intended behavior for a UI that
+   shows and lets the user fix that value right there.
+2. **`AssetUpdateIn`/`PUT /api/assets/{id}` is a full-replace PUT, not a
+   merge-patch** — this predates AM-04 (AM-02's own schema docstring
+   already said so) but is worth restating because it is a real, easy-to-miss
+   gotcha: a field omitted from the request body is replaced with its schema
+   default (usually `null`), not left untouched. Discovered concretely
+   during AM-04's own backend test-writing (a test that PUT only
+   `description`+`brand` silently wiped `purchase_cost`/`tax_percent` to
+   null). **Any caller of this endpoint — UI or script — must prefill and
+   resubmit the complete editable-field set**, never a partial diff. Asset
+   360's Edit mode does this by construction (it always prefills every
+   editable field from the current `GET` response before allowing Save).
+3. **Field-change audit is a new, separate, append-only table
+   (`asset_field_change`), never folded into `asset_event`.** A lifecycle
+   move ("asset moved to Store X") and a descriptive-data edit ("PO Number
+   changed from A to B") are different kinds of facts; conflating them would
+   make the lifecycle ledger noisier and the field audit harder to reason
+   about. One row per genuinely-changed field per edit (not one row per edit
+   with a diff blob), written in the same transaction as the edit itself
+   (both commit together or neither does), enforced append-only at the
+   database level via the same trigger pattern `asset_event` already uses.
+   For `vendor_id` specifically, the audit snapshots the vendor's name
+   alongside its ID (`"Acme Traders (#7)"`) so a later vendor rename doesn't
+   make old history unreadable — the same reasoning AM-01 already applied to
+   `asset_event`'s holder names.
+4. **Asset 360's Edit mode can only ever touch the AM-02-approved editable
+   descriptive/procurement subset.** Identity fields (`asset_code`/
+   `company_id`/`cost_center_id`), lifecycle fields (`status`/
+   `current_holder_id`/`status_since`), and `category_id`/`subcategory_id`/
+   `purchase_date` are not rendered as form controls anywhere in Edit mode —
+   not merely disabled — reconfirming the Asset Field Policy Matrix from
+   AM-02, not reopening it.
+5. **`category_id`/`subcategory_id`/`purchase_date` remain non-editable
+   after creation, reconfirmed.** They're displayed in Asset 360 but never
+   get an edit control. Same reasoning as AM-02: category/subcategory can
+   influence Asset Code semantics, and `purchase_date` feeds numbering
+   tokens and the event-ordering invariant. A future stage may define a
+   controlled correction workflow; AM-04 does not solve it silently.
+6. **Add Asset's section structure**: Organization (Company/Cost Centre) →
+   Asset Classification (Category/Sub-Category/Description) → Purchase/
+   Procurement (Vendor/PO/Invoice/**PI Number**/Purchase Date) → Asset
+   Details (Brand/Model/Serial/Warranty/Legacy Code) → Commercial (Cost/Tax,
+   with a preview computed using the same rounding as the backend) →
+   Initial Custody (Goes Into/Quantity) → Custom Fields (dynamic, active
+   definitions only, `sort_order` respected). Restrained grouping via
+   section headings + spacing, not a card per section.
+7. **Asset 360's information architecture**: `PageHeader` (Code/
+   Description/Status/current Holder+type+location) + lifecycle action
+   buttons (unchanged, still `actionRules.ts`-driven) up top, then tabs:
+   Overview, Procurement, Custody, Custom Fields, History (lifecycle
+   Timeline, unchanged), **Changes** (new — the field-change audit, kept
+   visually and structurally separate from History), Documents (unchanged).
+8. **A custom field's retained value survives its definition being
+   deactivated, and is never silently hidden.** Asset 360's Custom Fields
+   tab shows every key in `Asset.custom_fields`; if no active `CustomField`
+   definition matches it anymore, it's shown labeled `"<key> (retired
+   field)"` rather than dropped, since inactive definitions aren't currently
+   exposed by any API this stage was authorized to change.
+9. **`AssetDetailOut` (single-asset GET/PUT response only) adds
+   human-readable labels** (vendor/category/subcategory/cost-centre/holder/
+   location/department names) via a handful of point lookups by primary
+   key — additive, never affecting `AssetOut`/the list endpoint, so the
+   register doesn't pay for joins it doesn't display.
+10. **No backend change beyond what AM-04 explicitly authorized** — one new
+    table + its migration (`a409768dc2cf`), the required-UDF check, the
+    audit-writing code, and the `AssetDetailOut` label enrichment. No change
+    to `asset_event`, the lifecycle state machine, numbering, the Holder
+    model, or `holder_company_access`.
+11. **The app shell's `SidebarInset` (`components/ui/sidebar.tsx`) now has
+    `min-w-0`.** Found via AM-04's mandatory 768px browser check: a flex
+    child's default min-width is its content's intrinsic width, so once a
+    page's content (Asset 360's PageHeader actions row: status badge + QR
+    image + 2 buttons) was wide enough, the whole page silently overflowed
+    its viewport at exactly 768px (where the sidebar is docked, not yet a
+    drawer, per the existing `md` breakpoint behavior) instead of wrapping.
+    Fixed at the shared shell level since this is a general flexbox
+    footgun, not something specific to Asset 360 — re-verified Dashboard,
+    Asset Register, and Add Asset at the same width show no regression.
+    **Don't remove `min-w-0` from `SidebarInset` without re-testing every
+    screen at 768px.**
+
+Full evidence: `docs/ai/AM-04_ASSET_ENTRY_360_REPORT.md`.
+
 ## 2026-09-24 — AM-03 scope locked (UI foundation + Dashboard + Asset Register)
 
 1. **Shared UI components own presentation/interaction, never business

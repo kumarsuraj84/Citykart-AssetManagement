@@ -1,10 +1,12 @@
 # CKAM — Current Stage
 
-**Stage:** AM-03 (UI foundation + Dashboard + Asset Register reference pattern) — complete, PASS.
-**Next:** awaiting explicit go-ahead on AM-04 or any other further work — do
-not start anything automatically, including Add Asset/Asset 360/Masters/
-Holders/Import/Reports/My Assets redesign.
+**Stage:** AM-04 (Add Asset + Asset 360 + procurement/UDF UI + edit audit) — complete, PASS.
+**Next:** awaiting explicit go-ahead on AM-05 or any other further work — do
+not start anything automatically, including Masters/Holders/Import/Reports/
+My Assets redesign, or any category/subcategory/purchase-date correction
+workflow.
 
+Full AM-04 evidence: `docs/ai/AM-04_ASSET_ENTRY_360_REPORT.md`.
 Full AM-03 evidence: `docs/ai/AM-03_UI_FOUNDATION_REPORT.md`.
 Full AM-02 evidence: `docs/ai/AM-02_ASSET_DATA_MODEL_REPORT.md`.
 Full AM-01 evidence: `docs/ai/AM-01_DATA_INTEGRITY_REPORT.md`.
@@ -15,9 +17,10 @@ No approval workflow in V1. Single current-holder/custody concept (no
 custodian/user split). No AMC/insurance. No depreciation/accounting. No
 physical verification (but QR/barcode stays forward-compatible). Lost/Damaged
 tracks lifecycle state + reason + audit only, no recovery/write-off
-accounting. Custom Fields are **required** long-term but not wired into any
-screen yet — do not remove the master. Procurement traceability (including PI
-Number) is a locked target requirement. Auto-generated Asset Code stays
+accounting. Custom Fields are **required** long-term and are now wired into
+Add Asset and Asset 360 (AM-04) with server-side required-field enforcement
+on create. Procurement traceability (including PI Number) is a locked target
+requirement, now fully reachable from Add Asset/Asset 360. Auto-generated Asset Code stays
 mandatory, race-safe numbering preserved as-is. CKAM supports ≥2 companies;
 Cost Centres must match their asset's company (already enforced, now
 test-covered on both creation paths). No login company selector (already
@@ -96,38 +99,96 @@ Reassigned, plus Repair/Lost-Found/Disposed-Sold-Scrapped.
   1440/1024/768/375 with live data (a throwaway seed company/admin created
   and soft-deactivated afterward, the same safe pattern E2E already uses).
 
-## Deferred from AM-01/AM-02, awaiting your decision (not blockers, not failures)
+## What's actually done as of AM-04
+
+- **Add Asset redesigned:** sectioned (Organization / Asset Classification /
+  Purchase-Procurement / Asset Details / Commercial / Initial Custody /
+  Custom Fields), using the AM-03 shared foundation (`PageHeader`,
+  `FormField`, `AsyncButton`, `ErrorState`). Every procurement field the API
+  has supported since AM-02 (vendor, PO, invoice, **PI Number**, warranty,
+  legacy asset code, brand/model/serial) is now actually reachable from the
+  UI, plus dynamically-rendered active Custom Fields (respecting
+  `sort_order`, one control per supported type). A tax/total-cost preview
+  uses the same rounding as the backend, but the backend's own response
+  after save remains authoritative.
+- **Required Custom Fields now actually enforced (new business rule):** every
+  active `CustomField.is_required=true` must have a valid value before a new
+  asset can be created — enforced server-side (`validate_custom_field_values`,
+  `enforce_required=True`), not just in the browser. On edit, this is only
+  enforced when the edit itself replaces `custom_fields` — an existing asset
+  predating a newly-required field is never blocked from an unrelated edit.
+- **Successful single-asset creation navigates straight to the new asset's
+  Asset 360 page** (Asset Code always server-generated, read back from the
+  response, never guessed client-side). A multi-quantity ("buying 20 mice")
+  create still lists every generated code, since there's no single
+  destination to jump to for a batch.
+- **Asset Detail became Asset 360:** real loading skeleton, `ErrorState`+
+  retry, and a distinct not-found treatment (was `return null` with no
+  states at all). `PageHeader` shows Asset Code/Description/Status/current
+  Holder/Holder type/Location. Tabbed: Overview, Procurement, Custody,
+  Custom Fields (including retained values for a deactivated definition —
+  never silently hidden), History (unchanged lifecycle Timeline), Changes
+  (new — see below), Documents (unchanged, preserved as-is). Lifecycle
+  action buttons are unchanged, still driven only by the existing
+  `actionRules.ts`/state machine.
+- **Asset 360 Edit mode (new, role-gated ADMIN/IT_TEAM):** uses the existing
+  AM-02 `PUT /api/assets/{id}`. Can only ever touch the same editable
+  descriptive/procurement subset `AssetUpdateIn` already defined — identity
+  fields (`asset_code`/`company_id`/`cost_center_id`), lifecycle fields
+  (`status`/`current_holder_id`/`status_since`), and `category_id`/
+  `subcategory_id`/`purchase_date` are never rendered as form controls at
+  all, not merely disabled.
+- **New field-change audit (`asset_field_change`, migration `a409768dc2cf`):**
+  a lightweight, append-only (DB-trigger-enforced, same pattern as
+  `asset_event`) table recording one row per genuinely-changed field per
+  edit, written in the same transaction as the edit itself. Deliberately
+  separate from `asset_event` — lifecycle moves and descriptive-field edits
+  are different kinds of facts and are never merged. Readable via the new
+  `GET /api/assets/{id}/changes` (scoped identically to viewing the asset)
+  and shown in Asset 360's own "Changes" tab.
+- **Asset 360 shows human-readable labels, not bare IDs**, for Vendor/
+  Category/Sub-Category/Cost Centre/Holder/Location/Department — a small,
+  additive `AssetDetailOut` response used only by the single-asset GET/PUT
+  endpoints (the list endpoint's `AssetOut` is untouched, so the register
+  doesn't pay for joins it doesn't display).
+- **No Masters/Holders/Import/Reports/My Assets change.** No approval
+  workflow, AMC/insurance, depreciation, or physical verification. No
+  category/subcategory/purchase_date correction workflow (explicitly
+  deferred, same reasoning as AM-02).
+- Backend: 184 → 199 tests (+15). Frontend: 81 → 101 tests (+20, one new
+  file for `FormField`'s first real consumer-driven tests). Typecheck clean,
+  E2E 1/1 passing (updated for the redesigned Add Asset's field labels and
+  the new post-create navigation), real-browser UAT performed.
+
+## Deferred, awaiting your decision (not blockers, not failures)
 
 1. **`holder_company_access`**: written to, never read by authorization.
    Classified as either "needed for multi-company asset-team access" or
    "dormant/obsolete" — genuinely depends on whether CityKart's asset team is
    organizationally shared across companies. No behavioral change made in
-   AM-01 or AM-02.
+   AM-01, AM-02, AM-03 or AM-04.
 2. **Import/Export column extension**: the import template and export column
-   list still don't include any procurement or custom-field columns, even
-   though the API now fully supports them. Deliberately deferred (AM-02
-   §13/§14) — not a brittle dynamic-column hack, a real future stage's work.
+   list still don't include any procurement, custom-field, or field-change-
+   audit columns, even though the API now fully supports the first two.
+   Deliberately deferred again in AM-04 (§32) — not a brittle dynamic-column
+   hack, a real future stage's work.
 3. **`category_id`/`subcategory_id`/`purchase_date` have no edit path** —
-   deliberately excluded from `AssetUpdateIn` this stage (AM-02 §17):
-   changing them safely needs more design than this stage's scope (code-
-   generation tokens and event-ordering invariants both depend on them).
-4. **No generic field-change audit** for the newly-editable descriptive
-   fields — `updated_by`/`updated_at` only, no before/after value log (AM-02
-   §28). Judged sufficient for this stage; flag if procurement-edit
-   traceability becomes a real requirement.
+   deliberately excluded from `AssetUpdateIn`/Asset 360's Edit mode again in
+   AM-04 (§17): changing them safely needs a dedicated correction-workflow
+   design (code-generation tokens and event-ordering invariants both depend
+   on them), not a silent add to the generic edit form.
 
-5. **Shared UI foundation is only proven on 2 screens.** `DataTable`/
-   `PageHeader` exist now but Asset Detail, Add Asset, Holders, Import
-   preview, and all 8 master screens still hand-roll their own markup.
-   Migrating them is real, screen-by-screen work for a future stage.
-6. **`AsyncButton` exists but Imports/Reports weren't touched** — they still
+4. **Shared UI foundation is now proven on 4 screens** (Dashboard, Asset
+   Register, Add Asset, Asset 360) but Holders, Import preview, My Assets,
+   and all 8 master screens still hand-roll their own markup. Migrating them
+   is real, screen-by-screen work for a future stage.
+5. **`AsyncButton` exists but Imports/Reports weren't touched** — they still
    hand-roll their own pending/error state for blob-download buttons.
 
-None of AM-04 through AM-16 (Asset Detail/Asset 360, Add Asset data entry +
-UDF/procurement wiring, Holders, Setup/masters, Import, Reports, My Assets,
-full responsive/accessibility pass, security regression, full UAT) have been
-started as dedicated stages yet — see `REVIEW_FINDINGS.md` for what's still
-open on each of those screens.
+None of AM-05 through AM-16 (Masters/Holders redesign, Import, Reports, My
+Assets, full responsive/accessibility pass, security regression, full UAT)
+have been started as dedicated stages yet — see `REVIEW_FINDINGS.md` for
+what's still open on each of those screens.
 
 ## Branch / remote state
 
