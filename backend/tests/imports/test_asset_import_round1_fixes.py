@@ -31,8 +31,8 @@ from app.assets.models import Asset
 def _build_workbook(rows: list[list]) -> bytes:
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.append(["legacy_asset_code", "company_code", "cost_center_code", "category_code", "subcategory_code",
-               "description", "purchase_date", "holder_emp_code"])
+    ws.append(["Legacy Asset Code", "Company Code", "Cost Centre Code", "Category Code", "Subcategory Code",
+               "Description", "Purchase Date", "Initial Holder Code"])
     for row in rows:
         ws.append(row)
     buf = io.BytesIO()
@@ -178,7 +178,7 @@ async def test_malformed_purchase_date_is_a_preview_time_row_error_not_a_commit_
     assert body["valid_rows"] == []
     assert len(body["errors"]) == 1
     assert body["errors"][0]["row"] == 2
-    assert "purchase_date" in body["errors"][0]["message"]
+    assert "Purchase Date" in body["errors"][0]["message"]
 
     commit_resp = await client.post("/api/imports/assets/commit",
         files={"file": ("assets.xlsx", io.BytesIO(xlsx), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
@@ -188,7 +188,7 @@ async def test_malformed_purchase_date_is_a_preview_time_row_error_not_a_commit_
     assert commit_body["imported"] == 0
     assert len(commit_body["errors"]) == 1
     assert commit_body["errors"][0]["row"] == 2
-    assert "purchase_date" in commit_body["errors"][0]["message"]
+    assert "Purchase Date" in commit_body["errors"][0]["message"]
 
     async with SessionLocal() as session:
         asset = (await session.execute(select(Asset).where(Asset.legacy_asset_code == "OLD-BADDATE-1"))).scalars().first()

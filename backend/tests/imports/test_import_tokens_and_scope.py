@@ -18,8 +18,8 @@ XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 def _xlsx(rows):
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.append(["legacy_asset_code", "company_code", "cost_center_code", "category_code", "subcategory_code",
-               "description", "purchase_date", "holder_emp_code"])
+    ws.append(["Legacy Asset Code", "Company Code", "Cost Centre Code", "Category Code", "Subcategory Code",
+               "Description", "Purchase Date", "Initial Holder Code"])
     for row in rows:
         ws.append(row)
     buf = io.BytesIO()
@@ -173,5 +173,5 @@ async def test_import_rejects_a_cost_center_code_that_belongs_to_another_company
     assert resp.status_code == 200
     body = resp.json()
     assert body["imported"] == 0
-    assert "unknown cost_center_code" in body["errors"][0]["message"]
+    assert "unknown Cost Centre Code" in body["errors"][0]["message"]
     assert await _asset_codes() == []

@@ -11,8 +11,8 @@ from app.numbering.models import CodeRule
 def _build_workbook(rows: list[list]) -> bytes:
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.append(["legacy_asset_code", "company_code", "cost_center_code", "category_code", "subcategory_code",
-               "description", "purchase_date", "holder_emp_code"])
+    ws.append(["Legacy Asset Code", "Company Code", "Cost Centre Code", "Category Code", "Subcategory Code",
+               "Description", "Purchase Date", "Initial Holder Code"])
     for row in rows:
         ws.append(row)
     buf = io.BytesIO()
