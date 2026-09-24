@@ -5,6 +5,7 @@ from app.core.deps import STAFF_ROLES, get_current_holder, require_role, scoped_
 from app.holders.service import HolderService
 from app.holders.schemas import CompanyAccessIn, HolderIn, HolderOut, ResetPasswordOut
 from app.holders.models import HOLDER_TYPES, ROLES
+from app.masters.models import Company, Department, Location
 
 router = APIRouter(prefix="/api/holders", tags=["holders"])
 
@@ -19,6 +20,29 @@ def _validate_holder_fields(data: dict) -> None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"holder_type must be one of {HOLDER_TYPES}")
     if data.get("role") not in ROLES:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"role must be one of {ROLES}")
+
+
+async def _validate_holder_references(session: AsyncSession, data: dict) -> None:
+    # AM-08: `company_id`/`location_id` are NOT NULL foreign keys on `holder`
+    # (location_id is required by the schema -- it was never actually optional,
+    # see DECISIONS.md); `department_id` is genuinely optional. Before AM-08 a
+    # nonexistent id here (most commonly the frontend's old `0` sentinel for
+    # "nothing selected") reached the database unchecked and surfaced as a raw,
+    # unhandled IntegrityError/500. This mirrors _validate_holder_fields' own
+    # pattern (validate before the service ever touches the session) rather
+    # than catching the DB exception after the fact, per the guardrail against
+    # leaking DB errors in API responses.
+    company = await session.get(Company, data.get("company_id"))
+    if company is None or not company.is_active:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "company not found or inactive")
+    location = await session.get(Location, data.get("location_id"))
+    if location is None or not location.is_active:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "location not found or inactive")
+    department_id = data.get("department_id")
+    if department_id is not None:
+        department = await session.get(Department, department_id)
+        if department is None or not department.is_active:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "department not found or inactive")
 
 
 @router.get("", response_model=list[HolderOut])
@@ -46,6 +70,7 @@ async def create_holder(
 ):
     data = body.model_dump()
     _validate_holder_fields(data)
+    await _validate_holder_references(session, data)
     return await HolderService(session).create(data, holder.id)
 
 
@@ -58,6 +83,7 @@ async def update_holder(
 ):
     data = body.model_dump()
     _validate_holder_fields(data)
+    await _validate_holder_references(session, data)
     obj = await HolderService(session).update(holder_id, data, holder.id)
     if obj is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)

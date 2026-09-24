@@ -109,12 +109,21 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
   const [customValues, setCustomValues] = useState<Record<string, CustomFieldValue>>({});
   const [createdAssets, setCreatedAssets] = useState<CreatedAsset[]>([]);
 
+  // AM-08: Category and Vendor are genuinely global masters (no company_id
+  // column at all -- confirmed against the actual schema, not assumed from
+  // the AM-07 UAT observation that first flagged this), so they correctly
+  // list every row for every company; only Cost Centre is company-owned and
+  // is now filtered to this asset's own company via the same opt-in
+  // `company_id` query param the Initial Holder lookup below already uses.
   const categoriesQ = useQuery({ queryKey: ["masters", "categories"], queryFn: () => apiClient.get<Option[]>("/masters/categories") });
   const subcategoriesQ = useQuery({
     queryKey: ["masters", "subcategories"],
     queryFn: () => apiClient.get<(Option & { category_id: number })[]>("/masters/subcategories"),
   });
-  const costCentersQ = useQuery({ queryKey: ["masters", "cost-centers"], queryFn: () => apiClient.get<Option[]>("/masters/cost-centers") });
+  const costCentersQ = useQuery({
+    queryKey: ["masters", "cost-centers", companyId],
+    queryFn: () => apiClient.get<Option[]>(`/masters/cost-centers?company_id=${companyId}`),
+  });
   const vendorsQ = useQuery({ queryKey: ["masters", "vendors"], queryFn: () => apiClient.get<Option[]>("/masters/vendors") });
   const customFieldsQ = useQuery({
     queryKey: ["masters", "custom-fields"],
@@ -177,6 +186,7 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
   }
 
   const hasHolderOption = stockHolders.length > 0;
+  const hasCostCenterOption = costCenters.length > 0;
   const canSave =
     form.description.trim().length > 0 &&
     form.categoryId !== "" &&
@@ -296,6 +306,11 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
                 ))}
               </SelectContent>
             </Select>
+            {!mastersLoading && !hasCostCenterOption && (
+              <p className="text-sm text-destructive">
+                No active cost centres are configured for this company. Add one under Setup &gt; Cost Centers first.
+              </p>
+            )}
           </FormField>
         </div>
       </section>

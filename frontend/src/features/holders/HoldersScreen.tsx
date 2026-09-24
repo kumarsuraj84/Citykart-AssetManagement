@@ -210,6 +210,7 @@ export function HoldersScreen() {
   }
 
   function handleSave() {
+    if (!canSave) return;
     const payload = buildPayload(draft);
     if (editingId != null) {
       updateMutation.mutate({ id: editingId, payload });
@@ -220,6 +221,18 @@ export function HoldersScreen() {
 
   const roleChanged = originalRole !== null && draft.role !== originalRole;
   const savePending = createMutation.isPending || updateMutation.isPending;
+  const saveError = createMutation.error ?? updateMutation.error;
+  // AM-08: `location_id` is a required (NOT NULL) foreign key on Holder --
+  // it was never actually optional (see DECISIONS.md) -- so Save must be
+  // blocked, not merely default a blank Select to the `0` sentinel that used
+  // to reach the backend as an unhandled 500. Company/Emp Code/Name/Type are
+  // likewise required by HolderIn; Department stays genuinely optional.
+  const canSave =
+    draft.company_id !== "" &&
+    draft.emp_code.trim().length > 0 &&
+    draft.name.trim().length > 0 &&
+    draft.holder_type !== "" &&
+    draft.location_id !== "";
 
   const columns: DataTableColumn<HolderRow>[] = [
     { key: "emp_code", header: "Emp Code", cell: (h) => h.emp_code },
@@ -287,10 +300,10 @@ export function HoldersScreen() {
           </DialogHeader>
 
           <div className="flex flex-col gap-4">
-            <FormField htmlFor="company_id" label="Company">
+            <FormField htmlFor="company_id" label="Company" required>
               <Select value={draft.company_id || undefined} onValueChange={(v) => setField("company_id", v)}>
                 <SelectTrigger id="company_id" aria-label="Company">
-                  <SelectValue />
+                  <SelectValue placeholder="Select…" />
                 </SelectTrigger>
                 <SelectContent>
                   {companies.map((c) => (
@@ -302,7 +315,7 @@ export function HoldersScreen() {
               </Select>
             </FormField>
 
-            <FormField htmlFor="emp_code" label="Emp Code">
+            <FormField htmlFor="emp_code" label="Emp Code" required>
               <Input
                 id="emp_code"
                 aria-label="Emp Code"
@@ -311,7 +324,7 @@ export function HoldersScreen() {
               />
             </FormField>
 
-            <FormField htmlFor="name" label="Name">
+            <FormField htmlFor="name" label="Name" required>
               <Input
                 id="name"
                 aria-label="Name"
@@ -320,10 +333,10 @@ export function HoldersScreen() {
               />
             </FormField>
 
-            <FormField htmlFor="holder_type" label="Type">
+            <FormField htmlFor="holder_type" label="Type" required>
               <Select value={draft.holder_type || undefined} onValueChange={(v) => setField("holder_type", v)}>
                 <SelectTrigger id="holder_type" aria-label="Type">
-                  <SelectValue />
+                  <SelectValue placeholder="Select…" />
                 </SelectTrigger>
                 <SelectContent>
                   {HOLDER_TYPES.map((t) => (
@@ -335,10 +348,10 @@ export function HoldersScreen() {
               </Select>
             </FormField>
 
-            <FormField htmlFor="location_id" label="Location">
+            <FormField htmlFor="location_id" label="Location" required>
               <Select value={draft.location_id || undefined} onValueChange={(v) => setField("location_id", v)}>
                 <SelectTrigger id="location_id" aria-label="Location">
-                  <SelectValue />
+                  <SelectValue placeholder="Select…" />
                 </SelectTrigger>
                 <SelectContent>
                   {locations.map((l) => (
@@ -410,13 +423,19 @@ export function HoldersScreen() {
                 </p>
               )}
             </FormField>
+
+            {saveError && (
+              <p className="text-sm text-destructive" role="alert">
+                {saveError instanceof Error ? saveError.message : "Failed to save this user."}
+              </p>
+            )}
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={closeForm}>
               Cancel
             </Button>
-            <AsyncButton onClick={handleSave} pending={savePending} pendingLabel="Saving…">
+            <AsyncButton onClick={handleSave} disabled={!canSave} pending={savePending} pendingLabel="Saving…">
               Save
             </AsyncButton>
           </DialogFooter>

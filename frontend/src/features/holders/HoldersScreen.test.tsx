@@ -168,6 +168,44 @@ describe("HoldersScreen", () => {
     await waitFor(() => expect(apiClient.delete).toHaveBeenCalledWith("/holders/1"));
   });
 
+  it("AM-08: blocks Save with Location left blank -- never submits the old 0 sentinel", async () => {
+    mockGets([]);
+    renderWithClient(<HoldersScreen />);
+
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/masters/companies"));
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+
+    fireEvent.change(screen.getByLabelText("Emp Code"), { target: { value: "NOLOC" } });
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "No Location" } });
+    await pickSelectOption("Company", "CityKart HQ");
+    await pickSelectOption("Type", "EMPLOYEE");
+    // Location deliberately left unselected.
+
+    expect(screen.getByRole("button", { name: /^save$/i })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    expect(apiClient.post).not.toHaveBeenCalled();
+  });
+
+  it("AM-08: shows the backend's controlled validation error inside the dialog, not a crash", async () => {
+    mockGets([]);
+    (apiClient.post as any).mockRejectedValue(new Error("location not found or inactive"));
+
+    renderWithClient(<HoldersScreen />);
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/masters/companies"));
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+
+    fireEvent.change(screen.getByLabelText("Emp Code"), { target: { value: "NEW02" } });
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "New Hire 2" } });
+    await pickSelectOption("Company", "CityKart HQ");
+    await pickSelectOption("Type", "EMPLOYEE");
+    await pickSelectOption("Location", "Head Office");
+
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/location not found or inactive/i);
+    // The dialog stays open on a server error -- never silently closed.
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
   it("warns before saving a role change, and role is not reset by unrelated field edits", async () => {
     mockGets();
     (apiClient.put as any).mockResolvedValue({ ...HOLDER, name: "Ankur K" });

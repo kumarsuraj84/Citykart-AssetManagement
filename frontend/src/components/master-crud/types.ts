@@ -12,6 +12,12 @@ export interface FormField {
   label: string;
   type?: "text" | "number" | "select" | "checkbox";
   options?: { value: string | number; label: string }[];
+  /** Renders the raw value when shown read-only in the Edit dialog (a
+   * `formFields` entry not repeated in `editFields`, e.g. an immutable
+   * relational id) -- same purpose as `Column.format` above, e.g. mapping a
+   * `category_id` FK to its category's name instead of the raw id. Defaults
+   * to `String(value)`. */
+  format?: (value: unknown, row: Record<string, unknown>) => string;
 }
 
 export interface MasterConfig<T> {

@@ -1,5 +1,5 @@
 from typing import Callable
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
 from app.core.deps import ensure_company_in_scope, get_current_holder, require_role
@@ -56,10 +56,23 @@ def build_master_router(
 
     @sub.get("", response_model=list[schema_out])
     async def list_items(
+        company_id: int | None = Query(None),
         session: AsyncSession = Depends(get_session),
         _holder=Depends(get_current_holder),
     ):
-        return await MasterCRUDService(model, session).list_active()
+        # AM-08: an optional, opt-in filter for a company-owned master (Cost
+        # Centres) -- a data-entry screen like Add Asset passes its own
+        # company_id to see only its own rows. Omitted entirely (the Setup
+        # screens' own usage, unchanged), every active row is still returned,
+        # exactly as before -- this is a read-side narrowing, not a new
+        # authorization boundary (writes were already, and remain, the actual
+        # enforcement point). A company_id passed against a master that isn't
+        # company-owned (company_scope is None) is harmless and ignored, since
+        # that master has no such column to filter on.
+        filters = {}
+        if company_scope == SCOPE_COMPANY_ID and company_id is not None:
+            filters["company_id"] = company_id
+        return await MasterCRUDService(model, session).list_active(**filters)
 
     @sub.post("", response_model=schema_out, status_code=201)
     async def create_item(

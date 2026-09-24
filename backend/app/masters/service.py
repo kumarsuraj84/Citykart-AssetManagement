@@ -7,8 +7,10 @@ class MasterCRUDService:
         self.model = model
         self.session = session
 
-    async def list_active(self):
+    async def list_active(self, **filters):
         stmt = select(self.model).where(self.model.is_active.is_(True))
+        for key, value in filters.items():
+            stmt = stmt.where(getattr(self.model, key) == value)
         return (await self.session.execute(stmt)).scalars().all()
 
     async def get(self, id_: int):

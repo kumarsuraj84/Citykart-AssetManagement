@@ -98,6 +98,41 @@ describe("MasterCrudScreen", () => {
     );
   });
 
+  it("AM-08: a read-only relational field with a `format` shows its human-readable label, not the raw id", async () => {
+    const SUBCATEGORY_CONFIG = {
+      resource: "subcategories",
+      title: "Asset Subcategories",
+      singular: "Subcategory",
+      columns: [
+        { key: "category_id" as const, label: "Category" },
+        { key: "code" as const, label: "Code" },
+        { key: "name" as const, label: "Name" },
+      ],
+      formFields: [
+        {
+          key: "category_id",
+          label: "Category",
+          type: "select" as const,
+          options: [{ value: 11, label: "AM04 Test Category" }],
+          format: () => "AM4CAT - AM04 Test Category",
+        },
+        { key: "code", label: "Code" },
+        { key: "name", label: "Name" },
+      ],
+      editFields: [{ key: "name", label: "Name" }],
+    };
+    (apiClient.get as any).mockResolvedValue([{ id: 1, category_id: 11, code: "SUB1", name: "Sub One" }]);
+
+    renderWithClient(<MasterCrudScreen config={SUBCATEGORY_CONFIG} />);
+
+    await waitFor(() => expect(screen.getByText("Sub One")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /^edit sub one$/i }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("AM4CAT - AM04 Test Category")).toBeInTheDocument();
+    expect(within(dialog).queryByText("11")).not.toBeInTheDocument();
+  });
+
   it("deactivates an item only after confirming in the dialog", async () => {
     (apiClient.get as any).mockResolvedValue([{ id: 1, code: "V1", name: "Vendor One" }]);
     (apiClient.delete as any).mockResolvedValue(undefined);

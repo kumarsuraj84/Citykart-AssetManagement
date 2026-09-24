@@ -288,12 +288,16 @@ export function MasterCrudScreen<T extends object>({
           <div className="flex flex-col gap-4">
             {readOnlyFields.length > 0 && editRow && (
               <div className="flex flex-col gap-1 rounded-md border bg-muted/50 px-3 py-2 text-sm">
-                {readOnlyFields.map((f) => (
-                  <div key={f.key} className="flex justify-between gap-4">
-                    <span className="text-muted-foreground">{f.label}</span>
-                    <span className="font-medium">{String((editRow as Record<string, unknown>)[f.key] ?? "")}</span>
-                  </div>
-                ))}
+                {readOnlyFields.map((f) => {
+                  const row = editRow as Record<string, unknown>;
+                  const raw = row[f.key];
+                  return (
+                    <div key={f.key} className="flex justify-between gap-4">
+                      <span className="text-muted-foreground">{f.label}</span>
+                      <span className="font-medium">{f.format ? f.format(raw, row) : String(raw ?? "")}</span>
+                    </div>
+                  );
+                })}
                 <p className="text-xs text-muted-foreground">Not editable after creation.</p>
               </div>
             )}

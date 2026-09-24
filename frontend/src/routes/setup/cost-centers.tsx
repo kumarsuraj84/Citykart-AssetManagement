@@ -38,6 +38,7 @@ export default function CostCentersSetup() {
             label: "Company",
             type: "select",
             options: companies.map((c) => ({ value: c.id, label: c.name })),
+            format: companyName,
           },
           { key: "code", label: "Code" },
           { key: "name", label: "Name" },

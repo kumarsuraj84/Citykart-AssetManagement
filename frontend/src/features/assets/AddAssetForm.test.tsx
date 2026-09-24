@@ -292,6 +292,34 @@ describe("AddAssetForm", () => {
     );
   });
 
+  it("AM-08: requests Cost Centre options scoped to this asset's own company", async () => {
+    mockGets();
+    renderFormAt();
+    await screen.findByLabelText(/description/i);
+
+    await waitFor(() =>
+      expect(apiClient.get).toHaveBeenCalledWith(expect.stringMatching(/^\/masters\/cost-centers\?company_id=1$/)),
+    );
+  });
+
+  it("AM-08: does not submit and shows a clear message when the company has no active cost centres", async () => {
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (path.startsWith("/masters/categories")) return Promise.resolve([{ id: 1, code: "IT", name: "IT Equipment" }]);
+      if (path.startsWith("/masters/cost-centers")) return Promise.resolve([]);
+      if (path.startsWith("/holders")) return Promise.resolve([{ id: 4, name: "IT Stock-HO" }]);
+      return Promise.resolve([]);
+    });
+
+    renderFormAt();
+    fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Test Laptop" } });
+    await pickSelectOption(/^category$/i, "IT Equipment");
+
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("/masters/cost-centers")));
+    expect(screen.getByText(/no active cost centres are configured for this company/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /save/i })).toBeDisabled();
+    expect(apiClient.post).not.toHaveBeenCalled();
+  });
+
   it("does not submit while no IT_STOCK holder is available for the company", async () => {
     mockGets({ holders: [] });
 

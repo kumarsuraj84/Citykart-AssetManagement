@@ -38,6 +38,7 @@ export default function SubcategoriesSetup() {
             label: "Category",
             type: "select",
             options: categories.map((c) => ({ value: c.id, label: c.name })),
+            format: categoryName,
           },
           { key: "code", label: "Code" },
           { key: "name", label: "Name" },
