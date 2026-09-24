@@ -12,16 +12,6 @@ interface AssetRow {
   asset_code: string;
   description: string;
   status: string;
-  category_id: number;
-}
-
-interface Option {
-  id: number;
-  name: string;
-}
-
-function asOptionArray(data: unknown): Option[] {
-  return Array.isArray(data) ? (data as Option[]) : [];
 }
 
 export function MyAssets() {
@@ -37,13 +27,6 @@ export function MyAssets() {
   });
   const items = data?.items ?? [];
 
-  const { data: categoriesData } = useQuery({
-    queryKey: ["masters", "categories"],
-    queryFn: () => apiClient.get<Option[]>("/masters/categories"),
-  });
-  const categories = asOptionArray(categoriesData);
-  const categoryName = (id: number) => categories.find((c) => c.id === id)?.name ?? String(id);
-
   const columns: DataTableColumn<AssetRow>[] = [
     {
       key: "code",
@@ -55,7 +38,6 @@ export function MyAssets() {
       cell: (a) => <Link to="/assets/$id" params={{ id: String(a.id) }}>{a.asset_code}</Link>,
     },
     { key: "description", header: "Description", cell: (a) => a.description },
-    { key: "category", header: "Category", cell: (a) => categoryName(a.category_id) },
     { key: "status", header: "Status", cell: (a) => <StatusBadge status={a.status} /> },
   ];
 

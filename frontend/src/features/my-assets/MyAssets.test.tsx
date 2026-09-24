@@ -7,15 +7,10 @@ import { apiClient } from "../../lib/api-client";
 
 vi.mock("../../lib/api-client");
 
-const CATEGORY = { id: 1, name: "IT Equipment" };
-const ASSET = { id: 1, asset_code: "FA/HO01/IT/LAP/CK_1", description: "Laptop", status: "ALLOTTED", category_id: 1 };
+const ASSET = { id: 1, asset_code: "FA/HO01/IT/LAP/CK_1", description: "Laptop", status: "ALLOTTED" };
 
 function mockGets(items: unknown[] = [ASSET]) {
-  (apiClient.get as any).mockImplementation((path: string) => {
-    if (path === "/assets") return Promise.resolve({ items, total: items.length });
-    if (path === "/masters/categories") return Promise.resolve([CATEGORY]);
-    return Promise.resolve([]);
-  });
+  (apiClient.get as any).mockResolvedValue({ items, total: items.length });
 }
 
 // MyAssets renders a real <Link>, which needs a router context -- build a
@@ -42,11 +37,7 @@ describe("MyAssets", () => {
     // first one when that happens, leaving the second (never-resolved) promise
     // as the one actually awaited.
     const assetsPromise = new Promise((res) => (resolveAssets = res));
-    (apiClient.get as any).mockImplementation((path: string) => {
-      if (path === "/assets") return assetsPromise;
-      if (path === "/masters/categories") return Promise.resolve([CATEGORY]);
-      return Promise.resolve([]);
-    });
+    (apiClient.get as any).mockReturnValue(assetsPromise);
 
     renderWithClient();
     expect(screen.queryByText("FA/HO01/IT/LAP/CK_1")).not.toBeInTheDocument();
@@ -54,7 +45,7 @@ describe("MyAssets", () => {
     resolveAssets({ items: [ASSET], total: 1 });
     await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK_1")).toBeInTheDocument());
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
-    expect(screen.getByText("IT Equipment")).toBeInTheDocument();
+    expect(screen.getByText("Laptop")).toBeInTheDocument();
     expect(screen.getByText("ALLOTTED")).toBeInTheDocument();
   });
 
@@ -75,11 +66,7 @@ describe("MyAssets", () => {
   });
 
   it("shows an error state with a retry that refetches", async () => {
-    (apiClient.get as any).mockImplementation((path: string) => {
-      if (path === "/assets") return Promise.reject(new Error("assets down"));
-      if (path === "/masters/categories") return Promise.resolve([CATEGORY]);
-      return Promise.resolve([]);
-    });
+    (apiClient.get as any).mockRejectedValueOnce(new Error("assets down"));
     renderWithClient();
 
     expect(await screen.findByRole("alert")).toHaveTextContent("assets down");
