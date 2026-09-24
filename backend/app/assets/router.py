@@ -7,9 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
 from app.core.deps import ensure_company_in_scope, get_current_holder, require_role, scoped_company_ids
 from app.assets.audit_service import AUDITED_SCALAR_FIELDS, record_field_changes
+from app.assets.correction_service import correct_asset, UNSET as CORRECTION_UNSET
 from app.assets.custom_field_values import validate_custom_field_values
 from app.assets.models import Asset, AssetFieldChange
-from app.assets.schemas import AssetCreateIn, AssetDetailOut, AssetFieldChangeOut, AssetOut, AssetUpdateIn
+from app.assets.schemas import AssetCorrectionIn, AssetCreateIn, AssetDetailOut, AssetFieldChangeOut, AssetOut, AssetUpdateIn
 from app.assets.search_service import search_assets
 from app.assets.service import compute_tax, procure_assets
 from app.holders.models import Holder
@@ -250,6 +251,42 @@ async def update_asset(
     after["custom_fields"] = dict(asset.custom_fields)
     await record_field_changes(session, asset_id=asset.id, actor_id=actor.id, before=before, after=after)
 
+    await session.commit()
+    await session.refresh(asset)
+    return await _to_detail_out(session, asset)
+
+
+@router.post("/{asset_id}/corrections", response_model=AssetDetailOut)
+async def correct_asset_classification(
+    asset_id: int,
+    body: AssetCorrectionIn,
+    session: AsyncSession = Depends(get_session),
+    actor=Depends(require_role("ADMIN", "IT_TEAM")),
+):
+    """AM-07: a deliberately separate, narrower operation from
+    `PUT /api/assets/{id}` for correcting Category, Subcategory, and/or
+    Purchase Date -- the three fields `AssetUpdateIn` has excluded since
+    AM-02 precisely because they're controlled master/date references, not
+    ordinary descriptive data. Same scoping as every other asset-mutation
+    endpoint (`_get_scoped_asset`): a HOLDER never reaches this route at all
+    (`require_role` gate), and IT_TEAM can only correct an asset already
+    inside their own company scope. `body.model_fields_set` is what tells
+    "this field wasn't part of the request" apart from "explicitly set to
+    null" -- see `AssetCorrectionIn`'s own docstring."""
+    asset = await _get_scoped_asset(asset_id, session, actor)
+    fields_set = body.model_fields_set
+    try:
+        await correct_asset(
+            session, asset, actor,
+            category_id=body.category_id if "category_id" in fields_set else CORRECTION_UNSET,
+            subcategory_id=body.subcategory_id if "subcategory_id" in fields_set else CORRECTION_UNSET,
+            purchase_date_value=body.purchase_date if "purchase_date" in fields_set else CORRECTION_UNSET,
+            reason=body.reason,
+        )
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    asset.updated_by = actor.id
     await session.commit()
     await session.refresh(asset)
     return await _to_detail_out(session, asset)

@@ -95,6 +95,27 @@ class AssetFieldChangeOut(BaseModel):
     actor_name: str | None = None
     request_id: str
     created_at: datetime
+    # AM-07: only ever populated for a controlled correction row -- NULL on
+    # every ordinary PUT-edit row. Its presence is what the frontend uses to
+    # render a row as "CORRECTION" rather than an ordinary field edit.
+    reason: str | None = None
+
+
+class AssetCorrectionIn(BaseModel):
+    """AM-07: a dedicated, narrower request shape for
+    `POST /api/assets/{id}/corrections` -- deliberately NOT part of
+    `AssetUpdateIn`/`PUT /api/assets/{id}`. Every field except `reason` is
+    optional (a correction may touch just Category, just Purchase Date, or
+    any combination); which of `category_id`/`subcategory_id`/
+    `purchase_date` were actually included in the request body at all
+    (`model_fields_set`) is what the router/service use to tell "not part
+    of this correction" apart from "explicitly set to null" -- the second
+    only being meaningful for `subcategory_id`, since Category and Purchase
+    Date can never legitimately be cleared."""
+    category_id: int | None = None
+    subcategory_id: int | None = None
+    purchase_date: date | None = None
+    reason: str
 
 
 class AssetUpdateIn(BaseModel):

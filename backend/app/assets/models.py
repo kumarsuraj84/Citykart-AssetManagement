@@ -75,3 +75,9 @@ class AssetFieldChange(Base):
     actor_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("holder.id"))
     request_id: Mapped[str] = mapped_column(String(36))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # AM-07: only ever populated by a controlled asset correction (category/
+    # subcategory/purchase_date -- app/assets/correction_service.py), never
+    # by an ordinary PUT /api/assets/{id} edit. `reason IS NOT NULL` is the
+    # signal that distinguishes a correction row from a normal edit row in
+    # this same table, so no separate "row type" column was needed.
+    reason: Mapped[str | None] = mapped_column(String(500))
