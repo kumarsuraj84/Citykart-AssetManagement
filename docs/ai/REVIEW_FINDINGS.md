@@ -20,8 +20,8 @@ is resolved; see "Resolved this session" below for AM-05/AM-06's fixes.
     fully (`AM-01_DATA_INTEGRITY_REPORT.md` §9) without resolving it: it's
     genuinely either "needed for a shared multi-company asset team" or
     "dormant scaffolding," and that call needs a business answer, not a
-    technical guess. Still open as of AM-07 (explicitly out of scope there
-    too, per its §38 — `holder_company_access` itself was untouched).
+    technical guess. Still open as of AM-09 (confirmed a non-release-blocker
+    by the AM-09 RC audit, `RC_ISSUES.md`'s "Carried forward" section).
 2. **5 closed-value columns still have no DB-level CHECK/ENUM** —
     `asset.status`, `asset_event.event_type`, `asset_event.status_after` are
     deliberately left unconstrained (they're the surface most likely to gain
@@ -29,18 +29,70 @@ is resolved; see "Resolved this session" below for AM-05/AM-06's fixes.
     reasoned, not oversight, per the AM-02 migration's docstring);
     `asset_document.doc_type` was simply out of AM-02's scope (only
     `holder.holder_type`/`holder.role`/`custom_field.field_type` were
-    confirmed-gap items from AM-01). All plain VARCHAR at the DB level. Still
-    open as of AM-07 (explicitly out of scope there too, per its §40).
+    confirmed-gap items from AM-01). All plain VARCHAR at the DB level.
+    AM-09's read-only DB integrity audit re-confirmed every current live
+    value is within the recognized set (zero violations) — still open,
+    still not release-blocking.
 3. **No import-side duplicate detection** (legacy code, serial number, PO/
-    invoice/PI number) — confirmed still absent in AM-06, AM-07, and AM-08
-    (it was never present; a prior report's claim that "duplicate handling"
-    was covered by the existing test suite did not match the actual code or
-    tests, see `AM-06_IMPORT_REPORTS_MY_ASSETS_REPORT.md` §17). Not added
-    without business evidence that any of these fields is meant to be
-    unique — Asset Code remains the only system-enforced-unique identifier.
-    Still open as of AM-08 (explicitly out of scope there too, per its §19).
+    invoice/PI number) — confirmed still absent in AM-06, AM-07, AM-08, and
+    AM-09 (it was never present; a prior report's claim that "duplicate
+    handling" was covered by the existing test suite did not match the
+    actual code or tests, see `AM-06_IMPORT_REPORTS_MY_ASSETS_REPORT.md`
+    §17). Not added without business evidence that any of these fields is
+    meant to be unique — Asset Code remains the only system-enforced-unique
+    identifier. Still open as of AM-09 (explicitly out of scope there too,
+    per the AM-09 authorization's own instruction not to add it).
+4. **No security response headers** (`X-Content-Type-Options`,
+    `X-Frame-Options`/frame-ancestors, `Referrer-Policy`) on either `web`
+    (nginx) or `api` (uvicorn) responses — found during AM-09's security-
+    header review (`RC_ISSUES.md` AM09-05, P2). Not evidenced as
+    exploitable in the current LAN-only, HTTP-only deployment model; a
+    broader header-policy change was deliberately not made automatically
+    under AM-09's narrow-fix-only policy.
+5. **No `Cache-Control` guidance on authenticated API JSON responses**
+    (`RC_ISSUES.md` AM09-06, P3) — low practical risk for a direct
+    browser-to-server LAN deployment with no shared forward proxy in the
+    documented architecture.
+6. **No active alerting for a failed nightly backup** beyond the
+    `/var/log/ckam-backup.log` file inside the `backup` container
+    (`RC_ISSUES.md` AM09-09, P2) — an operator must check manually;
+    documented in `CKAM_RELEASE_RUNBOOK.md` rather than built out, per the
+    AM-09 authorization's own instruction not to construct alerting
+    infrastructure in that stage.
 
 ## Resolved this session (kept here for traceability, remove once stale)
+
+- **Excel formula injection across all three exports (Asset Register,
+  Movement Log, Field Change Audit)** — fixed (AM-09): every user-
+  controlled free-text data cell is now sanitized (a leading-apostrophe
+  prefix for any value starting with `=`,`+`,`-`,`@`) before being written
+  by openpyxl; header rows (fixed literals) are untouched. Found via the
+  AM-09 authorization's own explicit instruction to check for this. See
+  `AM-09_RC_FULL_AUDIT_REPORT.md` §28, `RC_ISSUES.md` AM09-01.
+- **A naive (timezone-less) `event_date` on a lifecycle event crashed with
+  an unhandled `TypeError`/500** — fixed (AM-09): normalized to UTC before
+  the future/ordering comparisons in `apply_event`. `RC_ISSUES.md`
+  AM09-02.
+- **A duplicate `code` on any master's create/update crashed with an
+  unhandled 500** instead of a controlled 422 — fixed (AM-09): the generic
+  `build_master_router`'s create/update endpoints now catch
+  `IntegrityError` and roll back to a clean 422. `RC_ISSUES.md` AM09-03.
+- **A duplicate `emp_code` within a company on Holder create/update
+  crashed with an unhandled 500** — fixed (AM-09): the identical pattern
+  applied to the Holders router. `RC_ISSUES.md` AM09-04.
+- **Numbering concurrency safety was previously asserted, never proven
+  under genuine parallel load** — closed (AM-09, no code change needed): a
+  real 20-way concurrent `POST /api/assets` reproduction against the live
+  database confirmed the existing atomic UPSERT counter allocation is
+  already race-safe. Now a permanent regression test,
+  `tests/numbering/test_am09_numbering_concurrency.py`.
+- **Backup/restore capability was previously documented but never
+  actually exercised end-to-end in a session** — closed (AM-09): a real
+  backup was executed and a real restore into a disposable database
+  (`ckam_restore_test`) was verified to match the pre-backup baseline
+  exactly (row counts, Alembic revision, triggers, indexes), without
+  touching the live `ckam` database. See `AM-09_RC_FULL_AUDIT_REPORT.md`
+  §36-38.
 
 - **Add Asset's Cost Centre selector was not company-scoped** — fixed
   (AM-08): confirmed against the actual schema that only Cost Centre is

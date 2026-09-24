@@ -98,6 +98,22 @@ duplicate-Asset-Code, cross-company cost-centre/holder, category/subcategory
 pairing, and orphan-FK checks). CKAM V1 enters feature freeze after this
 stage — see `CURRENT_STAGE.md`.
 
+**AM-09 (2026-09-24) was the Release Candidate full-system audit, verdict
+RELEASE READY** — not a redesign pass. Every route below was re-verified at
+all 6 RC-required breakpoints (1920×1080/1440×900/1366×768/1024×768/
+768×1024/375×812), confirming zero page-level horizontal overflow anywhere
+(48 checks, all clean); the full role matrix (ADMIN/IT_TEAM/VIEWER/HOLDER)
+was re-verified via direct API calls, not inferred from the frontend, for
+every write/read path; company and HOLDER data isolation were verified
+directly; deep-link refresh was verified live on `/assets/$id` and
+`/setup/holders`. Four evidenced P1 defects were found and fixed (Excel
+formula injection across all three `/reports` exports, a naive-datetime
+crash on lifecycle events, duplicate-`code` 500s on masters and Holders) —
+see `AM-09_RC_FULL_AUDIT_REPORT.md` and `RC_ISSUES.md` for full detail.
+Numbering concurrency (`/assets/new` → `/setup/code-rule`'s counter) was
+proven race-safe under 20 genuine parallel requests. No route/UI change was
+made this stage.
+
 Legend: ✅ verified this session · 🟡 spot-checked only (not full UAT) · ⬜ not yet checked · N/A not applicable
 
 Functional = backend/frontend tests pass. Design = real-browser visual check.
@@ -113,7 +129,7 @@ Security = authz/scoping verified. Responsive = checked at 1440/768/375.
 | `/assets/$id` (Asset Detail → Asset 360) | ✅ | ✅ | ✅ | ✅ | AM-04: full redesign, `return null` loading bug fixed; verified in-browser at all 6 breakpoints; Edit mode exercised end-to-end. AM-05: Edit mode's Custom Field controls apply the Global+own-company filter, verified by a dedicated frontend regression test. AM-07: "Correct Classification" action verified live end-to-end (two real corrections against `AM04UAT/2`, Impact Summary, Changes-tab distinct rendering, History byte-identical before/after, ordinary Edit mode confirmed to expose none of the three fields); dialog verified with no overflow at 1440/1024/768/375. AM-08: Security closed — `POST /api/assets/1/corrections` exercised live as VIEWER (403) during the route-security sweep, alongside the 30 AM-07 backend authorization tests |
 | `/my-assets` | ✅ | ✅ | ✅ | ✅ | AM-06: migrated to shared foundation; real loading skeleton and error+retry added; hardcoded link color replaced. A Category column was tried, then removed after live UAT caught it showing a raw numeric id for a deactivated category. AM-08: Security closed — `/my-assets` reuses `GET /api/assets` with a HOLDER's `holder_id` pinned server-side to their own id (same code path exercised live as HOLDER during the route-security sweep, confirmed against the actual scoping code, not assumed) |
 | `/import` | ✅ | ✅ | ✅ | ✅ | AM-06: full redesign — 4-step hierarchy (template/choose+preview/review/result) on the shared foundation; verified in-browser (template download succeeded live, full preview→commit→Asset-360 journey proven by a new E2E spec using a real generated fixture); verified no overflow at 375px and 768px; security verified by 19 new backend tests (procurement/UDF/quantity/cross-company rejection) plus the existing company-scope-on-commit tests, unchanged |
-| `/reports` | ✅ | ✅ | ✅ | ✅ | AM-06: added a third card (Field Change Audit) and Status/Category filters on the Asset Register export; every download now goes through `AsyncButton`; verified in-browser — all three exports (Asset Register, Movement Log, Field Change Audit) downloaded successfully live; security verified by 8 new backend tests (field-change export company scoping, HOLDER role denied) plus the pre-existing asset/movement export scoping tests, unchanged. AM-07: closed the AM-06 Responsive gap — verified no horizontal overflow at 1440/768/375 (`document.body.scrollWidth === window.innerWidth` at all three; cards stack correctly and buttons stay full-width at 375), no redesign needed |
+| `/reports` | ✅ | ✅ | ✅ | ✅ | AM-06: added a third card (Field Change Audit) and Status/Category filters on the Asset Register export; every download now goes through `AsyncButton`; verified in-browser — all three exports (Asset Register, Movement Log, Field Change Audit) downloaded successfully live; security verified by 8 new backend tests (field-change export company scoping, HOLDER role denied) plus the pre-existing asset/movement export scoping tests, unchanged. AM-07: closed the AM-06 Responsive gap — verified no horizontal overflow at 1440/768/375 (`document.body.scrollWidth === window.innerWidth` at all three; cards stack correctly and buttons stay full-width at 375), no redesign needed. AM-09: found and fixed a real P1 security defect — a value beginning with `=`/`+`/`-`/`@` in any export's user-controlled cell (Description, Brand, Vendor name, Custom Field value, correction Reason, movement remarks) was auto-flagged as a live Excel formula by openpyxl; now sanitized to safe literal text across all three exports, verified by 3 new backend tests and a live reproduction against a real created asset. Re-verified clean at all 6 RC breakpoints |
 | `/setup/companies` | ✅ | ✅ | ✅ | ✅ | AM-05: `MasterCrudScreen` on shared foundation; Edit dialog verified live (immutable Code shown read-only, Name editable), Deactivate confirmation verified. AM-08: Security closed — `DELETE /api/masters/companies/2` exercised live as VIEWER (403) during the route-security sweep, matching the 15 AM-05 authz tests; Responsive: 1440/768/375 all clean (`scrollWidth === innerWidth`) |
 | `/setup/locations` | ✅ | ✅ | ✅ | ✅ | AM-07: opened live — list renders correctly, Edit dialog shows immutable Code read-only, Name editable; same `MasterCrudScreen` as Companies/Categories/etc, `editFields: [name, address]`. AM-08: Responsive closed — 1440/768/375 all clean; Security closed — `Location` is a global master (`SCOPE_NONE`, same `build_master_router` write-gating code path as Categories/Departments/Vendors, exercised representatively via Cost Centers/Companies in the route-security sweep — VIEWER/HOLDER denied 403 on every write) |
 | `/setup/departments` | ✅ | ✅ | ✅ | ✅ | AM-07: opened live — list renders correctly (`editFields: [name]`). AM-08: Responsive closed — 1440/768/375 all clean; Security closed, same reasoning as Locations (global master, shared write-gating code) |
@@ -127,20 +143,34 @@ Security = authz/scoping verified. Responsive = checked at 1440/768/375.
 | App shell (sidebar/header) | ✅ | ✅ | N/A | ✅ | Verified expanded, collapsed-to-icons, and mobile drawer; role-gated nav content covered by `router.test.tsx` |
 
 **E2E (Playwright):** 5/5 passing — the existing `full custody journey`,
-`multi-company-udf`, `import journey`, and `asset correction journey` specs
-are untouched and still green, plus a new AM-08 `Add Asset company-scoped
-Cost Centre journey` (`e2e/add-asset-company-scoping.spec.ts`): seeds a
-company, creates a second unrelated company purely to prove its cost
-centre never appears as an Add Asset option for the first company's ADMIN,
-then completes a real asset creation end to end through the
-now-correctly-scoped form. All five specs clean up everything they create.
+`multi-company-udf`, `import journey`, `asset correction journey`, and
+AM-08's `Add Asset company-scoped Cost Centre journey` specs are all
+unchanged and still green. AM-09 added no new permanent E2E spec (its own
+diagnostic Playwright reproduction of a backend-outage scenario,
+`am09_diag_network_failure.spec.ts`, was deliberately throwaway — deleted
+after use since an equivalent permanent unit test,
+`AssetRegister.test.tsx`'s error-state test, already covers the same
+scenario). All five specs clean up everything they create.
 
-**Backend:** 297/297 passing (was 288/288 at AM-07, 258/258 at AM-06,
-231/231 at AM-05, 199/199 at AM-04, 184/184 at AM-03, 170/170 at AM-01,
-163/163 at AM-00 — +9 new AM-08 tests: Cost Centre company-id list
-filtering, Holder location/company/department reference validation — see
-`AM-08_RC_HARDENING_REPORT.md` §20-21).
-**Frontend:** 148/148 passing (25 files, up from 143 at AM-07 — +5 new
-AM-08 tests: Add Asset company-scoped Cost Centre + empty state, Holder
-blank-Location block + controlled-error display, MasterCrudScreen
-read-only `format` rendering), `npx tsc -b` clean.
+**Backend:** 305/305 passing (was 297/297 at AM-08, 288/288 at AM-07,
+258/258 at AM-06, 231/231 at AM-05, 199/199 at AM-04, 184/184 at AM-03,
+170/170 at AM-01, 163/163 at AM-00 — +8 new AM-09 tests: 3 formula-
+injection, 1 naive-datetime regression, 2 duplicate-master-code, 1
+duplicate-emp_code, 1 numbering concurrency — see
+`AM-09_RC_FULL_AUDIT_REPORT.md` §62-63).
+**Frontend:** 148/148 passing (25 files, unchanged from AM-08 — AM-09 made
+no frontend code change; every fix was backend-only), `npx tsc -b` clean.
+
+**AM-09 additional RC evidence (not table-shaped, not repeated per-row
+above):** numbering concurrency proven race-safe under 20 genuine parallel
+requests (no code change needed); a real backup executed and a real
+restore into a disposable database verified byte-for-byte against the
+pre-backup baseline; a fresh, disposable, genuinely empty database migrated
+cleanly from zero to Alembic head; a read-only DB integrity audit (14
+checks) and a trigger/index source-vs-live audit both found zero
+violations; a production frontend build succeeded cleanly and deep-link
+refresh was verified live on two authenticated routes plus one unknown
+route; a controlled Playwright reproduction of a persistent backend 502
+proved the frontend's error-handling is correct (`ErrorState` + working
+retry, exactly 4 requests, matching React Query's own default retry
+config). Full detail: `AM-09_RC_FULL_AUDIT_REPORT.md`.

@@ -1,17 +1,21 @@
 # CKAM — Current Stage
 
-**Stage:** AM-08 (Known-Issue Remediation + RC Hardening) — complete, PASS.
-**FEATURE FREEZE ACTIVE.** CKAM V1 is feature-frozen as of AM-08. No new
-feature stage begins without explicit authorization — only an evidenced
-release-blocking bug may be fixed.
-**Next:** AM-09 — Release Candidate full-system UAT / security / database /
-backup-recovery / deployment-readiness audit, awaiting explicit
-authorization. Do not start `holder_company_access`, import duplicate
-detection, bulk correction, category/subcategory-scoped Custom Fields,
-approval workflow, AMC/insurance, depreciation, physical verification, a
-company-wide audit explorer, new dashboards, new reports, or new lifecycle
-states.
+**Stage:** AM-09 (Release Candidate Full-System Audit) — complete.
+**Verdict: RELEASE READY.**
+**FEATURE FREEZE REMAINS ACTIVE.** CKAM V1 is feature-frozen as of AM-08 and
+stays frozen through AM-09. No new feature stage begins without explicit
+authorization — only an evidenced release-blocking bug may be fixed.
+**Next:** Awaiting explicit authorization for deployment/go-live
+preparation. Do NOT automatically deploy. Do not start
+`holder_company_access`, import duplicate detection, bulk correction,
+category/subcategory-scoped Custom Fields, approval workflow,
+AMC/insurance, depreciation, physical verification, a company-wide audit
+explorer, new dashboards, new reports, new lifecycle states, new master
+types, or new asset workflow concepts.
 
+Full AM-09 evidence: `docs/ai/AM-09_RC_FULL_AUDIT_REPORT.md`, issue
+register `docs/ai/RC_ISSUES.md`, deployment procedure
+`docs/ai/CKAM_RELEASE_RUNBOOK.md`.
 Full AM-08 evidence: `docs/ai/AM-08_RC_HARDENING_REPORT.md`.
 Full AM-07 evidence: `docs/ai/AM-07_ASSET_CORRECTION_WORKFLOW_REPORT.md`.
 Full AM-06 evidence: `docs/ai/AM-06_IMPORT_REPORTS_MY_ASSETS_REPORT.md`.
@@ -364,6 +368,47 @@ Reassigned, plus Repair/Lost-Found/Disposed-Sold-Scrapped.
 - **CKAM V1 enters feature freeze.** No further business feature work
   proceeds without new, explicit authorization.
 
+## What's actually done as of AM-09
+
+- **Release Candidate full-system audit, verdict RELEASE READY.** Not a
+  feature stage — an aggressive, evidence-based audit of whether the AM-08
+  build is genuinely deployable: full role matrix tested via direct API
+  calls (not inferred from the frontend), company and HOLDER data
+  isolation, database/migration/trigger/index integrity, a real backup and
+  a real restore into a disposable database, deployment/secret/CORS
+  configuration, numbering concurrency under genuine parallel load, Excel
+  export safety, malformed-input robustness, import scale, performance
+  sanity, a full responsive sweep, accessibility, and a controlled
+  negative test of a backend outage. Full detail:
+  `docs/ai/AM-09_RC_FULL_AUDIT_REPORT.md`.
+- **Four evidenced P1 defects found and fixed** (commit `4cf98df`), none
+  of them P0: (1) Excel formula injection across all three exports — a
+  value beginning with `=`/`+`/`-`/`@` is now written as safe literal text,
+  never a live formula; (2) a naive (no-timezone) `event_date` on a
+  lifecycle event crashed with a raw 500 instead of being treated as UTC;
+  (3) a duplicate `code` on any master's create/update crashed with a raw
+  500 instead of a clean 422; (4) the same defect on Holders' `emp_code`.
+  All four are ordinary-input robustness/security fixes, not business
+  logic changes; full regression re-run clean afterward (Backend 305/305,
+  Frontend 148/148, Typecheck clean, E2E 5/5).
+- **Numbering concurrency confirmed race-safe** under 20 genuinely
+  parallel asset-creation requests against the real database — no code
+  change needed, the existing atomic UPSERT design was already correct.
+  Flagged by the audit as its own key RC test; see the report §16.
+- **Backup and restore both proven, not merely assumed**: a real backup
+  was executed and a real restore into a disposable database
+  (`ckam_restore_test`) reproduced an exact row-count/schema/trigger/index
+  match — the live `ckam` database was never touched. See the report
+  §36-38 and the new `docs/ai/CKAM_RELEASE_RUNBOOK.md`.
+- **No database migration** — confirmed unnecessary; Alembic head remains
+  `f28b6a913dce` throughout.
+- **5 non-blocking observations documented, not fixed**, per this stage's
+  own scope discipline (2× P2, 3× P3) — see `docs/ai/RC_ISSUES.md`
+  AM09-05 through AM09-09. None is release-blocking for the current
+  LAN-only, HTTP-only deployment model.
+- **CKAM V1 feature freeze remains fully in effect.** No new feature work
+  was started or authorized in AM-09.
+
 ## Deferred, awaiting your decision (not blockers, not failures)
 
 1. **`holder_company_access`**: written to, never read by authorization.
@@ -386,12 +431,14 @@ Reassigned, plus Repair/Lost-Found/Disposed-Sold-Scrapped.
    approval-workflow stage; AM-08's health snapshot confirmed current live
    values are all within the recognized set, but no CHECK/ENUM was added.
 
-None of AM-09 onward (a Release Candidate full-system audit is the next
-authorized stage; `holder_company_access`, import duplicate detection,
-approval workflow, AMC/insurance, depreciation, physical verification, bulk
-correction, category/subcategory-scoped Custom Fields, a full company-wide
-asset audit explorer, new dashboards, new reports, new lifecycle states)
-have been started — see `REVIEW_FINDINGS.md` for what's still open.
+None of these business decisions were resolved in AM-09 — their mere
+existence is not a release blocker, per the AM-09 authorization's own
+instruction. No deployment/go-live preparation, and none of
+`holder_company_access`, import duplicate detection, approval workflow,
+AMC/insurance, depreciation, physical verification, bulk correction,
+category/subcategory-scoped Custom Fields, a full company-wide asset audit
+explorer, new dashboards, new reports, or new lifecycle states, have been
+started — see `REVIEW_FINDINGS.md` for what's still open.
 
 ## Branch / remote state
 

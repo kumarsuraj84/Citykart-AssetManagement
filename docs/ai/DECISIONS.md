@@ -2,6 +2,79 @@
 
 Newest first. These override older spec/plan text where they conflict.
 
+## 2026-09-24 — AM-09 scope locked (Release Candidate Full-System Audit)
+
+1. **Verdict: RELEASE READY.** No P0 (blocker-class) defect was found
+   anywhere in the audit — no data loss, authorization bypass,
+   cross-company leak, broken restore, broken app-start, or broken
+   migration. Four evidenced P1 defects were found and fixed (see below);
+   all release gates (database, security, functional, backup/restore,
+   deployment/config) pass. Full reasoning: `docs/ai/
+   AM-09_RC_FULL_AUDIT_REPORT.md` §72.
+2. **Excel export formula injection is a real, fixed security defect, not
+   a false positive.** Every user-controlled free-text value in any of the
+   three canonical exports (Description, Brand, Vendor name, a Custom
+   Field's text value, a correction Reason, movement remarks) was written
+   as a raw openpyxl cell value; a value beginning with `=` is
+   auto-flagged by openpyxl as a live formula and would execute when the
+   file is opened in Excel. Fixed with the standard mitigation (a leading
+   apostrophe forcing literal-text interpretation) applied to every data
+   cell, for all four classic trigger characters (`=`,`+`,`-`,`@`), across
+   all three export functions — never touching header rows, which are
+   fixed literals, not user input.
+3. **A naive (timezone-less) `event_date` on a lifecycle event is valid
+   input, not adversarial input, and must be treated as UTC rather than
+   crash.** The real frontend always sends an offset-aware ISO string, so
+   this defect could only be reached via a direct API call — still fixed,
+   since the API contract itself never required an offset and a bare
+   ISO-8601 date is a completely reasonable value for a direct integration
+   to send.
+4. **A duplicate unique value (a master's `code`, a Holder's
+   company-scoped `emp_code`) is an ordinary data-entry mistake, not
+   malformed input, and must return a controlled 422 — never a raw
+   `IntegrityError`/500.** Fixed identically on both the generic
+   `build_master_router` endpoints and the bespoke Holders router by
+   catching `IntegrityError`, rolling back, and raising a specific 422
+   message. No uniqueness *rule* changed — these constraints already
+   existed at the database level; only the failure-handling changed.
+5. **Numbering concurrency needed no code change.** A genuine 20-way
+   parallel `POST /api/assets` reproduction (real asyncio concurrency
+   against the real pooled database connection, not a simulation)
+   confirmed the existing atomic `INSERT ... ON CONFLICT ... DO UPDATE ...
+   RETURNING` UPSERT already serializes concurrent allocators correctly at
+   the database level — zero duplicate Asset Codes, zero gaps in the
+   allocated sequence.
+6. **The disposable-database restore pattern (not the pre-existing
+   destructive `ops/test_backup_restore.sh`) is the correct way to prove
+   restore capability against a live, data-holding environment.** A fresh,
+   uniquely-named database (`ckam_restore_test`) was created on the same
+   Postgres instance, the real backup's SQL was piped into it directly,
+   verified (row counts, Alembic revision, triggers, indexes all matched
+   the pre-backup baseline exactly), then dropped — the live `ckam`
+   database was never touched. This pattern, not the schema-dropping
+   script, should be the template for any future restore drill against an
+   environment holding real or valuable UAT data.
+7. **CORS absence in `app/main.py` is confirmed correct-by-design, not an
+   unverified gap.** `frontend/nginx.conf` proxies `/api/` to the backend
+   on the exact same origin the SPA is served from — no cross-origin
+   request is ever made by the browser in this architecture, so no CORS
+   middleware is needed or should be added.
+8. **`COOKIE_SECURE=false` and the absence of security response headers
+   (HSTS, X-Frame-Options, etc.) are classified against this deployment's
+   actual plain-HTTP, LAN-only architecture, not against a hypothetical
+   Internet-facing one.** `COOKIE_SECURE=false` is correct as long as this
+   deployment stays HTTP-only (flip it only once genuinely behind HTTPS —
+   a `Secure` cookie is silently dropped over plain HTTP). The missing
+   security headers (AM09-05) and missing `Cache-Control` (AM09-06) are
+   real but low-severity for a LAN-only internal tool and were documented,
+   not fixed, per the audit's own narrow-fix-only policy for P2/P3 items.
+9. **Five documented-but-unfixed observations (AM09-05 through AM09-09)
+   and the four carried-forward business decisions (`holder_company_
+   access`, import duplicate detection, 5 unconstrained closed-value
+   columns, no bulk correction) are explicitly not release blockers.**
+   Their existence alone does not change the RELEASE READY verdict — see
+   `docs/ai/RC_ISSUES.md` for the full register.
+
 ## 2026-09-24 — AM-08 scope locked (Known-Issue Remediation + RC Hardening)
 
 1. **Add Asset's dependent master options follow each master's actual
