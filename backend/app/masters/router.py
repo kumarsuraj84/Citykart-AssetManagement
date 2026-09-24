@@ -3,9 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
 from app.core.deps import ensure_company_in_scope, get_current_holder, require_role
+from app.masters.custom_fields_router import router as custom_fields_router
 from app.masters.service import MasterCRUDService
 from app.masters import models, schemas
-from app.masters.models import FIELD_TYPES
 
 router = APIRouter(prefix="/api/masters", tags=["masters"])
 
@@ -22,13 +22,22 @@ SCOPE_SELF = "self"
 def build_master_router(
     prefix: str, model, schema_in, schema_out, company_scope: str | None = SCOPE_NONE,
     validate_incoming: Callable[[dict], None] | None = None,
+    schema_edit=None,
 ):
     """`validate_incoming`, when given, is called with the request body's `model_dump()`
     on both create and update, before the row is written -- for closed-value fields a
-    Pydantic `str` can't validate on its own (e.g. CustomField.field_type; see the
-    /custom-fields registration below). Raise ValueError to reject; the caller turns
-    that into a clean 422, same convention as app.assets.service's ValueError usage."""
+    Pydantic `str` can't validate on its own. Raise ValueError to reject; the caller
+    turns that into a clean 422, same convention as app.assets.service's ValueError
+    usage.
+
+    `schema_edit` (AM-05): the body schema for PUT, if narrower than `schema_in` --
+    every master's immutable identifier (`code`) and controlled parent relationship
+    (e.g. `company_id`) should never be freely editable after creation (see the
+    Master Field Policy Matrix in docs/ai/AM-05_MASTERS_HOLDERS_REPORT.md). Falls
+    back to `schema_in` when not given, so a master not yet given a narrower schema
+    keeps its prior (full-`schema_in`) PUT behavior rather than breaking."""
     sub = APIRouter(prefix=prefix)
+    edit_schema = schema_edit or schema_in
 
     def check_existing(holder, obj) -> None:
         if company_scope == SCOPE_COMPANY_ID:
@@ -37,7 +46,12 @@ def build_master_router(
             ensure_company_in_scope(holder, obj.id)
 
     def check_incoming(holder, data: dict) -> None:
-        if company_scope == SCOPE_COMPANY_ID:
+        # AM-05: "company_id" in data -- when the PUT body uses a narrower
+        # edit_schema that doesn't declare company_id at all (the normal
+        # case now that it's immutable after creation), this check simply
+        # doesn't apply: there's no incoming company_id to validate, because
+        # the field can't be changed via this path regardless of role.
+        if company_scope == SCOPE_COMPANY_ID and "company_id" in data:
             ensure_company_in_scope(holder, data.get("company_id"))
 
     @sub.get("", response_model=list[schema_out])
@@ -68,7 +82,7 @@ def build_master_router(
     @sub.put("/{item_id}", response_model=schema_out)
     async def update_item(
         item_id: int,
-        body: schema_in,
+        body: edit_schema,
         session: AsyncSession = Depends(get_session),
         holder=Depends(require_role("ADMIN", "IT_TEAM")),
     ):
@@ -102,25 +116,36 @@ def build_master_router(
     return sub
 
 
-router.include_router(build_master_router("/companies", models.Company, schemas.CompanyIn, schemas.CompanyOut, SCOPE_SELF))
-router.include_router(build_master_router("/locations", models.Location, schemas.LocationIn, schemas.LocationOut))
-router.include_router(build_master_router("/departments", models.Department, schemas.DepartmentIn, schemas.DepartmentOut))
-router.include_router(build_master_router("/cost-centers", models.CostCenter, schemas.CostCenterIn, schemas.CostCenterOut, SCOPE_COMPANY_ID))
-router.include_router(build_master_router("/categories", models.AssetCategory, schemas.AssetCategoryIn, schemas.AssetCategoryOut))
-router.include_router(build_master_router("/subcategories", models.AssetSubcategory, schemas.AssetSubcategoryIn, schemas.AssetSubcategoryOut))
-router.include_router(build_master_router("/vendors", models.Vendor, schemas.VendorIn, schemas.VendorOut))
-
-
-def _validate_custom_field(data: dict) -> None:
-    # AM-01 confirmed field_type accepted any string with no validation at all -- AM-02
-    # closes that gap. FIELD_TYPES is the same list already documented (previously only
-    # in a comment) next to the column; kept intentionally small per the AM-02
-    # authorization ("this is UDF functionality, not a low-code platform").
-    if data.get("field_type") not in FIELD_TYPES:
-        raise ValueError(f"field_type must be one of {FIELD_TYPES}")
-
-
 router.include_router(build_master_router(
-    "/custom-fields", models.CustomField, schemas.CustomFieldIn, schemas.CustomFieldOut,
-    validate_incoming=_validate_custom_field,
+    "/companies", models.Company, schemas.CompanyIn, schemas.CompanyOut, SCOPE_SELF,
+    schema_edit=schemas.CompanyEditIn,
 ))
+router.include_router(build_master_router(
+    "/locations", models.Location, schemas.LocationIn, schemas.LocationOut,
+    schema_edit=schemas.LocationEditIn,
+))
+router.include_router(build_master_router(
+    "/departments", models.Department, schemas.DepartmentIn, schemas.DepartmentOut,
+    schema_edit=schemas.DepartmentEditIn,
+))
+router.include_router(build_master_router(
+    "/cost-centers", models.CostCenter, schemas.CostCenterIn, schemas.CostCenterOut, SCOPE_COMPANY_ID,
+    schema_edit=schemas.CostCenterEditIn,
+))
+router.include_router(build_master_router(
+    "/categories", models.AssetCategory, schemas.AssetCategoryIn, schemas.AssetCategoryOut,
+    schema_edit=schemas.AssetCategoryEditIn,
+))
+router.include_router(build_master_router(
+    "/subcategories", models.AssetSubcategory, schemas.AssetSubcategoryIn, schemas.AssetSubcategoryOut,
+    schema_edit=schemas.AssetSubcategoryEditIn,
+))
+router.include_router(build_master_router(
+    "/vendors", models.Vendor, schemas.VendorIn, schemas.VendorOut,
+    schema_edit=schemas.VendorEditIn,
+))
+
+# AM-05: Custom Fields has its own bespoke router (scope authorization +
+# field_key/field_type/scope immutability rules no other master needs) --
+# see app/masters/custom_fields_router.py.
+router.include_router(custom_fields_router)

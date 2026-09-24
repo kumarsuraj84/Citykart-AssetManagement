@@ -80,8 +80,13 @@ async def procure_assets(session: AsyncSession, data: dict, quantity: int, actor
     # other bad-input problem in this function.
     # AM-04: enforce_required=True unconditionally on create -- every active
     # required Custom Field must have a valid value before a new asset can
-    # exist, per the locked V1 rule (docs/ai/DECISIONS.md).
-    await validate_custom_field_values(session, data.get("custom_fields"), enforce_required=True)
+    # exist, per the locked V1 rule (docs/ai/DECISIONS.md). AM-05: scoped to
+    # only the fields applicable to this asset's company (global + this
+    # company's own) -- a field scoped to a different company can never
+    # apply here, required or not.
+    await validate_custom_field_values(
+        session, data.get("custom_fields"), company_id=company_id, enforce_required=True,
+    )
 
     tokens = build_code_tokens(
         company=company, location=location, cost_center=cost_center, category=category,

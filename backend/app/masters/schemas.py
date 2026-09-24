@@ -10,6 +10,18 @@ class VendorIn(BaseModel):
     contact_email: str | None = None
 
 
+class VendorEditIn(BaseModel):
+    """AM-05 safe-edit schema: `code` (the immutable identifier -- already
+    referenced by every asset that names this vendor) is deliberately not
+    declared here, so sending it in a PUT body is simply ignored, the same
+    convention AssetUpdateIn already established for asset_code."""
+    name: str
+    gstin: str | None = None
+    contact_name: str | None = None
+    contact_phone: str | None = None
+    contact_email: str | None = None
+
+
 class VendorOut(VendorIn):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -18,6 +30,11 @@ class VendorOut(VendorIn):
 
 class CompanyIn(BaseModel):
     code: str
+    name: str
+
+
+class CompanyEditIn(BaseModel):
+    """`code` omitted deliberately -- immutable after creation (AM-05)."""
     name: str
 
 
@@ -33,6 +50,11 @@ class LocationIn(BaseModel):
     address: str | None = None
 
 
+class LocationEditIn(BaseModel):
+    name: str
+    address: str | None = None
+
+
 class LocationOut(LocationIn):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -40,6 +62,14 @@ class LocationOut(LocationIn):
 
 
 class DepartmentIn(BaseModel):
+    name: str
+
+
+class DepartmentEditIn(BaseModel):
+    """Department has no separate business code -- `name` itself is the
+    unique identifier, but nothing else in the system keys off its exact
+    string value (Holder.department_id is a stable FK), so renaming it is a
+    safe descriptive edit, not an identity change."""
     name: str
 
 
@@ -55,6 +85,14 @@ class CostCenterIn(BaseModel):
     name: str
 
 
+class CostCenterEditIn(BaseModel):
+    """`company_id`/`code` omitted deliberately -- both immutable after
+    creation (AM-05): the company relationship is a controlled boundary
+    (see `DEVELOPMENT_GUARDRAILS.md`/`DECISIONS.md`) and the code is the
+    identifier every referencing asset relies on."""
+    name: str
+
+
 class CostCenterOut(CostCenterIn):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -63,6 +101,10 @@ class CostCenterOut(CostCenterIn):
 
 class AssetCategoryIn(BaseModel):
     code: str
+    name: str
+
+
+class AssetCategoryEditIn(BaseModel):
     name: str
 
 
@@ -75,6 +117,13 @@ class AssetCategoryOut(AssetCategoryIn):
 class AssetSubcategoryIn(BaseModel):
     category_id: int
     code: str
+    name: str
+
+
+class AssetSubcategoryEditIn(BaseModel):
+    """`category_id`/`code` omitted deliberately -- both immutable after
+    creation (AM-05): re-parenting a subcategory to a different category
+    wasn't proven safe against existing asset code_rule tokens/history."""
     name: str
 
 
@@ -91,6 +140,23 @@ class CustomFieldIn(BaseModel):
     options: dict | None = None
     is_required: bool = False
     sort_order: int = 0
+    # AM-05: None = GLOBAL (applies to every company); a real id = applies
+    # only to that company's assets. See app/assets/custom_field_values.py.
+    company_id: int | None = None
+
+
+class CustomFieldEditIn(BaseModel):
+    """`field_key`/`field_type` omitted deliberately -- both immutable after
+    creation (AM-05 §22): asset values are stored keyed by field_key, and
+    changing field_type could invalidate values already stored under the
+    old type. `company_id` (scope) is accepted here but the router only
+    honors a change to it when no asset currently holds a value for this
+    field_key -- see `masters/router.py`."""
+    label: str
+    options: dict | None = None
+    is_required: bool = False
+    sort_order: int = 0
+    company_id: int | None = None
 
 
 class CustomFieldOut(CustomFieldIn):

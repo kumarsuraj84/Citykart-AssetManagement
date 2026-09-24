@@ -73,3 +73,9 @@ class CustomField(Base, AuditMixin, SoftDeleteMixin):
     options: Mapped[dict | None] = mapped_column(JSON)
     is_required: Mapped[bool] = mapped_column(default=False)
     sort_order: Mapped[int] = mapped_column(default=0)
+    # AM-05: NULL = GLOBAL (applies to every company's assets, the only meaning
+    # every pre-AM-05 row has and keeps unchanged); a real company id = applies
+    # only to that company's assets. See app/assets/custom_field_values.py for
+    # how "applicable" is computed, and app/masters/router.py for why this can
+    # only be changed while no asset yet holds a value for this field_key.
+    company_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("company.id"))

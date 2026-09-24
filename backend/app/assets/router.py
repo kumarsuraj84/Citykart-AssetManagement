@@ -223,7 +223,8 @@ async def update_asset(
     replacing_custom_fields = data.get("custom_fields") is not None
     try:
         await validate_custom_field_values(
-            session, data.get("custom_fields"), enforce_required=replacing_custom_fields,
+            session, data.get("custom_fields"), company_id=asset.company_id,
+            enforce_required=replacing_custom_fields,
         )
     except ValueError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))

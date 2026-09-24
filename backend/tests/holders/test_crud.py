@@ -84,6 +84,71 @@ async def test_it_team_cannot_create_holder(client):
     assert resp.status_code == 403
 
 
+async def test_it_team_cannot_update_a_holder(client):
+    """AM-05 §16: Holder.role is security-sensitive -- only ADMIN may change
+    it, and since PUT /api/holders/{id} is a full-replace body that always
+    includes role, IT_TEAM must not be able to call this endpoint at all
+    (there's no "role-less" edit path to carve out from it)."""
+    headers, company_id, location_id, department_id = await _admin_headers(client, company_code="CKS9D")
+    it_headers, _ = await _login_as(
+        client, company_id, location_id, department_id, emp_code="ITUSERD", role="IT_TEAM",
+    )
+    create_resp = await client.post("/api/holders", json={
+        "company_id": company_id, "emp_code": "TARGETD", "name": "Target Holder",
+        "holder_type": "EMPLOYEE", "location_id": location_id, "department_id": department_id,
+        "email": None, "phone": None, "role": "HOLDER",
+    }, headers=headers)
+    holder_id = create_resp.json()["id"]
+
+    resp = await client.put(f"/api/holders/{holder_id}", json={
+        "company_id": company_id, "emp_code": "TARGETD", "name": "Target Holder Renamed",
+        "holder_type": "EMPLOYEE", "location_id": location_id, "department_id": department_id,
+        "email": None, "phone": None, "role": "ADMIN",
+    }, headers=it_headers)
+    assert resp.status_code == 403
+
+    async with SessionLocal() as session:
+        row = await session.get(Holder, holder_id)
+        assert row.role == "HOLDER"
+        assert row.name == "Target Holder"
+
+
+async def test_it_team_cannot_deactivate_or_reset_password_for_a_holder(client):
+    headers, company_id, location_id, department_id = await _admin_headers(client, company_code="CKS9E")
+    it_headers, _ = await _login_as(
+        client, company_id, location_id, department_id, emp_code="ITUSERE", role="IT_TEAM",
+    )
+    create_resp = await client.post("/api/holders", json={
+        "company_id": company_id, "emp_code": "TARGETE", "name": "Target Holder",
+        "holder_type": "EMPLOYEE", "location_id": location_id, "department_id": department_id,
+        "email": None, "phone": None, "role": "HOLDER",
+    }, headers=headers)
+    holder_id = create_resp.json()["id"]
+
+    assert (await client.delete(f"/api/holders/{holder_id}", headers=it_headers)).status_code == 403
+    assert (await client.post(f"/api/holders/{holder_id}/reset-password", headers=it_headers)).status_code == 403
+
+
+async def test_admin_can_change_a_holders_role(client):
+    """The mirror positive case: ADMIN legitimately changing role is the one
+    path that must keep working."""
+    headers, company_id, location_id, department_id = await _admin_headers(client, company_code="CKS9F")
+    create_resp = await client.post("/api/holders", json={
+        "company_id": company_id, "emp_code": "TARGETF", "name": "Target Holder",
+        "holder_type": "EMPLOYEE", "location_id": location_id, "department_id": department_id,
+        "email": None, "phone": None, "role": "HOLDER",
+    }, headers=headers)
+    holder_id = create_resp.json()["id"]
+
+    resp = await client.put(f"/api/holders/{holder_id}", json={
+        "company_id": company_id, "emp_code": "TARGETF", "name": "Target Holder",
+        "holder_type": "EMPLOYEE", "location_id": location_id, "department_id": department_id,
+        "email": None, "phone": None, "role": "VIEWER",
+    }, headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["role"] == "VIEWER"
+
+
 async def test_non_admin_holder_list_scoped_to_own_company(client):
     """Finding 2 fix: GET /api/holders must never leak another company's
     holders to a non-ADMIN caller, even when they explicitly request a

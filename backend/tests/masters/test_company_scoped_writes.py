@@ -37,10 +37,26 @@ async def test_it_team_cost_center_writes_are_company_scoped(client):
     assert (await client.post("/api/masters/cost-centers", json={"company_id": b, "code": "X", "name": "X"}, headers=h)).status_code == 403
     assert (await client.post("/api/masters/cost-centers", json={"company_id": a, "code": "X", "name": "X"}, headers=h)).status_code == 201
 
-    # Editing another company's row, or moving an own row into another company.
-    assert (await client.put(f"/api/masters/cost-centers/{cc_b}", json={"company_id": b, "code": "B01", "name": "hacked"}, headers=h)).status_code == 403
-    assert (await client.put(f"/api/masters/cost-centers/{cc_a}", json={"company_id": b, "code": "A01", "name": "moved"}, headers=h)).status_code == 403
-    assert (await client.put(f"/api/masters/cost-centers/{cc_a}", json={"company_id": a, "code": "A01", "name": "renamed"}, headers=h)).status_code == 200
+    # Editing another company's row is still rejected outright.
+    assert (await client.put(f"/api/masters/cost-centers/{cc_b}", json={"name": "hacked"}, headers=h)).status_code == 403
+
+    # AM-05: company_id/code are no longer part of the edit schema at all
+    # (CostCenterEditIn), so a cost centre can never be moved to another
+    # company or have its code changed via this endpoint -- by ANY role,
+    # not just a scoped one. Sending them is silently ignored (Pydantic's
+    # behaviour for an undeclared field), the same convention
+    # AssetUpdateIn established for asset_code/company_id. Only `name`
+    # actually changes.
+    resp = await client.put(
+        f"/api/masters/cost-centers/{cc_a}",
+        json={"company_id": b, "code": "HACKED-CODE", "name": "renamed"},
+        headers=h,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["name"] == "renamed"
+    assert body["company_id"] == a  # unchanged, despite the request body
+    assert body["code"] == "A01"    # unchanged, despite the request body
 
     assert (await client.delete(f"/api/masters/cost-centers/{cc_b}", headers=h)).status_code == 403
 
