@@ -2,6 +2,121 @@
 
 Newest first. These override older spec/plan text where they conflict.
 
+## 2026-09-24 — AM-06 scope locked (Import + Export/Reports + My Assets)
+
+1. **Exact Import spreadsheet column contract** (`backend/app/imports/
+   asset_import_service.py::TEMPLATE_COLUMNS`), human-readable business
+   headers, looked up by name from the workbook's own header row (never
+   positional, so column order in an uploaded file never matters):
+
+   | Column | Backend field | Required | Lookup |
+   |---|---|---|---|
+   | Company Code | `company_id` | yes | `Company.code` |
+   | Cost Centre Code | `cost_center_id` | yes | `CostCenter.code`, scoped to the row's own company |
+   | Category Code | `category_id` | yes | `AssetCategory.code` |
+   | Subcategory Code | `subcategory_id` | no (AM-06 change, see item 2) | `AssetSubcategory.code`, scoped to the row's own category |
+   | Description | `description` | yes | — |
+   | Legacy Asset Code | `legacy_asset_code` | no | — |
+   | Purchase Date | `purchase_date` | yes | `YYYY-MM-DD` |
+   | Vendor Code | `vendor_id` | no | `Vendor.code` |
+   | PO Number / PO Date | `po_number` / `po_date` | no | `po_date` is `YYYY-MM-DD` |
+   | Invoice Number / Invoice Date | `invoice_number` / `invoice_date` | no | same date format |
+   | PI Number / PI Date | `pi_number` / `pi_date` | no | same date format |
+   | Purchase Cost | `purchase_cost` | no (defaults 0) | number |
+   | Tax % | `tax_percent` | no (defaults 0) | number |
+   | Brand / Model / Serial Number | `brand` / `model` / `serial_number` | no | — |
+   | Warranty Upto | `warranty_upto` | no | `YYYY-MM-DD` |
+   | Initial Holder Code | `current_holder_id` (initial) | yes | `Holder.emp_code`, scoped to the row's own company |
+   | Quantity | multi-create count | no (defaults 1) | whole number ≥ 1 |
+   | `Custom:<field_key>` | `Asset.custom_fields[field_key]` | see item 4 | typed per the field's `field_type` |
+
+   Missing any *required* column entirely (not just blank cells) is a
+   single file-level error (`ImportTemplateError`), not per-row noise — the
+   file is rejected before any row is even read.
+
+2. **Subcategory is now optional on import**, matching Add Asset's own
+   optional Sub-Category field — a deliberate behavior change from the
+   pre-AM-06 import, which treated a blank subcategory as an "unknown
+   subcategory_code" row error. Note this doesn't make a code-rule template
+   that references `{subcategory.code}` magically work with a blank
+   subcategory — that's an unrelated, pre-existing numbering-template
+   concern (the same one Add Asset already has), not something AM-06
+   changed.
+
+3. **Custom Field import/export header convention: `Custom:<field_key>`**
+   (`app.imports.asset_import_service.CUSTOM_FIELD_PREFIX`), keyed by the
+   field's stable `field_key`, never its display `label` — a label rename
+   must never break a saved spreadsheet. Chosen over the alternative
+   (matching by label) specifically because no prior convention existed to
+   preserve compatibility with, and `field_key` is already the codebase's
+   established stable identifier for a Custom Field everywhere else
+   (`Asset.custom_fields` itself is keyed by it). The same convention is
+   used for export column headers, so an export can be edited and
+   re-imported without semantic ambiguity.
+
+4. **Company-scoped UDF import behavior reuses AM-05's exact applicability
+   rule** (`applicable_custom_fields`/`validate_custom_field_values` from
+   `app.assets.custom_field_values`), never a separate import-only rules
+   engine. Per row: unknown/inactive/wrong-company `Custom:` column with a
+   non-blank value is a row error; the same column left blank is silently
+   ignored (not an error) if it's simply not applicable to that row's
+   company; a Global or same-company required field with no value anywhere
+   in the row is a row error; a required field belonging only to a
+   *different* company is never counted, never required, never blocks that
+   row.
+
+5. **Asset register export = the current asset snapshot. Movement log
+   export = `asset_event`. Field-change audit export (new) =
+   `asset_field_change`. These are three separate canonical datasets and
+   must never be flattened into one another** — reconfirms and extends the
+   `asset_event`-vs-`asset_field_change` separation already locked in the
+   AM-04 entry below. A future stage must not "simplify" this into one
+   giant export.
+6. **Import commit stays VALID-ROWS-ONLY per row, unchanged from
+   pre-AM-06** (confirmed by reading the code, not assumed — a prior
+   report's claim that duplicate-handling was already covered turned out
+   not to match the actual code, see the AM-06 report §8/§17): each row
+   commits inside its own `SAVEPOINT`, so one row's failure (no active
+   code rule, an unresolvable token, a lifecycle rejection) never aborts
+   sibling rows. The one exception, unchanged: a company-scope violation
+   anywhere in the file refuses the *entire* file (403, nothing written) —
+   an authorization boundary, not a data-quality one, so it stays
+   all-or-nothing. **Extension for AM-06's new Quantity**: every unit of
+   one row's Quantity shares that row's single savepoint — a mid-row
+   failure discards every unit the row would have created, not a partial
+   2-of-3, since the row (not the unit) is the atomic thing a user reviews
+   and retries.
+7. **No new import-side duplicate detection was added** (legacy code,
+   serial number, PO/invoice/PI number can all repeat across rows/assets,
+   exactly as before AM-06) — no business evidence any of these fields is
+   meant to be unique; Asset Code remains the only system-enforced-unique
+   identifier. Reconfirmed in `REVIEW_FINDINGS.md`.
+8. **No database migration in AM-06** — confirmed unnecessary and not
+   attempted: every field Import/Export now surface already existed on
+   `Asset` (procurement, since AM-02) and `CustomField` (`company_id`,
+   since AM-05).
+9. **My Assets' business meaning is unchanged** — still literally
+   `GET /api/assets` with a HOLDER's `holder_id` pinned server-side to
+   their own id (any other role sees their normal `scoped_company_ids`-
+   scoped register, exactly as before). AM-06 only changed the UI
+   (shared-component migration, a Category column added then removed —
+   see item 10) and fixed a hardcoded link color; no backend scoping logic
+   changed.
+10. **My Assets does not show a Category column.** One was added, then
+    removed after this stage's own browser UAT caught it showing a raw
+    numeric id for any asset whose category had since been deactivated
+    (`/masters/categories` only returns active rows, and My Assets doesn't
+    have Asset 360's live point-lookup-by-id available in a list view).
+    Asset Register itself doesn't show a Category column either — dropping
+    it keeps My Assets to data it can always render correctly, rather than
+    a fragile client-side join for a field the authorization only called
+    "likely," not required.
+11. **`holder_company_access` remains unresolved and untouched** —
+    reconfirmed, same as every prior stage; AM-06 was explicitly instructed
+    not to start it.
+
+Full evidence: `docs/ai/AM-06_IMPORT_REPORTS_MY_ASSETS_REPORT.md`.
+
 ## 2026-09-24 — AM-05 scope locked (Masters + Holders + company-scoped Custom Fields)
 
 1. **`CustomField.company_id` (nullable FK to `company`): `NULL` = Global

@@ -6,47 +6,23 @@ message / `DECISIONS.md`, don't just leave it checked off here).
 
 ## Design / UX (open)
 
-1. **`DataTable` is now used on every tabular screen except My Assets and
-   Import preview.** AM-03 migrated Dashboard's 3 sub-tables and Asset
-   Register; AM-04 added Asset 360's Changes tab; AM-05 migrated all 8
-   master screens (`MasterCrudScreen`), the new Custom Fields screen, and
-   Holders. My Assets and Import preview still hand-roll their own
-   header/row/empty-row markup — a future stage's work.
-2. **`PageHeader` is now used on every screen except My Assets and Import.**
-   AM-03 migrated Dashboard and Asset Register; AM-04 added Add Asset and
-   Asset 360; AM-05 added all 8 master screens, Custom Fields, Holders, and
-   Code Rule.
-3. **Loading/empty/error states are now consistent everywhere except My
-   Assets and Import.** AM-05 closed the gap this finding originally
-   flagged for the 8 master screens, Holders, and Code Rule — all now have
-   full loading/empty/error coverage via the shared components.
-4. **No skeleton loaders on My Assets or Import.** Every other screen now
-   has one (AM-05 added Code Rule's and confirmed `DataTable`'s built-in
-   skeleton rows cover every master/Holders screen).
-5. **Heading-size drift only remains on My Assets**, which still has no
-   page-level heading at all — every other screen now renders its `<h1>`
-   through the shared `PageHeader` (fixed at `text-lg`).
-6. **Duplicated async-state plumbing in Imports/Reports.** `AsyncButton` is
-   now used in Asset Register's bulk-move Confirm, Add Asset's Save, Asset
-   360's action/edit Save buttons, and (AM-05) every master/Custom
-   Field/Holder/Code Rule Save button, but Imports/Reports themselves
-   weren't touched (out of scope through AM-05) and still hand-roll their
-   own pending/error `useState` pairs for their blob-download buttons.
-7. **One hardcoded non-token color**: `text-blue-600` in `MyAssets.tsx`'s
-   asset-code link (every other equivalent link elsewhere is unstyled).
+None outstanding as of AM-06 — every item previously listed here (shared-
+component adoption on every screen, skeleton loaders, heading-size
+consistency, `AsyncButton` everywhere, the hardcoded My Assets link color)
+is resolved; see "Resolved this session" below for AM-05/AM-06's fixes.
 
 ## Technical (open)
 
-8. **`scoped_company_ids` doesn't incorporate `HolderCompanyAccess` grants**
+1. **`scoped_company_ids` doesn't incorporate `HolderCompanyAccess` grants**
     yet — an IT_TEAM/VIEWER holder with assigned cross-company access is
     currently under-scoped (sees only their own company). Under-granting,
     not over-granting — safe direction to be wrong in. AM-01 documented this
     fully (`AM-01_DATA_INTEGRITY_REPORT.md` §9) without resolving it: it's
     genuinely either "needed for a shared multi-company asset team" or
     "dormant scaffolding," and that call needs a business answer, not a
-    technical guess. Still open as of AM-05 (explicitly out of scope there
-    too, per its §26 — `holder_company_access` itself was untouched).
-9. **5 closed-value columns still have no DB-level CHECK/ENUM** —
+    technical guess. Still open as of AM-06 (explicitly out of scope there
+    too, per its §32 — `holder_company_access` itself was untouched).
+2. **5 closed-value columns still have no DB-level CHECK/ENUM** —
     `asset.status`, `asset_event.event_type`, `asset_event.status_after` are
     deliberately left unconstrained (they're the surface most likely to gain
     a new legal value if a future stage adds an approval workflow —
@@ -54,17 +30,19 @@ message / `DECISIONS.md`, don't just leave it checked off here).
     `asset_document.doc_type` was simply out of AM-02's scope (only
     `holder.holder_type`/`holder.role`/`custom_field.field_type` were
     confirmed-gap items from AM-01). All plain VARCHAR at the DB level.
-10. **Import template and export column list have no procurement/custom-field
-    columns** — the API fully supports them (AM-02), but neither the import
-    preview/commit path nor `assets_to_xlsx` includes vendor/PO/invoice/PI/
-    brand/model/serial/warranty/custom-field columns. Deliberately deferred
-    (AM-02 §13/§14), not a brittle stopgap.
-11. **`category_id`, `subcategory_id`, `purchase_date` still have no edit
+3. **`category_id`, `subcategory_id`, `purchase_date` still have no edit
     path** after asset creation — reconfirmed as deliberately out of scope in
-    AM-04 too (§17 of that authorization): a real, evidenced gap (what if a
-    category was picked wrong at creation?), but safely exposing it needs a
-    dedicated correction-workflow design, not a silent add to the generic
-    edit form. A future stage's work.
+    AM-04 too (§17 of that authorization) and again in AM-06 (§33): a real,
+    evidenced gap (what if a category was picked wrong at creation?), but
+    safely exposing it needs a dedicated correction-workflow design, not a
+    silent add to the generic edit form. A future stage's work.
+4. **No import-side duplicate detection** (legacy code, serial number, PO/
+    invoice/PI number) — confirmed still absent in AM-06 (it was never
+    present; a prior report's claim that "duplicate handling" was covered
+    by the existing test suite did not match the actual code or tests, see
+    `AM-06_IMPORT_REPORTS_MY_ASSETS_REPORT.md` §17). Not added without
+    business evidence that any of these fields is meant to be unique —
+    Asset Code remains the only system-enforced-unique identifier.
 
 ## Resolved this session (kept here for traceability, remove once stale)
 
@@ -164,3 +142,25 @@ message / `DECISIONS.md`, don't just leave it checked off here).
   before saving a change (never a silent reset), and IT_TEAM is confirmed
   (by 3 new backend tests) unable to update, deactivate, or reset the
   password of any holder — role remains ADMIN-only end to end.
+- **Import template and export column list had no procurement/custom-field
+  columns** — fixed (AM-06): Import now supports every procurement field,
+  Quantity (multi-create per row), and company-scoped Custom Fields
+  (`Custom:<field_key>` columns, reusing AM-05's applicability rule
+  directly); the asset register export gained the same field set plus
+  Custom Field columns with human-readable labels; a new, separate field-
+  change-audit export was added. See `DECISIONS.md` for the exact column
+  contract.
+- **`DataTable`/`PageHeader`/loading-empty-error/skeletons were missing on
+  My Assets and Import** (the last two screens outside the shared
+  foundation) — fixed (AM-06): both migrated onto the shared components,
+  and Reports (which had `Card`-based ad hoc markup, no `PageHeader`) moved
+  onto `PageHeader` too. `AsyncButton` now covers every Import/Reports
+  download button, closing the "duplicated async-state plumbing" finding.
+- **`MyAssets.tsx`'s hardcoded `text-blue-600` asset-code link** — fixed
+  (AM-06): replaced with the same unstyled SPA `<Link>` Asset Register's
+  own Code column already uses.
+- **My Assets had no loading, error, or empty state at all** — a failed
+  fetch silently rendered an empty table indistinguishable from "you truly
+  have zero assets" — fixed (AM-06): real skeleton, `ErrorState`+retry, and
+  a distinct empty-state message, via the same `DataTable`/`EmptyState`
+  pattern every other list screen now uses.

@@ -56,6 +56,24 @@ closes the AM-04-discovered risk where a required field created for one
 company blocked asset creation in every company — Add Asset/Asset 360 now
 only ever see Global + their own company's definitions.
 
+**AM-06 (2026-09-24) closed the gap between manual Add Asset and Excel
+Import/Export** so both use the same V1 asset data model: Import now
+supports every procurement field (Vendor, PO/Invoice/PI Number+Date,
+Purchase Cost/Tax %, Brand/Model/Serial/Warranty), Quantity (multi-create
+per row), and company-scoped Custom Fields via a `Custom:<field_key>`
+column, all reusing AM-05's applicable_custom_fields/
+validate_custom_field_values rather than a parallel rules engine. The
+asset register export gained the same full field set plus Custom Field
+columns with human-readable labels throughout; a new, separate field-
+change-audit export was added; the movement log export is unchanged.
+Import, Reports, and My Assets all moved onto the shared PageHeader/
+DataTable/EmptyState/ErrorState/AsyncButton/FormField foundation — the
+last three routes outside it. My Assets' hardcoded `text-blue-600` link
+color is gone, and it now has real loading/error/empty states (previously
+none at all — a failed fetch silently rendered an empty table
+indistinguishable from "you truly have zero assets"). No database
+migration (procurement fields and Custom Fields already existed).
+
 Legend: ✅ verified this session · 🟡 spot-checked only (not full UAT) · ⬜ not yet checked · N/A not applicable
 
 Functional = backend/frontend tests pass. Design = real-browser visual check.
@@ -69,9 +87,9 @@ Security = authz/scoping verified. Responsive = checked at 1440/768/375.
 | `/assets` (register) | ✅ | ✅ | 🟡 | ✅ | AM-03: migrated to shared foundation; row click now uses the SPA router (confirmed via network log — no document reload); checkbox click confirmed not to trigger row navigation; verified in-browser at 1440/1024/768/375 — table uses intentional horizontal scroll at 375, no clipped content; security is backend-regression-only, same caveat as Dashboard |
 | `/assets/new` (Add Asset) | ✅ | ✅ | 🟡 | ✅ | AM-04: full sectioned redesign; verified in-browser at 1920/1440/1366/1024/768/375 with real created data (a full asset was actually saved through the form); required-UDF error and server-validation-error both confirmed live; security is backend-regression-only (role-gating covered by tests, not a dedicated browser authz walkthrough). AM-05: Custom Fields section now filters to Global + this asset's company only, verified live (created a Global field, confirmed it rendered) and by a dedicated E2E journey + 9 backend + 1 frontend regression test proving another company's required field never blocks Save |
 | `/assets/$id` (Asset Detail → Asset 360) | ✅ | ✅ | 🟡 | ✅ | AM-04: full redesign, `return null` loading bug fixed; verified in-browser at all 6 breakpoints; Procurement/Custody/Custom-Fields/Changes tabs all confirmed showing real data; Edit mode exercised end-to-end (changed Brand, saved, confirmed refreshed display AND a new Changes-tab audit row); found and fixed 2 real responsive bugs during this UAT (see note above); security is backend-regression-only, same caveat as Add Asset. AM-05: Edit mode's Custom Field controls apply the same Global+own-company filter; a stored value under a now-other-company-scoped key remains visible read-only and is preserved (not dropped) on an unrelated save, verified by a dedicated frontend regression test |
-| `/my-assets` | ✅ | ⬜ | ⬜ | ⬜ | Not opened this session |
-| `/import` | ✅ | ⬜ | ⬜ | ⬜ | Not opened this session |
-| `/reports` | ✅ | ⬜ | ⬜ | ⬜ | Not opened this session |
+| `/my-assets` | ✅ | ✅ | 🟡 | ✅ | AM-06: migrated to shared foundation (PageHeader/DataTable/StatusBadge/EmptyState/ErrorState); real loading skeleton and error+retry added (previously none); hardcoded `text-blue-600` link replaced with the same unstyled SPA `<Link>` Asset Register uses; verified in-browser (clicked through to Asset 360) and at 375px (no overflow, confirmed via `document.body.scrollWidth`). A Category column was tried, then removed after live UAT caught it showing a raw numeric id for an asset whose category had since been deactivated (Asset Register itself has no Category column either — kept consistent); security is backend-regression-only, no scoping logic changed |
+| `/import` | ✅ | ✅ | ✅ | ✅ | AM-06: full redesign — 4-step hierarchy (template/choose+preview/review/result) on the shared foundation; verified in-browser (template download succeeded live, full preview→commit→Asset-360 journey proven by a new E2E spec using a real generated fixture); verified no overflow at 375px and 768px; security verified by 19 new backend tests (procurement/UDF/quantity/cross-company rejection) plus the existing company-scope-on-commit tests, unchanged |
+| `/reports` | ✅ | ✅ | ✅ | ⬜ | AM-06: added a third card (Field Change Audit) and Status/Category filters on the Asset Register export; every download now goes through `AsyncButton`; verified in-browser — all three exports (Asset Register, Movement Log, Field Change Audit) downloaded successfully live; security verified by 8 new backend tests (field-change export company scoping, HOLDER role denied) plus the pre-existing asset/movement export scoping tests, unchanged; not re-checked at every breakpoint this session (desktop-verified only) |
 | `/setup/companies` | ✅ | ✅ | 🟡 | ✅ | AM-05: `MasterCrudScreen` on shared foundation; Edit dialog verified live (immutable Code shown read-only with explanatory text, Name editable), Deactivate confirmation verified (named the record, cancelled without side effect); security is backend-test-regression (15 new AM-05 authz tests), not a dedicated browser walkthrough per role |
 | `/setup/locations` | ✅ | 🟡 | 🟡 | 🟡 | Same `MasterCrudScreen` component as Companies/Categories/etc, not opened individually this session — Edit/Deactivate behavior identical and config-verified (`editFields: [name, address]`) |
 | `/setup/departments` | ✅ | 🟡 | 🟡 | 🟡 | ″ (`editFields: [name]`) |
@@ -84,23 +102,21 @@ Security = authz/scoping verified. Responsive = checked at 1440/768/375.
 | `/setup/code-rule` | ✅ | ✅ | N/A | 🟡 | AM-05: added loading skeleton + error/retry state without changing numbering semantics; opened live at desktop width, form/preview render correctly; `get_active_rule` ordering gap closed with 5 new dedicated backend tests |
 | App shell (sidebar/header) | ✅ | ✅ | N/A | ✅ | Verified expanded, collapsed-to-icons, and mobile drawer; role-gated nav content covered by `router.test.tsx` |
 
-**E2E (Playwright):** 2/2 passing — the existing `full custody journey`
-spec is untouched and still green, plus a new
-`a required custom field scoped to company B never blocks asset creation
-for company A` journey (`e2e/multi-company-udf.spec.ts`): seeds one real
-company through the normal fixture, creates a second bare company + a
-required Custom Field scoped to it (both through the first company's own
-globally-unrestricted ADMIN token, not a second seeded login — see that
-spec's comments for why), then proves in-browser that the field never
-renders and never blocks Save for the first company. Both specs clean up
-everything they create.
+**E2E (Playwright):** 3/3 passing — the existing `full custody journey` and
+`multi-company-udf` specs are untouched and still green, plus a new
+`import journey: fixture file -> preview -> commit -> find the asset ->
+PI Number and a company-scoped custom field show on Asset 360`
+(`e2e/import.spec.ts`): seeds a real company, creates a company-scoped
+Custom Field, builds a one-row Excel fixture through a new backend script
+(`build_e2e_import_fixture.py`, reusing the real column contract rather
+than hand-crafting bytes or depending on Excel desktop software), then
+drives the browser through Preview → Commit → finds the created asset via
+the real Asset Register search → confirms PI Number and the custom field
+value both render on Asset 360. All three specs clean up everything they
+create.
 
-**Backend:** 231/231 passing (was 199/199 at AM-04, 184/184 at AM-03,
-170/170 at AM-01, 163/163 at AM-00 — +32 new AM-05 tests: 15 Custom Field
-scope authorization/immutability/mutation-rules, 9 asset-side applicability
-regression, 5 `get_active_rule` ordering, 3 Holder role-security).
-**Frontend:** 121/121 passing (25 files, up from 101/24 at AM-04 — +20 new
-tests: `MasterCrudScreen` loading/error/empty/edit/deactivate, the new
-`CustomFieldsScreen`'s 9 tests, Holders deactivate/role-warning/loading/
-error, Add Asset + Asset 360 company-scoping regression), `npx tsc -b`
-clean.
+**Backend:** 258/258 passing (was 231/231 at AM-05, 199/199 at AM-04,
+184/184 at AM-03, 170/170 at AM-01, 163/163 at AM-00 — +27 new AM-06
+tests: 19 import full-field-support, 8 export/reports full-field-support).
+**Frontend:** 133/133 passing (25 files, up from 121 at AM-05 — +12 new
+tests: 6 Import, 3 Reports, 3 My Assets), `npx tsc -b` clean.

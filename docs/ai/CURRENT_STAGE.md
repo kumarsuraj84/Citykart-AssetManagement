@@ -1,12 +1,13 @@
 # CKAM — Current Stage
 
-**Stage:** AM-05 (Masters + Holders + company-scoped Custom Fields) — complete, PASS.
-**Next:** awaiting explicit go-ahead on AM-06 or any other further work — do
-not start anything automatically, including Import/Reports/My Assets
-redesign, category/subcategory/purchase-date correction workflow,
-`holder_company_access`, approval workflow, AMC/insurance, depreciation, or
-physical verification.
+**Stage:** AM-06 (Import + Export/Reports + My Assets) — complete, PASS.
+**Next:** awaiting explicit go-ahead on AM-07 or any other further work — do
+not start anything automatically, including `holder_company_access`,
+category/subcategory/purchase-date correction workflow, approval workflow,
+AMC/insurance, depreciation, physical verification, or a company-wide
+generic audit explorer.
 
+Full AM-06 evidence: `docs/ai/AM-06_IMPORT_REPORTS_MY_ASSETS_REPORT.md`.
 Full AM-05 evidence: `docs/ai/AM-05_MASTERS_HOLDERS_REPORT.md`.
 Full AM-04 evidence: `docs/ai/AM-04_ASSET_ENTRY_360_REPORT.md`.
 Full AM-03 evidence: `docs/ai/AM-03_UI_FOUNDATION_REPORT.md`.
@@ -23,7 +24,8 @@ accounting. Custom Fields are **required** long-term and are now wired into
 Add Asset and Asset 360 (AM-04) with server-side required-field enforcement
 on create, and (AM-05) may be Global or scoped to one company so a required
 field never blocks a company it wasn't meant for. Procurement traceability (including PI Number) is a locked target
-requirement, now fully reachable from Add Asset/Asset 360. Auto-generated Asset Code stays
+requirement, now fully reachable from Add Asset/Asset 360, and (AM-06) from
+Import and the asset register export too. Auto-generated Asset Code stays
 mandatory, race-safe numbering preserved as-is. CKAM supports ≥2 companies;
 Cost Centres must match their asset's company (already enforced, now
 test-covered on both creation paths). No login company selector (already
@@ -206,39 +208,71 @@ Reassigned, plus Repair/Lost-Found/Disposed-Sold-Scrapped.
   creation). Real-browser UAT performed on the master/Custom Fields/
   Holders/Code Rule screens.
 
+## What's actually done as of AM-06
+
+- **Import supports the full V1 asset data model**: every procurement
+  field Add Asset supports (Vendor, PO/Invoice/PI Number+Date, Purchase
+  Cost/Tax %, Brand/Model/Serial/Warranty), Quantity (multi-create per row,
+  sharing one savepoint per row so a mid-row lifecycle failure rolls back
+  every unit of that row, never a partial batch), and company-scoped
+  Custom Fields via a `Custom:<field_key>` column — reusing AM-05's
+  `applicable_custom_fields`/`validate_custom_field_values` directly, no
+  parallel rules engine. Column headers are now human-readable business
+  names, resolved by name from the workbook's own header row (never
+  positional). Subcategory is now optional, matching Add Asset. Existing
+  behavior preserved and confirmed unchanged: VALID-ROWS-ONLY per-row
+  atomicity, code/emp_code master lookups, and the pre-existing (real, now
+  documented) lack of duplicate detection.
+- **Export gains the same full field set** plus Custom Field columns
+  (union of applicable + retained/retired values, human-readable labels
+  throughout, batch id→name maps rather than per-row queries). A new,
+  separate field-change-audit export
+  (`GET /api/reports/export/field-changes`) was added — asset register,
+  movement log, and field-change audit are three explicitly separate
+  canonical datasets, never flattened together. Movement log itself is
+  unchanged (still the AM-01 point-in-time holder-name snapshots).
+- **Import, Reports, and My Assets all moved onto the shared UI
+  foundation** — the last three screens outside it. My Assets' hardcoded
+  `text-blue-600` link is gone (now the same unstyled SPA `<Link>` Asset
+  Register uses) and it has real loading/error/empty states for the first
+  time. A My Assets Category column was tried and removed after live UAT
+  caught it showing a raw numeric id for a deactivated category — see
+  `DECISIONS.md`.
+- **No database migration** — confirmed unnecessary (every field already
+  existed).
+- Backend: 231 → 258 tests (+27: 19 import full-field-support, 8
+  export/reports full-field-support). Frontend: 121 → 133 tests (+12: 6
+  Import, 3 Reports, 3 My Assets). Typecheck clean. E2E: 2 → 3 passing
+  (existing specs untouched; new Import journey using a real generated
+  Excel fixture, template→preview→commit→Asset 360). Real-browser UAT
+  performed on Import/Reports/My Assets, including the Category-column bug
+  found and fixed live.
+
 ## Deferred, awaiting your decision (not blockers, not failures)
 
 1. **`holder_company_access`**: written to, never read by authorization.
    Classified as either "needed for multi-company asset-team access" or
    "dormant/obsolete" — genuinely depends on whether CityKart's asset team is
    organizationally shared across companies. No behavioral change made in
-   AM-01 through AM-05.
-2. **Import/Export column extension**: the import template and export column
-   list still don't include any procurement, custom-field, or field-change-
-   audit columns, even though the API now fully supports the first two.
-   Deliberately deferred again in AM-04 (§32) — not a brittle dynamic-column
-   hack, a real future stage's work.
-3. **`category_id`/`subcategory_id`/`purchase_date` have no edit path** —
+   AM-01 through AM-06.
+2. **`category_id`/`subcategory_id`/`purchase_date` have no edit path** —
    deliberately excluded from `AssetUpdateIn`/Asset 360's Edit mode again in
-   AM-04 (§17) and reconfirmed out of scope in AM-05: changing them safely
-   needs a dedicated correction-workflow design (code-generation tokens and
-   event-ordering invariants both depend on them), not a silent add to the
-   generic edit form.
-4. **Shared UI foundation is now proven on every screen except My Assets
-   and Import preview**, which still hand-roll their own markup. Migrating
-   them is real work for a future stage.
-5. **`AsyncButton` exists but Imports/Reports weren't touched** — they still
-   hand-roll their own pending/error state for blob-download buttons.
-6. **Category/subcategory-scoped Custom Fields** were explicitly considered
+   AM-04 (§17), reconfirmed out of scope in AM-05, and again in AM-06
+   (§33): changing them safely needs a dedicated correction-workflow design
+   (code-generation tokens and event-ordering invariants both depend on
+   them), not a silent add to the generic edit form.
+3. **Category/subcategory-scoped Custom Fields** were explicitly considered
    and rejected as AM-05 scope (deliberately simpler company-only scoping
    was chosen instead) — a future stage's decision if ever needed.
+4. **No import-side duplicate detection** (legacy code, serial number,
+   PO/invoice/PI number) — confirmed still absent in AM-06, not added
+   without business evidence any of these fields is meant to be unique.
 
-None of AM-06 onward (Import, Reports, My Assets, category/subcategory/
-purchase_date correction workflow, `holder_company_access`, approval
-workflow, AMC/insurance, depreciation, physical verification, a full
-company-wide asset audit explorer) have been started as dedicated stages
-yet — see `REVIEW_FINDINGS.md` for what's still open on each of those
-screens.
+None of AM-07 onward (`holder_company_access`, category/subcategory/
+purchase_date correction workflow, approval workflow, AMC/insurance,
+depreciation, physical verification, a full company-wide asset audit
+explorer) have been started as dedicated stages yet — see
+`REVIEW_FINDINGS.md` for what's still open.
 
 ## Branch / remote state
 

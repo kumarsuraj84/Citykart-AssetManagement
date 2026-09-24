@@ -78,15 +78,15 @@ primitive, `collapsible="icon"`) + main content area.
 
 `frontend/src/components/shared/`: `PageHeader`, `DataTable`, `StatusBadge`,
 `EmptyState`, `ErrorState`, `AsyncButton`, `FormField`. Proven on Dashboard,
-Asset Register, Add Asset and Asset 360 (AM-03/AM-04), and now (AM-05) every
-master screen (`MasterCrudScreen`), the new Custom Fields screen, Holders,
-and Code Rule — see `REVIEW_FINDINGS.md` for the two screens (My Assets,
-Import) still outstanding. `DataTable` presents rows/loading-skeleton/empty/
-error states and an optional pagination footer; it never owns fetching,
-query state, sorting, or filtering — the page keeps that. `StatusBadge` maps
-the 8 `Asset.status` values to a semantic tone (info/success/warning/
-destructive/neutral) via the existing `--*-soft`/`--on-*-soft` tokens,
-always alongside the status name as text, never color alone.
+Asset Register, Add Asset and Asset 360 (AM-03/AM-04), every master screen/
+Custom Fields/Holders/Code Rule (AM-05), and now (AM-06) Import, Reports,
+and My Assets — every screen in the app uses this foundation. `DataTable`
+presents rows/loading-skeleton/empty/error states and an optional
+pagination footer; it never owns fetching, query state, sorting, or
+filtering — the page keeps that. `StatusBadge` maps the 8 `Asset.status`
+values to a semantic tone (info/success/warning/destructive/neutral) via
+the existing `--*-soft`/`--on-*-soft` tokens, always alongside the status
+name as text, never color alone.
 
 ## Sectioned enterprise forms (AM-04)
 
@@ -202,13 +202,44 @@ omitted from the row entirely rather than rendered disabled, since the
 distinction ("you can't do this right now" vs. "this will never be yours to
 do") matters here.
 
+## Import workflow (AM-06)
+
+`ImportScreen` is a sequence of numbered, bordered sections (`text-sm
+font-semibold uppercase tracking-wide text-muted-foreground` heading, same
+as Add Asset's section pattern, applied to a page-level workflow instead of
+a form), not one dense upload box: 1. Download Template, 2. Choose File +
+Preview, 3. Review, 4. Result. Steps 3 and 4 only render once their data
+exists (no empty "Review"/"Result" section flashing before there's anything
+to show). Preview shows two separate `DataTable`s — rows ready to import
+and rows needing attention — rather than only surfacing errors, since a
+successful preview is exactly as important to see clearly as a failed one.
+An error row's `field` (when the backend can attribute one) gets its own
+column, never buried inside the message string.
+
+## Validation-summary pattern (AM-06)
+
+Both Import's preview/result and any future bulk-validation surface should
+follow the same shape: a one-line plain-language count ("N rows ready to
+import, M rows with errors") above the detail tables, not a raw JSON dump
+or a single combined "N/M" number that hides which N. Never render a raw
+backend exception string as the error text (`app.imports.asset_import_
+service` already composes user-facing messages, e.g. "unknown Cost Centre
+Code 'X'" naming the actual column, not a stack trace).
+
+## Report/download action pattern (AM-06)
+
+Every export button in `ReportsScreen` (and Import's Template download) is
+an `AsyncButton`, not a hand-rolled `useState` pending/error pair — the
+"Duplicated async-state plumbing in Imports/Reports" finding this closes.
+A report card with filters (`ReportsScreen`'s Asset Register card) puts the
+filter controls and the download button in one `flex flex-wrap items-end
+gap-3` row, matching `AssetRegister`'s own filter-bar layout, so the same
+horizontal-filters-then-action shape appears everywhere filters exist in
+the app.
+
 ## Known gaps (not yet fixed — see `REVIEW_FINDINGS.md` for the full list)
 
-- `DataTable`/`PageHeader` are now used everywhere except My Assets and
-  Import preview, which still hand-roll their own table/header/empty-state
-  markup.
-- Page `<h1>` sizing drifts between `text-xl` and `text-lg` only on My
-  Assets now — every other screen renders it via the shared `PageHeader`,
-  fixed at `text-lg`.
-- Loading/empty/error states exist everywhere now except My Assets and
-  Import.
+None — `DataTable`/`PageHeader`/loading-empty-error states/skeletons are
+now used on every screen in the app (AM-06 closed the last two, My Assets
+and Import). Page `<h1>` sizing is consistently `text-lg` everywhere via
+the shared `PageHeader`.
