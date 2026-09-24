@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
 from app.core.deps import STAFF_ROLES, get_current_holder, require_role, scoped_company_ids
@@ -71,7 +72,16 @@ async def create_holder(
     data = body.model_dump()
     _validate_holder_fields(data)
     await _validate_holder_references(session, data)
-    return await HolderService(session).create(data, holder.id)
+    try:
+        return await HolderService(session).create(data, holder.id)
+    except IntegrityError:
+        # AM-09: `emp_code` is unique per company (Holder.__table_args__) -- reusing
+        # one is an ordinary mistake, not malformed input, and previously hit an
+        # unhandled 500 (a raw asyncpg UniqueViolationError) instead of a normal
+        # validation error. Rollback is required before the session can be used
+        # again in this request (a failed INSERT leaves the transaction aborted).
+        await session.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "an employee code already exists for this company")
 
 
 @router.put("/{holder_id}", response_model=HolderOut)
@@ -84,7 +94,11 @@ async def update_holder(
     data = body.model_dump()
     _validate_holder_fields(data)
     await _validate_holder_references(session, data)
-    obj = await HolderService(session).update(holder_id, data, holder.id)
+    try:
+        obj = await HolderService(session).update(holder_id, data, holder.id)
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "an employee code already exists for this company")
     if obj is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     return obj

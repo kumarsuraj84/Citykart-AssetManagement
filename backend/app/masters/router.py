@@ -1,5 +1,6 @@
 from typing import Callable
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
 from app.core.deps import ensure_company_in_scope, get_current_holder, require_role
@@ -90,7 +91,17 @@ def build_master_router(
                 validate_incoming(data)
             except ValueError as exc:
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
-        return await MasterCRUDService(model, session).create(data, holder.id)
+        try:
+            return await MasterCRUDService(model, session).create(data, holder.id)
+        except IntegrityError:
+            # AM-09: every master has a unique `code` (some scoped, e.g. CostCenter's
+            # (company_id, code)) -- a caller reusing an existing code is a completely
+            # ordinary mistake (not malformed/adversarial input), and previously hit an
+            # unhandled 500 (a raw asyncpg UniqueViolationError) instead of a normal
+            # validation error. Rollback is required before the session can be used
+            # again in this request (a failed INSERT leaves the transaction aborted).
+            await session.rollback()
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "a record with this code already exists")
 
     @sub.put("/{item_id}", response_model=schema_out)
     async def update_item(
@@ -111,7 +122,11 @@ def build_master_router(
                 validate_incoming(data)
             except ValueError as exc:
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
-        return await service.update(item_id, data, holder.id)
+        try:
+            return await service.update(item_id, data, holder.id)
+        except IntegrityError:
+            await session.rollback()
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "a record with this code already exists")
 
     @sub.delete("/{item_id}", status_code=204)
     async def deactivate_item(

@@ -4,6 +4,31 @@ import qrcode
 from app.assets.models import Asset
 from app.core.config import settings
 
+# AM-09: openpyxl auto-detects a string cell value starting with "=" and sets
+# its data_type to formula ('f') -- confirmed directly (Workbook().active.
+# append(["=cmd|calc!A1"]) -> cell.data_type == "f"). Every free-text field in
+# these exports (Description, Brand, Vendor name, a Custom Field's text value,
+# a correction's Reason, ...) is user-controlled and, via Import in
+# particular, can originate from an externally-supplied spreadsheet -- so an
+# unescaped leading "=", "+", "-", or "@" (the four characters Excel's own
+# formula bar, and CSV/XLSX "formula injection" guidance, treat as
+# formula-starting) would become a live, executing formula for whoever next
+# opens the exported report in Excel. Prefixing with a single leading
+# apostrophe is the standard mitigation: Excel treats an apostrophe-prefixed
+# cell as literal text and does not display the apostrophe itself, so a
+# legitimate value is unaffected and never visibly altered.
+_FORMULA_TRIGGER_CHARS = ("=", "+", "-", "@")
+
+
+def _sanitize_cell(value):
+    if isinstance(value, str) and value.startswith(_FORMULA_TRIGGER_CHARS):
+        return "'" + value
+    return value
+
+
+def _sanitize_row(row: list) -> list:
+    return [_sanitize_cell(v) for v in row]
+
 # AM-06: the exported asset snapshot now matches the full V1 field set Add
 # Asset/Import support -- human-readable labels (never a bare FK id) for
 # every master relationship, same as AssetDetailOut already does for the
@@ -28,7 +53,7 @@ def assets_to_xlsx(assets: list[Asset], labels: dict, custom_field_keys: list[st
     ws.append(ASSET_EXPORT_COLUMNS + [f"Custom:{k}" for k in custom_field_keys])
     for a in assets:
         holder = labels["holder"].get(a.current_holder_id, {})
-        ws.append([
+        ws.append(_sanitize_row([
             a.asset_code,
             labels["company"].get(a.company_id),
             labels["cost_center"].get(a.cost_center_id),
@@ -54,7 +79,7 @@ def assets_to_xlsx(assets: list[Asset], labels: dict, custom_field_keys: list[st
             a.brand, a.model, a.serial_number,
             a.warranty_upto.isoformat() if a.warranty_upto else None,
             a.legacy_asset_code,
-        ] + [a.custom_fields.get(k) for k in custom_field_keys])
+        ] + [a.custom_fields.get(k) for k in custom_field_keys]))
     buf = BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -71,10 +96,10 @@ def field_changes_to_xlsx(rows: list[tuple]) -> bytes:
     ws = wb.active
     ws.append(["Asset Code", "Field", "Old Value", "New Value", "Actor", "Changed At", "Request ID"])
     for change, asset_code, actor_name in rows:
-        ws.append([
+        ws.append(_sanitize_row([
             asset_code, change.field_name, change.old_value, change.new_value,
             actor_name, change.created_at.isoformat(), change.request_id,
-        ])
+        ]))
     buf = BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -90,8 +115,8 @@ def movements_to_xlsx(rows: list[tuple]) -> bytes:
     ws = wb.active
     ws.append(["Asset Code", "Event", "Date", "From Holder", "To Holder", "Remarks"])
     for event, asset_code, from_holder_name, to_holder_name in rows:
-        ws.append([asset_code, event.event_type, event.event_date.isoformat(),
-                   from_holder_name, to_holder_name, event.remarks])
+        ws.append(_sanitize_row([asset_code, event.event_type, event.event_date.isoformat(),
+                   from_holder_name, to_holder_name, event.remarks]))
     buf = BytesIO()
     wb.save(buf)
     return buf.getvalue()

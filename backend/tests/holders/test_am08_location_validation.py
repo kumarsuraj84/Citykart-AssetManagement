@@ -99,6 +99,34 @@ async def test_valid_location_and_omitted_optional_department_succeed(client):
     assert resp.json()["department_id"] is None
 
 
+async def test_am09_duplicate_emp_code_within_a_company_is_a_controlled_422_not_500(client):
+    """AM-09: `emp_code` is unique per company (Holder.__table_args__) -- a
+    caller reusing an existing code is an ordinary mistake, not malformed
+    input, and previously hit an unhandled 500 (a raw asyncpg
+    UniqueViolationError) instead of a normal 422."""
+    headers, company_id, location_id, department_id = await _admin_headers(client)
+
+    first = await client.post("/api/holders", json={
+        "company_id": company_id, "emp_code": "DUPHOLD", "name": "First", "holder_type": "EMPLOYEE",
+        "location_id": location_id, "department_id": department_id, "email": None, "phone": None, "role": "HOLDER",
+    }, headers=headers)
+    assert first.status_code == 201
+
+    second = await client.post("/api/holders", json={
+        "company_id": company_id, "emp_code": "DUPHOLD", "name": "Second", "holder_type": "EMPLOYEE",
+        "location_id": location_id, "department_id": department_id, "email": None, "phone": None, "role": "HOLDER",
+    }, headers=headers)
+    assert second.status_code == 422
+    assert "already exists" in second.json()["detail"]
+
+    # The failed attempt must not corrupt the session for a subsequent, valid request.
+    third = await client.post("/api/holders", json={
+        "company_id": company_id, "emp_code": "NOTDUPHOLD", "name": "Third", "holder_type": "EMPLOYEE",
+        "location_id": location_id, "department_id": department_id, "email": None, "phone": None, "role": "HOLDER",
+    }, headers=headers)
+    assert third.status_code == 201
+
+
 async def test_update_holder_also_validates_location_references(client):
     """The same defensive check applies to PUT, not just POST."""
     headers, company_id, location_id, department_id = await _admin_headers(client)

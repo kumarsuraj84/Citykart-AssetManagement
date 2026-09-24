@@ -25,6 +25,18 @@ async def apply_event(
     drift apart.
     """
     event_date = event_date or datetime.now(timezone.utc)
+    # AM-09: a caller-supplied event_date with no offset (Pydantic parses a
+    # bare "2025-06-01" or "2025-06-01T00:00:00" into a naive datetime,
+    # confirmed directly) used to crash the `event_date > now` comparison
+    # below with an unhandled TypeError -- a raw 500 for input that isn't
+    # actually malformed, just missing a timezone. The real frontend always
+    # sends `.toISOString()` (always UTC, always offset-aware), so this only
+    # affected a direct API caller, but "no offset" is a legitimate ISO-8601
+    # datetime, not adversarial input, and deserves a controlled response
+    # (or, here, just correct handling) rather than a crash. A naive value is
+    # treated as UTC, matching the frontend's own convention.
+    if event_date.tzinfo is None:
+        event_date = event_date.replace(tzinfo=timezone.utc)
     now = datetime.now(timezone.utc)
     if event_date > now:
         raise LifecycleError("event date cannot be in the future")
