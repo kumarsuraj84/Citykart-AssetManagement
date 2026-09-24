@@ -18,13 +18,13 @@
   --muted:              oklch(0.955 0.012 235);
   --muted-foreground:   oklch(0.48 0.04 250);
 
-  /* ── Color: brand (sky-blue → navy → teal) ───────── */
-  --primary:            oklch(0.465 0.083 218);   /* brand teal (#026478) */
+  /* ── Color: brand (deep navy primary + teal secondary accent) ──── */
+  --primary:            oklch(0.32 0.085 258);   /* CKAM navy */
   --primary-foreground: oklch(0.99 0 0);
-  --primary-soft:       oklch(0.93 0.04 218);  /* light lilac-indigo tint */
-  --ring:               oklch(0.45 0.09 218);
-  --teal:               oklch(0.465 0.083 218); /* #026478 brand teal accent */
-  --header:             oklch(0.36 0.08 213);   /* deep teal — table header / demo bar */
+  --primary-soft:       oklch(0.93 0.025 258);
+  --ring:               oklch(0.46 0.10 258);
+  --teal:               oklch(0.465 0.083 218); /* #026478 secondary/accent, never dominant */
+  --header:             oklch(0.24 0.08 258);   /* deep navy — sidebar / table header */
 
   /* ── Color: status (exceptions only) ────────────── */
   --destructive:        oklch(0.58 0.22 25);
@@ -75,7 +75,7 @@
   --section-6: oklch(0.55 0.10 235);  /* admin · blue */
 
   /* ── Colored shadows (status elevation) ── */
-  --shadow-primary: 0 8px 20px -6px oklch(0.465 0.083 218 / 0.26);
+  --shadow-primary: 0 8px 20px -6px oklch(0.32 0.085 258 / 0.26);
   --shadow-success: 0 8px 20px -6px oklch(0.62 0.16 160 / 0.24);
   --shadow-warning: 0 8px 20px -6px oklch(0.78 0.15 75 / 0.24);
   --shadow-danger:  0 8px 20px -6px oklch(0.58 0.22 25 / 0.24);
@@ -97,15 +97,9 @@
   --avatar-6: oklch(0.55 0.20 265);  /* indigo  */
 
 
-  /* ── Signature gradients ────────────────────────── */
-  --gradient-primary:       linear-gradient(135deg,
-                              oklch(0.602 0.139 242.6) 0%,    /* #1488cc sky-blue */
-                              oklch(0.242 0.152 265.1) 56%,   /* #020966 navy */
-                              oklch(0.465 0.083 217.9) 100%); /* #026478 teal */
-  --gradient-primary-hover: linear-gradient(135deg,
-                              oklch(0.552 0.139 242.6) 0%,
-                              oklch(0.192 0.152 265.1) 56%,
-                              oklch(0.415 0.083 217.9) 100%);
+  /* ── Signature gradient — navy → teal ─────────────── */
+  --gradient-primary:       linear-gradient(135deg, oklch(0.26 0.09 260) 0%, oklch(0.465 0.083 218) 100%);
+  --gradient-primary-hover: linear-gradient(135deg, oklch(0.21 0.09 260) 0%, oklch(0.415 0.083 218) 100%);
   --gradient-surface:       linear-gradient(180deg, oklch(1 0 0 / 0.75), oklch(0.96 0.012 250 / 0.55));
   --gradient-page:          radial-gradient(1200px 600px at 8% -12%, oklch(0.55 0.13 243 / 0.18), transparent 60%),
                             radial-gradient(900px 500px at 100% 8%, oklch(0.50 0.09 218 / 0.18), transparent 60%),
@@ -140,7 +134,7 @@
   --shadow-sm:    0 2px 6px oklch(0.30 0.08 250 / 0.08), 0 1px 2px oklch(0.30 0.08 250 / 0.05);
   --shadow-md:    0 8px 20px -6px oklch(0.30 0.08 250 / 0.14), 0 2px 6px oklch(0.30 0.08 250 / 0.06);
   --shadow-lg:    0 18px 40px -12px oklch(0.30 0.10 250 / 0.22), 0 4px 12px oklch(0.30 0.10 250 / 0.08);
-  --shadow-glow:  0 0 0 4px oklch(0.45 0.10 218 / 0.18);
+  --shadow-glow:  0 0 0 4px oklch(0.46 0.10 258 / 0.18);
   --shadow-inset: inset 0 1px 0 oklch(1 0 0 / 0.6), inset 0 -1px 0 oklch(0.30 0.08 250 / 0.06);
 
   /* ── Motion ─────────────────────────────────────── */

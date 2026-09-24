@@ -81,6 +81,13 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
   --font-sans: "Inter", system-ui, sans-serif;
   --font-numeric: "IBM Plex Mono", ui-monospace, monospace;
 }
@@ -99,11 +106,13 @@
   --popover: oklch(0.995 0.004 240);
   --popover-foreground: oklch(0.20 0.04 250);
 
-  /* Primary — brand gradient (#1488cc → #020966 → #026478) */
-  --primary: oklch(0.465 0.083 218);
+  /* Primary — deep navy (CKAM's own identity, distinct from the brand-teal
+     accent below). Derived from the same brand hue family as the logo's
+     navy (#020966) but lifted to a usable UI lightness. */
+  --primary: oklch(0.32 0.085 258);
   --primary-foreground: oklch(0.99 0 0);
-  --primary-soft: oklch(0.93 0.04 218);
-  --header: oklch(0.36 0.08 213);   /* deep teal — table header / demo bar */
+  --primary-soft: oklch(0.93 0.025 258);
+  --header: oklch(0.24 0.08 258);   /* deep navy — sidebar / table header */
 
   /* Secondary / muted / accent */
   --secondary: oklch(0.94 0.02 250);
@@ -113,7 +122,8 @@
   --accent: oklch(0.92 0.04 250);
   --accent-foreground: oklch(0.25 0.08 250);
 
-  /* Teal slot — brand teal accent (#026478) */
+  /* Teal slot — secondary brand accent (#026478): links, active nav state,
+     highlights. Never the dominant chrome color -- navy (--primary) is. */
   --teal: oklch(0.465 0.083 218);
   --teal-foreground: oklch(0.99 0 0);
 
@@ -129,11 +139,21 @@
 
   --border: oklch(0.90 0.015 250);
   --input: oklch(0.92 0.012 250);
-  --ring: oklch(0.45 0.09 218);
+  --ring: oklch(0.46 0.10 258);
 
-  /* Signature gradients — #1488cc → #020966 → #026478 */
-  --gradient-primary: linear-gradient(135deg, oklch(0.602 0.139 242.6) 0%, oklch(0.242 0.152 265.1) 56%, oklch(0.465 0.083 217.9) 100%);
-  --gradient-primary-hover: linear-gradient(135deg, oklch(0.552 0.139 242.6) 0%, oklch(0.192 0.152 265.1) 56%, oklch(0.415 0.083 217.9) 100%);
+  /* Sidebar — light surface, navy active/hover state (distinct from the
+     dark navy top header via --header) */
+  --sidebar: oklch(1 0 0);
+  --sidebar-foreground: oklch(0.20 0.04 250);
+  --sidebar-accent: var(--primary-soft);
+  --sidebar-accent-foreground: var(--primary);
+  --sidebar-border: oklch(0.90 0.015 250);
+  --sidebar-ring: var(--ring);
+
+  /* Signature gradient — navy → teal (CKAM's own two-stop identity,
+     replacing the old three-stop sky-blue/navy/teal borrowed gradient) */
+  --gradient-primary: linear-gradient(135deg, oklch(0.26 0.09 260) 0%, oklch(0.465 0.083 218) 100%);
+  --gradient-primary-hover: linear-gradient(135deg, oklch(0.21 0.09 260) 0%, oklch(0.415 0.083 218) 100%);
   --gradient-surface: linear-gradient(180deg, oklch(1 0 0 / 0.75), oklch(0.96 0.012 250 / 0.55));
   --gradient-page: radial-gradient(1200px 600px at 10% -10%, oklch(0.55 0.13 243 / 0.18), transparent 60%),
                    radial-gradient(900px 500px at 100% 10%, oklch(0.50 0.09 218 / 0.18), transparent 60%),
@@ -144,7 +164,7 @@
   --shadow-sm: 0 2px 6px oklch(0.30 0.08 250 / 0.08), 0 1px 2px oklch(0.30 0.08 250 / 0.05);
   --shadow-md: 0 8px 20px -6px oklch(0.30 0.08 250 / 0.14), 0 2px 6px oklch(0.30 0.08 250 / 0.06);
   --shadow-lg: 0 18px 40px -12px oklch(0.30 0.10 250 / 0.22), 0 4px 12px oklch(0.30 0.10 250 / 0.08);
-  --shadow-glow: 0 0 0 4px oklch(0.45 0.10 218 / 0.18);
+  --shadow-glow: 0 0 0 4px oklch(0.46 0.10 258 / 0.18);
   --shadow-inset: inset 0 1px 0 oklch(1 0 0 / 0.6), inset 0 -1px 0 oklch(0.30 0.08 250 / 0.06);
 
   /* Motion */
@@ -198,7 +218,7 @@
   --trust-auto: oklch(0.62 0.16 160); --trust-assist: oklch(0.68 0.12 230); --trust-safe: oklch(0.78 0.15 75);
   --section-1: oklch(0.55 0.10 218); --section-2: oklch(0.50 0.13 245); --section-3: oklch(0.58 0.13 160);
   --section-4: oklch(0.60 0.13 60); --section-5: oklch(0.52 0.13 245); --section-6: oklch(0.55 0.10 235);
-  --shadow-primary: 0 8px 20px -6px oklch(0.465 0.083 218 / 0.26);
+  --shadow-primary: 0 8px 20px -6px oklch(0.32 0.085 258 / 0.26);
   --shadow-success: 0 8px 20px -6px oklch(0.62 0.16 160 / 0.24);
   --shadow-warning: 0 8px 20px -6px oklch(0.78 0.15 75 / 0.24);
   --shadow-danger: 0 8px 20px -6px oklch(0.58 0.22 25 / 0.24);
@@ -214,8 +234,10 @@
     text-rendering: optimizeLegibility;
   }
   body {
-    background: var(--gradient-page);
-    background-attachment: fixed;
+    /* Flat, clean canvas -- operational surfaces stay uncluttered.
+       --gradient-page is kept defined for any deliberate decorative use
+       (e.g. a marketing/landing accent) but is no longer the app default. */
+    background: var(--color-muted);
     color: var(--color-foreground);
     font-size: 15.5px;
     line-height: 1.55;
