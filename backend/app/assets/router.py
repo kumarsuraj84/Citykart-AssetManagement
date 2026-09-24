@@ -6,13 +6,16 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
 from app.core.deps import ensure_company_in_scope, get_current_holder, require_role, scoped_company_ids
+from app.assets.audit_service import AUDITED_SCALAR_FIELDS, record_field_changes
 from app.assets.custom_field_values import validate_custom_field_values
-from app.assets.models import Asset
-from app.assets.schemas import AssetCreateIn, AssetOut, AssetUpdateIn
+from app.assets.models import Asset, AssetFieldChange
+from app.assets.schemas import AssetCreateIn, AssetDetailOut, AssetFieldChangeOut, AssetOut, AssetUpdateIn
 from app.assets.search_service import search_assets
 from app.assets.service import compute_tax, procure_assets
+from app.holders.models import Holder
 from app.lifecycle.service import apply_event
 from app.lifecycle.state_machine import LifecycleError
+from app.masters.models import AssetCategory, AssetSubcategory, CostCenter, Department, Location, Vendor
 from app.reports.export_service import asset_qr_png
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
@@ -125,16 +128,73 @@ async def _get_scoped_asset(asset_id: int, session: AsyncSession, holder) -> Ass
     return asset
 
 
-@router.get("/{asset_id}", response_model=AssetOut)
+async def _to_detail_out(session: AsyncSession, asset: Asset) -> AssetDetailOut:
+    """AM-04 §25: Asset 360 needs human-readable labels, not bare IDs. A
+    handful of point lookups by primary key (never more than 6 per call,
+    never per-list-row) -- additive, scoped to this one endpoint, not a new
+    generic enrichment layer."""
+    category = await session.get(AssetCategory, asset.category_id)
+    subcategory = await session.get(AssetSubcategory, asset.subcategory_id) if asset.subcategory_id else None
+    cost_center = await session.get(CostCenter, asset.cost_center_id)
+    vendor = await session.get(Vendor, asset.vendor_id) if asset.vendor_id else None
+    current_holder = await session.get(Holder, asset.current_holder_id)
+    location = await session.get(Location, current_holder.location_id) if current_holder else None
+    department = (
+        await session.get(Department, current_holder.department_id)
+        if current_holder and current_holder.department_id else None
+    )
+    return AssetDetailOut(
+        **AssetOut.model_validate(asset).model_dump(),
+        category_name=category.name if category else None,
+        subcategory_name=subcategory.name if subcategory else None,
+        cost_center_name=cost_center.name if cost_center else None,
+        vendor_name=vendor.name if vendor else None,
+        current_holder_name=current_holder.name if current_holder else None,
+        current_holder_type=current_holder.holder_type if current_holder else None,
+        location_name=location.name if location else None,
+        department_name=department.name if department else None,
+    )
+
+
+@router.get("/{asset_id}", response_model=AssetDetailOut)
 async def get_asset(
     asset_id: int,
     session: AsyncSession = Depends(get_session),
     holder=Depends(get_current_holder),
 ):
-    return await _get_scoped_asset(asset_id, session, holder)
+    asset = await _get_scoped_asset(asset_id, session, holder)
+    return await _to_detail_out(session, asset)
 
 
-@router.put("/{asset_id}", response_model=AssetOut)
+@router.get("/{asset_id}/changes", response_model=list[AssetFieldChangeOut])
+async def list_asset_changes(
+    asset_id: int,
+    session: AsyncSession = Depends(get_session),
+    holder=Depends(get_current_holder),
+):
+    """AM-04 §23: read surface for the field-change audit -- scoped exactly
+    like viewing the asset itself (same _get_scoped_asset), so a HOLDER sees
+    only their own asset's history and no cross-company leakage is possible.
+    Chronological, oldest first, matching the lifecycle Timeline's ordering."""
+    asset = await _get_scoped_asset(asset_id, session, holder)
+    stmt = (
+        select(AssetFieldChange)
+        .where(AssetFieldChange.asset_id == asset.id)
+        .order_by(AssetFieldChange.created_at, AssetFieldChange.id)
+    )
+    rows = (await session.execute(stmt)).scalars().all()
+    actor_ids = {r.actor_id for r in rows}
+    actors: dict[int, str] = {}
+    if actor_ids:
+        actor_rows = (await session.execute(select(Holder).where(Holder.id.in_(actor_ids)))).scalars().all()
+        actors = {h.id: h.name for h in actor_rows}
+    return [
+        AssetFieldChangeOut.model_validate(r).model_copy(update={"actor_name": actors.get(r.actor_id)})
+        for r in rows
+    ]
+
+
+@router.put("/{asset_id}", response_model=AssetDetailOut)
 async def update_asset(
     asset_id: int,
     body: AssetUpdateIn,
@@ -149,13 +209,27 @@ async def update_asset(
     holder change happens, nothing here touches the ledger. Identity fields
     (asset_code/company_id/cost_center_id) aren't in AssetUpdateIn at all --
     trg_asset_no_identity_change would reject them at the database level even
-    if they were."""
+    if they were.
+
+    AM-04: required-active-custom-field completeness is only enforced when
+    this edit itself includes `custom_fields` -- an asset that predates a
+    newly-added required UDF must not be blocked from an unrelated edit (e.g.
+    fixing a serial number) solely because it has no value for that field
+    yet (docs/ai/DECISIONS.md). Also writes one AssetFieldChange row per
+    genuinely changed field, in the same transaction as the edit (committed
+    together below, never separately)."""
     asset = await _get_scoped_asset(asset_id, session, actor)
     data = body.model_dump()
+    replacing_custom_fields = data.get("custom_fields") is not None
     try:
-        await validate_custom_field_values(session, data.get("custom_fields"))
+        await validate_custom_field_values(
+            session, data.get("custom_fields"), enforce_required=replacing_custom_fields,
+        )
     except ValueError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+
+    before = {field: getattr(asset, field) for field in AUDITED_SCALAR_FIELDS}
+    before["custom_fields"] = dict(asset.custom_fields)
 
     tax_amount, total_cost = compute_tax(data.get("purchase_cost"), data.get("tax_percent"))
 
@@ -167,13 +241,17 @@ async def update_asset(
         setattr(asset, field, data[field])
     asset.tax_amount = tax_amount
     asset.total_cost = total_cost
-    if data.get("custom_fields") is not None:
+    if replacing_custom_fields:
         asset.custom_fields = data["custom_fields"]
     asset.updated_by = actor.id
 
+    after = {field: getattr(asset, field) for field in AUDITED_SCALAR_FIELDS}
+    after["custom_fields"] = dict(asset.custom_fields)
+    await record_field_changes(session, asset_id=asset.id, actor_id=actor.id, before=before, after=after)
+
     await session.commit()
     await session.refresh(asset)
-    return asset
+    return await _to_detail_out(session, asset)
 
 
 @router.delete("/{asset_id}", status_code=204)

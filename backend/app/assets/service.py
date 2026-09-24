@@ -78,7 +78,10 @@ async def procure_assets(session: AsyncSession, data: dict, quantity: int, actor
     # is attached to every row per the existing code below, so one validation
     # pass covers all of them; a ValueError here becomes the same 422 as any
     # other bad-input problem in this function.
-    await validate_custom_field_values(session, data.get("custom_fields"))
+    # AM-04: enforce_required=True unconditionally on create -- every active
+    # required Custom Field must have a valid value before a new asset can
+    # exist, per the locked V1 rule (docs/ai/DECISIONS.md).
+    await validate_custom_field_values(session, data.get("custom_fields"), enforce_required=True)
 
     tokens = build_code_tokens(
         company=company, location=location, cost_center=cost_center, category=category,

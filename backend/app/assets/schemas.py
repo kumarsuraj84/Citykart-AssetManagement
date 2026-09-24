@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict
 
 
@@ -66,6 +66,35 @@ class AssetOut(BaseModel):
     current_holder_id: int
     status_since: date
     custom_fields: dict
+
+
+class AssetDetailOut(AssetOut):
+    """AM-04: Asset 360 needs human-readable labels, not bare IDs (§25 of the
+    AM-04 authorization) -- additive-only, single-asset GET response.
+    Nullable everywhere a referenced master row could theoretically be
+    missing (defensive; scoping/FKs should prevent this in practice). Never
+    used by the list endpoint (`AssetOut` stays as-is there) to avoid N+1
+    joins across a page of results for data the register doesn't display."""
+    category_name: str | None
+    subcategory_name: str | None
+    cost_center_name: str | None
+    vendor_name: str | None
+    current_holder_name: str | None
+    current_holder_type: str | None
+    location_name: str | None
+    department_name: str | None
+
+
+class AssetFieldChangeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    field_name: str
+    old_value: str | None
+    new_value: str | None
+    actor_id: int
+    actor_name: str | None = None
+    request_id: str
+    created_at: datetime
 
 
 class AssetUpdateIn(BaseModel):

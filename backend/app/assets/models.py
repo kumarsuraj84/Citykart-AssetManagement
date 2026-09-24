@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, JSON, Numeric, String
+from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, JSON, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.db import Base
 from app.core.models import AuditMixin
@@ -45,3 +45,33 @@ class Asset(Base, AuditMixin):
     status_since: Mapped[date] = mapped_column(Date)
 
     custom_fields: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class AssetFieldChange(Base):
+    """AM-04: a lightweight, append-only audit trail for edits made through
+    `PUT /api/assets/{id}` (editable descriptive/procurement fields only --
+    see the Asset Field Policy Matrix in AM-02_ASSET_DATA_MODEL_REPORT.md).
+
+    Deliberately separate from `asset_event`, which remains the business
+    lifecycle ledger and is never touched by this table -- "PO Number
+    changed from A to B" is not the same kind of fact as "asset moved to
+    Store X". One row per changed field per edit call, not one row per
+    edit call with a diff blob, so a single field's history can be queried
+    or displayed without parsing JSON. `request_id` groups every row
+    written by the same PUT call, so the UI can present one edit's several
+    changed fields together.
+
+    Append-only at the database level via the same trigger pattern as
+    `asset_event` (see migration 0008) -- no UPDATE/DELETE trigger
+    functions defined here, only the table shape.
+    """
+    __tablename__ = "asset_field_change"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    asset_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("asset.id"))
+    field_name: Mapped[str] = mapped_column(String(100))
+    old_value: Mapped[str | None] = mapped_column(String(1000))
+    new_value: Mapped[str | None] = mapped_column(String(1000))
+    actor_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("holder.id"))
+    request_id: Mapped[str] = mapped_column(String(36))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

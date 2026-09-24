@@ -10,6 +10,16 @@ one asset by construction (it's a dict; a key can't repeat), and the
 existing CustomField.field_key is already the stable identifier that
 survives a `label` rename, so nothing about history-safety needed building
 either. What was missing was purely the write-time validation.
+
+AM-04: adds `enforce_required`. Add Asset (backend `procure_assets`) is now
+the first real UI consumer of Custom Fields, so `CustomField.is_required`
+needs a real enforcement point -- but only on CREATE unconditionally. An
+existing asset predating a newly-added required field must not be blocked
+from an unrelated edit (e.g. fixing a typo'd serial number) just because it
+has no value for that field yet; `PUT /api/assets/{id}` only enforces
+completeness when the edit request itself includes `custom_fields` (i.e.
+the caller is intentionally replacing the custom-field set), matching this
+codebase's existing full-replace-on-PUT convention.
 """
 from datetime import date
 from sqlalchemy import select
@@ -17,26 +27,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.masters.models import CustomField
 
 
-async def validate_custom_field_values(session: AsyncSession, values: dict | None) -> None:
+async def validate_custom_field_values(
+    session: AsyncSession, values: dict | None, *, enforce_required: bool = False,
+) -> None:
     """Raises ValueError (the same convention app.assets.service already uses for
     other create-time validation problems -- the router turns it into a 422) if
     `values` (an Asset.custom_fields-shaped dict) references an unknown or
     inactive field, or holds a value of the wrong type for its field's
     field_type. A `None` value for a known field is always allowed (means "not
-    set yet").
+    set yet") unless `enforce_required` is set and that field is required.
 
-    Deliberately does NOT enforce CustomField.is_required -- see the AM-02
-    report's §11: nothing in the UI writes custom field values yet, so turning
-    that on now would break every existing Add Asset / import call. Enforcing
-    required fields is explicitly deferred to whichever future stage wires
-    Custom Fields into the Add Asset screen.
+    `enforce_required=True` additionally checks every currently-active
+    `CustomField` with `is_required=True` has a non-None value in `values` --
+    the caller decides when that check applies (always on create; only when
+    `custom_fields` was explicitly part of the request, on update).
     """
-    if not values:
-        return
+    values = values or {}
 
-    stmt = select(CustomField).where(
-        CustomField.field_key.in_(values.keys()), CustomField.is_active.is_(True),
-    )
+    # Fetch every active definition, not just the submitted keys: enforce_required
+    # needs to know about required fields the caller didn't even mention, and the
+    # per-field custom-field master is expected to stay small (this is UDF
+    # functionality, not a low-code platform with hundreds of fields).
+    stmt = select(CustomField).where(CustomField.is_active.is_(True))
     defs = {f.field_key: f for f in (await session.execute(stmt)).scalars().all()}
 
     for key, value in values.items():
@@ -73,3 +85,8 @@ async def validate_custom_field_values(session: AsyncSession, values: dict | Non
             choices = (field.options or {}).get("choices") if isinstance(field.options, dict) else None
             if choices and value not in choices:
                 raise ValueError(f"custom field '{key}' must be one of {choices}")
+
+    if enforce_required:
+        missing = [key for key, field in defs.items() if field.is_required and values.get(key) is None]
+        if missing:
+            raise ValueError(f"missing required custom field(s): {', '.join(sorted(missing))}")
