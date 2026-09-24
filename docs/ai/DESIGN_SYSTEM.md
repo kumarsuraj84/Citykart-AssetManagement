@@ -273,16 +273,31 @@ record with an identity-adjacent field) should follow:
    alongside the old/new values — never merged indistinguishably into the
    same row shape as a routine field edit.
 
-## Known gaps (not yet fixed — see `REVIEW_FINDINGS.md` for the full list)
+## Read-only immutable relational fields in MasterCrudScreen (AM-08)
 
-- Add Asset's Cost Centre/Category `Select` controls are not company-scoped
-  (list every company's rows, not just the current user's) — cosmetic/UX
-  only, the backend independently rejects a cross-company selection.
-- Add Holder's Location `Select` sends `0` instead of omitting the field
-  when left blank, causing an unhandled 500 instead of creating the holder
-  with no location.
-- Edit Subcategory's dialog shows the parent Category as a raw numeric id
-  instead of its name/code.
+`MasterCrudScreen`'s Edit dialog already shows a `formFields` entry not
+repeated in `editFields` as read-only (an immutable identifier like `code`,
+or an immutable parent relationship like `category_id`/`company_id`). A
+field that's a foreign key must render its human-readable label there, not
+the raw stored id — an optional `format` callback on `FormField`
+(`(value, row) => string`), the same shape the list column's own `format`
+already uses, is the reusable mechanism: pass the same `categoryName`/
+`companyName` lookup function the screen already built for its list column.
+Do not invent a parallel lookup just for the Edit dialog when the list
+column already has one.
+
+## Company-scoped vs. global master lookups (AM-08)
+
+Before assuming a `Select` populated from `/api/masters/<resource>` needs
+company filtering, check the actual model: only a master with a
+`company_id` column (`CostCenter`, and `CustomField`'s nullable
+Global/company variant) is company-owned. `AssetCategory`, `AssetSubcategory`
+(scoped to `category_id`, not company), `Location`, `Department`, and
+`Vendor` are genuinely global by schema — every company sees the same rows,
+correctly. The generic master list endpoint's `company_id` query filter
+(`app/masters/router.py::build_master_router`) is a no-op against a global
+master's endpoint, by design, so it's safe to always pass a caller's own
+company id without checking per-master whether it will matter.
 
 `DataTable`/`PageHeader`/loading-empty-error states/skeletons are used on
 every screen in the app (AM-06 closed the last two, My Assets and Import).

@@ -1,13 +1,18 @@
 # CKAM — Current Stage
 
-**Stage:** AM-07 (Controlled Asset Classification + Purchase-Date
-Correction) — complete, PASS.
-**Next:** awaiting explicit go-ahead on AM-08 or any other further work — do
-not start anything automatically, including `holder_company_access`, import
-duplicate detection, approval workflow, AMC/insurance, depreciation,
-physical verification, bulk correction, category/subcategory-scoped Custom
-Fields, or a company-wide generic audit explorer.
+**Stage:** AM-08 (Known-Issue Remediation + RC Hardening) — complete, PASS.
+**FEATURE FREEZE ACTIVE.** CKAM V1 is feature-frozen as of AM-08. No new
+feature stage begins without explicit authorization — only an evidenced
+release-blocking bug may be fixed.
+**Next:** AM-09 — Release Candidate full-system UAT / security / database /
+backup-recovery / deployment-readiness audit, awaiting explicit
+authorization. Do not start `holder_company_access`, import duplicate
+detection, bulk correction, category/subcategory-scoped Custom Fields,
+approval workflow, AMC/insurance, depreciation, physical verification, a
+company-wide audit explorer, new dashboards, new reports, or new lifecycle
+states.
 
+Full AM-08 evidence: `docs/ai/AM-08_RC_HARDENING_REPORT.md`.
 Full AM-07 evidence: `docs/ai/AM-07_ASSET_CORRECTION_WORKFLOW_REPORT.md`.
 Full AM-06 evidence: `docs/ai/AM-06_IMPORT_REPORTS_MY_ASSETS_REPORT.md`.
 Full AM-05 evidence: `docs/ai/AM-05_MASTERS_HOLDERS_REPORT.md`.
@@ -308,34 +313,85 @@ Reassigned, plus Repair/Lost-Found/Disposed-Sold-Scrapped.
   Holder sends `location_id=0` instead of omitting a blank Location
   (causes an unhandled 500) — see `REVIEW_FINDINGS.md`.
 
+## What's actually done as of AM-08
+
+- **Add Asset's Cost Centre options are now company-scoped**: the generic
+  master list endpoint gained an optional, opt-in `company_id` filter
+  (applied only to `SCOPE_COMPANY_ID` masters; every Setup screen's own
+  unfiltered usage is unchanged), and Add Asset passes its own company id.
+  Category and Vendor were confirmed genuinely global by schema (no
+  `company_id` column) and were correctly left unfiltered — the AM-07
+  finding's assumption that they needed the same fix did not hold up
+  against the actual schema. There is no Company selector inside Add Asset
+  to clear dependent fields on (company is fixed from login).
+- **`Holder.location_id` is now correctly treated as required** (it always
+  was, per the schema — `NOT NULL`) instead of silently defaulting an
+  unselected Select to a `0` sentinel that used to reach the database
+  unchecked. Save is disabled until Company/Emp Code/Name/Type/Location are
+  all set, matching every other required field's pattern. The backend also
+  gained defensive existence/active validation for
+  company/location/department before insert, so a malformed direct API
+  request gets a controlled 422, never a raw database error.
+- **A read-only relational field in a `MasterCrudScreen` Edit dialog now
+  renders its human-readable label**, not the raw stored id — fixed on
+  both Subcategory's parent Category and Cost Centre's parent Company via
+  a small, reusable `format` callback (mirroring the existing list-column
+  pattern). Presentation only.
+- **Route-security evidence sweep**: live API checks across
+  ADMIN/IT_TEAM/VIEWER/HOLDER role combinations for asset writes, holder
+  writes, master writes, corrections, and reports exports found no
+  over-permission. Two results that looked surprising at first (a HOLDER
+  getting 200 from the Asset Register and Reports-export endpoints) were
+  confirmed, by reading the actual scoping code, to be a HOLDER's
+  `holder_id` being pinned server-side to their own id — the same
+  mechanism My Assets itself relies on, not a gap.
+- **RC database health snapshot** (read-only): zero duplicate Asset Codes,
+  zero cross-company cost-centre/holder mismatches, zero invalid
+  category/subcategory pairings, zero orphaned `current_holder_id`/
+  `asset_event`/`asset_field_change` rows. Every currently-unconstrained
+  closed-value column (`asset.status`, `asset_event.event_type`,
+  `asset_event.status_after`, `asset_document.doc_type`) holds only
+  currently-recognized values in the live data — verification only, no new
+  constraint added.
+- **Responsive/Design evidence closed**: every remaining `MasterCrudScreen`
+  route plus Code Rule verified at 1440/768/375 (previously 🟡); Change
+  Password visually compared against Login and confirmed consistent
+  (previously 🟡).
+- Backend: 288 → 297 tests (+9). Frontend: 143 → 148 tests (+5). Typecheck
+  clean. E2E: 4 → 5 passing (new Add Asset company-scoping journey). No
+  database migration (confirmed unnecessary — every AM-08 fix is
+  frontend/API-validation/presentation).
+- **CKAM V1 enters feature freeze.** No further business feature work
+  proceeds without new, explicit authorization.
+
 ## Deferred, awaiting your decision (not blockers, not failures)
 
 1. **`holder_company_access`**: written to, never read by authorization.
    Classified as either "needed for multi-company asset-team access" or
    "dormant/obsolete" — genuinely depends on whether CityKart's asset team is
    organizationally shared across companies. No behavioral change made in
-   AM-01 through AM-07.
+   AM-01 through AM-08.
 2. **Category/subcategory-scoped Custom Fields** were explicitly considered
    and rejected as AM-05 scope (deliberately simpler company-only scoping
    was chosen instead) — a future stage's decision if ever needed.
 3. **No import-side duplicate detection** (legacy code, serial number,
-   PO/invoice/PI number) — confirmed still absent in AM-07, not added
+   PO/invoice/PI number) — confirmed still absent in AM-08, not added
    without business evidence any of these fields is meant to be unique.
 4. **No bulk correction workflow** — AM-07's correction endpoint and UI are
    deliberately single-asset only; a bulk-correction UI is a future stage's
    decision.
-5. **Two out-of-scope UI bugs found during AM-07's own browser UAT, not
-   fixed**: Add Asset's Cost Centre/Category dropdowns are not
-   company-scoped (cosmetic/UX only — the backend independently rejects a
-   cross-company mismatch); Add Holder sends `location_id=0` instead of
-   omitting a blank Location, causing an unhandled 500. See
-   `REVIEW_FINDINGS.md` for full detail.
+5. **5 closed-value DB columns remain unconstrained at the schema level**
+   (`asset.status`, `asset_event.event_type`, `asset_event.status_after`,
+   `asset_document.doc_type`) — deliberately left flexible for a future
+   approval-workflow stage; AM-08's health snapshot confirmed current live
+   values are all within the recognized set, but no CHECK/ENUM was added.
 
-None of AM-08 onward (`holder_company_access`, import duplicate detection,
+None of AM-09 onward (a Release Candidate full-system audit is the next
+authorized stage; `holder_company_access`, import duplicate detection,
 approval workflow, AMC/insurance, depreciation, physical verification, bulk
 correction, category/subcategory-scoped Custom Fields, a full company-wide
-asset audit explorer) have been started as a dedicated stage yet — see
-`REVIEW_FINDINGS.md` for what's still open.
+asset audit explorer, new dashboards, new reports, new lifecycle states)
+have been started — see `REVIEW_FINDINGS.md` for what's still open.
 
 ## Branch / remote state
 

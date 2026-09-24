@@ -32,46 +32,51 @@ is resolved; see "Resolved this session" below for AM-05/AM-06's fixes.
     confirmed-gap items from AM-01). All plain VARCHAR at the DB level. Still
     open as of AM-07 (explicitly out of scope there too, per its §40).
 3. **No import-side duplicate detection** (legacy code, serial number, PO/
-    invoice/PI number) — confirmed still absent in AM-06 and AM-07 (it was
-    never present; a prior report's claim that "duplicate handling" was
-    covered by the existing test suite did not match the actual code or
+    invoice/PI number) — confirmed still absent in AM-06, AM-07, and AM-08
+    (it was never present; a prior report's claim that "duplicate handling"
+    was covered by the existing test suite did not match the actual code or
     tests, see `AM-06_IMPORT_REPORTS_MY_ASSETS_REPORT.md` §17). Not added
     without business evidence that any of these fields is meant to be
     unique — Asset Code remains the only system-enforced-unique identifier.
-    Still open as of AM-07 (explicitly out of scope there too, per its §39).
-4. **Cost Centre and Category/Subcategory selectors on Add Asset are not
-    company-scoped** — discovered live during AM-07's own mandatory browser
-    UAT while creating a safe test asset: the Add Asset "Cost Centre"
-    dropdown lists cost centres from every company, not just the current
-    user's; selecting an out-of-scope one is still correctly rejected
-    server-side (`422: "cost center must belong to the same company as the
-    asset"` — the actual authorization boundary is intact), but the
-    dropdown itself gives no indication which options are valid for this
-    user, and a company with zero cost centres of its own shows other
-    companies' cost centres with no visual distinction. The Category
-    dropdown shows the same lack of scoping (all companies' categories
-    listed together). Not fixed in AM-07 (out of scope — a `MasterCrudScreen`/
-    Add Asset frontend-filtering fix, not a correction-workflow concern);
-    no security impact since the backend independently re-validates
-    company match on every write path.
-5. **Add Holder form sends `location_id=0` instead of omitting it when
-    Location is left blank**, causing an unhandled 500
-    (`ForeignKeyViolationError: Key (location_id)=(0) is not present in
-    table "location"`) — discovered live during AM-07's own mandatory
-    browser UAT while creating a safe test holder. Location is documented
-    as optional in the form but the frontend does not omit the field or
-    send `null` when no location is chosen. Worked around during UAT by
-    always selecting a Location; not fixed in AM-07 (out of scope — a
-    Holders & Users form bug, not a correction-workflow concern).
-6. **Edit Subcategory dialog shows the parent Category as a raw numeric id**
-    (e.g. "11") instead of its name/code — discovered live during AM-07's
-    §43 spot-check of `/setup/subcategories`. Cosmetic only (the Category
-    relationship itself is correctly enforced and immutable); not fixed in
-    AM-07 (out of scope — a `MasterCrudScreen`/Sub-Categories display bug,
-    not a correction-workflow concern).
+    Still open as of AM-08 (explicitly out of scope there too, per its §19).
 
 ## Resolved this session (kept here for traceability, remove once stale)
 
+- **Add Asset's Cost Centre selector was not company-scoped** — fixed
+  (AM-08): confirmed against the actual schema that only Cost Centre is
+  genuinely company-owned (`cost_center.company_id`) — Category and Vendor
+  have no `company_id` column at all and were correctly left unfiltered,
+  not "fixed" against a fabricated assumption. The master list endpoint
+  gained an optional, opt-in `company_id` query filter; Add Asset now
+  passes its own company id. No Company selector exists inside Add Asset
+  to clear dependent fields on (company is fixed from login), so that part
+  of the original framing didn't apply. See `DECISIONS.md`.
+- **Add Holder sent `location_id=0` instead of omitting a blank Location,
+  causing an unhandled 500** — fixed (AM-08): `Holder.location_id` was
+  confirmed to be a required (NOT NULL) foreign key, never actually
+  optional as the form implied — the frontend now correctly requires it
+  (Save disabled until set, matching every other required field's
+  pattern), and the backend independently validates
+  company/location/department existence before insert, returning a
+  controlled 422 instead of a raw database error for any malformed
+  request, not only the one the frontend used to produce. See
+  `DECISIONS.md`.
+- **Edit Subcategory dialog showed the parent Category as a raw numeric
+  id** — fixed (AM-08): `MasterCrudScreen`'s read-only Edit-dialog fields
+  gained an optional `format` callback (mirroring the existing list-column
+  `format`), applied to both Subcategory's parent Category and Cost
+  Centre's parent Company (the same defect, same root cause, found on a
+  second master during the fix). Presentation only — the immutable
+  relationship itself is unchanged.
+- **AM-08 route-security sweep found no over-permission.** Two results
+  that looked surprising on first read — a HOLDER-role account getting
+  `200` from both `GET /api/assets` and `GET /api/reports/export/assets`
+  — were verified against the actual source (`app/assets/router.py::
+  list_assets`, `app/reports/router.py::export_assets`) to be deliberately,
+  correctly scoped: a HOLDER's `holder_id` is pinned server-side to their
+  own id regardless of any value they pass, so both endpoints only ever
+  return the assets they currently hold — this is the same mechanism "My
+  Assets" itself relies on, not a gap. No authorization change was made.
 - **`category_id`/`subcategory_id`/`purchase_date` had no edit path** — fixed
   (AM-07): a dedicated, role-gated (ADMIN/IT_TEAM) correction workflow (`POST
   /api/assets/{id}/corrections`, Asset 360's "Correct Classification"

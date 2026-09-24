@@ -2,6 +2,68 @@
 
 Newest first. These override older spec/plan text where they conflict.
 
+## 2026-09-24 — AM-08 scope locked (Known-Issue Remediation + RC Hardening)
+
+1. **Add Asset's dependent master options follow each master's actual
+   company scope, established from the schema, not from the observed UX
+   alone.** `cost_center.company_id` exists (`CostCenter` is genuinely
+   company-owned) — its list endpoint gained an optional, opt-in
+   `company_id` filter, and Add Asset now passes its own company id.
+   `asset_category`/`vendor` have no `company_id` column at all — they are
+   genuinely global masters, and their unfiltered list behavior is correct
+   and was left unchanged; the AM-07-era assumption that Category needed
+   the same fix as Cost Centre did not hold up against the actual schema.
+   The generic filter is a read-side narrowing an opted-in caller requests
+   (Add Asset), never a new default restriction — every Setup screen's own
+   unfiltered `GET /api/masters/<resource>` call is unchanged, and a
+   `company_id` passed against a master with no such column is silently
+   ignored rather than erroring.
+2. **There is no Company selector inside Add Asset to react to** — company
+   is fixed for the whole form from the logged-in holder's own
+   `companyId` (`useAuthStore`), consistent with "no login company
+   selector." The "clear dependent fields when Company changes" scenario
+   from the original bug report does not arise in the current
+   implementation; it would need to be designed if a future stage ever
+   introduces a Company switcher inside Add Asset itself.
+3. **`Holder.location_id` is a required (NOT NULL) foreign key — it was
+   never actually optional.** Confirmed from the original migration
+   (`nullable=False`) and `HolderIn.location_id: int` (no `| None`,
+   no default) — `department_id` is the one genuinely optional relation.
+   The correct fix for the "blank Location sends `location_id: 0`" defect
+   was therefore to make the frontend honestly require it (Save disabled
+   until Company/Emp Code/Name/Type/Location are all set, an asterisk
+   matching every other required field in the app), not to make the
+   backend accept a blank/null Location — that would have contradicted the
+   schema's own guarantee.
+4. **A malformed Holder write (a `0` sentinel or a nonexistent id for
+   `company_id`/`location_id`/`department_id`) now fails with a controlled
+   422, never a raw database error.** `_validate_holder_references`
+   (`app/holders/router.py`) checks existence+active status for all three
+   before the row ever reaches `HolderService.create`/`update`, mirroring
+   the existing `_validate_holder_fields` (`holder_type`/`role`) pattern —
+   validate before the service touches the session, per the guardrail
+   against leaking DB errors in API responses. This is defensive hardening
+   against any client, not only the one frontend form that triggered its
+   discovery.
+5. **A read-only relational field in a `MasterCrudScreen` Edit dialog
+   renders its human-readable label via an optional `format` callback**
+   (`FormField.format`, mirroring the existing list-column `Column.format`)
+   — never the raw stored id. Applied to Subcategory's parent Category and
+   Cost Centre's parent Company (the only two masters with an immutable
+   relational field in their `formFields`); the underlying relationship and
+   its immutability are unchanged, this is presentation only.
+6. **CKAM V1 enters feature freeze after AM-08.** No further business
+   feature work proceeds without new, explicit authorization — the next
+   authorized stage is a Release Candidate audit (verification only), not
+   a new feature stage.
+7. **Unresolved business-decision items stay exactly as deferred**:
+   `holder_company_access` (needs CityKart's answer on whether asset/IT
+   staff are organizationally shared across companies), import-side
+   duplicate detection (needs a business definition of "duplicate"), the 5
+   unconstrained closed-value DB columns (deliberately left flexible for a
+   future approval-workflow stage), and no bulk correction in V1. AM-08
+   touched none of these.
+
 ## 2026-09-24 — AM-07 scope locked (Controlled Asset Classification + Purchase-Date Correction)
 
 1. **`category_id`, `subcategory_id`, `purchase_date` are correctable, but
