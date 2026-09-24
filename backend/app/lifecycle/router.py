@@ -32,14 +32,16 @@ async def _with_labels(session: AsyncSession, events: list[AssetEvent]) -> list[
     for e in events:
         from_h = holders.get(e.from_holder_id) if e.from_holder_id is not None else None
         to_h = holders.get(e.to_holder_id) if e.to_holder_id is not None else None
+        # Prefer the point-in-time snapshot taken when the event was recorded (AM-01) so a
+        # later holder rename doesn't retroactively rewrite this label; only rows written
+        # before the snapshot column existed fall back to today's live holder name.
+        from_name = e.from_holder_name_snapshot or (from_h.name if from_h else None) or UNKNOWN_HOLDER_NAME
+        to_name = e.to_holder_name_snapshot or (to_h.name if to_h else None) or UNKNOWN_HOLDER_NAME
         try:
             template = label_for_event(
                 e.event_type, from_h.holder_type if from_h else None, to_h.holder_type if to_h else None,
             )
-            label = template.format(
-                **{"from": from_h.name if from_h else UNKNOWN_HOLDER_NAME,
-                   "to": to_h.name if to_h else UNKNOWN_HOLDER_NAME},
-            )
+            label = template.format(**{"from": from_name, "to": to_name})
         except LifecycleError:
             label = e.event_type.replace("_", " ").capitalize()
         out.append(AssetEventOut.model_validate(e).model_copy(update={"label": label}))

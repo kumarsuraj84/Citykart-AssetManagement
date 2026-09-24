@@ -150,3 +150,28 @@ async def test_it_team_can_import_into_own_company(client):
     assert resp.json()["imported"] == 1
     async with SessionLocal() as session:
         assert (await session.execute(select(func.count()).select_from(Asset))).scalar_one() == 1
+
+
+async def test_import_rejects_a_cost_center_code_that_belongs_to_another_company(client):
+    """AM-01 company/cost-centre integrity review: cost_center_service._lookup scopes
+    the code lookup to the row's own resolved company (company_id=company.id), so a
+    cost_center_code that only exists under a *different* company must be reported as
+    an unknown code for this row -- never silently resolved to that other company's
+    cost center. (procure_assets already has its own equivalent guard and test,
+    test_cost_center_from_other_company_is_rejected; this covers the import path,
+    which resolves cost centers by code rather than by id and had no matching test.)"""
+    a_id, b_id = await _setup([(None, "FA/")])
+    async with SessionLocal() as session:
+        session.add(CostCenter(company_id=b_id, code="B-ONLY", name="B Only Cost Center"))
+        await session.commit()
+    headers = await _headers(client, a_id, "ADM")
+
+    content = _xlsx([[
+        "OLD-XCO", "IMA", "B-ONLY", "IT", "LAP", "Cross-company Laptop", "2020-01-15", "STOCK-IMA",
+    ]])
+    resp = await _post(client, "/api/imports/assets/commit", content, headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["imported"] == 0
+    assert "unknown cost_center_code" in body["errors"][0]["message"]
+    assert await _asset_codes() == []

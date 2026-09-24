@@ -39,6 +39,7 @@ async def apply_event(
         raise LifecycleError("event date cannot be before the asset's last recorded event")
 
     to_holder_type = None
+    to_holder = None
     if to_holder_id is not None:
         to_holder = await session.get(Holder, to_holder_id)
         if to_holder is None:
@@ -46,6 +47,14 @@ async def apply_event(
         if to_holder.company_id != asset.company_id:
             raise LifecycleError("assets can only move within their own company")
         to_holder_type = to_holder.holder_type
+
+    # Loaded purely for the display-snapshot below (see AssetEvent.from_holder_name_snapshot's
+    # docstring) -- asset.current_holder_id itself is already known and is what gets written
+    # as from_holder_id; this fetch only resolves its *name at this point in time*.
+    from_holder = (
+        await session.get(Holder, asset.current_holder_id)
+        if asset.current_holder_id is not None else None
+    )
 
     new_status = transition(asset.status, event_type, to_holder_type, actor.role)
 
@@ -55,6 +64,8 @@ async def apply_event(
         event_date=event_date,
         from_holder_id=asset.current_holder_id,
         to_holder_id=to_holder_id,
+        from_holder_name_snapshot=from_holder.name if from_holder else None,
+        to_holder_name_snapshot=to_holder.name if to_holder else None,
         status_after=new_status,
         remarks=remarks,
         reference_no=reference_no,

@@ -2,7 +2,7 @@ from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status  # aliased: export_assets has a `status` query param
 from fastapi.responses import Response
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 from app.assets.models import Asset
@@ -93,8 +93,13 @@ async def export_movements(
     "To Holder" columns hold what they say, not raw internal ids."""
     from_holder = aliased(Holder)
     to_holder = aliased(Holder)
+    # COALESCE to the point-in-time snapshot first (AM-01) -- falls back to today's live
+    # holder name only for rows recorded before the snapshot column existed, same rule
+    # as lifecycle/router.py::_with_labels applies to the in-app timeline.
+    from_name = func.coalesce(AssetEvent.from_holder_name_snapshot, from_holder.name)
+    to_name = func.coalesce(AssetEvent.to_holder_name_snapshot, to_holder.name)
     stmt = (
-        select(AssetEvent, Asset.asset_code, from_holder.name, to_holder.name)
+        select(AssetEvent, Asset.asset_code, from_name, to_name)
         .join(Asset, Asset.id == AssetEvent.asset_id)
         .outerjoin(from_holder, from_holder.id == AssetEvent.from_holder_id)
         .outerjoin(to_holder, to_holder.id == AssetEvent.to_holder_id)
