@@ -860,17 +860,19 @@ addition to whatever stage picks it up.
 - Backend implementation commit: `61aec38` — `feat(assets): AM-04 -- required-UDF enforcement + append-only field-change audit`
 - Frontend implementation commit: `041c09b` — `feat(ui): AM-04 -- Add Asset + Asset 360 redesign, procurement/UDF wiring, edit mode`
 - Governance/report commit: `555b84c` — `docs(ai): AM-04 report + governance updates`
-- Final-hash correction commit: `a88bbe5` — `docs(ai): AM-04 report -- record the actual final commit hash`
-- **Ending HEAD: `a88bbe5`**
-- `git status` after all five commits: clean
+- Final-hash correction commits: `a88bbe5`, then `ab73015` (this edit) — see note
+- **Ending HEAD: `ab73015`**
+- `git status` after all commits: clean
 
-*(This exact line — naming the commit that contains it — cannot be written
-correctly before that commit exists. The first attempt at this correction
-(this paragraph's earlier draft) guessed a placeholder-looking hash
-instead of waiting for the real one — precisely the AM-03 mistake this
-note was warning against, repeated while writing the warning. Fixed in a
-second follow-up commit, `a88bbe5`, whose hash was read back from `git log`
-after committing, not asserted in advance.)*
+*(A commit cannot contain its own hash, so the very last line of a self-
+describing "Final Git State" section is structurally unable to be
+literally 100% self-referential — the best available discipline, applied
+here, is: commit, read the real hash back from `git log`, then write it
+down, rather than asserting it in advance. Two correction passes were
+needed this time (the first guessed a hash instead of reading one back,
+repeating the exact AM-03 mistake this note exists to avoid); this line
+was written after `ab73015` was committed and confirmed via `git log
+--oneline -1`, and no further correction commit follows it.)*
 
 ## 46. Final Verdict
 
