@@ -237,9 +237,54 @@ gap-3` row, matching `AssetRegister`'s own filter-bar layout, so the same
 horizontal-filters-then-action shape appears everywhere filters exist in
 the app.
 
+## Sensitive-field correction pattern (AM-07)
+
+A **correction** (a deliberate change to a field the app normally treats as
+fixed after creation) is a distinct, dedicated action — never a field
+quietly added to an existing Edit form. Asset 360's "Correct Classification"
+establishes the reusable shape a future correction workflow (any master or
+record with an identity-adjacent field) should follow:
+
+1. A separate, clearly-labeled action button next to (not inside) the
+   ordinary Edit action, visible only to the roles actually authorized to
+   use it (omitted entirely for a role that can never perform it, not shown
+   disabled).
+2. The dialog/drawer opens with an immutable-identity block at the top
+   (`Asset Code` + "Asset Code will not change.") so the one thing that can
+   never change is the first thing the user sees, not an afterthought.
+3. Every correctable field is prefilled with its current value; a dependent
+   field (Sub-Category) reacts live to its parent (Category) changing, and
+   clears an option that would become invalid rather than silently keeping
+   a stale selection.
+4. Once at least one field actually differs from its current value, an
+   **Impact Summary** block appears above the confirmation control: one
+   line per changed field as `Field: old → new`, plus the immutable
+   identity line again (`Asset Code: AM04UAT/2 — unchanged`) — never a
+   single opaque "N fields will change" count.
+5. A mandatory Reason (`Textarea`, non-blank, sensible max length) is
+   required before the confirm control enables. The confirm control itself
+   (`AsyncButton`, labeled for the action — "Confirm Correction", not a
+   generic "Save") stays disabled until both "at least one real change" and
+   "non-blank reason" are true simultaneously — never enabled on a
+   no-op submission.
+6. The record's existing change-history surface (Asset 360's Changes tab)
+   renders a correction visually distinct from an ordinary edit (a labeled
+   pill, e.g. "Correction" vs. plain "Edit" text) and shows the reason
+   alongside the old/new values — never merged indistinguishably into the
+   same row shape as a routine field edit.
+
 ## Known gaps (not yet fixed — see `REVIEW_FINDINGS.md` for the full list)
 
-None — `DataTable`/`PageHeader`/loading-empty-error states/skeletons are
-now used on every screen in the app (AM-06 closed the last two, My Assets
-and Import). Page `<h1>` sizing is consistently `text-lg` everywhere via
-the shared `PageHeader`.
+- Add Asset's Cost Centre/Category `Select` controls are not company-scoped
+  (list every company's rows, not just the current user's) — cosmetic/UX
+  only, the backend independently rejects a cross-company selection.
+- Add Holder's Location `Select` sends `0` instead of omitting the field
+  when left blank, causing an unhandled 500 instead of creating the holder
+  with no location.
+- Edit Subcategory's dialog shows the parent Category as a raw numeric id
+  instead of its name/code.
+
+`DataTable`/`PageHeader`/loading-empty-error states/skeletons are used on
+every screen in the app (AM-06 closed the last two, My Assets and Import).
+Page `<h1>` sizing is consistently `text-lg` everywhere via the shared
+`PageHeader`.

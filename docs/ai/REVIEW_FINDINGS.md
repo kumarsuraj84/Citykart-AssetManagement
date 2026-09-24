@@ -20,8 +20,8 @@ is resolved; see "Resolved this session" below for AM-05/AM-06's fixes.
     fully (`AM-01_DATA_INTEGRITY_REPORT.md` §9) without resolving it: it's
     genuinely either "needed for a shared multi-company asset team" or
     "dormant scaffolding," and that call needs a business answer, not a
-    technical guess. Still open as of AM-06 (explicitly out of scope there
-    too, per its §32 — `holder_company_access` itself was untouched).
+    technical guess. Still open as of AM-07 (explicitly out of scope there
+    too, per its §38 — `holder_company_access` itself was untouched).
 2. **5 closed-value columns still have no DB-level CHECK/ENUM** —
     `asset.status`, `asset_event.event_type`, `asset_event.status_after` are
     deliberately left unconstrained (they're the surface most likely to gain
@@ -29,23 +29,58 @@ is resolved; see "Resolved this session" below for AM-05/AM-06's fixes.
     reasoned, not oversight, per the AM-02 migration's docstring);
     `asset_document.doc_type` was simply out of AM-02's scope (only
     `holder.holder_type`/`holder.role`/`custom_field.field_type` were
-    confirmed-gap items from AM-01). All plain VARCHAR at the DB level.
-3. **`category_id`, `subcategory_id`, `purchase_date` still have no edit
-    path** after asset creation — reconfirmed as deliberately out of scope in
-    AM-04 too (§17 of that authorization) and again in AM-06 (§33): a real,
-    evidenced gap (what if a category was picked wrong at creation?), but
-    safely exposing it needs a dedicated correction-workflow design, not a
-    silent add to the generic edit form. A future stage's work.
-4. **No import-side duplicate detection** (legacy code, serial number, PO/
-    invoice/PI number) — confirmed still absent in AM-06 (it was never
-    present; a prior report's claim that "duplicate handling" was covered
-    by the existing test suite did not match the actual code or tests, see
-    `AM-06_IMPORT_REPORTS_MY_ASSETS_REPORT.md` §17). Not added without
-    business evidence that any of these fields is meant to be unique —
-    Asset Code remains the only system-enforced-unique identifier.
+    confirmed-gap items from AM-01). All plain VARCHAR at the DB level. Still
+    open as of AM-07 (explicitly out of scope there too, per its §40).
+3. **No import-side duplicate detection** (legacy code, serial number, PO/
+    invoice/PI number) — confirmed still absent in AM-06 and AM-07 (it was
+    never present; a prior report's claim that "duplicate handling" was
+    covered by the existing test suite did not match the actual code or
+    tests, see `AM-06_IMPORT_REPORTS_MY_ASSETS_REPORT.md` §17). Not added
+    without business evidence that any of these fields is meant to be
+    unique — Asset Code remains the only system-enforced-unique identifier.
+    Still open as of AM-07 (explicitly out of scope there too, per its §39).
+4. **Cost Centre and Category/Subcategory selectors on Add Asset are not
+    company-scoped** — discovered live during AM-07's own mandatory browser
+    UAT while creating a safe test asset: the Add Asset "Cost Centre"
+    dropdown lists cost centres from every company, not just the current
+    user's; selecting an out-of-scope one is still correctly rejected
+    server-side (`422: "cost center must belong to the same company as the
+    asset"` — the actual authorization boundary is intact), but the
+    dropdown itself gives no indication which options are valid for this
+    user, and a company with zero cost centres of its own shows other
+    companies' cost centres with no visual distinction. The Category
+    dropdown shows the same lack of scoping (all companies' categories
+    listed together). Not fixed in AM-07 (out of scope — a `MasterCrudScreen`/
+    Add Asset frontend-filtering fix, not a correction-workflow concern);
+    no security impact since the backend independently re-validates
+    company match on every write path.
+5. **Add Holder form sends `location_id=0` instead of omitting it when
+    Location is left blank**, causing an unhandled 500
+    (`ForeignKeyViolationError: Key (location_id)=(0) is not present in
+    table "location"`) — discovered live during AM-07's own mandatory
+    browser UAT while creating a safe test holder. Location is documented
+    as optional in the form but the frontend does not omit the field or
+    send `null` when no location is chosen. Worked around during UAT by
+    always selecting a Location; not fixed in AM-07 (out of scope — a
+    Holders & Users form bug, not a correction-workflow concern).
+6. **Edit Subcategory dialog shows the parent Category as a raw numeric id**
+    (e.g. "11") instead of its name/code — discovered live during AM-07's
+    §43 spot-check of `/setup/subcategories`. Cosmetic only (the Category
+    relationship itself is correctly enforced and immutable); not fixed in
+    AM-07 (out of scope — a `MasterCrudScreen`/Sub-Categories display bug,
+    not a correction-workflow concern).
 
 ## Resolved this session (kept here for traceability, remove once stale)
 
+- **`category_id`/`subcategory_id`/`purchase_date` had no edit path** — fixed
+  (AM-07): a dedicated, role-gated (ADMIN/IT_TEAM) correction workflow (`POST
+  /api/assets/{id}/corrections`, Asset 360's "Correct Classification"
+  action), deliberately separate from ordinary Edit mode, with a mandatory
+  reason, category/subcategory relationship enforcement, a chronology
+  invariant for Purchase Date, and human-readable audit entries via
+  `asset_field_change`. Asset Code, lifecycle status, current Holder,
+  company, and cost centre are all confirmed unchanged by a correction — see
+  `DECISIONS.md` for the full rule set.
 - Login company selector removed; identity resolution hardened (see
   `DECISIONS.md`).
 - Change Password redesigned (was raw unstyled HTML).

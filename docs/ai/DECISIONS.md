@@ -2,6 +2,101 @@
 
 Newest first. These override older spec/plan text where they conflict.
 
+## 2026-09-24 — AM-07 scope locked (Controlled Asset Classification + Purchase-Date Correction)
+
+1. **`category_id`, `subcategory_id`, `purchase_date` are correctable, but
+   only through a dedicated correction endpoint — never through
+   `AssetUpdateIn`/`PUT /api/assets/{id}`.** A correction is not a normal
+   edit: it requires a mandatory reason, is role-restricted to
+   ADMIN/IT_TEAM (never VIEWER/HOLDER), and is recorded distinctly in the
+   audit trail. `AssetUpdateIn` was never extended with these three fields;
+   `trg_asset_no_identity_change` was never touched (it never protected
+   these fields in the first place — see item 5).
+2. **Asset Code is permanently immutable across a correction, by
+   construction, not by a runtime check.** `app/assets/correction_service.py`
+   never imports or calls anything from `app.numbering` — the numbering
+   service (`build_code_tokens`/`generate_code`/`get_active_rule`) is only
+   ever invoked at asset-creation time (`procure_assets`, `commit_import`).
+   A correction request cannot regenerate `asset_code`, cannot consume a new
+   `code_counter` value, and cannot reset numbering, because the code that
+   would do those things is simply never reachable from the correction path.
+3. **Correction endpoint: `POST /api/assets/{id}/corrections`**
+   (`AssetCorrectionIn`: `category_id`, `subcategory_id`, `purchase_date` all
+   optional, `reason` required). Uses the exact same `_get_scoped_asset`
+   helper `update_asset` already uses, so scoping semantics (HOLDER pinned
+   to own asset, others scoped by `scoped_company_ids`, fail-closed 404 for
+   out-of-scope) are identical by construction, not by parallel
+   implementation. Role-gated `require_role("ADMIN", "IT_TEAM")` — VIEWER
+   and HOLDER receive 403 before scoping is even evaluated.
+4. **Category/Subcategory relationship integrity rule**: a new category
+   must exist and be active; a supplied subcategory must exist, be active,
+   and belong to the *effective* (possibly newly-corrected) category. If the
+   category changes and the asset's *current* subcategory (not explicitly
+   re-supplied) no longer belongs to the new category, the request is
+   rejected with an actionable message telling the caller to supply a valid
+   `subcategory_id` for the new category or explicitly set it to `null` —
+   the service never silently leaves an invalid category/subcategory pair.
+5. **`trg_asset_no_identity_change` needed zero changes for AM-07.**
+   Verified by three independent methods before writing a line of service
+   code: (a) reading the original migration (`0003_assets_and_events.py`,
+   `forbid_asset_identity_change()`), (b) grepping every later migration for
+   any redefinition of the trigger function (none found), (c) querying
+   `pg_proc.prosrc` on the live `ckam` database directly. The trigger only
+   ever protected `asset_code`, `company_id`, `cost_center_id` — never
+   `category_id`/`subcategory_id`/`purchase_date`. This is why the
+   correction service can freely assign those three fields without any DB
+   trigger change, narrower-than-expected surface, or risk of weakening
+   identity protection globally.
+6. **Purchase Date correction chronology rule**: `corrected_purchase_date`
+   must not be in the future, and must not be later than the asset's
+   earliest recorded `asset_event.event_date`. Derived directly from
+   `apply_event`'s own two pre-existing, evidence-backed rules (reject a
+   future event date; reject an event date before the last recorded event),
+   applied in the historical direction rather than invented from scratch.
+   Historical `asset_event` rows are never rewritten by a Purchase Date
+   correction — only `asset.purchase_date` itself changes.
+7. **Correction audit reuses `asset_field_change`, not a new table and not
+   `asset_event`.** A controlled correction to asset master data is judged
+   the same *kind* of fact `asset_field_change` already exists to record
+   (a change to a field, not a lifecycle movement), so no third audit
+   system was created and corrections are never written into `asset_event`
+   (which stays lifecycle-only). One small additive migration
+   (`f28b6a913dce`) adds a nullable `reason VARCHAR(500)` column to
+   `asset_field_change` — the sole discriminator between a correction row
+   (`reason IS NOT NULL`) and an ordinary Edit-mode row (`reason IS NULL`);
+   no separate "row type" column was added. Corrections use a dedicated
+   `CORRECTION_FIELDS`/`record_correction_changes` (in
+   `app/assets/audit_service.py`), kept deliberately separate from the
+   existing `AUDITED_SCALAR_FIELDS`/`record_field_changes` used by ordinary
+   Edit-mode saves, so the two can never cross-contaminate.
+8. **Correction audit snapshots are human-readable, not bare IDs.** A
+   Category/Subcategory correction stores `"{code} - {name} (#{id})"` (new
+   `_describe_category`/`_describe_subcategory` helpers, matching the
+   existing `_describe_vendor` pattern) so a later master rename never makes
+   old correction history unreadable. Purchase Date stores normalized ISO
+   date strings. Every correction row shares one `request_id` (UUID) across
+   however many fields actually changed in that request.
+9. **Asset 360 gets a separate "Correct Classification" action, never a
+   field added to ordinary Edit mode.** The button appears only next to
+   Edit inside the same `canEdit` (ADMIN/IT_TEAM) conditional; backend
+   authorization remains the actual enforcement (§ decision 3), the
+   frontend omission is UX only. The dialog shows Asset Code read-only with
+   "Asset Code will not change", prefills current Category/Sub-Category/
+   Purchase Date, reacts Sub-Category's option list to the selected
+   Category, shows an Impact Summary (old → new per changed field, plus
+   "Asset Code: unchanged") before Confirm, and requires a non-blank Reason.
+   Confirm Correction stays disabled until at least one field actually
+   differs from the asset's current values and Reason is non-blank.
+10. **No bulk correction in V1.** The correction endpoint and UI operate on
+    exactly one asset per request; a bulk-correction UI is explicitly
+    deferred to a future stage requiring its own authorization.
+11. **Changes tab renders a correction distinctly from an ordinary edit**
+    (a "Correction" pill vs. plain "Edit" text, keyed off `reason IS NOT
+    NULL`) and shows the Reason column — the asset's lifecycle History tab
+    is untouched by any correction (proven live: History event count and
+    text were identical before and after two live corrections performed
+    during this stage's browser UAT).
+
 ## 2026-09-24 — AM-06 scope locked (Import + Export/Reports + My Assets)
 
 1. **Exact Import spreadsheet column contract** (`backend/app/imports/

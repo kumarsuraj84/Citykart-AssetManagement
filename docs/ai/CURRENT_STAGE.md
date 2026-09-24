@@ -1,12 +1,14 @@
 # CKAM — Current Stage
 
-**Stage:** AM-06 (Import + Export/Reports + My Assets) — complete, PASS.
-**Next:** awaiting explicit go-ahead on AM-07 or any other further work — do
-not start anything automatically, including `holder_company_access`,
-category/subcategory/purchase-date correction workflow, approval workflow,
-AMC/insurance, depreciation, physical verification, or a company-wide
-generic audit explorer.
+**Stage:** AM-07 (Controlled Asset Classification + Purchase-Date
+Correction) — complete, PASS.
+**Next:** awaiting explicit go-ahead on AM-08 or any other further work — do
+not start anything automatically, including `holder_company_access`, import
+duplicate detection, approval workflow, AMC/insurance, depreciation,
+physical verification, bulk correction, category/subcategory-scoped Custom
+Fields, or a company-wide generic audit explorer.
 
+Full AM-07 evidence: `docs/ai/AM-07_ASSET_CORRECTION_WORKFLOW_REPORT.md`.
 Full AM-06 evidence: `docs/ai/AM-06_IMPORT_REPORTS_MY_ASSETS_REPORT.md`.
 Full AM-05 evidence: `docs/ai/AM-05_MASTERS_HOLDERS_REPORT.md`.
 Full AM-04 evidence: `docs/ai/AM-04_ASSET_ENTRY_360_REPORT.md`.
@@ -248,30 +250,91 @@ Reassigned, plus Repair/Lost-Found/Disposed-Sold-Scrapped.
   performed on Import/Reports/My Assets, including the Category-column bug
   found and fixed live.
 
+## What's actually done as of AM-07
+
+- **Controlled Category/Subcategory/Purchase-Date correction workflow
+  (new, closes the AM-02/AM-04/AM-05/AM-06-deferred gap):** a dedicated
+  `POST /api/assets/{id}/corrections` endpoint (`app/assets/
+  correction_service.py`), role-gated ADMIN/IT_TEAM (backend-enforced via
+  the same `_get_scoped_asset` helper `update_asset` uses — never a
+  frontend-only restriction), reason mandatory, at least one field must
+  actually change. `AssetUpdateIn`/ordinary Edit mode were never touched —
+  a normal `PUT /api/assets/{id}` still cannot move these three fields,
+  confirmed by a regression test.
+- **Asset Code, lifecycle status, current Holder, company, and cost centre
+  are all provably unchanged by a correction**: the correction service
+  never imports the numbering service and never calls `apply_event` —
+  confirmed by reading the code, not by a runtime guard alone. Historical
+  `asset_event` rows are never rewritten; a Purchase Date correction only
+  ever changes `asset.purchase_date` itself.
+- **`trg_asset_no_identity_change` needed zero changes** — confirmed by
+  reading the original migration, grepping every later migration for a
+  redefinition, and querying `pg_proc.prosrc` on the live database: the
+  trigger only ever protected `asset_code`/`company_id`/`cost_center_id`,
+  never the three correction fields.
+- **Category/Subcategory relationship integrity enforced**: a corrected
+  category must be active; a subcategory (explicit or carried-forward from
+  before the correction) must belong to the *effective* category or the
+  request is rejected with an actionable message, never left in an invalid
+  pair.
+- **Purchase Date chronology invariant**: a corrected Purchase Date cannot
+  be in the future and cannot be later than the asset's earliest recorded
+  lifecycle event — derived from `apply_event`'s own existing event-date
+  rules, not invented.
+- **Audit trail reuses `asset_field_change`** (one small additive migration,
+  `f28b6a913dce`, adds a nullable `reason` column — the sole discriminator
+  between a correction row and an ordinary edit row), with human-readable
+  old/new snapshots (`"{code} - {name} (#{id})"` for Category/Subcategory,
+  normalized ISO dates for Purchase Date) so a later master rename never
+  makes old correction history unreadable.
+- **Asset 360 gained a "Correct Classification" action**, separate from
+  Edit, showing current values, Asset Code read-only with "will not
+  change", an Impact Summary before Confirm, and a mandatory Reason. The
+  Changes tab now visually distinguishes a "Correction" from an ordinary
+  "Edit" and shows the Reason.
+- **No bulk correction** — one asset per request, matching the
+  authorization's explicit V1 scope.
+- Also closed two AM-06-deferred verification gaps as low-risk evidence
+  sweeps (no redesign): `/reports` now has documented Responsive evidence
+  at 1440/768/375, and `/change-password` now has documented Security and
+  Responsive evidence.
+- Backend: 258 → 288 tests (+30). Frontend: 133 → 143 tests (+10). Typecheck
+  clean. E2E: 3 → 4 passing. Real-browser UAT performed on the correction
+  flow (two live corrections against a real created safe UAT asset) at all
+  4 required breakpoints, plus a fresh spot-check of every remaining
+  `MasterCrudScreen` route. Two pre-existing, out-of-scope bugs found and
+  documented (not fixed): Add Asset's Cost Centre/Category dropdowns are
+  not company-scoped (backend still correctly rejects a mismatch), and Add
+  Holder sends `location_id=0` instead of omitting a blank Location
+  (causes an unhandled 500) — see `REVIEW_FINDINGS.md`.
+
 ## Deferred, awaiting your decision (not blockers, not failures)
 
 1. **`holder_company_access`**: written to, never read by authorization.
    Classified as either "needed for multi-company asset-team access" or
    "dormant/obsolete" — genuinely depends on whether CityKart's asset team is
    organizationally shared across companies. No behavioral change made in
-   AM-01 through AM-06.
-2. **`category_id`/`subcategory_id`/`purchase_date` have no edit path** —
-   deliberately excluded from `AssetUpdateIn`/Asset 360's Edit mode again in
-   AM-04 (§17), reconfirmed out of scope in AM-05, and again in AM-06
-   (§33): changing them safely needs a dedicated correction-workflow design
-   (code-generation tokens and event-ordering invariants both depend on
-   them), not a silent add to the generic edit form.
-3. **Category/subcategory-scoped Custom Fields** were explicitly considered
+   AM-01 through AM-07.
+2. **Category/subcategory-scoped Custom Fields** were explicitly considered
    and rejected as AM-05 scope (deliberately simpler company-only scoping
    was chosen instead) — a future stage's decision if ever needed.
-4. **No import-side duplicate detection** (legacy code, serial number,
-   PO/invoice/PI number) — confirmed still absent in AM-06, not added
+3. **No import-side duplicate detection** (legacy code, serial number,
+   PO/invoice/PI number) — confirmed still absent in AM-07, not added
    without business evidence any of these fields is meant to be unique.
+4. **No bulk correction workflow** — AM-07's correction endpoint and UI are
+   deliberately single-asset only; a bulk-correction UI is a future stage's
+   decision.
+5. **Two out-of-scope UI bugs found during AM-07's own browser UAT, not
+   fixed**: Add Asset's Cost Centre/Category dropdowns are not
+   company-scoped (cosmetic/UX only — the backend independently rejects a
+   cross-company mismatch); Add Holder sends `location_id=0` instead of
+   omitting a blank Location, causing an unhandled 500. See
+   `REVIEW_FINDINGS.md` for full detail.
 
-None of AM-07 onward (`holder_company_access`, category/subcategory/
-purchase_date correction workflow, approval workflow, AMC/insurance,
-depreciation, physical verification, a full company-wide asset audit
-explorer) have been started as dedicated stages yet — see
+None of AM-08 onward (`holder_company_access`, import duplicate detection,
+approval workflow, AMC/insurance, depreciation, physical verification, bulk
+correction, category/subcategory-scoped Custom Fields, a full company-wide
+asset audit explorer) have been started as a dedicated stage yet — see
 `REVIEW_FINDINGS.md` for what's still open.
 
 ## Branch / remote state
