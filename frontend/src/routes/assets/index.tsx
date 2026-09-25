@@ -1,5 +1,9 @@
 import { AssetRegister } from "../../features/assets/AssetRegister";
 
-export default function AssetsIndexRoute() {
-  return <AssetRegister />;
+interface AssetsIndexRouteProps {
+  search?: { status?: string };
+}
+
+export default function AssetsIndexRoute({ search }: AssetsIndexRouteProps) {
+  return <AssetRegister initialStatus={search?.status} />;
 }

@@ -61,11 +61,19 @@ function asOptionArray(data: unknown): Option[] {
 // total count of every matching asset.
 export const PAGE_SIZE = 50;
 
-export function AssetRegister() {
+interface AssetRegisterProps {
+  // AM-12: the Dashboard's exception summary deep-links here (e.g.
+  // `/assets?status=UNDER_REPAIR`) so a KPI count is a real navigation
+  // target, not a decorative number -- applied once, on first render, the
+  // same way every other filter starts empty and is then user-driven.
+  initialStatus?: string;
+}
+
+export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [q, setQRaw] = useState("");
-  const [status, setStatusRaw] = useState("");
+  const [status, setStatusRaw] = useState(initialStatus ?? "");
   const [categoryId, setCategoryIdRaw] = useState("");
   const [holderId, setHolderIdRaw] = useState("");
   const [companyId, setCompanyIdRaw] = useState("");

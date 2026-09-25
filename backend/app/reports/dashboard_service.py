@@ -3,11 +3,25 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.assets.models import Asset
 from app.holders.models import Holder
+from app.lifecycle.models import AssetEvent
+from app.lifecycle.service import with_labels
 from app.masters.models import Location
 
 # Kept as named constants (spec §7.2/§10.5) so the thresholds are easy to change later.
 WARRANTY_ALERT_DAYS = 30
 LONG_ALLOCATION_ALERT_DAYS = 180
+
+# AM-12 G03: the "exception" states an operator needs to see at a glance without
+# hunting through the Asset Register one status at a time. Deliberately excludes
+# IN_STOCK/ALLOTTED/INSTALLED (the normal, healthy states already visible via the
+# existing per-status KPI cards) -- these five are the ones that usually mean
+# "something needs attention or is permanently closed out." Fixed, recognized
+# ASSET_STATUSES values only (backend/app/assets/models.py) -- no new status.
+EXCEPTION_STATUSES = ["UNDER_REPAIR", "LOST", "DISPOSED", "SOLD", "SCRAPPED"]
+
+# Recommended by the AM-12 authorization: small enough to stay a glance-able
+# "what just happened" strip, not a second Movement Log.
+RECENT_ACTIVITY_LIMIT = 5
 
 
 async def dashboard_data(session: AsyncSession, allowed_company_ids: list[int] | None) -> dict:
@@ -61,9 +75,57 @@ async def dashboard_data(session: AsyncSession, allowed_company_ids: list[int] |
         for a in long_assets
     ]
 
+    # AM-12 G03: reuses status_counts (already grouped, already scoped) rather than a
+    # second query -- a status with zero assets is simply absent from that dict (a
+    # GROUP BY only returns rows that exist), so default every exception status to 0
+    # explicitly. This is what lets the frontend show "Repair: 0" instead of silently
+    # omitting the whole metric when nothing is in that state.
+    exception_counts = {s: status_counts.get(s, 0) for s in EXCEPTION_STATUSES}
+
+    # Scoped exactly like the base asset query above (allowed_company_ids), joined to
+    # Asset since AssetEvent itself has no company_id column. Ordered newest-first,
+    # limited server-side -- never fetch-then-slice client-side (spec §16 perf note).
+    # AM-01's own ix_asset_event_event_date index already covers this ordering; no new
+    # index needed (confirmed by EXPLAIN-equivalent reasoning: same column, same
+    # direction the index was built for).
+    recent_stmt = (
+        select(AssetEvent, Asset.asset_code)
+        .join(Asset, AssetEvent.asset_id == Asset.id)
+        .where(Asset.deleted_at.is_(None))
+    )
+    if allowed_company_ids is not None:
+        recent_stmt = recent_stmt.where(Asset.company_id.in_(allowed_company_ids))
+    recent_stmt = recent_stmt.order_by(AssetEvent.event_date.desc(), AssetEvent.id.desc()).limit(RECENT_ACTIVITY_LIMIT)
+    recent_rows = (await session.execute(recent_stmt)).all()
+    recent_events = [row[0] for row in recent_rows]
+    asset_codes_by_event_id = {row[0].id: row[1] for row in recent_rows}
+
+    # Reuses the exact same snapshot-correct labeling the asset History tab uses (AM-01
+    # point-in-time holder-name snapshots) -- never a fresh client-side reconstruction.
+    labelled_events = await with_labels(session, recent_events)
+    recorded_by_ids = {e.recorded_by for e in recent_events}
+    recorder_names: dict[int, str] = {}
+    if recorded_by_ids:
+        rows = (await session.execute(select(Holder.id, Holder.name).where(Holder.id.in_(recorded_by_ids)))).all()
+        recorder_names = {row[0]: row[1] for row in rows}
+    recent_activity = [
+        {
+            "id": e.id,
+            "asset_id": e.asset_id,
+            "asset_code": asset_codes_by_event_id[e.id],
+            "event_type": e.event_type,
+            "event_date": e.event_date.isoformat(),
+            "label": e.label,
+            "recorded_by_name": recorder_names.get(e.recorded_by),
+        }
+        for e in labelled_events
+    ]
+
     return {
         "status_counts": status_counts,
         "stock_by_location": stock_by_location,
         "warranty_alerts": warranty_alerts,
         "long_allocation_alerts": long_allocation_alerts,
+        "exception_counts": exception_counts,
+        "recent_activity": recent_activity,
     }

@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { apiClient } from "../../lib/api-client";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +15,17 @@ interface DashboardData {
   stock_by_location: { location: string; count: number }[];
   warranty_alerts: { asset_id: number; asset_code: string; warranty_upto: string }[];
   long_allocation_alerts: { asset_id: number; asset_code: string; days_allotted: number }[];
+  // AM-12 G03
+  exception_counts: Record<string, number>;
+  recent_activity: {
+    id: number;
+    asset_id: number;
+    asset_code: string;
+    event_type: string;
+    event_date: string;
+    label: string;
+    recorded_by_name: string | null;
+  }[];
 }
 
 interface LocationRow {
@@ -58,6 +70,72 @@ const warrantyColumns: DataTableColumn<WarrantyRow>[] = [
     headerClassName: "text-right",
     cellClassName: "text-right",
     cell: (r) => <Badge variant="secondary">{r.warranty_upto}</Badge>,
+  },
+];
+
+// AM-12 G03: the fixed, recognized "something needs attention or is
+// permanently closed out" statuses (backend/app/assets/models.py's
+// ASSET_STATUSES) -- mirrors EXCEPTION_STATUSES in
+// backend/app/reports/dashboard_service.py exactly, in display order.
+// IN_STOCK/ALLOTTED/INSTALLED stay in the existing per-status KPI cards
+// above; nothing here duplicates or replaces that.
+const EXCEPTION_STATUSES = ["UNDER_REPAIR", "LOST", "DISPOSED", "SOLD", "SCRAPPED"];
+
+interface ExceptionRow {
+  status: string;
+  count: number;
+}
+
+const exceptionColumns: DataTableColumn<ExceptionRow>[] = [
+  { key: "status", header: "Status", cell: (r) => <StatusBadge status={r.status} /> },
+  {
+    key: "count",
+    header: "Count",
+    headerClassName: "text-right",
+    cellClassName: "text-right",
+    // Every row is a real navigation target (AM-12 §6), not a dead number --
+    // the Asset Register's own single-status Select filter is what this
+    // deep-links into, so each of the five states gets its own link rather
+    // than a lossy "Closed/Disposed" total that couldn't be filtered to in
+    // one click anyway.
+    cell: (r) => (
+      <Link to="/assets" search={{ status: r.status }} className="font-medium underline-offset-2 hover:underline">
+        {r.count}
+      </Link>
+    ),
+  },
+];
+
+interface ActivityRow {
+  id: number;
+  asset_id: number;
+  asset_code: string;
+  event_date: string;
+  label: string;
+  recorded_by_name: string | null;
+}
+
+const activityColumns: DataTableColumn<ActivityRow>[] = [
+  {
+    key: "asset",
+    header: "Asset",
+    cellClassName: "font-mono text-sm",
+    cell: (r) => <Link to="/assets/$id" params={{ id: String(r.asset_id) }}>{r.asset_code}</Link>,
+  },
+  { key: "activity", header: "Activity", cell: (r) => r.label },
+  {
+    key: "when",
+    header: "When",
+    headerClassName: "text-right",
+    cellClassName: "text-right whitespace-nowrap",
+    // Locale date+time, not a raw ISO string -- consistent with warranty_upto's
+    // own already-readable rendering elsewhere on this page.
+    cell: (r) => new Date(r.event_date).toLocaleString(),
+  },
+  {
+    key: "by",
+    header: "By",
+    cell: (r) => r.recorded_by_name ?? "—",
   },
 ];
 
@@ -129,6 +207,28 @@ export function Dashboard() {
 
           <Card>
             <CardHeader>
+              <CardTitle>Exceptions</CardTitle>
+              <CardDescription>
+                Assets that may need attention, or have reached a closed/disposed state. Each count links to the
+                matching Asset Register filter.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <DataTable
+                columns={exceptionColumns}
+                rows={EXCEPTION_STATUSES.map((status) => ({ status, count: data?.exception_counts?.[status] ?? 0 }))}
+                rowKey={(r) => r.status}
+                isLoading={isLoading}
+                // Every one of the 5 recognized exception statuses always renders its own
+                // row (defaulted to 0), so this never actually triggers -- required by
+                // DataTable's own contract regardless.
+                emptyState={<EmptyState title="No exception data." />}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle>Stock by Location</CardTitle>
               <CardDescription>Assets currently sitting in IT stock, by location.</CardDescription>
             </CardHeader>
@@ -176,6 +276,22 @@ export function Dashboard() {
               </CardContent>
             </Card>
           </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent Activity</CardTitle>
+              <CardDescription>The latest lifecycle events. For full history, see the Movement Log report.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <DataTable
+                columns={activityColumns}
+                rows={data?.recent_activity ?? []}
+                rowKey={(r) => r.id}
+                isLoading={isLoading}
+                emptyState={<EmptyState title="No recent asset activity." />}
+              />
+            </CardContent>
+          </Card>
         </>
       )}
     </div>

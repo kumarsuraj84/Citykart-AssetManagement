@@ -368,10 +368,25 @@ export const dashboardRoute = createRoute({
   component: DashboardRoute,
 });
 
+/** `?status=<ASSET_STATUS>`: lets the Dashboard's exception summary (AM-12)
+ * link straight into a pre-filtered register instead of a dead, decorative
+ * count -- e.g. "Repair" -> `/assets?status=UNDER_REPAIR`. */
+interface AssetsSearch {
+  status?: string;
+}
+
+function validateAssetsSearch(search: Record<string, unknown>): AssetsSearch {
+  return { status: typeof search.status === "string" ? search.status : undefined };
+}
+
 export const assetsIndexRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/assets",
-  component: AssetsIndexRoute,
+  validateSearch: validateAssetsSearch,
+  component: function AssetsIndexComponent() {
+    const { status } = assetsIndexRoute.useSearch();
+    return <AssetsIndexRoute search={{ status }} />;
+  },
 });
 
 export const assetsNewRoute = createRoute({
