@@ -31,6 +31,10 @@ async def search_assets(
             Asset.asset_code.ilike(pattern), Asset.legacy_asset_code.ilike(pattern),
             Asset.serial_number.ilike(pattern), Asset.po_number.ilike(pattern),
             Asset.invoice_number.ilike(pattern), Asset.pi_number.ilike(pattern),
+            # AM-11: a real operator is more likely to remember an asset's
+            # description ("the Dell laptop") than its generated code --
+            # found missing during the Phase-1 gap review's search check.
+            Asset.description.ilike(pattern),
         ))
 
     # COUNT(*) in the database over the same filtered query, rather than

@@ -16,7 +16,7 @@ from app.assets.service import compute_tax, procure_assets
 from app.holders.models import Holder
 from app.lifecycle.service import apply_event
 from app.lifecycle.state_machine import LifecycleError
-from app.masters.models import AssetCategory, AssetSubcategory, CostCenter, Department, Location, Vendor
+from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location, Vendor
 from app.reports.export_service import asset_qr_png
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
@@ -35,6 +35,26 @@ class BulkMoveIn(BaseModel):
 class BulkMoveOut(BaseModel):
     moved: int
     failed: list[dict]
+
+
+async def _page_label_maps(session: AsyncSession, items: list[Asset]) -> tuple[dict, dict]:
+    """AM-11: page-scoped id->name lookups for the register's Holder/Company
+    columns -- only the distinct ids actually present on this one page (at
+    most `limit`, currently capped at 200), never every holder/company in
+    the system (that's `app.reports.router._export_label_maps`'s job, which
+    is fine for a bounded export but would be wasteful on every register
+    page view/filter keystroke)."""
+    holder_ids = {a.current_holder_id for a in items}
+    company_ids = {a.company_id for a in items}
+    holders: dict[int, str] = {}
+    if holder_ids:
+        rows = (await session.execute(select(Holder.id, Holder.name).where(Holder.id.in_(holder_ids)))).all()
+        holders = {row[0]: row[1] for row in rows}
+    companies: dict[int, str] = {}
+    if company_ids:
+        rows = (await session.execute(select(Company.id, Company.name).where(Company.id.in_(company_ids)))).all()
+        companies = {row[0]: row[1] for row in rows}
+    return holders, companies
 
 
 @router.post("", response_model=list[AssetOut], status_code=201)
@@ -84,7 +104,14 @@ async def list_assets(
     else:
         allowed = scoped_company_ids(holder)
     items, total = await search_assets(session, allowed, status, category_id, holder_id, company_id, q, limit, offset)
-    return AssetListOut(items=items, total=total)
+    holder_labels, company_labels = await _page_label_maps(session, items)
+    out_items = []
+    for a in items:
+        out = AssetOut.model_validate(a)
+        out.current_holder_name = holder_labels.get(a.current_holder_id)
+        out.company_name = company_labels.get(a.company_id)
+        out_items.append(out)
+    return AssetListOut(items=out_items, total=total)
 
 
 @router.post("/bulk-move", response_model=BulkMoveOut)
@@ -139,18 +166,25 @@ async def _to_detail_out(session: AsyncSession, asset: Asset) -> AssetDetailOut:
     cost_center = await session.get(CostCenter, asset.cost_center_id)
     vendor = await session.get(Vendor, asset.vendor_id) if asset.vendor_id else None
     current_holder = await session.get(Holder, asset.current_holder_id)
+    company = await session.get(Company, asset.company_id)
     location = await session.get(Location, current_holder.location_id) if current_holder else None
     department = (
         await session.get(Department, current_holder.department_id)
         if current_holder and current_holder.department_id else None
     )
+    # current_holder_name/company_name already live on AssetOut itself (AM-11,
+    # the register's own page-scoped lookup) -- exclude them from the base
+    # dump here so this endpoint's own, already-fetched holder/company rows
+    # are the ones that win, not a duplicate keyword argument.
+    base = AssetOut.model_validate(asset).model_dump(exclude={"current_holder_name", "company_name"})
     return AssetDetailOut(
-        **AssetOut.model_validate(asset).model_dump(),
+        **base,
+        current_holder_name=current_holder.name if current_holder else None,
+        company_name=company.name if company else None,
         category_name=category.name if category else None,
         subcategory_name=subcategory.name if subcategory else None,
         cost_center_name=cost_center.name if cost_center else None,
         vendor_name=vendor.name if vendor else None,
-        current_holder_name=current_holder.name if current_holder else None,
         current_holder_type=current_holder.holder_type if current_holder else None,
         location_name=location.name if location else None,
         department_name=department.name if department else None,

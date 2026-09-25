@@ -66,15 +66,26 @@ class AssetOut(BaseModel):
     current_holder_id: int
     status_since: date
     custom_fields: dict
+    # AM-11: the register must be able to answer "who holds it" without a
+    # click into every row -- CKAM's own stated core guarantee
+    # (docs/ai/PRODUCT_CONTEXT.md). Populated by `list_assets` via a
+    # page-scoped batch id->name lookup (only the distinct ids actually
+    # present on the current page, not every holder/company in the
+    # system), never a per-row join. `None` only if the referenced holder/
+    # company row is somehow missing -- should not happen in practice.
+    current_holder_name: str | None = None
+    company_name: str | None = None
 
 
 class AssetDetailOut(AssetOut):
     """AM-04: Asset 360 needs human-readable labels, not bare IDs (§25 of the
     AM-04 authorization) -- additive-only, single-asset GET response.
     Nullable everywhere a referenced master row could theoretically be
-    missing (defensive; scoping/FKs should prevent this in practice). Never
-    used by the list endpoint (`AssetOut` stays as-is there) to avoid N+1
-    joins across a page of results for data the register doesn't display."""
+    missing (defensive; scoping/FKs should prevent this in practice). Adds
+    every remaining label the list endpoint's own page-scoped batch lookup
+    (AM-11, current_holder_name/company_name on AssetOut itself) does not
+    already cover, since a single-asset page can afford a few more small
+    lookups that a paginated list of up to 200 rows should not repeat."""
     category_name: str | None
     subcategory_name: str | None
     cost_center_name: str | None

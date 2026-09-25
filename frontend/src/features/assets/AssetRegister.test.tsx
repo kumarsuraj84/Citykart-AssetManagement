@@ -48,6 +48,22 @@ describe("AssetRegister", () => {
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("q=CK_1")));
   });
 
+  it("shows the current holder and company the backend resolved for each row (AM-11)", async () => {
+    (apiClient.get as any).mockResolvedValue({
+      items: [
+        { id: 1, asset_code: "FA/HO01/IT/LAP/CK_1", description: "Laptop", status: "ALLOTTED", current_holder_name: "Jane Doe", company_name: "Citykart Stores" },
+        { id: 2, asset_code: "FA/HO01/IT/LAP/CK_2", description: "Printer", status: "IN_STOCK", current_holder_name: null, company_name: null },
+      ],
+      total: 2,
+    });
+
+    renderRegisterAt();
+    await waitFor(() => expect(screen.getByText("Jane Doe")).toBeInTheDocument());
+    expect(screen.getByText("Citykart Stores")).toBeInTheDocument();
+    // A row with no resolved name (defensive fallback, should not happen in practice) renders an em dash, not blank/undefined.
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
+  });
+
   it("re-queries the register when a filter-bar dimension is picked", async () => {
     (apiClient.get as any).mockImplementation((path: string) => {
       if (path.startsWith("/assets")) {

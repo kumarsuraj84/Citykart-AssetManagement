@@ -30,6 +30,11 @@ interface AssetRow {
   asset_code: string;
   description: string;
   status: string;
+  // AM-11: populated server-side by a page-scoped batch lookup (never a
+  // per-row join) -- the register must answer "who holds it, in which
+  // company" without a click into every row.
+  current_holder_name: string | null;
+  company_name: string | null;
 }
 
 interface Option {
@@ -195,6 +200,8 @@ export function AssetRegister() {
     },
     { key: "description", header: "Description", cell: (a) => a.description },
     { key: "status", header: "Status", cell: (a) => <StatusBadge status={a.status} /> },
+    { key: "holder", header: "Holder", cell: (a) => a.current_holder_name ?? "—" },
+    { key: "company", header: "Company", cell: (a) => a.company_name ?? "—" },
   ];
 
   return (
@@ -206,7 +213,7 @@ export function AssetRegister() {
             <Input
               id="search"
               aria-label="Search"
-              placeholder="Asset code, serial, PO, invoice…"
+              placeholder="Asset code, description, serial, PO, invoice…"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               className="w-64"
