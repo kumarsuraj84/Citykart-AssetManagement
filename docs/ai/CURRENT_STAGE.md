@@ -1,18 +1,38 @@
 # CKAM — Current Stage
 
-**Stage:** AM-09 (Release Candidate Full-System Audit) — complete.
-**Verdict: RELEASE READY.**
+**Stage:** AM-10 (Production Go-Live Preparation) — complete.
+**Verdict: GO-LIVE PREPARED WITH DECISIONS REQUIRED.**
 **FEATURE FREEZE REMAINS ACTIVE.** CKAM V1 is feature-frozen as of AM-08 and
-stays frozen through AM-09. No new feature stage begins without explicit
+stays frozen through AM-10. No new feature stage begins without explicit
 authorization — only an evidenced release-blocking bug may be fixed.
-**Next:** Awaiting explicit authorization for deployment/go-live
-preparation. Do NOT automatically deploy. Do not start
-`holder_company_access`, import duplicate detection, bulk correction,
-category/subcategory-scoped Custom Fields, approval workflow,
-AMC/insurance, depreciation, physical verification, a company-wide audit
-explorer, new dashboards, new reports, new lifecycle states, new master
-types, or new asset workflow concepts.
+**Next:** Awaiting explicit user authorization for AM-11 — Production
+Cutover / Deployment. Do NOT automatically begin AM-11. Before that
+authorization is requested, the open decisions listed below need
+resolving. Do not start `holder_company_access`, import duplicate
+detection, bulk correction, category/subcategory-scoped Custom Fields,
+approval workflow, AMC/insurance, depreciation, physical verification, a
+company-wide audit explorer, new dashboards, new reports, new lifecycle
+states, new master types, or new asset workflow concepts.
 
+**Open decisions before AM-11 (none are software defects):**
+1. Production data strategy — FRESH PRODUCTION DATABASE (recommended,
+   strong evidence) or PROMOTE CURRENT DATABASE AFTER CONTROLLED CLEANUP.
+2. The real production `BASE_URL` (LAN hostname/IP) and `BACKUP_DIR`
+   (separate disk, copied off the server) — both are currently dev-only
+   placeholders.
+3. Disposition of an active test-ADMIN account (`UATADMIN`) found sitting
+   inside the real production company — resolved automatically by
+   decision 1 if a fresh database is chosen.
+4. Whether/when and how to push `worktree-ckam-build` to `origin` — a
+   repository-workflow decision belonging to the user.
+5. Naming the operational owners left as "OWNER TO BE ASSIGNED" in the
+   Operations Ownership Matrix.
+
+Full AM-10 evidence: `docs/ai/AM-10_GO_LIVE_PREPARATION_REPORT.md`, plus
+`docs/ai/CKAM_PRODUCTION_ENVIRONMENT_CHECKLIST.md`,
+`docs/ai/CKAM_PRODUCTION_SERVER_CHECKLIST.md`,
+`docs/ai/CKAM_INITIAL_SETUP_GUIDE.md`, `docs/ai/CKAM_RELEASE_MANIFEST.md`,
+`docs/ai/CKAM_GO_LIVE_CHECKLIST.md`.
 Full AM-09 evidence: `docs/ai/AM-09_RC_FULL_AUDIT_REPORT.md`, issue
 register `docs/ai/RC_ISSUES.md`, deployment procedure
 `docs/ai/CKAM_RELEASE_RUNBOOK.md`.
@@ -408,6 +428,48 @@ Reassigned, plus Repair/Lost-Found/Disposed-Sold-Scrapped.
   LAN-only, HTTP-only deployment model.
 - **CKAM V1 feature freeze remains fully in effect.** No new feature work
   was started or authorized in AM-09.
+
+## What's actually done as of AM-10
+
+- **Production go-live preparation, verdict GO-LIVE PREPARED WITH
+  DECISIONS REQUIRED.** Not a feature or code-fix stage — a full
+  inventory-and-rehearsal pass to determine what remains before an actual
+  production cutover. Full detail: `docs/ai/AM-10_GO_LIVE_PREPARATION_REPORT.md`.
+- **Full, read-only inventory of the live `ckam` database found it is, in
+  its entirety, a development/UAT database**: 98 of 99 companies, 299 of
+  305 holders, and 158 of 159 assets are confirmed test data by direct
+  evidence, not assumption; the one real company (Citykart Stores) has
+  zero genuine business assets, and its only populated supporting masters
+  (Cost Centre, Vendor, both active Code Rules) are themselves test
+  artifacts. Recommendation: start production from a **fresh database**
+  rather than promote the current one — see the report §13 for the full
+  reasoning, and `docs/ai/CKAM_INITIAL_SETUP_GUIDE.md` for the correct
+  bootstrap order this stage verified live.
+- **Found (not fixed): an active ADMIN-role test account (`UATADMIN`)
+  sitting inside the real production company** — a go-live blocker per
+  data hygiene, not an authorization defect (every role/scope check
+  remains correct; this is about which accounts exist, not what they can
+  do). Not deactivated automatically, per this stage's own explicit
+  instruction.
+- **Resolved AM09-05 and AM09-06** (missing security headers, missing
+  `Cache-Control`) with a narrow, HTTPS-independent nginx change (commit
+  `1f77c24`) — the only code/config change made this stage. Full
+  regression re-confirmed clean afterward (Backend 305/305, Frontend
+  148/148, Typecheck clean, E2E 5/5).
+- **Rehearsed, and proved safe, three previously-untested operational
+  paths**: a fresh-production-database bootstrap (owner creation, forced
+  password change, minimal master-data setup in dependency order, one
+  asset, one export — all against a genuinely disposable database); a
+  code-only rollback to the prior release commit (built and run in
+  isolation, confirmed to work cleanly against the current schema); and a
+  second, independent backup/restore cycle.
+- **No database migration** — confirmed unnecessary; Alembic head remains
+  `f28b6a913dce` throughout.
+- **No deployment, no push, no database promotion, no test-data deletion**
+  occurred. `worktree-ckam-build` still has no upstream tracking branch
+  and has never been pushed. A local, unpushed release tag
+  (`ckam-v1.0.0-rc1`) was created at the final AM-10 commit.
+- **CKAM V1 feature freeze remains fully in effect.**
 
 ## Deferred, awaiting your decision (not blockers, not failures)
 

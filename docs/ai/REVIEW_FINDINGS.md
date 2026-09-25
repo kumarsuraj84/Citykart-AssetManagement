@@ -42,26 +42,55 @@ is resolved; see "Resolved this session" below for AM-05/AM-06's fixes.
     meant to be unique — Asset Code remains the only system-enforced-unique
     identifier. Still open as of AM-09 (explicitly out of scope there too,
     per the AM-09 authorization's own instruction not to add it).
-4. **No security response headers** (`X-Content-Type-Options`,
-    `X-Frame-Options`/frame-ancestors, `Referrer-Policy`) on either `web`
-    (nginx) or `api` (uvicorn) responses — found during AM-09's security-
-    header review (`RC_ISSUES.md` AM09-05, P2). Not evidenced as
-    exploitable in the current LAN-only, HTTP-only deployment model; a
-    broader header-policy change was deliberately not made automatically
-    under AM-09's narrow-fix-only policy.
-5. **No `Cache-Control` guidance on authenticated API JSON responses**
-    (`RC_ISSUES.md` AM09-06, P3) — low practical risk for a direct
-    browser-to-server LAN deployment with no shared forward proxy in the
-    documented architecture.
+4. ~~No security response headers~~ **Fixed (AM-10)** — see "Resolved
+    this session" below.
+5. ~~No `Cache-Control` guidance on authenticated API JSON responses~~
+    **Fixed (AM-10)** — see "Resolved this session" below.
 6. **No active alerting for a failed nightly backup** beyond the
     `/var/log/ckam-backup.log` file inside the `backup` container
     (`RC_ISSUES.md` AM09-09, P2) — an operator must check manually;
     documented in `CKAM_RELEASE_RUNBOOK.md` rather than built out, per the
     AM-09 authorization's own instruction not to construct alerting
-    infrastructure in that stage.
+    infrastructure in that stage. Still open as of AM-10 — resolved
+    instead by requiring named operational ownership (see the Operations
+    Ownership Matrix in `AM-10_GO_LIVE_PREPARATION_REPORT.md` §40), since
+    no narrow, safely-addable automated option was evidenced without
+    knowing the real production server's own OS/scheduling environment.
+7. **An active ADMIN-role test account (`UATADMIN`) exists inside the
+    real production company** (`CKS`/Citykart Stores) — found during
+    AM-10's test-account inventory (`RC_ISSUES.md` AM10-01, P1, go-live
+    blocking). Not an authorization defect (every role/company/holder
+    check remains correct); a data-hygiene finding about which accounts
+    exist, not what they can do. Not deactivated automatically, per the
+    AM-10 authorization's explicit instruction. Resolved either by an
+    explicit deactivation step or made moot by AM-10's recommended
+    fresh-production-database strategy (see `DECISIONS.md`).
+8. **The current live database's real company has no genuinely usable
+    production master data** — its only Cost Centre, only Vendor, and
+    both active Code Rules touching it are all confirmed test artifacts
+    (`RC_ISSUES.md` AM10-02, P2). See `CKAM_INITIAL_SETUP_GUIDE.md` for
+    the full warning and the correct bootstrap order to use instead.
+9. **2 leftover active `SEEDADMIN` holder rows exist in already-
+    deactivated companies** (`AM03UAT`, `AM04UAT`) — found during AM-10's
+    test-account inventory (`RC_ISSUES.md` AM10-03, P2). Not currently
+    exploitable (the login query's own company-active clause blocks them),
+    but a messy leftover state worth cleaning up in any future
+    database-cleanup pass.
 
 ## Resolved this session (kept here for traceability, remove once stale)
 
+- **Missing security response headers** (`X-Content-Type-Options`,
+  `X-Frame-Options`, `Referrer-Policy`) on both `web` and `/api/`
+  responses, and **missing `Cache-Control` on authenticated API JSON
+  responses** — fixed (AM-10): a narrow, HTTPS-independent
+  `frontend/nginx.conf` change (commit `1f77c24`), verified live via
+  `curl -D -` on both the static and `/api/` paths and confirmed not to
+  regress the E2E suite. A real nginx gotcha was found and fixed during
+  verification: `location /api/`'s own `add_header` directives silently
+  suppressed inheritance of the `server` block's headers, so all three
+  general headers had to be explicitly repeated inside that location
+  block. No HSTS added — correctly, since this deployment remains
+  plain-HTTP. See `DECISIONS.md`.
 - **Excel formula injection across all three exports (Asset Register,
   Movement Log, Field Change Audit)** — fixed (AM-09): every user-
   controlled free-text data cell is now sanitized (a leading-apostrophe

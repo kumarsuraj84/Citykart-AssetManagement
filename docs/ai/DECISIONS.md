@@ -2,6 +2,71 @@
 
 Newest first. These override older spec/plan text where they conflict.
 
+## 2026-09-25 — AM-10 scope locked (Production Go-Live Preparation)
+
+1. **Verdict: GO-LIVE PREPARED WITH DECISIONS REQUIRED, not GO-LIVE
+   PREPARED outright.** Every open item is a data/deployment decision or a
+   server-specific configuration/cleanup step, never a software defect —
+   see `docs/ai/AM-10_GO_LIVE_PREPARATION_REPORT.md` §46 for the exact
+   list. AM-10 deliberately does not resolve these itself; they require
+   either an explicit business answer (which database becomes production)
+   or access to the real production server this session cannot have.
+2. **The recommended production-data strategy is a fresh database, not
+   promoting the current `ckam` database — recorded as a recommendation,
+   not an executed decision.** The evidence is unusually clean: 98 of 99
+   companies, 299 of 305 holders, and 158 of 159 assets in the live `ckam`
+   database are confirmed test data by direct cross-reference to known
+   fixture patterns (E2E company codes, `AM0xUAT`/`AM09SCALE`/`RC*`
+   tags), and the one genuinely real company has zero genuine business
+   assets and no usable supporting master data of its own (its Cost
+   Centre, Vendor, and active Code Rules are all test-named). This
+   decision is still left to the user, per the AM-10 authorization's own
+   explicit instruction not to silently promote or silently clean the
+   current database.
+3. **An active ADMIN-role test account (`UATADMIN`) inside the real
+   production company is classified a P1 go-live blocker, but was not
+   deactivated automatically.** This is a data-hygiene finding, not an
+   authorization defect — every server-side role/company/holder check
+   remains correct and unweakened; the issue is that this particular
+   account should not exist as active data in the real company at
+   cutover. Per the AM-10 authorization's explicit instruction, fixing
+   this requires either an explicit deactivation step (if the current
+   database is promoted) or is made moot by choosing a fresh database
+   instead (decision 2).
+4. **AM09-05 (missing security headers) and AM09-06 (missing
+   `Cache-Control`) were resolved with a narrow nginx-only change**
+   (`frontend/nginx.conf`, commit `1f77c24`) — `X-Content-Type-Options`,
+   `X-Frame-Options`, `Referrer-Policy` on every response, `Cache-Control:
+   no-store` on `/api/` responses only. No HSTS — correctly, since this
+   deployment remains plain-HTTP. A real nginx gotcha was found and fixed
+   during verification: a `location` block's own `add_header` directives
+   silently suppress inheritance of a parent `server` block's
+   `add_header` directives, so the three general headers had to be
+   explicitly repeated inside `location /api/`, not only declared once at
+   the `server` level.
+5. **A code-only rollback to the immediately-prior release commit is
+   confirmed mechanically safe.** Rehearsed live: the prior release
+   commit was checked out into a disposable git worktree, its backend
+   image built fresh, and a throwaway container from that image run
+   against a disposable database at the *current* schema head — health
+   and login both succeeded cleanly. This is expected and unsurprising
+   given neither AM-09 nor AM-10 introduced any database migration, but
+   it is now evidenced, not merely assumed.
+6. **`worktree-ckam-build` remains unpushed, with no upstream tracking
+   branch, and the remote holds no CKAM release history at all.** A local,
+   unpushed release tag (`ckam-v1.0.0-rc1`) was created at the final
+   AM-10 commit as preparation for an eventual push, per the AM-10
+   authorization's own explicit permission to do so when git is clean and
+   the release commit is unambiguous — pushing itself remains entirely
+   the user's decision.
+7. **No AM-09 P2/P3 business-decision item, and no newly-found data/
+   account hygiene item, is itself a release blocker for the
+   *application*.** They are decisions and cleanup steps that must happen
+   before *this specific deployment* proceeds, which is a narrower claim
+   than "the software is not ready" — the software's own RELEASE READY
+   verdict from AM-09 stands unchanged through AM-10's full regression
+   re-run.
+
 ## 2026-09-24 — AM-09 scope locked (Release Candidate Full-System Audit)
 
 1. **Verdict: RELEASE READY.** No P0 (blocker-class) defect was found
