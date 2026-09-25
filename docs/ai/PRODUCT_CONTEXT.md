@@ -39,6 +39,7 @@ have no email at all.
 | Lifecycle (the event ledger + state machine) | `app/lifecycle/` | `features/assets/Timeline.tsx`, action dialogs in `AssetDetail.tsx` |
 | Documents (attachments) | `app/documents/` | `features/assets/DocumentsTab.tsx` |
 | Excel import | `app/imports/` | `features/imports/ImportScreen.tsx` |
+| Purchase Orders (pre-delivery asset staging) | `app/purchase_orders/` | `routes/purchase-orders/*.tsx` via `features/purchase-orders/{PurchaseOrdersList,NewPurchaseOrderForm,PurchaseOrderDetail}.tsx` |
 | Reports/exports | `app/reports/` | `features/reports/ReportsScreen.tsx` |
 | Dashboard | (reads across the above) | `features/dashboard/Dashboard.tsx` |
 | My Assets (holder self-service) | (scoped assets query) | `features/my-assets/MyAssets.tsx` |

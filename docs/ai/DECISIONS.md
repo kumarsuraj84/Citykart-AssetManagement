@@ -2,6 +2,63 @@
 
 Newest first. These override older spec/plan text where they conflict.
 
+## 2026-09-25 — Purchase Order / Pending Assets feature
+
+Full design reasoning: `docs/specs/2026-09-25-po-pending-assets-design.md`.
+Implementation plan: `docs/superpowers/plans/2026-09-25-po-pending-assets-implementation.md`.
+
+1. **A second, optional entry path — Add Asset is completely unchanged.**
+   PO-tracked procurement (raise a PO → add pending lines → deliver →
+   real assets) exists alongside the existing single-step Add Asset
+   form, not instead of it. Nothing about Add Asset's fields, validation,
+   or behavior changed.
+2. **Two new additive tables (`purchase_order`, `pending_asset`) — no
+   change to `Asset`'s own schema.** A `PendingAsset` is not an asset: it
+   never appears in the Asset Register, Dashboard, or any export until
+   converted. Conversion reuses `app.assets.service.procure_assets`
+   completely unchanged (`quantity=1` per line, since each `PendingAsset`
+   already represents exactly one physical unit) — same numbering, same
+   append-only `asset_event` ledger, no parallel logic.
+3. **Quantity at PO-entry creates that many individual `PendingAsset`
+   rows immediately**, not one grouped row — each unit needs its own
+   serial number at delivery (confirmed by the "20 laptops, 10 mice, 5
+   speakers under one PO" example that shaped this design), and this
+   also makes partial delivery (only some of a quantity arriving first)
+   representable without any special-casing.
+4. **PO No/Date and Invoice No/Date/Amount are entered once and shared
+   across every line in that batch** — Serial Number and Initial Holder
+   are the only two fields that are genuinely per-unit, both filled at
+   Delivery Done, never at PO-entry (the item doesn't physically exist
+   yet). Cost Centre is captured at PO-entry, per line.
+5. **Delivery Done is scoped to one PO's own lines at a time** —
+   deliberately not a cross-PO batch screen, since one invoice/PO-No/
+   PO-Date block applies to the whole selection and mixing lines from
+   different POs into one delivery action would misattribute that
+   shared data.
+6. **A `PENDING` line can be edited or cancelled at any time before
+   delivery; once `DELIVERED` it is frozen** — the resulting real Asset
+   then follows the existing Correction workflow like any other asset,
+   never edited through this feature again. No hard deletes — a
+   cancelled line is a terminal soft state, kept for PO history.
+7. **The converted Asset's own `po_number`/`po_date` columns (already
+   existing on `Asset`, previously populated only by Add Asset's own
+   optional PO fields) are now also populated from the parent
+   PurchaseOrder** — found and fixed during planning (the first draft's
+   `deliver_pending_assets` signature omitted them); traceability back to
+   the originating PO is otherwise only a one-directional link
+   (`PendingAsset.delivered_asset_id`), not surfaced on Asset 360 itself
+   (explicitly out of scope this stage).
+8. **Role gate: ADMIN/IT_TEAM on every PO/PendingAsset endpoint**,
+   matching Add Asset's own `require_role("ADMIN", "IT_TEAM")` exactly.
+   This was an explicitly open question during design (deferred by the
+   user) and was implemented with this default, documented here as the
+   actual shipped behavior — trivial to narrow to ADMIN-only later if
+   needed (a single `require_role(...)` argument).
+9. **No dashboard/reporting surface for pending POs in this stage** —
+   out of scope, a candidate for a future, separately-authorized
+   enhancement (analogous to ThreadERP's own "Asset WIP" dashboard card,
+   noted but deliberately not built during AM-11's gap review either).
+
 ## 2026-09-25 — AM-12 scope locked (Dashboard Operational Control Enhancement, G03)
 
 1. **Exception visibility uses one compact "Exceptions" card listing all

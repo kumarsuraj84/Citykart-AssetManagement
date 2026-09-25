@@ -1,26 +1,62 @@
 # CKAM — Current Stage
 
-**Stage:** AM-12 (Dashboard Operational Control Enhancement) — complete.
-**Verdict: PASS.**
+**Stage:** Purchase Order / Pending Assets feature — implemented, backend
+and frontend regression clean; live browser UAT still pending (blocked by
+a browser-tool permission issue this session, not a code concern).
 **Environment: DEVELOPMENT / UAT. Production deployment remains DEFERRED —
 there is currently no production server.** AM-10's evidence, documents,
 regression baselines, and the local `ckam-v1.0.0-rc1` tag are all
 preserved unmoved; production deployment work resumes only once the user
 supplies real production server details and issues a separate
 production-deployment authorization.
-**FEATURE FREEZE remains lifted for justified Phase-1 gap closure only**
-(established AM-11) — every enhancement still needs the same
-justification: an existing CityKart requirement, legacy ThreadERP domain
-evidence, a current workflow gap, direct user feedback, or demonstrated
-operational need.
-**Next:** Awaiting explicit user direction for the next development/
-enhancement stage. Do NOT automatically begin further enhancement work.
-Do not start `holder_company_access`, import duplicate detection, bulk
-correction, category/subcategory-scoped Custom Fields, approval workflow,
-AMC/insurance, depreciation, physical verification, a company-wide audit
-explorer, new lifecycle states, new master types, or the G04 ADMIN
-Dashboard company selector/breakdown, without an explicit business
-decision resolving the open items below first.
+**FEATURE FREEZE remains lifted for justified Phase-1 gap closure/
+enhancement only** (established AM-11) — this feature was built directly
+from the user's own detailed procurement-workflow description
+(a genuine CityKart Phase-1 requirement), following the full brainstorm →
+design spec → implementation plan process, not started speculatively.
+**Next:** Live browser UAT of the new `/purchase-orders*` screens (manual,
+or retry via this session once browser access is available), then await
+explicit user direction for the next development stage. Do NOT
+automatically begin further enhancement work. Do not start
+`holder_company_access`, import duplicate detection, bulk correction,
+category/subcategory-scoped Custom Fields, approval workflow, AMC/
+insurance, depreciation, physical verification, a company-wide audit
+explorer, new lifecycle states, new master types, a pending-PO dashboard
+widget, or the G04 ADMIN Dashboard company selector/breakdown, without an
+explicit business decision resolving the open items below first.
+
+## What's actually done — Purchase Order / Pending Assets feature
+
+- **A new, optional PO-tracked procurement path, built end-to-end**:
+  raise a PO → add pending line items (Description/Category/Subcategory/
+  Cost Centre/Cost/Tax %, Quantity expands into that many individual
+  trackable rows) → select delivered lines within that PO → one popup
+  captures Invoice No/Date/Amount (shared) plus Serial Number/Initial
+  Holder (per unit) → converts into real, numbered Assets via the
+  existing `procure_assets` path, unchanged. Full design:
+  `docs/specs/2026-09-25-po-pending-assets-design.md`. Full plan:
+  `docs/superpowers/plans/2026-09-25-po-pending-assets-implementation.md`.
+- **Add Asset is completely untouched** — this is a second path, not a
+  replacement or redesign.
+- **Two new additive tables** (`purchase_order`, `pending_asset`) — no
+  change to `Asset`'s own schema. A `PendingAsset` never appears in the
+  Asset Register/Dashboard/exports until converted.
+- **New role gate: ADMIN/IT_TEAM** on every `/api/purchase-orders*`
+  endpoint, matching Add Asset's own gate — a new sidebar "Purchase
+  Orders" link, gated the same way.
+- **Backend: 331/331 passing** (was 312/312 before this feature — +19
+  new tests across models/service/delivery/router). **Frontend: 167/167
+  passing** (was 154/154 — +13 new tests across the three new screens),
+  TypeScript clean. **E2E: 5/5** (unchanged, no new spec added — the
+  existing suite doesn't touch these new screens; live browser UAT is
+  the remaining verification step). **Production build: clean.**
+- **No database migration risk** — additive-only, both new tables'
+  downgrade paths drop cleanly with no data-migration step, since
+  nothing pre-existing moves into them.
+- **Not yet done**: live browser click-through UAT (blocked this session
+  by a browser-tool permission/navigation issue, not a known application
+  defect — every flow is covered by automated backend/frontend tests
+  instead). No production work of any kind.
 
 **Open Phase-1 business decisions (none are software defects):**
 1. `holder_company_access` — still depends on whether CityKart's real
