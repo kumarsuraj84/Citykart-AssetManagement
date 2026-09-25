@@ -29,6 +29,9 @@ const PENDING_LINE = {
 const DELIVERED_LINE = {
   ...PENDING_LINE, id: 11, description: "HP Printer", status: "DELIVERED", serial_number: "SN-999", delivered_asset_id: 99,
 };
+const PENDING_LINE_2 = {
+  ...PENDING_LINE, id: 12, description: "Logitech Mouse", barcode: "CT123",
+};
 
 function mockGets(lines: unknown[]) {
   (apiClient.get as any).mockImplementation((path: string) => {
@@ -59,17 +62,25 @@ describe("PurchaseOrderDetail", () => {
     expect(screen.getByText("BC-777")).toBeInTheDocument();
   });
 
-  it("posts an Add Line request including a shared Barcode", async () => {
+  it("posts an Add Line request including a shared Barcode, once every mandatory field is filled", async () => {
     mockGets([]);
     (apiClient.post as any).mockResolvedValue([PENDING_LINE]);
     renderDetailAt();
     await waitFor(() => expect(screen.getByLabelText(/^description\*?$/i)).toBeInTheDocument());
 
     fireEvent.change(screen.getByLabelText(/^description\*?$/i), { target: { value: "Dell Laptop" } });
-    fireEvent.change(screen.getByLabelText(/^barcode$/i), { target: { value: "BC-BATCH-9" } });
+    fireEvent.change(screen.getByLabelText(/^barcode\*?$/i), { target: { value: "BC-BATCH-9" } });
 
     fireEvent.click(screen.getByLabelText(/^category\*?$/i));
     fireEvent.click(await screen.findByText("IT Equipment"));
+
+    // Category alone isn't enough now -- Sub-Category/Cost/Quantity are
+    // also mandatory, so the button must still be disabled until they're set.
+    expect(screen.getByRole("button", { name: /add line/i })).toBeDisabled();
+
+    fireEvent.click(screen.getByLabelText(/^sub-category\*?$/i));
+    fireEvent.click(await screen.findByText("Laptop"));
+    fireEvent.change(screen.getByLabelText(/^cost\*?$/i), { target: { value: "1000" } });
 
     await waitFor(() => expect(screen.getByRole("button", { name: /add line/i })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: /add line/i }));
@@ -77,7 +88,7 @@ describe("PurchaseOrderDetail", () => {
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith(
         "/purchase-orders/1/lines",
-        expect.objectContaining({ description: "Dell Laptop", barcode: "BC-BATCH-9" }),
+        expect.objectContaining({ description: "Dell Laptop", barcode: "BC-BATCH-9", subcategory_id: 2, purchase_cost: 1000 }),
       ),
     );
   });
@@ -165,6 +176,50 @@ describe("PurchaseOrderDetail", () => {
         }),
       ),
     );
+  });
+
+  it("Close navigates back to the Purchase Orders list", async () => {
+    mockGets([PENDING_LINE]);
+    renderDetailAt();
+    await waitFor(() => expect(screen.getByText("Dell Laptop")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("link", { name: /^close$/i }));
+
+    await waitFor(() => expect(screen.getByRole("link", { name: /new purchase order/i })).toBeInTheDocument());
+  });
+
+  it("searching a column header hides non-matching rows, and Select All then only selects what's visible", async () => {
+    mockGets([PENDING_LINE, PENDING_LINE_2]);
+    renderDetailAt();
+    await waitFor(() => expect(screen.getByText("Dell Laptop")).toBeInTheDocument());
+    expect(screen.getByText("Logitech Mouse")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/^search barcode$/i), { target: { value: "CT123" } });
+
+    await waitFor(() => expect(screen.queryByText("Dell Laptop")).not.toBeInTheDocument());
+    expect(screen.getByText("Logitech Mouse")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /select all pending lines/i }));
+    expect(screen.getByRole("checkbox", { name: /select logitech mouse/i })).toBeChecked();
+
+    // Clearing the filter reveals Dell Laptop again, still unselected by the
+    // earlier Select All (which only ever touched the filtered set).
+    fireEvent.change(screen.getByLabelText(/^search barcode$/i), { target: { value: "" } });
+    await waitFor(() => expect(screen.getByText("Dell Laptop")).toBeInTheDocument());
+    expect(screen.getByRole("checkbox", { name: /select dell laptop/i })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /select logitech mouse/i })).toBeChecked();
+  });
+
+  it("Select All with no filter selects every pending line", async () => {
+    mockGets([PENDING_LINE, PENDING_LINE_2]);
+    renderDetailAt();
+    await waitFor(() => expect(screen.getByText("Dell Laptop")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /select all pending lines/i }));
+
+    expect(screen.getByRole("checkbox", { name: /select dell laptop/i })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /select logitech mouse/i })).toBeChecked();
+    expect(screen.getByRole("button", { name: /mark 2 delivery done/i })).toBeInTheDocument();
   });
 
   it("shows a server-side error inline on a failed Delivery Done submit and keeps the dialog open", async () => {
