@@ -7,6 +7,7 @@ class PurchaseOrderCreateIn(BaseModel):
     po_number: str
     po_date: date
     vendor_id: int | None = None
+    cost_center_id: int
 
 
 class PurchaseOrderOut(BaseModel):
@@ -16,6 +17,7 @@ class PurchaseOrderOut(BaseModel):
     po_number: str
     po_date: date
     vendor_id: int | None
+    cost_center_id: int | None
     is_active: bool
 
 
@@ -23,7 +25,6 @@ class PendingAssetLineIn(BaseModel):
     description: str
     category_id: int
     subcategory_id: int | None = None
-    cost_center_id: int
     purchase_cost: float | None = None
     tax_percent: float | None = None
     quantity: int = 1
@@ -33,7 +34,6 @@ class PendingAssetLineUpdateIn(BaseModel):
     description: str
     category_id: int
     subcategory_id: int | None = None
-    cost_center_id: int
     purchase_cost: float | None = None
     tax_percent: float | None = None
 

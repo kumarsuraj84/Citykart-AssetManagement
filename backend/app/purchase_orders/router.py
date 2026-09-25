@@ -32,7 +32,11 @@ async def create_po(
     actor=Depends(require_role("ADMIN", "IT_TEAM")),
 ):
     ensure_company_in_scope(actor, body.company_id)
-    po = await create_purchase_order(session, body.model_dump(), actor)
+    try:
+        po = await create_purchase_order(session, body.model_dump(), actor)
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
     await session.commit()
     await session.refresh(po)
     return po

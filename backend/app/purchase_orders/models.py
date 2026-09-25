@@ -15,6 +15,7 @@ class PurchaseOrder(Base, AuditMixin, SoftDeleteMixin):
     po_number: Mapped[str] = mapped_column(String(100))
     po_date: Mapped[date] = mapped_column(Date)
     vendor_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("vendor.id"))
+    cost_center_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("cost_center.id"))
 
 
 class PendingAsset(Base, AuditMixin):

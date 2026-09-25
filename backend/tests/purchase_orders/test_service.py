@@ -31,7 +31,7 @@ async def _setup(suffix: str):
         await session.commit()
 
         po = PurchaseOrder(company_id=co.id, po_number="PO-1", po_date=date(2026, 1, 1),
-                            created_by=admin.id, updated_by=admin.id)
+                            cost_center_id=cc.id, created_by=admin.id, updated_by=admin.id)
         session.add(po)
         await session.commit()
 
@@ -45,26 +45,41 @@ async def test_add_pending_asset_line_with_quantity_creates_that_many_rows():
         admin = await session.get(Holder, ctx["admin"].id)
         lines = await add_pending_asset_line(session, po, {
             "description": "Laptop", "category_id": ctx["cat"].id, "subcategory_id": ctx["sub"].id,
-            "cost_center_id": ctx["cc"].id, "purchase_cost": 1000, "tax_percent": 18, "quantity": 3,
+            "purchase_cost": 1000, "tax_percent": 18, "quantity": 3,
         }, admin)
         await session.commit()
 
         assert len(lines) == 3
         for line in lines:
             assert line.status == "PENDING"
+            assert line.cost_center_id == ctx["cc"].id
             assert line.tax_amount == 180
             assert line.total_cost == 1180
 
 
-async def test_add_pending_asset_line_rejects_cost_centre_from_another_company():
+async def test_create_purchase_order_rejects_cost_centre_from_another_company():
     ctx = await _setup("Q2")
     async with SessionLocal() as session:
-        po = await session.get(PurchaseOrder, ctx["po"].id)
         admin = await session.get(Holder, ctx["admin"].id)
         with pytest.raises(ValueError, match="same company"):
+            await create_purchase_order(session, {
+                "company_id": ctx["co"].id, "po_number": "PO-2", "po_date": date(2026, 1, 1),
+                "cost_center_id": ctx["cc_other"].id,
+            }, admin)
+
+
+async def test_add_pending_asset_line_rejects_a_po_with_no_cost_centre():
+    ctx = await _setup("Q2B")
+    async with SessionLocal() as session:
+        admin = await session.get(Holder, ctx["admin"].id)
+        po = PurchaseOrder(company_id=ctx["co"].id, po_number="PO-NOCC", po_date=date(2026, 1, 1),
+                            created_by=admin.id, updated_by=admin.id)
+        session.add(po)
+        await session.commit()
+
+        with pytest.raises(ValueError, match="cost centre"):
             await add_pending_asset_line(session, po, {
-                "description": "Laptop", "category_id": ctx["cat"].id,
-                "cost_center_id": ctx["cc_other"].id, "quantity": 1,
+                "description": "Laptop", "category_id": ctx["cat"].id, "quantity": 1,
             }, admin)
 
 
@@ -75,13 +90,13 @@ async def test_update_pending_asset_line_recomputes_tax():
         admin = await session.get(Holder, ctx["admin"].id)
         [line] = await add_pending_asset_line(session, po, {
             "description": "Laptop", "category_id": ctx["cat"].id,
-            "cost_center_id": ctx["cc"].id, "purchase_cost": 1000, "tax_percent": 18, "quantity": 1,
+            "purchase_cost": 1000, "tax_percent": 18, "quantity": 1,
         }, admin)
         await session.commit()
 
         updated = await update_pending_asset_line(session, line, {
             "description": "Laptop Pro", "category_id": ctx["cat"].id,
-            "cost_center_id": ctx["cc"].id, "purchase_cost": 2000, "tax_percent": 10,
+            "purchase_cost": 2000, "tax_percent": 10,
         }, admin)
         await session.commit()
 
@@ -96,15 +111,14 @@ async def test_update_pending_asset_line_rejects_a_non_pending_line():
         po = await session.get(PurchaseOrder, ctx["po"].id)
         admin = await session.get(Holder, ctx["admin"].id)
         [line] = await add_pending_asset_line(session, po, {
-            "description": "Laptop", "category_id": ctx["cat"].id,
-            "cost_center_id": ctx["cc"].id, "quantity": 1,
+            "description": "Laptop", "category_id": ctx["cat"].id, "quantity": 1,
         }, admin)
         await cancel_pending_asset_line(session, line, admin)
         await session.commit()
 
         with pytest.raises(ValueError, match="cancelled"):
             await update_pending_asset_line(session, line, {
-                "description": "New", "category_id": ctx["cat"].id, "cost_center_id": ctx["cc"].id,
+                "description": "New", "category_id": ctx["cat"].id,
             }, admin)
 
 
@@ -114,8 +128,7 @@ async def test_cancel_pending_asset_line_sets_cancelled_and_is_terminal():
         po = await session.get(PurchaseOrder, ctx["po"].id)
         admin = await session.get(Holder, ctx["admin"].id)
         [line] = await add_pending_asset_line(session, po, {
-            "description": "Laptop", "category_id": ctx["cat"].id,
-            "cost_center_id": ctx["cc"].id, "quantity": 1,
+            "description": "Laptop", "category_id": ctx["cat"].id, "quantity": 1,
         }, admin)
         await session.commit()
 

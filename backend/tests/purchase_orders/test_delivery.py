@@ -34,7 +34,7 @@ async def _setup(suffix: str):
         await session.commit()
 
         po = PurchaseOrder(company_id=co.id, po_number="PO-DLV-1", po_date=date(2026, 1, 1),
-                            created_by=admin.id, updated_by=admin.id)
+                            cost_center_id=cc.id, created_by=admin.id, updated_by=admin.id)
         session.add(po)
         await session.commit()
 
@@ -48,7 +48,7 @@ async def test_deliver_pending_assets_creates_real_assets_with_distinct_serials(
         admin = await session.get(Holder, ctx["admin"].id)
         lines = await add_pending_asset_line(session, po, {
             "description": "Laptop", "category_id": ctx["cat"].id, "subcategory_id": ctx["sub"].id,
-            "cost_center_id": ctx["cc"].id, "purchase_cost": 1000, "tax_percent": 18, "quantity": 3,
+            "purchase_cost": 1000, "tax_percent": 18, "quantity": 3,
         }, admin)
         await session.commit()
 
@@ -84,8 +84,7 @@ async def test_deliver_pending_assets_updates_line_status_and_traceability():
         po = await session.get(PurchaseOrder, ctx["po"].id)
         admin = await session.get(Holder, ctx["admin"].id)
         [line] = await add_pending_asset_line(session, po, {
-            "description": "Laptop", "category_id": ctx["cat"].id,
-            "cost_center_id": ctx["cc"].id, "quantity": 1,
+            "description": "Laptop", "category_id": ctx["cat"].id, "quantity": 1,
         }, admin)
         await session.commit()
 
@@ -107,8 +106,7 @@ async def test_deliver_partial_selection_leaves_others_pending():
         po = await session.get(PurchaseOrder, ctx["po"].id)
         admin = await session.get(Holder, ctx["admin"].id)
         lines = await add_pending_asset_line(session, po, {
-            "description": "Laptop", "category_id": ctx["cat"].id,
-            "cost_center_id": ctx["cc"].id, "quantity": 5,
+            "description": "Laptop", "category_id": ctx["cat"].id, "quantity": 5,
         }, admin)
         await session.commit()
 
@@ -135,8 +133,7 @@ async def test_deliver_rejects_an_already_delivered_line():
         po = await session.get(PurchaseOrder, ctx["po"].id)
         admin = await session.get(Holder, ctx["admin"].id)
         [line] = await add_pending_asset_line(session, po, {
-            "description": "Laptop", "category_id": ctx["cat"].id,
-            "cost_center_id": ctx["cc"].id, "quantity": 1,
+            "description": "Laptop", "category_id": ctx["cat"].id, "quantity": 1,
         }, admin)
         await session.commit()
 
@@ -159,8 +156,7 @@ async def test_deliver_generates_sequential_distinct_asset_codes():
         po = await session.get(PurchaseOrder, ctx["po"].id)
         admin = await session.get(Holder, ctx["admin"].id)
         lines = await add_pending_asset_line(session, po, {
-            "description": "Laptop", "category_id": ctx["cat"].id,
-            "cost_center_id": ctx["cc"].id, "quantity": 4,
+            "description": "Laptop", "category_id": ctx["cat"].id, "quantity": 4,
         }, admin)
         await session.commit()
         deliveries = {l.id: {"serial_number": f"SN-{l.id}", "initial_holder_id": ctx["stock"].id} for l in lines}

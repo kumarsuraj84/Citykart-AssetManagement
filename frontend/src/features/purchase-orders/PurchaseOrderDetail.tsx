@@ -21,6 +21,7 @@ interface PurchaseOrderOut {
   po_number: string;
   po_date: string;
   vendor_id: number | null;
+  cost_center_id: number | null;
 }
 
 interface PendingAssetRow {
@@ -90,16 +91,17 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const holders = holdersQ.data ?? [];
   const lines = linesQ.data ?? [];
   const categoryName = (id: number) => categories.find((c) => c.id === id)?.name ?? String(id);
+  const costCenterName = (id: number | null) => (id == null ? "—" : costCenters.find((c) => c.id === id)?.name ?? String(id));
 
   // --- Add Line form ---
   const [lineForm, setLineForm] = useState({
-    description: "", categoryId: "", subcategoryId: "", costCenterId: "",
+    description: "", categoryId: "", subcategoryId: "",
     purchaseCost: "0", taxPercent: "0", quantity: "1",
   });
   const visibleSubcategories = lineForm.categoryId
     ? subcategories.filter((s) => s.category_id === Number(lineForm.categoryId))
     : subcategories;
-  const canAddLine = lineForm.description.trim() !== "" && lineForm.categoryId !== "" && lineForm.costCenterId !== "";
+  const canAddLine = lineForm.description.trim() !== "" && lineForm.categoryId !== "";
 
   const addLineMutation = useMutation({
     mutationFn: () =>
@@ -107,27 +109,26 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
         description: lineForm.description,
         category_id: Number(lineForm.categoryId),
         subcategory_id: lineForm.subcategoryId ? Number(lineForm.subcategoryId) : null,
-        cost_center_id: Number(lineForm.costCenterId),
         purchase_cost: Number(lineForm.purchaseCost) || 0,
         tax_percent: Number(lineForm.taxPercent) || 0,
         quantity: Number(lineForm.quantity) || 1,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["purchase-order", poId, "lines"] });
-      setLineForm({ description: "", categoryId: "", subcategoryId: "", costCenterId: "", purchaseCost: "0", taxPercent: "0", quantity: "1" });
+      setLineForm({ description: "", categoryId: "", subcategoryId: "", purchaseCost: "0", taxPercent: "0", quantity: "1" });
     },
   });
 
   // --- Edit line dialog ---
   const [editingLine, setEditingLine] = useState<PendingAssetRow | null>(null);
-  const [editForm, setEditForm] = useState({ description: "", categoryId: "", subcategoryId: "", costCenterId: "", purchaseCost: "0", taxPercent: "0" });
+  const [editForm, setEditForm] = useState({ description: "", categoryId: "", subcategoryId: "", purchaseCost: "0", taxPercent: "0" });
 
   function openEdit(line: PendingAssetRow) {
     setEditingLine(line);
     setEditForm({
       description: line.description, categoryId: String(line.category_id),
       subcategoryId: line.subcategory_id ? String(line.subcategory_id) : "",
-      costCenterId: String(line.cost_center_id), purchaseCost: String(line.purchase_cost ?? 0),
+      purchaseCost: String(line.purchase_cost ?? 0),
       taxPercent: String(line.tax_percent ?? 0),
     });
   }
@@ -137,7 +138,6 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
       apiClient.put<PendingAssetRow>(`/purchase-orders/lines/${editingLine!.id}`, {
         description: editForm.description, category_id: Number(editForm.categoryId),
         subcategory_id: editForm.subcategoryId ? Number(editForm.subcategoryId) : null,
-        cost_center_id: Number(editForm.costCenterId),
         purchase_cost: Number(editForm.purchaseCost) || 0, tax_percent: Number(editForm.taxPercent) || 0,
       }),
     onSuccess: () => {
@@ -234,7 +234,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     <div className="flex flex-col gap-6">
       <PageHeader
         title={poQ.data ? `Purchase Order ${poQ.data.po_number}` : "Purchase Order"}
-        description={poQ.data ? `PO Date: ${poQ.data.po_date}` : undefined}
+        description={poQ.data ? `PO Date: ${poQ.data.po_date} · Cost Centre: ${costCenterName(poQ.data.cost_center_id)}` : undefined}
         actions={
           <Button onClick={openDeliver} disabled={selected.length === 0}>
             Mark {selected.length > 0 ? selected.length : ""} Delivery Done
@@ -271,20 +271,6 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
                 {visibleSubcategories.map((s) => (
                   <SelectItem key={s.id} value={String(s.id)}>
                     {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </FormField>
-          <FormField htmlFor="line-cost-center" label="Cost Centre" required>
-            <Select value={selectValue(lineForm.costCenterId)} onValueChange={(v) => setLineForm((f) => ({ ...f, costCenterId: v }))}>
-              <SelectTrigger id="line-cost-center">
-                <SelectValue placeholder="Select…" />
-              </SelectTrigger>
-              <SelectContent>
-                {costCenters.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.name}
                   </SelectItem>
                 ))}
               </SelectContent>

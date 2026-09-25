@@ -26,11 +26,17 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number }) {
   const [poNumber, setPoNumber] = useState("");
   const [poDate, setPoDate] = useState(new Date().toISOString().slice(0, 10));
   const [vendorId, setVendorId] = useState("");
+  const [costCenterId, setCostCenterId] = useState("");
 
   const vendorsQ = useQuery({ queryKey: ["masters", "vendors"], queryFn: () => apiClient.get<Option[]>("/masters/vendors") });
   const vendors = vendorsQ.data ?? [];
+  const costCentersQ = useQuery({
+    queryKey: ["masters", "cost-centers", companyId],
+    queryFn: () => apiClient.get<Option[]>(`/masters/cost-centers?company_id=${companyId}`),
+  });
+  const costCenters = costCentersQ.data ?? [];
 
-  const canSave = poNumber.trim() !== "" && poDate !== "";
+  const canSave = poNumber.trim() !== "" && poDate !== "" && costCenterId !== "";
 
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -39,6 +45,7 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number }) {
         po_number: poNumber,
         po_date: poDate,
         vendor_id: vendorId ? Number(vendorId) : null,
+        cost_center_id: Number(costCenterId),
       }),
     onSuccess: (created) => {
       navigate({ to: "/purchase-orders/$id", params: { id: String(created.id) } });
@@ -65,6 +72,20 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number }) {
               {vendors.map((v) => (
                 <SelectItem key={v.id} value={String(v.id)}>
                   {v.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FormField>
+        <FormField htmlFor="cost-center" label="Cost Centre" required>
+          <Select value={selectValue(costCenterId)} onValueChange={setCostCenterId}>
+            <SelectTrigger id="cost-center">
+              <SelectValue placeholder="Select…" />
+            </SelectTrigger>
+            <SelectContent>
+              {costCenters.map((c) => (
+                <SelectItem key={c.id} value={String(c.id)}>
+                  {c.name}
                 </SelectItem>
               ))}
             </SelectContent>

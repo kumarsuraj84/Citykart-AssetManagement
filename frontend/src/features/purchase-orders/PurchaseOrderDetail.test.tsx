@@ -19,7 +19,7 @@ function renderDetailAt(url = "/purchase-orders/1") {
   return router;
 }
 
-const PO = { id: 1, company_id: 1, po_number: "PO-2026-001", po_date: "2026-01-01", vendor_id: null };
+const PO = { id: 1, company_id: 1, po_number: "PO-2026-001", po_date: "2026-01-01", vendor_id: null, cost_center_id: 3 };
 
 const PENDING_LINE = {
   id: 10, purchase_order_id: 1, description: "Dell Laptop", category_id: 1, subcategory_id: null,
@@ -55,6 +55,7 @@ describe("PurchaseOrderDetail", () => {
     await waitFor(() => expect(screen.getByText(/PO-2026-001/)).toBeInTheDocument());
     expect(screen.getByText("Dell Laptop")).toBeInTheDocument();
     expect(screen.getByText("PENDING")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/Head Office/)).toBeInTheDocument());
   });
 
   it("posts an Add Line request including quantity", async () => {

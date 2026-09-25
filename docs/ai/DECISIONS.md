@@ -29,7 +29,16 @@ Implementation plan: `docs/superpowers/plans/2026-09-25-po-pending-assets-implem
    across every line in that batch** — Serial Number and Initial Holder
    are the only two fields that are genuinely per-unit, both filled at
    Delivery Done, never at PO-entry (the item doesn't physically exist
-   yet). Cost Centre is captured at PO-entry, per line.
+   yet). Cost Centre is a PO-header attribute, not a per-line one —
+   corrected same day, after live UAT: it was originally captured
+   per line in the "Add Line" form, but one PO is raised against one
+   cost centre in practice, so it now lives on `PurchaseOrder` itself
+   (`cost_center_id`, additive migration `8c5638e1b65e`) and every
+   `PendingAsset` line inherits it automatically at line-creation time.
+   `PendingAsset.cost_center_id` is unchanged as a column — it still
+   carries the value through to `deliver_pending_assets`/
+   `procure_assets` — only its source changed, from user input per line
+   to inheritance from the parent PO.
 5. **Delivery Done is scoped to one PO's own lines at a time** —
    deliberately not a cross-PO batch screen, since one invoice/PO-No/
    PO-Date block applies to the whole selection and mixing lines from

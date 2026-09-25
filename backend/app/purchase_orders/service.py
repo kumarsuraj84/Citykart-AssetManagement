@@ -7,9 +7,15 @@ from app.purchase_orders.models import PendingAsset, PurchaseOrder
 
 
 async def create_purchase_order(session: AsyncSession, data: dict, actor: Holder) -> PurchaseOrder:
+    cost_center = await session.get(CostCenter, data["cost_center_id"])
+    if cost_center is None:
+        raise ValueError(f"cost center {data['cost_center_id']} not found")
+    if cost_center.company_id != data["company_id"]:
+        raise ValueError("cost center must belong to the same company as the purchase order")
     po = PurchaseOrder(
         company_id=data["company_id"], po_number=data["po_number"],
         po_date=data["po_date"], vendor_id=data.get("vendor_id"),
+        cost_center_id=data["cost_center_id"],
         created_by=actor.id, updated_by=actor.id,
     )
     session.add(po)
@@ -17,12 +23,13 @@ async def create_purchase_order(session: AsyncSession, data: dict, actor: Holder
     return po
 
 
-async def _validate_line_masters(session: AsyncSession, company_id: int, data: dict) -> None:
+async def _validate_line_masters(session: AsyncSession, data: dict) -> None:
     """Same referential checks procure_assets already does for category/
-    subcategory/cost-centre -- duplicated narrowly here (not imported)
-    because procure_assets validates a *complete* asset-creation payload
-    (also requiring purchase_date/initial_holder_id, neither of which
-    exist yet at PO-entry time); this is the PO-entry-time subset only."""
+    subcategory -- duplicated narrowly here (not imported) because
+    procure_assets validates a *complete* asset-creation payload (also
+    requiring purchase_date/initial_holder_id/cost_center_id, none of which
+    are picked at line-entry time -- cost centre lives on the parent PO,
+    see create_purchase_order); this is the PO-entry-time subset only."""
     category = await session.get(AssetCategory, data["category_id"])
     if category is None:
         raise ValueError(f"category {data['category_id']} not found")
@@ -33,11 +40,6 @@ async def _validate_line_masters(session: AsyncSession, company_id: int, data: d
             raise ValueError(f"subcategory {subcategory_id} not found")
         if subcategory.category_id != category.id:
             raise ValueError("sub-category does not belong to the selected category")
-    cost_center = await session.get(CostCenter, data["cost_center_id"])
-    if cost_center is None:
-        raise ValueError(f"cost center {data['cost_center_id']} not found")
-    if cost_center.company_id != company_id:
-        raise ValueError("cost center must belong to the same company as the purchase order")
 
 
 async def add_pending_asset_line(
@@ -46,7 +48,9 @@ async def add_pending_asset_line(
     """quantity>1 creates that many separate PendingAsset rows (each will get
     its own distinct serial number at Delivery Done) -- mirrors
     procure_assets' own quantity handling, never one row with a count."""
-    await _validate_line_masters(session, purchase_order.company_id, data)
+    if purchase_order.cost_center_id is None:
+        raise ValueError("purchase order has no cost centre set")
+    await _validate_line_masters(session, data)
     purchase_cost = data.get("purchase_cost")
     tax_percent = data.get("tax_percent")
     tax_amount, total_cost = compute_tax(purchase_cost, tax_percent)
@@ -57,7 +61,7 @@ async def add_pending_asset_line(
         line = PendingAsset(
             purchase_order_id=purchase_order.id, company_id=purchase_order.company_id,
             description=data["description"], category_id=data["category_id"],
-            subcategory_id=data.get("subcategory_id"), cost_center_id=data["cost_center_id"],
+            subcategory_id=data.get("subcategory_id"), cost_center_id=purchase_order.cost_center_id,
             purchase_cost=purchase_cost, tax_percent=tax_percent,
             tax_amount=tax_amount, total_cost=total_cost, status="PENDING",
             created_by=actor.id, updated_by=actor.id,
@@ -71,12 +75,11 @@ async def add_pending_asset_line(
 async def update_pending_asset_line(session: AsyncSession, line: PendingAsset, data: dict, actor: Holder) -> PendingAsset:
     if line.status != "PENDING":
         raise ValueError(f"cannot edit a {line.status.lower()} line")
-    await _validate_line_masters(session, line.company_id, data)
+    await _validate_line_masters(session, data)
     tax_amount, total_cost = compute_tax(data.get("purchase_cost"), data.get("tax_percent"))
     line.description = data["description"]
     line.category_id = data["category_id"]
     line.subcategory_id = data.get("subcategory_id")
-    line.cost_center_id = data["cost_center_id"]
     line.purchase_cost = data.get("purchase_cost")
     line.tax_percent = data.get("tax_percent")
     line.tax_amount = tax_amount

@@ -22,17 +22,24 @@ function renderFormAt(url = "/purchase-orders/new") {
 beforeEach(() => {
   vi.clearAllMocks();
   useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, mustChangePassword: false });
-  (apiClient.get as any).mockResolvedValue([{ id: 9, name: "Acme Traders" }]);
+  (apiClient.get as any).mockImplementation((path: string) => {
+    if (path.startsWith("/masters/cost-centers")) return Promise.resolve([{ id: 3, name: "Head Office" }]);
+    return Promise.resolve([{ id: 9, name: "Acme Traders" }]);
+  });
 });
 afterEach(() => useAuthStore.getState().logout());
 
 describe("NewPurchaseOrderForm", () => {
-  it("disables Create until PO No and PO Date are filled", async () => {
+  it("disables Create until PO No, PO Date and Cost Centre are filled", async () => {
     renderFormAt();
     await waitFor(() => expect(screen.getByLabelText(/po no/i)).toBeInTheDocument());
     expect(screen.getByRole("button", { name: /create purchase order/i })).toBeDisabled();
 
     fireEvent.change(screen.getByLabelText(/po no/i), { target: { value: "PO-1" } });
+    expect(screen.getByRole("button", { name: /create purchase order/i })).toBeDisabled();
+
+    fireEvent.click(screen.getByLabelText(/cost centre/i));
+    fireEvent.click(await screen.findByText("Head Office"));
     expect(screen.getByRole("button", { name: /create purchase order/i })).not.toBeDisabled();
   });
 
@@ -42,10 +49,15 @@ describe("NewPurchaseOrderForm", () => {
     await waitFor(() => expect(screen.getByLabelText(/po no/i)).toBeInTheDocument());
 
     fireEvent.change(screen.getByLabelText(/po no/i), { target: { value: "PO-1" } });
+    fireEvent.click(screen.getByLabelText(/cost centre/i));
+    fireEvent.click(await screen.findByText("Head Office"));
     fireEvent.click(screen.getByRole("button", { name: /create purchase order/i }));
 
     await waitFor(() =>
-      expect(apiClient.post).toHaveBeenCalledWith("/purchase-orders", expect.objectContaining({ company_id: 1, po_number: "PO-1" })),
+      expect(apiClient.post).toHaveBeenCalledWith(
+        "/purchase-orders",
+        expect.objectContaining({ company_id: 1, po_number: "PO-1", cost_center_id: 3 }),
+      ),
     );
   });
 
@@ -55,6 +67,8 @@ describe("NewPurchaseOrderForm", () => {
     await waitFor(() => expect(screen.getByLabelText(/po no/i)).toBeInTheDocument());
 
     fireEvent.change(screen.getByLabelText(/po no/i), { target: { value: "PO-1" } });
+    fireEvent.click(screen.getByLabelText(/cost centre/i));
+    fireEvent.click(await screen.findByText("Head Office"));
     fireEvent.click(screen.getByRole("button", { name: /create purchase order/i }));
 
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("PO number already used"));

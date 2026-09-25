@@ -77,29 +77,26 @@ async def test_create_po_and_add_line_happy_path(client):
     headers = await _login(client, ctx["admin_emp"])
 
     po_resp = await client.post("/api/purchase-orders", json={
-        "company_id": ctx["co_id"], "po_number": "PO-1", "po_date": "2026-01-01",
+        "company_id": ctx["co_id"], "po_number": "PO-1", "po_date": "2026-01-01", "cost_center_id": ctx["cc_id"],
     }, headers=headers)
     assert po_resp.status_code == 201, po_resp.text
     po_id = po_resp.json()["id"]
 
     lines_resp = await client.post(f"/api/purchase-orders/{po_id}/lines", json={
         "description": "Laptop", "category_id": ctx["cat_id"], "subcategory_id": ctx["sub_id"],
-        "cost_center_id": ctx["cc_id"], "purchase_cost": 1000, "tax_percent": 18, "quantity": 2,
+        "purchase_cost": 1000, "tax_percent": 18, "quantity": 2,
     }, headers=headers)
     assert lines_resp.status_code == 201, lines_resp.text
     assert len(lines_resp.json()) == 2
+    assert all(l["cost_center_id"] == ctx["cc_id"] for l in lines_resp.json())
 
 
-async def test_add_line_rejects_cross_company_cost_centre(client):
+async def test_create_po_rejects_cross_company_cost_centre(client):
     ctx = await _setup("R2", second_company=True)
     headers = await _login(client, ctx["admin_emp"])
-    po_resp = await client.post("/api/purchase-orders", json={
-        "company_id": ctx["co_id"], "po_number": "PO-1", "po_date": "2026-01-01",
-    }, headers=headers)
-    po_id = po_resp.json()["id"]
 
-    resp = await client.post(f"/api/purchase-orders/{po_id}/lines", json={
-        "description": "Laptop", "category_id": ctx["cat_id"], "cost_center_id": ctx["cc_b_id"], "quantity": 1,
+    resp = await client.post("/api/purchase-orders", json={
+        "company_id": ctx["co_id"], "po_number": "PO-1", "po_date": "2026-01-01", "cost_center_id": ctx["cc_b_id"],
     }, headers=headers)
     assert resp.status_code == 422
 
@@ -108,14 +105,14 @@ async def test_edit_and_cancel_line(client):
     ctx = await _setup("R3")
     headers = await _login(client, ctx["admin_emp"])
     po_id = (await client.post("/api/purchase-orders", json={
-        "company_id": ctx["co_id"], "po_number": "PO-1", "po_date": "2026-01-01",
+        "company_id": ctx["co_id"], "po_number": "PO-1", "po_date": "2026-01-01", "cost_center_id": ctx["cc_id"],
     }, headers=headers)).json()["id"]
     line = (await client.post(f"/api/purchase-orders/{po_id}/lines", json={
-        "description": "Laptop", "category_id": ctx["cat_id"], "cost_center_id": ctx["cc_id"], "quantity": 1,
+        "description": "Laptop", "category_id": ctx["cat_id"], "quantity": 1,
     }, headers=headers)).json()[0]
 
     edit_resp = await client.put(f"/api/purchase-orders/lines/{line['id']}", json={
-        "description": "Laptop Pro", "category_id": ctx["cat_id"], "cost_center_id": ctx["cc_id"],
+        "description": "Laptop Pro", "category_id": ctx["cat_id"],
     }, headers=headers)
     assert edit_resp.status_code == 200
     assert edit_resp.json()["description"] == "Laptop Pro"
@@ -132,10 +129,10 @@ async def test_deliver_endpoint_creates_real_assets(client):
     ctx = await _setup("R4")
     headers = await _login(client, ctx["admin_emp"])
     po_id = (await client.post("/api/purchase-orders", json={
-        "company_id": ctx["co_id"], "po_number": "PO-1", "po_date": "2026-01-01",
+        "company_id": ctx["co_id"], "po_number": "PO-1", "po_date": "2026-01-01", "cost_center_id": ctx["cc_id"],
     }, headers=headers)).json()["id"]
     lines = (await client.post(f"/api/purchase-orders/{po_id}/lines", json={
-        "description": "Laptop", "category_id": ctx["cat_id"], "cost_center_id": ctx["cc_id"], "quantity": 2,
+        "description": "Laptop", "category_id": ctx["cat_id"], "quantity": 2,
     }, headers=headers)).json()
 
     deliver_resp = await client.post(f"/api/purchase-orders/{po_id}/deliver", json={
@@ -156,13 +153,13 @@ async def test_deliver_rejects_a_line_from_a_different_po(client):
     ctx = await _setup("R5")
     headers = await _login(client, ctx["admin_emp"])
     po1_id = (await client.post("/api/purchase-orders", json={
-        "company_id": ctx["co_id"], "po_number": "PO-1", "po_date": "2026-01-01",
+        "company_id": ctx["co_id"], "po_number": "PO-1", "po_date": "2026-01-01", "cost_center_id": ctx["cc_id"],
     }, headers=headers)).json()["id"]
     po2_id = (await client.post("/api/purchase-orders", json={
-        "company_id": ctx["co_id"], "po_number": "PO-2", "po_date": "2026-01-01",
+        "company_id": ctx["co_id"], "po_number": "PO-2", "po_date": "2026-01-01", "cost_center_id": ctx["cc_id"],
     }, headers=headers)).json()["id"]
     line_po2 = (await client.post(f"/api/purchase-orders/{po2_id}/lines", json={
-        "description": "Laptop", "category_id": ctx["cat_id"], "cost_center_id": ctx["cc_id"], "quantity": 1,
+        "description": "Laptop", "category_id": ctx["cat_id"], "quantity": 1,
     }, headers=headers)).json()[0]
 
     resp = await client.post(f"/api/purchase-orders/{po1_id}/deliver", json={
@@ -176,7 +173,7 @@ async def test_company_isolation_on_po_read_and_write(client):
     ctx = await _setup("R6", second_company=True)
     headers_a = await _login(client, ctx["admin_emp"])
     po_id = (await client.post("/api/purchase-orders", json={
-        "company_id": ctx["co_id"], "po_number": "PO-1", "po_date": "2026-01-01",
+        "company_id": ctx["co_id"], "po_number": "PO-1", "po_date": "2026-01-01", "cost_center_id": ctx["cc_id"],
     }, headers=headers_a)).json()["id"]
 
     headers_b = await _login(client, ctx["it_team_b_emp"])
@@ -184,7 +181,7 @@ async def test_company_isolation_on_po_read_and_write(client):
     assert get_resp.status_code == 404
 
     add_resp = await client.post(f"/api/purchase-orders/{po_id}/lines", json={
-        "description": "Laptop", "category_id": ctx["cat_id"], "cost_center_id": ctx["cc_id"], "quantity": 1,
+        "description": "Laptop", "category_id": ctx["cat_id"], "quantity": 1,
     }, headers=headers_b)
     assert add_resp.status_code == 404
 
@@ -193,7 +190,7 @@ async def test_viewer_and_holder_cannot_write(client):
     ctx = await _setup("R7")
     admin_headers = await _login(client, ctx["admin_emp"])
     po_id = (await client.post("/api/purchase-orders", json={
-        "company_id": ctx["co_id"], "po_number": "PO-1", "po_date": "2026-01-01",
+        "company_id": ctx["co_id"], "po_number": "PO-1", "po_date": "2026-01-01", "cost_center_id": ctx["cc_id"],
     }, headers=admin_headers)).json()["id"]
 
     viewer_headers = await _login(client, ctx["viewer_emp"])
@@ -202,10 +199,10 @@ async def test_viewer_and_holder_cannot_write(client):
     for headers in (viewer_headers, holder_headers):
         assert (await client.get("/api/purchase-orders", headers=headers)).status_code == 403
         assert (await client.post("/api/purchase-orders", json={
-            "company_id": ctx["co_id"], "po_number": "PO-X", "po_date": "2026-01-01",
+            "company_id": ctx["co_id"], "po_number": "PO-X", "po_date": "2026-01-01", "cost_center_id": ctx["cc_id"],
         }, headers=headers)).status_code == 403
         assert (await client.post(f"/api/purchase-orders/{po_id}/lines", json={
-            "description": "Laptop", "category_id": ctx["cat_id"], "cost_center_id": ctx["cc_id"], "quantity": 1,
+            "description": "Laptop", "category_id": ctx["cat_id"], "quantity": 1,
         }, headers=headers)).status_code == 403
 
 
@@ -215,10 +212,10 @@ async def test_pending_assets_never_appear_in_asset_register(client):
     before = (await client.get(f"/api/assets?company_id={ctx['co_id']}", headers=headers)).json()["total"]
 
     po_id = (await client.post("/api/purchase-orders", json={
-        "company_id": ctx["co_id"], "po_number": "PO-1", "po_date": "2026-01-01",
+        "company_id": ctx["co_id"], "po_number": "PO-1", "po_date": "2026-01-01", "cost_center_id": ctx["cc_id"],
     }, headers=headers)).json()["id"]
     await client.post(f"/api/purchase-orders/{po_id}/lines", json={
-        "description": "Laptop", "category_id": ctx["cat_id"], "cost_center_id": ctx["cc_id"], "quantity": 3,
+        "description": "Laptop", "category_id": ctx["cat_id"], "quantity": 3,
     }, headers=headers)
 
     after = (await client.get(f"/api/assets?company_id={ctx['co_id']}", headers=headers)).json()["total"]
