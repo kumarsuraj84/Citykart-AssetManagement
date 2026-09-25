@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { Page } from "@playwright/test";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // frontend/e2e -> frontend -> repo root (where docker-compose.yml lives).
@@ -27,6 +28,10 @@ export interface SeedContext {
   costCenter: { id: number; name: string };
   category: { id: number; name: string };
   subcategory: { id: number; name: string };
+  /** Vendor is a genuinely global master (no company_id column, like
+   * Category -- AM-08). Mandatory on Add Asset now (docs/ai/DECISIONS.md),
+   * so every spec driving that form needs one. */
+  vendor: { id: number; name: string };
   stock: SeedHolder;
   /** A test-only EMPLOYEE holder. Deliberately NOT named/coded like the real
    * Ankur Pahwa (CS6872) account in this environment -- see fixtures' emp_code
@@ -192,6 +197,11 @@ export async function seedTestCompany(baseURL: string, reg: SeedRegistry): Promi
     name: `E2E Laptop ${ts}`,
   });
   reg.masters.push(["subcategories", subcategory.id]);
+  const vendor = await api<{ id: number; name: string }>(baseURL, "POST", "/api/masters/vendors", token, {
+    code: `E2EV${codeTs}`,
+    name: `E2E Vendor ${ts}`,
+  });
+  reg.masters.push(["vendors", vendor.id]);
 
   // Scoped to this fresh company only (not global/company_id: null) so it can never
   // shadow, or be shadowed by, the real Citykart Stores company's own code rule.
@@ -243,6 +253,7 @@ export async function seedTestCompany(baseURL: string, reg: SeedRegistry): Promi
     costCenter,
     category,
     subcategory,
+    vendor,
     stock,
     employee,
     employeePassword: employeeReset.temp_password,
@@ -282,4 +293,34 @@ export async function teardownTestCompany(baseURL: string, reg: SeedRegistry): P
   if (failures.length > 0) {
     throw new Error(`E2E teardown could not deactivate everything it created:\n  ${failures.join("\n  ")}`);
   }
+}
+
+/**
+ * Fills the Add Asset form's mandatory procurement fields other than
+ * Category/Sub-Category/Cost Centre/Description/Goes Into, which each spec
+ * already picks in its own way (docs/ai/DECISIONS.md -- Vendor/PO No+Date/
+ * Invoice No+Date/PI No+Date/Serial Number are all mandatory now, and
+ * Purchase Date is no longer a field at all, since it's auto-derived from
+ * Invoice Date). Call this after navigating to /assets/new and before
+ * clicking Save.
+ *
+ * Serial Number is now globally unique across every asset ever created in
+ * whatever database this suite runs against (docs/ai/DECISIONS.md) -- teardown
+ * deactivates the company/masters/holders a spec creates but never the asset
+ * itself (assets are never deleted, by design), so a literal serial would
+ * collide with a previous run's leftover asset. Timestamp-suffixed, same
+ * collision-avoidance convention this file already uses for company/category
+ * codes.
+ */
+export async function fillAddAssetProcurementFields(page: Page, vendorName: string): Promise<void> {
+  const ts = Date.now().toString(36);
+  await page.getByLabel("Vendor", { exact: true }).click();
+  await page.getByRole("option", { name: vendorName, exact: true }).click();
+  await page.getByLabel("PO Number", { exact: true }).fill("E2E-PO-1");
+  await page.getByLabel("PO Date", { exact: true }).fill("2025-06-01");
+  await page.getByLabel("Invoice Number", { exact: true }).fill("E2E-INV-1");
+  await page.getByLabel("Invoice Date", { exact: true }).fill("2025-06-02");
+  await page.getByLabel("PI Number", { exact: true }).fill("E2E-PI-1");
+  await page.getByLabel("PI Date", { exact: true }).fill("2025-06-03");
+  await page.getByLabel("Serial Number", { exact: true }).fill(`E2E-SN-${ts}`);
 }

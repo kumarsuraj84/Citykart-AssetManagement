@@ -346,17 +346,45 @@ class TestQuantityAndTransactionSafety:
         assert len(resp.json()["valid_rows"]) == 1
         assert await _assets_by_legacy("OLD-PREV1") == []
 
-    async def test_two_rows_with_identical_data_both_import_unchanged_duplicate_behavior(self, client):
-        """AM-06 §14: no new uniqueness rule was introduced for legacy code,
-        serial number, PO/invoice/PI number -- confirms the pre-AM-06 lack of
-        duplicate detection is unchanged, not silently added."""
+    async def test_two_rows_with_identical_legacy_code_po_invoice_pi_both_import_unchanged_duplicate_behavior(self, client):
+        """AM-06 §14: no uniqueness rule exists for legacy code, PO/invoice/PI
+        number -- confirms the pre-AM-06 lack of duplicate detection is still
+        unchanged for these fields. Serial Number is the one exception now --
+        see test_duplicate_serial_number_is_rejected_on_the_second_row below
+        and docs/ai/DECISIONS.md."""
         ids = await _setup("DUP1")
         headers = await _headers(client, ids["admin"])
-        row_a = _base_row(ids, **{"Legacy Asset Code": "SAME-CODE", "Serial Number": "SAME-SERIAL"})
-        row_b = _base_row(ids, **{"Legacy Asset Code": "SAME-CODE", "Serial Number": "SAME-SERIAL"})
+        row_a = _base_row(ids, **{
+            "Legacy Asset Code": "SAME-CODE", "Serial Number": "SN-DUP1-A",
+            "PO Number": "SAME-PO", "Invoice Number": "SAME-INV", "PI Number": "SAME-PI",
+        })
+        row_b = _base_row(ids, **{
+            "Legacy Asset Code": "SAME-CODE", "Serial Number": "SN-DUP1-B",
+            "PO Number": "SAME-PO", "Invoice Number": "SAME-INV", "PI Number": "SAME-PI",
+        })
         resp = await _post(client, "/api/imports/assets/commit", _xlsx([row_a, row_b]), headers)
         assert resp.status_code == 200
         body = resp.json()
         assert body["imported"] == 2
         assert body["errors"] == []
         assert len(await _assets_by_legacy("SAME-CODE")) == 2
+
+    async def test_duplicate_serial_number_is_rejected_on_the_second_row(self, client):
+        """New rule (docs/ai/DECISIONS.md): Serial Number is unique across the
+        whole system regardless of which path creates the asset -- Import
+        included. The first row with a given real serial imports fine; a
+        second row reusing it is rejected as a per-row error, leaving the
+        first row's import intact (VALID-ROWS-ONLY per-row atomicity,
+        unchanged)."""
+        ids = await _setup("DUP2")
+        headers = await _headers(client, ids["admin"])
+        row_a = _base_row(ids, **{"Legacy Asset Code": "DUP2-A", "Serial Number": "SAME-SERIAL-DUP2"})
+        row_b = _base_row(ids, **{"Legacy Asset Code": "DUP2-B", "Serial Number": "SAME-SERIAL-DUP2"})
+        resp = await _post(client, "/api/imports/assets/commit", _xlsx([row_a, row_b]), headers)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["imported"] == 1
+        assert len(body["errors"]) == 1
+        assert "serial number" in body["errors"][0]["message"].lower()
+        assert len(await _assets_by_legacy("DUP2-A")) == 1
+        assert await _assets_by_legacy("DUP2-B") == []

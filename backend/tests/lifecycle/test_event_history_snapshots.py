@@ -56,6 +56,7 @@ async def test_renaming_a_holder_does_not_change_a_past_events_displayed_name(cl
         "description": "Snapshot Laptop", "invoice_date": "2025-01-01", "initial_holder_id": stock_id,
         "vendor_id": vendor_id, "po_number": "PO-1", "po_date": "2024-12-20",
         "invoice_number": "INV-1", "pi_number": "PI-1", "pi_date": "2024-12-25",
+        "serial_number": "SN-SNAP-1",
     }, headers=headers)).json()
     asset_id = asset["id"]
 
@@ -122,6 +123,7 @@ async def test_pre_migration_rows_fall_back_to_a_live_holder_name_lookup(client)
         "description": "Legacy Row Laptop", "invoice_date": "2025-01-01", "initial_holder_id": stock_id,
         "vendor_id": vendor_id, "po_number": "PO-2", "po_date": "2024-12-20",
         "invoice_number": "INV-2", "pi_number": "PI-2", "pi_date": "2024-12-25",
+        "serial_number": "SN-SNAP-2",
     }, headers=headers)).json()
     asset_id = asset["id"]
 

@@ -18,7 +18,10 @@ class AssetCreateIn(BaseModel):
     subcategory_id: int
     brand: str | None = None
     model: str | None = None
-    serial_number: str | None = None
+    # Mandatory -- "N/A" (case-insensitive) is the reserved placeholder for
+    # a unit that genuinely has no serial; see
+    # app.assets.service.check_serial_number_unique and DECISIONS.md.
+    serial_number: str
     description: str
     vendor_id: int
     po_number: str

@@ -105,10 +105,10 @@ class TestProcurementFieldsRoundTrip:
         assert listed["items"][0]["pi_number"] == "PI-3001"
 
     async def test_descriptive_fields_are_optional_the_procurement_identity_fields_are_not(self, client):
-        """Category/Sub-Category/Vendor/PO No+Date/Invoice No+Date/PI No+Date
-        are mandatory on direct creation (see AssetCreateIn's docstring /
-        DECISIONS.md); the still-optional subset is the purely descriptive
-        extras -- brand/model/serial_number/purchase_cost/tax_percent/
+        """Category/Sub-Category/Vendor/PO No+Date/Invoice No+Date/PI No+Date/
+        Serial Number are mandatory on direct creation (see AssetCreateIn's
+        docstring / DECISIONS.md); the still-optional subset is the purely
+        descriptive extras -- brand/model/purchase_cost/tax_percent/
         warranty_upto/legacy_asset_code/custom_fields."""
         ids = await _setup("PRC2")
         headers = await _headers(client, ids["admin_code"])
@@ -118,7 +118,7 @@ class TestProcurementFieldsRoundTrip:
             "initial_holder_id": ids["stock"], "vendor_id": ids["vendor"],
             "po_number": "PO-2001", "po_date": "2025-05-20",
             "invoice_number": "INV-2002", "invoice_date": "2025-06-01",
-            "pi_number": "PI-3002", "pi_date": "2025-05-22",
+            "pi_number": "PI-3002", "pi_date": "2025-05-22", "serial_number": "SN-PRC2",
         }
         resp = await client.post("/api/assets", json=minimal, headers=headers)
         assert resp.status_code == 201

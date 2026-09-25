@@ -60,6 +60,16 @@ async def test_concurrent_asset_creation_never_produces_a_duplicate_code(client)
         "invoice_date": "2025-01-01", "initial_holder_id": ids["stock"].id,
         "vendor_id": ids["vendor"].id, "po_number": "PO-1", "po_date": "2024-12-20",
         "invoice_number": "INV-1", "pi_number": "PI-1", "pi_date": "2024-12-25",
+        # All CONCURRENT_REQUESTS calls below fire this identical payload, so a
+        # single literal serial_number would collide with itself (rejected by
+        # the new global-uniqueness rule) the moment more than one request
+        # succeeds. "N/A" is the reserved placeholder explicitly exempted from
+        # that uniqueness check, so it's the right choice for many assets
+        # sharing one JSON body -- distinct per-unit serials aren't possible
+        # here since this is 20 separate single-asset requests, not one
+        # quantity>1 batch, and the whole point of this test is the numbering
+        # counter, not serial numbers.
+        "serial_number": "N/A",
     }
 
     responses = await asyncio.gather(*[

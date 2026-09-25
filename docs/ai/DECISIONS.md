@@ -2,6 +2,56 @@
 
 Newest first. These override older spec/plan text where they conflict.
 
+## 2026-09-25 — Serial Number: mandatory, globally unique, "N/A" exempt
+
+Direct user request, working through a real ground-level problem: some
+categories genuinely have no serial (mouse, keyboard, mic, speaker, IT
+rack, hardware packet…), and old-stock retrofits sometimes have a few
+units whose real serial is physically lost even within an otherwise
+fully-serialized category (e.g. 2 of 20 legacy CPUs).
+
+1. **Validate by VALUE, never by category.** A category-level "requires
+   validation" toggle was considered and rejected — it can't express "this
+   one unit is an exception within an otherwise-validated category" (the
+   old-stock CPU case). Instead: the literal placeholder `"N/A"`
+   (case-insensitive, trimmed) is the one value exempt from uniqueness;
+   every other non-blank Serial Number, in *any* category, must be unique
+   across the *entire system* — every company, every category, every
+   creation path. A CPU and a Monitor sharing one real serial is exactly
+   as invalid as two CPUs sharing one.
+2. **Global scope, not per-company** — a serial number identifies one
+   physical device regardless of which company's books it's recorded
+   under.
+3. **Mandatory everywhere an asset is created**: Add Asset (already
+   mandatory at PO Delivery Done from this feature's original design).
+   The UI never lets users free-type placeholder variants ("NA", "n/a",
+   "N.A.") — a dedicated "No serial number for this asset" checkbox writes
+   the one canonical `"N/A"` automatically, so the backend only ever
+   special-cases that one exact string.
+4. **Enforcement, two layers**: `app.assets.service.check_serial_number_unique`
+   (a pre-check reused by `procure_assets` — covering both Add Asset and
+   PO delivery — Import's per-row loop, and ordinary Asset 360 Edit mode)
+   gives a clean, specific 422 naming the conflicting asset code; a
+   partial, case-insensitive, functional unique DB index (migration
+   `278437eb710e`, `ux_asset_serial_number_ci`, excluding NULL/blank/`N/A`/
+   soft-deleted rows) is the actual race-safe backstop, following this
+   codebase's own established precedent
+   (`0005_holder_email_unique.py`/`ux_holder_company_email_ci`).
+5. **`AssetUpdateIn.serial_number` stays optional** (not tightened to
+   mandatory) — matching this codebase's own AM-04 precedent that an
+   asset predating a newly-mandatory field must never be blocked from an
+   unrelated edit. The uniqueness check still applies whenever a *value*
+   is submitted and differs from the asset's current one; an asset with a
+   pre-existing NULL is simply never forced to backfill one.
+6. **A `quantity>1` Add Asset batch with a real (non-"N/A") serial now
+   correctly 422s from the 2nd unit onward** — a natural, intended
+   consequence of two rules meeting (one payload, one serial, applied to
+   N units), not a special case that needed its own handling. `"N/A"`
+   still works for any quantity, since it's exempt. A real per-unit
+   distinct serial for a `quantity>1` batch is exactly what the Purchase
+   Order path's own per-line-then-per-unit design already exists to
+   handle — Add Asset's quantity field was never meant to duplicate that.
+
 ## 2026-09-25 — Add Asset: mandatory procurement fields, Purchase Date auto-derived
 
 Direct user request, tightening Add Asset's own create path (previously all

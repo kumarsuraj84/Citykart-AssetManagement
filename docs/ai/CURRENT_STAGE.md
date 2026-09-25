@@ -12,8 +12,11 @@ a large selection), stricter mandatory-field enforcement on both the PO Add
 Line/Delivery flow and — same request extended to the other procurement
 path — **Add Asset**, where Purchase Date was also removed as a
 user-fillable field there too (always = Invoice Date, mirroring the PO
-delivery path's own original rule). Backend and frontend regression clean
-throughout.
+delivery path's own original rule), and a new system-wide rule: **Serial
+Number is now mandatory and globally unique everywhere an asset is
+created** (Add Asset, PO Delivery, Import), with the reserved placeholder
+`"N/A"` exempt for categories/units genuinely without one — see
+`DECISIONS.md`. Backend and frontend regression clean throughout.
 **Environment: DEVELOPMENT / UAT. Production deployment remains DEFERRED —
 there is currently no production server.** AM-10's evidence, documents,
 regression baselines, and the local `ckam-v1.0.0-rc1` tag are all
@@ -132,8 +135,22 @@ decision resolving the open items below first.
   tab shows Purchase Date 2026-09-22 (identical, auto-derived, never
   entered). Deliberately does not touch `AssetUpdateIn`, the AM-07
   correction workflow, or the PO/Pending Asset entry path's own fields.
-- **Backend: 339/339 passing** (was 312/312 before this whole PO stage
-  began). **Frontend: 174/174 passing** (was 154/154). TypeScript clean.
+- **Serial Number: mandatory + globally unique + "N/A" exempt** (separate
+  user request, working through a real ground-level problem — see
+  `DECISIONS.md` for the full reasoning, including why validation is
+  keyed to the *value* `"N/A"`, never to a per-category toggle). Enforced
+  by a shared pre-check (`app.assets.service.check_serial_number_unique`,
+  reused by `procure_assets` — covering Add Asset and PO Delivery —
+  Import, and Asset 360 Edit) plus a partial case-insensitive unique DB
+  index (migration `278437eb710e`) as the race-safe backstop. A "No
+  serial number for this asset" checkbox in Add Asset, PO Delivery Done,
+  and Asset 360 Edit writes the one canonical `"N/A"` automatically.
+  Verified live end-to-end: a duplicate (even case-differing) serial is
+  rejected with a 422 naming the conflicting asset code; the "No serial
+  number" checkbox path creates the asset with `Serial Number: N/A`
+  successfully.
+- **Backend: 340/340 passing** (was 312/312 before this whole PO stage
+  began). **Frontend: 176/176 passing** (was 154/154). TypeScript clean.
   **E2E: 5/5** (unchanged). **No production work of any kind.**
 
 **Open Phase-1 business decisions (none are software defects):**

@@ -12,7 +12,7 @@ from app.assets.custom_field_values import validate_custom_field_values
 from app.assets.models import Asset, AssetFieldChange
 from app.assets.schemas import AssetCorrectionIn, AssetCreateIn, AssetDetailOut, AssetFieldChangeOut, AssetOut, AssetUpdateIn
 from app.assets.search_service import search_assets
-from app.assets.service import compute_tax, procure_assets
+from app.assets.service import check_serial_number_unique, compute_tax, procure_assets
 from app.holders.models import Holder
 from app.lifecycle.service import apply_event
 from app.lifecycle.state_machine import LifecycleError
@@ -266,6 +266,11 @@ async def update_asset(
             session, data.get("custom_fields"), company_id=asset.company_id,
             enforce_required=replacing_custom_fields,
         )
+        # Only re-checked when the edit actually changes the value -- an
+        # untouched serial_number (already this asset's own) must never
+        # conflict with itself (exclude_asset_id).
+        if data.get("serial_number") != asset.serial_number:
+            await check_serial_number_unique(session, data.get("serial_number"), exclude_asset_id=asset.id)
     except ValueError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
 

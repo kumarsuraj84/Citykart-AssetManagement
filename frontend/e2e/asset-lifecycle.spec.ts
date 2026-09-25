@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { newSeedRegistry, seedTestCompany, teardownTestCompany, type SeedRegistry } from "./fixtures";
+import { newSeedRegistry, seedTestCompany, teardownTestCompany, fillAddAssetProcurementFields, type SeedRegistry } from "./fixtures";
 
 async function loginAs(page: Page, empCode: string, password: string) {
   await page.goto("/login");
@@ -49,6 +49,7 @@ test("full custody journey: procure, allot, return, allot again", async ({ page,
   await page.getByLabel("Description", { exact: true }).fill("E2E Test Laptop");
   await selectRadix(page, "Cost Centre", ctx.costCenter.name);
   await selectRadix(page, "Goes Into", ctx.stock.name);
+  await fillAddAssetProcurementFields(page, ctx.vendor.name);
   await page.getByRole("button", { name: "Save", exact: true }).click();
 
   // AM-04: creating exactly one asset navigates straight to its Asset 360

@@ -80,6 +80,7 @@ async def test_asset_register_export_neutralizes_a_formula_injection_attempt(cli
         "brand": "+1+1", "model": "-2-2", "legacy_asset_code": "@SUM(A1:A9)",
         "vendor_id": ids["vendor"].id, "po_number": "PO-1", "po_date": "2024-12-20",
         "invoice_number": "INV-1", "pi_number": "PI-1", "pi_date": "2024-12-25",
+        "serial_number": "SN-FI-A1",
     }, headers=headers)
     assert create_resp.status_code == 201
 
@@ -110,6 +111,7 @@ async def test_movement_log_export_neutralizes_a_formula_injection_attempt(clien
         "invoice_date": "2025-01-01", "initial_holder_id": ids["stock"].id,
         "vendor_id": ids["vendor"].id, "po_number": "PO-2", "po_date": "2024-12-20",
         "invoice_number": "INV-2", "pi_number": "PI-2", "pi_date": "2024-12-25",
+        "serial_number": "SN-FI-A2",
     }, headers=headers)
     asset_id = create_resp.json()[0]["id"]
 

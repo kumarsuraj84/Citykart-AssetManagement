@@ -49,6 +49,7 @@ async def test_create_asset_and_scoped_get(client):
         "purchase_cost": "50000", "tax_percent": "18", "initial_holder_id": stock.id, "quantity": 1,
         "vendor_id": vendor.id, "po_number": "PO-1", "po_date": "2025-12-01",
         "invoice_number": "INV-1", "pi_number": "PI-1", "pi_date": "2025-12-05",
+        "serial_number": "SN-R1",
     }, headers=admin_headers)
     assert create_resp.status_code == 201
     asset_id = create_resp.json()[0]["id"]
@@ -72,6 +73,7 @@ async def test_delete_asset_only_before_it_has_moved(client):
         "initial_holder_id": stock.id, "quantity": 1,
         "vendor_id": vendor.id, "po_number": "PO-2", "po_date": "2025-12-01",
         "invoice_number": "INV-2", "pi_number": "PI-2", "pi_date": "2025-12-05",
+        "serial_number": "SN-R2A",
     }, headers=admin_headers)
     asset_id = create_resp.json()[0]["id"]
 
@@ -85,6 +87,7 @@ async def test_delete_asset_only_before_it_has_moved(client):
         "initial_holder_id": stock.id, "quantity": 1,
         "vendor_id": vendor.id, "po_number": "PO-3", "po_date": "2025-12-01",
         "invoice_number": "INV-3", "pi_number": "PI-3", "pi_date": "2025-12-05",
+        "serial_number": "SN-R2B",
     }, headers=admin_headers)
     moved_asset_id = create_resp2.json()[0]["id"]
     await client.post(f"/api/assets/{moved_asset_id}/events", json={"event_type": "MOVED", "to_holder_id": ankur.id}, headers=admin_headers)

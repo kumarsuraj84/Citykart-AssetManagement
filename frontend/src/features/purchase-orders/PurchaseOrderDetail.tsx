@@ -225,14 +225,14 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().slice(0, 10));
   const [invoiceAmount, setInvoiceAmount] = useState("");
-  const [perLine, setPerLine] = useState<Record<number, { serial: string; holderId: string }>>({});
+  const [perLine, setPerLine] = useState<Record<number, { serial: string; holderId: string; noSerial: boolean }>>({});
 
   function openDeliver() {
     deliverMutation.reset();
     setInvoiceNumber("");
     setInvoiceDate(new Date().toISOString().slice(0, 10));
     setInvoiceAmount("");
-    setPerLine(Object.fromEntries(selected.map((id) => [id, { serial: "", holderId: "" }])));
+    setPerLine(Object.fromEntries(selected.map((id) => [id, { serial: "", holderId: "", noSerial: false }])));
     setDeliverOpen(true);
   }
 
@@ -481,8 +481,20 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
                   <Input
                     id={`serial-${l.id}`}
                     value={perLine[l.id]?.serial ?? ""}
+                    disabled={perLine[l.id]?.noSerial}
                     onChange={(e) => setPerLine((p) => ({ ...p, [l.id]: { ...p[l.id], serial: e.target.value } }))}
                   />
+                  <label className="flex items-center gap-1.5 text-xs">
+                    <Checkbox
+                      aria-label={`No serial number for ${l.description}`}
+                      checked={perLine[l.id]?.noSerial ?? false}
+                      onCheckedChange={(checked) => {
+                        const noSerial = checked === true;
+                        setPerLine((p) => ({ ...p, [l.id]: { ...p[l.id], noSerial, serial: noSerial ? "N/A" : "" } }));
+                      }}
+                    />
+                    No serial number
+                  </label>
                 </div>
                 <div className="col-span-2 flex flex-col gap-1">
                   <Label htmlFor={`holder-${l.id}`} className="text-xs">

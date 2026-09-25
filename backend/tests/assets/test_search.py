@@ -30,18 +30,25 @@ async def test_search_by_serial_and_scoped_bulk_move(client):
                          suffix_template="", start_number=1, pad_width=0)
         session.add_all([stock, store, it_admin, rule])
         await session.commit()
-        assets = await procure_assets(session, {
-            "company_id": co.id, "cost_center_id": cc.id, "category_id": cat.id, "subcategory_id": sub.id,
-            "description": "Bulk Mouse", "purchase_date": date(2025, 12, 10),
-            "serial_number": "SR-SEARCH-1", "initial_holder_id": stock.id,
-        }, quantity=2, actor=it_admin)
+        # Serial Number is now globally unique (docs/ai/DECISIONS.md) -- two
+        # units can no longer share one real serial via a single quantity=2
+        # call, so this is two quantity=1 calls with distinct-but-related
+        # serials instead, searched by their shared substring below.
+        assets = []
+        for suffix in ("1A", "1B"):
+            [a] = await procure_assets(session, {
+                "company_id": co.id, "cost_center_id": cc.id, "category_id": cat.id, "subcategory_id": sub.id,
+                "description": "Bulk Mouse", "purchase_date": date(2025, 12, 10),
+                "serial_number": f"SR-SEARCH-{suffix}", "initial_holder_id": stock.id,
+            }, quantity=1, actor=it_admin)
+            assets.append(a)
         await session.commit()
         asset_ids = [a.id for a in assets]
 
     resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": "ITA-SR1", "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
-    search_resp = await client.get("/api/assets?q=SR-SEARCH-1", headers=headers)
+    search_resp = await client.get("/api/assets?q=SR-SEARCH", headers=headers)
     assert search_resp.json()["total"] == 2
 
     bulk_resp = await client.post("/api/assets/bulk-move", json={

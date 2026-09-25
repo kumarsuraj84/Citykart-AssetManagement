@@ -49,9 +49,12 @@ async function pickSelectOption(label: RegExp | string, optionName: RegExp | str
   fireEvent.click(option);
 }
 
-// Sub-Category/Vendor/PO/Invoice/PI are all mandatory now (docs/ai/DECISIONS.md)
-// -- every test that expects Save to become enabled needs these filled, on top
-// of whatever Category/Cost Centre/Holder selection it already makes.
+// Sub-Category/Vendor/PO/Invoice/PI/Serial Number are all mandatory now
+// (docs/ai/DECISIONS.md) -- every test that expects Save to become enabled
+// needs these filled, on top of whatever Category/Cost Centre/Holder
+// selection it already makes. The Serial Number label query is anchored
+// (^...$) because an unanchored /serial number/i also matches the "No
+// serial number" checkbox's own aria-label.
 async function fillMandatoryProcurementFields() {
   await pickSelectOption(/sub-category/i, "Laptop");
   await pickSelectOption(/^vendor$/i, "Acme Traders");
@@ -61,6 +64,7 @@ async function fillMandatoryProcurementFields() {
   fireEvent.change(screen.getByLabelText(/invoice date/i), { target: { value: "2025-06-02" } });
   fireEvent.change(screen.getByLabelText(/pi number/i), { target: { value: "PI-1" } });
   fireEvent.change(screen.getByLabelText(/pi date/i), { target: { value: "2025-06-03" } });
+  fireEvent.change(screen.getByLabelText(/^serial number\*?$/i), { target: { value: "SN-1" } });
 }
 
 beforeEach(() => {
@@ -96,6 +100,7 @@ describe("AddAssetForm", () => {
     fireEvent.change(screen.getByLabelText(/pi number/i), { target: { value: "PI-1" } });
     fireEvent.change(screen.getByLabelText(/pi date/i), { target: { value: "2025-06-03" } });
     fireEvent.change(screen.getByLabelText(/warranty upto/i), { target: { value: "2027-06-01" } });
+    fireEvent.change(screen.getByLabelText(/^serial number\*?$/i), { target: { value: "SN-1" } });
 
     await waitFor(() => expect(screen.getByRole("button", { name: /save/i })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
@@ -107,8 +112,41 @@ describe("AddAssetForm", () => {
           vendor_id: 7, po_number: "PO-1", po_date: "2025-06-01",
           invoice_number: "INV-1", invoice_date: "2025-06-02",
           pi_number: "PI-1", pi_date: "2025-06-03", warranty_upto: "2027-06-01",
+          serial_number: "SN-1",
         }),
       ),
+    );
+  });
+
+  it("checking \"No serial number\" disables the input and submits \"N/A\"", async () => {
+    mockGets();
+    // 2 created assets (not 1), purely so this test doesn't trigger the
+    // single-asset navigate-to-Asset-360 flow -- it only cares about the
+    // POST payload.
+    (apiClient.post as any).mockResolvedValue([
+      { id: 42, asset_code: "FA/HO01/IT/LAP/CK_42" },
+      { id: 43, asset_code: "FA/HO01/IT/LAP/CK_43" },
+    ]);
+
+    renderFormAt();
+    fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Test Mouse" } });
+    await pickSelectOption(/^category$/i, "IT Equipment");
+    await pickSelectOption(/cost centre/i, "Head Office");
+    await pickSelectOption(/goes into/i, "IT Stock-HO");
+    await fillMandatoryProcurementFields();
+
+    const serialInput = screen.getByLabelText(/^serial number\*?$/i);
+    fireEvent.change(serialInput, { target: { value: "" } });
+    expect(screen.getByRole("button", { name: /save/i })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /no serial number/i }));
+    expect(serialInput).toBeDisabled();
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /save/i })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith("/assets", expect.objectContaining({ serial_number: "N/A" })),
     );
   });
 

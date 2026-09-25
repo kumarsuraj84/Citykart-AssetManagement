@@ -63,6 +63,7 @@ def _asset_body(target, cat, sub, **overrides):
         "initial_holder_id": target["stock"].id, "quantity": 1,
         "vendor_id": target["vendor"].id, "po_number": "PO-1", "po_date": "2025-12-01",
         "invoice_number": "INV-1", "pi_number": "PI-1", "pi_date": "2025-12-05",
+        "serial_number": "SN-TOK",
     }
     body.update(overrides)
     return body

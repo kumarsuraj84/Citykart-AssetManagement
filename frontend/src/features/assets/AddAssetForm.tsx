@@ -51,6 +51,7 @@ interface FormState {
   brand: string;
   model: string;
   serialNumber: string;
+  noSerialNumber: boolean;
   warrantyUpto: string;
   vendorId: string;
   poNumber: string;
@@ -74,6 +75,7 @@ const emptyForm: FormState = {
   brand: "",
   model: "",
   serialNumber: "",
+  noSerialNumber: false,
   warrantyUpto: "",
   vendorId: "",
   poNumber: "",
@@ -197,6 +199,7 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
     form.invoiceDate !== "" &&
     form.piNumber.trim() !== "" &&
     form.piDate !== "" &&
+    (form.noSerialNumber || form.serialNumber.trim() !== "") &&
     form.initialHolderId !== "" &&
     !customFields.some(requiredCustomFieldMissing);
 
@@ -225,7 +228,7 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
         legacy_asset_code: form.legacyAssetCode || null,
         brand: form.brand || null,
         model: form.model || null,
-        serial_number: form.serialNumber || null,
+        serial_number: form.noSerialNumber ? "N/A" : form.serialNumber.trim(),
         warranty_upto: form.warrantyUpto || null,
         vendor_id: Number(form.vendorId),
         po_number: form.poNumber,
@@ -423,8 +426,33 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
           <FormField htmlFor="model" label="Model" helperText="Optional.">
             <Input id="model" aria-label="Model" value={form.model} onChange={(e) => setField("model", e.target.value)} />
           </FormField>
-          <FormField htmlFor="serial-number" label="Serial Number" helperText="Optional.">
-            <Input id="serial-number" aria-label="Serial Number" value={form.serialNumber} onChange={(e) => setField("serialNumber", e.target.value)} />
+          <FormField
+            htmlFor="serial-number"
+            label="Serial Number"
+            required
+            helperText="Unique across every asset in CKAM. If this category genuinely has no serial (a mouse, a cable, an IT rack…), check “No serial number” instead of guessing one."
+          >
+            <div className="flex flex-col gap-2">
+              <Input
+                id="serial-number"
+                aria-label="Serial Number"
+                value={form.serialNumber}
+                disabled={form.noSerialNumber}
+                onChange={(e) => setField("serialNumber", e.target.value)}
+              />
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  aria-label="No serial number"
+                  checked={form.noSerialNumber}
+                  onCheckedChange={(checked) => {
+                    const noSerial = checked === true;
+                    setField("noSerialNumber", noSerial);
+                    if (noSerial) setField("serialNumber", "");
+                  }}
+                />
+                No serial number for this asset
+              </label>
+            </div>
           </FormField>
           <FormField htmlFor="warranty-upto" label="Warranty Upto" helperText="Optional.">
             <Input id="warranty-upto" aria-label="Warranty Upto" type="date" value={form.warrantyUpto} onChange={(e) => setField("warrantyUpto", e.target.value)} />

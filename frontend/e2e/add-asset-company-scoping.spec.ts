@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { newSeedRegistry, seedTestCompany, teardownTestCompany, type SeedRegistry } from "./fixtures";
+import { newSeedRegistry, seedTestCompany, teardownTestCompany, fillAddAssetProcurementFields, type SeedRegistry } from "./fixtures";
 
 async function loginAs(page: Page, empCode: string, password: string) {
   await page.goto("/login");
@@ -82,6 +82,7 @@ test("Add Asset offers only this company's own Cost Centres, and asset creation 
   await pickSelectOption(page, "Category", ctx.category.name);
   await pickSelectOption(page, "Sub-Category", ctx.subcategory.name);
   await pickSelectOption(page, "Goes Into", ctx.stock.name);
+  await fillAddAssetProcurementFields(page, ctx.vendor.name);
 
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page).toHaveURL(/\/assets\/\d+$/);

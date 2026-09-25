@@ -26,7 +26,7 @@ import openpyxl
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.assets.custom_field_values import applicable_custom_fields, validate_custom_field_values
-from app.assets.service import compute_tax
+from app.assets.service import check_serial_number_unique, compute_tax
 from app.holders.models import Holder
 from app.lifecycle.service import apply_event
 from app.lifecycle.state_machine import LifecycleError
@@ -427,6 +427,10 @@ async def commit_import(
             # whole row's units as one unit of retry for the user.
             async with session.begin_nested():
                 for _ in range(r["quantity"]):
+                    # Same global uniqueness rule Add Asset/PO delivery enforce
+                    # (docs/ai/DECISIONS.md) -- "N/A" (case-insensitive) is
+                    # exempt, everything else must be unique system-wide.
+                    await check_serial_number_unique(session, r["serial_number"])
                     code = await generate_code(session, rule, tokens)
                     asset = Asset(
                         asset_code=code, legacy_asset_code=r["legacy_asset_code"], company_id=r["company"].id,

@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from decimal import Decimal
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.assets.custom_field_values import validate_custom_field_values
 from app.assets.models import Asset
@@ -7,6 +8,49 @@ from app.holders.models import Holder
 from app.lifecycle.service import apply_event
 from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Location
 from app.numbering.service import build_code_tokens, generate_code, get_active_rule
+
+# The one reserved placeholder value exempt from Serial Number's global
+# uniqueness rule below -- see check_serial_number_unique's own docstring.
+NO_SERIAL_PLACEHOLDER = "N/A"
+
+
+async def check_serial_number_unique(
+    session: AsyncSession, serial_number: str | None, exclude_asset_id: int | None = None,
+) -> None:
+    """Serial Number is unique across the ENTIRE system -- every company,
+    every category, both creation paths (Add Asset, PO delivery via
+    procure_assets) and ordinary Edit mode (app.assets.router.update_asset)
+    -- per docs/ai/DECISIONS.md. The one exemption is the reserved
+    placeholder "N/A" (case-insensitive, trimmed), used for a unit that
+    genuinely has no serial: a category that never had one (a mouse, a
+    keyboard), or old stock whose serial is physically lost. "N/A" may
+    repeat freely; any other non-blank value may not, regardless of which
+    category it's attached to (a CPU and a Monitor sharing one real serial
+    is exactly as invalid as two CPUs sharing one).
+
+    This is a pre-check for a clean, specific 422 message naming the
+    conflicting asset -- the actual race-safe guarantee is the DB-level
+    partial unique index (migration 278437eb710e, ux_asset_serial_number_ci),
+    which a concurrent request racing past this pre-check still hits (the
+    router layer's existing IntegrityError->422 handling, matching
+    app.masters.router's own precedent, is the backstop for that case).
+
+    Raises ValueError (never ValueError for None/blank/"N/A" -- those are
+    simply not checked, same as an absent value)."""
+    if serial_number is None:
+        return
+    normalized = serial_number.strip()
+    if not normalized or normalized.upper() == NO_SERIAL_PLACEHOLDER:
+        return
+    stmt = select(Asset).where(
+        func.lower(Asset.serial_number) == normalized.lower(),
+        Asset.deleted_at.is_(None),
+    )
+    if exclude_asset_id is not None:
+        stmt = stmt.where(Asset.id != exclude_asset_id)
+    existing = (await session.execute(stmt)).scalars().first()
+    if existing is not None:
+        raise ValueError(f'serial number "{serial_number}" is already used by asset {existing.asset_code}')
 
 
 def compute_tax(purchase_cost, tax_percent) -> tuple[Decimal, Decimal]:
@@ -101,6 +145,11 @@ async def procure_assets(session: AsyncSession, data: dict, quantity: int, actor
 
     created: list[Asset] = []
     for _ in range(quantity):
+        # Checked once per unit, inside the loop, not once before it -- a
+        # quantity>1 batch with a real (non-"N/A") serial must reject on the
+        # 2nd unit onward, since each already-flushed unit from this same
+        # call is itself a conflict for the next one.
+        await check_serial_number_unique(session, data.get("serial_number"))
         code = await generate_code(session, rule, tokens)
         asset = Asset(
             asset_code=code,

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { newSeedRegistry, seedTestCompany, teardownTestCompany, type SeedRegistry } from "./fixtures";
+import { newSeedRegistry, seedTestCompany, teardownTestCompany, fillAddAssetProcurementFields, type SeedRegistry } from "./fixtures";
 
 async function loginAs(page: Page, empCode: string, password: string) {
   await page.goto("/login");
@@ -116,6 +116,7 @@ test("a required custom field scoped to company B never blocks asset creation fo
   await page.getByLabel("Description", { exact: true }).fill("Multi-Company UDF Test Laptop");
   await selectRadix(page, "Cost Centre", ctxA.costCenter.name);
   await selectRadix(page, "Goes Into", ctxA.stock.name);
+  await fillAddAssetProcurementFields(page, ctxA.vendor.name);
   await page.getByRole("button", { name: "Save", exact: true }).click();
 
   await expect(page).toHaveURL(/\/assets\/\d+$/);

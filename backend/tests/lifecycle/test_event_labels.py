@@ -47,6 +47,7 @@ async def test_event_labels_use_holder_names(client):
         "description": "Laptop", "invoice_date": "2025-01-01", "initial_holder_id": stock_id,
         "vendor_id": vendor_id, "po_number": "PO-1", "po_date": "2024-12-20",
         "invoice_number": "INV-1", "pi_number": "PI-1", "pi_date": "2024-12-25",
+        "serial_number": "SN-LBL",
     }, headers=headers)).json()
     aid = asset["id"]
 

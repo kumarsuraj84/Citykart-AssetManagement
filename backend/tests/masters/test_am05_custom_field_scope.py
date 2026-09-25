@@ -190,6 +190,7 @@ class TestScopeMutationRules:
             "initial_holder_id": ids["stock_a"], "custom_fields": {"scm2_notes": "has a value"},
             "vendor_id": ids["vendor"], "po_number": "PO-1", "po_date": "2025-05-20",
             "invoice_number": "INV-1", "pi_number": "PI-1", "pi_date": "2025-05-22",
+            "serial_number": "SN-SCM2",
         }, headers=headers)
         assert create_resp.status_code == 201
 

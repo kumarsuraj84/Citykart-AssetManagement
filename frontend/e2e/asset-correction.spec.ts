@@ -67,10 +67,20 @@ test("asset correction journey: correct classification and purchase date, Asset 
   });
   registry.masters.push(["subcategories", subcategory2.id]);
 
+  // Purchase Date is derived from Invoice Date now (docs/ai/DECISIONS.md) --
+  // sent as invoice_date below so the created asset's own purchase_date
+  // still comes out to "2025-06-01", matching this test's later assertions
+  // against the correction dialog's impact summary and Procurement tab.
   const [asset] = await api<{ id: number; asset_code: string }[]>(baseURL!, "POST", "/api/assets", token, {
     company_id: ctx.company.id, cost_center_id: ctx.costCenter.id, category_id: ctx.category.id,
     subcategory_id: ctx.subcategory.id, description: "Correction Journey Laptop",
-    purchase_date: "2025-06-01", initial_holder_id: ctx.stock.id,
+    vendor_id: ctx.vendor.id, po_number: "E2E-PO-1", po_date: "2025-05-25",
+    invoice_number: "E2E-INV-1", invoice_date: "2025-06-01",
+    pi_number: "E2E-PI-1", pi_date: "2025-05-27",
+    // Serial Number is mandatory + globally unique now (docs/ai/DECISIONS.md);
+    // "N/A" is the reserved exempt placeholder, safe to reuse across runs.
+    serial_number: "N/A",
+    initial_holder_id: ctx.stock.id,
   });
 
   await loginAs(page, ctx.admin.empCode, ctx.admin.password);

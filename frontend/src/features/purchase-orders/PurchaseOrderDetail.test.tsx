@@ -157,7 +157,7 @@ describe("PurchaseOrderDetail", () => {
 
     fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-1" } });
     fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "1180" } });
-    fireEvent.change(within(dialog).getByLabelText(/serial number/i), { target: { value: "SN-001" } });
+    fireEvent.change(within(dialog).getByLabelText(/^serial number\*?$/i), { target: { value: "SN-001" } });
 
     // Radix Select isn't a native <select>; pick the holder option via its trigger.
     fireEvent.click(within(dialog).getByLabelText(/initial holder/i));
@@ -173,6 +173,41 @@ describe("PurchaseOrderDetail", () => {
           invoice_number: "INV-1",
           invoice_amount: 1180,
           lines: [{ pending_asset_id: 10, serial_number: "SN-001", initial_holder_id: 5 }],
+        }),
+      ),
+    );
+  });
+
+  it("checking \"No serial number\" for a delivery line disables its input and submits N/A", async () => {
+    mockGets([PENDING_LINE]);
+    (apiClient.post as any).mockResolvedValue([{ ...PENDING_LINE, status: "DELIVERED" }]);
+    renderDetailAt();
+    await waitFor(() => expect(screen.getByText("Dell Laptop")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /select dell laptop/i }));
+    fireEvent.click(screen.getByRole("button", { name: /mark 1 delivery done/i }));
+
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-1" } });
+    fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "1180" } });
+    fireEvent.click(within(dialog).getByLabelText(/initial holder/i));
+    fireEvent.click(await screen.findByText("IT Stock-HO"));
+
+    const serialInput = within(dialog).getByLabelText(/^serial number\*?$/i);
+    expect(within(dialog).getByRole("button", { name: /confirm/i })).toBeDisabled();
+
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /no serial number for dell laptop/i }));
+    expect(serialInput).toBeDisabled();
+    expect(serialInput).toHaveValue("N/A");
+
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: /confirm/i })).not.toBeDisabled());
+    fireEvent.click(within(dialog).getByRole("button", { name: /confirm/i }));
+
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith(
+        "/purchase-orders/1/deliver",
+        expect.objectContaining({
+          lines: [{ pending_asset_id: 10, serial_number: "N/A", initial_holder_id: 5 }],
         }),
       ),
     );
@@ -236,7 +271,7 @@ describe("PurchaseOrderDetail", () => {
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-1" } });
     fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "1180" } });
-    fireEvent.change(within(dialog).getByLabelText(/serial number/i), { target: { value: "SN-001" } });
+    fireEvent.change(within(dialog).getByLabelText(/^serial number\*?$/i), { target: { value: "SN-001" } });
     fireEvent.click(within(dialog).getByLabelText(/initial holder/i));
     fireEvent.click(await screen.findByText("IT Stock-HO"));
     fireEvent.click(within(dialog).getByRole("button", { name: /confirm/i }));

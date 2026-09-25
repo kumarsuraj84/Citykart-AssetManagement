@@ -553,7 +553,29 @@ export function AssetDetail({ assetId }: { assetId: number }) {
             </FormField>
             <FormField htmlFor="edit-brand" label="Brand"><Input id="edit-brand" aria-label="Brand" value={editForm.brand} onChange={(e) => setEditField("brand", e.target.value)} /></FormField>
             <FormField htmlFor="edit-model" label="Model"><Input id="edit-model" aria-label="Model" value={editForm.model} onChange={(e) => setEditField("model", e.target.value)} /></FormField>
-            <FormField htmlFor="edit-serial" label="Serial Number"><Input id="edit-serial" aria-label="Serial Number" value={editForm.serialNumber} onChange={(e) => setEditField("serialNumber", e.target.value)} /></FormField>
+            <FormField
+              htmlFor="edit-serial"
+              label="Serial Number"
+              helperText="Unique across every asset in CKAM. Use “No serial number” for a category that genuinely has none."
+            >
+              <div className="flex flex-col gap-2">
+                <Input
+                  id="edit-serial"
+                  aria-label="Serial Number"
+                  value={editForm.serialNumber}
+                  disabled={editForm.serialNumber.trim().toUpperCase() === "N/A"}
+                  onChange={(e) => setEditField("serialNumber", e.target.value)}
+                />
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    aria-label="No serial number"
+                    checked={editForm.serialNumber.trim().toUpperCase() === "N/A"}
+                    onCheckedChange={(checked) => setEditField("serialNumber", checked === true ? "N/A" : "")}
+                  />
+                  No serial number for this asset
+                </label>
+              </div>
+            </FormField>
             <FormField htmlFor="edit-barcode" label="Barcode"><Input id="edit-barcode" aria-label="Barcode" value={editForm.barcode} onChange={(e) => setEditField("barcode", e.target.value)} /></FormField>
             <FormField htmlFor="edit-legacy" label="Legacy Asset Code"><Input id="edit-legacy" aria-label="Legacy Asset Code" value={editForm.legacyAssetCode} onChange={(e) => setEditField("legacyAssetCode", e.target.value)} /></FormField>
             <FormField htmlFor="edit-vendor" label="Vendor">
