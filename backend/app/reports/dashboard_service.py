@@ -6,6 +6,7 @@ from app.holders.models import Holder
 from app.lifecycle.models import AssetEvent
 from app.lifecycle.service import with_labels
 from app.masters.models import Location
+from app.purchase_orders.models import PendingAsset, PurchaseOrder
 
 # Kept as named constants (spec §7.2/§10.5) so the thresholds are easy to change later.
 WARRANTY_ALERT_DAYS = 30
@@ -23,8 +24,12 @@ EXCEPTION_STATUSES = ["UNDER_REPAIR", "LOST", "DISPOSED", "SOLD", "SCRAPPED"]
 # "what just happened" strip, not a second Movement Log.
 RECENT_ACTIVITY_LIMIT = 5
 
+# Same "glance-able strip, not a second full screen" reasoning as RECENT_ACTIVITY_LIMIT
+# -- the full list of open POs is one click away on the Purchase Orders screen itself.
+OPEN_PURCHASE_ORDERS_LIMIT = 5
 
-async def dashboard_data(session: AsyncSession, allowed_company_ids: list[int] | None) -> dict:
+
+async def dashboard_data(session: AsyncSession, allowed_company_ids: list[int] | None, include_purchase_orders: bool) -> dict:
     """Scoped exactly like `search_assets`/`_get_scoped_asset`: `allowed_company_ids` is
     `scoped_company_ids(holder)` -- None means unrestricted (ADMIN sees every company's
     data combined), a list means the caller only ever sees rows for their own company/ies.
@@ -121,6 +126,43 @@ async def dashboard_data(session: AsyncSession, allowed_company_ids: list[int] |
         for e in labelled_events
     ]
 
+    # Purchase Orders card: pending-asset lines are staging rows, never Assets, so this
+    # is a separate query against pending_asset (not the `base` Asset query above) --
+    # scoped the same way (company_id in allowed_company_ids, or unrestricted for ADMIN).
+    # Gated by include_purchase_orders (caller's role): the Purchase Orders module
+    # itself is ADMIN/IT_TEAM only (app.purchase_orders.router), so a VIEWER -- who can
+    # reach this dashboard endpoint but never /api/purchase-orders -- must not see this
+    # data surfaced here either; they get the same explicit zero/empty shape as "nothing
+    # pending", not an omitted key.
+    pending_po_summary = {"count": 0, "value": 0.0}
+    open_purchase_orders: list[dict] = []
+    if include_purchase_orders:
+        pending_stmt = select(func.count(), func.coalesce(func.sum(PendingAsset.total_cost), 0)).where(
+            PendingAsset.status == "PENDING"
+        )
+        if allowed_company_ids is not None:
+            pending_stmt = pending_stmt.where(PendingAsset.company_id.in_(allowed_company_ids))
+        pending_count, pending_value = (await session.execute(pending_stmt)).one()
+        pending_po_summary = {"count": pending_count, "value": float(pending_value)}
+
+        open_po_stmt = (
+            select(PurchaseOrder.id, PurchaseOrder.po_number, PurchaseOrder.po_date, PurchaseOrder.vendor_id, func.count(PendingAsset.id))
+            .join(PendingAsset, PendingAsset.purchase_order_id == PurchaseOrder.id)
+            .where(PendingAsset.status == "PENDING", PurchaseOrder.is_active.is_(True))
+            .group_by(PurchaseOrder.id)
+            .order_by(PurchaseOrder.po_date.desc(), PurchaseOrder.id.desc())
+            .limit(OPEN_PURCHASE_ORDERS_LIMIT)
+        )
+        if allowed_company_ids is not None:
+            open_po_stmt = open_po_stmt.where(PurchaseOrder.company_id.in_(allowed_company_ids))
+        open_purchase_orders = [
+            {
+                "id": row[0], "po_number": row[1], "po_date": row[2].isoformat(),
+                "vendor_id": row[3], "pending_line_count": row[4],
+            }
+            for row in (await session.execute(open_po_stmt)).all()
+        ]
+
     return {
         "status_counts": status_counts,
         "stock_by_location": stock_by_location,
@@ -128,4 +170,6 @@ async def dashboard_data(session: AsyncSession, allowed_company_ids: list[int] |
         "long_allocation_alerts": long_allocation_alerts,
         "exception_counts": exception_counts,
         "recent_activity": recent_activity,
+        "pending_po_summary": pending_po_summary,
+        "open_purchase_orders": open_purchase_orders,
     }

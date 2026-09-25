@@ -79,7 +79,8 @@ async def dashboard(
     sees every company combined) and the caller's own company id otherwise, so a
     non-ADMIN never sees another company's KPI numbers."""
     allowed = scoped_company_ids(holder)
-    return await dashboard_data(session, allowed)
+    include_purchase_orders = holder.role in ("ADMIN", "IT_TEAM")
+    return await dashboard_data(session, allowed, include_purchase_orders)
 
 
 @router.get("/export/assets")

@@ -29,7 +29,16 @@ const baseDashboardData = {
   long_allocation_alerts: [],
   exception_counts: { UNDER_REPAIR: 0, LOST: 0, DISPOSED: 0, SOLD: 0, SCRAPPED: 0 },
   recent_activity: [],
+  pending_po_summary: { count: 0, value: 0 },
+  open_purchase_orders: [],
 };
+
+function mockApiGet(dashboardData: unknown, vendors: { id: number; name: string }[] = []) {
+  (apiClient.get as any).mockImplementation((path: string) => {
+    if (path.startsWith("/masters/vendors")) return Promise.resolve(vendors);
+    return Promise.resolve(dashboardData);
+  });
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -40,7 +49,7 @@ afterEach(() => useAuthStore.getState().logout());
 
 describe("Dashboard", () => {
   it("shows KPI tiles and warranty alerts", async () => {
-    (apiClient.get as any).mockResolvedValue(baseDashboardData);
+    mockApiGet(baseDashboardData);
     renderDashboard();
 
     await waitFor(() => expect(screen.getByText("5")).toBeInTheDocument());
@@ -50,7 +59,7 @@ describe("Dashboard", () => {
   });
 
   it("shows a real empty state, not just blank cards, when there is genuinely no data", async () => {
-    (apiClient.get as any).mockResolvedValue({
+    mockApiGet({
       ...baseDashboardData,
       status_counts: {},
       stock_by_location: [],
@@ -72,13 +81,13 @@ describe("Dashboard", () => {
     expect(screen.getByText(/couldn't load the dashboard/i)).toBeInTheDocument();
     expect(screen.queryByText(/^loading/i)).not.toBeInTheDocument();
 
-    (apiClient.get as any).mockResolvedValue(baseDashboardData);
+    mockApiGet(baseDashboardData);
     fireEvent.click(screen.getByRole("button", { name: /try again/i }));
     await waitFor(() => expect(screen.getByText("5")).toBeInTheDocument());
   });
 
   it("shows every exception status explicitly at 0, never hidden, when nothing is in that state (AM-12)", async () => {
-    (apiClient.get as any).mockResolvedValue(baseDashboardData);
+    mockApiGet(baseDashboardData);
     renderDashboard();
 
     // "Exceptions" (the CardTitle) is static and renders before data loads --
@@ -91,7 +100,7 @@ describe("Dashboard", () => {
   });
 
   it("shows real repair/lost/disposal counts, each linking to the matching Asset Register filter (AM-12)", async () => {
-    (apiClient.get as any).mockResolvedValue({
+    mockApiGet({
       ...baseDashboardData,
       exception_counts: { UNDER_REPAIR: 2, LOST: 1, DISPOSED: 3, SOLD: 0, SCRAPPED: 0 },
     });
@@ -107,7 +116,7 @@ describe("Dashboard", () => {
   });
 
   it("shows recent activity with asset code, action, time and actor, most-recent evidence intact", async () => {
-    (apiClient.get as any).mockResolvedValue({
+    mockApiGet({
       ...baseDashboardData,
       recent_activity: [
         {
@@ -124,14 +133,14 @@ describe("Dashboard", () => {
   });
 
   it("shows a clear empty state for Recent Activity, not blank space", async () => {
-    (apiClient.get as any).mockResolvedValue(baseDashboardData);
+    mockApiGet(baseDashboardData);
     renderDashboard();
 
     await waitFor(() => expect(screen.getByText("No recent asset activity.")).toBeInTheDocument());
   });
 
   it("falls back to an em dash when an activity row has no resolvable actor name", async () => {
-    (apiClient.get as any).mockResolvedValue({
+    mockApiGet({
       ...baseDashboardData,
       recent_activity: [
         {
@@ -145,5 +154,36 @@ describe("Dashboard", () => {
     await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK_99")).toBeInTheDocument());
     const row = screen.getByText("FA/HO01/IT/LAP/CK_99").closest("tr");
     expect(row ? within(row).getByText("—") : null).toBeInTheDocument();
+  });
+
+  it("shows the Purchase Orders card with pending count/value and links into open POs (ADMIN/IT_TEAM only)", async () => {
+    mockApiGet(
+      {
+        ...baseDashboardData,
+        pending_po_summary: { count: 2, value: 2360 },
+        open_purchase_orders: [
+          { id: 7, po_number: "PO-2026-007", po_date: "2026-09-20", vendor_id: 9, pending_line_count: 2 },
+        ],
+      },
+      [{ id: 9, name: "Acme Traders" }],
+    );
+    renderDashboard();
+
+    await waitFor(() => expect(screen.getByText("Assets on order, not yet delivered.")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("PO-2026-007")).toBeInTheDocument());
+    expect(screen.getByText("Acme Traders")).toBeInTheDocument();
+    const poLink = screen.getByRole("link", { name: "PO-2026-007" });
+    expect(poLink).toHaveAttribute("href", "/purchase-orders/7");
+    const summaryLink = screen.getByRole("link", { name: /2.*pending/is });
+    expect(summaryLink).toHaveAttribute("href", "/purchase-orders");
+  });
+
+  it("hides the Purchase Orders card for a VIEWER, who cannot access the module itself", async () => {
+    useAuthStore.getState().setAuth({ accessToken: "tok", role: "VIEWER", companyId: 1, mustChangePassword: false });
+    mockApiGet(baseDashboardData);
+    renderDashboard();
+
+    await waitFor(() => expect(screen.getByText("5")).toBeInTheDocument());
+    expect(screen.queryByText("Purchase Orders")).not.toBeInTheDocument();
   });
 });

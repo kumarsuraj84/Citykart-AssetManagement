@@ -1,8 +1,10 @@
 # CKAM — Current Stage
 
-**Stage:** Purchase Order / Pending Assets feature — implemented, backend
-and frontend regression clean; live browser UAT still pending (blocked by
-a browser-tool permission issue this session, not a code concern).
+**Stage:** Purchase Order / Pending Assets feature — implemented, live
+browser UAT performed and passed, plus two same-day follow-ups the live
+UAT and user feedback directly motivated: Cost Centre relocated from
+per-line to the PO header, and a new Dashboard "Purchase Orders" card
+(ADMIN/IT_TEAM only). Backend and frontend regression clean throughout.
 **Environment: DEVELOPMENT / UAT. Production deployment remains DEFERRED —
 there is currently no production server.** AM-10's evidence, documents,
 regression baselines, and the local `ckam-v1.0.0-rc1` tag are all
@@ -13,50 +15,76 @@ production-deployment authorization.
 enhancement only** (established AM-11) — this feature was built directly
 from the user's own detailed procurement-workflow description
 (a genuine CityKart Phase-1 requirement), following the full brainstorm →
-design spec → implementation plan process, not started speculatively.
-**Next:** Live browser UAT of the new `/purchase-orders*` screens (manual,
-or retry via this session once browser access is available), then await
-explicit user direction for the next development stage. Do NOT
-automatically begin further enhancement work. Do not start
+design spec → implementation plan process, not started speculatively; the
+Cost Centre and Dashboard-card follow-ups were both direct, explicit user
+requests made during/after live UAT, not speculative additions.
+**Next:** Await explicit user direction for the next development stage. Do
+NOT automatically begin further enhancement work. Do not start
 `holder_company_access`, import duplicate detection, bulk correction,
 category/subcategory-scoped Custom Fields, approval workflow, AMC/
 insurance, depreciation, physical verification, a company-wide audit
-explorer, new lifecycle states, new master types, a pending-PO dashboard
-widget, or the G04 ADMIN Dashboard company selector/breakdown, without an
-explicit business decision resolving the open items below first.
+explorer, new lifecycle states, new master types, or the G04 ADMIN
+Dashboard company selector/breakdown, without an explicit business
+decision resolving the open items below first. A Barcode field on
+Purchase Orders/Assets has been requested by the user but not yet
+designed or built — see the open item below.
 
 ## What's actually done — Purchase Order / Pending Assets feature
 
 - **A new, optional PO-tracked procurement path, built end-to-end**:
-  raise a PO → add pending line items (Description/Category/Subcategory/
-  Cost Centre/Cost/Tax %, Quantity expands into that many individual
-  trackable rows) → select delivered lines within that PO → one popup
-  captures Invoice No/Date/Amount (shared) plus Serial Number/Initial
-  Holder (per unit) → converts into real, numbered Assets via the
-  existing `procure_assets` path, unchanged. Full design:
+  raise a PO (PO No/Date/Vendor/**Cost Centre**) → add pending line items
+  (Description/Category/Subcategory/Cost/Tax %, Quantity expands into
+  that many individual trackable rows, each inheriting the PO's own Cost
+  Centre) → select delivered lines within that PO → one popup captures
+  Invoice No/Date/Amount (shared) plus Serial Number/Initial Holder (per
+  unit) → converts into real, numbered Assets via the existing
+  `procure_assets` path, unchanged. Full design:
   `docs/specs/2026-09-25-po-pending-assets-design.md`. Full plan:
   `docs/superpowers/plans/2026-09-25-po-pending-assets-implementation.md`.
 - **Add Asset is completely untouched** — this is a second path, not a
   replacement or redesign.
-- **Two new additive tables** (`purchase_order`, `pending_asset`) — no
-  change to `Asset`'s own schema. A `PendingAsset` never appears in the
-  Asset Register/Dashboard/exports until converted.
+- **Two new additive tables** (`purchase_order`, `pending_asset`), plus
+  one same-day additive column (`purchase_order.cost_center_id`,
+  migration `8c5638e1b65e`) — no change to `Asset`'s own schema. A
+  `PendingAsset` never appears in the Asset Register until converted.
 - **New role gate: ADMIN/IT_TEAM** on every `/api/purchase-orders*`
   endpoint, matching Add Asset's own gate — a new sidebar "Purchase
   Orders" link, gated the same way.
-- **Backend: 331/331 passing** (was 312/312 before this feature — +19
-  new tests across models/service/delivery/router). **Frontend: 167/167
-  passing** (was 154/154 — +13 new tests across the three new screens),
-  TypeScript clean. **E2E: 5/5** (unchanged, no new spec added — the
-  existing suite doesn't touch these new screens; live browser UAT is
-  the remaining verification step). **Production build: clean.**
-- **No database migration risk** — additive-only, both new tables'
-  downgrade paths drop cleanly with no data-migration step, since
-  nothing pre-existing moves into them.
-- **Not yet done**: live browser click-through UAT (blocked this session
-  by a browser-tool permission/navigation issue, not a known application
-  defect — every flow is covered by automated backend/frontend tests
-  instead). No production work of any kind.
+- **Live browser UAT performed and passed** (logged in as a real
+  ADMIN UAT account, `UAT-AM12-ADM`): created a PO, added a line with
+  Quantity 3 (3 individual PENDING rows, correct PO Value each),
+  selected 2, Mark Delivery Done with distinct serials + an Initial
+  Holder, confirmed both converted assets show correct sequential Asset
+  Codes/Holder/Company/full Procurement tab (PO/Invoice/Purchase Date =
+  Invoice Date) in the Asset Register while the 3rd line stayed PENDING.
+  Confirmed a VIEWER gets no sidebar link and a backend-enforced 403 on
+  direct URL access (no data leak). **Found and fixed one real gap
+  during UAT**: the running dev database was missing the Purchase Orders
+  migration (only the test DB had it) — applied `alembic upgrade head`;
+  not a code defect.
+- **Cost Centre relocated from per-line to the PO header** (user
+  feedback during live UAT — see `DECISIONS.md` point 4): one PO is
+  raised against one cost centre in practice. Also fixed, found in the
+  same pass: `create_purchase_order`'s validation errors were not being
+  translated to a 422 by the router (a 500 instead).
+- **New Dashboard "Purchase Orders" card** (ADMIN/IT_TEAM only, see
+  `DECISIONS.md` point 9): pending count/value KPI plus a small capped
+  list of open POs, each linking into its own detail page. Explicitly
+  gated at both the API (`include_purchase_orders`) and frontend layers
+  so a VIEWER — who has dashboard access but no `/api/purchase-orders`
+  access — never sees PO data through this side channel.
+- **Backend: 337/337 passing** (was 312/312 before this feature).
+  **Frontend: 169/169 passing** (was 154/154). TypeScript clean. **E2E:
+  5/5** (unchanged, no new spec added — the existing suite doesn't touch
+  these new screens). **Production build: clean.**
+- **No database migration risk** — every migration this feature added is
+  additive; every downgrade path drops cleanly with no data-migration
+  step, since nothing pre-existing moves into the new tables/column.
+- **Not yet done**: a Barcode field on Purchase Orders (requested by the
+  user; unlike Serial Number it is explicitly allowed to repeat across
+  multiple assets, so its design — per-line vs. per-unit, mandatory or
+  not — needs to be nailed down before implementation). No production
+  work of any kind.
 
 **Open Phase-1 business decisions (none are software defects):**
 1. `holder_company_access` — still depends on whether CityKart's real

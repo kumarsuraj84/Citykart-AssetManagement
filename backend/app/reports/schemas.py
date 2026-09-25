@@ -10,3 +10,6 @@ class DashboardOut(BaseModel):
     # scoped, snapshot-correct recent-activity feed -- see dashboard_service.py.
     exception_counts: dict[str, int]
     recent_activity: list[dict]
+    # Purchase Orders card (2026-09-25): open POs still awaiting delivery.
+    pending_po_summary: dict
+    open_purchase_orders: list[dict]

@@ -63,10 +63,24 @@ Implementation plan: `docs/superpowers/plans/2026-09-25-po-pending-assets-implem
    user) and was implemented with this default, documented here as the
    actual shipped behavior — trivial to narrow to ADMIN-only later if
    needed (a single `require_role(...)` argument).
-9. **No dashboard/reporting surface for pending POs in this stage** —
-   out of scope, a candidate for a future, separately-authorized
-   enhancement (analogous to ThreadERP's own "Asset WIP" dashboard card,
-   noted but deliberately not built during AM-11's gap review either).
+9. **Dashboard "Purchase Orders" card, added same day after live UAT.**
+   Originally scoped out ("no dashboard surface for pending POs in this
+   stage" — superseded by this point). Shows a KPI-style pending
+   count/value (all `PENDING` `PendingAsset` rows, company-scoped) plus a
+   small capped list (`OPEN_PURCHASE_ORDERS_LIMIT = 5`) of open POs — any
+   PO with at least one `PENDING` line, PO No/Date/Vendor/pending-line-
+   count, newest `po_date` first — each row linking into
+   `/purchase-orders/$id`. Gated to ADMIN/IT_TEAM only, matching the
+   Purchase Orders module's own role gate exactly (`include_purchase_orders`
+   in `dashboard_service.dashboard_data`): the Dashboard route itself is
+   open to VIEWER too (`STAFF_ROLES`), but VIEWER never had access to
+   `/api/purchase-orders`, so this card — and the two new `DashboardOut`
+   fields behind it — must not leak PO data to VIEWER through the
+   Dashboard endpoint as a side channel. A VIEWER's response carries the
+   same `{"count": 0, "value": 0.0}`/`[]` shape as "nothing pending", not
+   an omitted key, and the frontend hides the card entirely for any role
+   outside `["ADMIN", "IT_TEAM"]` (mirrors `router.tsx`'s own
+   `WRITE_ROLES`/`canWrite`).
 
 ## 2026-09-25 — AM-12 scope locked (Dashboard Operational Control Enhancement, G03)
 

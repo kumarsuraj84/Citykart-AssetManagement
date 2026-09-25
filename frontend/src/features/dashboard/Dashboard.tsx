@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { apiClient } from "../../lib/api-client";
+import { useAuthStore } from "../../lib/auth-store";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -9,6 +10,11 @@ import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+
+// Matches router.tsx's own WRITE_ROLES: the Purchase Orders module is
+// ADMIN/IT_TEAM only, so this card (and the data behind it -- see
+// dashboard_service.py's include_purchase_orders) is too.
+const PURCHASE_ORDER_ROLES = ["ADMIN", "IT_TEAM"];
 
 interface DashboardData {
   status_counts: Record<string, number>;
@@ -25,6 +31,15 @@ interface DashboardData {
     event_date: string;
     label: string;
     recorded_by_name: string | null;
+  }[];
+  // Purchase Orders card (2026-09-25)
+  pending_po_summary: { count: number; value: number };
+  open_purchase_orders: {
+    id: number;
+    po_number: string;
+    po_date: string;
+    vendor_id: number | null;
+    pending_line_count: number;
   }[];
 }
 
@@ -139,6 +154,35 @@ const activityColumns: DataTableColumn<ActivityRow>[] = [
   },
 ];
 
+interface OpenPoRow {
+  id: number;
+  po_number: string;
+  po_date: string;
+  vendor_id: number | null;
+  pending_line_count: number;
+}
+
+const openPoColumns = (vendorNames: Record<number, string>): DataTableColumn<OpenPoRow>[] => [
+  {
+    key: "po_number",
+    header: "PO No",
+    cell: (po) => (
+      <Link to="/purchase-orders/$id" params={{ id: String(po.id) }}>
+        {po.po_number}
+      </Link>
+    ),
+  },
+  { key: "po_date", header: "PO Date", cell: (po) => po.po_date },
+  { key: "vendor", header: "Vendor", cell: (po) => (po.vendor_id ? (vendorNames[po.vendor_id] ?? "—") : "—") },
+  {
+    key: "pending",
+    header: "Pending Lines",
+    headerClassName: "text-right",
+    cellClassName: "text-right",
+    cell: (po) => po.pending_line_count,
+  },
+];
+
 const allocationColumns: DataTableColumn<AllocationRow>[] = [
   {
     key: "asset",
@@ -160,6 +204,15 @@ export function Dashboard() {
     queryKey: ["dashboard"],
     queryFn: () => apiClient.get<DashboardData>("/reports/dashboard"),
   });
+  const role = useAuthStore((s) => s.role);
+  const canSeePurchaseOrders = role !== null && PURCHASE_ORDER_ROLES.includes(role);
+
+  const vendorsQ = useQuery({
+    queryKey: ["masters", "vendors"],
+    queryFn: () => apiClient.get<{ id: number; name: string }[]>("/masters/vendors"),
+    enabled: canSeePurchaseOrders,
+  });
+  const vendorNames = Object.fromEntries((vendorsQ.data ?? []).map((v) => [v.id, v.name]));
 
   const statusEntries = Object.entries(data?.status_counts ?? {});
 
@@ -226,6 +279,31 @@ export function Dashboard() {
               />
             </CardContent>
           </Card>
+
+          {canSeePurchaseOrders && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Purchase Orders</CardTitle>
+                <CardDescription>Assets on order, not yet delivered.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                <Link to="/purchase-orders" className="flex items-baseline gap-2 text-2xl font-semibold hover:underline">
+                  {isLoading ? <Skeleton className="h-8 w-12" /> : (data?.pending_po_summary.count ?? 0)}
+                  <span className="text-sm font-normal text-muted-foreground">
+                    pending {(data?.pending_po_summary.count ?? 0) === 1 ? "line" : "lines"} · value{" "}
+                    {(data?.pending_po_summary.value ?? 0).toFixed(2)}
+                  </span>
+                </Link>
+                <DataTable
+                  columns={openPoColumns(vendorNames)}
+                  rows={data?.open_purchase_orders ?? []}
+                  rowKey={(po) => po.id}
+                  isLoading={isLoading}
+                  emptyState={<EmptyState title="No open purchase orders." />}
+                />
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>
