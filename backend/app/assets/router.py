@@ -270,7 +270,7 @@ async def update_asset(
     tax_amount, total_cost = compute_tax(data.get("purchase_cost"), data.get("tax_percent"))
 
     for field in (
-        "legacy_asset_code", "brand", "model", "serial_number", "description",
+        "legacy_asset_code", "brand", "model", "serial_number", "barcode", "description",
         "vendor_id", "po_number", "po_date", "invoice_number", "invoice_date",
         "pi_number", "pi_date", "purchase_cost", "tax_percent", "warranty_upto",
     ):

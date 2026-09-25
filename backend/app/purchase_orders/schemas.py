@@ -23,6 +23,7 @@ class PurchaseOrderOut(BaseModel):
 
 class PendingAssetLineIn(BaseModel):
     description: str
+    barcode: str | None = None
     category_id: int
     subcategory_id: int | None = None
     purchase_cost: float | None = None
@@ -32,6 +33,7 @@ class PendingAssetLineIn(BaseModel):
 
 class PendingAssetLineUpdateIn(BaseModel):
     description: str
+    barcode: str | None = None
     category_id: int
     subcategory_id: int | None = None
     purchase_cost: float | None = None
@@ -44,6 +46,7 @@ class PendingAssetOut(BaseModel):
     purchase_order_id: int
     company_id: int
     description: str
+    barcode: str | None
     category_id: int
     subcategory_id: int | None
     cost_center_id: int

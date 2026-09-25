@@ -122,7 +122,7 @@ class TestAssetUpdate:
 
         resp = await client.put(f"/api/assets/{asset_id}", json={
             "description": "Updated Description", "brand": "HP", "model": "EliteBook",
-            "serial_number": "SN-NEW999", "pi_number": "PI-9999", "pi_date": "2025-07-01",
+            "serial_number": "SN-NEW999", "barcode": "BC-NEW999", "pi_number": "PI-9999", "pi_date": "2025-07-01",
             "invoice_number": "INV-9999", "invoice_date": "2025-07-02",
             "po_number": "PO-9999", "po_date": "2025-06-30",
             "vendor_id": ids["vendor"], "purchase_cost": 70000, "tax_percent": 18,
@@ -132,6 +132,7 @@ class TestAssetUpdate:
         body = resp.json()
         assert body["description"] == "Updated Description"
         assert body["brand"] == "HP"
+        assert body["barcode"] == "BC-NEW999"
         assert body["pi_number"] == "PI-9999"
         assert body["purchase_cost"] == 70000
         assert body["tax_amount"] == 12600.0  # 70000 * 18%

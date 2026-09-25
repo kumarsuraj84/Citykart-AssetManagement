@@ -23,7 +23,7 @@ function renderWithClient(ui: React.ReactElement) {
 const FULL_ASSET = {
   id: 1, asset_code: "FA/HO01/IT/LAP/CK_1", legacy_asset_code: "OLD-001", description: "Laptop",
   status: "IN_STOCK", company_id: 1, cost_center_id: 3, category_id: 1, subcategory_id: 2,
-  brand: "Dell", model: "Latitude 5440", serial_number: "SN-ABC123",
+  brand: "Dell", model: "Latitude 5440", serial_number: "SN-ABC123", barcode: "BC-XYZ789",
   vendor_id: 7, po_number: "PO-1001", po_date: "2025-05-20",
   invoice_number: "INV-2001", invoice_date: "2025-05-25",
   pi_number: "PI-3001", pi_date: "2025-05-22",
@@ -254,6 +254,27 @@ describe("AssetDetail (Asset 360)", () => {
     }
     // The asset code itself is never a form control anywhere on this page.
     expect(screen.queryByDisplayValue("FA/HO01/IT/LAP/CK_1")).not.toBeInTheDocument();
+  });
+
+  it("shows Barcode on Overview, distinct from Serial Number, and can edit it", async () => {
+    mockGets();
+    (apiClient.put as any).mockResolvedValue({ ...FULL_ASSET, barcode: "BC-NEW-000" });
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+
+    const overviewPanel = await screen.findByRole("tabpanel", { name: "Overview" });
+    expect(within(overviewPanel).getByText("SN-ABC123")).toBeInTheDocument();
+    expect(within(overviewPanel).getByText("BC-XYZ789")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
+    const barcodeInput = await screen.findByLabelText(/^barcode$/i);
+    fireEvent.change(barcodeInput, { target: { value: "BC-NEW-000" } });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(apiClient.put).toHaveBeenCalledWith(
+      "/assets/1",
+      expect.objectContaining({ barcode: "BC-NEW-000" }),
+    ));
   });
 
   it("saves an edit through PUT /api/assets/{id} and refreshes the displayed data", async () => {

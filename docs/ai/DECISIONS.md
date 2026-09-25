@@ -82,6 +82,33 @@ Implementation plan: `docs/superpowers/plans/2026-09-25-po-pending-assets-implem
    outside `["ADMIN", "IT_TEAM"]` (mirrors `router.tsx`'s own
    `WRITE_ROLES`/`canWrite`).
 
+## 2026-09-25 — Barcode field (Purchase Orders → Asset)
+
+CityKart's own internal inventory barcode, distinct from the manufacturer
+Serial Number. Requested directly by the user, with two explicit design
+choices confirmed before implementation:
+
+1. **Entered once per PO line, not per unit** — like Description/Category/
+   Cost/Tax %, not like Serial Number/Initial Holder (which are per-unit,
+   filled at Delivery Done because the physical unit doesn't exist yet at
+   PO-entry time). A Quantity>1 line's every created row shares the
+   identical barcode value entered on that one line.
+2. **Optional, and deliberately not unique** — the same barcode value may
+   legitimately repeat across multiple assets (the user's own words: "can
+   be same of multiple assets"). No DB uniqueness constraint, matching
+   Serial Number's own existing (also non-unique) treatment.
+
+Implementation: additive, nullable `barcode` column on both `asset` and
+`pending_asset` (migration `6c882ef3b225`), `pending_asset.barcode` carried
+through `deliver_pending_assets` into `procure_assets`'s payload exactly
+like every other pending-line attribute. Also added to `AssetUpdateIn`
+(editable via ordinary Asset 360 Edit mode, same as Serial Number) and
+`AUDITED_SCALAR_FIELDS` (change-tracked like every other editable field).
+Deliberately NOT added to `AssetCreateIn`/Add Asset's own UI — the request
+was specific to the PO path; Add Asset stays unchanged, matching this
+feature's own founding decision (point 1 above) that PO-tracked
+procurement is additive, never a redesign of the existing path.
+
 ## 2026-09-25 — AM-12 scope locked (Dashboard Operational Control Enhancement, G03)
 
 1. **Exception visibility uses one compact "Exceptions" card listing all

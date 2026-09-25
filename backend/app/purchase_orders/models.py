@@ -30,6 +30,10 @@ class PendingAsset(Base, AuditMixin):
     purchase_order_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("purchase_order.id"))
     company_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("company.id"))
     description: Mapped[str] = mapped_column(String(500))
+    barcode: Mapped[str | None] = mapped_column(String(200))
+    """Entered once per line (like description/cost), shared by every unit
+    that line's quantity creates -- CityKart's own internal barcode, not
+    unique like a manufacturer serial number (docs/ai/DECISIONS.md)."""
     category_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("asset_category.id"))
     subcategory_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("asset_subcategory.id"))
     cost_center_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("cost_center.id"))

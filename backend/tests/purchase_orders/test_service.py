@@ -57,6 +57,35 @@ async def test_add_pending_asset_line_with_quantity_creates_that_many_rows():
             assert line.total_cost == 1180
 
 
+async def test_barcode_is_shared_across_every_unit_a_quantity_line_creates():
+    """Unlike Serial Number (per-unit, filled at Delivery Done), Barcode is
+    entered once per line and is explicitly allowed to repeat across
+    assets (docs/ai/DECISIONS.md) -- so every row a Quantity>1 line creates
+    must carry the identical barcode value entered on that one line."""
+    ctx = await _setup("Q1B")
+    async with SessionLocal() as session:
+        po = await session.get(PurchaseOrder, ctx["po"].id)
+        admin = await session.get(Holder, ctx["admin"].id)
+        lines = await add_pending_asset_line(session, po, {
+            "description": "Speaker", "category_id": ctx["cat"].id, "barcode": "BC-SPEAKER-BATCH", "quantity": 5,
+        }, admin)
+        await session.commit()
+
+        assert len(lines) == 5
+        assert all(line.barcode == "BC-SPEAKER-BATCH" for line in lines)
+
+
+async def test_add_pending_asset_line_without_barcode_leaves_it_null():
+    ctx = await _setup("Q1C")
+    async with SessionLocal() as session:
+        po = await session.get(PurchaseOrder, ctx["po"].id)
+        admin = await session.get(Holder, ctx["admin"].id)
+        [line] = await add_pending_asset_line(session, po, {
+            "description": "Laptop", "category_id": ctx["cat"].id, "quantity": 1,
+        }, admin)
+        assert line.barcode is None
+
+
 async def test_create_purchase_order_rejects_cost_centre_from_another_company():
     ctx = await _setup("Q2")
     async with SessionLocal() as session:
@@ -95,12 +124,13 @@ async def test_update_pending_asset_line_recomputes_tax():
         await session.commit()
 
         updated = await update_pending_asset_line(session, line, {
-            "description": "Laptop Pro", "category_id": ctx["cat"].id,
+            "description": "Laptop Pro", "category_id": ctx["cat"].id, "barcode": "BC-FIXED",
             "purchase_cost": 2000, "tax_percent": 10,
         }, admin)
         await session.commit()
 
         assert updated.description == "Laptop Pro"
+        assert updated.barcode == "BC-FIXED"
         assert updated.tax_amount == 200
         assert updated.total_cost == 2200
 

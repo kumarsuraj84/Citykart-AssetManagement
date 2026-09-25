@@ -46,6 +46,7 @@ interface Asset {
   brand: string | null;
   model: string | null;
   serial_number: string | null;
+  barcode: string | null;
   description: string;
   vendor_id: number | null;
   po_number: string | null;
@@ -131,6 +132,7 @@ interface EditFormState {
   brand: string;
   model: string;
   serialNumber: string;
+  barcode: string;
   description: string;
   vendorId: string;
   poNumber: string;
@@ -150,6 +152,7 @@ function editFormFromAsset(asset: Asset): EditFormState {
     brand: asset.brand ?? "",
     model: asset.model ?? "",
     serialNumber: asset.serial_number ?? "",
+    barcode: asset.barcode ?? "",
     description: asset.description,
     vendorId: asset.vendor_id ? String(asset.vendor_id) : "",
     poNumber: asset.po_number ?? "",
@@ -376,6 +379,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
         brand: f.brand || null,
         model: f.model || null,
         serial_number: f.serialNumber || null,
+        barcode: f.barcode || null,
         description: f.description,
         vendor_id: f.vendorId ? Number(f.vendorId) : null,
         po_number: f.poNumber || null,
@@ -550,6 +554,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
             <FormField htmlFor="edit-brand" label="Brand"><Input id="edit-brand" aria-label="Brand" value={editForm.brand} onChange={(e) => setEditField("brand", e.target.value)} /></FormField>
             <FormField htmlFor="edit-model" label="Model"><Input id="edit-model" aria-label="Model" value={editForm.model} onChange={(e) => setEditField("model", e.target.value)} /></FormField>
             <FormField htmlFor="edit-serial" label="Serial Number"><Input id="edit-serial" aria-label="Serial Number" value={editForm.serialNumber} onChange={(e) => setEditField("serialNumber", e.target.value)} /></FormField>
+            <FormField htmlFor="edit-barcode" label="Barcode"><Input id="edit-barcode" aria-label="Barcode" value={editForm.barcode} onChange={(e) => setEditField("barcode", e.target.value)} /></FormField>
             <FormField htmlFor="edit-legacy" label="Legacy Asset Code"><Input id="edit-legacy" aria-label="Legacy Asset Code" value={editForm.legacyAssetCode} onChange={(e) => setEditField("legacyAssetCode", e.target.value)} /></FormField>
             <FormField htmlFor="edit-vendor" label="Vendor">
               <Select value={selectValue(editForm.vendorId)} onValueChange={(v) => setEditField("vendorId", v)}>
@@ -672,6 +677,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
               <ReadField label="Brand" value={asset.brand} />
               <ReadField label="Model" value={asset.model} />
               <ReadField label="Serial Number" value={asset.serial_number} />
+              <ReadField label="Barcode" value={asset.barcode} />
             </dl>
           </TabsContent>
 

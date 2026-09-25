@@ -22,7 +22,7 @@ function renderDetailAt(url = "/purchase-orders/1") {
 const PO = { id: 1, company_id: 1, po_number: "PO-2026-001", po_date: "2026-01-01", vendor_id: null, cost_center_id: 3 };
 
 const PENDING_LINE = {
-  id: 10, purchase_order_id: 1, description: "Dell Laptop", category_id: 1, subcategory_id: null,
+  id: 10, purchase_order_id: 1, description: "Dell Laptop", barcode: "BC-777", category_id: 1, subcategory_id: null,
   cost_center_id: 3, purchase_cost: 1000, tax_percent: 18, total_cost: 1180,
   status: "PENDING", serial_number: null, delivered_asset_id: null,
 };
@@ -56,6 +56,30 @@ describe("PurchaseOrderDetail", () => {
     expect(screen.getByText("Dell Laptop")).toBeInTheDocument();
     expect(screen.getByText("PENDING")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText(/Head Office/)).toBeInTheDocument());
+    expect(screen.getByText("BC-777")).toBeInTheDocument();
+  });
+
+  it("posts an Add Line request including a shared Barcode", async () => {
+    mockGets([]);
+    (apiClient.post as any).mockResolvedValue([PENDING_LINE]);
+    renderDetailAt();
+    await waitFor(() => expect(screen.getByLabelText(/^description\*?$/i)).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText(/^description\*?$/i), { target: { value: "Dell Laptop" } });
+    fireEvent.change(screen.getByLabelText(/^barcode$/i), { target: { value: "BC-BATCH-9" } });
+
+    fireEvent.click(screen.getByLabelText(/^category\*?$/i));
+    fireEvent.click(await screen.findByText("IT Equipment"));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /add line/i })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: /add line/i }));
+
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith(
+        "/purchase-orders/1/lines",
+        expect.objectContaining({ description: "Dell Laptop", barcode: "BC-BATCH-9" }),
+      ),
+    );
   });
 
   it("posts an Add Line request including quantity", async () => {

@@ -1,10 +1,11 @@
 # CKAM — Current Stage
 
 **Stage:** Purchase Order / Pending Assets feature — implemented, live
-browser UAT performed and passed, plus two same-day follow-ups the live
+browser UAT performed and passed, plus three same-day follow-ups the live
 UAT and user feedback directly motivated: Cost Centre relocated from
-per-line to the PO header, and a new Dashboard "Purchase Orders" card
-(ADMIN/IT_TEAM only). Backend and frontend regression clean throughout.
+per-line to the PO header, a new Dashboard "Purchase Orders" card
+(ADMIN/IT_TEAM only), and a new Barcode field (PO line → converted Asset).
+Backend and frontend regression clean throughout.
 **Environment: DEVELOPMENT / UAT. Production deployment remains DEFERRED —
 there is currently no production server.** AM-10's evidence, documents,
 regression baselines, and the local `ckam-v1.0.0-rc1` tag are all
@@ -16,8 +17,9 @@ enhancement only** (established AM-11) — this feature was built directly
 from the user's own detailed procurement-workflow description
 (a genuine CityKart Phase-1 requirement), following the full brainstorm →
 design spec → implementation plan process, not started speculatively; the
-Cost Centre and Dashboard-card follow-ups were both direct, explicit user
-requests made during/after live UAT, not speculative additions.
+Cost Centre, Dashboard-card, and Barcode follow-ups were all direct,
+explicit user requests made during/after live UAT, not speculative
+additions.
 **Next:** Await explicit user direction for the next development stage. Do
 NOT automatically begin further enhancement work. Do not start
 `holder_company_access`, import duplicate detection, bulk correction,
@@ -25,9 +27,7 @@ category/subcategory-scoped Custom Fields, approval workflow, AMC/
 insurance, depreciation, physical verification, a company-wide audit
 explorer, new lifecycle states, new master types, or the G04 ADMIN
 Dashboard company selector/breakdown, without an explicit business
-decision resolving the open items below first. A Barcode field on
-Purchase Orders/Assets has been requested by the user but not yet
-designed or built — see the open item below.
+decision resolving the open items below first.
 
 ## What's actually done — Purchase Order / Pending Assets feature
 
@@ -80,11 +80,16 @@ designed or built — see the open item below.
 - **No database migration risk** — every migration this feature added is
   additive; every downgrade path drops cleanly with no data-migration
   step, since nothing pre-existing moves into the new tables/column.
-- **Not yet done**: a Barcode field on Purchase Orders (requested by the
-  user; unlike Serial Number it is explicitly allowed to repeat across
-  multiple assets, so its design — per-line vs. per-unit, mandatory or
-  not — needs to be nailed down before implementation). No production
-  work of any kind.
+- **New Barcode field** (CityKart's own internal tag, distinct from Serial
+  Number): entered once per PO line (shared by every unit that line's
+  Quantity creates, explicitly allowed to repeat across assets per user
+  direction — see `DECISIONS.md`), carried through delivery onto the
+  converted Asset, editable afterward via ordinary Asset 360 Edit mode.
+  Additive migration `6c882ef3b225`. Verified live end-to-end: added a
+  5-quantity line with a shared barcode, delivered 2 of the 5, confirmed
+  the barcode landed on the converted Asset's Overview tab and Edit form,
+  identical across both delivered units while the 3 remaining lines still
+  carry it too. No production work of any kind.
 
 **Open Phase-1 business decisions (none are software defects):**
 1. `holder_company_access` — still depends on whether CityKart's real

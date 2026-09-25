@@ -84,11 +84,12 @@ async def test_create_po_and_add_line_happy_path(client):
 
     lines_resp = await client.post(f"/api/purchase-orders/{po_id}/lines", json={
         "description": "Laptop", "category_id": ctx["cat_id"], "subcategory_id": ctx["sub_id"],
-        "purchase_cost": 1000, "tax_percent": 18, "quantity": 2,
+        "barcode": "BC-SHARED", "purchase_cost": 1000, "tax_percent": 18, "quantity": 2,
     }, headers=headers)
     assert lines_resp.status_code == 201, lines_resp.text
     assert len(lines_resp.json()) == 2
     assert all(l["cost_center_id"] == ctx["cc_id"] for l in lines_resp.json())
+    assert all(l["barcode"] == "BC-SHARED" for l in lines_resp.json())
 
 
 async def test_create_po_rejects_cross_company_cost_centre(client):

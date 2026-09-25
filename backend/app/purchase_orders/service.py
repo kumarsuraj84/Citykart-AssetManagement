@@ -60,7 +60,7 @@ async def add_pending_asset_line(
     for _ in range(quantity):
         line = PendingAsset(
             purchase_order_id=purchase_order.id, company_id=purchase_order.company_id,
-            description=data["description"], category_id=data["category_id"],
+            description=data["description"], barcode=data.get("barcode"), category_id=data["category_id"],
             subcategory_id=data.get("subcategory_id"), cost_center_id=purchase_order.cost_center_id,
             purchase_cost=purchase_cost, tax_percent=tax_percent,
             tax_amount=tax_amount, total_cost=total_cost, status="PENDING",
@@ -78,6 +78,7 @@ async def update_pending_asset_line(session: AsyncSession, line: PendingAsset, d
     await _validate_line_masters(session, data)
     tax_amount, total_cost = compute_tax(data.get("purchase_cost"), data.get("tax_percent"))
     line.description = data["description"]
+    line.barcode = data.get("barcode")
     line.category_id = data["category_id"]
     line.subcategory_id = data.get("subcategory_id")
     line.purchase_cost = data.get("purchase_cost")
@@ -126,7 +127,7 @@ async def deliver_pending_assets(
                 {
                     "company_id": line.company_id, "cost_center_id": line.cost_center_id,
                     "category_id": line.category_id, "subcategory_id": line.subcategory_id,
-                    "description": line.description, "purchase_cost": line.purchase_cost,
+                    "description": line.description, "barcode": line.barcode, "purchase_cost": line.purchase_cost,
                     "tax_percent": line.tax_percent, "purchase_date": invoice_date,
                     "serial_number": delivery["serial_number"],
                     "initial_holder_id": delivery["initial_holder_id"],

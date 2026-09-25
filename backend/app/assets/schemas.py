@@ -48,6 +48,7 @@ class AssetOut(BaseModel):
     brand: str | None
     model: str | None
     serial_number: str | None
+    barcode: str | None
     description: str
     vendor_id: int | None
     po_number: str | None
@@ -144,6 +145,7 @@ class AssetUpdateIn(BaseModel):
     brand: str | None = None
     model: str | None = None
     serial_number: str | None = None
+    barcode: str | None = None
     description: str
     vendor_id: int | None = None
     po_number: str | None = None

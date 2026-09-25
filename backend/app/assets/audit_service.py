@@ -21,7 +21,7 @@ from app.masters.models import AssetCategory, AssetSubcategory, Vendor
 # The editable descriptive/procurement scalar fields AssetUpdateIn accepts,
 # excluding custom_fields (diffed separately below, per-key).
 AUDITED_SCALAR_FIELDS = (
-    "legacy_asset_code", "brand", "model", "serial_number", "description",
+    "legacy_asset_code", "brand", "model", "serial_number", "barcode", "description",
     "vendor_id", "po_number", "po_date", "invoice_number", "invoice_date",
     "pi_number", "pi_date", "purchase_cost", "tax_percent", "warranty_upto",
 )

@@ -28,6 +28,7 @@ interface PendingAssetRow {
   id: number;
   purchase_order_id: number;
   description: string;
+  barcode: string | null;
   category_id: number;
   subcategory_id: number | null;
   cost_center_id: number;
@@ -95,7 +96,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
 
   // --- Add Line form ---
   const [lineForm, setLineForm] = useState({
-    description: "", categoryId: "", subcategoryId: "",
+    description: "", barcode: "", categoryId: "", subcategoryId: "",
     purchaseCost: "0", taxPercent: "0", quantity: "1",
   });
   const visibleSubcategories = lineForm.categoryId
@@ -107,6 +108,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     mutationFn: () =>
       apiClient.post<PendingAssetRow[]>(`/purchase-orders/${poId}/lines`, {
         description: lineForm.description,
+        barcode: lineForm.barcode || null,
         category_id: Number(lineForm.categoryId),
         subcategory_id: lineForm.subcategoryId ? Number(lineForm.subcategoryId) : null,
         purchase_cost: Number(lineForm.purchaseCost) || 0,
@@ -115,18 +117,18 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["purchase-order", poId, "lines"] });
-      setLineForm({ description: "", categoryId: "", subcategoryId: "", purchaseCost: "0", taxPercent: "0", quantity: "1" });
+      setLineForm({ description: "", barcode: "", categoryId: "", subcategoryId: "", purchaseCost: "0", taxPercent: "0", quantity: "1" });
     },
   });
 
   // --- Edit line dialog ---
   const [editingLine, setEditingLine] = useState<PendingAssetRow | null>(null);
-  const [editForm, setEditForm] = useState({ description: "", categoryId: "", subcategoryId: "", purchaseCost: "0", taxPercent: "0" });
+  const [editForm, setEditForm] = useState({ description: "", barcode: "", categoryId: "", subcategoryId: "", purchaseCost: "0", taxPercent: "0" });
 
   function openEdit(line: PendingAssetRow) {
     setEditingLine(line);
     setEditForm({
-      description: line.description, categoryId: String(line.category_id),
+      description: line.description, barcode: line.barcode ?? "", categoryId: String(line.category_id),
       subcategoryId: line.subcategory_id ? String(line.subcategory_id) : "",
       purchaseCost: String(line.purchase_cost ?? 0),
       taxPercent: String(line.tax_percent ?? 0),
@@ -136,7 +138,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const editMutation = useMutation({
     mutationFn: () =>
       apiClient.put<PendingAssetRow>(`/purchase-orders/lines/${editingLine!.id}`, {
-        description: editForm.description, category_id: Number(editForm.categoryId),
+        description: editForm.description, barcode: editForm.barcode || null, category_id: Number(editForm.categoryId),
         subcategory_id: editForm.subcategoryId ? Number(editForm.subcategoryId) : null,
         purchase_cost: Number(editForm.purchaseCost) || 0, tax_percent: Number(editForm.taxPercent) || 0,
       }),
@@ -207,6 +209,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
         ) : null,
     },
     { key: "description", header: "Description", cell: (l) => l.description },
+    { key: "barcode", header: "Barcode", cell: (l) => l.barcode ?? "—" },
     { key: "category", header: "Category", cell: (l) => categoryName(l.category_id) },
     { key: "cost", header: "PO Value", headerClassName: "text-right", cellClassName: "text-right", cell: (l) => (l.total_cost ?? 0).toFixed(2) },
     { key: "status", header: "Status", cell: (l) => <LineStatusBadge status={l.status} /> },
@@ -247,6 +250,9 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
         <div className="grid grid-cols-3 gap-3">
           <FormField htmlFor="line-description" label="Description" required>
             <Input id="line-description" value={lineForm.description} onChange={(e) => setLineForm((f) => ({ ...f, description: e.target.value }))} />
+          </FormField>
+          <FormField htmlFor="line-barcode" label="Barcode" helperText="CityKart's own internal tag — may repeat across assets.">
+            <Input id="line-barcode" value={lineForm.barcode} onChange={(e) => setLineForm((f) => ({ ...f, barcode: e.target.value }))} />
           </FormField>
           <FormField htmlFor="line-category" label="Category" required>
             <Select value={selectValue(lineForm.categoryId)} onValueChange={(v) => setLineForm((f) => ({ ...f, categoryId: v, subcategoryId: "" }))}>
@@ -314,6 +320,9 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
           <div className="flex flex-col gap-3">
             <FormField htmlFor="edit-description" label="Description" required>
               <Input id="edit-description" value={editForm.description} onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))} />
+            </FormField>
+            <FormField htmlFor="edit-barcode" label="Barcode">
+              <Input id="edit-barcode" value={editForm.barcode} onChange={(e) => setEditForm((f) => ({ ...f, barcode: e.target.value }))} />
             </FormField>
             <FormField htmlFor="edit-cost" label="Cost">
               <Input id="edit-cost" type="number" value={editForm.purchaseCost} onChange={(e) => setEditForm((f) => ({ ...f, purchaseCost: e.target.value }))} />

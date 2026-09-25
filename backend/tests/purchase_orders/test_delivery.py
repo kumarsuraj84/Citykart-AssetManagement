@@ -48,7 +48,7 @@ async def test_deliver_pending_assets_creates_real_assets_with_distinct_serials(
         admin = await session.get(Holder, ctx["admin"].id)
         lines = await add_pending_asset_line(session, po, {
             "description": "Laptop", "category_id": ctx["cat"].id, "subcategory_id": ctx["sub"].id,
-            "purchase_cost": 1000, "tax_percent": 18, "quantity": 3,
+            "barcode": "BC-BATCH-1", "purchase_cost": 1000, "tax_percent": 18, "quantity": 3,
         }, admin)
         await session.commit()
 
@@ -74,6 +74,10 @@ async def test_deliver_pending_assets_creates_real_assets_with_distinct_serials(
             assert asset.po_number == "PO-DLV-1"
             assert asset.po_date == date(2026, 1, 1)
             assert asset.purchase_date == date(2026, 2, 1)
+            # Barcode is shared across the whole batch (unlike Serial Number,
+            # which is per-unit and must differ) -- every converted asset
+            # from this one line carries the identical barcode entered on it.
+            assert asset.barcode == "BC-BATCH-1"
             serials.add(asset.serial_number)
         assert serials == {"SN-001", "SN-002", "SN-003"}
 

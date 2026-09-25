@@ -24,6 +24,10 @@ class Asset(Base, AuditMixin):
     brand: Mapped[str | None] = mapped_column(String(200))
     model: Mapped[str | None] = mapped_column(String(200))
     serial_number: Mapped[str | None] = mapped_column(String(200))
+    barcode: Mapped[str | None] = mapped_column(String(200))
+    """CityKart's own internal inventory barcode (not the manufacturer serial
+    number) -- deliberately not unique (docs/ai/DECISIONS.md): the same
+    barcode value may legitimately appear on more than one asset."""
     description: Mapped[str] = mapped_column(String(500))
 
     vendor_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("vendor.id"))
