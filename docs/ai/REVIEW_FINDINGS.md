@@ -78,21 +78,27 @@ is resolved; see "Resolved this session" below for AM-05/AM-06's fixes.
     exploitable (the login query's own company-active clause blocks them),
     but a messy leftover state worth cleaning up in any future
     database-cleanup pass.
-10. **The Dashboard has no Repair/Lost/Disposed exception counts and no
-    recent-activity feed** — found during AM-11's Phase-1 gap review
-    (`PHASE1_GAP_REGISTER.md` G03, SHOULD HAVE). Every underlying number
-    already exists in `asset.status`/`asset_event`; this would be a
-    query/UI addition, not a schema change. Not implemented in AM-11 to
-    avoid an uncontrolled enhancement batch — needs its own future
-    mini-gate cycle.
+10. ~~The Dashboard has no Repair/Lost/Disposed exception counts and no
+    recent-activity feed~~ **Fixed (AM-12)** — see "Resolved this session"
+    below.
 11. **ADMIN's Dashboard mixes every company's location names together
     with no per-company grouping or selector** — found during AM-11's
     Phase-1 gap review (`PHASE1_GAP_REGISTER.md` G04). Whether this
     matters depends on how many real companies CityKart operates in
-    Phase-1 — USER DECISION REQUIRED before building anything.
+    Phase-1 — USER DECISION REQUIRED before building anything. Still open
+    as of AM-12 — explicitly out of that stage's own scope.
 
 ## Resolved this session (kept here for traceability, remove once stale)
 
+- **The Dashboard had no Repair/Lost/Disposed exception counts and no
+  recent-activity feed** — fixed (AM-12): a new "Exceptions" card lists
+  all 5 non-healthy statuses explicitly (0 shown, never hidden), each
+  linking into the Asset Register pre-filtered to that status via a new
+  typed `?status=` route search param; a new "Recent Activity" card shows
+  the latest 5 lifecycle events, company-scoped, reusing the exact
+  snapshot-correct holder-name labeling the Asset 360 History tab already
+  uses (`with_labels`, relocated from `app.lifecycle.router` to
+  `app.lifecycle.service` so both can share it). See `DECISIONS.md`.
 - **The Asset Register could not show who currently holds an asset or
   which company it belongs to without opening every row individually** —
   fixed (AM-11, commit `9607193`): two new columns (Holder, Company),

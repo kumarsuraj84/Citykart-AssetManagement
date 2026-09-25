@@ -1,27 +1,26 @@
 # CKAM — Current Stage
 
-**Stage:** AM-11 (Phase-1 Development Continuation + Business Gap Review) — complete.
-**Verdict: PHASE-1 READY WITH MINOR ENHANCEMENTS.**
+**Stage:** AM-12 (Dashboard Operational Control Enhancement) — complete.
+**Verdict: PASS.**
 **Environment: DEVELOPMENT / UAT. Production deployment remains DEFERRED —
 there is currently no production server.** AM-10's evidence, documents,
 regression baselines, and the local `ckam-v1.0.0-rc1` tag are all
 preserved unmoved; production deployment work resumes only once the user
 supplies real production server details and issues a separate
 production-deployment authorization.
-**FEATURE FREEZE LIFTED FOR JUSTIFIED PHASE-1 GAP CLOSURE.** AM-08 through
-AM-10's stricter "no new feature work" freeze is modified as of AM-11:
-evidenced Phase-1 business gaps, usability gaps, workflow gaps, and clear
-bugs may be identified and fixed, but only when justified by an existing
-CityKart requirement, legacy ThreadERP domain evidence, a current
-workflow gap, direct user feedback, or demonstrated operational need —
-never a speculative "typical asset systems have this."
+**FEATURE FREEZE remains lifted for justified Phase-1 gap closure only**
+(established AM-11) — every enhancement still needs the same
+justification: an existing CityKart requirement, legacy ThreadERP domain
+evidence, a current workflow gap, direct user feedback, or demonstrated
+operational need.
 **Next:** Awaiting explicit user direction for the next development/
 enhancement stage. Do NOT automatically begin further enhancement work.
 Do not start `holder_company_access`, import duplicate detection, bulk
 correction, category/subcategory-scoped Custom Fields, approval workflow,
 AMC/insurance, depreciation, physical verification, a company-wide audit
-explorer, new lifecycle states, or new master types without an explicit
-business decision resolving the open items below first.
+explorer, new lifecycle states, new master types, or the G04 ADMIN
+Dashboard company selector/breakdown, without an explicit business
+decision resolving the open items below first.
 
 **Open Phase-1 business decisions (none are software defects):**
 1. `holder_company_access` — still depends on whether CityKart's real
@@ -29,8 +28,10 @@ business decision resolving the open items below first.
 2. Import duplicate detection — a practical option was proposed (an
    optional, non-blocking warning on a repeated Serial Number within the
    same company) but needs CityKart's own confirmation before building.
-3. Whether ADMIN's Dashboard needs a per-company breakdown — depends on
-   how many real companies CityKart operates in Phase-1.
+3. G04 — whether ADMIN's Dashboard needs a per-company breakdown/selector
+   — depends on how many real companies CityKart operates in Phase-1.
+   AM-12 deliberately left this unresolved, per its own explicit scope
+   boundary.
 
 **AM-10's production go-live decisions remain open but deferred, not
 resolved and not abandoned** (production data strategy, real `BASE_URL`/
@@ -39,6 +40,7 @@ operational ownership) — see `docs/ai/CKAM_GO_LIVE_CHECKLIST.md` and
 `docs/ai/AM-10_GO_LIVE_PREPARATION_REPORT.md`, both preserved as
 historical, still-accurate evidence for when a production server exists.
 
+Full AM-12 evidence: `docs/ai/AM-12_DASHBOARD_OPERATIONAL_CONTROL_REPORT.md`.
 Full AM-11 evidence: `docs/ai/AM-11_PHASE1_GAP_REVIEW_REPORT.md`, gap
 register `docs/ai/PHASE1_GAP_REGISTER.md`.
 Full AM-10 evidence: `docs/ai/AM-10_GO_LIVE_PREPARATION_REPORT.md` (a
@@ -558,6 +560,56 @@ still correct for CKAM's actual, deliberately narrower scope — see
   found) remains untouched — it is acceptable for a development
   environment, and AM-11 was explicitly instructed not to clean it for
   that reason alone.
+
+## What's actually done as of AM-12
+
+- **Dashboard Operational Control Enhancement (G03), verdict PASS.**
+  Closes AM-11's strongest-evidenced remaining SHOULD-HAVE gap: the
+  Dashboard previously showed no Repair/Lost/Disposed exception counts and
+  no recent-activity feed, despite the underlying data already existing in
+  `asset.status`/`asset_event`. Full detail:
+  `docs/ai/AM-12_DASHBOARD_OPERATIONAL_CONTROL_REPORT.md`.
+- **New "Exceptions" card**: all 5 non-healthy statuses (`UNDER_REPAIR`,
+  `LOST`, `DISPOSED`, `SOLD`, `SCRAPPED`) shown explicitly, defaulted to 0
+  rather than hidden when empty, each linking straight into the Asset
+  Register pre-filtered to that status (`/assets?status=<STATUS>`, a new
+  typed route search-param). Reuses the existing `status_counts` query —
+  no second database round trip for the counts themselves.
+- **New "Recent Activity" card**: the latest 5 lifecycle events, company-
+  scoped exactly like the rest of the Dashboard, reusing the exact same
+  snapshot-correct holder-name labeling the Asset 360 History tab already
+  uses (`with_labels`, relocated from `app.lifecycle.router` into
+  `app.lifecycle.service` specifically so this stage could reuse it rather
+  than duplicate it). A later holder rename does not retroactively change
+  how a past event reads here, same AM-01 guarantee.
+- **Both existing KPI cards, Stock by Location, Warranty Expiring Soon,
+  and Allotted Over 180 Days are unchanged** — AM-12 extends the
+  Dashboard, it does not replace or redesign it.
+- **G04 (ADMIN per-company Dashboard breakdown) deliberately left
+  unresolved** — explicitly out of scope for this stage, still needs a
+  business decision on how many real companies CityKart operates in
+  Phase-1.
+- **Investigated and ruled out (not a code defect): a HOLDER-role account
+  navigating directly to `/dashboard` briefly appeared to show an empty
+  "success" Dashboard instead of the expected 403 ErrorState, in this
+  session's own live browser.** Confirmed via direct `fetch()` from the
+  browser console that the backend correctly returns `403` (unchanged
+  HOLDER-cannot-see-dashboard behavior). An isolated unit test exercising
+  the *real* `authFetch`/`api-client`/`useQuery` chain (not the mocked
+  `apiClient` the permanent test suite uses) against a genuine `403`
+  response correctly showed `ErrorState` — proving the application code
+  handles this correctly. The live-browser anomaly is attributed to a
+  browser-pane/session artifact from this session's own rapid, repeated
+  account-switching within one long-lived tab (evidence: a stale,
+  pre-rebuild JS bundle hash was observed loading for `/login` moments
+  before the correct, current bundle loaded for `/dashboard` in the same
+  navigation) — not reproducible in a clean tab or in the real-fetch-chain
+  unit test, and not classified as an application defect. Same
+  investigate-to-a-clean-conclusion discipline AM-09 §55 used for its own
+  "stuck loading" anomaly.
+- **No database migration** — confirmed unnecessary; Alembic head remains
+  `f28b6a913dce` throughout.
+- **No production work, no push, no test-data deletion.**
 
 ## Branch / remote state
 

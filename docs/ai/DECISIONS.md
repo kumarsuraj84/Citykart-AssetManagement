@@ -2,6 +2,60 @@
 
 Newest first. These override older spec/plan text where they conflict.
 
+## 2026-09-25 — AM-12 scope locked (Dashboard Operational Control Enhancement, G03)
+
+1. **Exception visibility uses one compact "Exceptions" card listing all
+   five non-healthy statuses individually, not a lossy 3-way aggregate.**
+   The authorization suggested a possible "Repair / Lost / Closed-Disposed"
+   grouping, but the Asset Register's own Status filter is single-valued
+   (one status per query, not a multi-select) — an aggregated "Closed"
+   count covering DISPOSED+SOLD+SCRAPPED could not be click-through-
+   filtered to in one step without first expanding the register's own
+   filter model, which was out of this stage's scope. Showing all five
+   individually keeps every count both fully meaningful and independently
+   actionable, satisfying the authorization's own fallback instruction
+   ("the user must still be able to understand the underlying counts").
+2. **Every exception count links straight into a pre-filtered Asset
+   Register** via a new, typed `?status=<STATUS>` route search param
+   (`assetsIndexRoute.validateSearch` in `router.tsx`) — a genuine
+   navigation target, not a decorative number, per the authorization's
+   own "click-through" requirement.
+3. **Recent Activity reuses the exact snapshot-correct labeling logic the
+   Asset 360 History tab already has**, rather than building a second,
+   parallel formatting path. `with_labels` (previously a private helper
+   inside `app.lifecycle.router`) was relocated to `app.lifecycle.service`
+   specifically so `app.reports.dashboard_service` could import and reuse
+   it. This is a structural move, not a behavior change — verified via
+   the full backend regression staying green throughout.
+4. **The exception counts reuse the dashboard's own existing
+   `status_counts` query** (a single already-executed `GROUP BY`), rather
+   than issuing a second, redundant count query — the five exception
+   statuses are simply read out of that same dict, defaulted to 0 for any
+   status with zero matching assets so the metric is never silently
+   hidden.
+5. **Recent Activity is capped at 5 events, company-scoped identically to
+   every other Dashboard widget**, and explicitly documented as
+   deliberately NOT a second Movement Log — that report remains the
+   authoritative, unbounded historical view.
+6. **G04 (ADMIN's Dashboard mixing every company's data with no
+   per-company breakdown) was deliberately left unresolved in AM-12.**
+   This stage's own authorization explicitly forbade solving it, since the
+   underlying business question (how many real companies will CKAM
+   Phase-1 actually operate?) still has no answer.
+7. **A live-browser observation of HOLDER's `/dashboard` access was
+   investigated and ruled out as an application defect.** The backend
+   correctly returns `403` (confirmed via a direct browser-console
+   `fetch()` call); an isolated unit test driving the real `authFetch` →
+   `api-client` → `useQuery` chain against a genuine `403` response
+   correctly rendered `ErrorState`. The live-session anomaly (a stale,
+   pre-rebuild JS bundle observed loading for `/login` moments before the
+   correct bundle loaded for `/dashboard`, in a browser tab that had been
+   reused across many rapid account-switches this session) did not
+   reproduce in a fresh tab under the same conditions and is attributed to
+   a browser-pane/session artifact, not the application. See
+   `docs/ai/AM-12_DASHBOARD_OPERATIONAL_CONTROL_REPORT.md` for the full
+   investigation.
+
 ## 2026-09-25 — AM-11 scope locked (Phase-1 Development Continuation + Business Gap Review)
 
 1. **Production deployment is deferred; AM-10's evidence and its
