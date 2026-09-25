@@ -2,6 +2,71 @@
 
 Newest first. These override older spec/plan text where they conflict.
 
+## 2026-09-25 — AM-11 scope locked (Phase-1 Development Continuation + Business Gap Review)
+
+1. **Production deployment is deferred; AM-10's evidence and its
+   `ckam-v1.0.0-rc1` tag are preserved, not superseded.** There is
+   currently no production server. AM-08 through AM-10's release-
+   readiness focus and feature freeze are modified, not discarded — every
+   AM-10 finding, document, and regression baseline remains valid
+   evidence for whenever a production server is actually provided.
+2. **Feature freeze is lifted specifically for evidenced Phase-1 gap
+   closure, not general feature growth.** Every enhancement made under
+   this relaxed freeze must be justified by an existing CityKart Phase-1
+   requirement, legacy ThreadERP domain evidence, a current CKAM workflow
+   gap, direct user feedback, or demonstrated operational need — never
+   "a typical asset system might have this."
+3. **The Asset Register must show who currently holds an asset and which
+   company it belongs to without a click into every row.** This directly
+   follows from CKAM's own stated core guarantee
+   (`docs/ai/PRODUCT_CONTEXT.md`: "for any asset, at any time, you can
+   answer where is it, who holds it") — a register that cannot answer
+   that without navigation was judged a genuine MUST-HAVE gap, not a
+   nice-to-have. Implemented via a page-scoped batch id→name lookup
+   (only the distinct holder/company ids on the current page, never a
+   whole-table fetch), the same architectural pattern
+   `export_service.py` already used for exports, adapted to be lighter
+   for a per-request/per-filter-keystroke endpoint.
+4. **Asset search now covers Description, not just code-like
+   identifiers.** A real operator is more likely to remember an asset's
+   description than its generated Asset Code — found missing by direct
+   comparison against the authorization's own search checklist, fixed
+   with a one-line addition to the existing search clause.
+5. **The legacy ThreadERP comparison confirms, rather than challenges,
+   every one of CKAM's existing locked V1 scope exclusions.** ThreadERP
+   is a full accounting-grade fixed-asset/depreciation ERP module (AMC,
+   Insurance, Market Valuation, Depreciation, Retrospective Effect,
+   Transfer To/From General Reserve, an approval workflow for both new-
+   asset submission and custody movement, formal physical-asset
+   verification). CKAM is deliberately narrower — a physical custody-
+   lifecycle tracker — and this stage's read-only exploration of a real,
+   populated 12,862-asset ThreadERP instance found no evidence that any
+   of that excluded breadth is actually needed for CityKart's Phase-1
+   operating model. This re-validates, not newly discovers, the original
+   AM-01 scope decisions below.
+6. **The Dashboard's lack of Repair/Lost/Disposed exception counts and a
+   recent-activity feed is a real, evidenced SHOULD-HAVE gap — but was
+   not implemented this stage.** Deliberately deferred to its own future
+   mini-gate cycle (per the AM-11 authorization's own "do not create a
+   giant enhancement batch" instruction) rather than bundled into the
+   same commit as the Asset Register fix, since it touches a different
+   screen and a different query surface.
+7. **Three specific Phase-1 business decisions remain genuinely open and
+   were not guessed at**: whether CityKart's real Asset/IT team needs
+   cross-company account access (`holder_company_access`), whether Import
+   should warn on a duplicate Serial Number within a company (a practical
+   option proposed, not built), and whether ADMIN's Dashboard needs a
+   per-company breakdown for real multi-company Phase-1 use. Each is
+   recorded as USER DECISION REQUIRED in `docs/ai/PHASE1_GAP_REGISTER.md`.
+8. **A new development/UAT test-data naming convention was established**
+   (`docs/ai/DEVELOPMENT_GUARDRAILS.md`): company code
+   `UAT-<stage>-<suffix>`, asset description prefix `"UAT - "`, holder
+   emp_code prefix `UAT-<stage>-...` — additive to, not a replacement
+   for, the existing E2E fixture's own `E2E-*`/`E2EB*` pattern. No
+   historical UAT/E2E/RC data was renamed, cleaned, or deleted; the
+   current DEV/UAT database's existing test data remains acceptable for
+   development use, per this stage's own explicit instruction.
+
 ## 2026-09-25 — AM-10 scope locked (Production Go-Live Preparation)
 
 1. **Verdict: GO-LIVE PREPARED WITH DECISIONS REQUIRED, not GO-LIVE

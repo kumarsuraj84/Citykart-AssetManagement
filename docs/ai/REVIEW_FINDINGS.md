@@ -34,14 +34,16 @@ is resolved; see "Resolved this session" below for AM-05/AM-06's fixes.
     value is within the recognized set (zero violations) — still open,
     still not release-blocking.
 3. **No import-side duplicate detection** (legacy code, serial number, PO/
-    invoice/PI number) — confirmed still absent in AM-06, AM-07, AM-08, and
-    AM-09 (it was never present; a prior report's claim that "duplicate
-    handling" was covered by the existing test suite did not match the
-    actual code or tests, see `AM-06_IMPORT_REPORTS_MY_ASSETS_REPORT.md`
-    §17). Not added without business evidence that any of these fields is
-    meant to be unique — Asset Code remains the only system-enforced-unique
-    identifier. Still open as of AM-09 (explicitly out of scope there too,
-    per the AM-09 authorization's own instruction not to add it).
+    invoice/PI number) — confirmed still absent in AM-06 through AM-11 (it
+    was never present; a prior report's claim that "duplicate handling"
+    was covered by the existing test suite did not match the actual code
+    or tests, see `AM-06_IMPORT_REPORTS_MY_ASSETS_REPORT.md` §17). Not
+    added without business evidence that any of these fields is meant to
+    be unique — Asset Code remains the only system-enforced-unique
+    identifier. AM-11 proposed a practical option (an optional, non-
+    blocking preview-time warning on a repeated Serial Number within the
+    same company) but did not build it — see `PHASE1_GAP_REGISTER.md`,
+    "USER DECISION REQUIRED."
 4. ~~No security response headers~~ **Fixed (AM-10)** — see "Resolved
     this session" below.
 5. ~~No `Cache-Control` guidance on authenticated API JSON responses~~
@@ -76,8 +78,37 @@ is resolved; see "Resolved this session" below for AM-05/AM-06's fixes.
     exploitable (the login query's own company-active clause blocks them),
     but a messy leftover state worth cleaning up in any future
     database-cleanup pass.
+10. **The Dashboard has no Repair/Lost/Disposed exception counts and no
+    recent-activity feed** — found during AM-11's Phase-1 gap review
+    (`PHASE1_GAP_REGISTER.md` G03, SHOULD HAVE). Every underlying number
+    already exists in `asset.status`/`asset_event`; this would be a
+    query/UI addition, not a schema change. Not implemented in AM-11 to
+    avoid an uncontrolled enhancement batch — needs its own future
+    mini-gate cycle.
+11. **ADMIN's Dashboard mixes every company's location names together
+    with no per-company grouping or selector** — found during AM-11's
+    Phase-1 gap review (`PHASE1_GAP_REGISTER.md` G04). Whether this
+    matters depends on how many real companies CityKart operates in
+    Phase-1 — USER DECISION REQUIRED before building anything.
 
 ## Resolved this session (kept here for traceability, remove once stale)
+
+- **The Asset Register could not show who currently holds an asset or
+  which company it belongs to without opening every row individually** —
+  fixed (AM-11, commit `9607193`): two new columns (Holder, Company),
+  populated via a new page-scoped batch id→name lookup
+  (`_page_label_maps`, only the distinct ids on the current page, never a
+  whole-table fetch) — directly serves CKAM's own stated core guarantee
+  ("for any asset, at any time, you can answer where is it, who holds
+  it"). A necessary side-fix: `AssetDetailOut`'s own construction
+  collided with the new `AssetOut` fields (`TypeError: got multiple
+  values for keyword argument`) — fixed by excluding them from the base
+  dump and having the detail endpoint's own richer lookup explicitly
+  provide them instead. See `DECISIONS.md`.
+- **Asset search did not cover the Description field** — fixed (AM-11,
+  same commit): a real operator is more likely to remember "the Dell
+  laptop" than its generated Asset Code. One-line addition to the
+  existing search clause.
 
 - **Missing security response headers** (`X-Content-Type-Options`,
   `X-Frame-Options`, `Referrer-Policy`) on both `web` and `/api/`

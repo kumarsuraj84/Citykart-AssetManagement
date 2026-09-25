@@ -1,34 +1,49 @@
 # CKAM — Current Stage
 
-**Stage:** AM-10 (Production Go-Live Preparation) — complete.
-**Verdict: GO-LIVE PREPARED WITH DECISIONS REQUIRED.**
-**FEATURE FREEZE REMAINS ACTIVE.** CKAM V1 is feature-frozen as of AM-08 and
-stays frozen through AM-10. No new feature stage begins without explicit
-authorization — only an evidenced release-blocking bug may be fixed.
-**Next:** Awaiting explicit user authorization for AM-11 — Production
-Cutover / Deployment. Do NOT automatically begin AM-11. Before that
-authorization is requested, the open decisions listed below need
-resolving. Do not start `holder_company_access`, import duplicate
-detection, bulk correction, category/subcategory-scoped Custom Fields,
-approval workflow, AMC/insurance, depreciation, physical verification, a
-company-wide audit explorer, new dashboards, new reports, new lifecycle
-states, new master types, or new asset workflow concepts.
+**Stage:** AM-11 (Phase-1 Development Continuation + Business Gap Review) — complete.
+**Verdict: PHASE-1 READY WITH MINOR ENHANCEMENTS.**
+**Environment: DEVELOPMENT / UAT. Production deployment remains DEFERRED —
+there is currently no production server.** AM-10's evidence, documents,
+regression baselines, and the local `ckam-v1.0.0-rc1` tag are all
+preserved unmoved; production deployment work resumes only once the user
+supplies real production server details and issues a separate
+production-deployment authorization.
+**FEATURE FREEZE LIFTED FOR JUSTIFIED PHASE-1 GAP CLOSURE.** AM-08 through
+AM-10's stricter "no new feature work" freeze is modified as of AM-11:
+evidenced Phase-1 business gaps, usability gaps, workflow gaps, and clear
+bugs may be identified and fixed, but only when justified by an existing
+CityKart requirement, legacy ThreadERP domain evidence, a current
+workflow gap, direct user feedback, or demonstrated operational need —
+never a speculative "typical asset systems have this."
+**Next:** Awaiting explicit user direction for the next development/
+enhancement stage. Do NOT automatically begin further enhancement work.
+Do not start `holder_company_access`, import duplicate detection, bulk
+correction, category/subcategory-scoped Custom Fields, approval workflow,
+AMC/insurance, depreciation, physical verification, a company-wide audit
+explorer, new lifecycle states, or new master types without an explicit
+business decision resolving the open items below first.
 
-**Open decisions before AM-11 (none are software defects):**
-1. Production data strategy — FRESH PRODUCTION DATABASE (recommended,
-   strong evidence) or PROMOTE CURRENT DATABASE AFTER CONTROLLED CLEANUP.
-2. The real production `BASE_URL` (LAN hostname/IP) and `BACKUP_DIR`
-   (separate disk, copied off the server) — both are currently dev-only
-   placeholders.
-3. Disposition of an active test-ADMIN account (`UATADMIN`) found sitting
-   inside the real production company — resolved automatically by
-   decision 1 if a fresh database is chosen.
-4. Whether/when and how to push `worktree-ckam-build` to `origin` — a
-   repository-workflow decision belonging to the user.
-5. Naming the operational owners left as "OWNER TO BE ASSIGNED" in the
-   Operations Ownership Matrix.
+**Open Phase-1 business decisions (none are software defects):**
+1. `holder_company_access` — still depends on whether CityKart's real
+   Asset/IT team is organizationally shared across companies.
+2. Import duplicate detection — a practical option was proposed (an
+   optional, non-blocking warning on a repeated Serial Number within the
+   same company) but needs CityKart's own confirmation before building.
+3. Whether ADMIN's Dashboard needs a per-company breakdown — depends on
+   how many real companies CityKart operates in Phase-1.
 
-Full AM-10 evidence: `docs/ai/AM-10_GO_LIVE_PREPARATION_REPORT.md`, plus
+**AM-10's production go-live decisions remain open but deferred, not
+resolved and not abandoned** (production data strategy, real `BASE_URL`/
+`BACKUP_DIR`, the `UATADMIN` test-account disposition, push/PR strategy,
+operational ownership) — see `docs/ai/CKAM_GO_LIVE_CHECKLIST.md` and
+`docs/ai/AM-10_GO_LIVE_PREPARATION_REPORT.md`, both preserved as
+historical, still-accurate evidence for when a production server exists.
+
+Full AM-11 evidence: `docs/ai/AM-11_PHASE1_GAP_REVIEW_REPORT.md`, gap
+register `docs/ai/PHASE1_GAP_REGISTER.md`.
+Full AM-10 evidence: `docs/ai/AM-10_GO_LIVE_PREPARATION_REPORT.md` (a
+historical release-readiness checkpoint, not the current development
+HEAD — see `docs/ai/CKAM_RELEASE_MANIFEST.md`'s own note on this), plus
 `docs/ai/CKAM_PRODUCTION_ENVIRONMENT_CHECKLIST.md`,
 `docs/ai/CKAM_PRODUCTION_SERVER_CHECKLIST.md`,
 `docs/ai/CKAM_INITIAL_SETUP_GUIDE.md`, `docs/ai/CKAM_RELEASE_MANIFEST.md`,
@@ -495,12 +510,54 @@ Reassigned, plus Repair/Lost-Found/Disposed-Sold-Scrapped.
 
 None of these business decisions were resolved in AM-09 — their mere
 existence is not a release blocker, per the AM-09 authorization's own
-instruction. No deployment/go-live preparation, and none of
-`holder_company_access`, import duplicate detection, approval workflow,
-AMC/insurance, depreciation, physical verification, bulk correction,
-category/subcategory-scoped Custom Fields, a full company-wide asset audit
-explorer, new dashboards, new reports, or new lifecycle states, have been
-started — see `REVIEW_FINDINGS.md` for what's still open.
+instruction. None of `holder_company_access`, import duplicate detection,
+approval workflow, AMC/insurance, depreciation, physical verification,
+bulk correction, category/subcategory-scoped Custom Fields, a full
+company-wide asset audit explorer, new lifecycle states, have been
+started — see `REVIEW_FINDINGS.md` for what's still open. AM-11's own
+legacy-ThreadERP comparison re-confirmed every one of these exclusions is
+still correct for CKAM's actual, deliberately narrower scope — see
+`docs/ai/PHASE1_GAP_REGISTER.md` G08-G13.
+
+## What's actually done as of AM-11
+
+- **Phase-1 gap review, verdict PHASE-1 READY WITH MINOR ENHANCEMENTS.**
+  Not a production-deployment stage — production remains deferred, no
+  production server exists yet. A full business-capability map, a
+  read-only legacy ThreadERP comparison (a real, populated 12,862-asset
+  production instance), and live browser walkthroughs as ADMIN/VIEWER/
+  HOLDER. Full detail: `docs/ai/AM-11_PHASE1_GAP_REVIEW_REPORT.md`, gap
+  register `docs/ai/PHASE1_GAP_REGISTER.md`.
+- **Two evidenced MUST-HAVE gaps found and fixed** (commit `9607193`):
+  the Asset Register could not show who currently holds an asset or which
+  company it belongs to without opening every row individually — a direct
+  conflict with CKAM's own stated core guarantee — now fixed with two new
+  columns populated via a page-scoped batch lookup; and asset search did
+  not cover the Description field, now fixed.
+- **Legacy ThreadERP comparison confirmed, not challenged, CKAM's
+  existing locked V1 scope** — ThreadERP's extensive AMC/Insurance/
+  Depreciation/Market-Valuation/Approval-Workflow/Asset-Verification
+  functionality is exactly the breadth CKAM's own governance already,
+  deliberately excludes for a physical custody-lifecycle tracker, not a
+  finance/accounting ERP module.
+- **4 SHOULD-HAVE gaps documented, not implemented** — most notably the
+  Dashboard's lack of Repair/Lost/Disposed exception visibility and a
+  recent-activity feed (real, evidenced, but needs its own mini-gate
+  cycle in a future stage rather than being folded into this one). See
+  `PHASE1_GAP_REGISTER.md` G03-G07.
+- **New development/UAT test-data naming convention established**
+  (`DEVELOPMENT_GUARDRAILS.md`): company code `UAT-<stage>-<suffix>`,
+  asset description prefix `"UAT - "`, holder emp_code prefix
+  `UAT-<stage>-...`. Applied to this stage's own seed data as the first
+  real example.
+- **No database migration** — confirmed unnecessary; Alembic head remains
+  `f28b6a913dce` throughout.
+- **No production work, no push, no test-data deletion.** AM-10's
+  `ckam-v1.0.0-rc1` tag is preserved unmoved. The existing DEV/UAT
+  database's test data (including everything AM-10's own inventory
+  found) remains untouched — it is acceptable for a development
+  environment, and AM-11 was explicitly instructed not to clean it for
+  that reason alone.
 
 ## Branch / remote state
 

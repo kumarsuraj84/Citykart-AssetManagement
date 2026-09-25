@@ -124,7 +124,7 @@ Security = authz/scoping verified. Responsive = checked at 1440/768/375.
 | `/login` | ✅ | ✅ | ✅ | ✅ | Full UAT: keyboard nav, Enter-submit, validation errors, failed-login banner, all 3 breakpoints, real login verified with owner account |
 | `/change-password` | ✅ | ✅ | ✅ | ✅ | AM-07 verification sweep: confirmed no horizontal overflow at 1440/768/375 (`document.body.scrollWidth === window.innerWidth` at all three); confirmed empty-form submit is blocked client-side with no network request fired; confirmed fields are keyboard-focusable; route requires an authenticated session (backend-regression-only, no new endpoint). AM-08: Design closed — visually compared against Login at 1440/768/375, same centered-card layout, logo, spacing, labeled fields, and dark navy submit action; no redesign needed |
 | `/dashboard` | ✅ | ✅ | ✅ | ✅ | AM-03: migrated to shared foundation, fixed the stuck-on-Loading-forever bug (now shows a real error state with retry); verified in-browser at 1440/1024/768/375 with real live data. AM-08: Security closed — the dashboard's own reports endpoints (`require_role(*STAFF_ROLES)`) were exercised live via direct API calls as VIEWER/HOLDER during the route-security sweep, no over-permission found (see `REVIEW_FINDINGS.md`) |
-| `/assets` (register) | ✅ | ✅ | ✅ | ✅ | AM-03: migrated to shared foundation; row click now uses the SPA router (confirmed via network log — no document reload); checkbox click confirmed not to trigger row navigation; verified in-browser at 1440/1024/768/375 — table uses intentional horizontal scroll at 375, no clipped content. AM-08: Security closed — `GET /api/assets` exercised live as VIEWER (200, company-scoped) and HOLDER (200, pinned to their own held assets only, confirmed against `list_assets`' actual scoping code, not just the response) during the route-security sweep |
+| `/assets` (register) | ✅ | ✅ | ✅ | ✅ | AM-03: migrated to shared foundation; row click now uses the SPA router (confirmed via network log — no document reload); checkbox click confirmed not to trigger row navigation; verified in-browser at 1440/1024/768/375 — table uses intentional horizontal scroll at 375, no clipped content. AM-08: Security closed — `GET /api/assets` exercised live as VIEWER (200, company-scoped) and HOLDER (200, pinned to their own held assets only, confirmed against `list_assets`' actual scoping code, not just the response) during the route-security sweep. AM-11: fixed a genuine Phase-1 usability gap found during the ADMIN walkthrough — the table gained Holder and Company columns (page-scoped batch lookup, never a per-row join) and the search box now also matches Description; verified live (searching "latitude" now finds "UAT - Dell Latitude Laptop" by description; the new columns show real resolved names, e.g. "UAT AM11 Employee Holder" / "UAT AM11 UX Walkthrough Co") |
 | `/assets/new` (Add Asset) | ✅ | ✅ | ✅ | ✅ | AM-04: full sectioned redesign; verified in-browser at 1920/1440/1366/1024/768/375 with real created data; required-UDF error and server-validation-error both confirmed live. AM-05: Custom Fields section filters to Global + this asset's company only, verified live + E2E + 9 backend + 1 frontend regression test. AM-08: fixed the Cost Centre company-scoping bug found in AM-07 (verified live: only the current company's own cost centre now appears, plus a new dedicated E2E journey); Security closed — `POST /api/assets` exercised live as VIEWER and HOLDER (both 403) during the route-security sweep |
 | `/assets/$id` (Asset Detail → Asset 360) | ✅ | ✅ | ✅ | ✅ | AM-04: full redesign, `return null` loading bug fixed; verified in-browser at all 6 breakpoints; Edit mode exercised end-to-end. AM-05: Edit mode's Custom Field controls apply the Global+own-company filter, verified by a dedicated frontend regression test. AM-07: "Correct Classification" action verified live end-to-end (two real corrections against `AM04UAT/2`, Impact Summary, Changes-tab distinct rendering, History byte-identical before/after, ordinary Edit mode confirmed to expose none of the three fields); dialog verified with no overflow at 1440/1024/768/375. AM-08: Security closed — `POST /api/assets/1/corrections` exercised live as VIEWER (403) during the route-security sweep, alongside the 30 AM-07 backend authorization tests |
 | `/my-assets` | ✅ | ✅ | ✅ | ✅ | AM-06: migrated to shared foundation; real loading skeleton and error+retry added; hardcoded link color replaced. A Category column was tried, then removed after live UAT caught it showing a raw numeric id for a deactivated category. AM-08: Security closed — `/my-assets` reuses `GET /api/assets` with a HOLDER's `holder_id` pinned server-side to their own id (same code path exercised live as HOLDER during the route-security sweep, confirmed against the actual scoping code, not assumed) |
@@ -152,14 +152,14 @@ after use since an equivalent permanent unit test,
 `AssetRegister.test.tsx`'s error-state test, already covers the same
 scenario). All five specs clean up everything they create.
 
-**Backend:** 305/305 passing (was 297/297 at AM-08, 288/288 at AM-07,
-258/258 at AM-06, 231/231 at AM-05, 199/199 at AM-04, 184/184 at AM-03,
-170/170 at AM-01, 163/163 at AM-00 — +8 new AM-09 tests: 3 formula-
-injection, 1 naive-datetime regression, 2 duplicate-master-code, 1
-duplicate-emp_code, 1 numbering concurrency — see
-`AM-09_RC_FULL_AUDIT_REPORT.md` §62-63).
-**Frontend:** 148/148 passing (25 files, unchanged from AM-08 — AM-09 made
-no frontend code change; every fix was backend-only), `npx tsc -b` clean.
+**Backend:** 307/307 passing (was 305/305 at AM-09/AM-10, 297/297 at
+AM-08, 288/288 at AM-07, 258/258 at AM-06, 231/231 at AM-05, 199/199 at
+AM-04, 184/184 at AM-03, 170/170 at AM-01, 163/163 at AM-00 — +2 new
+AM-11 tests: description-substring search, list-endpoint holder/company
+name resolution — see `AM-11_PHASE1_GAP_REVIEW_REPORT.md` §33).
+**Frontend:** 149/149 passing (25 files, up from 148 at AM-09/AM-10 — +1
+new AM-11 test: Asset Register Holder/Company column rendering), `npx tsc
+-b` clean.
 
 **AM-09 additional RC evidence (not table-shaped, not repeated per-row
 above):** numbering concurrency proven race-safe under 20 genuine parallel

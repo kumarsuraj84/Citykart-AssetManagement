@@ -77,6 +77,32 @@ Rules that apply to every change, regardless of stage. Read before editing.
 - Prefer extending the existing generic components (`MasterCrudScreen`, the
   shared `components/ui/*` primitives) over writing a new one-off.
 
+## Development/UAT test-data convention (AM-11)
+
+The current DEV/UAT database is intentionally not clean and remains
+acceptable for testing — AM-10's inventory found the vast majority of its
+data is test data, and that is fine for a development environment. Do not
+clean it for that reason alone. To keep future test data easy to identify
+and safely isolate (without hard-deleting any historical UAT/E2E/RC
+evidence):
+
+- **Company code:** `UAT-<stage>-<suffix>` (e.g. `UAT-AM11-UX`) for
+  manually-created UAT companies. E2E's own existing `E2E-*`/`E2EB*`
+  auto-generated codes (from `frontend/e2e/fixtures.ts`) are unchanged —
+  this convention is additive, not a replacement for the existing,
+  already-working E2E pattern.
+- **Asset description prefix:** `UAT - ` (e.g. `"UAT - Dell Latitude
+  Laptop"`), so a test asset is self-documenting in every export, every
+  dashboard widget, and every list view it appears in — not just in its
+  owning company's own name.
+- **Holder emp_code prefix:** `UAT-<stage>-...` (e.g. `UAT-AM11-ADM`,
+  `UAT-AM11-STK`), mirroring the company-code convention.
+
+**Prefer an isolated, clearly-named UAT company over inserting new test
+data into the real `CKS` company.** Only add data inside `CKS` when
+specifically required to reproduce a company-scoping bug that cannot be
+reproduced any other way, and remove/deactivate it again afterward.
+
 ## Commit discipline
 
 - Conventional Commit messages (`feat(scope): ...`, `fix(scope): ...`,
