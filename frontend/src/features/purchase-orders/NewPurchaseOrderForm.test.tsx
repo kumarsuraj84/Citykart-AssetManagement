@@ -1,0 +1,62 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
+import { createAppRouter } from "../../router";
+import { apiClient } from "../../lib/api-client";
+import { useAuthStore } from "../../lib/auth-store";
+
+vi.mock("../../lib/api-client");
+
+function renderFormAt(url = "/purchase-orders/new") {
+  const router = createAppRouter(createMemoryHistory({ initialEntries: [url] }));
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={qc}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
+  return router;
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, mustChangePassword: false });
+  (apiClient.get as any).mockResolvedValue([{ id: 9, name: "Acme Traders" }]);
+});
+afterEach(() => useAuthStore.getState().logout());
+
+describe("NewPurchaseOrderForm", () => {
+  it("disables Create until PO No and PO Date are filled", async () => {
+    renderFormAt();
+    await waitFor(() => expect(screen.getByLabelText(/po no/i)).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /create purchase order/i })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText(/po no/i), { target: { value: "PO-1" } });
+    expect(screen.getByRole("button", { name: /create purchase order/i })).not.toBeDisabled();
+  });
+
+  it("creates a PO and navigates to its detail page", async () => {
+    (apiClient.post as any).mockResolvedValue({ id: 42 });
+    renderFormAt();
+    await waitFor(() => expect(screen.getByLabelText(/po no/i)).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText(/po no/i), { target: { value: "PO-1" } });
+    fireEvent.click(screen.getByRole("button", { name: /create purchase order/i }));
+
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith("/purchase-orders", expect.objectContaining({ company_id: 1, po_number: "PO-1" })),
+    );
+  });
+
+  it("shows a server-side error inline", async () => {
+    (apiClient.post as any).mockRejectedValue(new Error("PO number already used"));
+    renderFormAt();
+    await waitFor(() => expect(screen.getByLabelText(/po no/i)).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText(/po no/i), { target: { value: "PO-1" } });
+    fireEvent.click(screen.getByRole("button", { name: /create purchase order/i }));
+
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("PO number already used"));
+  });
+});

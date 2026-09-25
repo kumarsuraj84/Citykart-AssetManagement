@@ -15,6 +15,7 @@ import {
   Boxes,
   ListChecks,
   PackagePlus,
+  ClipboardList,
   Upload,
   BarChart3,
   Building2,
@@ -54,6 +55,9 @@ import MyAssetsRoute from "./routes/my-assets";
 import AssetsIndexRoute from "./routes/assets/index";
 import NewAssetRoute from "./routes/assets/new";
 import AssetDetailRoute from "./routes/assets/$id";
+import PurchaseOrdersIndexRoute from "./routes/purchase-orders/index";
+import NewPurchaseOrderRoute from "./routes/purchase-orders/new";
+import PurchaseOrderDetailRoute from "./routes/purchase-orders/$id";
 import ImportRoute from "./routes/import";
 import ReportsRoute from "./routes/reports";
 import CompaniesSetup from "./routes/setup/companies";
@@ -258,6 +262,7 @@ function AppShell() {
                     <SidebarMenu>
                       <SidebarNavItem to="/assets" label="Asset Register" icon={ListChecks} />
                       {canWrite && <SidebarNavItem to="/assets/new" label="Add Asset" icon={PackagePlus} />}
+                      {canWrite && <SidebarNavItem to="/purchase-orders" label="Purchase Orders" icon={ClipboardList} />}
                       {canWrite && <SidebarNavItem to="/import" label="Import" icon={Upload} />}
                       <SidebarNavItem to="/reports" label="Reports" icon={BarChart3} />
                     </SidebarMenu>
@@ -404,6 +409,27 @@ export const assetDetailRoute = createRoute({
   },
 });
 
+export const purchaseOrdersIndexRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/purchase-orders",
+  component: PurchaseOrdersIndexRoute,
+});
+
+export const purchaseOrdersNewRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/purchase-orders/new",
+  component: NewPurchaseOrderRoute,
+});
+
+export const purchaseOrderDetailRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/purchase-orders/$id",
+  component: function PurchaseOrderDetailComponent() {
+    const { id } = purchaseOrderDetailRoute.useParams();
+    return <PurchaseOrderDetailRoute params={{ id }} />;
+  },
+});
+
 export const myAssetsRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/my-assets",
@@ -491,6 +517,9 @@ const routeTree = rootRoute.addChildren([
     assetsIndexRoute,
     assetsNewRoute,
     assetDetailRoute,
+    purchaseOrdersIndexRoute,
+    purchaseOrdersNewRoute,
+    purchaseOrderDetailRoute,
     myAssetsRoute,
     importRoute,
     reportsRoute,
