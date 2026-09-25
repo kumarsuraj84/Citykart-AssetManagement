@@ -6,7 +6,7 @@ required, can't block creation. See app/assets/custom_field_values.py."""
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.holders.models import Holder
-from app.masters.models import AssetCategory, Company, CostCenter, CustomField, Department, Location
+from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, CustomField, Department, Location, Vendor
 from app.numbering.models import CodeRule
 
 
@@ -25,13 +25,17 @@ async def _setup(code="AM05UDF"):
                           location_id=loc.id, department_id=dept.id, role="HOLDER")
         cc_a = CostCenter(company_id=a.id, code=f"CC-{code}", name="Cost Centre A")
         cat = AssetCategory(code=f"CAT-{code}", name="Category")
+        vendor = Vendor(code=f"VND-{code}", name="Test Vendor")
         rule = CodeRule(company_id=None, prefix_template=f"FA/{code}/", suffix_template="",
                          start_number=1, pad_width=0)
-        session.add_all([admin, stock_a, cc_a, cat, rule])
+        session.add_all([admin, stock_a, cc_a, cat, vendor, rule])
+        await session.flush()
+        sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
+        session.add(sub)
         await session.commit()
         return {
             "a": a.id, "b": b.id, "admin": f"ADM-{code}", "stock_a": stock_a.id,
-            "cc_a": cc_a.id, "cat": cat.id,
+            "cc_a": cc_a.id, "cat": cat.id, "sub": sub.id, "vendor": vendor.id,
         }
 
 
@@ -43,8 +47,11 @@ async def _headers(client, emp_code):
 def _asset_body(ids, **overrides):
     body = {
         "company_id": ids["a"], "cost_center_id": ids["cc_a"], "category_id": ids["cat"],
-        "description": "AM-05 UDF Applicability Test Laptop", "purchase_date": "2025-06-01",
-        "initial_holder_id": ids["stock_a"],
+        "subcategory_id": ids["sub"], "description": "AM-05 UDF Applicability Test Laptop",
+        "initial_holder_id": ids["stock_a"], "vendor_id": ids["vendor"],
+        "po_number": "PO-1", "po_date": "2025-05-20",
+        "invoice_number": "INV-1", "invoice_date": "2025-06-01",
+        "pi_number": "PI-1", "pi_date": "2025-05-22",
     }
     body.update(overrides)
     return body

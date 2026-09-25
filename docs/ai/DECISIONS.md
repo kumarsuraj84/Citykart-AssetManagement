@@ -2,6 +2,33 @@
 
 Newest first. These override older spec/plan text where they conflict.
 
+## 2026-09-25 — Add Asset: mandatory procurement fields, Purchase Date auto-derived
+
+Direct user request, tightening Add Asset's own create path (previously all
+of these were optional except Description/Category):
+
+1. **Category, Sub-Category, Description, Vendor, PO Number, PO Date,
+   Invoice Number, Invoice Date, PI Number, PI Date are all now mandatory**
+   on `POST /api/assets` (`AssetCreateIn`) and in the Add Asset form's own
+   `canSave` gate. Category/Description were already mandatory; this adds
+   Sub-Category/Vendor/PO/Invoice/PI to that set.
+2. **Purchase Date is no longer a user-fillable field, on Add Asset or the
+   Purchase Order delivery path** — it is always exactly Invoice Date.
+   `AssetCreateIn` has no `purchase_date` field at all; the router derives
+   `purchase_date = invoice_date` server-side
+   (`app/assets/router.py::create_asset`), the same way
+   `deliver_pending_assets` already derived it for the PO path from day
+   one of that feature. The Add Asset form's own "Purchase Date" input was
+   removed; Invoice Date's helper text now says so explicitly.
+3. **Deliberately unchanged**: `AssetUpdateIn` (ordinary Asset 360 Edit
+   mode — Purchase Date was never editable there either, via AM-07's
+   correction-only policy), the AM-07 correction workflow itself
+   (`AssetCorrectionIn` still edits Purchase Date directly when a genuine
+   correction is needed — e.g. Invoice Date itself was wrong at entry
+   time), and the Purchase Order / Pending Asset entry path's own fields
+   (already had this exact Purchase-Date-equals-Invoice-Date rule from
+   its original design).
+
 ## 2026-09-25 — Purchase Order / Pending Assets feature
 
 Full design reasoning: `docs/specs/2026-09-25-po-pending-assets-design.md`.

@@ -59,7 +59,6 @@ interface FormState {
   invoiceDate: string;
   piNumber: string;
   piDate: string;
-  purchaseDate: string;
   purchaseCost: string;
   taxPercent: string;
   initialHolderId: string;
@@ -83,7 +82,6 @@ const emptyForm: FormState = {
   invoiceDate: "",
   piNumber: "",
   piDate: "",
-  purchaseDate: new Date().toISOString().slice(0, 10),
   purchaseCost: "0",
   taxPercent: "0",
   initialHolderId: "",
@@ -190,9 +188,16 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
   const canSave =
     form.description.trim().length > 0 &&
     form.categoryId !== "" &&
+    form.subcategoryId !== "" &&
     form.costCenterId !== "" &&
+    form.vendorId !== "" &&
+    form.poNumber.trim() !== "" &&
+    form.poDate !== "" &&
+    form.invoiceNumber.trim() !== "" &&
+    form.invoiceDate !== "" &&
+    form.piNumber.trim() !== "" &&
+    form.piDate !== "" &&
     form.initialHolderId !== "" &&
-    form.purchaseDate !== "" &&
     !customFields.some(requiredCustomFieldMissing);
 
   function buildCustomFieldsPayload(): Record<string, CustomFieldValue> {
@@ -215,23 +220,25 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
         company_id: companyId,
         cost_center_id: Number(form.costCenterId),
         category_id: Number(form.categoryId),
-        subcategory_id: form.subcategoryId ? Number(form.subcategoryId) : null,
+        subcategory_id: Number(form.subcategoryId),
         description: form.description,
         legacy_asset_code: form.legacyAssetCode || null,
         brand: form.brand || null,
         model: form.model || null,
         serial_number: form.serialNumber || null,
         warranty_upto: form.warrantyUpto || null,
-        vendor_id: form.vendorId ? Number(form.vendorId) : null,
-        po_number: form.poNumber || null,
-        po_date: form.poDate || null,
-        invoice_number: form.invoiceNumber || null,
-        invoice_date: form.invoiceDate || null,
-        pi_number: form.piNumber || null,
-        pi_date: form.piDate || null,
+        vendor_id: Number(form.vendorId),
+        po_number: form.poNumber,
+        po_date: form.poDate,
+        invoice_number: form.invoiceNumber,
+        invoice_date: form.invoiceDate,
+        pi_number: form.piNumber,
+        pi_date: form.piDate,
         purchase_cost: purchaseCost,
         tax_percent: taxPercent,
-        purchase_date: form.purchaseDate,
+        // Purchase Date is never user-entered -- it's always Invoice Date
+        // (docs/ai/DECISIONS.md); the backend derives it too, so this key
+        // is simply omitted from the payload.
         initial_holder_id: Number(form.initialHolderId),
         quantity: Number(form.quantity) || 1,
         custom_fields: buildCustomFieldsPayload(),
@@ -340,7 +347,7 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
             </Select>
           </FormField>
 
-          <FormField htmlFor="subcategory" label="Sub-Category" helperText="Optional.">
+          <FormField htmlFor="subcategory" label="Sub-Category" required>
             <Select value={selectValue(form.subcategoryId)} onValueChange={(v) => setField("subcategoryId", v)} disabled={mastersLoading}>
               <SelectTrigger id="subcategory" aria-label="Sub-Category">
                 <SelectValue placeholder="Select…" />
@@ -364,7 +371,7 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
       <section className="flex flex-col gap-4">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Purchase / Procurement</h2>
         <div className="grid gap-4 sm:grid-cols-2">
-          <FormField htmlFor="vendor" label="Vendor" helperText="Optional.">
+          <FormField htmlFor="vendor" label="Vendor" required>
             <Select value={selectValue(form.vendorId)} onValueChange={(v) => setField("vendorId", v)} disabled={mastersLoading}>
               <SelectTrigger id="vendor" aria-label="Vendor">
                 <SelectValue placeholder="Select…" />
@@ -377,28 +384,29 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
             </Select>
           </FormField>
 
-          <FormField htmlFor="purchase-date" label="Purchase Date" required>
-            <Input id="purchase-date" aria-label="Purchase Date" type="date" value={form.purchaseDate} onChange={(e) => setField("purchaseDate", e.target.value)} />
-          </FormField>
-
-          <FormField htmlFor="po-number" label="PO Number" helperText="Optional.">
+          <FormField htmlFor="po-number" label="PO Number" required>
             <Input id="po-number" aria-label="PO Number" value={form.poNumber} onChange={(e) => setField("poNumber", e.target.value)} />
           </FormField>
-          <FormField htmlFor="po-date" label="PO Date" helperText="Optional.">
+          <FormField htmlFor="po-date" label="PO Date" required>
             <Input id="po-date" aria-label="PO Date" type="date" value={form.poDate} onChange={(e) => setField("poDate", e.target.value)} />
           </FormField>
 
-          <FormField htmlFor="invoice-number" label="Invoice Number" helperText="Optional.">
+          <FormField htmlFor="invoice-number" label="Invoice Number" required>
             <Input id="invoice-number" aria-label="Invoice Number" value={form.invoiceNumber} onChange={(e) => setField("invoiceNumber", e.target.value)} />
           </FormField>
-          <FormField htmlFor="invoice-date" label="Invoice Date" helperText="Optional.">
+          <FormField
+            htmlFor="invoice-date"
+            label="Invoice Date"
+            required
+            helperText="Purchase Date is always the same as Invoice Date, so it's no longer asked for separately."
+          >
             <Input id="invoice-date" aria-label="Invoice Date" type="date" value={form.invoiceDate} onChange={(e) => setField("invoiceDate", e.target.value)} />
           </FormField>
 
-          <FormField htmlFor="pi-number" label="PI Number" helperText="CityKart's internal reference for the payment made to the vendor.">
+          <FormField htmlFor="pi-number" label="PI Number" required helperText="CityKart's internal reference for the payment made to the vendor.">
             <Input id="pi-number" aria-label="PI Number" value={form.piNumber} onChange={(e) => setField("piNumber", e.target.value)} />
           </FormField>
-          <FormField htmlFor="pi-date" label="PI Date" helperText="Optional.">
+          <FormField htmlFor="pi-date" label="PI Date" required>
             <Input id="pi-date" aria-label="PI Date" type="date" value={form.piDate} onChange={(e) => setField("piDate", e.target.value)} />
           </FormField>
         </div>

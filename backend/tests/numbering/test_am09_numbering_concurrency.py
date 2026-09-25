@@ -12,7 +12,7 @@ from app.assets.models import Asset
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.holders.models import Holder
-from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location
+from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location, Vendor
 from app.numbering.models import CodeRule
 
 CONCURRENT_REQUESTS = 20
@@ -28,7 +28,8 @@ async def _setup():
         cc = CostCenter(company_id=co.id, code="HO01", name="HO")
         loc = Location(code="NC-HO", name="HO")
         dept = Department(name="NC-IT")
-        session.add_all([sub, cc, loc, dept])
+        vendor = Vendor(code="VND-NCTEST", name="NC Vendor")
+        session.add_all([sub, cc, loc, dept, vendor])
         await session.flush()
         stock = Holder(company_id=co.id, emp_code="NCSTK", name="NC Stock", holder_type="IT_STOCK",
                         location_id=loc.id, department_id=dept.id, role="HOLDER")
@@ -43,7 +44,7 @@ async def _setup():
                          suffix_template="", start_number=1, pad_width=0)
         session.add_all([stock, admin, rule])
         await session.commit()
-        return {"co": co, "cat": cat, "sub": sub, "cc": cc, "stock": stock, "admin": admin}
+        return {"co": co, "cat": cat, "sub": sub, "cc": cc, "stock": stock, "admin": admin, "vendor": vendor}
 
 
 async def test_concurrent_asset_creation_never_produces_a_duplicate_code(client):
@@ -56,7 +57,9 @@ async def test_concurrent_asset_creation_never_produces_a_duplicate_code(client)
     payload = {
         "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
         "subcategory_id": ids["sub"].id, "description": "Concurrency Test Laptop",
-        "purchase_date": "2025-01-01", "initial_holder_id": ids["stock"].id,
+        "invoice_date": "2025-01-01", "initial_holder_id": ids["stock"].id,
+        "vendor_id": ids["vendor"].id, "po_number": "PO-1", "po_date": "2024-12-20",
+        "invoice_number": "INV-1", "pi_number": "PI-1", "pi_date": "2024-12-25",
     }
 
     responses = await asyncio.gather(*[

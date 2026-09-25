@@ -94,23 +94,35 @@ class TestProcurementFieldsRoundTrip:
         assert got["category_id"] == ids["cat"]
         assert got["cost_center_id"] == ids["cc"]
         assert got["subcategory_id"] == ids["sub"]
-        assert got["status_since"] == "2025-06-01"
+        # Purchase Date is always derived from Invoice Date now (never from
+        # the client-sent "purchase_date", which _asset_body still sends but
+        # which the router silently ignores) -- so status_since mirrors the
+        # invoice date sent above, not the inert purchase_date value.
+        assert got["status_since"] == "2025-05-25"
         assert got["custom_fields"] == {}
         # Also present on the register listing, not just single-asset GET.
         listed = (await client.get("/api/assets", headers=headers)).json()
         assert listed["items"][0]["pi_number"] == "PI-3001"
 
-    async def test_procurement_fields_are_all_optional_except_description_and_purchase_date(self, client):
+    async def test_descriptive_fields_are_optional_the_procurement_identity_fields_are_not(self, client):
+        """Category/Sub-Category/Vendor/PO No+Date/Invoice No+Date/PI No+Date
+        are mandatory on direct creation (see AssetCreateIn's docstring /
+        DECISIONS.md); the still-optional subset is the purely descriptive
+        extras -- brand/model/serial_number/purchase_cost/tax_percent/
+        warranty_upto/legacy_asset_code/custom_fields."""
         ids = await _setup("PRC2")
         headers = await _headers(client, ids["admin_code"])
         minimal = {
             "company_id": ids["co"], "cost_center_id": ids["cc"], "category_id": ids["cat"],
-            "description": "Bare Minimum Asset", "purchase_date": "2025-06-01",
-            "initial_holder_id": ids["stock"],
+            "subcategory_id": ids["sub"], "description": "Bare Minimum Asset",
+            "initial_holder_id": ids["stock"], "vendor_id": ids["vendor"],
+            "po_number": "PO-2001", "po_date": "2025-05-20",
+            "invoice_number": "INV-2002", "invoice_date": "2025-06-01",
+            "pi_number": "PI-3002", "pi_date": "2025-05-22",
         }
         resp = await client.post("/api/assets", json=minimal, headers=headers)
         assert resp.status_code == 201
-        assert resp.json()[0]["pi_number"] is None
+        assert resp.json()[0]["brand"] is None
 
 
 class TestAssetUpdate:

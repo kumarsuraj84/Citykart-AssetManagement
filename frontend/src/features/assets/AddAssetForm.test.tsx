@@ -49,6 +49,20 @@ async function pickSelectOption(label: RegExp | string, optionName: RegExp | str
   fireEvent.click(option);
 }
 
+// Sub-Category/Vendor/PO/Invoice/PI are all mandatory now (docs/ai/DECISIONS.md)
+// -- every test that expects Save to become enabled needs these filled, on top
+// of whatever Category/Cost Centre/Holder selection it already makes.
+async function fillMandatoryProcurementFields() {
+  await pickSelectOption(/sub-category/i, "Laptop");
+  await pickSelectOption(/^vendor$/i, "Acme Traders");
+  fireEvent.change(screen.getByLabelText(/po number/i), { target: { value: "PO-1" } });
+  fireEvent.change(screen.getByLabelText(/po date/i), { target: { value: "2025-06-01" } });
+  fireEvent.change(screen.getByLabelText(/invoice number/i), { target: { value: "INV-1" } });
+  fireEvent.change(screen.getByLabelText(/invoice date/i), { target: { value: "2025-06-02" } });
+  fireEvent.change(screen.getByLabelText(/pi number/i), { target: { value: "PI-1" } });
+  fireEvent.change(screen.getByLabelText(/pi date/i), { target: { value: "2025-06-03" } });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, mustChangePassword: false });
@@ -70,6 +84,7 @@ describe("AddAssetForm", () => {
     renderFormAt();
     fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Test Laptop" } });
     await pickSelectOption(/^category$/i, "IT Equipment");
+    await pickSelectOption(/sub-category/i, "Laptop");
     await pickSelectOption(/cost centre/i, "Head Office");
     await pickSelectOption(/goes into/i, "IT Stock-HO");
     await pickSelectOption(/^vendor$/i, "Acme Traders");
@@ -117,6 +132,7 @@ describe("AddAssetForm", () => {
     await pickSelectOption(/^category$/i, "IT Equipment");
     await pickSelectOption(/cost centre/i, "Head Office");
     await pickSelectOption(/goes into/i, "IT Stock-HO");
+    await fillMandatoryProcurementFields();
 
     fireEvent.change(screen.getByLabelText(/asset tag/i), { target: { value: "TAG-1" } });
     fireEvent.change(screen.getByLabelText(/ram \(gb\)/i), { target: { value: "16" } });
@@ -147,6 +163,7 @@ describe("AddAssetForm", () => {
     await pickSelectOption(/^category$/i, "IT Equipment");
     await pickSelectOption(/cost centre/i, "Head Office");
     await pickSelectOption(/goes into/i, "IT Stock-HO");
+    await fillMandatoryProcurementFields();
 
     // Asset Tag (required) was never filled in.
     expect(screen.getByRole("button", { name: /save/i })).toBeDisabled();
@@ -175,6 +192,7 @@ describe("AddAssetForm", () => {
     await pickSelectOption(/^category$/i, "IT Equipment");
     await pickSelectOption(/cost centre/i, "Head Office");
     await pickSelectOption(/goes into/i, "IT Stock-HO");
+    await fillMandatoryProcurementFields();
 
     expect(await screen.findByText("Global Notes")).toBeInTheDocument();
     expect(screen.getByText("Own Company Tag")).toBeInTheDocument();
@@ -213,7 +231,7 @@ describe("AddAssetForm", () => {
       if (path.startsWith("/masters/categories")) return Promise.resolve([{ id: 1, code: "IT", name: "IT Equipment" }]);
       if (path.startsWith("/masters/subcategories")) return Promise.resolve([{ id: 2, code: "LAP", name: "Laptop", category_id: 1 }]);
       if (path.startsWith("/masters/cost-centers")) return Promise.resolve([{ id: 3, code: "HO01", name: "Head Office" }]);
-      if (path.startsWith("/masters/vendors")) return Promise.resolve([]);
+      if (path.startsWith("/masters/vendors")) return Promise.resolve([{ id: 7, code: "VND1", name: "Acme Traders" }]);
       if (path.startsWith("/masters/custom-fields")) return Promise.resolve([]);
       if (path.startsWith("/holders")) return Promise.resolve([{ id: 4, name: "IT Stock-HO" }]);
       return Promise.resolve([]);
@@ -225,6 +243,7 @@ describe("AddAssetForm", () => {
     await pickSelectOption(/^category$/i, "IT Equipment");
     await pickSelectOption(/cost centre/i, "Head Office");
     await pickSelectOption(/goes into/i, "IT Stock-HO");
+    await fillMandatoryProcurementFields();
 
     await waitFor(() => expect(screen.getByRole("button", { name: /save/i })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
@@ -242,6 +261,7 @@ describe("AddAssetForm", () => {
     await pickSelectOption(/^category$/i, "IT Equipment");
     await pickSelectOption(/cost centre/i, "Head Office");
     await pickSelectOption(/goes into/i, "IT Stock-HO");
+    await fillMandatoryProcurementFields();
 
     await waitFor(() => expect(screen.getByRole("button", { name: /save/i })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
@@ -274,6 +294,7 @@ describe("AddAssetForm", () => {
     await pickSelectOption(/^category$/i, "IT Equipment");
     await pickSelectOption(/cost centre/i, "Head Office");
     await pickSelectOption(/goes into/i, "IT Stock-HO");
+    await fillMandatoryProcurementFields();
 
     await waitFor(() => expect(screen.getByRole("button", { name: /save/i })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
@@ -362,6 +383,7 @@ describe("AddAssetForm", () => {
     expect(apiClient.post).not.toHaveBeenCalled();
 
     await pickSelectOption(/goes into/i, "IT Stock-WH-F");
+    await fillMandatoryProcurementFields();
     await waitFor(() => expect(screen.getByRole("button", { name: /save/i })).toBeEnabled());
 
     fireEvent.click(screen.getByRole("button", { name: /save/i }));

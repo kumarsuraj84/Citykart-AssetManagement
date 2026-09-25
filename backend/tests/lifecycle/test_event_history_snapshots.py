@@ -12,7 +12,7 @@ from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.holders.models import Holder
 from app.lifecycle.models import AssetEvent
-from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location
+from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location, Vendor
 from app.numbering.models import CodeRule
 from sqlalchemy import select
 
@@ -27,7 +27,8 @@ async def _setup():
         cc = CostCenter(company_id=co.id, code="HO01", name="HO")
         loc = Location(code="SNAP-HO", name="HO")
         dept = Department(name="IT-SNAP")
-        session.add_all([sub, cc, loc, dept])
+        vendor = Vendor(code="VND-SNAP", name="Snapshot Vendor")
+        session.add_all([sub, cc, loc, dept, vendor])
         await session.flush()
 
         def h(code, name, holder_type, role="HOLDER", **kw):
@@ -42,17 +43,19 @@ async def _setup():
                          CodeRule(company_id=None, prefix_template="FA/SNAP/", suffix_template="",
                                   start_number=1, pad_width=0)])
         await session.commit()
-        return co.id, cc.id, cat.id, sub.id, stock.id, emp.id, admin.id, loc.id
+        return co.id, cc.id, cat.id, sub.id, stock.id, emp.id, admin.id, loc.id, vendor.id
 
 
 async def test_renaming_a_holder_does_not_change_a_past_events_displayed_name(client):
-    co_id, cc_id, cat_id, sub_id, stock_id, emp_id, admin_id, loc_id = await _setup()
+    co_id, cc_id, cat_id, sub_id, stock_id, emp_id, admin_id, loc_id, vendor_id = await _setup()
     resp = await client.post("/api/auth/login", json={"login_id": "ADM-SNAP", "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     [asset] = (await client.post("/api/assets", json={
         "company_id": co_id, "cost_center_id": cc_id, "category_id": cat_id, "subcategory_id": sub_id,
-        "description": "Snapshot Laptop", "purchase_date": "2025-01-01", "initial_holder_id": stock_id,
+        "description": "Snapshot Laptop", "invoice_date": "2025-01-01", "initial_holder_id": stock_id,
+        "vendor_id": vendor_id, "po_number": "PO-1", "po_date": "2024-12-20",
+        "invoice_number": "INV-1", "pi_number": "PI-1", "pi_date": "2024-12-25",
     }, headers=headers)).json()
     asset_id = asset["id"]
 
@@ -110,13 +113,15 @@ async def test_pre_migration_rows_fall_back_to_a_live_holder_name_lookup(client)
     could actually exist: a direct INSERT with the snapshot columns left NULL,
     exactly as a row written before these columns existed would be (INSERT is not
     blocked -- only UPDATE/DELETE are, per 0003_assets_and_events.py's trigger)."""
-    co_id, cc_id, cat_id, sub_id, stock_id, emp_id, admin_id, loc_id = await _setup()
+    co_id, cc_id, cat_id, sub_id, stock_id, emp_id, admin_id, loc_id, vendor_id = await _setup()
     resp = await client.post("/api/auth/login", json={"login_id": "ADM-SNAP", "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     [asset] = (await client.post("/api/assets", json={
         "company_id": co_id, "cost_center_id": cc_id, "category_id": cat_id, "subcategory_id": sub_id,
-        "description": "Legacy Row Laptop", "purchase_date": "2025-01-01", "initial_holder_id": stock_id,
+        "description": "Legacy Row Laptop", "invoice_date": "2025-01-01", "initial_holder_id": stock_id,
+        "vendor_id": vendor_id, "po_number": "PO-2", "po_date": "2024-12-20",
+        "invoice_number": "INV-2", "pi_number": "PI-2", "pi_date": "2024-12-25",
     }, headers=headers)).json()
     asset_id = asset["id"]
 

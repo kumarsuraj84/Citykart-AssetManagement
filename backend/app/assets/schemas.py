@@ -3,24 +3,32 @@ from pydantic import BaseModel, ConfigDict
 
 
 class AssetCreateIn(BaseModel):
+    """Purchase Date is deliberately NOT a field here -- per business rule
+    (docs/ai/DECISIONS.md), it is always the same as Invoice Date, and is
+    derived by the router (never accepted from the client), exactly like
+    the Purchase Order delivery path already derives it from Invoice Date
+    too. Category/Sub-Category/Vendor/PO No+Date/Invoice No+Date/PI
+    No+Date are all mandatory on direct creation (tightened from optional
+    -- see DECISIONS.md for the "why"; this deliberately does NOT touch
+    the PO/Pending Asset entry path's own fields, nor AM-07's correction
+    workflow)."""
     company_id: int
     cost_center_id: int
     category_id: int
-    subcategory_id: int | None = None
+    subcategory_id: int
     brand: str | None = None
     model: str | None = None
     serial_number: str | None = None
     description: str
-    vendor_id: int | None = None
-    po_number: str | None = None
-    po_date: date | None = None
-    invoice_number: str | None = None
-    invoice_date: date | None = None
-    pi_number: str | None = None
-    pi_date: date | None = None
+    vendor_id: int
+    po_number: str
+    po_date: date
+    invoice_number: str
+    invoice_date: date
+    pi_number: str
+    pi_date: date
     purchase_cost: float | None = None
     tax_percent: float | None = None
-    purchase_date: date
     warranty_upto: date | None = None
     initial_holder_id: int
     legacy_asset_code: str | None = None

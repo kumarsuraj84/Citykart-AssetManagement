@@ -52,7 +52,10 @@ def _asset_body(ids, **overrides):
     body = {
         "company_id": ids["co"], "cost_center_id": ids["cc"], "category_id": ids["cat"],
         "subcategory_id": ids["sub"], "description": "AM-04 Test Laptop",
-        "purchase_date": "2025-06-01", "initial_holder_id": ids["stock"],
+        "initial_holder_id": ids["stock"], "vendor_id": ids["vendor"],
+        "po_number": "PO-1", "po_date": "2025-05-20",
+        "invoice_number": "INV-1", "invoice_date": "2025-06-01",
+        "pi_number": "PI-1", "pi_date": "2025-05-22",
     }
     body.update(overrides)
     return body

@@ -4,7 +4,7 @@ label_for_event and the real holder names (spec §5 custody wording), e.g.
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.holders.models import Holder
-from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location
+from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location, Vendor
 from app.numbering.models import CodeRule
 
 
@@ -18,7 +18,8 @@ async def _setup():
         cc = CostCenter(company_id=co.id, code="HO01", name="HO")
         loc = Location(code="LBL-HO", name="HO")
         dept = Department(name="IT-LBL")
-        session.add_all([sub, cc, loc, dept])
+        vendor = Vendor(code="VND-LBL", name="Label Vendor")
+        session.add_all([sub, cc, loc, dept, vendor])
         await session.flush()
 
         def h(code, name, holder_type, role="HOLDER", **kw):
@@ -33,17 +34,19 @@ async def _setup():
         session.add_all([stock, emp, store, admin,
                          CodeRule(company_id=None, prefix_template="FA/", suffix_template="", start_number=1, pad_width=0)])
         await session.commit()
-        return co.id, cc.id, cat.id, sub.id, stock.id, emp.id, store.id
+        return co.id, cc.id, cat.id, sub.id, stock.id, emp.id, store.id, vendor.id
 
 
 async def test_event_labels_use_holder_names(client):
-    co_id, cc_id, cat_id, sub_id, stock_id, emp_id, store_id = await _setup()
+    co_id, cc_id, cat_id, sub_id, stock_id, emp_id, store_id, vendor_id = await _setup()
     resp = await client.post("/api/auth/login", json={"company_id": co_id, "login_id": "ADM", "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     [asset] = (await client.post("/api/assets", json={
         "company_id": co_id, "cost_center_id": cc_id, "category_id": cat_id, "subcategory_id": sub_id,
-        "description": "Laptop", "purchase_date": "2025-01-01", "initial_holder_id": stock_id,
+        "description": "Laptop", "invoice_date": "2025-01-01", "initial_holder_id": stock_id,
+        "vendor_id": vendor_id, "po_number": "PO-1", "po_date": "2024-12-20",
+        "invoice_number": "INV-1", "pi_number": "PI-1", "pi_date": "2024-12-25",
     }, headers=headers)).json()
     aid = asset["id"]
 

@@ -6,7 +6,7 @@ tests/assets/test_am05_udf_applicability.py."""
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.holders.models import Holder
-from app.masters.models import AssetCategory, Company, CostCenter, Location, Department
+from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Location, Department, Vendor
 from app.numbering.models import CodeRule
 
 
@@ -34,14 +34,18 @@ async def _setup(code="AM05CF"):
                           location_id=loc.id, department_id=dept.id, role="HOLDER")
         cc = CostCenter(company_id=a.id, code=f"CC-{code}", name="Cost Centre")
         cat = AssetCategory(code=f"CAT-{code}", name="Category")
+        vendor = Vendor(code=f"VND-{code}", name="Test Vendor")
         rule = CodeRule(company_id=None, prefix_template=f"FA/{code}/", suffix_template="",
                          start_number=1, pad_width=0)
-        session.add_all([admin, it_a, it_b, viewer_a, stock_a, cc, cat, rule])
+        session.add_all([admin, it_a, it_b, viewer_a, stock_a, cc, cat, vendor, rule])
+        await session.flush()
+        sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
+        session.add(sub)
         await session.commit()
         return {
             "a": a.id, "b": b.id, "admin": f"ADM-{code}", "it_a": f"ITA-{code}",
             "it_b": f"ITB-{code}", "viewer_a": f"VWA-{code}", "stock_a": stock_a.id,
-            "cc": cc.id, "cat": cat.id,
+            "cc": cc.id, "cat": cat.id, "sub": sub.id, "vendor": vendor.id,
         }
 
 
@@ -181,8 +185,11 @@ class TestScopeMutationRules:
 
         create_resp = await client.post("/api/assets", json={
             "company_id": ids["a"], "cost_center_id": ids["cc"], "category_id": ids["cat"],
-            "description": "Scoped UDF Test Laptop", "purchase_date": "2025-06-01",
+            "subcategory_id": ids["sub"], "description": "Scoped UDF Test Laptop",
+            "invoice_date": "2025-06-01",
             "initial_holder_id": ids["stock_a"], "custom_fields": {"scm2_notes": "has a value"},
+            "vendor_id": ids["vendor"], "po_number": "PO-1", "po_date": "2025-05-20",
+            "invoice_number": "INV-1", "pi_number": "PI-1", "pi_date": "2025-05-22",
         }, headers=headers)
         assert create_resp.status_code == 201
 

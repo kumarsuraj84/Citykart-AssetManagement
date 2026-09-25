@@ -67,6 +67,11 @@ async def create_asset(
     # so they must not be able to create assets in any other company either.
     ensure_company_in_scope(actor, body.company_id)
     data = body.model_dump(exclude={"quantity"})
+    # Purchase Date is always Invoice Date (docs/ai/DECISIONS.md) -- never
+    # accepted from the client (AssetCreateIn has no purchase_date field at
+    # all), derived here the same way deliver_pending_assets derives it for
+    # the PO path.
+    data["purchase_date"] = data["invoice_date"]
     try:
         assets = await procure_assets(session, data, quantity=body.quantity, actor=actor)
     except (ValueError, LifecycleError) as exc:

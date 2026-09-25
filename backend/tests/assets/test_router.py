@@ -1,7 +1,7 @@
 from datetime import date
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.masters.models import Company, CostCenter, AssetCategory, AssetSubcategory, Location, Department
+from app.masters.models import Company, CostCenter, AssetCategory, AssetSubcategory, Location, Department, Vendor
 from app.holders.models import Holder
 from app.numbering.models import CodeRule
 
@@ -15,7 +15,8 @@ async def _setup(session, suffix):
     cc = CostCenter(company_id=co.id, code="HO01", name="HO")
     loc = Location(code=f"HO-{suffix}", name="HO")
     dept = Department(name=f"IT-{suffix}")
-    session.add_all([sub, cc, loc, dept])
+    vendor = Vendor(code=f"VND-{suffix}", name="Router Test Vendor")
+    session.add_all([sub, cc, loc, dept, vendor])
     await session.flush()
     stock = Holder(company_id=co.id, emp_code=f"ITSTOCK-{suffix}", name="IT Stock-HO",
                     holder_type="IT_STOCK", location_id=loc.id, department_id=dept.id, role="HOLDER")
@@ -29,7 +30,7 @@ async def _setup(session, suffix):
                      suffix_template="", start_number=1, pad_width=0)
     session.add_all([stock, it_admin, ankur, rule])
     await session.commit()
-    return co, cc, cat, sub, stock, it_admin, ankur
+    return co, cc, cat, sub, stock, it_admin, ankur, vendor
 
 
 async def _login(client, company_id, emp_code):
@@ -39,13 +40,15 @@ async def _login(client, company_id, emp_code):
 
 async def test_create_asset_and_scoped_get(client):
     async with SessionLocal() as session:
-        co, cc, cat, sub, stock, it_admin, ankur = await _setup(session, "R1")
+        co, cc, cat, sub, stock, it_admin, ankur, vendor = await _setup(session, "R1")
 
     admin_headers = await _login(client, co.id, it_admin.emp_code)
     create_resp = await client.post("/api/assets", json={
         "company_id": co.id, "cost_center_id": cc.id, "category_id": cat.id, "subcategory_id": sub.id,
-        "description": "Router Test Laptop", "purchase_date": "2025-12-10",
+        "description": "Router Test Laptop", "invoice_date": "2025-12-10",
         "purchase_cost": "50000", "tax_percent": "18", "initial_holder_id": stock.id, "quantity": 1,
+        "vendor_id": vendor.id, "po_number": "PO-1", "po_date": "2025-12-01",
+        "invoice_number": "INV-1", "pi_number": "PI-1", "pi_date": "2025-12-05",
     }, headers=admin_headers)
     assert create_resp.status_code == 201
     asset_id = create_resp.json()[0]["id"]
@@ -60,13 +63,15 @@ async def test_create_asset_and_scoped_get(client):
 
 async def test_delete_asset_only_before_it_has_moved(client):
     async with SessionLocal() as session:
-        co, cc, cat, sub, stock, it_admin, ankur = await _setup(session, "R2")
+        co, cc, cat, sub, stock, it_admin, ankur, vendor = await _setup(session, "R2")
 
     admin_headers = await _login(client, co.id, it_admin.emp_code)
     create_resp = await client.post("/api/assets", json={
         "company_id": co.id, "cost_center_id": cc.id, "category_id": cat.id, "subcategory_id": sub.id,
-        "description": "Mistake Entry", "purchase_date": "2025-12-10",
+        "description": "Mistake Entry", "invoice_date": "2025-12-10",
         "initial_holder_id": stock.id, "quantity": 1,
+        "vendor_id": vendor.id, "po_number": "PO-2", "po_date": "2025-12-01",
+        "invoice_number": "INV-2", "pi_number": "PI-2", "pi_date": "2025-12-05",
     }, headers=admin_headers)
     asset_id = create_resp.json()[0]["id"]
 
@@ -76,8 +81,10 @@ async def test_delete_asset_only_before_it_has_moved(client):
 
     create_resp2 = await client.post("/api/assets", json={
         "company_id": co.id, "cost_center_id": cc.id, "category_id": cat.id, "subcategory_id": sub.id,
-        "description": "Moved Then Delete", "purchase_date": "2025-12-10",
+        "description": "Moved Then Delete", "invoice_date": "2025-12-10",
         "initial_holder_id": stock.id, "quantity": 1,
+        "vendor_id": vendor.id, "po_number": "PO-3", "po_date": "2025-12-01",
+        "invoice_number": "INV-3", "pi_number": "PI-3", "pi_date": "2025-12-05",
     }, headers=admin_headers)
     moved_asset_id = create_resp2.json()[0]["id"]
     await client.post(f"/api/assets/{moved_asset_id}/events", json={"event_type": "MOVED", "to_holder_id": ankur.id}, headers=admin_headers)

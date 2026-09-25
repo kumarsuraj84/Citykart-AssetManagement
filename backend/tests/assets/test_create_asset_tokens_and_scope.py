@@ -4,7 +4,7 @@ create assets inside their own company scope (403 otherwise)."""
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.holders.models import Holder
-from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location
+from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location, Vendor
 from app.numbering.models import CodeRule
 
 
@@ -19,9 +19,10 @@ async def _company(session, code):
     await session.flush()
     stock = Holder(company_id=co.id, emp_code=f"STOCK-{code}", name=f"IT Stock {code}", holder_type="IT_STOCK",
                    location_id=loc.id, department_id=dept.id, role="HOLDER")
-    session.add(stock)
+    vendor = Vendor(code=f"VND-{code}", name=f"{code} Vendor")
+    session.add_all([stock, vendor])
     await session.flush()
-    return {"co": co, "loc": loc, "dept": dept, "cc": cc, "stock": stock}
+    return {"co": co, "loc": loc, "dept": dept, "cc": cc, "stock": stock, "vendor": vendor}
 
 
 async def _setup(prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/CK_", with_rule=True):
@@ -54,8 +55,14 @@ async def _headers(client, company_id, emp_code):
 def _asset_body(target, cat, sub, **overrides):
     body = {
         "company_id": target["co"].id, "cost_center_id": target["cc"].id, "category_id": cat.id,
-        "subcategory_id": sub.id if sub else None, "description": "Laptop", "purchase_date": "2025-12-10",
+        "subcategory_id": sub.id if sub else None, "description": "Laptop",
+        # Purchase Date is derived from Invoice Date now (see AssetCreateIn's
+        # docstring) -- this is what actually flows into the code-rule's
+        # yyyy/yy/mm date tokens and status_since below.
+        "invoice_date": "2025-12-10",
         "initial_holder_id": target["stock"].id, "quantity": 1,
+        "vendor_id": target["vendor"].id, "po_number": "PO-1", "po_date": "2025-12-01",
+        "invoice_number": "INV-1", "pi_number": "PI-1", "pi_date": "2025-12-05",
     }
     body.update(overrides)
     return body
@@ -100,10 +107,14 @@ async def test_no_active_code_rule_is_422_not_500(client):
 
 
 async def test_unresolvable_token_is_422_not_500(client):
-    # Rule needs {subcategory.code} but the asset has no subcategory.
+    # Rule needs {subcategory.code}, but subcategory_id is required now (no
+    # None) -- so exercise the "unresolvable" path via a subcategory_id that
+    # doesn't reference any real row (app/assets/service.py's
+    # `session.get(AssetSubcategory, ...)` simply returns None for it, same
+    # as the old "no subcategory" case: the token resolves to "").
     a, b, cat, sub = await _setup()
     headers = await _headers(client, a["co"].id, "ADM")
-    resp = await client.post("/api/assets", json=_asset_body(a, cat, None), headers=headers)
+    resp = await client.post("/api/assets", json=_asset_body(a, cat, sub, subcategory_id=999999), headers=headers)
     assert resp.status_code == 422
     assert "subcategory" in resp.json()["detail"]
 
@@ -125,8 +136,12 @@ async def test_cost_center_from_other_company_is_rejected(client):
 
 
 async def test_future_purchase_date_is_422_not_500(client):
+    """Purchase Date no longer exists as an input field -- it's always
+    invoice_date (see AssetCreateIn's docstring). The "future purchase date
+    must 422, not 500" business rule now applies to invoice_date, since
+    that's the only date that ever becomes purchase_date."""
     a, b, cat, sub = await _setup()
     headers = await _headers(client, a["co"].id, "ADM")
-    resp = await client.post("/api/assets", json=_asset_body(a, cat, sub, purchase_date="2999-01-01"), headers=headers)
+    resp = await client.post("/api/assets", json=_asset_body(a, cat, sub, invoice_date="2999-01-01"), headers=headers)
     assert resp.status_code == 422
     assert "future" in resp.json()["detail"]

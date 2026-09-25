@@ -1,11 +1,19 @@
 # CKAM — Current Stage
 
 **Stage:** Purchase Order / Pending Assets feature — implemented, live
-browser UAT performed and passed, plus three same-day follow-ups the live
+browser UAT performed and passed, plus several same-day follow-ups the live
 UAT and user feedback directly motivated: Cost Centre relocated from
 per-line to the PO header, a new Dashboard "Purchase Orders" card
-(ADMIN/IT_TEAM only), and a new Barcode field (PO line → converted Asset).
-Backend and frontend regression clean throughout.
+(ADMIN/IT_TEAM only), a new Barcode field (PO line → converted Asset), a
+PO-screen UX pass (Close button, per-column search/select on the lines
+table, a filter-aware Select All, a real bug fix for the Delivery Done
+dialog growing past the viewport with unreachable Cancel/Confirm buttons on
+a large selection), stricter mandatory-field enforcement on both the PO Add
+Line/Delivery flow and — same request extended to the other procurement
+path — **Add Asset**, where Purchase Date was also removed as a
+user-fillable field there too (always = Invoice Date, mirroring the PO
+delivery path's own original rule). Backend and frontend regression clean
+throughout.
 **Environment: DEVELOPMENT / UAT. Production deployment remains DEFERRED —
 there is currently no production server.** AM-10's evidence, documents,
 regression baselines, and the local `ckam-v1.0.0-rc1` tag are all
@@ -41,8 +49,12 @@ decision resolving the open items below first.
   `procure_assets` path, unchanged. Full design:
   `docs/specs/2026-09-25-po-pending-assets-design.md`. Full plan:
   `docs/superpowers/plans/2026-09-25-po-pending-assets-implementation.md`.
-- **Add Asset is completely untouched** — this is a second path, not a
-  replacement or redesign.
+- **Add Asset started as a completely separate, untouched second path** —
+  and stayed that way through the PO feature's own build. It was later
+  extended, same day, by an explicit separate user request unrelated to
+  the PO mechanics themselves (mandatory-field tightening + Purchase Date
+  auto-derivation — see the dedicated bullet list below and
+  `DECISIONS.md`'s "Add Asset: mandatory procurement fields" entry).
 - **Two new additive tables** (`purchase_order`, `pending_asset`), plus
   one same-day additive column (`purchase_order.cost_center_id`,
   migration `8c5638e1b65e`) — no change to `Asset`'s own schema. A
@@ -89,7 +101,40 @@ decision resolving the open items below first.
   5-quantity line with a shared barcode, delivered 2 of the 5, confirmed
   the barcode landed on the converted Asset's Overview tab and Edit form,
   identical across both delivered units while the 3 remaining lines still
-  carry it too. No production work of any kind.
+  carry it too.
+- **PO screen UX pass** (user feedback after using the screen live):
+  "Close" button next to Add Line (navigates back to the PO list — user's
+  own words: "so it can go out of po and create new PO", not a PO status
+  change); per-column search inputs built into the lines table's own
+  header cells (Description/Barcode/Category/PO Value/Status/Serial No);
+  a filter-aware "Select All" in the select column's own header — selects
+  only the currently-*visible* PENDING rows, leaving any selection on
+  filtered-out rows untouched, exactly the "search CT123 → Select All
+  selects only the CT123 rows" behavior requested. **Real bug fixed**: the
+  Delivery Done dialog had no height cap, so selecting many lines (e.g.
+  10+) pushed the Cancel/Confirm buttons off-screen with no scrollbar —
+  now capped to the viewport with only the per-line list scrolling, footer
+  always reachable. Verified live with 10 lines selected at once.
+- **Add Line/Edit line mandatory fields tightened** (user request):
+  Description, Barcode, Category, Sub-Category, Cost, and Quantity are now
+  all required to add a line (previously only Description/Category were);
+  Serial Number/Initial Holder at Delivery Done gained a visible required
+  marker (were already functionally required, just not visually marked).
+- **Add Asset mandatory fields + Purchase Date auto-derivation** (separate
+  user request, extending the same "Purchase Date = Invoice Date" rule
+  from the PO path to Add Asset too — see `DECISIONS.md`): Category,
+  Sub-Category, Description, Vendor, PO Number, PO Date, Invoice Number,
+  Invoice Date, PI Number, PI Date are now all mandatory on `POST
+  /api/assets`; Purchase Date is no longer a field on that endpoint or the
+  Add Asset form at all — the router derives it as `= invoice_date`
+  server-side. Verified live end-to-end: created a real asset with
+  Invoice Date 2026-09-22, confirmed the resulting Asset 360 Procurement
+  tab shows Purchase Date 2026-09-22 (identical, auto-derived, never
+  entered). Deliberately does not touch `AssetUpdateIn`, the AM-07
+  correction workflow, or the PO/Pending Asset entry path's own fields.
+- **Backend: 339/339 passing** (was 312/312 before this whole PO stage
+  began). **Frontend: 174/174 passing** (was 154/154). TypeScript clean.
+  **E2E: 5/5** (unchanged). **No production work of any kind.**
 
 **Open Phase-1 business decisions (none are software defects):**
 1. `holder_company_access` — still depends on whether CityKart's real

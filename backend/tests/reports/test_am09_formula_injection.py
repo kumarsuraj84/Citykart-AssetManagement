@@ -14,7 +14,7 @@ import openpyxl
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.holders.models import Holder
-from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location
+from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location, Vendor
 from app.numbering.models import CodeRule
 from app.reports.export_service import _sanitize_cell
 
@@ -29,7 +29,8 @@ async def _setup(suffix: str):
         cc = CostCenter(company_id=co.id, code="HO01", name="HO")
         loc = Location(code=f"FI-HO-{suffix}", name="HO")
         dept = Department(name=f"FI-IT-{suffix}")
-        session.add_all([sub, cc, loc, dept])
+        vendor = Vendor(code=f"VND-FI-{suffix}", name="FI Vendor")
+        session.add_all([sub, cc, loc, dept, vendor])
         await session.flush()
         stock = Holder(company_id=co.id, emp_code=f"FISTK-{suffix}", name="FI Stock", holder_type="IT_STOCK",
                         location_id=loc.id, department_id=dept.id, role="HOLDER")
@@ -40,7 +41,8 @@ async def _setup(suffix: str):
                          start_number=1, pad_width=0)
         session.add_all([stock, admin, rule])
         await session.commit()
-        return {"co": co, "cat": cat, "sub": sub, "cc": cc, "loc": loc, "dept": dept, "stock": stock, "admin": admin}
+        return {"co": co, "cat": cat, "sub": sub, "cc": cc, "loc": loc, "dept": dept, "stock": stock,
+                "admin": admin, "vendor": vendor}
 
 
 async def _headers(client, ids):
@@ -74,8 +76,10 @@ async def test_asset_register_export_neutralizes_a_formula_injection_attempt(cli
     create_resp = await client.post("/api/assets", json={
         "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
         "subcategory_id": ids["sub"].id, "description": "=cmd|'/c calc'!A0",
-        "purchase_date": "2025-01-01", "initial_holder_id": ids["stock"].id,
+        "invoice_date": "2025-01-01", "initial_holder_id": ids["stock"].id,
         "brand": "+1+1", "model": "-2-2", "legacy_asset_code": "@SUM(A1:A9)",
+        "vendor_id": ids["vendor"].id, "po_number": "PO-1", "po_date": "2024-12-20",
+        "invoice_number": "INV-1", "pi_number": "PI-1", "pi_date": "2024-12-25",
     }, headers=headers)
     assert create_resp.status_code == 201
 
@@ -103,7 +107,9 @@ async def test_movement_log_export_neutralizes_a_formula_injection_attempt(clien
     create_resp = await client.post("/api/assets", json={
         "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
         "subcategory_id": ids["sub"].id, "description": "Movement Log FI Asset",
-        "purchase_date": "2025-01-01", "initial_holder_id": ids["stock"].id,
+        "invoice_date": "2025-01-01", "initial_holder_id": ids["stock"].id,
+        "vendor_id": ids["vendor"].id, "po_number": "PO-2", "po_date": "2024-12-20",
+        "invoice_number": "INV-2", "pi_number": "PI-2", "pi_date": "2024-12-25",
     }, headers=headers)
     asset_id = create_resp.json()[0]["id"]
 
