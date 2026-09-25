@@ -13,6 +13,7 @@ from app.lifecycle.router import router as lifecycle_router
 from app.reports.router import router as reports_router
 from app.documents.router import router as documents_router
 from app.imports.router import router as imports_router
+from app.purchase_orders.router import router as purchase_orders_router
 
 logger = logging.getLogger("ckam.security")
 if not logger.handlers:
@@ -78,6 +79,7 @@ app.include_router(lifecycle_router)
 app.include_router(reports_router)
 app.include_router(documents_router)
 app.include_router(imports_router)
+app.include_router(purchase_orders_router)
 
 
 @app.get("/api/health")
