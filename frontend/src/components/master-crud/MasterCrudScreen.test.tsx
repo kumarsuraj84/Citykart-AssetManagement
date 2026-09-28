@@ -2,9 +2,16 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, within, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MasterCrudScreen } from "./MasterCrudScreen";
-import { apiClient } from "../../lib/api-client";
+import { apiClient, ApiError } from "../../lib/api-client";
 
-vi.mock("../../lib/api-client");
+// Keeps the real ApiError class (so `instanceof ApiError` checks inside
+// MasterCrudScreen work against the same class this test constructs) while
+// still mocking apiClient's own methods, unlike a plain vi.mock(...)
+// automock which would replace both (see AssetDetail.test.tsx).
+vi.mock("../../lib/api-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/api-client")>();
+  return { ...actual, apiClient: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() } };
+});
 
 function renderWithClient(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -73,6 +80,39 @@ describe("MasterCrudScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/masters/vendors", { code: "V2", name: "Vendor Two" }));
+  });
+
+  it("AM-17 DEF-04: shows the API error inline in the Add dialog instead of failing silently", async () => {
+    (apiClient.get as any).mockResolvedValue([{ id: 1, code: "V1", name: "Vendor One" }]);
+    (apiClient.post as any).mockRejectedValue(new ApiError("a record with this code already exists", 422));
+
+    renderWithClient(<MasterCrudScreen config={VENDOR_CONFIG} />);
+
+    await waitFor(() => expect(screen.getByText("Vendor One")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /add vendor/i }));
+    fireEvent.change(screen.getByLabelText("Code"), { target: { value: "V1" } });
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Duplicate" } });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("a record with this code already exists");
+    // The dialog stays open so the user can correct the input, rather than
+    // silently discarding what they typed.
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("AM-17 DEF-04: shows the API error inline in the Edit dialog instead of failing silently", async () => {
+    (apiClient.get as any).mockResolvedValue([{ id: 1, code: "V1", name: "Vendor One" }]);
+    (apiClient.put as any).mockRejectedValue(new ApiError("a record with this code already exists", 422));
+
+    renderWithClient(<MasterCrudScreen config={VENDOR_CONFIG} />);
+
+    await waitFor(() => expect(screen.getByText("Vendor One")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /^edit vendor one$/i }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Vendor One Renamed" } });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("a record with this code already exists");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("edits an item's name but the immutable code is never sent and shown read-only", async () => {

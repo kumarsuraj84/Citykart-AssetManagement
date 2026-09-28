@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Inbox, Pencil, Trash2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "../../lib/api-client";
+import { apiClient, ApiError } from "../../lib/api-client";
 import type { MasterConfig, FormField } from "./types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -266,6 +266,12 @@ export function MasterCrudScreen<T extends object>({
                 />
               </FormFieldShell>
             ))}
+
+            {createMutation.isError && (
+              <p className="text-sm text-destructive" role="alert">
+                {createMutation.error instanceof ApiError ? createMutation.error.message : `Could not save this ${singular.toLowerCase()}.`}
+              </p>
+            )}
           </div>
 
           <DialogFooter>
@@ -310,6 +316,12 @@ export function MasterCrudScreen<T extends object>({
                 />
               </FormFieldShell>
             ))}
+
+            {updateMutation.isError && (
+              <p className="text-sm text-destructive" role="alert">
+                {updateMutation.error instanceof ApiError ? updateMutation.error.message : `Could not save this ${singular.toLowerCase()}.`}
+              </p>
+            )}
           </div>
 
           <DialogFooter>
