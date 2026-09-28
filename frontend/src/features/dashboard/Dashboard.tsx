@@ -217,14 +217,14 @@ export function Dashboard() {
   const statusEntries = Object.entries(data?.status_counts ?? {});
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <PageHeader title="Dashboard" description="Asset counts, stock levels and alerts across your companies." />
 
       {isError ? (
         <ErrorState message="Couldn't load the dashboard." onRetry={() => refetch()} />
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {isLoading ? (
               Array.from({ length: 4 }).map((_, i) => (
                 <Card key={`kpi-skeleton-${i}`}>
@@ -258,27 +258,48 @@ export function Dashboard() {
             )}
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Exceptions</CardTitle>
-              <CardDescription>
-                Assets that may need attention, or have reached a closed/disposed state. Each count links to the
-                matching Asset Register filter.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <DataTable
-                columns={exceptionColumns}
-                rows={EXCEPTION_STATUSES.map((status) => ({ status, count: data?.exception_counts?.[status] ?? 0 }))}
-                rowKey={(r) => r.status}
-                isLoading={isLoading}
-                // Every one of the 5 recognized exception statuses always renders its own
-                // row (defaulted to 0), so this never actually triggers -- required by
-                // DataTable's own contract regardless.
-                emptyState={<EmptyState title="No exception data." />}
-              />
-            </CardContent>
-          </Card>
+          {/* Exceptions + Stock by Location are both compact two-column tables -- pairing
+              them (same lg:grid-cols-2 pattern as Warranty/Allotted below) uses the
+              available laptop-width horizontal space instead of two full-width rows. */}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Exceptions</CardTitle>
+                <CardDescription>
+                  Assets that may need attention, or have reached a closed/disposed state. Each count links to the
+                  matching Asset Register filter.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <DataTable
+                  columns={exceptionColumns}
+                  rows={EXCEPTION_STATUSES.map((status) => ({ status, count: data?.exception_counts?.[status] ?? 0 }))}
+                  rowKey={(r) => r.status}
+                  isLoading={isLoading}
+                  // Every one of the 5 recognized exception statuses always renders its own
+                  // row (defaulted to 0), so this never actually triggers -- required by
+                  // DataTable's own contract regardless.
+                  emptyState={<EmptyState title="No exception data." />}
+                />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Stock by Location</CardTitle>
+                <CardDescription>Assets currently sitting in IT stock, by location.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <DataTable
+                  columns={locationColumns}
+                  rows={data?.stock_by_location ?? []}
+                  rowKey={(r) => r.location}
+                  isLoading={isLoading}
+                  emptyState={<EmptyState title="No stock on hand." />}
+                />
+              </CardContent>
+            </Card>
+          </div>
 
           {canSeePurchaseOrders && (
             <Card>
@@ -304,22 +325,6 @@ export function Dashboard() {
               </CardContent>
             </Card>
           )}
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Stock by Location</CardTitle>
-              <CardDescription>Assets currently sitting in IT stock, by location.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <DataTable
-                columns={locationColumns}
-                rows={data?.stock_by_location ?? []}
-                rowKey={(r) => r.location}
-                isLoading={isLoading}
-                emptyState={<EmptyState title="No stock on hand." />}
-              />
-            </CardContent>
-          </Card>
 
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>

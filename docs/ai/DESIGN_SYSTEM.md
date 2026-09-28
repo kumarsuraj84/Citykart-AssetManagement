@@ -32,12 +32,13 @@ to use all of it; trim only if it becomes actual clutter.
 
 ## Component sizing standard
 
-Every shared form primitive in `frontend/src/components/ui/` targets ~44px
-on desktop:
-- `Input`, `Select` (`SelectTrigger`): `h-11` (44px)
-- `Button`: default `h-11`, `sm` `h-9`, `lg` `h-12`
-- `Textarea`: `min-h-[88px]`
-- `Checkbox`, `RadioGroupItem`: `h-5 w-5` (20px, up from the shadcn default 16px)
+Every shared form primitive in `frontend/src/components/ui/` targets ~40px
+on desktop (AM-13: reduced from an earlier ~44px pass — a compact
+enterprise-operational density, not a touch-first one):
+- `Input`, `Select` (`SelectTrigger`): `h-10` (40px)
+- `Button`: default `h-10`, `sm` `h-9`, `lg` `h-11`, `icon` `h-10 w-10`
+- `Textarea`: `min-h-[80px]`
+- `Checkbox`, `RadioGroupItem`: `h-5 w-5` (20px, up from the shadcn default 16px — unchanged by AM-13, already compact)
 
 Focus state (all of the above): border color shifts to `--ring` **and** a
 soft `ring-[3px] ring-ring/25` glow appears — never rely on the browser
@@ -47,6 +48,71 @@ if you add a new form primitive, match it by hand.
 
 **When adding any new input-like control, use these exact classes/heights.
 Do not introduce a differently-sized field.**
+
+## Density & typography system (AM-13)
+
+Established during the AM-13 UI density/professionalization pass — the
+source of truth for any new component's spacing/sizing, so it stays
+coherent instead of drifting page-by-page.
+
+- **Typography scale**: `body` 14px / line-height 1.5 (`styles.css`,
+  global). Page `<h1>` stays `text-lg` (18px) via `PageHeader` — unchanged
+  by AM-13, it was already this restrained. Dialog title `text-lg` (18px,
+  `DialogTitle`). Card title `text-base` (16px, `CardTitle` — AM-13 made
+  this explicit; it previously had no size class and rendered ~15.5px by
+  inheritance only, which happened to look right but wasn't a documented
+  contract). Section heading (Add Asset/Import pattern): `text-sm
+  font-semibold uppercase tracking-wide text-muted-foreground` (14px),
+  unchanged. A bare `<h1>`/`<h2>`/`<h3>` with no explicit Tailwind
+  `text-*` class falls back to a restrained 24px/20px/18px scale
+  (`styles.css` `@layer base`) — normalized from the old
+  generic-starter-kit values (`h1` up to a `clamp(2rem,3.2vw,2.75rem)`,
+  `h2` 1.6rem) that no real heading in the app actually depended on
+  (verified by grep before changing it), but which were a landmine for
+  the next raw heading tag. Login/Change Password keep their own slightly
+  larger `sm:text-3xl` title — auth screens are intentionally a little
+  more spacious than operational ones, not covered by the operational
+  scale above.
+- **Control height**: see "Component sizing standard" above — 40px desktop
+  for `Input`/`Select`/`Button`/default `Textarea` padding.
+- **Card padding**: `CardHeader`/`CardContent`/`CardFooter` all `p-4`
+  (16px; was `p-6`/24px). This was the single largest contributor to the
+  pre-AM-13 "giant cards" complaint — Dashboard stacks a header + content
+  per card, so the old value doubled to 48px+ of padding per section.
+- **Page gutters**: `<main>` in `AppShell` (`router.tsx`) is `p-4 md:p-6`
+  (16px mobile / 24px desktop) — unchanged by AM-13, already within the
+  target range.
+- **Section/page gap**: `gap-4`–`gap-5` between major page sections
+  (Dashboard's outer container: `gap-6`→`gap-4`; Add Asset's outer
+  container: `gap-6`→`gap-5`). Add Asset's own section-internal gap
+  (heading → field grid) stays `gap-4` (16px) — already within range.
+- **Form field gap**: `FormField`'s own label→control gap stays `gap-1.5`
+  (6px) — already within the AM-13 target (6-8px), unchanged. A field
+  grid's row gap stays `gap-4` (16px) — already within range, unchanged.
+- **Form grid pairing**: a field with no natural Number/Date (or similar)
+  partner should span the full row (`sm:col-span-2`) rather than sit in
+  the first slot of a 2-column grid, which silently offsets every pair
+  after it by one slot. Add Asset's Vendor field was fixed this way
+  (AM-13) so PO Number/PO Date, Invoice Number/Invoice Date, and PI
+  Number/PI Date actually align as the pairs they are.
+- **Dialog/AlertDialog sizing**: `max-h-[85vh] overflow-y-auto` on
+  `DialogContent`/`AlertDialogContent` (was unbounded — a genuine defect,
+  not just density: a long dialog could previously grow past the viewport
+  with Cancel/Save unreachable and no scrollbar at all). The whole dialog
+  scrolls as one unit (header and footer scroll with it) rather than a
+  pinned-header/pinned-footer/scrolling-body layout — the simpler, safe
+  choice that works for every existing dialog's DOM shape without
+  retrofitting each call site's internal structure. Padding `p-5` (was
+  `p-6`).
+- **Table row height**: `TableHead h-10` / `TableCell p-2` (`table.tsx`)
+  were already compact and were not changed by AM-13 — they were never
+  part of the "oversized" complaint; the complaint was Card padding and
+  control height, not the table primitive itself.
+- **Responsive**: unchanged by AM-13 — every existing `sm:`/`lg:` grid
+  collapse (Add Asset's 2-column field grid, Dashboard's paired-card
+  rows) was verified live to still collapse to one column correctly at
+  375px, since the pairing/sizing changes only touch spacing values
+  inside the same responsive classes, never the breakpoints themselves.
 
 ## App shell
 

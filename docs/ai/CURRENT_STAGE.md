@@ -1,6 +1,15 @@
 # CKAM — Current Stage
 
-**Stage:** Purchase Order / Pending Assets feature — implemented, live
+**Stage:** AM-13, a whole-application UI density/professionalization pass,
+is complete — see "What's actually done as of AM-13" below. It touched
+frontend visual/layout code only (`components/ui/{card,dialog,alert-
+dialog,input,select,button,textarea}.tsx`, `styles.css`, `Dashboard.tsx`,
+`AddAssetForm.tsx`); no business logic, schema, or authorization changed.
+**Environment: DEVELOPMENT / UAT. Production deployment remains DEFERRED.**
+**Next:** Await explicit user direction. Do NOT automatically begin
+another development or design stage.
+
+**Previous stage:** Purchase Order / Pending Assets feature — implemented, live
 browser UAT performed and passed, plus several same-day follow-ups the live
 UAT and user feedback directly motivated: Cost Centre relocated from
 per-line to the PO header, a new Dashboard "Purchase Orders" card
@@ -741,6 +750,80 @@ still correct for CKAM's actual, deliberately narrower scope — see
 - **No database migration** — confirmed unnecessary; Alembic head remains
   `f28b6a913dce` throughout.
 - **No production work, no push, no test-data deletion.**
+
+## What's actually done as of AM-13
+
+- **Whole-application UI density/professionalization pass, verdict PASS.**
+  Not a feature stage — a systematic typography/spacing/form/table/dialog/
+  scroll correction pass fixed at the shared-component level, not by
+  shrinking CSS page-by-page. Full detail:
+  `docs/ai/AM-13_UI_DENSITY_PROFESSIONALIZATION_REPORT.md`.
+- **Root-caused the "oversized" complaint to three shared primitives**:
+  `Card`'s unmodified shadcn `p-6` (24px header + 24px content, stacked
+  across Dashboard's several full-width cards); every form control at
+  `h-11` (44px); and `Dialog`/`AlertDialog` having no `max-height`/
+  `overflow-y-auto` at all — a real, reproduced defect (Holders' "Add
+  User" dialog could grow past the viewport with Cancel/Save unreachable),
+  not merely a density preference. Fixed once at each primitive
+  (`Card`→`p-4`, controls→`h-10`/40px, dialogs→
+  `max-h-[85vh] overflow-y-auto`), cascading to every consumer.
+- **Fixed a real field-alignment bug in Add Asset**: Vendor (no
+  Number/Date partner) sat in the first slot of the Purchase/Procurement
+  section's 2-column grid, silently offsetting every later pair — PO
+  Number paired with Vendor, PO Date paired with Invoice Number, etc.
+  Vendor now spans the full row alone, so PO Number/PO Date, Invoice
+  Number/Invoice Date, and PI Number/PI Date actually pair correctly.
+  Also widened the form (`max-w-3xl`→`max-w-4xl`) — it was using only
+  768px of a laptop's available width.
+- **Dashboard**: `Exceptions` and `Stock by Location` (previously two
+  separate full-width rows) now pair side-by-side at `lg:` width, same
+  pattern as the existing Warranty/Allotted pair — more visible before
+  scrolling at 1366×768. Outer section gap `gap-6`→`gap-4`.
+- **Global base typography normalized** (`styles.css`): `body`
+  15.5px/1.55 line-height → 14px/1.5; `h1`/`h2`/`h3` bare-tag fallback
+  scale brought down from old marketing-site-scaled values (`h1` up to a
+  `clamp(2rem,3.2vw,2.75rem)`) to a restrained 24px/20px/18px. Confirmed
+  by grep that no actual heading in the app relies on a bare tag (every
+  real heading already carries its own explicit Tailwind `text-*` class)
+  — this is defensive normalization against a future landmine, not a
+  rendering change to anything currently on screen.
+- **Verified live** (real browser, throwaway ADMIN account, soft-
+  deactivated after use) at 1366×768 and 375×812: Dashboard, Add Asset,
+  Asset Register, Asset 360, Holders' Add User dialog (the dialog-scroll
+  fix specifically — confirmed `scrollHeight` 820px vs `clientHeight`
+  651px, Cancel/Save reachable by scrolling), Import, Reports, Custom
+  Fields — no horizontal overflow, no missing scroll, no clipped controls
+  at either width; responsive collapse (2-col→1-col at `sm:`/`lg:`)
+  confirmed unaffected.
+- **Incidentally found and fixed, unrelated to the density work**: the
+  live dev `ckam` database was one migration behind code head
+  (`6c882ef3b225` vs `278437eb710e` — the prior PO stage's Serial Number
+  uniqueness migration had only ever been applied to `ckam_test`) —
+  applied `alembic upgrade head`; the migration itself already existed,
+  none was authored this stage. Also found, documented but not fixed
+  (infra/ops scope, not UI-visual scope): the `web` container's nginx
+  sends no cache-busting header on `index.html`, so a browser tab open
+  across a redeploy can keep running a stale bundle until a hard reload.
+- **E2E transiently broke, then was confirmed unrelated to this stage's
+  own changes**: 5 specs failed on `login -> 401` immediately after this
+  session's own ad-hoc `seed_admin` verification runs left 7 holders
+  named `SEEDADMIN` simultaneously active across 7 different companies —
+  the login endpoint's own "resolve to exactly one holder or refuse"
+  ambiguity guard (a deliberate anti-account-takeover behavior, not a
+  bug) correctly refused all of them. Root-caused via the actual query in
+  `app/auth/router.py::login`, the 7 stale accounts soft-deactivated,
+  re-ran clean at 5/5. Lesson for future ad-hoc verification: deactivate
+  a throwaway `seed_admin` account immediately after the specific check
+  it was created for, not "at the end of the session."
+- **No database migration authored.** **No backend file changed** — only
+  frontend `components/ui/*`, `Dashboard.tsx`, `AddAssetForm.tsx`,
+  `styles.css`. **No business logic, schema, or authorization changed.**
+  Backend: 341/341 (unchanged). Frontend: 176/176 (unchanged — a
+  Tailwind-class/token pass doesn't need new tests per its own testing
+  guidance). TypeScript clean. E2E: 5/5. Production build: clean.
+- **No production work, no push, no test-data deletion** (test-data
+  *deactivation* of this stage's own throwaway pollution is not the same
+  as deletion — nothing pre-existing before this session was touched).
 
 ## Branch / remote state
 

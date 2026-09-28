@@ -282,7 +282,7 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
   }
 
   return (
-    <div className="flex flex-col gap-6 max-w-3xl">
+    <div className="flex flex-col gap-5 max-w-4xl">
       <PageHeader title="Add Asset" description="Record a new asset and where it goes into stock." />
 
       {createdAssets.length > 0 && (
@@ -374,7 +374,10 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
       <section className="flex flex-col gap-4">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Purchase / Procurement</h2>
         <div className="grid gap-4 sm:grid-cols-2">
-          <FormField htmlFor="vendor" label="Vendor" required>
+          {/* Full-width and alone -- Vendor has no PO/Invoice/PI-style date partner of its
+              own, so giving it its own row keeps the three Number/Date pairs below aligned
+              as actual pairs instead of drifting by one slot (AM-13 density pass). */}
+          <FormField htmlFor="vendor" label="Vendor" required className="sm:col-span-2">
             <Select value={selectValue(form.vendorId)} onValueChange={(v) => setField("vendorId", v)} disabled={mastersLoading}>
               <SelectTrigger id="vendor" aria-label="Vendor">
                 <SelectValue placeholder="Select…" />

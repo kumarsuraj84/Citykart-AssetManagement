@@ -1147,3 +1147,41 @@ remain the source of truth. UI work does not get to quietly change them.
 
 **Why:** Stated explicitly as a hard constraint for this stage of work; also
 consistent with the original build's own design principles.
+
+## 2026-09-28 — AM-13: density fixed at the shared primitive, not per-page
+
+**Decision:** Form controls (`Input`/`Select`/`Button`/`Textarea`) moved
+from `h-11` (44px) to `h-10` (40px); `Card`'s `CardHeader`/`CardContent`/
+`CardFooter` moved from `p-6` (24px) to `p-4` (16px); `Dialog`/
+`AlertDialog` gained `max-h-[85vh] overflow-y-auto` (previously unbounded).
+All three changes live in the shared `components/ui/` primitives, so every
+consumer across the app inherited the fix from one edit, rather than each
+page getting its own hand-tuned spacing.
+
+**Why:** A direct, detailed user authorization (AM-13) named "fonts too
+large, excessive whitespace, tables/forms/dialogs feel oversized" as a
+systemic problem, explicitly warning against "randomly shrinking CSS on
+individual pages." Measuring the actual rendered app (not just source)
+found the real causes were three shared primitives, not scattered
+per-page mistakes — `Card`'s default padding especially, since Dashboard
+stacks a header + content per card and the old value doubled to 48px+ per
+section. The Dialog change also fixes a genuine, reproduced defect
+(Holders' "Add User" dialog could grow past the viewport with Cancel/Save
+unreachable and no scrollbar), not just a density preference.
+
+## 2026-09-28 — AM-13: a field with no grid partner spans the full row
+
+**Decision:** In a 2-column form grid (Add Asset's pattern), a field that
+has no natural pairing partner (e.g. Vendor, which has no Number/Date
+companion the way PO/Invoice/PI each do) gets `sm:col-span-2` — its own
+full-width row — rather than occupying the first slot of the 2-column
+grid.
+
+**Why:** Add Asset's Purchase/Procurement section had Vendor sitting in
+slot 1 of a 7-field 2-column grid, which silently offset every later pair
+by one slot: PO Number paired visually with Vendor, PO Date paired with
+Invoice Number, Invoice Date paired with PI Number — none of the actual
+Number/Date pairs lined up as pairs. This was found by reading the field
+order against the grid's own column count, not by eyeballing a
+screenshot, and is exactly the "fields don't align consistently" defect
+named in the AM-13 authorization.

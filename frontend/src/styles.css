@@ -239,14 +239,20 @@
        (e.g. a marketing/landing accent) but is no longer the app default. */
     background: var(--color-muted);
     color: var(--color-foreground);
-    font-size: 15.5px;
-    line-height: 1.55;
+    font-size: 14px;
+    line-height: 1.5;
     letter-spacing: -0.005em;
   }
+  /* AM-13: restrained enterprise-operational fallback scale for a bare heading tag.
+     Every actual heading in the app already carries its own explicit Tailwind
+     text-size class (PageHeader, DialogTitle, section headings, etc.) and wins over
+     these regardless -- this exists so a future raw <h1>/<h2>/<h3> defaults to
+     something sane instead of the old marketing-site-scaled clamp()/1.6rem/1.2rem
+     starter-kit values, never so operational screens stay large "just in case". */
   h1, h2, h3, h4 { letter-spacing: -0.02em; font-weight: 650; }
-  h1 { font-size: clamp(2rem, 3.2vw, 2.75rem); line-height: 1.1; }
-  h2 { font-size: 1.6rem; line-height: 1.2; }
-  h3 { font-size: 1.2rem; line-height: 1.3; }
+  h1 { font-size: 1.5rem; line-height: 1.25; }
+  h2 { font-size: 1.25rem; line-height: 1.3; }
+  h3 { font-size: 1.125rem; line-height: 1.35; }
   code, kbd, samp { font-family: var(--font-numeric); font-size: 0.88em; }
   .num, [data-numeric] {
     font-family: var(--font-numeric);

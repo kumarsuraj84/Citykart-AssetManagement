@@ -179,3 +179,64 @@ route; a controlled Playwright reproduction of a persistent backend 502
 proved the frontend's error-handling is correct (`ErrorState` + working
 retry, exactly 4 requests, matching React Query's own default retry
 config). Full detail: `AM-09_RC_FULL_AUDIT_REPORT.md`.
+
+**AM-13 (2026-09-28) was a UI density/professionalization pass, not a
+route-shaped feature — no Functional/Security/Responsive-column marks
+change below, only real-browser Design evidence, so it is recorded here
+rather than by rewriting all 20 route rows.** Root-caused the "oversized/
+loose" complaint to three shared primitives, not per-page CSS: `Card`
+(`CardHeader`/`CardContent`/`CardFooter`) defaulted to shadcn's unmodified
+`p-6` (24px) and was used for every Dashboard section, doubling to 48px+ of
+stacked padding per card; every form control (`Input`/`Select`/`Button`/
+`Textarea`) was `h-11` (44px); and `Dialog`/`AlertDialog` had no
+`max-height`/`overflow-y-auto` at all, so a long dialog (verified live:
+Holders' "Add User") could grow past the viewport with Cancel/Save
+unreachable and no scrollbar — a real defect, not a density preference.
+Fixed at the primitive level (`Card`→`p-4`, controls→`h-10`/40px,
+`Dialog`/`AlertDialog`→`max-h-[85vh] overflow-y-auto`), which cascades to
+every consumer without a single per-page override. Verified live at
+1366×768: the Holders "Add User" dialog now measurably scrolls internally
+(`scrollHeight` 820px vs `clientHeight` 651px, Cancel/Save reachable by
+scrolling the dialog itself) instead of the old unbounded, capped-nowhere
+growth. Dashboard's `Exceptions`/`Stock by Location` cards (previously two
+separate full-width rows) now pair side-by-side at `lg:` width, same
+pattern as the existing Warranty/Allotted pair — more of the Dashboard
+visible before scrolling at 1366×768, verified live. Add Asset's form
+width (`max-w-3xl`→`max-w-4xl`) and its Vendor field (now full-width alone)
+fixed a real pairing-offset bug where PO Number/PO Date, Invoice Number/
+Invoice Date, and PI Number/PI Date were drifting out of alignment by one
+grid slot because Vendor (no date partner) sat in the first slot of the
+same 2-column grid — verified live, the three Number/Date pairs now align
+correctly. Global `body`/`h1`/`h2`/`h3` base styles in `styles.css`
+(leftover generic-starter-kit values — `body` was 15.5px/1.55 line-height,
+`h1` up to a `clamp(2rem,3.2vw,2.75rem)`) were normalized to 14px/1.5 and a
+restrained heading fallback scale; confirmed by grep that no actual heading
+in the app relies on the old values (every real heading already carries
+its own explicit Tailwind `text-*` class), so this is defensive
+normalization, not a rendering change. Verified live (real browser,
+authenticated as a throwaway ADMIN, soft-deactivated afterward) at
+1366×768 and 375×812: Dashboard, Add Asset, Asset Register, Asset 360,
+Holders' Add User dialog, Import, Reports, Custom Fields — no horizontal
+overflow, no missing scroll, no clipped controls at either width.
+**Incidentally found and fixed, unrelated to the density work itself: the
+running dev database was one migration behind code head** (`6c882ef3b225`
+vs `278437eb710e`, the Serial Number uniqueness migration from the prior
+PO stage — applied to `ckam_test` but never to the live dev `ckam`
+database) — applied `alembic upgrade head`; not a code defect. **Also
+found:** the `web` container's nginx does not send cache-busting headers
+on `index.html`, so a browser tab open across a redeploy can keep running
+a stale JS/CSS bundle referencing deleted asset hashes until a hard
+reload — documented as a recommendation, not fixed (infra/ops scope, not
+UI visual scope). No database migration was authored this stage (the one
+applied already existed). No backend file changed. Backend: 341/341
+(unchanged — AM-13 touched frontend files only). Frontend: 176/176
+(unchanged — no test file added; a Tailwind-class/token change doesn't
+need its own test per this stage's own testing guidance).
+`npx tsc -b` clean. E2E: 5/5 (was transiently failing due to unrelated
+test-data pollution from earlier ad-hoc `seed_admin` verification accounts
+left active across companies, causing the login endpoint's own
+more-than-one-active-match ambiguity guard to correctly refuse login with
+a generic 401 — root-caused, the 7 stale accounts soft-deactivated,
+re-verified 5/5 clean; not a regression from this stage's own changes).
+Production build: clean. Full detail:
+`AM-13_UI_DENSITY_PROFESSIONALIZATION_REPORT.md`.
