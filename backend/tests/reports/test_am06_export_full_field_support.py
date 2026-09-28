@@ -206,15 +206,48 @@ class TestFieldChangeAuditExport:
         assert resp.status_code == 200
         wb = openpyxl.load_workbook(BytesIO(resp.content))
         ws = wb.active
-        assert _header_row(ws) == ["Asset Code", "Field", "Old Value", "New Value", "Actor", "Changed At", "Request ID"]
+        assert _header_row(ws) == ["Asset Code", "Field", "Old Value", "New Value", "Actor", "Changed At", "Request ID", "Reason"]
         rows = [dict(zip(_header_row(ws), r)) for r in ws.iter_rows(min_row=2, values_only=True) if r[0] == asset_code]
         assert len(rows) == 2  # one brand change, one description change (in that PUT order)
         assert rows[0]["Field"] == "brand"
         assert rows[0]["Old Value"] == "Dell" and rows[0]["New Value"] == "HP"
         assert rows[0]["Actor"] == "Admin"
+        # AM-17 DEF-02: an ordinary edit's rows carry no Reason (that column
+        # is what distinguishes them from a controlled correction).
+        assert rows[0]["Reason"] is None
         assert rows[1]["Field"] == "description"
         # chronological: row 0's Changed At <= row 1's Changed At
         assert rows[0]["Changed At"] <= rows[1]["Changed At"]
+
+    async def test_field_change_export_includes_correction_reason(self, client):
+        """AM-17 DEF-02: a controlled correction's Reason (the sole
+        discriminator between a correction row and an ordinary edit row) was
+        missing from this export entirely."""
+        ids = await _setup("AUD-REASON")
+        async with SessionLocal() as session:
+            [asset] = await procure_assets(session, {
+                "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
+                "description": "Reason Export Laptop", "purchase_date": date(2025, 6, 1),
+                "initial_holder_id": ids["stock"].id,
+            }, quantity=1, actor=ids["admin"])
+            await session.commit()
+            asset_id, asset_code = asset.id, asset.asset_code
+
+        headers = await _headers(client, ids["admin"].emp_code)
+        resp = await client.post(
+            f"/api/assets/{asset_id}/corrections",
+            json={"purchase_date": "2025-05-15", "reason": "Invoice date was mis-keyed at entry"},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+
+        resp = await client.get("/api/reports/export/field-changes", headers=headers)
+        wb = openpyxl.load_workbook(BytesIO(resp.content))
+        ws = wb.active
+        rows = [dict(zip(_header_row(ws), r)) for r in ws.iter_rows(min_row=2, values_only=True) if r[0] == asset_code]
+        assert len(rows) == 1
+        assert rows[0]["Field"] == "purchase_date"
+        assert rows[0]["Reason"] == "Invoice date was mis-keyed at entry"
 
     async def test_field_change_export_is_company_scoped(self, client):
         # Company B's caller is IT_TEAM, not ADMIN -- scoped_company_ids

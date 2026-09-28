@@ -94,11 +94,16 @@ def field_changes_to_xlsx(rows: list[tuple]) -> bytes:
     Code"/"Actor" columns hold real values, not internal ids."""
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.append(["Asset Code", "Field", "Old Value", "New Value", "Actor", "Changed At", "Request ID"])
+    # AM-17 DEF-02: Reason (the sole discriminator between a controlled
+    # correction row and an ordinary edit row -- reason IS NOT NULL means
+    # correction, see AssetFieldChange's own docstring) was missing from
+    # this export even though it's central to this audit trail; it was
+    # already visible via GET /api/assets/{id}/changes, just not exported.
+    ws.append(["Asset Code", "Field", "Old Value", "New Value", "Actor", "Changed At", "Request ID", "Reason"])
     for change, asset_code, actor_name in rows:
         ws.append(_sanitize_row([
             asset_code, change.field_name, change.old_value, change.new_value,
-            actor_name, change.created_at.isoformat(), change.request_id,
+            actor_name, change.created_at.isoformat(), change.request_id, change.reason,
         ]))
     buf = BytesIO()
     wb.save(buf)

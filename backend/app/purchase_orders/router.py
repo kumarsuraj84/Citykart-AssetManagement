@@ -132,7 +132,7 @@ async def deliver(
     deliveries = {d.pending_asset_id: {"serial_number": d.serial_number, "initial_holder_id": d.initial_holder_id} for d in body.lines}
     try:
         delivered = await deliver_pending_assets(
-            session, lines, deliveries, po.po_number, po.po_date,
+            session, lines, deliveries, po.po_number, po.po_date, po.vendor_id,
             body.invoice_number, body.invoice_date, body.invoice_amount, actor,
         )
     except ValueError as exc:

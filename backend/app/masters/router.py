@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
-from app.core.deps import ensure_company_in_scope, get_current_holder, require_role
+from app.core.deps import ensure_company_in_scope, get_current_holder, require_role, scoped_company_ids
 from app.masters.custom_fields_router import router as custom_fields_router
 from app.masters.service import MasterCRUDService
 from app.masters import models, schemas
@@ -59,7 +59,7 @@ def build_master_router(
     async def list_items(
         company_id: int | None = Query(None),
         session: AsyncSession = Depends(get_session),
-        _holder=Depends(get_current_holder),
+        holder=Depends(get_current_holder),
     ):
         # AM-08: an optional, opt-in filter for a company-owned master (Cost
         # Centres) -- a data-entry screen like Add Asset passes its own
@@ -70,9 +70,23 @@ def build_master_router(
         # enforcement point). A company_id passed against a master that isn't
         # company-owned (company_scope is None) is harmless and ignored, since
         # that master has no such column to filter on.
+        #
+        # AM-17 DEF-03: a non-ADMIN staff member (IT_TEAM/VIEWER/HOLDER) could
+        # previously omit company_id, or pass a different company's id, and
+        # still see every company's Cost Centres -- the only enforcement was
+        # on writes. Reads of a company-owned master are now always pinned to
+        # the caller's own scope for a non-ADMIN, the same scope
+        # ensure_company_in_scope already enforces for writes; any
+        # client-supplied company_id outside that scope is silently narrowed,
+        # not honored. ADMIN (scoped_company_ids() is None) is unaffected.
         filters = {}
-        if company_scope == SCOPE_COMPANY_ID and company_id is not None:
-            filters["company_id"] = company_id
+        if company_scope == SCOPE_COMPANY_ID:
+            allowed = scoped_company_ids(holder)
+            if allowed is None:
+                if company_id is not None:
+                    filters["company_id"] = company_id
+            else:
+                filters["company_id"] = company_id if company_id in allowed else allowed[0]
         return await MasterCRUDService(model, session).list_active(**filters)
 
     @sub.post("", response_model=schema_out, status_code=201)

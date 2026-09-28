@@ -101,7 +101,8 @@ async def cancel_pending_asset_line(session: AsyncSession, line: PendingAsset, a
 
 async def deliver_pending_assets(
     session: AsyncSession, lines: list[PendingAsset], deliveries: dict[int, dict],
-    po_number: str, po_date, invoice_number: str, invoice_date, invoice_amount: float, actor: Holder,
+    po_number: str, po_date, vendor_id: int | None, invoice_number: str, invoice_date, invoice_amount: float,
+    actor: Holder,
 ) -> list[PendingAsset]:
     """One procure_assets(..., quantity=1, ...) call per line -- each
     PendingAsset already represents exactly one physical unit with its own
@@ -109,9 +110,12 @@ async def deliver_pending_assets(
     Add Asset's own "buying 20 identical mice" quantity case. purchase_date
     is set to invoice_date: the PO design's own point that the two are the
     same thing in this flow, since there is no earlier date to use.
-    po_number/po_date come from the parent PurchaseOrder (the caller's job
-    to supply) so the resulting Asset's own existing po_number/po_date
-    columns (Add Asset already has and uses these) are populated too.
+    po_number/po_date/vendor_id come from the parent PurchaseOrder (the
+    caller's job to supply) so the resulting Asset's own existing
+    po_number/po_date/vendor_id columns (Add Asset already has and uses
+    these) are populated too -- AM-17 §DEF-01: vendor_id was previously
+    omitted here, so every PO-delivered asset silently got vendor_id=NULL
+    even though the PO itself has a vendor.
 
     Each line is delivered inside its own savepoint (nested transaction) --
     one line's failure must not corrupt or partially commit any other
@@ -131,7 +135,7 @@ async def deliver_pending_assets(
                     "tax_percent": line.tax_percent, "purchase_date": invoice_date,
                     "serial_number": delivery["serial_number"],
                     "initial_holder_id": delivery["initial_holder_id"],
-                    "po_number": po_number, "po_date": po_date,
+                    "po_number": po_number, "po_date": po_date, "vendor_id": vendor_id,
                     "invoice_number": invoice_number, "invoice_date": invoice_date,
                 },
                 quantity=1, actor=actor,

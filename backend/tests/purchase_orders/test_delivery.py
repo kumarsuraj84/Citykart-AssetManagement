@@ -5,7 +5,7 @@ from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.assets.models import Asset
 from app.holders.models import Holder
-from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location
+from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location, Vendor
 from app.numbering.models import CodeRule
 from app.purchase_orders.models import PendingAsset, PurchaseOrder
 from app.purchase_orders.service import add_pending_asset_line, deliver_pending_assets
@@ -58,7 +58,7 @@ async def test_deliver_pending_assets_creates_real_assets_with_distinct_serials(
             lines[2].id: {"serial_number": "SN-003", "initial_holder_id": ctx["stock"].id},
         }
         delivered = await deliver_pending_assets(
-            session, lines, deliveries, po.po_number, po.po_date,
+            session, lines, deliveries, po.po_number, po.po_date, po.vendor_id,
             "INV-001", date(2026, 2, 1), 3540.0, admin,
         )
         await session.commit()
@@ -94,7 +94,7 @@ async def test_deliver_pending_assets_updates_line_status_and_traceability():
 
         [delivered] = await deliver_pending_assets(
             session, [line], {line.id: {"serial_number": "SN-X", "initial_holder_id": ctx["stock"].id}},
-            po.po_number, po.po_date, "INV-002", date(2026, 2, 1), 1000.0, admin,
+            po.po_number, po.po_date, po.vendor_id, "INV-002", date(2026, 2, 1), 1000.0, admin,
         )
         await session.commit()
 
@@ -117,7 +117,7 @@ async def test_deliver_partial_selection_leaves_others_pending():
         to_deliver = lines[:3]
         deliveries = {l.id: {"serial_number": f"SN-{l.id}", "initial_holder_id": ctx["stock"].id} for l in to_deliver}
         await deliver_pending_assets(
-            session, to_deliver, deliveries, po.po_number, po.po_date,
+            session, to_deliver, deliveries, po.po_number, po.po_date, po.vendor_id,
             "INV-003", date(2026, 2, 1), 3000.0, admin,
         )
         await session.commit()
@@ -143,15 +143,44 @@ async def test_deliver_rejects_an_already_delivered_line():
 
         await deliver_pending_assets(
             session, [line], {line.id: {"serial_number": "SN-1", "initial_holder_id": ctx["stock"].id}},
-            po.po_number, po.po_date, "INV-004", date(2026, 2, 1), 1000.0, admin,
+            po.po_number, po.po_date, po.vendor_id, "INV-004", date(2026, 2, 1), 1000.0, admin,
         )
         await session.commit()
 
         with pytest.raises(ValueError, match="not PENDING"):
             await deliver_pending_assets(
                 session, [line], {line.id: {"serial_number": "SN-1-AGAIN", "initial_holder_id": ctx["stock"].id}},
-                po.po_number, po.po_date, "INV-005", date(2026, 2, 2), 1000.0, admin,
+                po.po_number, po.po_date, po.vendor_id, "INV-005", date(2026, 2, 2), 1000.0, admin,
             )
+
+
+async def test_deliver_inherits_vendor_from_the_parent_purchase_order():
+    """AM-17 DEF-01: deliver_pending_assets previously omitted vendor_id from
+    the asset-creation payload, so every PO-delivered asset silently got
+    vendor_id=NULL even when the parent PO had a vendor set."""
+    ctx = await _setup("D6")
+    async with SessionLocal() as session:
+        vendor = Vendor(code="PO-DLV-D6-V", name="PO Delivery Test Vendor")
+        session.add(vendor)
+        await session.flush()
+        po = await session.get(PurchaseOrder, ctx["po"].id)
+        po.vendor_id = vendor.id
+        await session.commit()
+
+        admin = await session.get(Holder, ctx["admin"].id)
+        [line] = await add_pending_asset_line(session, po, {
+            "description": "Laptop", "category_id": ctx["cat"].id, "quantity": 1,
+        }, admin)
+        await session.commit()
+
+        [delivered] = await deliver_pending_assets(
+            session, [line], {line.id: {"serial_number": "SN-D6", "initial_holder_id": ctx["stock"].id}},
+            po.po_number, po.po_date, po.vendor_id, "INV-D6", date(2026, 2, 1), 1000.0, admin,
+        )
+        await session.commit()
+
+        asset = await session.get(Asset, delivered.delivered_asset_id)
+        assert asset.vendor_id == vendor.id
 
 
 async def test_deliver_generates_sequential_distinct_asset_codes():
@@ -165,7 +194,7 @@ async def test_deliver_generates_sequential_distinct_asset_codes():
         await session.commit()
         deliveries = {l.id: {"serial_number": f"SN-{l.id}", "initial_holder_id": ctx["stock"].id} for l in lines}
         delivered = await deliver_pending_assets(
-            session, lines, deliveries, po.po_number, po.po_date,
+            session, lines, deliveries, po.po_number, po.po_date, po.vendor_id,
             "INV-006", date(2026, 2, 1), 4000.0, admin,
         )
         await session.commit()
