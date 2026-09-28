@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { apiClient } from "../../lib/api-client";
@@ -23,6 +23,19 @@ interface PurchaseOrderOut {
   po_date: string;
   vendor_id: number | null;
   cost_center_id: number | null;
+}
+
+/** AM-14: a compact KPI tile for the PO detail summary row -- a smaller,
+ * denser sibling of Dashboard's own KPI Card (that one needs a title+
+ * description header slot; this one is just label+number, so it isn't
+ * built out of `Card`/`CardHeader`/`CardContent` at all). */
+function SummaryTile({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="rounded-md border bg-card px-4 py-3 shadow-sm">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <p className="text-xl font-semibold">{value}</p>
+    </div>
+  );
 }
 
 interface PendingAssetRow {
@@ -102,16 +115,34 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     queryFn: () => apiClient.get<Option[]>(`/holders?company_id=${poQ.data!.company_id}`),
     enabled: !!poQ.data,
   });
+  // AM-14: the header previously named PO Date/Cost Centre but never Vendor --
+  // the same master-list lookup PurchaseOrdersList.tsx already uses.
+  const vendorsQ = useQuery({ queryKey: ["masters", "vendors"], queryFn: () => apiClient.get<Option[]>("/masters/vendors") });
 
   const categories = categoriesQ.data ?? [];
   const subcategories = subcategoriesQ.data ?? [];
   const costCenters = costCentersQ.data ?? [];
   const holders = holdersQ.data ?? [];
+  const vendors = vendorsQ.data ?? [];
   const lines = linesQ.data ?? [];
   const categoryName = (id: number) => categories.find((c) => c.id === id)?.name ?? String(id);
   const costCenterName = (id: number | null) => (id == null ? "—" : costCenters.find((c) => c.id === id)?.name ?? String(id));
+  const vendorName = (id: number | null) => (id == null ? "—" : vendors.find((v) => v.id === id)?.name ?? String(id));
+
+  // AM-14 summary row -- derived entirely from `lines`, already fetched for the
+  // table below, so this costs zero extra requests. Value is every non-
+  // cancelled line's own total_cost (matches the table's own "PO Value" column).
+  const pendingCount = lines.filter((l) => l.status === "PENDING").length;
+  const deliveredCount = lines.filter((l) => l.status === "DELIVERED").length;
+  const totalValue = lines
+    .filter((l) => l.status !== "CANCELLED")
+    .reduce((sum, l) => sum + (l.total_cost ?? 0), 0);
 
   // --- Add Line form ---
+  // AM-14: collapsed by default -- the form previously stayed permanently
+  // expanded, always paying its vertical space even when nobody was adding a
+  // line. Same fields/mutation/validation, purely a visibility toggle.
+  const [showAddLine, setShowAddLine] = useState(false);
   const [lineForm, setLineForm] = useState({
     description: "", barcode: "", categoryId: "", subcategoryId: "",
     purchaseCost: "0", taxPercent: "0", quantity: "1",
@@ -329,16 +360,44 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     <div className="flex flex-col gap-4">
       <PageHeader
         title={poQ.data ? `Purchase Order ${poQ.data.po_number}` : "Purchase Order"}
-        description={poQ.data ? `PO Date: ${poQ.data.po_date} · Cost Centre: ${costCenterName(poQ.data.cost_center_id)}` : undefined}
+        description={
+          poQ.data
+            ? `Vendor: ${vendorName(poQ.data.vendor_id)} · PO Date: ${poQ.data.po_date} · Cost Centre: ${costCenterName(poQ.data.cost_center_id)}`
+            : undefined
+        }
         actions={
-          <Button onClick={openDeliver} disabled={selected.length === 0}>
-            Mark {selected.length > 0 ? selected.length : ""} Delivery Done
-          </Button>
+          <>
+            <Button asChild variant="outline">
+              <Link to="/purchase-orders">Close</Link>
+            </Button>
+            <Button onClick={openDeliver} disabled={selected.length === 0}>
+              Mark {selected.length > 0 ? selected.length : ""} Delivery Done
+            </Button>
+          </>
         }
       />
 
+      {/* AM-14: a KPI summary row, derived from the already-fetched `lines` --
+          the page previously had no at-a-glance sense of this PO's overall
+          size/progress/value without reading every table row. */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <SummaryTile label="Total Lines" value={lines.length} />
+        <SummaryTile label="Pending" value={pendingCount} />
+        <SummaryTile label="Delivered" value={deliveredCount} />
+        <SummaryTile label="Value" value={totalValue.toFixed(2)} />
+      </div>
+
       <div className="rounded-md border p-3">
-        <h2 className="mb-2 text-sm font-semibold">Add Line</h2>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-semibold">Add Line</h2>
+          {!showAddLine && (
+            <Button size="sm" variant="outline" onClick={() => setShowAddLine(true)}>
+              + Add Line
+            </Button>
+          )}
+        </div>
+        {showAddLine && (
+        <>
         <div className="grid grid-cols-3 gap-2">
           <FormField htmlFor="line-description" label="Description" required>
             <Input id="line-description" value={lineForm.description} onChange={(e) => setLineForm((f) => ({ ...f, description: e.target.value }))} />
@@ -393,10 +452,12 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
           <AsyncButton onClick={() => addLineMutation.mutate()} disabled={!canAddLine} pending={addLineMutation.isPending} pendingLabel="Adding…">
             Add Line
           </AsyncButton>
-          <Button asChild variant="outline">
-            <Link to="/purchase-orders">Close</Link>
+          <Button variant="ghost" onClick={() => setShowAddLine(false)}>
+            Cancel
           </Button>
         </div>
+        </>
+        )}
       </div>
 
       <DataTable

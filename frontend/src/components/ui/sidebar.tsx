@@ -436,7 +436,11 @@ const SidebarGroupLabel = React.forwardRef<
       ref={ref}
       data-sidebar="group-label"
       className={cn(
-        "flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium text-sidebar-foreground/70 outline-none ring-sidebar-ring transition-[margin,opacity] duration-200 ease-linear focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0",
+        // AM-14: uppercase + tracking-wide + semibold matches the same quiet
+        // section-label treatment used everywhere else in the app (Add Asset,
+        // Import section headings), so a sidebar group reads as structurally
+        // the same kind of thing rather than a smaller, unrelated label style.
+        "mt-2 flex h-8 shrink-0 items-center rounded-md px-2 text-[11px] font-semibold uppercase tracking-wide text-sidebar-foreground/60 outline-none ring-sidebar-ring transition-[margin,opacity] duration-200 ease-linear focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0",
         "group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0",
         className,
       )}

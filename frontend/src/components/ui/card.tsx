@@ -6,7 +6,12 @@ const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElemen
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn("rounded-xl border bg-card text-card-foreground shadow", className)}
+      // AM-14: cards are structure (a bordered work surface), not elevation --
+      // rounded-md (10px, was rounded-xl/16px) and shadow-sm (was the much more
+      // visible default `shadow`) match the "subtle border as the main structure,
+      // almost no shadow for ordinary work surfaces" direction; a real shadow stays
+      // reserved for genuinely floating surfaces (Dialog/Popover/DropdownMenu).
+      className={cn("rounded-md border bg-card text-card-foreground shadow-sm", className)}
       {...props}
     />
   ),

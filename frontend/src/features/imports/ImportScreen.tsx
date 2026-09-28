@@ -4,6 +4,7 @@ import { apiClient } from "../../lib/api-client";
 import { downloadFile } from "../../lib/auth-fetch";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { SectionHeading } from "@/components/shared/SectionHeading";
 import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { AsyncButton } from "@/components/shared/AsyncButton";
@@ -131,7 +132,7 @@ export function ImportScreen() {
       />
 
       <div className="flex flex-col gap-4 rounded-md border p-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">1. Download Template</h2>
+        <SectionHeading>1. Download Template</SectionHeading>
         <div>
           <AsyncButton variant="secondary" onClick={downloadTemplate} pending={isDownloading} pendingLabel="Preparing…">
             Download Template
@@ -146,7 +147,7 @@ export function ImportScreen() {
       </div>
 
       <div className="flex flex-col gap-4 rounded-md border p-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">2. Choose File, then Preview</h2>
+        <SectionHeading>2. Choose File, then Preview</SectionHeading>
         <div className="flex flex-wrap items-end gap-3">
           <FormField htmlFor="import-file" label="File" className="w-64">
             <Input id="import-file" aria-label="File" type="file" accept=".xlsx" ref={fileInputRef} onChange={handleFileChange} />
@@ -160,7 +161,7 @@ export function ImportScreen() {
 
       {preview && (
         <div className="flex flex-col gap-4 rounded-md border p-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">3. Review</h2>
+          <SectionHeading>3. Review</SectionHeading>
           <p className="text-sm text-muted-foreground">
             {preview.valid_rows.length} row{preview.valid_rows.length === 1 ? "" : "s"} ready to import,{" "}
             {preview.errors.length} row{preview.errors.length === 1 ? "" : "s"} with errors.
@@ -205,7 +206,7 @@ export function ImportScreen() {
 
       {result && (
         <div className="flex flex-col gap-3 rounded-md border p-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">4. Result</h2>
+          <SectionHeading>4. Result</SectionHeading>
           <p className="text-sm">Imported {result.imported} asset{result.imported === 1 ? "" : "s"}.</p>
           {result.errors.length > 0 && (
             <DataTable

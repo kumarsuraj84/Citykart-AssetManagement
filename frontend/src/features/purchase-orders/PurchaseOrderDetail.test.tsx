@@ -66,6 +66,9 @@ describe("PurchaseOrderDetail", () => {
     mockGets([]);
     (apiClient.post as any).mockResolvedValue([PENDING_LINE]);
     renderDetailAt();
+    // AM-14: Add Line is collapsed by default -- reveal it first.
+    await waitFor(() => expect(screen.getByRole("button", { name: /\+ add line/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /\+ add line/i }));
     await waitFor(() => expect(screen.getByLabelText(/^description\*?$/i)).toBeInTheDocument());
 
     fireEvent.change(screen.getByLabelText(/^description\*?$/i), { target: { value: "Dell Laptop" } });
@@ -97,6 +100,9 @@ describe("PurchaseOrderDetail", () => {
     mockGets([]);
     (apiClient.post as any).mockResolvedValue([PENDING_LINE]);
     renderDetailAt();
+    // AM-14: Add Line is collapsed by default -- reveal it first.
+    await waitFor(() => expect(screen.getByRole("button", { name: /\+ add line/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /\+ add line/i }));
     await waitFor(() => expect(screen.getByLabelText(/^description\*?$/i)).toBeInTheDocument());
 
     fireEvent.change(screen.getByLabelText(/^description\*?$/i), { target: { value: "Dell Laptop" } });

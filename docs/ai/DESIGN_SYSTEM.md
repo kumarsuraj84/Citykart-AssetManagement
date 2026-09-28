@@ -114,6 +114,81 @@ coherent instead of drifting page-by-page.
   375px, since the pairing/sizing changes only touch spacing values
   inside the same responsive classes, never the breakpoints themselves.
 
+## Visual composition system (AM-14)
+
+Established during the AM-14 complete-visual-redesign pass, on top of
+AM-13's density/typography system above — the source of truth for surface
+treatment, form-control skin, status chips, and section/toolbar
+composition going forward.
+
+- **Surfaces are structure via border, not elevation via shadow.** `Card`
+  is `rounded-md border bg-card shadow-sm` (was `rounded-xl`/`shadow`) —
+  a work surface reads as bordered and quiet, not "floating." A real
+  shadow (`shadow-lg`) stays reserved for genuinely floating surfaces:
+  `Dialog`/`AlertDialog`, `DropdownMenu`, `Popover`, `Select` content.
+  Never add a visible shadow to an ordinary Card-based section.
+- **Form fields are quiet/filled at rest.** `Input`/`Select`
+  (`SelectTrigger`)/`Textarea` are `bg-muted/50` with a transparent border
+  at rest, `bg-muted` on hover, and only firm up to `bg-background` with a
+  visible `border-ring` on focus. This replaces a plain bordered-white-box
+  look (the single biggest contributor to a "default shadcn" feel) with a
+  more considered field treatment, derived from the CitykartDesk reference
+  app's own request-form fields — never copy that app's colors or source,
+  only this structural idea. `rounded-sm` (8px, was `rounded-md`/10px) on
+  the same three controls, matching the radius scale below.
+- **Radius scale**: Inputs/Select/Textarea `rounded-sm` (8px). Cards
+  `rounded-md` (10px). Dialogs `rounded-lg` (12px, unchanged — already
+  correct). Badges/status chips `rounded-full` (pill). Don't introduce a
+  fourth radius value without updating this list.
+- **Status/semantic chips are pill-shaped.** `Badge`'s base
+  (`components/ui/badge.tsx`) is `rounded-full`, no shadow — every
+  consumer (`StatusBadge`, Purchase Order lines' `LineStatusBadge`, any
+  future badge) inherits this from the one shared primitive. Never round
+  a status chip differently per screen.
+- **`SectionHeading`** (`components/shared/SectionHeading.tsx`): a small-
+  caps muted label with a hairline rule trailing to the right — the
+  "quiet separator" for a sectioned form or numbered-step page (Add
+  Asset's 7 sections, Import's 4 steps). Replaces a bare `<h2
+  className="text-sm font-semibold uppercase tracking-wide
+  text-muted-foreground">` plus a separate full-width `Separator` between
+  sections — use `SectionHeading` for any new sectioned page instead of
+  reintroducing the bare-heading-plus-Separator pattern by hand.
+- **Toolbar band**: a page's search/filter controls and its view-option
+  controls (e.g. a "Columns" picker) share one `flex flex-wrap items-end
+  justify-between gap-3 rounded-md border bg-muted/40 p-3` band — see
+  Asset Register. Don't let a filter row and a nearby action float as two
+  structurally unrelated rows; group them in this band when a page has
+  both.
+- **Sidebar group labels**: `text-[11px] font-semibold uppercase
+  tracking-wide text-sidebar-foreground/60`, `mt-2` — matches
+  `SectionHeading`'s own label treatment so a sidebar group and a form
+  section read as the same kind of structural label, not two unrelated
+  styles.
+- **Button hierarchy**: one primary (solid, default variant) action per
+  context; a secondary navigation/dismissal action is `variant="outline"`;
+  a low-emphasis in-context action (e.g. "Cancel" inside an expanded
+  inline form, as opposed to a Dialog's own footer Cancel) is
+  `variant="ghost"`. Never place two solid/default-variant buttons next to
+  each other — see Purchase Order detail's header (`Close` outline +
+  `Mark Delivery Done` solid) for the reference shape.
+- **KPI/summary tiles** (a smaller, denser sibling of Dashboard's own
+  `Card`-based KPI, for a page that needs a compact at-a-glance summary
+  row rather than a full KPI grid): `rounded-md border bg-card px-4 py-3
+  shadow-sm` containing a `text-xs font-medium text-muted-foreground`
+  label and a `text-xl font-semibold` value — see Purchase Order detail's
+  `SummaryTile`. Reach for this, not a full `Card`/`CardHeader`/
+  `CardContent`, when the tile is just label+number with no description
+  or table inside it.
+- **A field with no backend-provided derived data stays off a list
+  column** rather than being approximated or guessed client-side (Purchase
+  Orders list's Pending/Delivered/Value were deliberately left off — see
+  `AM-14_COMPLETE_VISUAL_REDESIGN_REPORT.md` §23/§50) — reading an
+  already-returned-but-unused API field onto a column is fine (zero cost,
+  zero risk); computing an aggregate that needs N extra requests or a
+  backend change is a decision for the stage that actually authorizes
+  that backend change, not something to route around silently in a
+  visual-only pass.
+
 ## App shell
 
 `AppShell` in `frontend/src/router.tsx`: light top header (logo + collapse

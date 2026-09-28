@@ -19,7 +19,8 @@ const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      "flex h-10 w-full items-center justify-between whitespace-nowrap rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background cursor-pointer data-[placeholder]:text-muted-foreground hover:border-ring/50 focus:outline-none focus:ring-[3px] focus:ring-ring/25 focus:border-ring disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
+      // AM-14: matches Input's quiet-filled-field treatment -- see its own comment.
+      "flex h-10 w-full items-center justify-between whitespace-nowrap rounded-sm border border-transparent bg-muted/50 px-3 py-2 text-sm shadow-none ring-offset-background cursor-pointer data-[placeholder]:text-muted-foreground hover:bg-muted focus:bg-background focus:outline-none focus:ring-[3px] focus:ring-ring/25 focus:border-ring disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
       className,
     )}
     {...props}

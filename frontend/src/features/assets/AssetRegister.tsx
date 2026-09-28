@@ -336,6 +336,11 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader title="Asset Register" description="Search, filter and bulk-move assets.">
+        {/* AM-14: one toolbar band (subtle bg-muted/40 + border) groups search/
+            filters and the Columns view-option together, instead of the filter
+            row and the Columns button floating as two structurally-unrelated
+            rows above the table. */}
+        <div className="flex flex-wrap items-end justify-between gap-3 rounded-md border bg-muted/40 p-3">
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="search">Search</Label>
@@ -417,18 +422,7 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
             </Select>
           </div>
         </div>
-      </PageHeader>
 
-      {selected.length > 0 && (
-        <div className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2">
-          <span className="text-sm">{selected.length} selected</span>
-          <Button size="sm" onClick={openMove}>
-            Move
-          </Button>
-        </div>
-      )}
-
-      <div className="flex justify-end">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm">
@@ -455,7 +449,17 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
-      </div>
+        </div>
+      </PageHeader>
+
+      {selected.length > 0 && (
+        <div className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2">
+          <span className="text-sm">{selected.length} selected</span>
+          <Button size="sm" onClick={openMove}>
+            Move
+          </Button>
+        </div>
+      )}
 
       <DataTable
         columns={columns}

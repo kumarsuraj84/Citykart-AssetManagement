@@ -1185,3 +1185,61 @@ Number/Date pairs lined up as pairs. This was found by reading the field
 order against the grid's own column count, not by eyeballing a
 screenshot, and is exactly the "fields don't align consistently" defect
 named in the AM-13 authorization.
+
+## 2026-09-28 — AM-14: surfaces are border-as-structure, not shadow-as-elevation
+
+**Decision:** `Card` moved from `rounded-xl`/`shadow` (16px radius, a
+visibly elevated default shadcn shadow) to `rounded-md`/`shadow-sm` (10px,
+a barely-visible shadow). Form controls (`Input`/`Select`/`Textarea`)
+moved from a plain bordered white box to a quiet filled field
+(`bg-muted/50`, transparent border at rest) that only firms up to a
+bordered white field on hover/focus. `Badge` moved to `rounded-full`
+(pill).
+
+**Why:** Direct user feedback after AM-13 ("still does not look
+sufficiently polished... looks like default shadcn components placed on
+pages"), and the AM-14 authorization's own explicit direction ("subtle
+borders as the main structure... shadow: almost none for ordinary work
+surfaces"). Studied the read-only CitykartDesk reference app's own
+rendered screenshots and `globals.css` tokens for the *structural*
+principle (quiet filled fields, near-invisible card shadows) — never its
+colors, source code, or branding, per the authorization's own explicit
+constraint.
+
+## 2026-09-28 — AM-14: Purchase Order detail's Add Line collapses by default
+
+**Decision:** The Add Line form on `/purchase-orders/$id` is now hidden
+behind a "+ Add Line" toggle instead of permanently occupying the page.
+Same fields, same mutation, same validation — a `useState` visibility
+toggle only.
+
+**Why:** The AM-14 visual audit's single strongest finding: the form
+stayed open even when nobody was adding a line, pushing a new KPI summary
+row and the actual lines table down regardless. The authorization's own
+Purchase Orders section (§24) describes an "Actions: Add Line, Mark
+Delivery Done, Close/back" — i.e. Add Line as an action a user takes, not
+a form that's always sitting open. No business behavior changed: the
+mutation, its payload, and its validation rules are byte-identical to
+before.
+
+## 2026-09-28 — AM-14: read an already-returned field, but don't add a backend aggregation
+
+**Decision:** Purchase Orders list gained a Cost Centre column by reading
+`cost_center_id`, a field `PurchaseOrderOut` already returned but the
+frontend never declared — zero backend change, same pattern AM-11 used
+for Asset Register's holder/company columns. Pending-unit-count/
+Delivered-unit-count/Value were deliberately **not** added to the list
+(they are on the detail page, computed from data already fetched there),
+since the list endpoint doesn't return per-PO line aggregates and getting
+them would need either a backend change or an N+1 per-row fetch.
+
+**Why:** AM-14's authorization repeatedly and explicitly scoped out
+backend business-behavior changes ("No backend business behavior should
+change... Purchase Order workflow... pending assets" in its Section 3,
+reinforced in Section 58's "No feature changes"). Reading a field the API
+already sends is not a behavior change; adding a new aggregation
+endpoint, or accepting N extra requests per page load, would have been a
+real, if small, expansion of what this visual-only stage was authorized
+to touch — so it was left for a future stage that explicitly authorizes
+that backend work, and documented as a deliberate boundary rather than
+silently worked around.

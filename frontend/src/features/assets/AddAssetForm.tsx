@@ -4,7 +4,6 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { apiClient } from "../../lib/api-client";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -13,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { SectionHeading } from "@/components/shared/SectionHeading";
 import { FormField } from "@/components/shared/FormField";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { ErrorState } from "@/components/shared/ErrorState";
@@ -303,7 +303,7 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
       )}
 
       <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Organization</h2>
+        <SectionHeading>Organization</SectionHeading>
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField htmlFor="cost-center" label="Cost Centre" required>
             <Select value={selectValue(form.costCenterId)} onValueChange={(v) => setField("costCenterId", v)} disabled={mastersLoading}>
@@ -325,10 +325,8 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
         </div>
       </section>
 
-      <Separator />
-
       <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Asset Classification</h2>
+        <SectionHeading>Asset Classification</SectionHeading>
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField htmlFor="category" label="Category" required>
             <Select
@@ -369,10 +367,8 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
         </div>
       </section>
 
-      <Separator />
-
       <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Purchase / Procurement</h2>
+        <SectionHeading>Purchase / Procurement</SectionHeading>
         <div className="grid gap-4 sm:grid-cols-2">
           {/* Full-width and alone -- Vendor has no PO/Invoice/PI-style date partner of its
               own, so giving it its own row keeps the three Number/Date pairs below aligned
@@ -418,10 +414,8 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
         </div>
       </section>
 
-      <Separator />
-
       <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Asset Details</h2>
+        <SectionHeading>Asset Details</SectionHeading>
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField htmlFor="brand" label="Brand" helperText="Optional.">
             <Input id="brand" aria-label="Brand" value={form.brand} onChange={(e) => setField("brand", e.target.value)} />
@@ -466,10 +460,8 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
         </div>
       </section>
 
-      <Separator />
-
       <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Commercial</h2>
+        <SectionHeading>Commercial</SectionHeading>
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField htmlFor="purchase-cost" label="Purchase Cost" helperText="Optional.">
             <Input id="purchase-cost" aria-label="Purchase Cost" type="number" value={form.purchaseCost} onChange={(e) => setField("purchaseCost", e.target.value)} />
@@ -486,10 +478,8 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
         </div>
       </section>
 
-      <Separator />
-
       <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Initial Custody</h2>
+        <SectionHeading>Initial Custody</SectionHeading>
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField htmlFor="initial-holder" label="Goes Into" required>
             <Select value={selectValue(form.initialHolderId)} onValueChange={(v) => setField("initialHolderId", v)} disabled={mastersLoading}>
@@ -515,9 +505,8 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
 
       {customFields.length > 0 && (
         <>
-          <Separator />
           <section className="flex flex-col gap-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Custom Fields</h2>
+            <SectionHeading>Custom Fields</SectionHeading>
             <div className="grid gap-4 sm:grid-cols-2">
               {customFields.map((field) => {
                 const htmlId = `udf-${field.field_key}`;

@@ -1,15 +1,22 @@
 # CKAM — Current Stage
 
-**Stage:** AM-13, a whole-application UI density/professionalization pass,
-is complete — see "What's actually done as of AM-13" below. It touched
-frontend visual/layout code only (`components/ui/{card,dialog,alert-
-dialog,input,select,button,textarea}.tsx`, `styles.css`, `Dashboard.tsx`,
-`AddAssetForm.tsx`); no business logic, schema, or authorization changed.
+**Stage:** AM-14, a complete visual-design/UX-composition pass, is
+complete — see "What's actually done as of AM-14" below. It touched
+frontend visual/layout code and one nginx config file only
+(`components/ui/{badge,card,input,select,sidebar,textarea}.tsx`,
+`components/shared/SectionHeading.tsx` (new),
+`features/assets/{AddAssetForm,AssetRegister}.tsx`,
+`features/imports/ImportScreen.tsx`,
+`features/purchase-orders/{PurchaseOrderDetail,PurchaseOrdersList}.tsx`,
+`nginx.conf`); no business logic, schema, or authorization changed.
 **Environment: DEVELOPMENT / UAT. Production deployment remains DEFERRED.**
 **Next:** Await explicit user direction. Do NOT automatically begin
 another development or design stage.
 
-**Previous stage:** Purchase Order / Pending Assets feature — implemented, live
+**Previous stage:** AM-13, a whole-application UI density/professionalization
+pass — see "What's actually done as of AM-13" below.
+
+**Before that:** Purchase Order / Pending Assets feature — implemented, live
 browser UAT performed and passed, plus several same-day follow-ups the live
 UAT and user feedback directly motivated: Cost Centre relocated from
 per-line to the PO header, a new Dashboard "Purchase Orders" card
@@ -824,6 +831,80 @@ still correct for CKAM's actual, deliberately narrower scope — see
 - **No production work, no push, no test-data deletion** (test-data
   *deactivation* of this stage's own throwaway pollution is not the same
   as deletion — nothing pre-existing before this session was touched).
+
+## What's actually done as of AM-14
+
+- **Complete visual design/UX composition pass, verdict PASS WITH
+  OBSERVATIONS.** Not a feature stage — AM-13 fixed shared primitives
+  (control height, Card padding, Dialog scroll, base typography); this
+  stage addressed the user's direct follow-up that the app still didn't
+  feel sufficiently polished/cohesive by performing a real visual audit
+  (`docs/ai/AM-14_VISUAL_AUDIT.md`) before any code change, extracting
+  structural principles (not colors/code/branding) from the read-only
+  CitykartDesk reference app's own screenshots and tokens, and applying
+  them. Full detail: `docs/ai/AM-14_COMPLETE_VISUAL_REDESIGN_REPORT.md`.
+- **Global surface/field/badge system**: `Card` is now border-as-structure
+  (`rounded-md`/`shadow-sm`, was `rounded-xl`/`shadow`) instead of
+  shadow-as-elevation; `Input`/`Select`/`Textarea` are a quiet filled
+  field at rest (`bg-muted/50`, no visible border) that firms up to a
+  bordered white field only on focus, replacing a plain bordered box that
+  read as "default shadcn"; `Badge` (and therefore every `StatusBadge`/
+  `LineStatusBadge` consumer) is now pill-shaped. New shared
+  `SectionHeading` component (quiet label + trailing rule) replaces a
+  bare heading + separate `Separator` in Add Asset's 7 sections and
+  Import's 4 steps. Sidebar group labels gained the same uppercase/
+  tracking-wide treatment as every other section label in the app.
+- **Asset Register**: search/filters and the Columns picker now share one
+  toolbar band (`bg-muted/40` border) instead of floating as two
+  unrelated rows.
+- **Purchase Orders — the screen AM-13's own report flagged as not
+  individually verified, and the visual audit's only genuine "C" grade —
+  got a real redesign**: the list gained a Cost Centre column (the API
+  already returned `cost_center_id`; the frontend just never rendered it
+  — zero backend change) and whole-row click-to-navigate. The detail page
+  gained a 4-tile KPI summary row (Total Lines/Pending/Delivered/Value,
+  computed client-side from data already fetched — zero extra requests),
+  Vendor added to the header, and its permanently-open Add Line form
+  (the single biggest composition problem found in the audit) is now
+  collapsed behind a "+ Add Line" toggle — same fields/mutation/
+  validation, a visibility state only. The Delivery Done dialog was
+  reviewed and found **already compliant** with the authorization's own
+  fixed-header/scrollable-body/fixed-footer target (built during the
+  prior PO stage) — verified live, not rebuilt.
+- **nginx cache-busting fixed** (AM-13 found this, out of that stage's
+  visual scope; AM-14 was explicitly authorized to fix it narrowly): a
+  new `location = /index.html` block sends `Cache-Control: no-cache`;
+  hashed assets under `/assets/` are untouched (verified via real
+  response headers, not assumed). This also fixed a real mid-session
+  browser-verification annoyance (a tab open across a rebuild kept
+  running the old JS bundle) that would otherwise affect any future
+  redeploy's users too.
+- **E2E transiently broke twice this stage, both times on the same root
+  cause AM-13 already documented**: this session's own ad-hoc
+  `seed_admin` throwaway verification accounts (plus leftovers from
+  interrupted earlier runs) accumulating multiple simultaneously-active
+  holders literally named `SEEDADMIN`, tripping the login endpoint's own
+  anti-ambiguity guard. Root-caused each time via the same code path,
+  cleaned up (soft-deactivated, no hard delete), re-verified 5/5.
+- **No database migration.** **No backend file changed.** **No business
+  logic, schema, or authorization changed.** Backend: 341/341
+  (unchanged). Frontend: 176/176 (2 tests updated for the Add Line
+  toggle's genuine new interaction, not for styling — matches this
+  stage's own testing policy). TypeScript clean. E2E: 5/5. Production
+  build: clean.
+- **Honest scope boundary, not claimed as full coverage**: verified live
+  at 1366×768 (primary) and 375×812 (mobile) across every screen this
+  stage actually changed; did not independently re-check
+  1920/1440/1024/768 or re-screenshot every route that only inherited
+  primitive-level fixes (Asset 360, Import, Reports, Custom Fields, Code
+  Rule, Login, the 7 simple masters, every lifecycle/master/correction
+  dialog individually) — see the report's §48/§50 for the full list.
+  Purchase Orders list's Pending/Delivered/Value columns were
+  deliberately left off (would need a backend aggregation change, out of
+  this stage's scope) rather than approximated.
+- **No production work, no push, no test-data deletion** (this stage's
+  own throwaway pollution was deactivated, not deleted; nothing
+  pre-existing before this session was touched).
 
 ## Branch / remote state
 

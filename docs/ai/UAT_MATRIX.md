@@ -240,3 +240,55 @@ a generic 401 — root-caused, the 7 stale accounts soft-deactivated,
 re-verified 5/5 clean; not a regression from this stage's own changes).
 Production build: clean. Full detail:
 `AM-13_UI_DENSITY_PROFESSIONALIZATION_REPORT.md`.
+
+**AM-14 (2026-09-28) was a complete visual-design/UX-composition pass —
+also not route-shaped, recorded here for the same reason AM-13's own
+entry gives.** Performed a real visual audit before any code change
+(`AM-14_VISUAL_AUDIT.md`) and extracted structural principles (never
+colors/code/branding) from the read-only CitykartDesk reference app.
+Fixed three shared primitives beyond what AM-13 touched: `Card` moved to
+border-as-structure (`rounded-md`/`shadow-sm`, was `rounded-xl`/`shadow`);
+`Input`/`Select`/`Textarea` moved from a plain bordered box to a quiet
+filled field (`bg-muted/50` at rest, firms up on focus) — the single
+biggest fix for the "looks like default shadcn" complaint; `Badge` (and
+therefore every `StatusBadge`/`LineStatusBadge`) is now pill-shaped. New
+shared `SectionHeading` component replaced a bare heading + separate
+`Separator` in Add Asset's 7 sections and Import's 4 steps. Asset
+Register's search/filters and Columns picker now share one toolbar band.
+Sidebar group labels gained the same uppercase/tracking-wide treatment as
+every other section label. **Purchase Orders — flagged by AM-13's own
+report as not individually verified, and the audit's only "C" grade —
+got a real redesign**: the list gained a Cost Centre column (reading an
+already-returned API field, zero backend change) and whole-row
+click-to-navigate; the detail page gained a 4-tile KPI summary row
+(Total Lines/Pending/Delivered/Value, computed from already-fetched data,
+zero extra requests), Vendor in the header, and its permanently-open Add
+Line form is now collapsed behind a toggle (same fields/mutation/
+validation — a visibility state only, verified via DOM inspection after
+the Browser-pane tool's own click-compositing proved unreliable
+mid-session, a tooling artifact not an app defect). The Delivery Done
+dialog was reviewed and found **already compliant** with a fixed-header/
+scrollable-body/fixed-footer structure (built during the prior PO stage)
+— verified live, not rebuilt. **Cache-busting nginx fix** (AM-13 found
+this, out of that stage's visual scope; AM-14 fixed it narrowly): a new
+`location = /index.html` block sends `Cache-Control: no-cache`; verified
+via real response headers that hashed `/assets/*` files are unaffected.
+Verified live at 1366×768 and 375×812 on every screen this stage actually
+changed (Dashboard, Asset Register, Add Asset, Purchase Orders list and
+detail, Holders' Add User dialog re-verified for the AM-13 scroll fix);
+did **not** independently re-check 1920/1440/1024/768 or re-screenshot
+routes that only inherited primitive-level fixes (Asset 360, Import,
+Reports, Custom Fields, Code Rule, Login, the 7 simple masters, every
+lifecycle/correction/master dialog individually) — stated as an honest
+scope boundary, not claimed as full coverage. Purchase Orders list's
+Pending/Delivered/Value columns were deliberately left off (would need a
+backend aggregation change, out of this visual-only stage's scope) rather
+than approximated. No database migration. No backend file changed. No
+business logic, schema, or authorization changed. Backend: 341/341
+(unchanged). Frontend: 176/176 (2 tests updated for the Add Line toggle's
+genuine new interaction, not for styling). `npx tsc -b` clean. E2E: 5/5
+(transiently broke twice on the same SEEDADMIN-ambiguity root cause AM-13
+already documented — this stage's own new throwaway account plus more
+interrupted-run leftovers; root-caused each time, cleaned up,
+re-verified). Production build: clean. Full detail:
+`AM-14_COMPLETE_VISUAL_REDESIGN_REPORT.md`.
