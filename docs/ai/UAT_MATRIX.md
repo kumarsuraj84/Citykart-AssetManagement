@@ -378,3 +378,46 @@ call site byte-identical). `npx tsc -b` clean. E2E: 5/5 (throwaway
 `UAT-AM16` account deactivated before running E2E, zero collisions
 confirmed pre-flight, clean on the first attempt). Production build:
 clean. Full detail: `AM-16_LOVABLE_GUIDED_VISUAL_REFINEMENT_REPORT.md`.
+
+**AM-17 (2026-09-28) — current-HEAD full business-workflow UAT + RC
+revalidation, verdict CURRENT RC READY WITH NON-BLOCKING OBSERVATIONS.**
+Not a design stage — an exhaustive, evidence-based functional/security
+audit of every real Phase-1 workflow at current HEAD, per-workflow results
+in the new `AM-17_WORKFLOW_ACCEPTANCE_MATRIX.md` (this file's route-by-
+route summary below is intentionally brief; that matrix is the
+authoritative row-by-row record). Full detail:
+`AM-17_CURRENT_HEAD_FULL_UAT_REPORT.md`, DB-layer evidence
+`AM-17_DB_VERIFICATION_FINDINGS.md`, business-workflow evidence
+`AM-17_BUSINESS_WORKFLOW_FINDINGS.md`, E2E/smoke evidence
+`AM-17_E2E_AND_SMOKE_FINDINGS.md`, issue register `AM-17_ISSUES.md`.
+**Database layer**: a genuinely empty disposable DB migrated clean to head
+`278437eb710e` with every table/index/trigger present, a real backup
+restored byte-identical into a disposable DB, a 15-point read-only
+integrity sweep of live `ckam` found zero anomalies, all 7 append-only/
+identity-trigger negative tests correctly rejected, and 20 genuinely
+concurrent asset-creation requests produced 20/20 unique codes with no
+counter corruption. **Business/security layer**: full role matrix, company
+isolation, HOLDER isolation, Add Asset, Serial Number uniqueness (all 4
+creation paths), the complete PO/Pending-Asset workflow, Dashboard,
+Register, Asset 360, lifecycle journeys, correction vs. ordinary edit,
+Custom Fields, Import, Reports/exports (including a fresh Excel-formula-
+injection re-test), all 7 masters, Holders, and Code Rule were each
+re-verified fresh via direct API calls against 2 isolated UAT companies —
+not inferred from the frontend. **Four evidenced defects found and fixed**
+(none P0): PO Delivery Done wasn't inheriting the parent PO's Vendor
+(P1, commit `0ec05a9`); the Field-Change Audit export was missing its
+Reason column (P2, same commit); a non-ADMIN could read another company's
+Cost Centres via the masters list endpoint's unscoped read side (P2, same
+commit); all 7 masters screens silently swallowed a failed Add/Edit
+(P2, commit `8547bb0`). Each has a dedicated regression test. **New
+permanent Playwright coverage**: `purchase-order-delivery-journey.spec.ts`
+(commit `7b127ae`) closes the standing gap that Purchase Orders had zero
+E2E coverage — a full 17-step create→add-line→partial-deliver→verify
+journey plus a thin duplicate-serial rejection check. **Responsive
+smoke** (6 viewports × 10 priority screens, functional check only, not
+another redesign) found zero horizontal overflow. **Accessibility smoke**
+found no defects. **Failure-path smoke** found the one DEF-04 masters-UX
+gap above, now fixed. No business rule, schema, or design-system token
+changed. Backend: 341/341 → 346/346. Frontend: 176/176 → 178/178.
+`npx tsc -b` clean. E2E: 5/5 → 6/6. Production build: clean. Alembic:
+`278437eb710e`, single head, unchanged.

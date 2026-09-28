@@ -72,12 +72,9 @@ is resolved; see "Resolved this session" below for AM-05/AM-06's fixes.
     both active Code Rules touching it are all confirmed test artifacts
     (`RC_ISSUES.md` AM10-02, P2). See `CKAM_INITIAL_SETUP_GUIDE.md` for
     the full warning and the correct bootstrap order to use instead.
-9. **2 leftover active `SEEDADMIN` holder rows exist in already-
-    deactivated companies** (`AM03UAT`, `AM04UAT`) — found during AM-10's
-    test-account inventory (`RC_ISSUES.md` AM10-03, P2). Not currently
-    exploitable (the login query's own company-active clause blocks them),
-    but a messy leftover state worth cleaning up in any future
-    database-cleanup pass.
+9. ~~2 leftover active `SEEDADMIN` holder rows exist in already-
+    deactivated companies~~ **Fixed (AM-17)** — see "Resolved this
+    session" below.
 10. ~~The Dashboard has no Repair/Lost/Disposed exception counts and no
     recent-activity feed~~ **Fixed (AM-12)** — see "Resolved this session"
     below.
@@ -322,3 +319,42 @@ is resolved; see "Resolved this session" below for AM-05/AM-06's fixes.
   have zero assets" — fixed (AM-06): real skeleton, `ErrorState`+retry, and
   a distinct empty-state message, via the same `DataTable`/`EmptyState`
   pattern every other list screen now uses.
+- **PO Delivery Done never inherited the Vendor from the parent Purchase
+  Order** (`AM-17` DEF-01, P1) — every asset created via PO Delivery
+  silently got `vendor_id=NULL` even when the PO itself had a vendor set —
+  fixed (AM-17, commit `0ec05a9`): `deliver_pending_assets` now passes the
+  PO's `vendor_id` through to `procure_assets`, same as it already carries
+  PO Number/Date. New regression test
+  `test_deliver_inherits_vendor_from_the_parent_purchase_order`.
+- **The Field-Change Audit export had no Reason column** (`AM-17` DEF-02,
+  P2) — Reason is the sole discriminator between a controlled correction
+  row and an ordinary edit row (`AssetFieldChange.reason`); the data was
+  never lost (still visible via `GET /api/assets/{id}/changes`), just
+  missing from this one export — fixed (AM-17, commit `0ec05a9`):
+  `field_changes_to_xlsx` now includes it. New regression test confirms
+  `None` for an ordinary edit and populated for a correction.
+- **A non-ADMIN staff member could read another company's Cost Centres**
+  (`AM-17` DEF-03, P2) — the generic company-owned-master list endpoint
+  enforced scope on writes only; a non-ADMIN omitting `company_id`, or
+  passing a different company's id, still saw every company's rows — fixed
+  (AM-17, commit `0ec05a9`): reads of a company-owned master are now
+  pinned to the caller's own `scoped_company_ids()` for a non-ADMIN, the
+  same scope writes already enforce; ADMIN (unrestricted) is unaffected.
+  3 new regression tests in `test_am08_cost_center_scoping.py`.
+- **All 7 masters screens silently swallowed Add/Edit API errors** (`AM-17`
+  DEF-04, P2) — `MasterCrudScreen.tsx`'s create/update mutations had no
+  `onError` handling at all, so a failed save (e.g. a duplicate code, an
+  ordinary controlled 422) closed with zero visible feedback — fixed
+  (AM-17, commit `8547bb0`): both dialogs now show
+  `{mutation.isError && <p role="alert">...}`, the same pattern already
+  used everywhere else a mutation can fail (`CustomFieldsScreen`,
+  `AddAssetForm`, `CodeRuleScreen`, `PurchaseOrderDetail`, `AssetDetail`).
+  2 new regression tests.
+- **2 leftover active `SEEDADMIN` holder rows in already-deactivated
+  companies** (`AM03UAT`/`AM04UAT`, `RC_ISSUES.md` AM10-03, P2) — fixed
+  (AM-17): both soft-deactivated at the holder level too (their companies
+  were already inactive, so they were never actually login-capable — the
+  login query requires both `Holder.is_active` and `Company.is_active` —
+  but the leftover state itself was real and worth closing). Re-verified
+  after: zero active `SEEDADMIN` holders anywhere, zero holders where both
+  the holder and its company are simultaneously active.

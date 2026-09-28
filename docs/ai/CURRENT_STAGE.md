@@ -1,17 +1,27 @@
 # CKAM — Current Stage
 
-**Stage:** AM-16, a Lovable-guided visual refinement pass, is complete —
-see "What's actually done as of AM-16" below. It touched 5 frontend files
+**Stage:** AM-17, a current-HEAD full business-workflow UAT + Release
+Candidate revalidation, is complete — verdict **CURRENT RC READY WITH
+NON-BLOCKING OBSERVATIONS** (a DEV/UAT software-readiness judgment, NOT
+production deployment authorization). See "What's actually done as of
+AM-17" below and `AM-17_CURRENT_HEAD_FULL_UAT_REPORT.md` for full detail.
+Four evidenced defects (P1/P2/P2/P2) found and fixed, each with a
+regression test; one new permanent Playwright spec closes the standing
+Purchase-Order E2E gap. No business rule, schema, or design-system token
+changed.
+**Environment: DEVELOPMENT / UAT. Production deployment remains DEFERRED.**
+**Next:** Await explicit user direction. Do NOT automatically begin
+another development or design stage.
+
+**Previous stage:** AM-16, a Lovable-guided visual refinement pass — see
+"What's actually done as of AM-16" below. It touched 5 frontend files
 only (`components/shared/StatusBadge.tsx`,
 `features/assets/AssetRegister.tsx`, `features/dashboard/Dashboard.tsx`,
 `features/my-assets/MyAssets.tsx`,
 `features/purchase-orders/PurchaseOrderDetail.tsx`); no business logic,
 schema, or authorization changed.
-**Environment: DEVELOPMENT / UAT. Production deployment remains DEFERRED.**
-**Next:** Await explicit user direction. Do NOT automatically begin
-another development or design stage.
 
-**Previous stage:** AM-15, a full visual acceptance / residual-defect-
+**Before that:** AM-15, a full visual acceptance / residual-defect-
 correction pass — see "What's actually done as of AM-15" below.
 
 **Before that:** AM-14, a complete visual-design/UX-composition pass —
@@ -1004,6 +1014,114 @@ still correct for CKAM's actual, deliberately narrower scope — see
   call site is byte-identical unless it opts in). TypeScript clean.
   E2E: 5/5. Production build: clean.
 - **No production work, no push, no test-data deletion.**
+
+## What's actually done as of AM-17
+
+- **Current-HEAD full business-workflow UAT + Release Candidate
+  revalidation, verdict CURRENT RC READY WITH NON-BLOCKING OBSERVATIONS.**
+  Not a design stage (explicitly barred from touching CSS/design-system
+  tokens without new evidence) — an exhaustive, evidence-based functional
+  and security audit of every real Phase-1 workflow at current HEAD,
+  re-run fresh rather than trusted from AM-09/AM-15. Full detail:
+  `docs/ai/AM-17_CURRENT_HEAD_FULL_UAT_REPORT.md`, workflow-by-workflow
+  results `docs/ai/AM-17_WORKFLOW_ACCEPTANCE_MATRIX.md`.
+- **First action was correcting two documentation defects in the
+  already-committed AM-16 report** (its §39 Card-shadow wording
+  self-contradicted itself; its §53 REPORT CONTENT HEAD was never filled
+  in) — committed separately (`e5ea656`) before any AM-17 functional work
+  began, per the locked report-git convention in effect since AM-05.
+- **Database layer fully re-verified on current HEAD**: a genuinely empty
+  disposable database migrated clean through all 15 revisions to head
+  `278437eb710e` with every current table/index/trigger present
+  (`purchase_order`, `pending_asset`, both `barcode` columns,
+  `purchase_order.cost_center_id`, `ux_asset_serial_number_ci`, and all 5
+  append-only/identity triggers); a downgrade/upgrade round-trip on the
+  same disposable DB was clean; a real `pg_dump` backup restored into a
+  second disposable DB matched the live database's revision, row counts,
+  indexes, and triggers exactly; a 15-point read-only integrity sweep of
+  live `ckam` found zero anomalies; all 7 append-only/identity-trigger
+  negative tests (direct `UPDATE`/`DELETE` attempts, always
+  `BEGIN;...ROLLBACK;`, never committed) were correctly rejected; 20
+  genuinely concurrent `POST /api/assets` calls against an isolated
+  numbering rule produced 20/20 unique codes with the counter advancing
+  exactly +20, no corruption. Full evidence:
+  `docs/ai/AM-17_DB_VERIFICATION_FINDINGS.md`.
+- **Business-workflow and security layer re-verified via direct API calls
+  against 2 isolated UAT companies** — not inferred from what the
+  frontend hides, per CLAUDE.md's own rule #1: full role matrix
+  (ADMIN/IT_TEAM/VIEWER/HOLDER across ~20 endpoint groups), company
+  isolation (with the intentionally-global masters — Category,
+  Subcategory, Vendor, Location, Department — correctly excluded from
+  what counts as a leak), HOLDER isolation, Add Asset's full current
+  contract including quantity semantics, Serial Number uniqueness on all
+  4 creation paths (Add Asset/PO Delivery/Import/Asset 360 Edit), the
+  complete Purchase Order/Pending Asset workflow (create, quantity
+  expansion, pending edit/cancel, partial delivery, converted-asset
+  truth, delivered-line immutability), Dashboard (PO card, Exceptions,
+  Recent Activity), Asset Register, Asset 360, standard and exception
+  lifecycle journeys, the correction workflow vs. ordinary edit, Custom
+  Fields, Import (including per-row atomicity), Reports/exports
+  (including a fresh Excel-formula-injection re-test), all 7 simple
+  masters, Holders, and Code Rule. Full evidence:
+  `docs/ai/AM-17_BUSINESS_WORKFLOW_FINDINGS.md`.
+- **Four evidenced defects found and fixed, none P0**: (DEF-01, P1, commit
+  `0ec05a9`) PO Delivery Done was not inheriting the parent Purchase
+  Order's Vendor, so every PO-delivered asset silently got
+  `vendor_id=NULL`; (DEF-02, P2, same commit) the Field-Change Audit
+  export had no Reason column, the sole discriminator between a
+  correction and an ordinary edit; (DEF-03, P2, same commit) a non-ADMIN
+  staff member could read another company's Cost Centres through the
+  masters list endpoint's unscoped read side (writes were already
+  correctly scoped); (DEF-04, P2, commit `8547bb0`) all 7 masters screens
+  silently swallowed a failed Add/Edit (e.g. a duplicate code) with zero
+  visible feedback — `MasterCrudScreen.tsx` was the one screen in the app
+  that had never adopted the `{mutation.isError && <p role="alert">}`
+  pattern every other mutation-driven dialog already uses. Each has a
+  dedicated regression test.
+- **New permanent Playwright coverage closes a standing gap**: Purchase
+  Orders had zero E2E coverage since the feature was built — a new
+  `frontend/e2e/purchase-order-delivery-journey.spec.ts` (commit
+  `7b127ae`) drives a full 17-step create → add-line(qty=3) → partial-
+  deliver(2 of 3) → verify journey end-to-end through the real UI, plus a
+  thin full-stack assertion that a duplicate real Serial Number is
+  rejected visibly (backend already has deep unit coverage for the
+  uniqueness rule itself — this proves the UI→API→DB path without
+  duplicating it).
+- **Responsive/accessibility/failure-path/performance smoke, explicitly
+  NOT another redesign** (AM-13 through AM-16 already covered that):
+  6 viewports × 10 priority screens found zero horizontal overflow;
+  keyboard/focus/label/color-only-signal accessibility checks found no
+  defects; a dedicated failure-path sweep (401/403/404/422/API-outage)
+  found everything controlled except DEF-04 above, now fixed; bounded
+  performance observations recorded with no invented SLAs. Full evidence:
+  `docs/ai/AM-17_E2E_AND_SMOKE_FINDINGS.md`.
+- **A known, already-documented data-hygiene finding (AM10-03) closed**:
+  2 leftover `SEEDADMIN` holder rows in already-deactivated companies
+  (`AM03UAT`/`AM04UAT`) — never actually login-capable (the login query
+  requires both the holder AND its company to be active), but a messy
+  leftover state — soft-deactivated at the holder level too; re-verified
+  zero active `SEEDADMIN` holders anywhere and zero holders where both
+  the holder and its company are simultaneously active.
+- **No business rule, schema, or design-system token changed.** No new
+  Alembic migration (head remains `278437eb710e` throughout — every fix
+  this stage made was frontend/API-logic only). No open business decision
+  (`holder_company_access`, import duplicate detection, G04 company
+  selector, category/subcategory-scoped Custom Fields, approval workflow,
+  AMC/insurance/depreciation/physical verification, audit explorer, new
+  lifecycle states, new masters, bulk correction) was implemented or
+  reopened — where testing touched one, it was documented, never guessed
+  at.
+- **Backend: 341/341 → 346/346** (5 new regression tests: 1 vendor
+  inheritance, 1 audit-export Reason, 3 cost-centre read scoping).
+  **Frontend: 176/176 → 178/178** (2 new regression tests: MasterCrudScreen
+  error display). **TypeScript: clean.** **Playwright E2E: 5/5 → 6/6**
+  (new PO delivery journey). **Production build: clean.** **Alembic:
+  `278437eb710e`, single head, unchanged.**
+- **No production work, no push authorized before this point, no
+  test-data deletion** (every AM-17 throwaway identity was soft-
+  deactivated, verified via a pre-final-E2E collision check, not
+  hard-deleted; nothing pre-existing before this session was touched
+  beyond the AM10-03 hygiene cleanup above).
 
 ## Branch / remote state
 
