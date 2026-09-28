@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { apiClient } from "../../lib/api-client";
@@ -19,6 +19,14 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -28,13 +36,37 @@ import { AsyncButton } from "@/components/shared/AsyncButton";
 interface AssetRow {
   id: number;
   asset_code: string;
+  legacy_asset_code: string | null;
   description: string;
+  brand: string | null;
+  model: string | null;
+  serial_number: string | null;
+  barcode: string | null;
+  po_number: string | null;
+  po_date: string | null;
+  invoice_number: string | null;
+  invoice_date: string | null;
+  pi_number: string | null;
+  pi_date: string | null;
+  purchase_cost: number | null;
+  tax_percent: number | null;
+  tax_amount: number | null;
+  total_cost: number | null;
+  purchase_date: string;
+  warranty_upto: string | null;
   status: string;
+  status_since: string;
   // AM-11: populated server-side by a page-scoped batch lookup (never a
   // per-row join) -- the register must answer "who holds it, in which
-  // company" without a click into every row.
+  // company" without a click into every row. Extended to Category/
+  // Sub-Category/Vendor/Cost Centre so every FK column on the register can
+  // show a name instead of a bare id.
   current_holder_name: string | null;
   company_name: string | null;
+  category_name: string | null;
+  subcategory_name: string | null;
+  cost_center_name: string | null;
+  vendor_name: string | null;
 }
 
 interface Option {
@@ -61,6 +93,77 @@ function asOptionArray(data: unknown): Option[] {
 // total count of every matching asset.
 export const PAGE_SIZE = 50;
 
+const dash = (v: string | null | undefined) => (v === null || v === undefined || v === "" ? "—" : v);
+// Matches AssetDetail.tsx's own ReadField formatting for these same four
+// money fields (toFixed(2), no currency symbol) -- one number convention
+// across the register and Asset 360, not two.
+const money = (v: number | null | undefined) => (v === null || v === undefined ? "—" : v.toFixed(2));
+
+interface AssetColumnDef {
+  key: string;
+  label: string;
+  defaultVisible: boolean;
+  className?: string;
+  cell: (a: AssetRow) => ReactNode;
+}
+
+// Every remaining Asset field (backend/app/assets/models.py) beyond the Code
+// column, which is pinned and always shown separately below. A field added
+// to the Asset model later gets a register column by adding one entry here
+// -- the one place this table's field list lives, rather than the frontend
+// silently staying stale as the backend grows (docs request: "if any new
+// field added ... that should come outside also").
+const ASSET_OPTIONAL_COLUMNS: AssetColumnDef[] = [
+  { key: "category", label: "Category", defaultVisible: true, cell: (a) => dash(a.category_name) },
+  { key: "subcategory", label: "Sub-Category", defaultVisible: true, cell: (a) => dash(a.subcategory_name) },
+  { key: "description", label: "Description", defaultVisible: true, cell: (a) => a.description },
+  { key: "brand", label: "Brand", defaultVisible: true, cell: (a) => dash(a.brand) },
+  { key: "model", label: "Model", defaultVisible: true, cell: (a) => dash(a.model) },
+  { key: "serial_number", label: "Serial Number", defaultVisible: true, cell: (a) => dash(a.serial_number) },
+  { key: "status", label: "Status", defaultVisible: true, cell: (a) => <StatusBadge status={a.status} /> },
+  { key: "holder", label: "Holder", defaultVisible: true, cell: (a) => dash(a.current_holder_name) },
+  { key: "company", label: "Company", defaultVisible: true, cell: (a) => dash(a.company_name) },
+  { key: "legacy_asset_code", label: "Legacy Asset Code", defaultVisible: false, cell: (a) => dash(a.legacy_asset_code) },
+  { key: "barcode", label: "Barcode", defaultVisible: false, cell: (a) => dash(a.barcode) },
+  { key: "vendor", label: "Vendor", defaultVisible: false, cell: (a) => dash(a.vendor_name) },
+  { key: "cost_center", label: "Cost Centre", defaultVisible: false, cell: (a) => dash(a.cost_center_name) },
+  { key: "po_number", label: "PO Number", defaultVisible: false, cell: (a) => dash(a.po_number) },
+  { key: "po_date", label: "PO Date", defaultVisible: false, cell: (a) => dash(a.po_date) },
+  { key: "invoice_number", label: "Invoice Number", defaultVisible: false, cell: (a) => dash(a.invoice_number) },
+  { key: "invoice_date", label: "Invoice Date", defaultVisible: false, cell: (a) => dash(a.invoice_date) },
+  { key: "pi_number", label: "PI Number", defaultVisible: false, cell: (a) => dash(a.pi_number) },
+  { key: "pi_date", label: "PI Date", defaultVisible: false, cell: (a) => dash(a.pi_date) },
+  { key: "purchase_cost", label: "Purchase Cost", defaultVisible: false, cell: (a) => money(a.purchase_cost) },
+  { key: "tax_percent", label: "Tax %", defaultVisible: false, cell: (a) => money(a.tax_percent) },
+  { key: "tax_amount", label: "Tax Amount", defaultVisible: false, cell: (a) => money(a.tax_amount) },
+  { key: "total_cost", label: "Total Cost", defaultVisible: false, cell: (a) => money(a.total_cost) },
+  { key: "purchase_date", label: "Purchase Date", defaultVisible: false, cell: (a) => dash(a.purchase_date) },
+  { key: "warranty_upto", label: "Warranty Upto", defaultVisible: false, cell: (a) => dash(a.warranty_upto) },
+  { key: "status_since", label: "Status Since", defaultVisible: false, cell: (a) => dash(a.status_since) },
+];
+
+const ASSET_OPTIONAL_COLUMN_KEYS = ASSET_OPTIONAL_COLUMNS.map((c) => c.key);
+const DEFAULT_VISIBLE_COLUMN_KEYS = ASSET_OPTIONAL_COLUMNS.filter((c) => c.defaultVisible).map((c) => c.key);
+const COLUMN_VISIBILITY_STORAGE_KEY = "ckam.assetRegister.visibleColumns";
+
+// Per-browser only (localStorage), not synced anywhere -- a display
+// preference, not business state. Falls back to the defaults whenever
+// nothing is stored yet, storage is unavailable (private browsing), or the
+// stored list turns out empty after dropping keys that no longer exist
+// (e.g. a renamed column from an older version of this page).
+function loadVisibleColumnKeys(): string[] {
+  try {
+    const raw = window.localStorage.getItem(COLUMN_VISIBILITY_STORAGE_KEY);
+    if (!raw) return DEFAULT_VISIBLE_COLUMN_KEYS;
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return DEFAULT_VISIBLE_COLUMN_KEYS;
+    const known = parsed.filter((k): k is string => typeof k === "string" && ASSET_OPTIONAL_COLUMN_KEYS.includes(k));
+    return known.length > 0 ? known : DEFAULT_VISIBLE_COLUMN_KEYS;
+  } catch {
+    return DEFAULT_VISIBLE_COLUMN_KEYS;
+  }
+}
+
 interface AssetRegisterProps {
   // AM-12: the Dashboard's exception summary deep-links here (e.g.
   // `/assets?status=UNDER_REPAIR`) so a KPI count is a real navigation
@@ -79,6 +182,20 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
   const [companyId, setCompanyIdRaw] = useState("");
   const [page, setPageRaw] = useState(0);
   const [selected, setSelected] = useState<number[]>([]);
+  const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>(loadVisibleColumnKeys);
+
+  function toggleColumn(key: string) {
+    setVisibleColumnKeys((prev) => {
+      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
+      try {
+        window.localStorage.setItem(COLUMN_VISIBILITY_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // Best-effort persistence only -- a full/blocked storage shouldn't stop the toggle
+        // from taking effect for the rest of this session.
+      }
+      return next;
+    });
+  }
 
   // Selection is per visible page: changing page or filters clears it, so a bulk
   // move can never act on rows the user can no longer see.
@@ -192,6 +309,8 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
     },
   });
 
+  // "Code" is pinned: always shown first, not part of the Manage Columns picker --
+  // it's the register's identity column into Asset 360, not an optional field.
   const columns: DataTableColumn<AssetRow>[] = [
     {
       key: "code",
@@ -206,10 +325,12 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
         </Link>
       ),
     },
-    { key: "description", header: "Description", cell: (a) => a.description },
-    { key: "status", header: "Status", cell: (a) => <StatusBadge status={a.status} /> },
-    { key: "holder", header: "Holder", cell: (a) => a.current_holder_name ?? "—" },
-    { key: "company", header: "Company", cell: (a) => a.company_name ?? "—" },
+    ...ASSET_OPTIONAL_COLUMNS.filter((c) => visibleColumnKeys.includes(c.key)).map((c) => ({
+      key: c.key,
+      header: c.label,
+      cellClassName: c.className,
+      cell: c.cell,
+    })),
   ];
 
   return (
@@ -306,6 +427,35 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
           </Button>
         </div>
       )}
+
+      <div className="flex justify-end">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm">
+              Columns
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="max-h-80 overflow-y-auto">
+            <DropdownMenuLabel>Show columns</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {ASSET_OPTIONAL_COLUMNS.map((c) => (
+              <DropdownMenuCheckboxItem
+                key={c.key}
+                checked={visibleColumnKeys.includes(c.key)}
+                // Keep the menu open across multiple toggles -- Radix closes a
+                // checkbox item's menu on select by default, which would force
+                // reopening it for every single field when picking several at once.
+                onSelect={(e) => {
+                  e.preventDefault();
+                  toggleColumn(c.key);
+                }}
+              >
+                {c.label}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
 
       <DataTable
         columns={columns}

@@ -87,6 +87,13 @@ class AssetOut(BaseModel):
     # company row is somehow missing -- should not happen in practice.
     current_holder_name: str | None = None
     company_name: str | None = None
+    # Asset Register "show every field" pass: the register needs human-readable
+    # labels for these FK columns too, not just holder/company (AM-11's original
+    # pair) -- same page-scoped batch-lookup pattern, populated by list_assets.
+    category_name: str | None = None
+    subcategory_name: str | None = None
+    cost_center_name: str | None = None
+    vendor_name: str | None = None
 
 
 class AssetDetailOut(AssetOut):

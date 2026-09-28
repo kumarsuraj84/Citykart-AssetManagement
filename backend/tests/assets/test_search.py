@@ -2,7 +2,7 @@ from datetime import date
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.assets.service import procure_assets
-from app.masters.models import Company, CostCenter, AssetCategory, AssetSubcategory, Location, Department
+from app.masters.models import Company, CostCenter, AssetCategory, AssetSubcategory, Location, Department, Vendor
 from app.holders.models import Holder
 from app.numbering.models import CodeRule
 
@@ -138,3 +138,46 @@ async def test_am11_list_resolves_holder_and_company_names(client):
     item = list_resp.json()["items"][0]
     assert item["current_holder_name"] == "IT Stock-HO"
     assert item["company_name"] == "Holder Name Co"
+
+
+async def test_am11_list_resolves_category_subcategory_vendor_and_cost_center_names(client):
+    """Asset Register "show every field" pass: the register's FK columns beyond
+    Holder/Company (Category, Sub-Category, Vendor, Cost Centre) must also come
+    back as names, not bare ids, via the same page-scoped batch lookup."""
+    async with SessionLocal() as session:
+        co = Company(code="CKS-SR4", name="Label Resolution Co")
+        cat = AssetCategory(code="IT-SR4", name="IT Equipment")
+        vendor = Vendor(code="VEN-SR4", name="Acme Supplies")
+        session.add_all([co, cat, vendor])
+        await session.flush()
+        sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
+        cc = CostCenter(company_id=co.id, code="HO01", name="Head Office")
+        loc = Location(code="HO-SR4", name="HO")
+        dept = Department(name="IT-SR4")
+        session.add_all([sub, cc, loc, dept])
+        await session.flush()
+        stock = Holder(company_id=co.id, emp_code="ITSTOCK-SR4", name="IT Stock-HO", holder_type="IT_STOCK",
+                        location_id=loc.id, department_id=dept.id, role="HOLDER")
+        it_admin = Holder(company_id=co.id, emp_code="ITA-SR4", name="IT Admin", holder_type="EMPLOYEE",
+                           location_id=loc.id, department_id=dept.id, role="ADMIN",
+                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/CK4_",
+                         suffix_template="", start_number=1, pad_width=0)
+        session.add_all([stock, it_admin, rule])
+        await session.commit()
+        await procure_assets(session, {
+            "company_id": co.id, "cost_center_id": cc.id, "category_id": cat.id, "subcategory_id": sub.id,
+            "vendor_id": vendor.id, "description": "Column Label Resolution Laptop", "purchase_date": date(2025, 12, 10),
+            "initial_holder_id": stock.id,
+        }, quantity=1, actor=it_admin)
+        await session.commit()
+
+    resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": "ITA-SR4", "password": "Passw0rd!"})
+    headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+    list_resp = await client.get("/api/assets?q=Column+Label+Resolution", headers=headers)
+    item = list_resp.json()["items"][0]
+    assert item["category_name"] == "IT Equipment"
+    assert item["subcategory_name"] == "Laptop"
+    assert item["cost_center_name"] == "Head Office"
+    assert item["vendor_name"] == "Acme Supplies"
