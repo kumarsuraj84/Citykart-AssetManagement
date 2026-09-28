@@ -462,13 +462,19 @@ unchanged; no new accent color introduced.
 ## 39. Shadow discipline
 
 `grep` for `shadow-` / `drop-shadow` across `frontend/src/components`
-after this stage's own change: static `Card` keeps `shadow-sm` (§11 —
-tested for removal, rejected, unchanged); `Dialog`/`AlertDialog` keep
-`shadow-lg`; `SelectContent`/`DropdownMenuContent`/`PopoverContent`/
-`TooltipContent` (shadcn defaults) all keep their own shadow — every
-remaining shadow use is on a genuinely floating overlay, none on an
-ordinary static surface. Consistent with the rule already established in
-AM-14/15 and re-verified, not re-derived, this stage.
+after this stage's own change. The rule, stated without contradiction
+(corrected AM-17 §5, Issue A — the original wording here both claimed
+Card "keeps shadow-sm" and claimed no shadow remained on a static
+surface, which cannot both be true): **ordinary static `Card` intentionally
+retains its own minimal `shadow-sm`** — tested for removal in §11 and
+kept because removing it showed no visible improvement, not because it
+has none. **Stronger shadows** (`shadow-lg` and the shadcn defaults on
+`Dialog`/`AlertDialog`/`SelectContent`/`DropdownMenuContent`/
+`PopoverContent`/`TooltipContent`) **remain reserved for genuinely
+floating surfaces** — no *other*, heavier or inappropriate elevation was
+found on any static surface beyond Card's own deliberate minimal one.
+Consistent with the rule already established in AM-14/15 and
+re-verified, not re-derived, this stage.
 
 ## 40. Responsive UAT
 
@@ -588,9 +594,18 @@ speculative pass).
 
 ## 53. Report content head
 
-This report's own file was created fresh this stage
-(`docs/ai/AM-16_LOVABLE_GUIDED_VISUAL_REFINEMENT_REPORT.md`) — no prior
-version existed to diff against.
+**Corrected AM-17 §5, Issue B** — this section originally described
+whether the report *file itself* was new (it was) rather than recording
+the locked convention's actual meaning: the real implementation/test
+commit the report's own findings describe, immediately before the
+report/governance commit itself. AM-16's implementation and its report/
+governance updates were committed together in one commit, so:
+
+REPORT CONTENT HEAD:
+458a4c8594fed00ca511762065f4b3e5695f0f2f (AM-15's own final commit — the
+last commit before any AM-16 change; every finding in this report
+describes the working tree as it stood from this commit through AM-16's
+own code changes, up to and including the commit named below)
 
 ## 54. Report commit
 
