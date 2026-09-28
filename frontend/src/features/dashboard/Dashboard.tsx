@@ -102,7 +102,7 @@ interface ExceptionRow {
 }
 
 const exceptionColumns: DataTableColumn<ExceptionRow>[] = [
-  { key: "status", header: "Status", cell: (r) => <StatusBadge status={r.status} /> },
+  { key: "status", header: "Status", cell: (r) => <StatusBadge status={r.status} compact /> },
   {
     key: "count",
     header: "Count",
@@ -251,7 +251,7 @@ export function Dashboard() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-2xl font-semibold">{count}</p>
+                    <p className="text-2xl font-semibold tabular-nums">{count}</p>
                   </CardContent>
                 </Card>
               ))
@@ -308,7 +308,7 @@ export function Dashboard() {
                 <CardDescription>Assets on order, not yet delivered.</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
-                <Link to="/purchase-orders" className="flex items-baseline gap-2 text-2xl font-semibold hover:underline">
+                <Link to="/purchase-orders" className="flex items-baseline gap-2 text-2xl font-semibold tabular-nums hover:underline">
                   {isLoading ? <Skeleton className="h-8 w-12" /> : (data?.pending_po_summary.count ?? 0)}
                   <span className="text-sm font-normal text-muted-foreground">
                     pending {(data?.pending_po_summary.count ?? 0) === 1 ? "line" : "lines"} · value{" "}

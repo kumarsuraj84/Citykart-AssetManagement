@@ -1,15 +1,20 @@
 # CKAM — Current Stage
 
-**Stage:** AM-15, a full visual acceptance / residual-defect-correction
-pass, is complete — see "What's actually done as of AM-15" below. It
-touched 3 frontend files only (`components/ui/{dialog,alert-dialog}.tsx`,
-`features/numbering/CodeRuleScreen.tsx`); no business logic, schema, or
-authorization changed.
+**Stage:** AM-16, a Lovable-guided visual refinement pass, is complete —
+see "What's actually done as of AM-16" below. It touched 5 frontend files
+only (`components/shared/StatusBadge.tsx`,
+`features/assets/AssetRegister.tsx`, `features/dashboard/Dashboard.tsx`,
+`features/my-assets/MyAssets.tsx`,
+`features/purchase-orders/PurchaseOrderDetail.tsx`); no business logic,
+schema, or authorization changed.
 **Environment: DEVELOPMENT / UAT. Production deployment remains DEFERRED.**
 **Next:** Await explicit user direction. Do NOT automatically begin
 another development or design stage.
 
-**Previous stage:** AM-14, a complete visual-design/UX-composition pass —
+**Previous stage:** AM-15, a full visual acceptance / residual-defect-
+correction pass — see "What's actually done as of AM-15" below.
+
+**Before that:** AM-14, a complete visual-design/UX-composition pass —
 see "What's actually done as of AM-14" below.
 
 **Before that:** AM-13, a whole-application UI density/professionalization
@@ -955,6 +960,49 @@ still correct for CKAM's actual, deliberately narrower scope — see
   Production build: clean. Cache-Control verified again with real
   response headers (`index.html`/SPA routes still `no-cache`, hashed
   assets still unaffected).
+- **No production work, no push, no test-data deletion.**
+
+## What's actually done as of AM-16
+
+- **Lovable-guided visual refinement pass, verdict PASS.** Not a
+  redesign — a third-party design advisory (Lovable) reviewed CKAM's
+  documented visual state without access to the real source/runtime, so
+  every recommendation was validated with a real live A/B test before
+  any decision was made, and every feature-shaped suggestion was rejected
+  on scope grounds without consideration. Full detail:
+  `docs/ai/AM-16_LOVABLE_GUIDED_VISUAL_REFINEMENT_REPORT.md`.
+- **Three global-token candidates tested live and rejected**: removing
+  `Card`'s `shadow-sm` entirely, sharpening radius (cards 10px→8px,
+  dialogs 12px→10px), and 36px desktop controls (from 40px) — none
+  produced a materially visible improvement in a real in-browser A/B
+  comparison, so all three were kept unchanged per the authorization's
+  own "if the improvement is marginal, keep the current value" rule.
+- **Two recommendations tested live and accepted**: (1) a `compact` mode
+  on `StatusBadge` — a small semantic dot + plain text instead of a
+  colored pill, for dense table/list rows (Asset Register, My Assets,
+  Dashboard's Exceptions list, Purchase Order lines) — confirmed via live
+  A/B to visibly reduce "colored surface area" in a 50-row table while
+  keeping every status label fully legible; Asset 360's header and
+  Dashboard's own KPI tiles deliberately kept the existing pill. (2)
+  `tabular-nums` + right-alignment on genuinely numeric, column-scanned
+  values (Dashboard KPIs, PO summary tiles, PO lines Value, and — a real
+  gap found, not just a preference — Asset Register's Purchase Cost/
+  Tax %/Tax Amount/Total Cost columns, which weren't even right-aligned
+  before this stage).
+- **A real DOM bounding-box optical-alignment audit found zero drift**:
+  every route checked has its PageHeader/toolbar/table/content all
+  left-aligned at the identical x-coordinate (1366×768) — confirmed
+  nothing needed fixing, not assumed.
+- **No database migration. No backend file changed. No business logic,
+  schema, or authorization changed. No feature added** — every
+  feature-shaped Lovable suggestion (new Dashboard data, Holder
+  asset-count, environment switcher, global search, density toggle, PO
+  list aggregation, status-value collapsing, Sheet-based masters, a
+  generic 3-step Import flow, a report-picker sidebar) was rejected on
+  scope grounds, none implemented. Backend: 341/341 (unchanged).
+  Frontend: 176/176 (unchanged — `compact` defaults false, every existing
+  call site is byte-identical unless it opts in). TypeScript clean.
+  E2E: 5/5. Production build: clean.
 - **No production work, no push, no test-data deletion.**
 
 ## Branch / remote state

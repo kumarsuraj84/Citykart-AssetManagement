@@ -1261,3 +1261,46 @@ fixed at the one shared primitive rather than per-dialog, per AM-15's own
 "multiple real screens prove the primitive is defective, and the fix can
 be verified across all consumers" test. Verified fixed on Send for
 Repair, Holders' Add User, and Purchase Order Delivery Done.
+
+## 2026-09-28 — AM-16: three Lovable global-token suggestions tested live and rejected
+
+**Decision:** Static `Card` keeps `shadow-sm` (not removed). Card/dialog
+radius stays at 10px/12px (not sharpened to 8px/10px). Desktop operational
+controls stay at 40px (not reduced to 36px).
+
+**Why:** A third-party design advisory (Lovable), working only from
+CKAM's documented visual state with no access to the real source/runtime,
+suggested all three as durable-token changes. Each was tested with a real
+live A/B comparison in the browser (temporary CSS injection, screenshot,
+compare, revert) rather than adopted on the recommendation's own
+authority. None produced a materially visible improvement: `shadow-sm`
+is already Tailwind's minimal non-zero shadow and the card's own border
+already carries its structure; a 2px radius delta isn't visually
+resolvable at card scale; 36px controls saved only ~4px of toolbar height
+with no additional table rows becoming visible and no clear "more
+professional" moment. AM-13/14 already tuned all three values
+deliberately with their own live evidence — a second pass targeting the
+same tokens finding no further gain is an expected, healthy outcome, not
+a failure to find something. **Do not re-adopt any of these three without
+new live evidence** — re-running the identical suggestion again without a
+different starting condition will very likely reproduce the same "no
+material improvement" result.
+
+## 2026-09-28 — AM-16: compact status presentation for dense table/list rows
+
+**Decision:** `StatusBadge` gained a `compact` prop (default `false`) — a
+small semantic dot + plain text instead of a colored pill. Applied to
+Asset Register, My Assets, Dashboard's Exceptions list, and (via an
+identical local rewrite, `LineStatusBadge`) Purchase Order lines. Asset
+360's header and Dashboard's own KPI tiles keep the existing pill.
+
+**Why:** Unlike the three rejected candidates above, this one showed a
+real, visible improvement in a live A/B test on Asset Register: replacing
+~50 colored pills in a table with small dots noticeably reduced the
+table's "colored surface area" while every status label remained fully
+legible (status is never conveyed by color alone, satisfying the
+project's own accessibility rule). The distinction between "dense list
+row" (dot) and "single-record identity/summary" (pill, kept) follows
+directly from *why* the pill existed in the first place — enough room to
+carry emphasis without competing against 20+ other rows for the same
+attention.

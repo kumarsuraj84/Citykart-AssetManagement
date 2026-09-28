@@ -195,6 +195,45 @@ composition going forward.
   that backend change, not something to route around silently in a
   visual-only pass.
 
+## Status presentation and numeric formatting (AM-16)
+
+Established during the AM-16 Lovable-guided validation pass, after a live
+A/B comparison confirmed a real improvement (not adopted on suggestion
+alone — see `AM-16_LOVABLE_GUIDED_VISUAL_REFINEMENT_REPORT.md` §11/§15).
+
+- **`StatusBadge`'s `compact` prop**: a dense table/list row (many
+  statuses scanned down one column — Asset Register, My Assets, Dashboard's
+  Exceptions list, Purchase Order lines) uses `<StatusBadge status={...}
+  compact />` — a small semantic dot (`h-1.5 w-1.5 rounded-full`, the
+  tone's solid color, e.g. `bg-success`) + plain `text-xs text-foreground`
+  label, never color alone. A single-record identity or summary context
+  (Asset 360's `PageHeader` status, Dashboard's own KPI tiles) keeps the
+  existing pill (`compact` omitted, defaults `false`) — it has room to
+  carry more visual weight and isn't competing with 20+ other rows for
+  attention. Purchase Order lines' own `LineStatusBadge` (a different
+  status set, PENDING/DELIVERED/CANCELLED) follows the identical dot
+  pattern for the same reason, via its own local `LINE_STATUS_DOT` map
+  (it can't reuse `StatusBadge` directly since it isn't `Asset.status`).
+  Adding a new status-bearing table column: default to `compact`, matching
+  every existing one; use the plain pill only for a genuine single-record
+  header.
+- **`tabular-nums` on genuinely numeric, column-scanned values**: Dashboard
+  KPI numbers, Purchase Order summary tiles, the PO lines Value column,
+  and Asset Register's Purchase Cost/Tax %/Tax Amount/Total Cost columns
+  (also right-aligned — `text-right`, on both header and cell). A future
+  numeric column (a count, a currency value, a quantity meant to be
+  scanned down a column) should get the same `text-right tabular-nums`
+  pair; a field that happens to contain digits but isn't scanned as a
+  number (an Asset Code, a Serial Number, a phone number) should not.
+
+**Rejected this stage, do not re-adopt without new live evidence**:
+removing `shadow-sm` from static `Card` (A/B showed no visible
+difference); sharpening radius to 8px cards/10px dialogs (A/B showed no
+visible difference at this scale); 36px desktop operational controls (A/B
+showed only a marginal ~4px saving). All three were tested live, not
+assumed — see the AM-16 report §11/§12/§13 for the actual comparison
+method, and `DECISIONS.md` for the durable "why not."
+
 ## App shell
 
 `AppShell` in `frontend/src/router.tsx`: light top header (logo + collapse

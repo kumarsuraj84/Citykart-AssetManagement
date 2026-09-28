@@ -104,6 +104,7 @@ interface AssetColumnDef {
   label: string;
   defaultVisible: boolean;
   className?: string;
+  headerClassName?: string;
   cell: (a: AssetRow) => ReactNode;
 }
 
@@ -120,7 +121,7 @@ const ASSET_OPTIONAL_COLUMNS: AssetColumnDef[] = [
   { key: "brand", label: "Brand", defaultVisible: true, cell: (a) => dash(a.brand) },
   { key: "model", label: "Model", defaultVisible: true, cell: (a) => dash(a.model) },
   { key: "serial_number", label: "Serial Number", defaultVisible: true, cell: (a) => dash(a.serial_number) },
-  { key: "status", label: "Status", defaultVisible: true, cell: (a) => <StatusBadge status={a.status} /> },
+  { key: "status", label: "Status", defaultVisible: true, cell: (a) => <StatusBadge status={a.status} compact /> },
   { key: "holder", label: "Holder", defaultVisible: true, cell: (a) => dash(a.current_holder_name) },
   { key: "company", label: "Company", defaultVisible: true, cell: (a) => dash(a.company_name) },
   { key: "legacy_asset_code", label: "Legacy Asset Code", defaultVisible: false, cell: (a) => dash(a.legacy_asset_code) },
@@ -133,10 +134,26 @@ const ASSET_OPTIONAL_COLUMNS: AssetColumnDef[] = [
   { key: "invoice_date", label: "Invoice Date", defaultVisible: false, cell: (a) => dash(a.invoice_date) },
   { key: "pi_number", label: "PI Number", defaultVisible: false, cell: (a) => dash(a.pi_number) },
   { key: "pi_date", label: "PI Date", defaultVisible: false, cell: (a) => dash(a.pi_date) },
-  { key: "purchase_cost", label: "Purchase Cost", defaultVisible: false, cell: (a) => money(a.purchase_cost) },
-  { key: "tax_percent", label: "Tax %", defaultVisible: false, cell: (a) => money(a.tax_percent) },
-  { key: "tax_amount", label: "Tax Amount", defaultVisible: false, cell: (a) => money(a.tax_amount) },
-  { key: "total_cost", label: "Total Cost", defaultVisible: false, cell: (a) => money(a.total_cost) },
+  // AM-16: right-aligned + tabular-nums -- these are genuinely numeric,
+  // scanned-down-a-column values (unlike the mixed-content columns above),
+  // matching every other numeric column already right-aligned in the app
+  // (Dashboard KPIs, PO Value, PO summary tiles).
+  {
+    key: "purchase_cost", label: "Purchase Cost", defaultVisible: false,
+    className: "text-right tabular-nums", headerClassName: "text-right", cell: (a) => money(a.purchase_cost),
+  },
+  {
+    key: "tax_percent", label: "Tax %", defaultVisible: false,
+    className: "text-right tabular-nums", headerClassName: "text-right", cell: (a) => money(a.tax_percent),
+  },
+  {
+    key: "tax_amount", label: "Tax Amount", defaultVisible: false,
+    className: "text-right tabular-nums", headerClassName: "text-right", cell: (a) => money(a.tax_amount),
+  },
+  {
+    key: "total_cost", label: "Total Cost", defaultVisible: false,
+    className: "text-right tabular-nums", headerClassName: "text-right", cell: (a) => money(a.total_cost),
+  },
   { key: "purchase_date", label: "Purchase Date", defaultVisible: false, cell: (a) => dash(a.purchase_date) },
   { key: "warranty_upto", label: "Warranty Upto", defaultVisible: false, cell: (a) => dash(a.warranty_upto) },
   { key: "status_since", label: "Status Since", defaultVisible: false, cell: (a) => dash(a.status_since) },
@@ -328,6 +345,7 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
     ...ASSET_OPTIONAL_COLUMNS.filter((c) => visibleColumnKeys.includes(c.key)).map((c) => ({
       key: c.key,
       header: c.label,
+      headerClassName: c.headerClassName,
       cellClassName: c.className,
       cell: c.cell,
     })),

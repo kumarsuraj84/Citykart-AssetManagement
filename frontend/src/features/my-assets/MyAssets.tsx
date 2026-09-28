@@ -38,7 +38,7 @@ export function MyAssets() {
       cell: (a) => <Link to="/assets/$id" params={{ id: String(a.id) }}>{a.asset_code}</Link>,
     },
     { key: "description", header: "Description", cell: (a) => a.description },
-    { key: "status", header: "Status", cell: (a) => <StatusBadge status={a.status} /> },
+    { key: "status", header: "Status", cell: (a) => <StatusBadge status={a.status} compact /> },
   ];
 
   return (

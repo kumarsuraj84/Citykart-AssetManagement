@@ -335,3 +335,46 @@ clean. Cache-Control re-verified with real response headers (`index.html`/
 SPA routes `no-cache`, hashed assets unaffected). Full detail:
 `AM-15_FULL_VISUAL_ACCEPTANCE_REPORT.md`, matrix:
 `AM-15_VISUAL_ACCEPTANCE_MATRIX.md`.
+
+**AM-16 (2026-09-28) validated a third-party (Lovable) design advisory
+against the real CKAM UI — accept/reject only, not another redesign,
+recorded here for the same reason AM-13/14/15's own entries are.**
+Lovable never had access to the real source/runtime, so every
+recommendation was tested with a real live A/B comparison (temporary CSS
+injection, screenshot, compare, revert) before any decision was made.
+**Three global-token candidates tested and rejected**: removing `Card`'s
+`shadow-sm` entirely (A/B on Dashboard showed no visible difference —
+the shadow is already Tailwind's minimal non-zero value and the border
+already carries structure), sharpening radius to 8px cards/10px dialogs
+(A/B on Dashboard showed no visible difference at this scale), and 36px
+desktop controls from 40px (A/B on Asset Register showed only a marginal
+~4px toolbar saving, no additional table rows, no clear improvement) —
+all three kept unchanged per the authorization's own "marginal → keep
+current" rule. **Two recommendations tested and accepted**: a `compact`
+mode on the shared `StatusBadge` (small semantic dot + plain text instead
+of a colored pill) for dense table/list rows — Asset Register, My Assets,
+Dashboard's Exceptions list, and Purchase Order lines (via an identical
+rewrite of the PO-specific `LineStatusBadge`) — confirmed via live A/B to
+visibly reduce colored surface area in a 50-row table with every status
+label still fully legible, never color alone; Asset 360's header and
+Dashboard's own KPI tiles deliberately kept the existing pill (a
+single-record/summary context, not a scanned list). And `tabular-nums` +
+right-alignment on genuinely numeric, column-scanned values (Dashboard
+KPIs, PO summary tiles, PO lines Value) plus a real gap found and fixed:
+Asset Register's Purchase Cost/Tax %/Tax Amount/Total Cost columns
+weren't even right-aligned before this stage. A real DOM
+`getBoundingClientRect()` optical-alignment audit across 9 routes at
+1366×768 found every PageHeader/toolbar/table/content edge aligned within
+1px of each other everywhere — zero drift, nothing to fix. Every
+feature-shaped Lovable suggestion (new Dashboard data, Holder
+asset-count, environment switcher, global search, density toggle, PO
+list aggregation, status-value collapsing, Sheet-based masters, a generic
+3-step Import flow, a report-picker sidebar) was rejected on scope
+grounds per the authorization's own explicit exclusion list, none
+implemented. No database migration. No backend file changed. No business
+logic, schema, or authorization changed. Backend: 341/341 (unchanged).
+Frontend: 176/176 (unchanged — `compact` defaults false, every untouched
+call site byte-identical). `npx tsc -b` clean. E2E: 5/5 (throwaway
+`UAT-AM16` account deactivated before running E2E, zero collisions
+confirmed pre-flight, clean on the first attempt). Production build:
+clean. Full detail: `AM-16_LOVABLE_GUIDED_VISUAL_REFINEMENT_REPORT.md`.

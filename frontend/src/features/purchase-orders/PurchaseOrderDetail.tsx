@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { apiClient } from "../../lib/api-client";
-import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -33,7 +33,7 @@ function SummaryTile({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="rounded-md border bg-card px-4 py-3 shadow-sm">
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className="text-xl font-semibold">{value}</p>
+      <p className="text-xl font-semibold tabular-nums">{value}</p>
     </div>
   );
 }
@@ -63,14 +63,25 @@ function selectValue(v: string): string | undefined {
   return v || undefined;
 }
 
-const LINE_STATUS_TONE: Record<string, string> = {
-  PENDING: "border-transparent bg-warning-soft text-on-warning-soft",
-  DELIVERED: "border-transparent bg-success-soft text-on-success-soft",
-  CANCELLED: "border-transparent bg-secondary text-secondary-foreground",
+// AM-16: dot + plain text, matching StatusBadge's own `compact` presentation
+// for a dense table row (live A/B on Asset Register showed a real reduction
+// in visual noise vs. a colored pill per row, status text still fully
+// legible) -- this table isn't Asset.status, so it can't reuse StatusBadge
+// itself, but reuses the identical compact dot pattern for one consistent
+// "how a status reads in a table" rule across the app.
+const LINE_STATUS_DOT: Record<string, string> = {
+  PENDING: "bg-warning",
+  DELIVERED: "bg-success",
+  CANCELLED: "bg-secondary-foreground",
 };
 
 function LineStatusBadge({ status }: { status: string }) {
-  return <Badge variant="outline" className={LINE_STATUS_TONE[status] ?? "border-transparent bg-secondary"}>{status}</Badge>;
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs text-foreground">
+      <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", LINE_STATUS_DOT[status] ?? "bg-secondary-foreground")} aria-hidden="true" />
+      {status}
+    </span>
+  );
 }
 
 function ColumnSearchHeader({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
@@ -324,7 +335,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     {
       key: "cost",
       header: <ColumnSearchHeader label="PO Value" value={columnFilters.cost} onChange={(v) => setColumnFilter("cost", v)} />,
-      headerClassName: "text-right", cellClassName: "text-right",
+      headerClassName: "text-right", cellClassName: "text-right tabular-nums",
       cell: (l) => (l.total_cost ?? 0).toFixed(2),
     },
     {
