@@ -1243,3 +1243,21 @@ real, if small, expansion of what this visual-only stage was authorized
 to touch — so it was left for a future stage that explicitly authorizes
 that backend work, and documented as a deliberate boundary rather than
 silently worked around.
+
+## 2026-09-28 — AM-15: Dialog/AlertDialog background is bg-card, not bg-background
+
+**Decision:** `DialogContent`/`AlertDialogContent` use `bg-card` (pure
+white, oklch 1 0 0) instead of `bg-background` (oklch 0.985 0.006 240).
+Any future dialog-like floating surface should follow the same rule.
+
+**Why:** A live AM-15 visual acceptance check (opening "Send for Repair")
+found AM-14's own quiet-filled form-field treatment (`Input`/`Select`/
+`Textarea` at `bg-muted/50`, oklch lightness ~0.955) blends to only a
+~1.5% lightness delta against `Dialog`'s `bg-background` — nearly
+invisible — versus a ~2.3% delta against a `Card`'s pure white elsewhere
+in the app. This is a real, measured, cross-cutting defect (every dialog
+with form fields inherits it), not a subjective preference, and was
+fixed at the one shared primitive rather than per-dialog, per AM-15's own
+"multiple real screens prove the primitive is defective, and the fix can
+be verified across all consumers" test. Verified fixed on Send for
+Repair, Holders' Add User, and Purchase Order Delivery Done.

@@ -103,7 +103,13 @@ coherent instead of drifting page-by-page.
   pinned-header/pinned-footer/scrolling-body layout — the simpler, safe
   choice that works for every existing dialog's DOM shape without
   retrofitting each call site's internal structure. Padding `p-5` (was
-  `p-6`).
+  `p-6`). **Background is `bg-card` (pure white), not `bg-background`**
+  (AM-15 — found opening "Send for Repair": AM-14's own quiet-filled
+  `Input`/`Select`/`Textarea` (`bg-muted/50`) blends to only a ~1.5%
+  lightness delta against `bg-background`'s oklch 0.985, nearly
+  invisible, versus ~2.3% against a Card's pure white elsewhere in the
+  app). Any new dialog-like surface should use `bg-card`, never
+  `bg-background`, for exactly this reason.
 - **Table row height**: `TableHead h-10` / `TableCell p-2` (`table.tsx`)
   were already compact and were not changed by AM-13 — they were never
   part of the "oversized" complaint; the complaint was Card padding and

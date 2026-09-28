@@ -154,8 +154,18 @@ export function CodeRuleScreen() {
             </FormField>
           </div>
 
-          <div className="rounded-md border border-input bg-muted/40 px-3 py-2 text-sm max-w-md">
-            Preview: <span data-testid="code-preview" className="font-mono">{preview}</span>
+          {/* AM-15: this line answers the screen's whole reason for existing --
+              "what code will my next asset get" -- so it gets stronger visual
+              weight than the technical fields above it, not the same plain
+              bordered-box treatment as an ordinary input (found during the
+              AM-15 visual acceptance pass; no numbering logic changed). */}
+          <div className="max-w-md rounded-md border border-primary/20 bg-primary/5 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Next Asset Code
+            </p>
+            <p data-testid="code-preview" className="font-mono text-lg font-semibold text-foreground">
+              {preview}
+            </p>
           </div>
 
           <div className="flex items-center gap-3">

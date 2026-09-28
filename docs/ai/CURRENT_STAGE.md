@@ -1,19 +1,18 @@
 # CKAM — Current Stage
 
-**Stage:** AM-14, a complete visual-design/UX-composition pass, is
-complete — see "What's actually done as of AM-14" below. It touched
-frontend visual/layout code and one nginx config file only
-(`components/ui/{badge,card,input,select,sidebar,textarea}.tsx`,
-`components/shared/SectionHeading.tsx` (new),
-`features/assets/{AddAssetForm,AssetRegister}.tsx`,
-`features/imports/ImportScreen.tsx`,
-`features/purchase-orders/{PurchaseOrderDetail,PurchaseOrdersList}.tsx`,
-`nginx.conf`); no business logic, schema, or authorization changed.
+**Stage:** AM-15, a full visual acceptance / residual-defect-correction
+pass, is complete — see "What's actually done as of AM-15" below. It
+touched 3 frontend files only (`components/ui/{dialog,alert-dialog}.tsx`,
+`features/numbering/CodeRuleScreen.tsx`); no business logic, schema, or
+authorization changed.
 **Environment: DEVELOPMENT / UAT. Production deployment remains DEFERRED.**
 **Next:** Await explicit user direction. Do NOT automatically begin
 another development or design stage.
 
-**Previous stage:** AM-13, a whole-application UI density/professionalization
+**Previous stage:** AM-14, a complete visual-design/UX-composition pass —
+see "What's actually done as of AM-14" below.
+
+**Before that:** AM-13, a whole-application UI density/professionalization
 pass — see "What's actually done as of AM-13" below.
 
 **Before that:** Purchase Order / Pending Assets feature — implemented, live
@@ -905,6 +904,58 @@ still correct for CKAM's actual, deliberately narrower scope — see
 - **No production work, no push, no test-data deletion** (this stage's
   own throwaway pollution was deactivated, not deleted; nothing
   pre-existing before this session was touched).
+
+## What's actually done as of AM-15
+
+- **Full visual acceptance / evidence-closing pass, verdict PASS.** Not a
+  redesign stage — AM-14's design system is the accepted baseline. Closed
+  the evidence gap AM-14 finished with ("PASS WITH OBSERVATIONS" because
+  several viewports and most dialogs weren't independently re-verified)
+  by actually opening every route and several dialogs, at all 6 required
+  viewports, before making any change. Full detail:
+  `docs/ai/AM-15_FULL_VISUAL_ACCEPTANCE_REPORT.md`, matrix:
+  `docs/ai/AM-15_VISUAL_ACCEPTANCE_MATRIX.md`.
+- **Zero horizontal overflow found anywhere**: 21 routes × 6 viewports
+  (1920/1440/1366/1024/768/375), measured live via
+  `document.body.scrollWidth` vs `window.innerWidth`, not inferred — every
+  reading within 2px of the viewport width (scrollbar allowance). 768px
+  specifically (the historically risky width where `SidebarInset` once
+  needed `min-w-0`, AM-04) re-confirmed clean on every route.
+- **Two real, evidenced P2 defects found and fixed, no P1s found**:
+  (1) Code Rule's "what code will my next asset get" Preview line had the
+  same visual weight as an ordinary input — now a prominent, clearly
+  labeled block, no numbering logic touched. (2) A quiet-filled form
+  field (AM-14's own `bg-muted/50` `Input`/`Select`/`Textarea`) is nearly
+  invisible against `Dialog`'s own background — found opening "Send for
+  Repair", confirmed cross-cutting, fixed once at the shared `Dialog`/
+  `AlertDialog` primitive (`bg-background`→`bg-card`), verified on
+  Holders' Add User dialog and Purchase Order Delivery Done too.
+- **Delivery Done dialog stress-tested at 165 selected lines** (every
+  pending line in a real PO) — fixed header/scrolling body/reachable
+  footer all held up far beyond anything previously tested (AM-14 tested
+  a small selection only).
+- **Screenshot tooling was unreliable at 1920/1440/1024/768 this
+  session** (cropped/stale frames — a tooling artifact) — verified those
+  sizes via direct `getBoundingClientRect()`/computed-style measurement
+  instead, which is actually more precise for the specific pass/fail
+  criterion that matters (no horizontal overflow), and disclosed this
+  limitation honestly rather than claiming screenshot evidence that
+  doesn't exist.
+- **Test-account discipline held this time**: one throwaway account
+  (`UAT-AM15` company code) was created, used for the whole verification
+  pass, and deactivated *before* running E2E (not after E2E broke, as in
+  AM-13/AM-14) — a pre-flight query confirmed zero active `SEEDADMIN`
+  collisions before the run, and E2E passed 5/5 cleanly on the first try.
+- **No database migration. No backend file changed. No business logic,
+  schema, or authorization changed. No feature added** (no PO list
+  aggregation, no company selector, no new dashboard widget, no new
+  report — all explicitly out of this stage's scope and none was
+  touched). Backend: 341/341 (unchanged). Frontend: 176/176 (unchanged —
+  both fixes needed no test changes). TypeScript clean. E2E: 5/5.
+  Production build: clean. Cache-Control verified again with real
+  response headers (`index.html`/SPA routes still `no-cache`, hashed
+  assets still unaffected).
+- **No production work, no push, no test-data deletion.**
 
 ## Branch / remote state
 

@@ -292,3 +292,46 @@ already documented — this stage's own new throwaway account plus more
 interrupted-run leftovers; root-caused each time, cleaned up,
 re-verified). Production build: clean. Full detail:
 `AM-14_COMPLETE_VISUAL_REDESIGN_REPORT.md`.
+
+**AM-15 (2026-09-28) closed AM-14's own "PASS WITH OBSERVATIONS" evidence
+gap — a full visual acceptance pass, not a redesign, recorded here for
+the same reason AM-13/AM-14's own entries are.** All 21 routes
+individually opened (no master screen collapsed into a representative
+check) and measured for horizontal overflow at all 6 required viewports
+(1920/1440/1366/1024/768/375) via live `document.body.scrollWidth`
+measurement — zero overflow found anywhere, including at 768px, the
+historically risky width where `SidebarInset` once needed `min-w-0`
+(AM-04). 6 dialogs individually opened and interacted with: Correct
+Classification, Send for Repair, Holders' Add User (scrolled to its own
+bottom), Categories' Add dialog (representative small 2-field master
+dialog — confirmed already appropriately compact, no per-screen width
+override needed), Custom Fields' Add dialog, and Purchase Order Delivery
+Done (stress-tested at 165 selected lines — every pending line in a real
+PO — well beyond anything previously tested; fixed header/scrolling
+body/reachable footer all held). **Two real P2 defects found and fixed,
+zero P1s**: Code Rule's own Preview line (the answer to "what code will
+my next asset get") had the same visual weight as an ordinary input field
+— now a prominent labeled block, no numbering logic touched; and a
+quiet-filled form field (AM-14's own `bg-muted/50` treatment) is nearly
+invisible against `Dialog`'s background (`bg-background`, oklch 0.985 vs
+the field's own ~0.955 — only a ~1.5% lightness delta, versus ~2.3%
+against a Card's pure white) — found opening "Send for Repair", confirmed
+cross-cutting since every dialog with form fields shares the same
+`Dialog`/`AlertDialog` primitive, fixed once (`bg-background`→`bg-card`),
+verified fixed on Holders' Add User and Delivery Done too. Screenshot
+tooling rendered unreliably at 1920/1440/1024/768 this session (cropped/
+stale frames, a tooling artifact) — verified those sizes via direct
+`getBoundingClientRect()`/computed-style measurement instead (confirmed,
+for example, Login's card and logo perfectly centered at 1920×1080 with
+no page-side defect), disclosed honestly rather than claiming screenshot
+evidence that doesn't exist. Test-account discipline was followed this
+time: one throwaway `UAT-AM15` account, deactivated *before* running E2E
+(not after E2E broke, as in AM-13/AM-14) — E2E passed 5/5 cleanly on the
+first attempt. No database migration. No backend file changed. No
+business logic, schema, or authorization changed. No feature added.
+Backend: 341/341 (unchanged). Frontend: 176/176 (unchanged — neither fix
+needed a test change). `npx tsc -b` clean. E2E: 5/5. Production build:
+clean. Cache-Control re-verified with real response headers (`index.html`/
+SPA routes `no-cache`, hashed assets unaffected). Full detail:
+`AM-15_FULL_VISUAL_ACCEPTANCE_REPORT.md`, matrix:
+`AM-15_VISUAL_ACCEPTANCE_MATRIX.md`.

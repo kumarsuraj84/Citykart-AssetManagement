@@ -44,7 +44,13 @@ const DialogContent = React.forwardRef<
         // dialog whose content doesn't fit scrolls as a whole (header and
         // footer scroll with it, but nothing is ever clipped or unreachable --
         // Cancel/Save always stay reachable by scrolling the dialog itself).
-        "fixed left-[50%] top-[50%] z-50 grid max-h-[85vh] w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 overflow-y-auto border bg-background p-5 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:rounded-lg",
+        // AM-15: bg-card (pure white), not bg-background (oklch 0.985) -- found
+        // live opening "Send for Repair": a quiet-filled Input/Textarea
+        // (bg-muted/50, AM-14) blends to ~1.5% lightness delta against
+        // bg-background, nearly invisible, versus ~2.3% against a Card's pure
+        // white elsewhere in the app. Same field primitive, unchanged; only the
+        // dialog's own backdrop moved to match a Card's contrast level.
+        "fixed left-[50%] top-[50%] z-50 grid max-h-[85vh] w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 overflow-y-auto border bg-card p-5 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:rounded-lg",
         className,
       )}
       {...props}
