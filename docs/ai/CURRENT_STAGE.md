@@ -1125,7 +1125,10 @@ still correct for CKAM's actual, deliberately narrower scope — see
 
 ## Branch / remote state
 
-Working on `worktree-ckam-build` (local worktree). This branch has **never
-been pushed to `origin`** — only `claude/brave-euler-07879a` exists on the
-remote (a small, unrelated test-DB-safety-guard commit). Pushing is a
-decision for the user, not this session, to make explicitly.
+Working on `worktree-ckam-build` (local worktree). **Pushed to `origin`
+for the first time at the end of AM-17** (commit `6446e16`), on the
+user's own explicit instruction given in chat — now tracks
+`origin/worktree-ckam-build`. `claude/brave-euler-07879a` also still
+exists on the remote (a small, unrelated, earlier test-DB-safety-guard
+commit). No PR was opened, no merge into `main` was requested or
+performed — pushing the branch is all that was asked.
