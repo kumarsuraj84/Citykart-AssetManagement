@@ -82,6 +82,38 @@ describe("MasterCrudScreen", () => {
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/masters/vendors", { code: "V2", name: "Vendor Two" }));
   });
 
+  it("AM-21: search filters rows by any column's displayed value", async () => {
+    (apiClient.get as any).mockResolvedValue([
+      { id: 1, code: "V1", name: "Vendor One" },
+      { id: 2, code: "V2", name: "Acme Traders" },
+    ]);
+    renderWithClient(<MasterCrudScreen config={VENDOR_CONFIG} />);
+
+    await waitFor(() => expect(screen.getByText("Vendor One")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/^search vendors$/i), { target: { value: "acme" } });
+
+    await waitFor(() => expect(screen.queryByText("Vendor One")).not.toBeInTheDocument());
+    expect(screen.getByText("Acme Traders")).toBeInTheDocument();
+  });
+
+  it("AM-21: clicking a sortable column header sorts, and clicking again reverses it", async () => {
+    (apiClient.get as any).mockResolvedValue([
+      { id: 1, code: "V1", name: "Zebra Co" },
+      { id: 2, code: "V2", name: "Acme Traders" },
+    ]);
+    renderWithClient(<MasterCrudScreen config={VENDOR_CONFIG} />);
+    await waitFor(() => expect(screen.getByText("Zebra Co")).toBeInTheDocument());
+
+    const rowsText = () => screen.getAllByRole("row").slice(1).map((r) => r.textContent);
+    expect(rowsText()[0]).toContain("Zebra Co"); // unsorted: API order
+
+    fireEvent.click(screen.getByRole("button", { name: /sort by name/i }));
+    await waitFor(() => expect(rowsText()[0]).toContain("Acme Traders")); // ascending
+
+    fireEvent.click(screen.getByRole("button", { name: /sort by name/i }));
+    await waitFor(() => expect(rowsText()[0]).toContain("Zebra Co")); // descending
+  });
+
   it("AM-17 DEF-04: shows the API error inline in the Add dialog instead of failing silently", async () => {
     (apiClient.get as any).mockResolvedValue([{ id: 1, code: "V1", name: "Vendor One" }]);
     (apiClient.post as any).mockRejectedValue(new ApiError("a record with this code already exists", 422));

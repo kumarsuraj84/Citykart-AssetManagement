@@ -35,6 +35,7 @@ import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField as FormFieldShell } from "@/components/shared/FormField";
+import { useTableSort } from "@/components/shared/useTableSort";
 
 function buildPayload(formFields: FormField[], draft: Record<string, unknown>) {
   const payload: Record<string, unknown> = {};
@@ -126,6 +127,7 @@ export function MasterCrudScreen<T extends object>({
   const [editRow, setEditRow] = useState<Row | null>(null);
   const [editDraft, setEditDraft] = useState<Record<string, unknown>>({});
   const [deactivateRow, setDeactivateRow] = useState<Row | null>(null);
+  const [search, setSearch] = useState("");
 
   // Every master record carries an `id` even though T itself is not
   // constrained to `{ id: number }` — constraining T directly on the
@@ -196,11 +198,30 @@ export function MasterCrudScreen<T extends object>({
     (f) => !config.editFields.some((ef) => ef.key === f.key),
   );
 
+  // Every column's rendered (not raw) text -- reuses the same `format`
+  // callback the cell itself already uses, so search/sort always match
+  // what's actually on screen (a formatted company name, not its raw id).
+  function displayValue(row: Row, c: (typeof config.columns)[number]): string {
+    return c.format ? c.format(row[c.key], row) : String(row[c.key] ?? "");
+  }
+
+  const filteredItems = search.trim()
+    ? items.filter((row) =>
+        config.columns.some((c) => displayValue(row, c).toLowerCase().includes(search.trim().toLowerCase())),
+      )
+    : items;
+
+  const sortAccessors = Object.fromEntries(
+    config.columns.map((c) => [String(c.key), (row: Row) => displayValue(row, c)]),
+  );
+  const { sortedRows, sort, toggleSort } = useTableSort(filteredItems, sortAccessors);
+
   const columns: DataTableColumn<Row>[] = [
     ...config.columns.map((c) => ({
       key: String(c.key),
       header: c.label,
-      cell: (row: Row) => (c.format ? c.format(row[c.key], row) : String(row[c.key] ?? "")),
+      cell: (row: Row) => displayValue(row, c),
+      sortable: true,
     })),
     {
       key: "__actions",
@@ -232,21 +253,35 @@ export function MasterCrudScreen<T extends object>({
         actions={<Button onClick={openCreate}>Add {singular}</Button>}
       />
 
+      <Input
+        aria-label={`Search ${config.title}`}
+        placeholder={`Search ${config.title.toLowerCase()}…`}
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="max-w-sm"
+      />
+
       <DataTable<Row>
         columns={columns}
-        rows={items}
+        rows={sortedRows}
         rowKey={(row) => row.id}
         isLoading={isLoading}
         isError={isError}
         errorMessage={error instanceof Error ? error.message : undefined}
         onRetry={() => refetch()}
+        sort={sort}
+        onSortToggle={toggleSort}
         emptyState={
-          <EmptyState
-            icon={Inbox}
-            title={`No ${config.title.toLowerCase()} yet`}
-            description={`Create your first ${singular.toLowerCase()} to get started.`}
-            action={<Button onClick={openCreate}>Add {singular}</Button>}
-          />
+          search.trim() ? (
+            <EmptyState icon={Inbox} title="No matches" description="Try a different search." />
+          ) : (
+            <EmptyState
+              icon={Inbox}
+              title={`No ${config.title.toLowerCase()} yet`}
+              description={`Create your first ${singular.toLowerCase()} to get started.`}
+              action={<Button onClick={openCreate}>Add {singular}</Button>}
+            />
+          )
         }
       />
 

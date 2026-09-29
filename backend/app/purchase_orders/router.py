@@ -9,7 +9,7 @@ from app.purchase_orders.schemas import (
     PurchaseOrderCreateIn, PurchaseOrderOut, RecordPiIn, RecordPiOut,
 )
 from app.purchase_orders.service import (
-    add_pending_asset_line, cancel_pending_asset_line, create_purchase_order,
+    add_pending_asset_line, cancel_pending_asset_line, compute_pi_status, create_purchase_order,
     deliver_pending_assets, record_pi_for_invoice, update_pending_asset_line,
 )
 
@@ -48,12 +48,19 @@ async def list_pos(session: AsyncSession = Depends(get_session), holder=Depends(
     stmt = select(PurchaseOrder).where(PurchaseOrder.is_active.is_(True))
     if allowed is not None:
         stmt = stmt.where(PurchaseOrder.company_id.in_(allowed))
-    return (await session.execute(stmt.order_by(PurchaseOrder.id.desc()))).scalars().all()
+    pos = (await session.execute(stmt.order_by(PurchaseOrder.id.desc()))).scalars().all()
+    pi_by_po = await compute_pi_status(session, [po.id for po in pos])
+    return [
+        PurchaseOrderOut.model_validate(po).model_copy(update=pi_by_po.get(po.id, {}))
+        for po in pos
+    ]
 
 
 @router.get("/{po_id}", response_model=PurchaseOrderOut)
 async def get_po(po_id: int, session: AsyncSession = Depends(get_session), holder=Depends(require_role("ADMIN", "IT_TEAM"))):
-    return await _get_scoped_po(po_id, session, holder)
+    po = await _get_scoped_po(po_id, session, holder)
+    pi_by_po = await compute_pi_status(session, [po.id])
+    return PurchaseOrderOut.model_validate(po).model_copy(update=pi_by_po.get(po.id, {}))
 
 
 @router.get("/{po_id}/lines", response_model=list[PendingAssetOut])

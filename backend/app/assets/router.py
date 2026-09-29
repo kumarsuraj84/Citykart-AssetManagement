@@ -128,6 +128,8 @@ async def list_assets(
     holder_id: int | None = Query(None),
     company_id: int | None = Query(None),
     q: str | None = Query(None),
+    sort_by: str | None = Query(None),
+    sort_dir: str = Query("asc"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     session: AsyncSession = Depends(get_session),
@@ -137,13 +139,18 @@ async def list_assets(
     currently hold (so `holder_id` is pinned to their own id, ignoring any value the
     caller passed, and the company filter is left unrestricted since holder_id already
     narrows it); everyone else is scoped to `scoped_company_ids` (None = ADMIN,
-    unrestricted)."""
+    unrestricted). AM-21: `sort_by` must be one of search_assets.SORTABLE_COLUMNS --
+    an unrecognized value is silently ignored (falls back to the existing
+    newest-first order) rather than a 422, so an old cached frontend bundle
+    or a stale saved link never breaks."""
     if holder.role == "HOLDER":
         holder_id = holder.id
         allowed = None
     else:
         allowed = scoped_company_ids(holder)
-    items, total = await search_assets(session, allowed, status, category_id, holder_id, company_id, q, limit, offset)
+    items, total = await search_assets(
+        session, allowed, status, category_id, holder_id, company_id, q, sort_by, sort_dir, limit, offset,
+    )
     holder_labels, company_labels, category_labels, subcategory_labels, vendor_labels, cost_center_labels = (
         await _page_label_maps(session, items)
     )

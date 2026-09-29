@@ -48,6 +48,21 @@ describe("AssetRegister", () => {
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("q=CK_1")));
   });
 
+  it("AM-21: clicking the Code column header requests a server-side sort, and clicking again reverses it", async () => {
+    (apiClient.get as any).mockResolvedValue({ items: [{ id: 1, asset_code: "FA/HO01/IT/LAP/CK_1", description: "Laptop", status: "IN_STOCK" }], total: 1 });
+    renderRegisterAt();
+    await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK_1")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /sort by code/i }));
+    await waitFor(() =>
+      expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("sort_by=asset_code")),
+    );
+    expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("sort_dir=asc"));
+
+    fireEvent.click(screen.getByRole("button", { name: /sort by code/i }));
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("sort_dir=desc")));
+  });
+
   it("shows the current holder and company the backend resolved for each row (AM-11)", async () => {
     (apiClient.get as any).mockResolvedValue({
       items: [

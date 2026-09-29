@@ -19,6 +19,19 @@ class PurchaseOrderOut(BaseModel):
     vendor_id: int | None
     cost_center_id: int | None
     is_active: bool
+    # AM-19: PI is recorded per Invoice, not per PO (see RecordPiIn's own
+    # docstring) -- so a PO with more than one delivery/invoice can have a
+    # mix of recorded and pending PIs at once. "NOT_DELIVERED": nothing
+    # delivered under this PO yet. "PENDING": at least one delivered asset
+    # still has no PI Number. "RECORDED": every delivered asset has one.
+    # pi_number/pi_date are only ever populated when every delivered asset
+    # shares the exact same value (a single-invoice PO, the common case) --
+    # a multi-invoice PO with different PI numbers leaves them None even
+    # when RECORDED, since there is no one value to show here; the PO
+    # detail page's own per-invoice Record PI section has the real detail.
+    pi_status: str = "NOT_DELIVERED"
+    pi_number: str | None = None
+    pi_date: date | None = None
 
 
 class PendingAssetLineIn(BaseModel):

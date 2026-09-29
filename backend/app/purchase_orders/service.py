@@ -9,6 +9,45 @@ from app.masters.models import AssetCategory, AssetSubcategory, CostCenter
 from app.purchase_orders.models import PendingAsset, PurchaseOrder
 
 
+async def compute_pi_status(session: AsyncSession, po_ids: list[int]) -> dict[int, dict]:
+    """AM-19: one batched query for however many POs are being listed (never
+    N+1 -- same discipline app.assets.router._page_label_maps already
+    established). For each po_id: "NOT_DELIVERED" (nothing delivered yet),
+    "PENDING" (>=1 delivered asset still has no PI Number), or "RECORDED"
+    (every delivered asset has one) -- see PurchaseOrderOut's own docstring
+    for why pi_number/pi_date are only ever populated when every delivered
+    asset under that PO shares the exact same value."""
+    if not po_ids:
+        return {}
+    stmt = (
+        select(PendingAsset.purchase_order_id, Asset.pi_number, Asset.pi_date)
+        .join(Asset, Asset.id == PendingAsset.delivered_asset_id)
+        .where(PendingAsset.purchase_order_id.in_(po_ids), PendingAsset.delivered_asset_id.is_not(None))
+    )
+    rows = (await session.execute(stmt)).all()
+
+    by_po: dict[int, list[tuple[str | None, date | None]]] = {}
+    for po_id, pi_number, pi_date in rows:
+        by_po.setdefault(po_id, []).append((pi_number, pi_date))
+
+    result: dict[int, dict] = {}
+    for po_id in po_ids:
+        delivered = by_po.get(po_id, [])
+        if not delivered:
+            result[po_id] = {"pi_status": "NOT_DELIVERED", "pi_number": None, "pi_date": None}
+            continue
+        if any(pi_number is None or not pi_number.strip() for pi_number, _ in delivered):
+            result[po_id] = {"pi_status": "PENDING", "pi_number": None, "pi_date": None}
+            continue
+        distinct = set(delivered)
+        if len(distinct) == 1:
+            pi_number, pi_date = next(iter(distinct))
+            result[po_id] = {"pi_status": "RECORDED", "pi_number": pi_number, "pi_date": pi_date}
+        else:
+            result[po_id] = {"pi_status": "RECORDED", "pi_number": None, "pi_date": None}
+    return result
+
+
 async def create_purchase_order(session: AsyncSession, data: dict, actor: Holder) -> PurchaseOrder:
     cost_center = await session.get(CostCenter, data["cost_center_id"])
     if cost_center is None:

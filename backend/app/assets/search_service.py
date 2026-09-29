@@ -2,6 +2,38 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.assets.models import Asset
 
+# AM-21: an explicit whitelist, never the raw client-supplied string, used
+# directly as a SQLAlchemy column reference -- prevents both SQL injection
+# and sorting by a column that isn't meant to be exposed (e.g. deleted_at).
+# Deliberately real Asset columns only; the register's *_name columns
+# (holder/company/category/...) are page-scoped label lookups, not sortable
+# database columns, so they're left out of this pass.
+SORTABLE_COLUMNS: dict[str, object] = {
+    "asset_code": Asset.asset_code,
+    "legacy_asset_code": Asset.legacy_asset_code,
+    "description": Asset.description,
+    "brand": Asset.brand,
+    "model": Asset.model,
+    "serial_number": Asset.serial_number,
+    "barcode": Asset.barcode,
+    "po_number": Asset.po_number,
+    "po_date": Asset.po_date,
+    "invoice_number": Asset.invoice_number,
+    "invoice_date": Asset.invoice_date,
+    "invoice_amount": Asset.invoice_amount,
+    "pi_number": Asset.pi_number,
+    "pi_date": Asset.pi_date,
+    "purchase_cost": Asset.purchase_cost,
+    "tax_percent": Asset.tax_percent,
+    "tax_amount": Asset.tax_amount,
+    "total_cost": Asset.total_cost,
+    "purchase_date": Asset.purchase_date,
+    "warranty_years": Asset.warranty_years,
+    "warranty_upto": Asset.warranty_upto,
+    "status": Asset.status,
+    "status_since": Asset.status_since,
+}
+
 
 async def search_assets(
     session: AsyncSession,
@@ -11,6 +43,8 @@ async def search_assets(
     holder_id: int | None = None,
     company_id: int | None = None,
     q: str | None = None,
+    sort_by: str | None = None,
+    sort_dir: str = "asc",
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[Asset], int]:
@@ -35,6 +69,10 @@ async def search_assets(
             # description ("the Dell laptop") than its generated code --
             # found missing during the Phase-1 gap review's search check.
             Asset.description.ilike(pattern),
+            # AM-21: rounds the register's own search box out to every
+            # remaining free-text identifier column an operator might scan
+            # or type -- barcode/brand/model were the ones still missing.
+            Asset.barcode.ilike(pattern), Asset.brand.ilike(pattern), Asset.model.ilike(pattern),
         ))
 
     # COUNT(*) in the database over the same filtered query, rather than
@@ -42,6 +80,15 @@ async def search_assets(
     # 20,000-asset target that was loading the whole register on every page view.
     count_stmt = select(func.count()).select_from(stmt.order_by(None).subquery())
     total = (await session.execute(count_stmt)).scalar_one()
-    page_stmt = stmt.order_by(Asset.id.desc()).limit(limit).offset(offset)
+
+    order_column = SORTABLE_COLUMNS.get(sort_by) if sort_by else None
+    if order_column is not None:
+        # Asset.id as a tiebreaker keeps paging stable when many rows share
+        # the sorted column's value (e.g. sorting by Status), instead of
+        # page 2 silently re-showing/skipping rows page 1 already had.
+        order = (order_column.desc(), Asset.id.desc()) if sort_dir == "desc" else (order_column.asc(), Asset.id.desc())
+    else:
+        order = (Asset.id.desc(),)
+    page_stmt = stmt.order_by(*order).limit(limit).offset(offset)
     items = (await session.execute(page_stmt)).scalars().all()
     return items, total

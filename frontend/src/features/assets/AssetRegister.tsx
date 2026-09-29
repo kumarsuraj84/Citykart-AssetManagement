@@ -159,6 +159,16 @@ const ASSET_OPTIONAL_COLUMNS: AssetColumnDef[] = [
   { key: "status_since", label: "Status Since", defaultVisible: false, cell: (a) => dash(a.status_since) },
 ];
 
+// AM-21: mirrors backend/app/assets/search_service.py::SORTABLE_COLUMNS --
+// real Asset columns only. The register's own *_name columns (category/
+// subcategory/holder/company/vendor/cost_center) are page-scoped label
+// lookups, not sortable database columns, so they're deliberately left out.
+const SORTABLE_COLUMN_KEYS = new Set([
+  "description", "brand", "model", "serial_number", "status", "legacy_asset_code", "barcode",
+  "po_number", "po_date", "invoice_number", "invoice_date", "pi_number", "pi_date",
+  "purchase_cost", "tax_percent", "tax_amount", "total_cost", "purchase_date", "warranty_upto", "status_since",
+]);
+
 const ASSET_OPTIONAL_COLUMN_KEYS = ASSET_OPTIONAL_COLUMNS.map((c) => c.key);
 const DEFAULT_VISIBLE_COLUMN_KEYS = ASSET_OPTIONAL_COLUMNS.filter((c) => c.defaultVisible).map((c) => c.key);
 const COLUMN_VISIBILITY_STORAGE_KEY = "ckam.assetRegister.visibleColumns";
@@ -198,6 +208,8 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
   const [holderId, setHolderIdRaw] = useState("");
   const [companyId, setCompanyIdRaw] = useState("");
   const [page, setPageRaw] = useState(0);
+  const [sortBy, setSortByRaw] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [selected, setSelected] = useState<number[]>([]);
   const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>(loadVisibleColumnKeys);
 
@@ -232,6 +244,22 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
   const setCategoryId = resettingPage(setCategoryIdRaw);
   const setHolderId = resettingPage(setHolderIdRaw);
   const setCompanyId = resettingPage(setCompanyIdRaw);
+  // Server-side sort (search_assets.SORTABLE_COLUMNS) -- click cycle matches
+  // useTableSort's own client-side one (unsorted -> asc -> desc -> unsorted)
+  // for a consistent feel with every other sortable table in the app, even
+  // though this one drives a query param + refetch instead of a local sort.
+  function toggleSort(key: string) {
+    if (sortBy !== key) {
+      setSortByRaw(key);
+      setSortDir("asc");
+    } else if (sortDir === "asc") {
+      setSortDir("desc");
+    } else {
+      setSortByRaw(null);
+      setSortDir("asc");
+    }
+    setPage(0);
+  }
   const [moveOpen, setMoveOpen] = useState(false);
   const [moveHolderId, setMoveHolderId] = useState("");
   // A snapshot of the selected rows taken when the Move dialog opens, so that if the
@@ -246,12 +274,13 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
     ...(categoryId ? { category_id: categoryId } : {}),
     ...(holderId ? { holder_id: holderId } : {}),
     ...(companyId ? { company_id: companyId } : {}),
+    ...(sortBy ? { sort_by: sortBy, sort_dir: sortDir } : {}),
     limit: String(PAGE_SIZE),
     offset: String(page * PAGE_SIZE),
   }).toString();
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["assets", "register", q, status, categoryId, holderId, companyId, page],
+    queryKey: ["assets", "register", q, status, categoryId, holderId, companyId, sortBy, sortDir, page],
     queryFn: () => apiClient.get<{ items: AssetRow[]; total: number }>(`/assets?${queryString}`),
   });
   const items = data?.items ?? [];
@@ -330,9 +359,10 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
   // it's the register's identity column into Asset 360, not an optional field.
   const columns: DataTableColumn<AssetRow>[] = [
     {
-      key: "code",
+      key: "asset_code",
       header: "Code",
       cellClassName: "font-mono text-sm",
+      sortable: true,
       // A real, independently keyboard-focusable link -- the row's own onClick
       // below is a mouse-convenience shortcut to the same destination, not the
       // only way to reach it. stopPropagation avoids double-navigating.
@@ -348,6 +378,7 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
       headerClassName: c.headerClassName,
       cellClassName: c.className,
       cell: c.cell,
+      sortable: SORTABLE_COLUMN_KEYS.has(c.key),
     })),
   ];
 
@@ -488,6 +519,8 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
         errorMessage="Couldn't load the asset register."
         onRetry={() => refetch()}
         onRowClick={(a) => navigate({ to: "/assets/$id", params: { id: String(a.id) } })}
+        sort={sortBy ? { key: sortBy, direction: sortDir } : null}
+        onSortToggle={toggleSort}
         emptyState={
           <EmptyState
             title="No assets found."

@@ -1,10 +1,12 @@
 import type { ReactNode } from "react";
+import { ArrowUp, ArrowDown, ChevronsUpDown } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import type { SortState } from "@/components/shared/useTableSort";
 
 export interface DataTableColumn<T> {
   key: string;
@@ -12,6 +14,10 @@ export interface DataTableColumn<T> {
   cell: (row: T) => ReactNode;
   headerClassName?: string;
   cellClassName?: string;
+  /** Opt-in per column -- paired with the table-level `sort`/`onSortToggle`
+   * props below (see useTableSort). A column without this stays a plain,
+   * unclickable header, exactly as before this existed. */
+  sortable?: boolean;
 }
 
 export interface DataTableSelection<T> {
@@ -47,6 +53,11 @@ interface DataTableProps<T> {
   selection?: DataTableSelection<T>;
   pagination?: DataTablePagination;
   skeletonRowCount?: number;
+  /** Current sort (from useTableSort) and the toggle callback -- both
+   * required together for any column to render as sortable; omit both to
+   * keep every header plain, as before. */
+  sort?: SortState | null;
+  onSortToggle?: (key: string) => void;
 }
 
 /** CKAM's shared operational-table shell (REVIEW_FINDINGS.md #1). Presents
@@ -69,6 +80,8 @@ export function DataTable<T>({
   selection,
   pagination,
   skeletonRowCount = 5,
+  sort,
+  onSortToggle,
 }: DataTableProps<T>) {
   const colCount = columns.length + (selection ? 1 : 0);
 
@@ -94,7 +107,27 @@ export function DataTable<T>({
               )}
               {columns.map((col) => (
                 <TableHead key={col.key} className={col.headerClassName}>
-                  {col.header}
+                  {col.sortable && onSortToggle ? (
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 hover:text-foreground"
+                      onClick={() => onSortToggle(col.key)}
+                      aria-label={`Sort by ${typeof col.header === "string" ? col.header : col.key}`}
+                    >
+                      {col.header}
+                      {sort?.key === col.key ? (
+                        sort.direction === "asc" ? (
+                          <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />
+                        ) : (
+                          <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />
+                        )
+                      ) : (
+                        <ChevronsUpDown className="h-3.5 w-3.5 opacity-40" aria-hidden="true" />
+                      )}
+                    </button>
+                  ) : (
+                    col.header
+                  )}
                 </TableHead>
               ))}
             </TableRow>

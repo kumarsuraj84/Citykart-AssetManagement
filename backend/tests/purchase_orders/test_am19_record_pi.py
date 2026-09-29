@@ -203,6 +203,109 @@ async def test_record_pi_is_blocked_for_viewer(client):
     assert resp.status_code == 403
 
 
+class TestPiStatusOnPoListAndGet:
+    """AM-19/AM-21: the PO list shows a PI Status per PO (so an admin can
+    find "which PO has a PI pending" without opening each one) -- computed
+    fresh via app.purchase_orders.service.compute_pi_status, never a stored
+    flag, and correctly reflects that PI is tracked per Invoice, not per PO."""
+
+    async def test_a_po_with_nothing_delivered_yet_is_not_delivered(self, client):
+        ctx = await _setup("PIL1")
+        headers = await _login(client, ctx["admin_emp"])
+        po_id = (await client.post("/api/purchase-orders", json={
+            "company_id": ctx["co_id"], "po_number": "PO-1", "po_date": "2026-01-01", "cost_center_id": ctx["cc_id"],
+        }, headers=headers)).json()["id"]
+
+        [po] = [p for p in (await client.get("/api/purchase-orders", headers=headers)).json() if p["id"] == po_id]
+        assert po["pi_status"] == "NOT_DELIVERED"
+        assert po["pi_number"] is None
+
+        got = (await client.get(f"/api/purchase-orders/{po_id}", headers=headers)).json()
+        assert got["pi_status"] == "NOT_DELIVERED"
+
+    async def test_delivered_but_no_pi_yet_is_pending(self, client):
+        ctx = await _setup("PIL2")
+        headers = await _login(client, ctx["admin_emp"])
+        po_id, _ = await _po_with_delivery(client, headers, ctx, "PO-1", "INV-1", 2, "SN-PIL2")
+
+        [po] = [p for p in (await client.get("/api/purchase-orders", headers=headers)).json() if p["id"] == po_id]
+        assert po["pi_status"] == "PENDING"
+        assert po["pi_number"] is None
+
+    async def test_fully_recorded_single_invoice_shows_the_pi_number_and_date(self, client):
+        ctx = await _setup("PIL3")
+        headers = await _login(client, ctx["admin_emp"])
+        po_id, _ = await _po_with_delivery(client, headers, ctx, "PO-1", "INV-1", 2, "SN-PIL3")
+        await client.post(f"/api/purchase-orders/{po_id}/record-pi", json={
+            "invoice_number": "INV-1", "pi_number": "PI-7001", "pi_date": "2026-02-20",
+        }, headers=headers)
+
+        [po] = [p for p in (await client.get("/api/purchase-orders", headers=headers)).json() if p["id"] == po_id]
+        assert po["pi_status"] == "RECORDED"
+        assert po["pi_number"] == "PI-7001"
+        assert po["pi_date"] == "2026-02-20"
+
+    async def test_multi_invoice_po_with_one_invoice_still_pending_is_pending_overall(self, client):
+        ctx = await _setup("PIL4")
+        headers = await _login(client, ctx["admin_emp"])
+        po_id = (await client.post("/api/purchase-orders", json={
+            "company_id": ctx["co_id"], "po_number": "PO-SPLIT", "po_date": "2026-01-01", "cost_center_id": ctx["cc_id"],
+        }, headers=headers)).json()["id"]
+        lines1 = (await client.post(f"/api/purchase-orders/{po_id}/lines", json={
+            "description": "Laptop", "category_id": ctx["cat_id"], "quantity": 1,
+        }, headers=headers)).json()
+        lines2 = (await client.post(f"/api/purchase-orders/{po_id}/lines", json={
+            "description": "Laptop", "category_id": ctx["cat_id"], "quantity": 1,
+        }, headers=headers)).json()
+        await client.post(f"/api/purchase-orders/{po_id}/deliver", json={
+            "invoice_number": "INV-A", "invoice_date": "2026-02-01", "invoice_amount": 1000,
+            "lines": [{"pending_asset_id": lines1[0]["id"], "serial_number": "SN-A", "initial_holder_id": ctx["stock_id"]}],
+        }, headers=headers)
+        await client.post(f"/api/purchase-orders/{po_id}/deliver", json={
+            "invoice_number": "INV-B", "invoice_date": "2026-02-10", "invoice_amount": 1000,
+            "lines": [{"pending_asset_id": lines2[0]["id"], "serial_number": "SN-B", "initial_holder_id": ctx["stock_id"]}],
+        }, headers=headers)
+        # Only INV-A's PI recorded -- INV-B's is still outstanding.
+        await client.post(f"/api/purchase-orders/{po_id}/record-pi", json={
+            "invoice_number": "INV-A", "pi_number": "PI-A", "pi_date": "2026-02-20",
+        }, headers=headers)
+
+        [po] = [p for p in (await client.get("/api/purchase-orders", headers=headers)).json() if p["id"] == po_id]
+        assert po["pi_status"] == "PENDING"
+        assert po["pi_number"] is None  # ambiguous -- two different invoices, no single value to show
+
+    async def test_multi_invoice_po_fully_recorded_with_different_pi_numbers_shows_no_single_value(self, client):
+        ctx = await _setup("PIL5")
+        headers = await _login(client, ctx["admin_emp"])
+        po_id = (await client.post("/api/purchase-orders", json={
+            "company_id": ctx["co_id"], "po_number": "PO-SPLIT2", "po_date": "2026-01-01", "cost_center_id": ctx["cc_id"],
+        }, headers=headers)).json()["id"]
+        lines1 = (await client.post(f"/api/purchase-orders/{po_id}/lines", json={
+            "description": "Laptop", "category_id": ctx["cat_id"], "quantity": 1,
+        }, headers=headers)).json()
+        lines2 = (await client.post(f"/api/purchase-orders/{po_id}/lines", json={
+            "description": "Laptop", "category_id": ctx["cat_id"], "quantity": 1,
+        }, headers=headers)).json()
+        await client.post(f"/api/purchase-orders/{po_id}/deliver", json={
+            "invoice_number": "INV-A", "invoice_date": "2026-02-01", "invoice_amount": 1000,
+            "lines": [{"pending_asset_id": lines1[0]["id"], "serial_number": "SN-A2", "initial_holder_id": ctx["stock_id"]}],
+        }, headers=headers)
+        await client.post(f"/api/purchase-orders/{po_id}/deliver", json={
+            "invoice_number": "INV-B", "invoice_date": "2026-02-10", "invoice_amount": 1000,
+            "lines": [{"pending_asset_id": lines2[0]["id"], "serial_number": "SN-B2", "initial_holder_id": ctx["stock_id"]}],
+        }, headers=headers)
+        await client.post(f"/api/purchase-orders/{po_id}/record-pi", json={
+            "invoice_number": "INV-A", "pi_number": "PI-A", "pi_date": "2026-02-20",
+        }, headers=headers)
+        await client.post(f"/api/purchase-orders/{po_id}/record-pi", json={
+            "invoice_number": "INV-B", "pi_number": "PI-B", "pi_date": "2026-02-21",
+        }, headers=headers)
+
+        [po] = [p for p in (await client.get("/api/purchase-orders", headers=headers)).json() if p["id"] == po_id]
+        assert po["pi_status"] == "RECORDED"
+        assert po["pi_number"] is None  # two different PI numbers -- ambiguous, no single value shown
+
+
 async def test_record_pi_writes_an_ordinary_audit_row_per_field(client):
     ctx = await _setup("PI7")
     headers = await _login(client, ctx["admin_emp"])

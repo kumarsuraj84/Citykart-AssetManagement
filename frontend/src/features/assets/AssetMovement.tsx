@@ -10,7 +10,8 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { FormField } from "@/components/shared/FormField";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { EmptyState } from "@/components/shared/EmptyState";
-import { ScanBarcode } from "lucide-react";
+import { useTableSort } from "@/components/shared/useTableSort";
+import { ScanBarcode, ArrowUp, ArrowDown, ChevronsUpDown } from "lucide-react";
 
 interface Option {
   id: number;
@@ -67,6 +68,7 @@ export function AssetMovement() {
   const [scanError, setScanError] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<AssetSearchResult[] | null>(null);
   const [queue, setQueue] = useState<QueuedAsset[]>([]);
+  const [queueSearch, setQueueSearch] = useState("");
 
   const action = BULK_ACTIONS.find((a) => a.eventType === eventType)!;
 
@@ -123,7 +125,39 @@ export function AssetMovement() {
     setQueue((q) => q.map((a) => ({ ...a, eligible: isEligible(a.status, next) })));
   }
 
+  // Apply always acts on the FULL queue's eligible assets, never the
+  // filtered/sorted view below -- searching/sorting the queue only changes
+  // what's displayed while scanning, never what gets submitted.
   const eligibleQueue = queue.filter((a) => a.eligible);
+
+  const queueSearchLower = queueSearch.trim().toLowerCase();
+  const filteredQueue = queueSearchLower
+    ? queue.filter((a) =>
+        [a.asset_code, a.description, a.current_holder_name, a.status]
+          .some((v) => (v ?? "").toLowerCase().includes(queueSearchLower)),
+      )
+    : queue;
+  const { sortedRows: sortedQueue, sort: queueSort, toggleSort: toggleQueueSort } = useTableSort<QueuedAsset>(filteredQueue, {
+    asset_code: (a) => a.asset_code,
+    description: (a) => a.description,
+    holder: (a) => a.current_holder_name,
+    status: (a) => a.status,
+  });
+
+  function QueueSortButton({ label, sortKey }: { label: string; sortKey: string }) {
+    const Icon = queueSort?.key !== sortKey ? ChevronsUpDown : queueSort.direction === "asc" ? ArrowUp : ArrowDown;
+    return (
+      <button
+        type="button"
+        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        onClick={() => toggleQueueSort(sortKey)}
+        aria-label={`Sort queue by ${label}`}
+      >
+        {label}
+        <Icon className={`h-3 w-3 ${queueSort?.key === sortKey ? "" : "opacity-40"}`} aria-hidden="true" />
+      </button>
+    );
+  }
   const canApply =
     eligibleQueue.length > 0 &&
     (!action.needsHolder || toHolderId !== "");
@@ -232,14 +266,36 @@ export function AssetMovement() {
       )}
 
       <div className="rounded-md border p-3">
-        <h2 className="mb-2 text-sm font-semibold">
-          Queued ({queue.length}){eligibleQueue.length !== queue.length && ` — ${eligibleQueue.length} eligible`}
-        </h2>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">
+            Queued ({queue.length}){eligibleQueue.length !== queue.length && ` — ${eligibleQueue.length} eligible`}
+          </h2>
+          {queue.length > 1 && (
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground">Sort:</span>
+              <QueueSortButton label="Code" sortKey="asset_code" />
+              <QueueSortButton label="Description" sortKey="description" />
+              <QueueSortButton label="Holder" sortKey="holder" />
+              <QueueSortButton label="Status" sortKey="status" />
+            </div>
+          )}
+        </div>
+        {queue.length > 1 && (
+          <Input
+            aria-label="Search queued assets"
+            placeholder="Search queued assets…"
+            value={queueSearch}
+            onChange={(e) => setQueueSearch(e.target.value)}
+            className="mb-2 max-w-sm"
+          />
+        )}
         {queue.length === 0 ? (
           <EmptyState title="Nothing scanned yet." description="Scan or type a Serial Number/Asset Code above to add assets here." />
+        ) : sortedQueue.length === 0 ? (
+          <EmptyState title="No matches" description="Try a different search." />
         ) : (
           <ul className="flex flex-col gap-1.5">
-            {queue.map((a) => (
+            {sortedQueue.map((a) => (
               <li
                 key={a.id}
                 className={`flex items-center justify-between gap-2 rounded-sm border px-2 py-1.5 text-sm ${a.eligible ? "bg-muted/40" : "border-destructive/50 bg-destructive/5"}`}
