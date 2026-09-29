@@ -1,4 +1,4 @@
-"""Round-1 review fixes for Task 23 (asset Excel import):
+﻿"""Round-1 review fixes for Task 23 (asset Excel import):
 
 1. (Critical) commit_import used to precompute the bootstrap Asset.status from the
    target asset_user's type (e.g. ALLOTTED for an EMPLOYEE) *before* calling apply_event.
@@ -50,7 +50,7 @@ async def _seed_company(code_suffix: str):
     uniquely-suffixed company, and returns (company, admin_asset_user, stock_asset_user, vendor)."""
     async with SessionLocal() as session:
         co = Company(code=f"CKS-{code_suffix}", name=f"Import Fix Test Co {code_suffix}")
-        cat = AssetCategory(code=f"IT-{code_suffix}", name="IT")
+        cat = AssetCategory(code=f"IT-{code_suffix}", name="IT", asset_domain="IT")
         vendor = Vendor(code=f"VND-{code_suffix}", name="Test Vendor")
         session.add_all([co, cat, vendor])
         await session.flush()
@@ -60,11 +60,11 @@ async def _seed_company(code_suffix: str):
         dept = Department(name=f"IT-{code_suffix}")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = AssetUser(company_id=co.id, emp_code=f"ITSTOCK-{code_suffix}", name="IT Stock-HO", asset_user_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-        it_admin = AssetUser(company_id=co.id, emp_code=f"ITA-{code_suffix}", name="IT Admin", asset_user_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, code=f"ITSTOCK-{code_suffix}", name="IT Stock-HO", asset_user_type="STOCK_POINT",
+                        location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        it_admin = AssetUser(company_id=co.id, code=f"ITA-{code_suffix}", name="IT Admin", asset_user_type="EMPLOYEE",
                            location_id=loc.id, department_id=dept.id, role="ADMIN",
-                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                           login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/CK_",
                          suffix_template="", start_number=1, pad_width=0)
         session.add_all([stock, it_admin, rule])
@@ -85,8 +85,8 @@ async def test_import_to_non_stock_asset_user_succeeds_with_allotted_status(clie
     async with SessionLocal() as session:
         loc = (await session.execute(select(Location).where(Location.code == "HO-F1"))).scalars().first()
         dept = (await session.execute(select(Department).where(Department.name == "IT-F1"))).scalars().first()
-        employee = AssetUser(company_id=co.id, emp_code="EMP-F1", name="Jane Employee", asset_user_type="EMPLOYEE",
-                           location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+        employee = AssetUser(company_id=co.id, code="EMP-F1", name="Jane Employee", asset_user_type="EMPLOYEE",
+                           location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
         session.add(employee)
         await session.commit()
         await session.refresh(employee)

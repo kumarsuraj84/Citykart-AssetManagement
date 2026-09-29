@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta, timezone
+﻿from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -95,7 +95,7 @@ def compute_tax(purchase_cost, tax_percent) -> tuple[Decimal, Decimal]:
 async def _get_initial_asset_user(session: AsyncSession, company_id: int, initial_asset_user_id: int | None) -> AssetUser:
     """Resolve the asset_user newly procured assets land in.
 
-    `initial_asset_user_id` is required, not defaulted: a company can have multiple IT_STOCK
+    `initial_asset_user_id` is required, not defaulted: a company can have multiple STOCK_POINT
     asset_users (one per location, e.g. "IT Stock-HO", "IT Stock-WH-F", "IT Stock-WH-K" per
     the design spec's seed data), so there is no safe way to pick one automatically —
     guessing risks silently misfiling a purchase into the wrong location's stock with no
@@ -216,6 +216,12 @@ async def procure_assets(session: AsyncSession, data: dict, quantity: int, actor
             purchase_date=data["purchase_date"],
             warranty_years=warranty_years,
             warranty_upto=warranty_upto,
+            # Spec §18: always derived server-side from the selected Category,
+            # never trusted from the client even if the caller's `data` dict
+            # happens to carry an "asset_domain" key -- a snapshot of the
+            # Category's CURRENT classification at creation time, so a later
+            # Category reclassification never silently rewrites it.
+            asset_domain=category.asset_domain,
             # Initial status set directly here, not through apply_event — this is the one
             # documented exception (see apply_event's docstring): a freshly-inserted row
             # needs a non-null status/asset_user before the state machine has anything to

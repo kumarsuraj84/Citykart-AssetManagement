@@ -1,4 +1,4 @@
-"""AM-12 G03: Dashboard operational exception visibility (Repair/Lost/Closed)
+﻿"""AM-12 G03: Dashboard operational exception visibility (Repair/Lost/Closed)
 and a small, scoped, snapshot-correct Recent Activity feed."""
 from datetime import date, timedelta
 from httpx import AsyncClient, ASGITransport
@@ -16,7 +16,7 @@ from app.numbering.models import CodeRule
 async def _setup(code_suffix: str):
     async with SessionLocal() as session:
         co = Company(code=f"CKS-{code_suffix}", name=f"Dashboard Exceptions Co {code_suffix}")
-        cat = AssetCategory(code=f"IT-{code_suffix}", name="IT")
+        cat = AssetCategory(code=f"IT-{code_suffix}", name="IT", asset_domain="IT")
         session.add_all([co, cat])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
@@ -25,11 +25,11 @@ async def _setup(code_suffix: str):
         dept = Department(name=f"IT-{code_suffix}")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = AssetUser(company_id=co.id, emp_code=f"STK-{code_suffix}", name="IT Stock-HO", asset_user_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{code_suffix}", name="Admin", asset_user_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, code=f"STK-{code_suffix}", name="IT Stock-HO", asset_user_type="STOCK_POINT",
+                        location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        admin = AssetUser(company_id=co.id, code=f"ADM-{code_suffix}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
-                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                        login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template=f"FA/{{cost_center.code}}/{{category.code}}/{{subcategory.code}}/{code_suffix}_",
                          suffix_template="", start_number=1, pad_width=0)
         session.add_all([stock, admin, rule])
@@ -93,7 +93,7 @@ async def test_am12_exception_counts_are_company_scoped():
     async with SessionLocal() as session:
         co_a = Company(code="CKS-EX3A", name="Exceptions Co A")
         co_b = Company(code="CKS-EX3B", name="Exceptions Co B")
-        cat = AssetCategory(code="IT-EX3", name="IT")
+        cat = AssetCategory(code="IT-EX3", name="IT", asset_domain="IT")
         session.add_all([co_a, co_b, cat])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
@@ -104,22 +104,22 @@ async def test_am12_exception_counts_are_company_scoped():
         dept = Department(name="IT-EX3")
         session.add_all([sub, cc_a, cc_b, loc_a, loc_b, dept])
         await session.flush()
-        stock_a = AssetUser(company_id=co_a.id, emp_code="STK-EX3A", name="Stock A", asset_user_type="IT_STOCK",
-                          location_id=loc_a.id, department_id=dept.id, role="ASSET_USER")
-        it_team_a = AssetUser(company_id=co_a.id, emp_code="ITT-EX3A", name="IT Team A", asset_user_type="EMPLOYEE",
-                            location_id=loc_a.id, department_id=dept.id, role="IT_TEAM",
-                            password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        viewer_a = AssetUser(company_id=co_a.id, emp_code="VWR-EX3A", name="Viewer A", asset_user_type="EMPLOYEE",
+        stock_a = AssetUser(company_id=co_a.id, code="STK-EX3A", name="Stock A", asset_user_type="STOCK_POINT",
+                          location_id=loc_a.id, department_id=dept.id, role="SELF_SERVICE")
+        it_team_a = AssetUser(company_id=co_a.id, code="ITT-EX3A", name="IT Team A", asset_user_type="EMPLOYEE",
+                            location_id=loc_a.id, department_id=dept.id, role="OPERATOR",
+                            login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        viewer_a = AssetUser(company_id=co_a.id, code="VWR-EX3A", name="Viewer A", asset_user_type="EMPLOYEE",
                            location_id=loc_a.id, department_id=dept.id, role="VIEWER",
-                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        stock_b = AssetUser(company_id=co_b.id, emp_code="STK-EX3B", name="Stock B", asset_user_type="IT_STOCK",
-                          location_id=loc_b.id, department_id=dept.id, role="ASSET_USER")
-        admin_b = AssetUser(company_id=co_b.id, emp_code="ADM-EX3B", name="Admin B", asset_user_type="EMPLOYEE",
+                           login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        stock_b = AssetUser(company_id=co_b.id, code="STK-EX3B", name="Stock B", asset_user_type="STOCK_POINT",
+                          location_id=loc_b.id, department_id=dept.id, role="SELF_SERVICE")
+        admin_b = AssetUser(company_id=co_b.id, code="ADM-EX3B", name="Admin B", asset_user_type="EMPLOYEE",
                           location_id=loc_b.id, department_id=dept.id, role="ADMIN",
-                          password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        admin_global = AssetUser(company_id=co_a.id, emp_code="SUPERADM-EX3", name="Super Admin", asset_user_type="EMPLOYEE",
+                          login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        admin_global = AssetUser(company_id=co_a.id, code="SUPERADM-EX3", name="Super Admin", asset_user_type="EMPLOYEE",
                                location_id=loc_a.id, department_id=dept.id, role="ADMIN",
-                               password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                               login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/EX3_",
                          suffix_template="", start_number=1, pad_width=0)
         session.add_all([stock_a, it_team_a, viewer_a, stock_b, admin_b, admin_global, rule])
@@ -164,7 +164,7 @@ async def test_am12_recent_activity_ordering_limit_and_scoping():
     async with SessionLocal() as session:
         co_a = Company(code="CKS-RA1A", name="Recent Activity Co A")
         co_b = Company(code="CKS-RA1B", name="Recent Activity Co B")
-        cat = AssetCategory(code="IT-RA1", name="IT")
+        cat = AssetCategory(code="IT-RA1", name="IT", asset_domain="IT")
         session.add_all([co_a, co_b, cat])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
@@ -175,19 +175,19 @@ async def test_am12_recent_activity_ordering_limit_and_scoping():
         dept = Department(name="IT-RA1")
         session.add_all([sub, cc_a, cc_b, loc_a, loc_b, dept])
         await session.flush()
-        stock_a = AssetUser(company_id=co_a.id, emp_code="STK-RA1A", name="Stock A", asset_user_type="IT_STOCK",
-                          location_id=loc_a.id, department_id=dept.id, role="ASSET_USER")
-        admin_a = AssetUser(company_id=co_a.id, emp_code="ADM-RA1A", name="Admin A", asset_user_type="EMPLOYEE",
-                          location_id=loc_a.id, department_id=dept.id, role="IT_TEAM",
-                          password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        emp_a = AssetUser(company_id=co_a.id, emp_code="EMP-RA1A", name="Employee A", asset_user_type="EMPLOYEE",
-                        location_id=loc_a.id, department_id=dept.id, role="ASSET_USER",
-                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        stock_b = AssetUser(company_id=co_b.id, emp_code="STK-RA1B", name="Stock B", asset_user_type="IT_STOCK",
-                          location_id=loc_b.id, department_id=dept.id, role="ASSET_USER")
-        admin_b = AssetUser(company_id=co_b.id, emp_code="ADM-RA1B", name="Admin B", asset_user_type="EMPLOYEE",
+        stock_a = AssetUser(company_id=co_a.id, code="STK-RA1A", name="Stock A", asset_user_type="STOCK_POINT",
+                          location_id=loc_a.id, department_id=dept.id, role="SELF_SERVICE")
+        admin_a = AssetUser(company_id=co_a.id, code="ADM-RA1A", name="Admin A", asset_user_type="EMPLOYEE",
+                          location_id=loc_a.id, department_id=dept.id, role="OPERATOR",
+                          login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        emp_a = AssetUser(company_id=co_a.id, code="EMP-RA1A", name="Employee A", asset_user_type="EMPLOYEE",
+                        location_id=loc_a.id, department_id=dept.id, role="SELF_SERVICE",
+                        login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        stock_b = AssetUser(company_id=co_b.id, code="STK-RA1B", name="Stock B", asset_user_type="STOCK_POINT",
+                          location_id=loc_b.id, department_id=dept.id, role="SELF_SERVICE")
+        admin_b = AssetUser(company_id=co_b.id, code="ADM-RA1B", name="Admin B", asset_user_type="EMPLOYEE",
                           location_id=loc_b.id, department_id=dept.id, role="ADMIN",
-                          password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                          login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/RA1_",
                          suffix_template="", start_number=1, pad_width=0)
         session.add_all([stock_a, admin_a, emp_a, stock_b, admin_b, rule])
@@ -247,8 +247,8 @@ async def test_am12_recent_activity_uses_point_in_time_asset_user_name_snapshots
     ids = await _setup("RA2")
     async with SessionLocal() as session:
         admin = await session.get(AssetUser, ids["admin"].id)
-        emp = AssetUser(company_id=ids["co"].id, emp_code="EMP-RA2", name="Original Name", asset_user_type="EMPLOYEE",
-                     location_id=ids["stock"].location_id, department_id=ids["stock"].department_id, role="ASSET_USER")
+        emp = AssetUser(company_id=ids["co"].id, code="EMP-RA2", name="Original Name", asset_user_type="EMPLOYEE",
+                     location_id=ids["stock"].location_id, department_id=ids["stock"].department_id, role="SELF_SERVICE")
         session.add(emp)
         await session.flush()
         [asset] = await procure_assets(session, {
@@ -261,9 +261,9 @@ async def test_am12_recent_activity_uses_point_in_time_asset_user_name_snapshots
 
         # Rename the asset_user *after* the event was recorded.
         await AssetUserService(session).update(emp.id, {
-            "company_id": ids["co"].id, "emp_code": "EMP-RA2", "name": "Renamed After The Fact",
+            "company_id": ids["co"].id, "code": "EMP-RA2", "name": "Renamed After The Fact",
             "asset_user_type": "EMPLOYEE", "location_id": ids["stock"].location_id,
-            "department_id": ids["stock"].department_id, "role": "ASSET_USER",
+            "department_id": ids["stock"].department_id, "role": "SELF_SERVICE",
         }, actor_id=admin.id)
         await session.commit()
 

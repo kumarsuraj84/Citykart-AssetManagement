@@ -1,4 +1,4 @@
-"""AM-06: Import supports the full V1 asset data model -- every
+﻿"""AM-06: Import supports the full V1 asset data model -- every
 procurement/descriptive field Add Asset supports, Quantity (multi-create
 per row), and company-scoped Custom Fields via the `Custom:<field_key>`
 column convention. See docs/ai/DECISIONS.md for the exact column contract
@@ -50,26 +50,26 @@ async def _setup(code="AM06IMP"):
     async with SessionLocal() as session:
         co = Company(code=f"{code}A", name=f"{code} Co A")
         co_b = Company(code=f"{code}B", name=f"{code} Co B")
-        cat = AssetCategory(code=f"CAT-{code}", name="IT")
+        cat = AssetCategory(code=f"CAT-{code}", name="IT", asset_domain="IT")
         vendor = Vendor(code=f"VND-{code}", name="Acme Traders")
         brand = Brand(code=f"BRD-{code}", name="Dell")
         session.add_all([co, co_b, cat, vendor, brand])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
-        other_cat = AssetCategory(code=f"OTHERCAT-{code}", name="Furniture")
+        other_cat = AssetCategory(code=f"OTHERCAT-{code}", name="Furniture", asset_domain="IT")
         cc = CostCenter(company_id=co.id, code="HO01", name="HO")
         loc = Location(company_id=co.id, code=f"HO-{code}", name="HO")
         loc_b = Location(company_id=co_b.id, code=f"HOB-{code}", name="HO B")
         dept = Department(name=f"IT-{code}")
         session.add_all([sub, other_cat, cc, loc, loc_b, dept])
         await session.flush()
-        stock = AssetUser(company_id=co.id, emp_code=f"STK-{code}", name="IT Stock-HO", asset_user_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-        stock_b = AssetUser(company_id=co_b.id, emp_code=f"STKB-{code}", name="IT Stock B", asset_user_type="IT_STOCK",
-                          location_id=loc_b.id, department_id=dept.id, role="ASSET_USER")
-        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{code}", name="Admin", asset_user_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, code=f"STK-{code}", name="IT Stock-HO", asset_user_type="STOCK_POINT",
+                        location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        stock_b = AssetUser(company_id=co_b.id, code=f"STKB-{code}", name="IT Stock B", asset_user_type="STOCK_POINT",
+                          location_id=loc_b.id, department_id=dept.id, role="SELF_SERVICE")
+        admin = AssetUser(company_id=co.id, code=f"ADM-{code}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
-                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                        login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template=f"FA/{code}/", suffix_template="",
                          start_number=1, pad_width=0)
         session.add_all([stock, stock_b, admin, rule])
@@ -82,8 +82,8 @@ async def _setup(code="AM06IMP"):
         }
 
 
-async def _headers(client, emp_code):
-    resp = await client.post("/api/auth/login", json={"login_id": emp_code, "password": "Passw0rd!"})
+async def _headers(client, code):
+    resp = await client.post("/api/auth/login", json={"login_id": code, "password": "Passw0rd!"})
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 

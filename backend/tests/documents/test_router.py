@@ -1,4 +1,4 @@
-import io
+﻿import io
 from datetime import date
 from app.core.db import SessionLocal
 from app.core.security import hash_password
@@ -15,7 +15,7 @@ async def test_upload_and_list_document(client, tmp_path, monkeypatch):
 
     async with SessionLocal() as session:
         co = Company(code="CKS-DOC1", name="Doc Test Co")
-        cat = AssetCategory(code="IT-DOC1", name="IT")
+        cat = AssetCategory(code="IT-DOC1", name="IT", asset_domain="IT")
         session.add_all([co, cat])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
@@ -24,11 +24,11 @@ async def test_upload_and_list_document(client, tmp_path, monkeypatch):
         dept = Department(name="IT-DOC1")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = AssetUser(company_id=co.id, emp_code="ITSTOCK-DOC1", name="IT Stock-HO", asset_user_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-        it_admin = AssetUser(company_id=co.id, emp_code="ITA-DOC1", name="IT Admin", asset_user_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, code="ITSTOCK-DOC1", name="IT Stock-HO", asset_user_type="STOCK_POINT",
+                        location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        it_admin = AssetUser(company_id=co.id, code="ITA-DOC1", name="IT Admin", asset_user_type="EMPLOYEE",
                            location_id=loc.id, department_id=dept.id, role="ADMIN",
-                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                           login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/CK_",
                          suffix_template="", start_number=1, pad_width=0)
         session.add_all([stock, it_admin, rule])
@@ -74,7 +74,7 @@ async def test_upload_and_list_document(client, tmp_path, monkeypatch):
 async def _setup_asset(session, co_code="CKS-DOC2"):
     """Shared fixture-style setup for the size/extension/scope tests below."""
     co = Company(code=co_code, name="Doc Test Co 2")
-    cat = AssetCategory(code=f"IT-{co_code}", name="IT")
+    cat = AssetCategory(code=f"IT-{co_code}", name="IT", asset_domain="IT")
     session.add_all([co, cat])
     await session.flush()
     sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
@@ -83,14 +83,14 @@ async def _setup_asset(session, co_code="CKS-DOC2"):
     dept = Department(name=f"IT-{co_code}")
     session.add_all([sub, cc, loc, dept])
     await session.flush()
-    stock = AssetUser(company_id=co.id, emp_code=f"ITSTOCK-{co_code}", name="IT Stock-HO", asset_user_type="IT_STOCK",
-                    location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-    it_admin = AssetUser(company_id=co.id, emp_code=f"ITA-{co_code}", name="IT Admin", asset_user_type="EMPLOYEE",
+    stock = AssetUser(company_id=co.id, code=f"ITSTOCK-{co_code}", name="IT Stock-HO", asset_user_type="STOCK_POINT",
+                    location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+    it_admin = AssetUser(company_id=co.id, code=f"ITA-{co_code}", name="IT Admin", asset_user_type="EMPLOYEE",
                        location_id=loc.id, department_id=dept.id, role="ADMIN",
-                       password_hash=hash_password("Passw0rd!"), must_change_password=False)
-    other_employee = AssetUser(company_id=co.id, emp_code=f"EMP-{co_code}", name="Other Employee", asset_user_type="EMPLOYEE",
-                             location_id=loc.id, department_id=dept.id, role="ASSET_USER",
-                             password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                       login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+    other_employee = AssetUser(company_id=co.id, code=f"EMP-{co_code}", name="Other Employee", asset_user_type="EMPLOYEE",
+                             location_id=loc.id, department_id=dept.id, role="SELF_SERVICE",
+                             login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
     rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/CK_",
                      suffix_template="", start_number=1, pad_width=0)
     session.add_all([stock, it_admin, other_employee, rule])
@@ -110,7 +110,7 @@ async def test_oversized_file_is_rejected(client, tmp_path, monkeypatch):
     async with SessionLocal() as session:
         co, it_admin, _other, asset_id = await _setup_asset(session, "CKS-DOC-SIZE")
 
-    resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": it_admin.emp_code, "password": "Passw0rd!"})
+    resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": it_admin.code, "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     oversized = io.BytesIO(b"0" * (10 * 1024 * 1024 + 1))
@@ -142,7 +142,7 @@ async def test_oversized_upload_is_rejected_via_bounded_read(client, tmp_path, m
     async with SessionLocal() as session:
         co, it_admin, _other, asset_id = await _setup_asset(session, "CKS-DOC-BOUND")
 
-    resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": it_admin.emp_code, "password": "Passw0rd!"})
+    resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": it_admin.code, "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     huge = io.BytesIO(b"0" * (2 * MAX_SIZE_BYTES))
@@ -169,7 +169,7 @@ async def test_invalid_doc_type_is_rejected_cleanly(client, tmp_path, monkeypatc
     async with SessionLocal() as session:
         co, it_admin, _other, asset_id = await _setup_asset(session, "CKS-DOC-TYPE")
 
-    resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": it_admin.emp_code, "password": "Passw0rd!"})
+    resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": it_admin.code, "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     file_bytes = io.BytesIO(b"%PDF-1.4 fake invoice content")
@@ -192,7 +192,7 @@ async def test_disallowed_extension_is_rejected(client, tmp_path, monkeypatch):
     async with SessionLocal() as session:
         co, it_admin, _other, asset_id = await _setup_asset(session, "CKS-DOC-EXT")
 
-    resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": it_admin.emp_code, "password": "Passw0rd!"})
+    resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": it_admin.code, "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     bad_file = io.BytesIO(b"#!/bin/sh\necho hi")
@@ -215,7 +215,7 @@ async def test_asset_user_out_of_scope_cannot_download(client, tmp_path, monkeyp
     async with SessionLocal() as session:
         co, it_admin, other_employee, asset_id = await _setup_asset(session, "CKS-DOC-SCOPE")
 
-    admin_resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": it_admin.emp_code, "password": "Passw0rd!"})
+    admin_resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": it_admin.code, "password": "Passw0rd!"})
     admin_headers = {"Authorization": f"Bearer {admin_resp.json()['access_token']}"}
 
     file_bytes = io.BytesIO(b"%PDF-1.4 fake invoice content")
@@ -230,7 +230,7 @@ async def test_asset_user_out_of_scope_cannot_download(client, tmp_path, monkeyp
     # other_employee is a ASSET_USER-role user who does not currently hold this asset
     # (the IT_STOCK asset_user does). They must not be able to download its document,
     # even though they know the (guessable, sequential) document id.
-    asset_user_resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": other_employee.emp_code, "password": "Passw0rd!"})
+    asset_user_resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": other_employee.code, "password": "Passw0rd!"})
     asset_user_headers = {"Authorization": f"Bearer {asset_user_resp.json()['access_token']}"}
 
     download_resp = await client.get(f"/api/documents/{doc_id}/download", headers=asset_user_headers)

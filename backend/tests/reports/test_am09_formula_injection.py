@@ -1,4 +1,4 @@
-"""AM-09: openpyxl auto-detects a string cell value starting with "=" and
+﻿"""AM-09: openpyxl auto-detects a string cell value starting with "=" and
 marks it as a formula (confirmed directly: Workbook().active.append(["=cmd|
 calc!A1"]) sets cell.data_type == "f"). Every free-text field in an export
 (Description, Brand, Vendor name, a Custom Field value, a correction's
@@ -22,7 +22,7 @@ from app.reports.export_service import _sanitize_cell
 async def _setup(suffix: str):
     async with SessionLocal() as session:
         co = Company(code=f"FI-{suffix}", name=f"Formula Injection Co {suffix}")
-        cat = AssetCategory(code=f"FI-{suffix}", name="FI Category")
+        cat = AssetCategory(code=f"FI-{suffix}", name="FI Category", asset_domain="IT")
         session.add_all([co, cat])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="SUB", name="FI Sub")
@@ -32,11 +32,11 @@ async def _setup(suffix: str):
         vendor = Vendor(code=f"VND-FI-{suffix}", name="FI Vendor")
         session.add_all([sub, cc, loc, dept, vendor])
         await session.flush()
-        stock = AssetUser(company_id=co.id, emp_code=f"FISTK-{suffix}", name="FI Stock", asset_user_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-        admin = AssetUser(company_id=co.id, emp_code=f"FIADM-{suffix}", name="FI Admin", asset_user_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, code=f"FISTK-{suffix}", name="FI Stock", asset_user_type="STOCK_POINT",
+                        location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        admin = AssetUser(company_id=co.id, code=f"FIADM-{suffix}", name="FI Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
-                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                        login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=co.id, prefix_template=f"FI-{suffix}/", suffix_template="",
                          start_number=1, pad_width=0)
         session.add_all([stock, admin, rule])
@@ -47,7 +47,7 @@ async def _setup(suffix: str):
 
 async def _headers(client, ids):
     resp = await client.post("/api/auth/login", json={
-        "company_id": ids["co"].id, "login_id": ids["admin"].emp_code, "password": "Passw0rd!",
+        "company_id": ids["co"].id, "login_id": ids["admin"].code, "password": "Passw0rd!",
     })
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 

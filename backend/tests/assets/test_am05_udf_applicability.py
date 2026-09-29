@@ -1,4 +1,4 @@
-"""AM-05: asset create/edit only ever sees the Custom Field definitions
+﻿"""AM-05: asset create/edit only ever sees the Custom Field definitions
 "applicable" to the asset's own company -- GLOBAL (company_id IS NULL) plus
 that company's own scoped fields. A field scoped to a different company must
 behave as if it doesn't exist for this asset: it can't be set, can't be
@@ -20,13 +20,13 @@ async def _setup(code="AM05UDF"):
         dept = Department(name=f"IT-{code}")
         session.add_all([loc, dept])
         await session.flush()
-        admin = AssetUser(company_id=a.id, emp_code=f"ADM-{code}", name="Admin", asset_user_type="EMPLOYEE",
+        admin = AssetUser(company_id=a.id, code=f"ADM-{code}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
-                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        stock_a = AssetUser(company_id=a.id, emp_code=f"STK-{code}", name="IT Stock A", asset_user_type="IT_STOCK",
-                          location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+                        login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        stock_a = AssetUser(company_id=a.id, code=f"STK-{code}", name="IT Stock A", asset_user_type="STOCK_POINT",
+                          location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
         cc_a = CostCenter(company_id=a.id, code=f"CC-{code}", name="Cost Centre A")
-        cat = AssetCategory(code=f"CAT-{code}", name="Category")
+        cat = AssetCategory(code=f"CAT-{code}", name="Category", asset_domain="IT")
         vendor = Vendor(code=f"VND-{code}", name="Test Vendor")
         rule = CodeRule(company_id=None, prefix_template=f"FA/{code}/", suffix_template="",
                          start_number=1, pad_width=0)
@@ -41,8 +41,8 @@ async def _setup(code="AM05UDF"):
         }
 
 
-async def _headers(client, emp_code):
-    resp = await client.post("/api/auth/login", json={"login_id": emp_code, "password": "Passw0rd!"})
+async def _headers(client, code):
+    resp = await client.post("/api/auth/login", json={"login_id": code, "password": "Passw0rd!"})
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 

@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+﻿from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status  # aliased: export_assets has a `status` query param
 from fastapi.responses import Response
@@ -9,7 +9,10 @@ from app.assets.custom_field_values import applicable_custom_fields
 from app.assets.models import Asset, AssetFieldChange
 from app.assets.search_service import search_assets
 from app.core.db import get_session
-from app.core.deps import STAFF_ROLES, get_current_asset_user, require_role, scoped_company_ids
+from app.core.deps import (
+    READ_ROLES, WRITE_ROLES, allowed_asset_domains, get_current_asset_user, is_self_service, require_role,
+    scoped_company_ids,
+)
 from app.asset_users.models import AssetUser
 from app.lifecycle.models import AssetEvent
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Location, Vendor
@@ -72,7 +75,7 @@ async def _export_custom_field_keys(session: AsyncSession, items: list[Asset]) -
 @router.get("/dashboard", response_model=DashboardOut)
 async def dashboard(
     session: AsyncSession = Depends(get_session),
-    asset_user=Depends(require_role(*STAFF_ROLES)),
+    asset_user=Depends(require_role(*READ_ROLES)),
 ):
     """Staff only: a ASSET_USER sees only the assets they hold (spec §6), never
     company-wide KPIs/alerts, so they get 403 here. Scoped exactly like the asset
@@ -80,7 +83,7 @@ async def dashboard(
     sees every company combined) and the caller's own company id otherwise, so a
     non-ADMIN never sees another company's KPI numbers."""
     allowed = await scoped_company_ids(session, asset_user)
-    include_purchase_orders = asset_user.role in ("ADMIN", "IT_TEAM")
+    include_purchase_orders = asset_user.role in WRITE_ROLES
     return await dashboard_data(session, allowed, include_purchase_orders)
 
 
@@ -100,13 +103,15 @@ async def export_assets(
     of any `asset_user_id`/`company_id` they pass in) and every other role is scoped by
     `scoped_company_ids` (None = ADMIN, unrestricted; otherwise just their own
     company) -- a non-ADMIN caller can never export another company's rows."""
-    if asset_user.role == "ASSET_USER":
+    if is_self_service(asset_user):
         asset_user_id = asset_user.id
         allowed = None
     else:
         allowed = await scoped_company_ids(session, asset_user)
+    domains = await allowed_asset_domains(session, asset_user)
     items, total = await search_assets(
         session, allowed, status, category_id, asset_user_id, company_id, q, limit=EXPORT_MAX_ROWS, offset=0,
+        allowed_domains=domains,
     )
     if total > EXPORT_MAX_ROWS:
         # Refuse loudly rather than hand back a silently truncated register.
@@ -129,7 +134,7 @@ async def export_movements(
     from_date: date = Query(...),
     to_date: date = Query(...),
     session: AsyncSession = Depends(get_session),
-    asset_user=Depends(require_role(*STAFF_ROLES)),
+    asset_user=Depends(require_role(*READ_ROLES)),
 ):
     """Staff only (403 for a ASSET_USER): the log names every asset_user in the company, and a
     ASSET_USER may only see their own currently-held assets (spec §6). Company-scoped the
@@ -168,7 +173,7 @@ async def export_field_changes(
     from_date: date | None = Query(None),
     to_date: date | None = Query(None),
     session: AsyncSession = Depends(get_session),
-    asset_user=Depends(require_role(*STAFF_ROLES)),
+    asset_user=Depends(require_role(*READ_ROLES)),
 ):
     """AM-06 §22/§25: the field-change audit (`asset_field_change`, AM-04's
     append-only edit trail) gets its own export -- a separate canonical

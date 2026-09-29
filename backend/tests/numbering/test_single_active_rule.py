@@ -1,4 +1,4 @@
-"""Only ONE active code rule may exist per company scope (global = company_id NULL,
+﻿"""Only ONE active code rule may exist per company scope (global = company_id NULL,
 or one specific company), and the active-rule lookup must be deterministic even
 if duplicates somehow exist. Previously every Save on the Code Rule screen POSTed
 a brand-new active rule, and get_active_rule picked among the duplicates in
@@ -22,9 +22,9 @@ async def _admin(client, code):
         dept = Department(name=f"IT-{code}")
         session.add_all([loc, dept])
         await session.flush()
-        session.add(AssetUser(company_id=co.id, emp_code="RADMIN", name="Rule Admin", asset_user_type="EMPLOYEE",
+        session.add(AssetUser(company_id=co.id, code="RADMIN", name="Rule Admin", asset_user_type="EMPLOYEE",
                            location_id=loc.id, department_id=dept.id, role="ADMIN",
-                           password_hash=hash_password("Passw0rd!"), must_change_password=False))
+                           login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False))
         await session.commit()
         co_id = co.id
     resp = await client.post("/api/auth/login", json={"company_id": co_id, "login_id": "RADMIN", "password": "Passw0rd!"})

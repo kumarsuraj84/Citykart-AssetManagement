@@ -1,4 +1,4 @@
-"""Dashboard "Purchase Orders" card (2026-09-25): open POs still awaiting
+﻿"""Dashboard "Purchase Orders" card (2026-09-25): open POs still awaiting
 delivery -- pending_po_summary (count/value) and open_purchase_orders
 (a small, capped list), both scoped exactly like the rest of the dashboard."""
 from datetime import date
@@ -12,7 +12,7 @@ from app.purchase_orders.service import add_pending_asset_line, cancel_pending_a
 async def _setup(suffix: str):
     async with SessionLocal() as session:
         co = Company(code=f"DASH-PO-{suffix}", name=f"Dashboard PO Co {suffix}")
-        cat = AssetCategory(code=f"DASH-PO-{suffix}", name="IT")
+        cat = AssetCategory(code=f"DASH-PO-{suffix}", name="IT", asset_domain="IT")
         session.add_all([co, cat])
         await session.flush()
         cc = CostCenter(company_id=co.id, code="HO", name="Head Office")
@@ -20,9 +20,9 @@ async def _setup(suffix: str):
         dept = Department(name=f"DASH-PO-{suffix}")
         session.add_all([cc, loc, dept])
         await session.flush()
-        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
+        admin = AssetUser(company_id=co.id, code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
-                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                        login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         session.add(admin)
         await session.commit()
         return {"co": co, "cc": cc, "cat": cat, "admin": admin}
@@ -70,9 +70,9 @@ async def test_viewer_sees_dashboard_but_never_po_data(client):
     ctx = await _setup("D2B")
     async with SessionLocal() as session:
         admin = await session.get(AssetUser, ctx["admin"].id)
-        viewer = AssetUser(company_id=ctx["co"].id, emp_code="VWR-D2B", name="Viewer", asset_user_type="EMPLOYEE",
+        viewer = AssetUser(company_id=ctx["co"].id, code="VWR-D2B", name="Viewer", asset_user_type="EMPLOYEE",
                          location_id=admin.location_id, department_id=admin.department_id, role="VIEWER",
-                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                         login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         session.add(viewer)
         await session.commit()
         po = await create_purchase_order(session, {
@@ -125,7 +125,7 @@ async def test_open_purchase_orders_is_capped_and_company_scoped():
     async with SessionLocal() as session:
         co_a = Company(code="DASH-PO-D4A", name="Dashboard PO Co A")
         co_b = Company(code="DASH-PO-D4B", name="Dashboard PO Co B")
-        cat = AssetCategory(code="DASH-PO-D4", name="IT")
+        cat = AssetCategory(code="DASH-PO-D4", name="IT", asset_domain="IT")
         session.add_all([co_a, co_b, cat])
         await session.flush()
         cc_a = CostCenter(company_id=co_a.id, code="HO", name="Head Office")
@@ -135,12 +135,12 @@ async def test_open_purchase_orders_is_capped_and_company_scoped():
         dept = Department(name="DASH-PO-D4")
         session.add_all([cc_a, cc_b, loc_a, loc_b, dept])
         await session.flush()
-        admin_a = AssetUser(company_id=co_a.id, emp_code="ADM-D4A", name="Admin A", asset_user_type="EMPLOYEE",
-                          location_id=loc_a.id, department_id=dept.id, role="IT_TEAM",
-                          password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        admin_b = AssetUser(company_id=co_b.id, emp_code="ADM-D4B", name="Admin B", asset_user_type="EMPLOYEE",
-                          location_id=loc_b.id, department_id=dept.id, role="IT_TEAM",
-                          password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        admin_a = AssetUser(company_id=co_a.id, code="ADM-D4A", name="Admin A", asset_user_type="EMPLOYEE",
+                          location_id=loc_a.id, department_id=dept.id, role="OPERATOR",
+                          login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        admin_b = AssetUser(company_id=co_b.id, code="ADM-D4B", name="Admin B", asset_user_type="EMPLOYEE",
+                          location_id=loc_b.id, department_id=dept.id, role="OPERATOR",
+                          login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         session.add_all([admin_a, admin_b])
         await session.commit()
 

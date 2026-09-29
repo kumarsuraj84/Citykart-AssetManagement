@@ -1,4 +1,4 @@
-"""AM-02: procurement field round-trip through AssetOut, the new PUT
+﻿"""AM-02: procurement field round-trip through AssetOut, the new PUT
 /api/assets/{id} edit surface, and custom-field value validation.
 
 Procurement columns (vendor_id/po_number/po_date/invoice_number/
@@ -19,7 +19,7 @@ from app.numbering.models import CodeRule
 async def _setup(code="AM02"):
     async with SessionLocal() as session:
         co = Company(code=code, name=f"{code} Co")
-        cat = AssetCategory(code=f"IT-{code}", name="IT")
+        cat = AssetCategory(code=f"IT-{code}", name="IT", asset_domain="IT")
         session.add_all([co, cat])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
@@ -31,19 +31,19 @@ async def _setup(code="AM02"):
         brand2 = Brand(code=f"HP-{code}", name="HP")
         session.add_all([sub, cc, loc, dept, vendor, brand, brand2])
         await session.flush()
-        stock = AssetUser(company_id=co.id, emp_code=f"STK-{code}", name="IT Stock-HO",
-                        asset_user_type="IT_STOCK", location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-        other_stock = AssetUser(company_id=co.id, emp_code=f"STK2-{code}", name="IT Stock-WH",
-                              asset_user_type="IT_STOCK", location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{code}", name="Admin",
+        stock = AssetUser(company_id=co.id, code=f"STK-{code}", name="IT Stock-HO",
+                        asset_user_type="STOCK_POINT", location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        other_stock = AssetUser(company_id=co.id, code=f"STK2-{code}", name="IT Stock-WH",
+                              asset_user_type="STOCK_POINT", location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        admin = AssetUser(company_id=co.id, code=f"ADM-{code}", name="Admin",
                         asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="ADMIN",
-                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        viewer = AssetUser(company_id=co.id, emp_code=f"VWR-{code}", name="Viewer",
+                        login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        viewer = AssetUser(company_id=co.id, code=f"VWR-{code}", name="Viewer",
                          asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="VIEWER",
-                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        it_team = AssetUser(company_id=co.id, emp_code=f"ITT-{code}", name="IT Team",
-                          asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="IT_TEAM",
-                          password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                         login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        it_team = AssetUser(company_id=co.id, code=f"ITT-{code}", name="IT Team",
+                          asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="OPERATOR",
+                          login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         session.add_all([stock, other_stock, admin, viewer, it_team,
                          CodeRule(company_id=None, prefix_template=f"FA/{code}/", suffix_template="",
                                   start_number=1, pad_width=0)])
@@ -56,8 +56,8 @@ async def _setup(code="AM02"):
         }
 
 
-async def _headers(client, emp_code):
-    resp = await client.post("/api/auth/login", json={"login_id": emp_code, "password": "Passw0rd!"})
+async def _headers(client, code):
+    resp = await client.post("/api/auth/login", json={"login_id": code, "password": "Passw0rd!"})
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 

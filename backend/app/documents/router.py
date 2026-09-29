@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+﻿from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
-from app.core.deps import get_current_asset_user, require_role
+from app.core.deps import WRITE_ROLES, get_current_asset_user, require_role
 from app.assets.router import _get_scoped_asset
 from app.documents.models import AssetDocument, DOC_TYPES
 from app.documents.schemas import AssetDocumentOut
@@ -35,7 +35,7 @@ async def _read_bounded(file: UploadFile) -> bytes:
 @router.post("/api/assets/{asset_id}/documents", response_model=AssetDocumentOut, status_code=201)
 async def upload_document(
     asset_id: int, doc_type: str = Form(...), file: UploadFile = File(...),
-    session: AsyncSession = Depends(get_session), actor=Depends(require_role("ADMIN", "IT_TEAM")),
+    session: AsyncSession = Depends(get_session), actor=Depends(require_role(*WRITE_ROLES)),
 ):
     asset = await _get_scoped_asset(asset_id, session, actor)
     if doc_type not in DOC_TYPES:

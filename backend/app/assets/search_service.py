@@ -46,12 +46,25 @@ async def search_assets(
     sort_dir: str = "asc",
     limit: int = 50,
     offset: int = 0,
+    allowed_domains: tuple[str, ...] | None = None,
+    domain: str | None = None,
 ) -> tuple[list[Asset], int]:
+    """`allowed_domains` (from app.core.deps.allowed_asset_domains) is the
+    caller's server-side scope -- None means unrestricted (ADMIN/SELF_SERVICE),
+    a tuple means the caller may only ever see those domains, enforced
+    unconditionally (spec §14/§15). `domain` is the optional user-requested
+    "Responsibility" filter (spec §22) -- further narrows within whatever
+    `allowed_domains` already permits; a caller can never widen past their
+    own scope by passing a domain outside it."""
     stmt = select(Asset).where(Asset.deleted_at.is_(None))
     if allowed_company_ids is not None:
         stmt = stmt.where(Asset.company_id.in_(allowed_company_ids))
     if company_id is not None:
         stmt = stmt.where(Asset.company_id == company_id)
+    if allowed_domains is not None:
+        stmt = stmt.where(Asset.asset_domain.in_(allowed_domains))
+    if domain is not None and (allowed_domains is None or domain in allowed_domains):
+        stmt = stmt.where(Asset.asset_domain == domain)
     if status is not None:
         stmt = stmt.where(Asset.status == status)
     if category_id is not None:

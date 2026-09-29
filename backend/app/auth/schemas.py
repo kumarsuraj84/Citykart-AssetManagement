@@ -20,7 +20,9 @@ class LoginResponse(BaseModel):
     access_token: str
     must_change_password: bool
     role: str
-    company_id: int
+    # None for the Primary Owner -- a company-less bootstrap account (see
+    # app.asset_users.models.AssetUser.is_primary_owner).
+    company_id: int | None
 
 
 MIN_PASSWORD_LENGTH = 8

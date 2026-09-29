@@ -1,4 +1,4 @@
-"""AM-23: bulk Print Labels -- GET /api/assets/{id}/label.png encodes the
+﻿"""AM-23: bulk Print Labels -- GET /api/assets/{id}/label.png encodes the
 asset's bare asset_code (not a URL, unlike /qr.png) as either a linear
 Code128 barcode (default) or a QR code, so a label printed from it and
 pasted on the asset scans back into this app's own scan fields (Asset
@@ -15,7 +15,7 @@ from app.numbering.models import CodeRule
 async def _setup(suffix: str):
     async with SessionLocal() as session:
         co = Company(code=f"AM23-{suffix}", name=f"AM23 Co {suffix}")
-        cat = AssetCategory(code=f"AM23-{suffix}", name="IT")
+        cat = AssetCategory(code=f"AM23-{suffix}", name="IT", asset_domain="IT")
         session.add_all([co, cat])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
@@ -24,14 +24,14 @@ async def _setup(suffix: str):
         dept = Department(name=f"AM23-{suffix}")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = AssetUser(company_id=co.id, emp_code=f"STK-{suffix}", name="IT Stock", asset_user_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, code=f"STK-{suffix}", name="IT Stock", asset_user_type="STOCK_POINT",
+                        location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        admin = AssetUser(company_id=co.id, code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
-                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        other = AssetUser(company_id=co.id, emp_code=f"OTH-{suffix}", name="Someone Else", asset_user_type="EMPLOYEE",
-                        location_id=loc.id, department_id=dept.id, role="ASSET_USER",
-                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                        login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        other = AssetUser(company_id=co.id, code=f"OTH-{suffix}", name="Someone Else", asset_user_type="EMPLOYEE",
+                        location_id=loc.id, department_id=dept.id, role="SELF_SERVICE",
+                        login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=co.id, prefix_template=f"AM23/{suffix}/", suffix_template="",
                          start_number=1, pad_width=0)
         session.add_all([stock, admin, other, rule])

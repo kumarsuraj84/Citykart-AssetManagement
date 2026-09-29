@@ -1,4 +1,4 @@
-"""AM-25: generic bulk Import/Export, wired into every master via
+﻿"""AM-25: generic bulk Import/Export, wired into every master via
 build_master_router(import_fields=...). Exercises the three distinct
 company-scope shapes (SCOPE_SELF for Companies, SCOPE_COMPANY_ID for Cost
 Centres and Locations, SCOPE_NONE for Vendors/Categories/Subcategories/
@@ -34,12 +34,12 @@ async def _setup(suffix: str):
         dept = Department(name=f"AM25D-{suffix}")
         session.add_all([loc, dept])
         await session.flush()
-        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
+        admin = AssetUser(company_id=co.id, code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
-                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        ita = AssetUser(company_id=co.id, emp_code=f"ITA-{suffix}", name="IT Team", asset_user_type="EMPLOYEE",
-                     location_id=loc.id, department_id=dept.id, role="IT_TEAM",
-                     password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                        login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        ita = AssetUser(company_id=co.id, code=f"ITA-{suffix}", name="IT Team", asset_user_type="EMPLOYEE",
+                     location_id=loc.id, department_id=dept.id, role="OPERATOR",
+                     login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         session.add_all([admin, ita])
         await session.commit()
         return {"co": co, "co_b": co_b, "admin": f"ADM-{suffix}", "ita": f"ITA-{suffix}"}
@@ -255,7 +255,7 @@ async def test_subcategory_import_resolves_category_code(client):
     ids = await _setup("SUB1")
     headers = await _login(client, ids["admin"])
     async with SessionLocal() as session:
-        cat = AssetCategory(code="AM25-CAT1", name="IT")
+        cat = AssetCategory(code="AM25-CAT1", name="IT", asset_domain="IT")
         session.add(cat)
         await session.commit()
 

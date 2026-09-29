@@ -1,4 +1,4 @@
-"""AM-08 Bug 1: GET /api/masters/cost-centers gained an optional, opt-in
+﻿"""AM-08 Bug 1: GET /api/masters/cost-centers gained an optional, opt-in
 `company_id` filter (Add Asset's own consumption of it) without changing the
 unfiltered default the Setup screens rely on. Category (a genuinely global
 master, no `company_id` column) must silently ignore the same query param
@@ -23,35 +23,35 @@ async def _setup():
         await session.flush()
         cc_a = CostCenter(company_id=a.id, code="A01", name="A cc")
         cc_b = CostCenter(company_id=b.id, code="B01", name="B cc")
-        cat = AssetCategory(code="CCCAT", name="CC Category")
+        cat = AssetCategory(code="CCCAT", name="CC Category", asset_domain="IT")
         session.add(AssetUser(
-            company_id=a.id, emp_code="CCADM", name="CC Admin", asset_user_type="EMPLOYEE",
+            company_id=a.id, code="CCADM", name="CC Admin", asset_user_type="EMPLOYEE",
             location_id=loc.id, department_id=dept.id, role="ADMIN",
-            password_hash=hash_password("Passw0rd!"), must_change_password=False,
+            login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False,
         ))
         session.add_all([cc_a, cc_b, cat])
         await session.commit()
         return a.id, b.id, cc_a.id, cc_b.id
 
 
-async def _headers(client, company_id, emp_code="CCADM"):
-    resp = await client.post("/api/auth/login", json={"company_id": company_id, "login_id": emp_code, "password": "Passw0rd!"})
+async def _headers(client, company_id, code="CCADM"):
+    resp = await client.post("/api/auth/login", json={"company_id": company_id, "login_id": code, "password": "Passw0rd!"})
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 
-async def _add_it_team(company_id, emp_code):
+async def _add_it_team(company_id, code):
     """A fresh Location/Department (both genuinely global masters, no
     company_id column) so this helper doesn't depend on _setup()'s own
     loc/dept rows, which it doesn't return."""
     async with SessionLocal() as session:
-        loc = Location(company_id=company_id, code=f"L-{emp_code}", name="HO")
-        dept = Department(name=f"D-{emp_code}")
+        loc = Location(company_id=company_id, code=f"L-{code}", name="HO")
+        dept = Department(name=f"D-{code}")
         session.add_all([loc, dept])
         await session.flush()
         session.add(AssetUser(
-            company_id=company_id, emp_code=emp_code, name="CC IT Team", asset_user_type="EMPLOYEE",
-            location_id=loc.id, department_id=dept.id, role="IT_TEAM",
-            password_hash=hash_password("Passw0rd!"), must_change_password=False,
+            company_id=company_id, code=code, name="CC IT Team", asset_user_type="EMPLOYEE",
+            location_id=loc.id, department_id=dept.id, role="OPERATOR",
+            login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False,
         ))
         await session.commit()
 
@@ -101,7 +101,7 @@ async def test_non_admin_cost_centers_list_is_pinned_to_own_company_when_omitted
     a non-ADMIN, same as ensure_company_in_scope already enforces on writes."""
     a, b, cc_a, cc_b = await _setup()
     await _add_it_team(a, "CCITT-A")
-    h = await _headers(client, a, emp_code="CCITT-A")
+    h = await _headers(client, a, code="CCITT-A")
 
     resp = await client.get("/api/masters/cost-centers", headers=h)
     assert resp.status_code == 200
@@ -115,7 +115,7 @@ async def test_non_admin_cost_centers_list_ignores_other_companys_id_param(clien
     honored either -- read-scoping can't be an opt-out the client controls."""
     a, b, cc_a, cc_b = await _setup()
     await _add_it_team(a, "CCITT-B")
-    h = await _headers(client, a, emp_code="CCITT-B")
+    h = await _headers(client, a, code="CCITT-B")
 
     resp = await client.get(f"/api/masters/cost-centers?company_id={b}", headers=h)
     assert resp.status_code == 200

@@ -65,13 +65,15 @@ async def create_purchase_order(session: AsyncSession, data: dict, actor: AssetU
     return po
 
 
-async def _validate_line_masters(session: AsyncSession, data: dict) -> None:
+async def _validate_line_masters(session: AsyncSession, data: dict) -> AssetCategory:
     """Same referential checks procure_assets already does for category/
     subcategory -- duplicated narrowly here (not imported) because
     procure_assets validates a *complete* asset-creation payload (also
     requiring purchase_date/initial_asset_user_id/cost_center_id, none of which
     are picked at line-entry time -- cost centre lives on the parent PO,
-    see create_purchase_order); this is the PO-entry-time subset only."""
+    see create_purchase_order); this is the PO-entry-time subset only.
+    Returns the resolved Category so callers can derive asset_domain from it
+    (spec §19) without a second lookup."""
     category = await session.get(AssetCategory, data["category_id"])
     if category is None:
         raise ValueError(f"category {data['category_id']} not found")
@@ -82,6 +84,7 @@ async def _validate_line_masters(session: AsyncSession, data: dict) -> None:
             raise ValueError(f"subcategory {subcategory_id} not found")
         if subcategory.category_id != category.id:
             raise ValueError("sub-category does not belong to the selected category")
+    return category
 
 
 async def add_pending_asset_line(
@@ -92,7 +95,7 @@ async def add_pending_asset_line(
     procure_assets' own quantity handling, never one row with a count."""
     if purchase_order.cost_center_id is None:
         raise ValueError("purchase order has no cost centre set")
-    await _validate_line_masters(session, data)
+    category = await _validate_line_masters(session, data)
     purchase_cost = data.get("purchase_cost")
     tax_percent = data.get("tax_percent")
     tax_amount, total_cost = compute_tax(purchase_cost, tax_percent)
@@ -107,6 +110,9 @@ async def add_pending_asset_line(
             brand_id=data.get("brand_id"), model=data.get("model"), warranty_years=data.get("warranty_years"),
             purchase_cost=purchase_cost, tax_percent=tax_percent,
             tax_amount=tax_amount, total_cost=total_cost, status="PENDING",
+            # Spec §19: derived server-side from the selected Category at
+            # line-creation time, same discipline as Asset.asset_domain.
+            asset_domain=category.asset_domain,
             created_by=actor.id, updated_by=actor.id,
         )
         session.add(line)
@@ -118,12 +124,13 @@ async def add_pending_asset_line(
 async def update_pending_asset_line(session: AsyncSession, line: PendingAsset, data: dict, actor: AssetUser) -> PendingAsset:
     if line.status != "PENDING":
         raise ValueError(f"cannot edit a {line.status.lower()} line")
-    await _validate_line_masters(session, data)
+    category = await _validate_line_masters(session, data)
     tax_amount, total_cost = compute_tax(data.get("purchase_cost"), data.get("tax_percent"))
     line.description = data["description"]
     line.barcode = data.get("barcode")
     line.category_id = data["category_id"]
     line.subcategory_id = data.get("subcategory_id")
+    line.asset_domain = category.asset_domain
     line.brand_id = data.get("brand_id")
     line.model = data.get("model")
     line.warranty_years = data.get("warranty_years")

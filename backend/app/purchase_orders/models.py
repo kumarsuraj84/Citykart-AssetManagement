@@ -51,6 +51,13 @@ class PendingAsset(Base, AuditMixin):
 
     status: Mapped[str] = mapped_column(String(20), default="PENDING")
 
+    # IT / NON_IT, derived server-side from Category.asset_domain when the
+    # line is created (spec §19) -- copied onto Asset.asset_domain unchanged
+    # at Delivery Done. Nullable: older rows created before this column
+    # existed never get backfilled (the table is empty in every environment
+    # audited so far, but the column stays nullable for forward-compat).
+    asset_domain: Mapped[str | None] = mapped_column(String(10))
+
     serial_number: Mapped[str | None] = mapped_column(String(200))
     invoice_number: Mapped[str | None] = mapped_column(String(100))
     invoice_date: Mapped[date | None] = mapped_column(Date)

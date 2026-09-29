@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+﻿from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
-from app.core.deps import ensure_company_in_scope, require_role, scoped_company_ids
+from app.core.deps import WRITE_ROLES, ensure_company_in_scope, require_role, scoped_company_ids
 from app.purchase_orders.models import PurchaseOrder, PendingAsset
 from app.purchase_orders.schemas import (
     DeliveryDoneIn, PendingAssetLineIn, PendingAssetLineUpdateIn, PendingAssetOut,
@@ -29,7 +29,7 @@ async def _get_scoped_po(po_id: int, session: AsyncSession, asset_user) -> Purch
 @router.post("", response_model=PurchaseOrderOut, status_code=201)
 async def create_po(
     body: PurchaseOrderCreateIn, session: AsyncSession = Depends(get_session),
-    actor=Depends(require_role("ADMIN", "IT_TEAM")),
+    actor=Depends(require_role(*WRITE_ROLES)),
 ):
     await ensure_company_in_scope(session, actor, body.company_id)
     try:
@@ -43,7 +43,7 @@ async def create_po(
 
 
 @router.get("", response_model=list[PurchaseOrderOut])
-async def list_pos(session: AsyncSession = Depends(get_session), asset_user=Depends(require_role("ADMIN", "IT_TEAM"))):
+async def list_pos(session: AsyncSession = Depends(get_session), asset_user=Depends(require_role(*WRITE_ROLES))):
     allowed = await scoped_company_ids(session, asset_user)
     stmt = select(PurchaseOrder).where(PurchaseOrder.is_active.is_(True))
     if allowed is not None:
@@ -57,14 +57,14 @@ async def list_pos(session: AsyncSession = Depends(get_session), asset_user=Depe
 
 
 @router.get("/{po_id}", response_model=PurchaseOrderOut)
-async def get_po(po_id: int, session: AsyncSession = Depends(get_session), asset_user=Depends(require_role("ADMIN", "IT_TEAM"))):
+async def get_po(po_id: int, session: AsyncSession = Depends(get_session), asset_user=Depends(require_role(*WRITE_ROLES))):
     po = await _get_scoped_po(po_id, session, asset_user)
     pi_by_po = await compute_pi_status(session, [po.id])
     return PurchaseOrderOut.model_validate(po).model_copy(update=pi_by_po.get(po.id, {}))
 
 
 @router.get("/{po_id}/lines", response_model=list[PendingAssetOut])
-async def list_lines(po_id: int, session: AsyncSession = Depends(get_session), asset_user=Depends(require_role("ADMIN", "IT_TEAM"))):
+async def list_lines(po_id: int, session: AsyncSession = Depends(get_session), asset_user=Depends(require_role(*WRITE_ROLES))):
     await _get_scoped_po(po_id, session, asset_user)
     stmt = select(PendingAsset).where(PendingAsset.purchase_order_id == po_id).order_by(PendingAsset.id)
     return (await session.execute(stmt)).scalars().all()
@@ -73,7 +73,7 @@ async def list_lines(po_id: int, session: AsyncSession = Depends(get_session), a
 @router.post("/{po_id}/lines", response_model=list[PendingAssetOut], status_code=201)
 async def add_line(
     po_id: int, body: PendingAssetLineIn, session: AsyncSession = Depends(get_session),
-    actor=Depends(require_role("ADMIN", "IT_TEAM")),
+    actor=Depends(require_role(*WRITE_ROLES)),
 ):
     po = await _get_scoped_po(po_id, session, actor)
     try:
@@ -90,7 +90,7 @@ async def add_line(
 @router.put("/lines/{line_id}", response_model=PendingAssetOut)
 async def edit_line(
     line_id: int, body: PendingAssetLineUpdateIn, session: AsyncSession = Depends(get_session),
-    actor=Depends(require_role("ADMIN", "IT_TEAM")),
+    actor=Depends(require_role(*WRITE_ROLES)),
 ):
     line = await session.get(PendingAsset, line_id)
     if line is None:
@@ -109,7 +109,7 @@ async def edit_line(
 @router.post("/lines/{line_id}/cancel", response_model=PendingAssetOut)
 async def cancel_line(
     line_id: int, session: AsyncSession = Depends(get_session),
-    actor=Depends(require_role("ADMIN", "IT_TEAM")),
+    actor=Depends(require_role(*WRITE_ROLES)),
 ):
     line = await session.get(PendingAsset, line_id)
     if line is None:
@@ -128,7 +128,7 @@ async def cancel_line(
 @router.post("/{po_id}/deliver", response_model=list[PendingAssetOut])
 async def deliver(
     po_id: int, body: DeliveryDoneIn, session: AsyncSession = Depends(get_session),
-    actor=Depends(require_role("ADMIN", "IT_TEAM")),
+    actor=Depends(require_role(*WRITE_ROLES)),
 ):
     po = await _get_scoped_po(po_id, session, actor)
     line_ids = [d.pending_asset_id for d in body.lines]
@@ -154,7 +154,7 @@ async def deliver(
 @router.post("/{po_id}/record-pi", response_model=RecordPiOut)
 async def record_pi(
     po_id: int, body: RecordPiIn, session: AsyncSession = Depends(get_session),
-    actor=Depends(require_role("ADMIN", "IT_TEAM")),
+    actor=Depends(require_role(*WRITE_ROLES)),
 ):
     po = await _get_scoped_po(po_id, session, actor)
     result = await record_pi_for_invoice(

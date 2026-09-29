@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+﻿from datetime import date, timedelta
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.assets.service import procure_assets
@@ -10,7 +10,7 @@ from app.numbering.models import CodeRule
 async def test_dashboard_counts_and_warranty_alert(client):
     async with SessionLocal() as session:
         co = Company(code="CKS-DB1", name="Dashboard Test Co")
-        cat = AssetCategory(code="IT-DB1", name="IT")
+        cat = AssetCategory(code="IT-DB1", name="IT", asset_domain="IT")
         session.add_all([co, cat])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
@@ -19,11 +19,11 @@ async def test_dashboard_counts_and_warranty_alert(client):
         dept = Department(name="IT-DB1")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = AssetUser(company_id=co.id, emp_code="ITSTOCK-DB1", name="IT Stock-HO", asset_user_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-        it_admin = AssetUser(company_id=co.id, emp_code="ITA-DB1", name="IT Admin", asset_user_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, code="ITSTOCK-DB1", name="IT Stock-HO", asset_user_type="STOCK_POINT",
+                        location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        it_admin = AssetUser(company_id=co.id, code="ITA-DB1", name="IT Admin", asset_user_type="EMPLOYEE",
                            location_id=loc.id, department_id=dept.id, role="ADMIN",
-                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                           login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/CK_",
                          suffix_template="", start_number=1, pad_width=0)
         session.add_all([stock, it_admin, rule])
@@ -56,7 +56,7 @@ async def test_dashboard_scopes_by_company_and_long_allocation_alert():
     async with SessionLocal() as session:
         co_a = Company(code="CKS-DB2A", name="Dashboard Co A")
         co_b = Company(code="CKS-DB2B", name="Dashboard Co B")
-        cat = AssetCategory(code="IT-DB2", name="IT")
+        cat = AssetCategory(code="IT-DB2", name="IT", asset_domain="IT")
         session.add_all([co_a, co_b, cat])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
@@ -68,22 +68,22 @@ async def test_dashboard_scopes_by_company_and_long_allocation_alert():
         session.add_all([sub, cc_a, cc_b, loc_a, loc_b, dept])
         await session.flush()
 
-        stock_a = AssetUser(company_id=co_a.id, emp_code="ITSTOCK-DB2A", name="IT Stock A", asset_user_type="IT_STOCK",
-                          location_id=loc_a.id, department_id=dept.id, role="ASSET_USER")
+        stock_a = AssetUser(company_id=co_a.id, code="ITSTOCK-DB2A", name="IT Stock A", asset_user_type="STOCK_POINT",
+                          location_id=loc_a.id, department_id=dept.id, role="SELF_SERVICE")
         # role=IT_TEAM (not ADMIN) so this asset_user is genuinely scoped to its own company --
         # scoped_company_ids(asset_user) returns None (unrestricted, sees everything) for
         # ADMIN by design, so proving per-company scoping requires a non-ADMIN caller.
-        admin_a = AssetUser(company_id=co_a.id, emp_code="ITA-DB2A", name="IT Team A", asset_user_type="EMPLOYEE",
-                          location_id=loc_a.id, department_id=dept.id, role="IT_TEAM",
-                          password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        asset_user_a = AssetUser(company_id=co_a.id, emp_code="EMP-DB2A", name="Employee A", asset_user_type="EMPLOYEE",
-                           location_id=loc_a.id, department_id=dept.id, role="ASSET_USER",
-                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        stock_b = AssetUser(company_id=co_b.id, emp_code="ITSTOCK-DB2B", name="IT Stock B", asset_user_type="IT_STOCK",
-                          location_id=loc_b.id, department_id=dept.id, role="ASSET_USER")
-        admin_b = AssetUser(company_id=co_b.id, emp_code="ITA-DB2B", name="IT Admin B", asset_user_type="EMPLOYEE",
+        admin_a = AssetUser(company_id=co_a.id, code="ITA-DB2A", name="IT Team A", asset_user_type="EMPLOYEE",
+                          location_id=loc_a.id, department_id=dept.id, role="OPERATOR",
+                          login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        asset_user_a = AssetUser(company_id=co_a.id, code="EMP-DB2A", name="Employee A", asset_user_type="EMPLOYEE",
+                           location_id=loc_a.id, department_id=dept.id, role="SELF_SERVICE",
+                           login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        stock_b = AssetUser(company_id=co_b.id, code="ITSTOCK-DB2B", name="IT Stock B", asset_user_type="STOCK_POINT",
+                          location_id=loc_b.id, department_id=dept.id, role="SELF_SERVICE")
+        admin_b = AssetUser(company_id=co_b.id, code="ITA-DB2B", name="IT Admin B", asset_user_type="EMPLOYEE",
                           location_id=loc_b.id, department_id=dept.id, role="ADMIN",
-                          password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                          login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/CK_",
                          suffix_template="", start_number=1, pad_width=0)
         session.add_all([stock_a, admin_a, asset_user_a, stock_b, admin_b, rule])

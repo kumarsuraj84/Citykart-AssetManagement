@@ -1,4 +1,4 @@
-"""AM-05: CustomField.company_id (Global vs. company-specific scope),
+﻿"""AM-05: CustomField.company_id (Global vs. company-specific scope),
 scope-mutation authorization, and field_key/field_type/scope immutability.
 Asset-side applicability (which definitions actually apply when creating/
 editing an asset) is covered separately in
@@ -21,22 +21,22 @@ async def _setup(code="AM05CF"):
         dept = Department(name=f"IT-{code}")
         session.add_all([loc, loc_b, dept])
         await session.flush()
-        admin = AssetUser(company_id=a.id, emp_code=f"ADM-{code}", name="Admin", asset_user_type="EMPLOYEE",
+        admin = AssetUser(company_id=a.id, code=f"ADM-{code}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
-                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        it_a = AssetUser(company_id=a.id, emp_code=f"ITA-{code}", name="IT A", asset_user_type="EMPLOYEE",
-                       location_id=loc.id, department_id=dept.id, role="IT_TEAM",
-                       password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        it_b = AssetUser(company_id=b.id, emp_code=f"ITB-{code}", name="IT B", asset_user_type="EMPLOYEE",
-                       location_id=loc_b.id, department_id=dept.id, role="IT_TEAM",
-                       password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        viewer_a = AssetUser(company_id=a.id, emp_code=f"VWA-{code}", name="Viewer A", asset_user_type="EMPLOYEE",
+                        login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        it_a = AssetUser(company_id=a.id, code=f"ITA-{code}", name="IT A", asset_user_type="EMPLOYEE",
+                       location_id=loc.id, department_id=dept.id, role="OPERATOR",
+                       login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        it_b = AssetUser(company_id=b.id, code=f"ITB-{code}", name="IT B", asset_user_type="EMPLOYEE",
+                       location_id=loc_b.id, department_id=dept.id, role="OPERATOR",
+                       login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        viewer_a = AssetUser(company_id=a.id, code=f"VWA-{code}", name="Viewer A", asset_user_type="EMPLOYEE",
                            location_id=loc.id, department_id=dept.id, role="VIEWER",
-                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        stock_a = AssetUser(company_id=a.id, emp_code=f"STK-{code}", name="IT Stock", asset_user_type="IT_STOCK",
-                          location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+                           login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        stock_a = AssetUser(company_id=a.id, code=f"STK-{code}", name="IT Stock", asset_user_type="STOCK_POINT",
+                          location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
         cc = CostCenter(company_id=a.id, code=f"CC-{code}", name="Cost Centre")
-        cat = AssetCategory(code=f"CAT-{code}", name="Category")
+        cat = AssetCategory(code=f"CAT-{code}", name="Category", asset_domain="IT")
         vendor = Vendor(code=f"VND-{code}", name="Test Vendor")
         rule = CodeRule(company_id=None, prefix_template=f"FA/{code}/", suffix_template="",
                          start_number=1, pad_width=0)
@@ -52,8 +52,8 @@ async def _setup(code="AM05CF"):
         }
 
 
-async def _headers(client, emp_code):
-    resp = await client.post("/api/auth/login", json={"login_id": emp_code, "password": "Passw0rd!"})
+async def _headers(client, code):
+    resp = await client.post("/api/auth/login", json={"login_id": code, "password": "Passw0rd!"})
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 

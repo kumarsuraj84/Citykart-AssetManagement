@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+﻿from datetime import datetime, timedelta, timezone
 
 from jose import jwt
 
@@ -9,7 +9,7 @@ from app.asset_users.models import AssetUser
 from app.masters.models import Company, Department, Location
 
 
-async def _make_admin(session, company_code="CKSR1", emp_code="ADMINR1"):
+async def _make_admin(session, company_code="CKSR1", code="ADMINR1"):
     co = Company(code=company_code, name="Refresh Test Co")
     session.add(co)
     await session.flush()
@@ -18,9 +18,9 @@ async def _make_admin(session, company_code="CKSR1", emp_code="ADMINR1"):
     session.add_all([loc, dept])
     await session.flush()
     asset_user = AssetUser(
-        company_id=co.id, emp_code=emp_code, name="Admin",
+        company_id=co.id, code=code, name="Admin",
         asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id,
-        role="ADMIN", password_hash=hash_password("Passw0rd!"), must_change_password=False,
+        role="ADMIN", login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False,
     )
     session.add(asset_user)
     await session.commit()
@@ -29,7 +29,7 @@ async def _make_admin(session, company_code="CKSR1", emp_code="ADMINR1"):
 
 async def _login(client, co, asset_user):
     resp = await client.post("/api/auth/login", json={
-        "login_id": asset_user.emp_code, "password": "Passw0rd!",
+        "login_id": asset_user.code, "password": "Passw0rd!",
     })
     assert resp.status_code == 200
     return resp

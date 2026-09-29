@@ -1,11 +1,11 @@
-from app.core.db import SessionLocal
+﻿from app.core.db import SessionLocal
 from app.core.security import hash_password, verify_password
 from app.masters.models import Company, Location, Department
 from app.asset_users.models import AssetUser
 
 
-async def _admin_headers(client, company_code="CKS6", emp_code="HADMIN"):
-    # emp_code defaults to "HADMIN" for the common single-company-per-test case,
+async def _admin_headers(client, company_code="CKS6", code="HADMIN"):
+    # code defaults to "HADMIN" for the common single-company-per-test case,
     # but login no longer takes a company_id (the login screen doesn't ask for
     # one -- see app/auth/router.py::login), so a test that calls this twice to
     # set up two DIFFERENT companies must pass distinct emp_codes, or the second
@@ -19,30 +19,30 @@ async def _admin_headers(client, company_code="CKS6", emp_code="HADMIN"):
         session.add_all([loc, dept])
         await session.flush()
         asset_user = AssetUser(
-            company_id=co.id, emp_code=emp_code, name="AssetUser Admin",
+            company_id=co.id, code=code, name="AssetUser Admin",
             asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id,
-            role="ADMIN", password_hash=hash_password("Passw0rd!"), must_change_password=False,
+            role="ADMIN", login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False,
         )
         session.add(asset_user)
         await session.commit()
 
-    resp = await client.post("/api/auth/login", json={"login_id": emp_code, "password": "Passw0rd!"})
+    resp = await client.post("/api/auth/login", json={"login_id": code, "password": "Passw0rd!"})
     token = resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}, co.id, loc.id, dept.id
 
 
-async def _login_as(client, company_id, location_id, department_id, emp_code, role, password="Passw0rd!"):
+async def _login_as(client, company_id, location_id, department_id, code, role, password="Passw0rd!"):
     async with SessionLocal() as session:
         asset_user = AssetUser(
-            company_id=company_id, emp_code=emp_code, name=f"{role} {emp_code}",
+            company_id=company_id, code=code, name=f"{role} {code}",
             asset_user_type="EMPLOYEE", location_id=location_id, department_id=department_id,
-            role=role, password_hash=hash_password(password), must_change_password=False,
+            role=role, login_enabled=True, password_hash=hash_password(password), must_change_password=False,
         )
         session.add(asset_user)
         await session.commit()
         asset_user_id = asset_user.id
 
-    resp = await client.post("/api/auth/login", json={"company_id": company_id, "login_id": emp_code, "password": password})
+    resp = await client.post("/api/auth/login", json={"company_id": company_id, "login_id": code, "password": password})
     token = resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}, asset_user_id
 
@@ -51,9 +51,9 @@ async def test_create_asset_user_and_reset_password(client):
     headers, company_id, location_id, department_id = await _admin_headers(client)
 
     create_resp = await client.post("/api/asset-users", json={
-        "company_id": company_id, "emp_code": "CS6872", "name": "Ankur",
+        "company_id": company_id, "code": "CS6872", "name": "Ankur",
         "asset_user_type": "EMPLOYEE", "location_id": location_id, "department_id": department_id,
-        "email": None, "phone": None, "role": "ASSET_USER",
+        "email": None, "phone": None, "role": "SELF_SERVICE", "login_enabled": True,
     }, headers=headers)
     assert create_resp.status_code == 201
     asset_user_id = create_resp.json()["id"]
@@ -75,11 +75,11 @@ async def test_it_team_cannot_create_asset_user(client):
     role=ADMIN."""
     headers, company_id, location_id, department_id = await _admin_headers(client, company_code="CKS9A")
     it_headers, _ = await _login_as(
-        client, company_id, location_id, department_id, emp_code="ITUSER", role="IT_TEAM",
+        client, company_id, location_id, department_id, code="ITUSER", role="OPERATOR",
     )
 
     resp = await client.post("/api/asset-users", json={
-        "company_id": company_id, "emp_code": "ESCALATE", "name": "Escalate Me",
+        "company_id": company_id, "code": "ESCALATE", "name": "Escalate Me",
         "asset_user_type": "EMPLOYEE", "location_id": location_id, "department_id": department_id,
         "email": None, "phone": None, "role": "ADMIN",
     }, headers=it_headers)
@@ -93,17 +93,17 @@ async def test_it_team_cannot_update_a_asset_user(client):
     (there's no "role-less" edit path to carve out from it)."""
     headers, company_id, location_id, department_id = await _admin_headers(client, company_code="CKS9D")
     it_headers, _ = await _login_as(
-        client, company_id, location_id, department_id, emp_code="ITUSERD", role="IT_TEAM",
+        client, company_id, location_id, department_id, code="ITUSERD", role="OPERATOR",
     )
     create_resp = await client.post("/api/asset-users", json={
-        "company_id": company_id, "emp_code": "TARGETD", "name": "Target AssetUser",
+        "company_id": company_id, "code": "TARGETD", "name": "Target AssetUser",
         "asset_user_type": "EMPLOYEE", "location_id": location_id, "department_id": department_id,
-        "email": None, "phone": None, "role": "ASSET_USER",
+        "email": None, "phone": None, "role": "SELF_SERVICE",
     }, headers=headers)
     asset_user_id = create_resp.json()["id"]
 
     resp = await client.put(f"/api/asset-users/{asset_user_id}", json={
-        "company_id": company_id, "emp_code": "TARGETD", "name": "Target AssetUser Renamed",
+        "company_id": company_id, "code": "TARGETD", "name": "Target AssetUser Renamed",
         "asset_user_type": "EMPLOYEE", "location_id": location_id, "department_id": department_id,
         "email": None, "phone": None, "role": "ADMIN",
     }, headers=it_headers)
@@ -111,19 +111,19 @@ async def test_it_team_cannot_update_a_asset_user(client):
 
     async with SessionLocal() as session:
         row = await session.get(AssetUser, asset_user_id)
-        assert row.role == "ASSET_USER"
+        assert row.role == "SELF_SERVICE"
         assert row.name == "Target AssetUser"
 
 
 async def test_it_team_cannot_deactivate_or_reset_password_for_a_asset_user(client):
     headers, company_id, location_id, department_id = await _admin_headers(client, company_code="CKS9E")
     it_headers, _ = await _login_as(
-        client, company_id, location_id, department_id, emp_code="ITUSERE", role="IT_TEAM",
+        client, company_id, location_id, department_id, code="ITUSERE", role="OPERATOR",
     )
     create_resp = await client.post("/api/asset-users", json={
-        "company_id": company_id, "emp_code": "TARGETE", "name": "Target AssetUser",
+        "company_id": company_id, "code": "TARGETE", "name": "Target AssetUser",
         "asset_user_type": "EMPLOYEE", "location_id": location_id, "department_id": department_id,
-        "email": None, "phone": None, "role": "ASSET_USER",
+        "email": None, "phone": None, "role": "SELF_SERVICE",
     }, headers=headers)
     asset_user_id = create_resp.json()["id"]
 
@@ -136,14 +136,14 @@ async def test_admin_can_change_a_asset_users_role(client):
     path that must keep working."""
     headers, company_id, location_id, department_id = await _admin_headers(client, company_code="CKS9F")
     create_resp = await client.post("/api/asset-users", json={
-        "company_id": company_id, "emp_code": "TARGETF", "name": "Target AssetUser",
+        "company_id": company_id, "code": "TARGETF", "name": "Target AssetUser",
         "asset_user_type": "EMPLOYEE", "location_id": location_id, "department_id": department_id,
-        "email": None, "phone": None, "role": "ASSET_USER",
+        "email": None, "phone": None, "role": "SELF_SERVICE",
     }, headers=headers)
     asset_user_id = create_resp.json()["id"]
 
     resp = await client.put(f"/api/asset-users/{asset_user_id}", json={
-        "company_id": company_id, "emp_code": "TARGETF", "name": "Target AssetUser",
+        "company_id": company_id, "code": "TARGETF", "name": "Target AssetUser",
         "asset_user_type": "EMPLOYEE", "location_id": location_id, "department_id": department_id,
         "email": None, "phone": None, "role": "VIEWER",
     }, headers=headers)
@@ -155,21 +155,21 @@ async def test_non_admin_asset_user_list_scoped_to_own_company(client):
     """Finding 2 fix: GET /api/asset-users must never leak another company's
     asset_users to a non-ADMIN caller, even when they explicitly request a
     foreign company_id via the query string."""
-    headers_a, company_a, location_a, department_a = await _admin_headers(client, company_code="CKS9B", emp_code="HADMINB")
-    headers_b, company_b, location_b, department_b = await _admin_headers(client, company_code="CKS9C", emp_code="HADMINC")
+    headers_a, company_a, location_a, department_a = await _admin_headers(client, company_code="CKS9B", code="HADMINB")
+    headers_b, company_b, location_b, department_b = await _admin_headers(client, company_code="CKS9C", code="HADMINC")
 
     # A asset_user that exists only in company B -- would leak if scoping is broken.
     create_resp = await client.post("/api/asset-users", json={
-        "company_id": company_b, "emp_code": "SECRETB", "name": "Secret B AssetUser",
+        "company_id": company_b, "code": "SECRETB", "name": "Secret B AssetUser",
         "asset_user_type": "EMPLOYEE", "location_id": location_b, "department_id": department_b,
-        "email": None, "phone": None, "role": "ASSET_USER",
+        "email": None, "phone": None, "role": "SELF_SERVICE",
     }, headers=headers_b)
     assert create_resp.status_code == 201
 
     # A plain, non-ADMIN caller in company A. VIEWER, not ASSET_USER: a ASSET_USER may not
     # list asset_users at all (403, see tests/reports/test_asset_user_role_access.py).
     viewer_headers, _ = await _login_as(
-        client, company_a, location_a, department_a, emp_code="VIEWERA", role="VIEWER",
+        client, company_a, location_a, department_a, code="VIEWERA", role="VIEWER",
     )
 
     resp = await client.get(f"/api/asset-users?company_id={company_b}", headers=viewer_headers)

@@ -1,4 +1,4 @@
-from datetime import date
+﻿from datetime import date
 from app.core.db import SessionLocal
 from app.masters.models import Company, AssetCategory, CostCenter
 from app.purchase_orders.models import PurchaseOrder, PendingAsset
@@ -7,7 +7,7 @@ from app.purchase_orders.models import PurchaseOrder, PendingAsset
 async def test_purchase_order_and_pending_asset_round_trip():
     async with SessionLocal() as session:
         co = Company(code="PO-MODEL-1", name="PO Model Test Co")
-        cat = AssetCategory(code="PO-MODEL-1", name="IT")
+        cat = AssetCategory(code="PO-MODEL-1", name="IT", asset_domain="IT")
         session.add_all([co, cat])
         await session.flush()
         cc = CostCenter(company_id=co.id, code="HO", name="Head Office")

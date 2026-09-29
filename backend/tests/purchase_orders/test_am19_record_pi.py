@@ -1,4 +1,4 @@
-"""AM-19: PI Number/Date arrive from Finance per Invoice, not per PO -- a PO
+﻿"""AM-19: PI Number/Date arrive from Finance per Invoice, not per PO -- a PO
 delivered across several partial deliveries gets one Invoice (and later one
 PI) per delivery. POST /api/purchase-orders/{id}/record-pi applies PI
 Number/Date to every asset delivered under a given (PO, Invoice Number)
@@ -13,7 +13,7 @@ from app.numbering.models import CodeRule
 async def _setup(suffix: str):
     async with SessionLocal() as session:
         company = Company(code=f"AM19-{suffix}", name=f"AM19 Co {suffix}")
-        cat = AssetCategory(code=f"AM19-{suffix}", name="IT")
+        cat = AssetCategory(code=f"AM19-{suffix}", name="IT", asset_domain="IT")
         session.add_all([company, cat])
         await session.flush()
         cc = CostCenter(company_id=company.id, code="HO", name="Head Office")
@@ -21,14 +21,14 @@ async def _setup(suffix: str):
         dept = Department(name=f"AM19-{suffix}")
         session.add_all([cc, loc, dept])
         await session.flush()
-        stock = AssetUser(company_id=company.id, emp_code=f"STK-{suffix}", name="IT Stock", asset_user_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-        admin = AssetUser(company_id=company.id, emp_code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
+        stock = AssetUser(company_id=company.id, code=f"STK-{suffix}", name="IT Stock", asset_user_type="STOCK_POINT",
+                        location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        admin = AssetUser(company_id=company.id, code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
-                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        viewer = AssetUser(company_id=company.id, emp_code=f"VWR-{suffix}", name="Viewer", asset_user_type="EMPLOYEE",
+                        login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        viewer = AssetUser(company_id=company.id, code=f"VWR-{suffix}", name="Viewer", asset_user_type="EMPLOYEE",
                          location_id=loc.id, department_id=dept.id, role="VIEWER",
-                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                         login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=company.id, prefix_template=f"AM19/{suffix}/", suffix_template="",
                          start_number=1, pad_width=0)
         session.add_all([stock, admin, viewer, rule])

@@ -1,4 +1,4 @@
-"""POST /api/assets: every code-rule token resolves to a real value, service-layer
+﻿"""POST /api/assets: every code-rule token resolves to a real value, service-layer
 errors come back as clean 422s (never raw 500s), and a non-ADMIN actor can only
 create assets inside their own company scope (403 otherwise)."""
 from app.core.db import SessionLocal
@@ -17,8 +17,8 @@ async def _company(session, code):
     cc = CostCenter(company_id=co.id, code="HO01", name="HO")
     session.add_all([loc, dept, cc])
     await session.flush()
-    stock = AssetUser(company_id=co.id, emp_code=f"STOCK-{code}", name=f"IT Stock {code}", asset_user_type="IT_STOCK",
-                   location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+    stock = AssetUser(company_id=co.id, code=f"STOCK-{code}", name=f"IT Stock {code}", asset_user_type="STOCK_POINT",
+                   location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
     vendor = Vendor(code=f"VND-{code}", name=f"{code} Vendor")
     session.add_all([stock, vendor])
     await session.flush()
@@ -29,16 +29,16 @@ async def _setup(prefix_template="FA/{cost_center.code}/{category.code}/{subcate
     async with SessionLocal() as session:
         a = await _company(session, "CKA")
         b = await _company(session, "CKB")
-        cat = AssetCategory(code="IT", name="IT")
+        cat = AssetCategory(code="IT", name="IT", asset_domain="IT")
         session.add(cat)
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
-        admin = AssetUser(company_id=a["co"].id, emp_code="ADM", name="Admin", asset_user_type="EMPLOYEE",
+        admin = AssetUser(company_id=a["co"].id, code="ADM", name="Admin", asset_user_type="EMPLOYEE",
                        location_id=a["loc"].id, department_id=a["dept"].id, role="ADMIN",
-                       password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        it_a = AssetUser(company_id=a["co"].id, emp_code="ITA", name="IT Team A", asset_user_type="EMPLOYEE",
-                      location_id=a["loc"].id, department_id=a["dept"].id, role="IT_TEAM",
-                      password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                       login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        it_a = AssetUser(company_id=a["co"].id, code="ITA", name="IT Team A", asset_user_type="EMPLOYEE",
+                      location_id=a["loc"].id, department_id=a["dept"].id, role="OPERATOR",
+                      login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         session.add_all([sub, admin, it_a])
         if with_rule:
             session.add(CodeRule(company_id=None, prefix_template=prefix_template, suffix_template="",
@@ -47,8 +47,8 @@ async def _setup(prefix_template="FA/{cost_center.code}/{category.code}/{subcate
     return a, b, cat, sub
 
 
-async def _headers(client, company_id, emp_code):
-    resp = await client.post("/api/auth/login", json={"company_id": company_id, "login_id": emp_code, "password": "Passw0rd!"})
+async def _headers(client, company_id, code):
+    resp = await client.post("/api/auth/login", json={"company_id": company_id, "login_id": code, "password": "Passw0rd!"})
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 

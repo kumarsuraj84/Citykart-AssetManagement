@@ -1,4 +1,4 @@
-"""AM-24: GET /api/asset-users/me/companies -- which companies the caller may
+﻿"""AM-24: GET /api/asset-users/me/companies -- which companies the caller may
 create/write records under. Also the live end-to-end proof that
 POST /api/asset-users/{id}/company-access now actually has an effect (the
 underlying scoped_company_ids bug this whole feature depends on)."""
@@ -19,12 +19,12 @@ async def _setup(suffix: str):
         dept = Department(name=f"AM24-{suffix}")
         session.add_all([loc, dept])
         await session.flush()
-        admin = AssetUser(company_id=co_a.id, emp_code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
+        admin = AssetUser(company_id=co_a.id, code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
-                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        staff = AssetUser(company_id=co_a.id, emp_code=f"ITT-{suffix}", name="IT Team", asset_user_type="EMPLOYEE",
-                        location_id=loc.id, department_id=dept.id, role="IT_TEAM",
-                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                        login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        staff = AssetUser(company_id=co_a.id, code=f"ITT-{suffix}", name="IT Team", asset_user_type="EMPLOYEE",
+                        location_id=loc.id, department_id=dept.id, role="OPERATOR",
+                        login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         session.add_all([admin, staff])
         await session.commit()
         return {"co_a": co_a, "co_b": co_b, "admin": f"ADM-{suffix}", "staff": f"ITT-{suffix}", "staff_id": staff.id}
@@ -106,7 +106,7 @@ async def test_it_team_can_now_create_an_asset_in_a_granted_second_company(clien
     )
 
     async with SessionLocal() as session:
-        cat = AssetCategory(code="AM24-CAT", name="IT")
+        cat = AssetCategory(code="AM24-CAT", name="IT", asset_domain="IT")
         vendor_b = Vendor(code="AM24-VNDB", name="B Vendor")
         session.add_all([cat, vendor_b])
         await session.flush()
@@ -116,8 +116,8 @@ async def test_it_team_can_now_create_an_asset_in_a_granted_second_company(clien
         dept_b = Department(name="AM24-DEPTB")
         session.add_all([sub, cc_b, loc_b, dept_b])
         await session.flush()
-        stock_b = AssetUser(company_id=ids["co_b"].id, emp_code="STKB-MC4", name="B Stock", asset_user_type="IT_STOCK",
-                          location_id=loc_b.id, department_id=dept_b.id, role="ASSET_USER")
+        stock_b = AssetUser(company_id=ids["co_b"].id, code="STKB-MC4", name="B Stock", asset_user_type="STOCK_POINT",
+                          location_id=loc_b.id, department_id=dept_b.id, role="SELF_SERVICE")
         rule_b = CodeRule(company_id=ids["co_b"].id, prefix_template="AM24MC4/", suffix_template="",
                            start_number=1, pad_width=0)
         session.add_all([stock_b, rule_b])

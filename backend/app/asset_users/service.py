@@ -64,6 +64,8 @@ class AssetUserService:
         asset_user = await self.get(asset_user_id)
         if asset_user is None:
             return False
+        if asset_user.is_primary_owner and await self.count_active_primary_owners() <= 1:
+            raise ValueError("cannot deactivate the last remaining Primary Owner")
         asset_user.is_active = False
         asset_user.updated_by = actor_id
         await self.session.commit()
@@ -81,6 +83,26 @@ class AssetUserService:
         asset_user.updated_by = actor_id
         await self.session.commit()
         return temp_password
+
+    async def count_active_primary_owners(self) -> int:
+        stmt = select(AssetUser).where(AssetUser.is_active.is_(True), AssetUser.is_primary_owner.is_(True))
+        return len((await self.session.execute(stmt)).scalars().all())
+
+    async def set_primary_owner(self, asset_user_id: int, value: bool, actor_id: int) -> AssetUser | None:
+        """Only reachable via require_primary_owner (an existing Primary Owner
+        granting/revoking another). Revoking the last remaining Primary Owner
+        is refused -- the system must always have at least one account with
+        unconditional access, independent of ordinary role management."""
+        asset_user = await self.session.get(AssetUser, asset_user_id)
+        if asset_user is None:
+            return None
+        if not value and asset_user.is_primary_owner and await self.count_active_primary_owners() <= 1:
+            raise ValueError("cannot remove the last remaining Primary Owner")
+        asset_user.is_primary_owner = value
+        asset_user.updated_by = actor_id
+        await self.session.commit()
+        await self.session.refresh(asset_user)
+        return asset_user
 
     async def set_company_access(self, asset_user_id: int, company_ids: list[int]) -> bool:
         asset_user = await self.session.get(AssetUser, asset_user_id)

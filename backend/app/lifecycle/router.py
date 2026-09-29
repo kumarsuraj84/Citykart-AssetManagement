@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+﻿from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
-from app.core.deps import require_role
+from app.core.deps import WRITE_ROLES, require_role
 from app.assets.router import _get_scoped_asset
 from app.core.deps import get_current_asset_user
 from app.lifecycle.models import AssetEvent
@@ -30,7 +30,7 @@ async def create_event(
     asset_id: int,
     body: ApplyEventIn,
     session: AsyncSession = Depends(get_session),
-    actor=Depends(require_role("ADMIN", "IT_TEAM")),
+    actor=Depends(require_role(*WRITE_ROLES)),
 ):
     asset = await _get_scoped_asset(asset_id, session, actor)
     try:

@@ -1,4 +1,4 @@
-from sqlalchemy import select
+﻿from sqlalchemy import select
 from app.core.db import SessionLocal
 from app.core.security import verify_password
 from app.asset_users.models import AssetUser
@@ -30,7 +30,7 @@ async def test_create_owner_creates_expected_records_with_random_temp_password()
 
         assert department.name == "IT"
 
-        assert asset_user.emp_code == "CS6872"
+        assert asset_user.code == "CS6872"
         assert asset_user.name == "Ankur Pahwa"
         assert asset_user.email == "ankur.pahwa@citykartstores.com"
         assert asset_user.asset_user_type == "EMPLOYEE"
@@ -70,7 +70,7 @@ async def test_create_owner_is_idempotent_and_does_not_touch_password_on_rerun()
         companies = (await session.execute(select(Company).where(Company.code == "CKS"))).scalars().all()
         locations = (await session.execute(select(Location).where(Location.code == "HO"))).scalars().all()
         departments = (await session.execute(select(Department).where(Department.name == "IT"))).scalars().all()
-        asset_users = (await session.execute(select(AssetUser).where(AssetUser.emp_code == "CS6872"))).scalars().all()
+        asset_users = (await session.execute(select(AssetUser).where(AssetUser.code == "CS6872"))).scalars().all()
 
         assert len(companies) == 1
         assert len(locations) == 1

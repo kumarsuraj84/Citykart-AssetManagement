@@ -1,4 +1,4 @@
-"""AM-09 §16: the atomic UPSERT numbering (app.numbering.service.generate_code)
+﻿"""AM-09 §16: the atomic UPSERT numbering (app.numbering.service.generate_code)
 is the one place a race condition would be genuinely dangerous -- two
 concurrent asset-creation requests resolving to the same prefix must never
 receive the same Asset Code. `client` uses an in-process ASGITransport over
@@ -21,7 +21,7 @@ CONCURRENT_REQUESTS = 20
 async def _setup():
     async with SessionLocal() as session:
         co = Company(code="NCTEST", name="Numbering Concurrency Co")
-        cat = AssetCategory(code="NCTEST", name="NC Category")
+        cat = AssetCategory(code="NCTEST", name="NC Category", asset_domain="IT")
         session.add_all([co, cat])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="SUB", name="NC Sub")
@@ -31,11 +31,11 @@ async def _setup():
         vendor = Vendor(code="VND-NCTEST", name="NC Vendor")
         session.add_all([sub, cc, loc, dept, vendor])
         await session.flush()
-        stock = AssetUser(company_id=co.id, emp_code="NCSTK", name="NC Stock", asset_user_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-        admin = AssetUser(company_id=co.id, emp_code="NCADM", name="NC Admin", asset_user_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, code="NCSTK", name="NC Stock", asset_user_type="STOCK_POINT",
+                        location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        admin = AssetUser(company_id=co.id, code="NCADM", name="NC Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
-                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                        login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         # Every concurrent request resolves to the IDENTICAL prefix (no
         # per-request-varying token), which is exactly the scenario that
         # would surface a race: every request contends for the same

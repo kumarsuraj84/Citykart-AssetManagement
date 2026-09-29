@@ -1,4 +1,4 @@
-from datetime import date
+﻿from datetime import date
 from httpx import AsyncClient, ASGITransport
 from app.core.db import SessionLocal
 from app.core.security import hash_password
@@ -11,7 +11,7 @@ from app.numbering.models import CodeRule
 async def _setup(suffix: str, second_company: bool = False):
     async with SessionLocal() as session:
         co = Company(code=f"PO-RTR-{suffix}", name=f"PO Router Test Co {suffix}")
-        cat = AssetCategory(code=f"PO-RTR-{suffix}", name="IT")
+        cat = AssetCategory(code=f"PO-RTR-{suffix}", name="IT", asset_domain="IT")
         session.add_all([co, cat])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
@@ -20,20 +20,20 @@ async def _setup(suffix: str, second_company: bool = False):
         dept = Department(name=f"PO-RTR-{suffix}")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = AssetUser(company_id=co.id, emp_code=f"STK-{suffix}", name="IT Stock", asset_user_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, code=f"STK-{suffix}", name="IT Stock", asset_user_type="STOCK_POINT",
+                        location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        admin = AssetUser(company_id=co.id, code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
-                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        it_team = AssetUser(company_id=co.id, emp_code=f"ITT-{suffix}", name="IT Team", asset_user_type="EMPLOYEE",
-                          location_id=loc.id, department_id=dept.id, role="IT_TEAM",
-                          password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        viewer = AssetUser(company_id=co.id, emp_code=f"VWR-{suffix}", name="Viewer", asset_user_type="EMPLOYEE",
+                        login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        it_team = AssetUser(company_id=co.id, code=f"ITT-{suffix}", name="IT Team", asset_user_type="EMPLOYEE",
+                          location_id=loc.id, department_id=dept.id, role="OPERATOR",
+                          login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        viewer = AssetUser(company_id=co.id, code=f"VWR-{suffix}", name="Viewer", asset_user_type="EMPLOYEE",
                          location_id=loc.id, department_id=dept.id, role="VIEWER",
-                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        asset_user = AssetUser(company_id=co.id, emp_code=f"HLD-{suffix}", name="AssetUser", asset_user_type="EMPLOYEE",
-                         location_id=loc.id, department_id=dept.id, role="ASSET_USER",
-                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                         login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        asset_user = AssetUser(company_id=co.id, code=f"HLD-{suffix}", name="AssetUser", asset_user_type="EMPLOYEE",
+                         location_id=loc.id, department_id=dept.id, role="SELF_SERVICE",
+                         login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=co.id, prefix_template="PORTR/{yyyy}/", suffix_template="",
                          start_number=1, pad_width=3)
         session.add_all([stock, admin, it_team, viewer, asset_user, rule])
@@ -46,7 +46,7 @@ async def _setup(suffix: str, second_company: bool = False):
         }
         if second_company:
             co_b = Company(code=f"PO-RTR-{suffix}B", name=f"PO Router Test Co {suffix}B")
-            cat_b = AssetCategory(code=f"PO-RTR-{suffix}B", name="IT")
+            cat_b = AssetCategory(code=f"PO-RTR-{suffix}B", name="IT", asset_domain="IT")
             session.add_all([co_b, cat_b])
             await session.flush()
             cc_b = CostCenter(company_id=co_b.id, code="HO", name="Head Office")
@@ -57,9 +57,9 @@ async def _setup(suffix: str, second_company: bool = False):
             # company (scoped_company_ids returns None for it), so an isolation
             # test needs a genuinely company-scoped role to prove anything --
             # same reasoning the existing dashboard/asset isolation tests use.
-            it_team_b = AssetUser(company_id=co_b.id, emp_code=f"ITT-{suffix}B", name="IT Team B", asset_user_type="EMPLOYEE",
-                                location_id=loc_b.id, department_id=dept.id, role="IT_TEAM",
-                                password_hash=hash_password("Passw0rd!"), must_change_password=False)
+            it_team_b = AssetUser(company_id=co_b.id, code=f"ITT-{suffix}B", name="IT Team B", asset_user_type="EMPLOYEE",
+                                location_id=loc_b.id, department_id=dept.id, role="OPERATOR",
+                                login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
             session.add_all([cc_b, it_team_b])
             await session.commit()
             result.update({"co_b_id": co_b.id, "cc_b_id": cc_b.id, "it_team_b_emp": f"ITT-{suffix}B"})

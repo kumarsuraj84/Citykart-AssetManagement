@@ -357,7 +357,7 @@ async def _validate_add_rows(
                 continue
 
         asset_user_code = cell("Initial AssetUser Code")
-        asset_user = await _lookup(session, AssetUser, company_id=company.id, emp_code=asset_user_code)
+        asset_user = await _lookup(session, AssetUser, company_id=company.id, code=asset_user_code)
         if asset_user is None:
             errors.append({"row": row_idx, "field": "Initial AssetUser Code", "message": f"unknown Initial AssetUser Code '{asset_user_code}'"})
             continue
@@ -803,6 +803,10 @@ async def _commit_add(
                         tax_amount=tax_amount, total_cost=total_cost,
                         purchase_date=purchase_date, warranty_years=r["warranty_years"],
                         warranty_upto=compute_warranty_upto(purchase_date, r["warranty_years"]),
+                        # Spec §18: derived server-side from the row's resolved Category,
+                        # same discipline as app.assets.service.procure_assets -- an
+                        # import row never carries its own asset_domain column.
+                        asset_domain=r["category"].asset_domain,
                         # Initial status set directly here, not through apply_event -- the same
                         # documented exception app.assets.service.procure_assets uses: a freshly
                         # inserted row needs a non-null status/asset_user before the state machine has

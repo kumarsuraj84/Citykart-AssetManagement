@@ -1,4 +1,4 @@
-import io
+﻿import io
 from datetime import date
 import openpyxl
 from app.core.db import SessionLocal
@@ -25,7 +25,7 @@ def _build_workbook(rows: list[list]) -> bytes:
 async def test_preview_and_commit_import(client):
     async with SessionLocal() as session:
         co = Company(code="CKS-IMP1", name="Import Test Co")
-        cat = AssetCategory(code="IT-IMP1", name="IT")
+        cat = AssetCategory(code="IT-IMP1", name="IT", asset_domain="IT")
         vendor = Vendor(code="VND-IMP1", name="Import Test Vendor")
         session.add_all([co, cat, vendor])
         await session.flush()
@@ -35,11 +35,11 @@ async def test_preview_and_commit_import(client):
         dept = Department(name="IT-IMP1")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = AssetUser(company_id=co.id, emp_code="ITSTOCK-IMP1", name="IT Stock-HO", asset_user_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-        it_admin = AssetUser(company_id=co.id, emp_code="ITA-IMP1", name="IT Admin", asset_user_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, code="ITSTOCK-IMP1", name="IT Stock-HO", asset_user_type="STOCK_POINT",
+                        location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        it_admin = AssetUser(company_id=co.id, code="ITA-IMP1", name="IT Admin", asset_user_type="EMPLOYEE",
                            location_id=loc.id, department_id=dept.id, role="ADMIN",
-                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                           login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/CK_",
                          suffix_template="", start_number=1, pad_width=0)
         session.add_all([stock, it_admin, rule])

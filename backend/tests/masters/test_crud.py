@@ -1,4 +1,4 @@
-from app.core.db import SessionLocal
+﻿from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.masters.models import Company, Location, Department
 from app.asset_users.models import AssetUser
@@ -14,9 +14,9 @@ async def _admin_headers(client, company_code="CKM7"):
         session.add_all([loc, dept])
         await session.flush()
         asset_user = AssetUser(
-            company_id=co.id, emp_code="MADMIN", name="Master Admin",
+            company_id=co.id, code="MADMIN", name="Master Admin",
             asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id,
-            role="ADMIN", password_hash=hash_password("Passw0rd!"), must_change_password=False,
+            role="ADMIN", login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False,
         )
         session.add(asset_user)
         await session.commit()

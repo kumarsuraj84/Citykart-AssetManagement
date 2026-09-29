@@ -1,4 +1,4 @@
-import re
+﻿import re
 from datetime import date
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -16,7 +16,7 @@ def build_code_tokens(*, company, location, cost_center, category, subcategory, 
     {company.code}/{location.code}/{yyyy}/{yy}/{mm} into an error on one path.
 
     `location` is the location of the asset_user the asset lands with (the initial
-    IT_STOCK asset_user for Add Asset, the row's asset_user for an import). A missing
+    STOCK_POINT asset_user for Add Asset, the row's asset_user for an import). A missing
     optional master (e.g. no subcategory) maps to "" so resolve_prefix raises a
     clear "token resolved to an empty value" error only if the rule uses it."""
     return {

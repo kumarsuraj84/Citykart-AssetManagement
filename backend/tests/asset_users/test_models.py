@@ -1,4 +1,4 @@
-from sqlalchemy import select
+﻿from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from app.core.db import SessionLocal
 from app.masters.models import Company, Location, Department
@@ -17,16 +17,16 @@ async def test_emp_code_unique_within_company():
         company_id = co.id  # captured before the rollback below expires `co`
 
         session.add(AssetUser(
-            company_id=co.id, emp_code="CS6872", name="Ankur",
+            company_id=co.id, code="CS6872", name="Ankur",
             asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id,
-            role="ASSET_USER",
+            role="SELF_SERVICE",
         ))
         await session.commit()
 
         dup = AssetUser(
-            company_id=co.id, emp_code="CS6872", name="Duplicate",
+            company_id=co.id, code="CS6872", name="Duplicate",
             asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id,
-            role="ASSET_USER",
+            role="SELF_SERVICE",
         )
         session.add(dup)
         raised = False
@@ -57,19 +57,19 @@ async def test_email_unique_within_company_case_insensitive():
         await session.flush()
 
         session.add(AssetUser(
-            company_id=co.id, emp_code="EM1-A", name="Ankur",
+            company_id=co.id, code="EM1-A", name="Ankur",
             asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id,
-            role="ASSET_USER", email="ankur.pahwa@citykartstores.com",
+            role="SELF_SERVICE", email="ankur.pahwa@citykartstores.com",
         ))
         await session.commit()
 
-        # Different emp_code (so this doesn't just re-trip the emp_code
+        # Different code (so this doesn't just re-trip the code
         # constraint), same email but different case -- must still collide
         # because the index is on lower(email).
         dup = AssetUser(
-            company_id=co.id, emp_code="EM1-B", name="Duplicate",
+            company_id=co.id, code="EM1-B", name="Duplicate",
             asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id,
-            role="ASSET_USER", email="ANKUR.PAHWA@CITYKARTSTORES.COM",
+            role="SELF_SERVICE", email="ANKUR.PAHWA@CITYKARTSTORES.COM",
         )
         session.add(dup)
         raised = False
@@ -83,7 +83,7 @@ async def test_email_unique_within_company_case_insensitive():
 
 async def test_email_can_repeat_across_different_companies():
     """The unique index is scoped to (company_id, lower(email)), matching how
-    emp_code uniqueness already works -- the same email must be allowed to
+    code uniqueness already works -- the same email must be allowed to
     appear once per company, not globally."""
     async with SessionLocal() as session:
         co_a = Company(code="CKS-EM2A", name="Email Cross-Company Co A")
@@ -97,14 +97,14 @@ async def test_email_can_repeat_across_different_companies():
         await session.flush()
 
         session.add(AssetUser(
-            company_id=co_a.id, emp_code="EM2-A", name="Ankur A",
+            company_id=co_a.id, code="EM2-A", name="Ankur A",
             asset_user_type="EMPLOYEE", location_id=loc_a.id, department_id=dept.id,
-            role="ASSET_USER", email="shared@example.com",
+            role="SELF_SERVICE", email="shared@example.com",
         ))
         session.add(AssetUser(
-            company_id=co_b.id, emp_code="EM2-B", name="Ankur B",
+            company_id=co_b.id, code="EM2-B", name="Ankur B",
             asset_user_type="EMPLOYEE", location_id=loc_b.id, department_id=dept.id,
-            role="ASSET_USER", email="shared@example.com",
+            role="SELF_SERVICE", email="shared@example.com",
         ))
         # Must NOT raise -- same email, two different companies.
         await session.commit()

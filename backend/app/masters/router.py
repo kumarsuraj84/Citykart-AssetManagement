@@ -1,10 +1,10 @@
-from typing import Callable
+﻿from typing import Callable
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
-from app.core.deps import ensure_company_in_scope, get_current_asset_user, require_role, scoped_company_ids
+from app.core.deps import WRITE_ROLES, ensure_company_in_scope, get_current_asset_user, require_role, scoped_company_ids
 from app.masters.bulk_import_export import (
     FieldSpec, ImportScopeError, ImportTemplateError,
     build_template as build_import_template, commit_import, export_rows, preview_import,
@@ -99,7 +99,7 @@ def build_master_router(
     async def create_item(
         body: schema_in,
         session: AsyncSession = Depends(get_session),
-        asset_user=Depends(require_role("ADMIN", "IT_TEAM")),
+        asset_user=Depends(require_role(*WRITE_ROLES)),
     ):
         data = body.model_dump()
         if company_scope == SCOPE_SELF:
@@ -128,7 +128,7 @@ def build_master_router(
         item_id: int,
         body: edit_schema,
         session: AsyncSession = Depends(get_session),
-        asset_user=Depends(require_role("ADMIN", "IT_TEAM")),
+        asset_user=Depends(require_role(*WRITE_ROLES)),
     ):
         service = MasterCRUDService(model, session)
         existing = await service.get(item_id)
@@ -152,7 +152,7 @@ def build_master_router(
     async def deactivate_item(
         item_id: int,
         session: AsyncSession = Depends(get_session),
-        asset_user=Depends(require_role("ADMIN", "IT_TEAM")),
+        asset_user=Depends(require_role(*WRITE_ROLES)),
     ):
         service = MasterCRUDService(model, session)
         existing = await service.get(item_id)
@@ -173,7 +173,7 @@ def build_master_router(
         @sub.get("/export")
         async def export_items(
             session: AsyncSession = Depends(get_session),
-            asset_user=Depends(require_role("ADMIN", "IT_TEAM")),
+            asset_user=Depends(require_role(*WRITE_ROLES)),
         ):
             allowed = await scoped_company_ids(session, asset_user)
             content = await export_rows(session, model, import_fields, allowed, company_field)
@@ -184,7 +184,7 @@ def build_master_router(
             )
 
         @sub.get("/import/template")
-        async def import_template(_h=Depends(require_role("ADMIN", "IT_TEAM"))):
+        async def import_template(_h=Depends(require_role(*WRITE_ROLES))):
             return Response(
                 content=build_import_template(import_fields),
                 media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -194,7 +194,7 @@ def build_master_router(
         @sub.post("/import/preview")
         async def import_preview(
             file: UploadFile = File(...), session: AsyncSession = Depends(get_session),
-            asset_user=Depends(require_role("ADMIN", "IT_TEAM")),
+            asset_user=Depends(require_role(*WRITE_ROLES)),
         ):
             content = await file.read()
             allowed = await scoped_company_ids(session, asset_user)
@@ -206,7 +206,7 @@ def build_master_router(
         @sub.post("/import/commit")
         async def import_commit(
             file: UploadFile = File(...), session: AsyncSession = Depends(get_session),
-            asset_user=Depends(require_role("ADMIN", "IT_TEAM")),
+            asset_user=Depends(require_role(*WRITE_ROLES)),
         ):
             content = await file.read()
             allowed = await scoped_company_ids(session, asset_user)
@@ -259,12 +259,19 @@ router.include_router(build_master_router(
         FieldSpec("Name", "name", required=True, max_length=200),
     ],
 ))
+def _validate_category(data: dict) -> None:
+    if data.get("asset_domain") not in models.ASSET_DOMAINS:
+        raise ValueError(f"asset_domain must be one of {models.ASSET_DOMAINS}")
+
+
 router.include_router(build_master_router(
     "/categories", models.AssetCategory, schemas.AssetCategoryIn, schemas.AssetCategoryOut,
     schema_edit=schemas.AssetCategoryEditIn,
+    validate_incoming=_validate_category,
     import_fields=[
         FieldSpec("Code", "code", required=True, max_length=20),
         FieldSpec("Name", "name", required=True, max_length=200),
+        FieldSpec("Responsibility", "asset_domain", required=True, kind="enum", enum_values=models.ASSET_DOMAINS),
     ],
 ))
 router.include_router(build_master_router(

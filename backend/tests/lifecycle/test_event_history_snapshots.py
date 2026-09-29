@@ -1,4 +1,4 @@
-"""AM-01 historical event snapshots: renaming a AssetUser must not retroactively
+﻿"""AM-01 historical event snapshots: renaming a AssetUser must not retroactively
 change how an already-recorded asset_event displays. Before this stage,
 lifecycle/router.py::_with_labels and reports/router.py::export_movements both
 live-joined to the *current* AssetUser row for the from/to name on every read --
@@ -20,7 +20,7 @@ from sqlalchemy import select
 async def _setup():
     async with SessionLocal() as session:
         co = Company(code="SNAP", name="Snapshot Co")
-        cat = AssetCategory(code="IT-SNAP", name="IT")
+        cat = AssetCategory(code="IT-SNAP", name="IT", asset_domain="IT")
         session.add_all([co, cat])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
@@ -31,14 +31,14 @@ async def _setup():
         session.add_all([sub, cc, loc, dept, vendor])
         await session.flush()
 
-        def h(code, name, asset_user_type, role="ASSET_USER", **kw):
-            return AssetUser(company_id=co.id, emp_code=code, name=name, asset_user_type=asset_user_type,
+        def h(code, name, asset_user_type, role="SELF_SERVICE", **kw):
+            return AssetUser(company_id=co.id, code=code, name=name, asset_user_type=asset_user_type,
                           location_id=loc.id, department_id=dept.id, role=role, **kw)
 
-        stock = h("STK-SNAP", "IT Stock-HO", "IT_STOCK")
+        stock = h("STK-SNAP", "IT Stock-HO", "STOCK_POINT")
         emp = h("EMP-SNAP", "Original Name", "EMPLOYEE")
         admin = h("ADM-SNAP", "Admin", "EMPLOYEE", role="ADMIN",
-                  password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                  login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         session.add_all([stock, emp, admin,
                          CodeRule(company_id=None, prefix_template="FA/SNAP/", suffix_template="",
                                   start_number=1, pad_width=0)])
@@ -78,8 +78,8 @@ async def test_renaming_a_asset_user_does_not_change_a_past_events_displayed_nam
 
     # Now rename the asset_user.
     rename_resp = await client.put(f"/api/asset-users/{emp_id}", json={
-        "company_id": co_id, "emp_code": "EMP-SNAP", "name": "Renamed Later",
-        "asset_user_type": "EMPLOYEE", "location_id": loc_id, "department_id": None, "role": "ASSET_USER",
+        "company_id": co_id, "code": "EMP-SNAP", "name": "Renamed Later",
+        "asset_user_type": "EMPLOYEE", "location_id": loc_id, "department_id": None, "role": "SELF_SERVICE",
     }, headers=headers)
     assert rename_resp.status_code == 200
     assert rename_resp.json()["name"] == "Renamed Later"

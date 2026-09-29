@@ -52,6 +52,7 @@ async def correct_asset(
     category_id=UNSET,
     subcategory_id=UNSET,
     purchase_date_value=UNSET,
+    asset_domain=UNSET,
     reason: str,
 ) -> int:
     """Raises ValueError (the same convention every other asset-mutation
@@ -67,8 +68,8 @@ async def correct_asset(
     if len(reason) > REASON_MAX_LENGTH:
         raise ValueError(f"reason must be at most {REASON_MAX_LENGTH} characters")
 
-    if category_id is UNSET and subcategory_id is UNSET and purchase_date_value is UNSET:
-        raise ValueError("at least one of category_id, subcategory_id, or purchase_date must be provided")
+    if category_id is UNSET and subcategory_id is UNSET and purchase_date_value is UNSET and asset_domain is UNSET:
+        raise ValueError("at least one of category_id, subcategory_id, purchase_date, or asset_domain must be provided")
 
     # ---- Category ----
     effective_category_id = asset.category_id
@@ -124,16 +125,29 @@ async def correct_asset(
             )
         effective_purchase_date = purchase_date_value
 
+    # ---- Asset Domain (Responsibility) ----
+    # Spec §44: Normal Asset Edit must NOT modify asset_domain -- only this
+    # Controlled Correction path can, ADMIN-only (enforced by the router),
+    # with a mandatory reason like every other correction here. Never
+    # rewrites the Category's own asset_domain (that's a separate, future-
+    # only default, spec §43) -- this only re-snapshots THIS asset's own value.
+    effective_asset_domain = asset.asset_domain
+    if asset_domain is not UNSET:
+        if asset_domain not in ("IT", "NON_IT"):
+            raise ValueError("asset_domain must be one of ('IT', 'NON_IT')")
+        effective_asset_domain = asset_domain
+
     if (
         effective_category_id == asset.category_id
         and effective_subcategory_id == asset.subcategory_id
         and effective_purchase_date == asset.purchase_date
+        and effective_asset_domain == asset.asset_domain
     ):
         raise ValueError("no changes requested -- every provided value already matches the asset's current data")
 
     before = {
         "category_id": asset.category_id, "subcategory_id": asset.subcategory_id,
-        "purchase_date": asset.purchase_date,
+        "purchase_date": asset.purchase_date, "asset_domain": asset.asset_domain,
     }
 
     # Never asset_code/company_id/cost_center_id (trg_asset_no_identity_change
@@ -142,10 +156,11 @@ async def correct_asset(
     asset.category_id = effective_category_id
     asset.subcategory_id = effective_subcategory_id
     asset.purchase_date = effective_purchase_date
+    asset.asset_domain = effective_asset_domain
 
     after = {
         "category_id": asset.category_id, "subcategory_id": asset.subcategory_id,
-        "purchase_date": asset.purchase_date,
+        "purchase_date": asset.purchase_date, "asset_domain": asset.asset_domain,
     }
 
     return await record_correction_changes(

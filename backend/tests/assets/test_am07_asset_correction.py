@@ -1,4 +1,4 @@
-"""AM-07: POST /api/assets/{id}/corrections -- a controlled, reason-required
+﻿"""AM-07: POST /api/assets/{id}/corrections -- a controlled, reason-required
 correction of Category/Subcategory/Purchase Date, deliberately separate
 from PUT /api/assets/{id}. See app/assets/correction_service.py for the
 invariants this enforces and why."""
@@ -20,9 +20,9 @@ async def _setup(code="AM07"):
     async with SessionLocal() as session:
         co = Company(code=f"{code}A", name=f"{code} Co A")
         co_b = Company(code=f"{code}B", name=f"{code} Co B")
-        cat = AssetCategory(code=f"CAT-{code}", name="IT Equipment")
-        other_cat = AssetCategory(code=f"OCAT-{code}", name="Furniture")
-        inactive_cat = AssetCategory(code=f"ICAT-{code}", name="Retired Category", is_active=False)
+        cat = AssetCategory(code=f"CAT-{code}", name="IT Equipment", asset_domain="IT")
+        other_cat = AssetCategory(code=f"OCAT-{code}", name="Furniture", asset_domain="IT")
+        inactive_cat = AssetCategory(code=f"ICAT-{code}", name="Retired Category", is_active=False, asset_domain="IT")
         session.add_all([co, co_b, cat, other_cat, inactive_cat])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
@@ -33,23 +33,23 @@ async def _setup(code="AM07"):
         dept = Department(name=f"IT-{code}")
         session.add_all([sub, other_sub, inactive_sub, cc, loc, dept])
         await session.flush()
-        stock = AssetUser(company_id=co.id, emp_code=f"STK-{code}", name="IT Stock-HO", asset_user_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{code}", name="Admin", asset_user_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, code=f"STK-{code}", name="IT Stock-HO", asset_user_type="STOCK_POINT",
+                        location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        admin = AssetUser(company_id=co.id, code=f"ADM-{code}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
-                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        it_a = AssetUser(company_id=co.id, emp_code=f"ITA-{code}", name="IT A", asset_user_type="EMPLOYEE",
-                      location_id=loc.id, department_id=dept.id, role="IT_TEAM",
-                      password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        it_b = AssetUser(company_id=co_b.id, emp_code=f"ITB-{code}", name="IT B", asset_user_type="EMPLOYEE",
-                      location_id=loc.id, department_id=dept.id, role="IT_TEAM",
-                      password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        viewer = AssetUser(company_id=co.id, emp_code=f"VWR-{code}", name="Viewer", asset_user_type="EMPLOYEE",
+                        login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        it_a = AssetUser(company_id=co.id, code=f"ITA-{code}", name="IT A", asset_user_type="EMPLOYEE",
+                      location_id=loc.id, department_id=dept.id, role="OPERATOR",
+                      login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        it_b = AssetUser(company_id=co_b.id, code=f"ITB-{code}", name="IT B", asset_user_type="EMPLOYEE",
+                      location_id=loc.id, department_id=dept.id, role="OPERATOR",
+                      login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        viewer = AssetUser(company_id=co.id, code=f"VWR-{code}", name="Viewer", asset_user_type="EMPLOYEE",
                          location_id=loc.id, department_id=dept.id, role="VIEWER",
-                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        asset_user_role = AssetUser(company_id=co.id, emp_code=f"HLD-{code}", name="AssetUser Role", asset_user_type="EMPLOYEE",
-                              location_id=loc.id, department_id=dept.id, role="ASSET_USER",
-                              password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                         login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        asset_user_role = AssetUser(company_id=co.id, code=f"HLD-{code}", name="AssetUser Role", asset_user_type="EMPLOYEE",
+                              location_id=loc.id, department_id=dept.id, role="SELF_SERVICE",
+                              login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=co.id, prefix_template=f"FA/{code}/", suffix_template="",
                          start_number=1, pad_width=0)
         session.add_all([stock, admin, it_a, it_b, viewer, asset_user_role, rule])
@@ -61,8 +61,8 @@ async def _setup(code="AM07"):
         }
 
 
-async def _headers(client, emp_code):
-    resp = await client.post("/api/auth/login", json={"login_id": emp_code, "password": "Passw0rd!"})
+async def _headers(client, code):
+    resp = await client.post("/api/auth/login", json={"login_id": code, "password": "Passw0rd!"})
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 
@@ -95,7 +95,7 @@ class TestAuthorization:
     async def test_admin_may_correct(self, client):
         ids = await _setup("AUTH1")
         asset = await _make_asset(ids)
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "category_id": ids["other_cat"].id, "subcategory_id": ids["other_sub"].id, "reason": "wrong category",
         }, headers=headers)
@@ -104,7 +104,7 @@ class TestAuthorization:
     async def test_it_team_may_correct_in_scope_asset(self, client):
         ids = await _setup("AUTH2")
         asset = await _make_asset(ids)
-        headers = await _headers(client, ids["it_a"].emp_code)
+        headers = await _headers(client, ids["it_a"].code)
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "category_id": ids["other_cat"].id, "subcategory_id": ids["other_sub"].id, "reason": "wrong category",
         }, headers=headers)
@@ -113,7 +113,7 @@ class TestAuthorization:
     async def test_viewer_denied(self, client):
         ids = await _setup("AUTH3")
         asset = await _make_asset(ids)
-        headers = await _headers(client, ids["viewer"].emp_code)
+        headers = await _headers(client, ids["viewer"].code)
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "category_id": ids["other_cat"].id, "reason": "wrong category",
         }, headers=headers)
@@ -122,7 +122,7 @@ class TestAuthorization:
     async def test_asset_user_denied(self, client):
         ids = await _setup("AUTH4")
         asset = await _make_asset(ids)
-        headers = await _headers(client, ids["asset_user_role"].emp_code)
+        headers = await _headers(client, ids["asset_user_role"].code)
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "category_id": ids["other_cat"].id, "reason": "wrong category",
         }, headers=headers)
@@ -131,7 +131,7 @@ class TestAuthorization:
     async def test_cross_company_correction_denied(self, client):
         ids = await _setup("AUTH5")
         asset = await _make_asset(ids)
-        headers = await _headers(client, ids["it_b"].emp_code)
+        headers = await _headers(client, ids["it_b"].code)
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "category_id": ids["other_cat"].id, "reason": "wrong category",
         }, headers=headers)
@@ -143,7 +143,7 @@ class TestCategoryCorrection:
         ids = await _setup("CAT1")
         asset = await _make_asset(ids)
         original_code, original_status, original_asset_user = asset.asset_code, asset.status, asset.current_asset_user_id
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
 
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "category_id": ids["other_cat"].id, "subcategory_id": ids["other_sub"].id,
@@ -164,7 +164,7 @@ class TestCategoryCorrection:
     async def test_inactive_category_rejected(self, client):
         ids = await _setup("CAT2")
         asset = await _make_asset(ids)
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "category_id": ids["inactive_cat"].id, "reason": "typo fix",
         }, headers=headers)
@@ -174,7 +174,7 @@ class TestCategoryCorrection:
     async def test_nonexistent_category_rejected(self, client):
         ids = await _setup("CAT3")
         asset = await _make_asset(ids)
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "category_id": 999999, "reason": "typo fix",
         }, headers=headers)
@@ -190,7 +190,7 @@ class TestSubcategoryCorrection:
             await session.commit()
             await session.refresh(other_sub_same_cat)
         asset = await _make_asset(ids)
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "subcategory_id": other_sub_same_cat.id, "reason": "Subcategory entered incorrectly",
         }, headers=headers)
@@ -201,7 +201,7 @@ class TestSubcategoryCorrection:
     async def test_wrong_category_subcategory_rejected(self, client):
         ids = await _setup("SUB2")
         asset = await _make_asset(ids)  # category = ids["cat"]
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "subcategory_id": ids["other_sub"].id,  # belongs to other_cat, not cat
             "reason": "typo fix",
@@ -212,7 +212,7 @@ class TestSubcategoryCorrection:
     async def test_clear_subcategory(self, client):
         ids = await _setup("SUB3")
         asset = await _make_asset(ids)
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "subcategory_id": None, "reason": "No subcategory applies here",
         }, headers=headers)
@@ -222,7 +222,7 @@ class TestSubcategoryCorrection:
     async def test_category_change_with_valid_replacement_subcategory(self, client):
         ids = await _setup("SUB4")
         asset = await _make_asset(ids)
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "category_id": ids["other_cat"].id, "subcategory_id": ids["other_sub"].id,
             "reason": "Reclassified as furniture",
@@ -234,7 +234,7 @@ class TestSubcategoryCorrection:
     async def test_category_change_without_replacement_leaves_invalid_pair_and_is_rejected(self, client):
         ids = await _setup("SUB5")
         asset = await _make_asset(ids)  # category=cat, subcategory=sub (belongs to cat)
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "category_id": ids["other_cat"].id,  # sub does NOT belong to other_cat
             "reason": "Reclassified as furniture",
@@ -248,7 +248,7 @@ class TestSubcategoryCorrection:
     async def test_category_change_clearing_the_old_invalid_subcategory_succeeds(self, client):
         ids = await _setup("SUB6")
         asset = await _make_asset(ids)
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "category_id": ids["other_cat"].id, "subcategory_id": None,
             "reason": "Reclassified as furniture, no subcategory yet",
@@ -260,7 +260,7 @@ class TestSubcategoryCorrection:
     async def test_inactive_subcategory_rejected(self, client):
         ids = await _setup("SUB7")
         asset = await _make_asset(ids)
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "subcategory_id": ids["inactive_sub"].id, "reason": "typo fix",
         }, headers=headers)
@@ -273,7 +273,7 @@ class TestPurchaseDateCorrection:
         ids = await _setup("PD1")
         asset = await _make_asset(ids, purchase_date=date(2025, 6, 5))
         original_code = asset.asset_code
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "purchase_date": "2025-06-01", "reason": "Purchase invoice date was mistakenly used",
         }, headers=headers)
@@ -285,7 +285,7 @@ class TestPurchaseDateCorrection:
         ids = await _setup("PD2")
         asset = await _make_asset(ids, purchase_date=date(2025, 6, 1))
         # The PROCURED event's event_date == 2025-06-01 (the original purchase_date).
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "purchase_date": "2025-06-10", "reason": "trying to move it later",
         }, headers=headers)
@@ -295,7 +295,7 @@ class TestPurchaseDateCorrection:
     async def test_future_date_is_rejected(self, client):
         ids = await _setup("PD3")
         asset = await _make_asset(ids, purchase_date=date(2025, 6, 1))
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         future = (date.today() + timedelta(days=30)).isoformat()
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "purchase_date": future, "reason": "typo",
@@ -316,7 +316,7 @@ class TestPurchaseDateCorrection:
                 for e in (await session.execute(select(AssetEvent).where(AssetEvent.asset_id == asset.id))).scalars().all()
             }
 
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "purchase_date": "2025-06-01", "reason": "corrected date",
         }, headers=headers)
@@ -334,7 +334,7 @@ class TestRequestValidation:
     async def test_reason_required_by_schema(self, client):
         ids = await _setup("REQ1")
         asset = await _make_asset(ids)
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "category_id": ids["other_cat"].id,
         }, headers=headers)
@@ -343,7 +343,7 @@ class TestRequestValidation:
     async def test_whitespace_only_reason_rejected(self, client):
         ids = await _setup("REQ2")
         asset = await _make_asset(ids)
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "category_id": ids["other_cat"].id, "reason": "   ",
         }, headers=headers)
@@ -353,7 +353,7 @@ class TestRequestValidation:
     async def test_no_op_correction_rejected(self, client):
         ids = await _setup("REQ3")
         asset = await _make_asset(ids)
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "category_id": ids["cat"].id, "reason": "no real change",
         }, headers=headers)
@@ -363,7 +363,7 @@ class TestRequestValidation:
     async def test_at_least_one_field_required(self, client):
         ids = await _setup("REQ4")
         asset = await _make_asset(ids)
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "reason": "nothing to correct",
         }, headers=headers)
@@ -375,7 +375,7 @@ class TestAudit:
     async def test_one_row_per_changed_field_with_correct_old_new_values(self, client):
         ids = await _setup("AUD1")
         asset = await _make_asset(ids, purchase_date=date(2025, 6, 5))
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "category_id": ids["other_cat"].id, "subcategory_id": ids["other_sub"].id,
             "purchase_date": "2025-06-01", "reason": "full reclassification",
@@ -400,7 +400,7 @@ class TestAudit:
     async def test_only_actually_changed_fields_produce_rows(self, client):
         ids = await _setup("AUD2")
         asset = await _make_asset(ids)
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "category_id": ids["cat"].id,  # same as current -- no-op for this field
             "purchase_date": "2025-05-15",  # earlier, no events yet at that exact boundary -- valid
@@ -414,7 +414,7 @@ class TestAudit:
     async def test_ordinary_edit_rows_never_carry_a_reason(self, client):
         ids = await _setup("AUD3")
         asset = await _make_asset(ids)
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         await client.put(f"/api/assets/{asset.id}", json={"description": "edited via ordinary PUT", "brand": "Dell"}, headers=headers)
         changes = await _changes(asset.id)
         assert len(changes) >= 1
@@ -423,7 +423,7 @@ class TestAudit:
     async def test_failed_correction_leaves_no_audit_row_and_no_asset_change(self, client):
         ids = await _setup("AUD4")
         asset = await _make_asset(ids)
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "category_id": ids["inactive_cat"].id, "reason": "bad category",
         }, headers=headers)
@@ -438,7 +438,7 @@ class TestAudit:
         a row this stage's own correction endpoint wrote."""
         ids = await _setup("AUD5")
         asset = await _make_asset(ids)
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         commit_resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "category_id": ids["other_cat"].id, "subcategory_id": ids["other_sub"].id, "reason": "reclassify",
         }, headers=headers)
@@ -459,7 +459,7 @@ class TestRegression:
     async def test_ordinary_put_still_cannot_modify_category_subcategory_purchase_date(self, client):
         ids = await _setup("REG1")
         asset = await _make_asset(ids, purchase_date=date(2025, 6, 1))
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.put(f"/api/assets/{asset.id}", json={
             "description": "still just an ordinary edit",
             "category_id": ids["other_cat"].id, "subcategory_id": ids["other_sub"].id,
@@ -475,7 +475,7 @@ class TestRegression:
         ids = await _setup("REG2")
         asset = await _make_asset(ids, purchase_date=date(2025, 6, 5))
         original_code, original_company, original_cc = asset.asset_code, asset.company_id, asset.cost_center_id
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
 
         await client.post(f"/api/assets/{asset.id}/corrections", json={
             "category_id": ids["other_cat"].id, "subcategory_id": ids["other_sub"].id, "reason": "r1",

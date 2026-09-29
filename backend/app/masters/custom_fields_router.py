@@ -1,4 +1,4 @@
-"""AM-05: Custom Fields outgrew the generic `build_master_router` factory --
+﻿"""AM-05: Custom Fields outgrew the generic `build_master_router` factory --
 scope (Global vs. company-specific) needs its own authorization rule
 (§20 of the AM-05 authorization) and its own immutability rule (§22:
 `field_key`/`field_type` never editable; `company_id` only editable while no
@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
-from app.core.deps import get_current_asset_user, require_role
+from app.core.deps import WRITE_ROLES, get_current_asset_user, require_role
 from app.assets.custom_field_values import any_asset_has_value_for
 from app.masters.models import FIELD_TYPES, CustomField
 from app.masters.schemas import CustomFieldEditIn, CustomFieldIn, CustomFieldOut
@@ -27,12 +27,13 @@ def _validate_field_type(field_type: str) -> None:
 
 
 def _check_scope_authorization(asset_user, company_id: int | None) -> None:
-    """ADMIN may create/manage a field at any scope, Global included.
-    IT_TEAM may only create/manage a field scoped to its own company --
-    never Global, since a Global field affects every company IT_TEAM isn't
-    authorized to touch (AM-05 §20's explicit V1 safety rule). VIEWER/ASSET_USER
-    never reach this -- every route below is gated by
-    require_role("ADMIN", "IT_TEAM") first."""
+    """ADMIN (which the Primary Owner's row always carries as its `role`)
+    may create/manage a field at any scope, Global included. OPERATOR may
+    only create/manage a field scoped to its own company -- never Global,
+    since a Global field affects every company OPERATOR isn't authorized to
+    touch (AM-05 §20's explicit V1 safety rule). VIEWER/SELF_SERVICE never
+    reach this -- every route below is gated by require_role(*WRITE_ROLES)
+    first."""
     if asset_user.role == "ADMIN":
         return
     if company_id is None:
@@ -58,7 +59,7 @@ async def list_custom_fields(
 async def create_custom_field(
     body: CustomFieldIn,
     session: AsyncSession = Depends(get_session),
-    asset_user=Depends(require_role("ADMIN", "IT_TEAM")),
+    asset_user=Depends(require_role(*WRITE_ROLES)),
 ):
     data = body.model_dump()
     _validate_field_type(data["field_type"])
@@ -78,7 +79,7 @@ async def update_custom_field(
     item_id: int,
     body: CustomFieldEditIn,
     session: AsyncSession = Depends(get_session),
-    asset_user=Depends(require_role("ADMIN", "IT_TEAM")),
+    asset_user=Depends(require_role(*WRITE_ROLES)),
 ):
     service = MasterCRUDService(CustomField, session)
     existing = await service.get(item_id)
@@ -110,7 +111,7 @@ async def update_custom_field(
 async def deactivate_custom_field(
     item_id: int,
     session: AsyncSession = Depends(get_session),
-    asset_user=Depends(require_role("ADMIN", "IT_TEAM")),
+    asset_user=Depends(require_role(*WRITE_ROLES)),
 ):
     service = MasterCRUDService(CustomField, session)
     existing = await service.get(item_id)

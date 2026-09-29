@@ -45,6 +45,8 @@ def _set_refresh_cookie(response: Response, asset_user_id: int) -> None:
 
 
 def _session_response(asset_user: AssetUser) -> LoginResponse:
+    # The Primary Owner's row always carries role="ADMIN" (in addition to
+    # is_primary_owner=True), so this already covers it with no special case.
     company_scope = None if asset_user.role == "ADMIN" else asset_user.company_id
     return LoginResponse(
         access_token=create_access_token(asset_user.id, asset_user.role, company_scope),
@@ -68,28 +70,42 @@ async def list_login_companies(session: AsyncSession = Depends(get_session)):
 @router.post("/login", response_model=LoginResponse)
 async def login(body: LoginRequest, response: Response, session: AsyncSession = Depends(get_session)):
     # The login screen no longer asks which company to sign into -- login_id
-    # (Employee Code OR email address, case-insensitively) must resolve to
-    # exactly one asset_user across every ACTIVE company. emp_code and email are
-    # only unique *per company* (see migration 0005_asset_user_email_unique.py
-    # and AssetUser's own UniqueConstraint), so with more than one company it is
+    # (Code OR email address, case-insensitively) must resolve to exactly one
+    # asset_user across every ACTIVE company. Code and email are only unique
+    # *per company* (see migration 0005_asset_user_email_unique.py and
+    # AssetUser's own UniqueConstraint), so with more than one company it is
     # possible, though unlikely, for the same login_id to match asset_users in
     # two different companies -- e.g. two independently-run stores both using
-    # emp_code "EMP1". That is treated the same as "no match": a generic 401,
+    # code "EMP1". That is treated the same as "no match": a generic 401,
     # never a hint that the id exists, plus a server-side warning so an admin
     # can rename one of the colliding accounts. Silently picking one company
     # would be a real account-takeover risk; refusing to guess is not.
-    stmt = (
+    #
+    # The Primary Owner is a company-less bootstrap account (no code/email of
+    # its own -- see AssetUser.is_primary_owner), so it is matched separately,
+    # by name, outside the per-company join above.
+    company_scoped_stmt = (
         select(AssetUser)
         .join(Company, AssetUser.company_id == Company.id)
         .where(
             Company.is_active.is_(True),
             AssetUser.is_active.is_(True),
+            AssetUser.login_enabled.is_(True),
             AssetUser.password_hash.is_not(None),
-            or_(AssetUser.emp_code == body.login_id, func.lower(AssetUser.email) == func.lower(body.login_id)),
+            or_(AssetUser.code == body.login_id, func.lower(AssetUser.email) == func.lower(body.login_id)),
         )
-        .order_by(AssetUser.id)
     )
-    matches = (await session.execute(stmt)).scalars().all()
+    primary_owner_stmt = select(AssetUser).where(
+        AssetUser.is_active.is_(True),
+        AssetUser.is_primary_owner.is_(True),
+        AssetUser.password_hash.is_not(None),
+        func.lower(AssetUser.name) == func.lower(body.login_id),
+    )
+    matches = (
+        (await session.execute(company_scoped_stmt)).scalars().all()
+        + (await session.execute(primary_owner_stmt)).scalars().all()
+    )
+    matches.sort(key=lambda h: h.id)
     if len(matches) != 1:
         if len(matches) > 1:
             logger.warning(
@@ -148,6 +164,8 @@ async def refresh(
         raise invalid
     asset_user = await session.get(AssetUser, int(payload["sub"]))
     if asset_user is None or not asset_user.is_active or asset_user.password_hash is None:
+        raise invalid
+    if not asset_user.is_primary_owner and not asset_user.login_enabled:
         raise invalid
     if asset_user.locked_until and asset_user.locked_until > datetime.now(timezone.utc):
         raise invalid

@@ -1,4 +1,4 @@
-from app.core.db import SessionLocal
+﻿from app.core.db import SessionLocal
 from app.assets.service import procure_assets
 from app.core.security import hash_password
 from app.masters.models import Company, CostCenter, AssetCategory, AssetSubcategory, Location, Department
@@ -10,7 +10,7 @@ from datetime import date
 async def test_allot_via_events_endpoint(client):
     async with SessionLocal() as session:
         co = Company(code="CKS-LR1", name="Lifecycle Router Co")
-        cat = AssetCategory(code="IT-LR1", name="IT")
+        cat = AssetCategory(code="IT-LR1", name="IT", asset_domain="IT")
         session.add_all([co, cat])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
@@ -19,13 +19,13 @@ async def test_allot_via_events_endpoint(client):
         dept = Department(name="IT-LR1")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = AssetUser(company_id=co.id, emp_code="ITSTOCK-LR1", name="IT Stock-HO",
-                        asset_user_type="IT_STOCK", location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-        it_admin = AssetUser(company_id=co.id, emp_code="ITA-LR1", name="IT Admin",
+        stock = AssetUser(company_id=co.id, code="ITSTOCK-LR1", name="IT Stock-HO",
+                        asset_user_type="STOCK_POINT", location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        it_admin = AssetUser(company_id=co.id, code="ITA-LR1", name="IT Admin",
                            asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="ADMIN",
-                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        ankur = AssetUser(company_id=co.id, emp_code="CS-LR1", name="Ankur",
-                        asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+                           login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        ankur = AssetUser(company_id=co.id, code="CS-LR1", name="Ankur",
+                        asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/CK_",
                          suffix_template="", start_number=1, pad_width=0)
         session.add_all([stock, it_admin, ankur, rule])
@@ -67,7 +67,7 @@ async def test_naive_event_date_is_treated_as_utc_not_a_500(client):
     correct response, not a crash."""
     async with SessionLocal() as session:
         co = Company(code="CKS-LR2", name="Lifecycle Router Co 2")
-        cat = AssetCategory(code="IT-LR2", name="IT")
+        cat = AssetCategory(code="IT-LR2", name="IT", asset_domain="IT")
         session.add_all([co, cat])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
@@ -76,11 +76,11 @@ async def test_naive_event_date_is_treated_as_utc_not_a_500(client):
         dept = Department(name="IT-LR2")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = AssetUser(company_id=co.id, emp_code="ITSTOCK-LR2", name="IT Stock-HO",
-                        asset_user_type="IT_STOCK", location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-        it_admin = AssetUser(company_id=co.id, emp_code="ITA-LR2", name="IT Admin",
+        stock = AssetUser(company_id=co.id, code="ITSTOCK-LR2", name="IT Stock-HO",
+                        asset_user_type="STOCK_POINT", location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        it_admin = AssetUser(company_id=co.id, code="ITA-LR2", name="IT Admin",
                            asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="ADMIN",
-                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                           login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/LR2_",
                          suffix_template="", start_number=1, pad_width=0)
         session.add_all([stock, it_admin, rule])

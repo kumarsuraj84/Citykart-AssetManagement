@@ -41,11 +41,21 @@ class CostCenter(Base, AuditMixin, SoftDeleteMixin):
     name: Mapped[str] = mapped_column(String(200))
 
 
+# IT / NON_IT. Kept as its own tuple here (not imported from app.assets.models,
+# which defines the same two values for Asset.asset_domain) to avoid a
+# masters->assets import direction the rest of this app never takes.
+ASSET_DOMAINS = ("IT", "NON_IT")
+
+
 class AssetCategory(Base, AuditMixin, SoftDeleteMixin):
     __tablename__ = "asset_category"
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     code: Mapped[str] = mapped_column(String(20), unique=True)
     name: Mapped[str] = mapped_column(String(200))
+    # IT / NON_IT (app.assets.models.ASSET_DOMAINS). Drives the FUTURE default
+    # for assets created under this category -- changing it never rewrites an
+    # existing Asset's own asset_domain snapshot (see Asset.asset_domain).
+    asset_domain: Mapped[str] = mapped_column(String(10))
 
 
 class AssetSubcategory(Base, AuditMixin, SoftDeleteMixin):

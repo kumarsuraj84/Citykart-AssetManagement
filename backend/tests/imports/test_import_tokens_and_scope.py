@@ -1,4 +1,4 @@
-"""POST /api/imports/assets/commit (and preview): real code-rule token values,
+﻿"""POST /api/imports/assets/commit (and preview): real code-rule token values,
 per-company rule lookup, clean errors instead of 500s, and IT_TEAM company scope."""
 import io
 
@@ -37,8 +37,8 @@ async def _company(session, code):
     dept = Department(name=f"IT-{code}")
     session.add_all([loc, dept, CostCenter(company_id=co.id, code="HO01", name="HO")])
     await session.flush()
-    session.add(AssetUser(company_id=co.id, emp_code=f"STOCK-{code}", name=f"IT Stock {code}", asset_user_type="IT_STOCK",
-                       location_id=loc.id, department_id=dept.id, role="ASSET_USER"))
+    session.add(AssetUser(company_id=co.id, code=f"STOCK-{code}", name=f"IT Stock {code}", asset_user_type="STOCK_POINT",
+                       location_id=loc.id, department_id=dept.id, role="SELF_SERVICE"))
     await session.flush()
     return co, loc, dept
 
@@ -47,16 +47,16 @@ async def _setup(rules):
     async with SessionLocal() as session:
         co_a, loc_a, dept_a = await _company(session, "IMA")
         co_b, _, _ = await _company(session, "IMB")
-        cat = AssetCategory(code="IT", name="IT")
+        cat = AssetCategory(code="IT", name="IT", asset_domain="IT")
         # Vendor is a global master (not company-scoped), so one code
         # serves every row/company in this file.
         session.add_all([cat, Vendor(code="VND", name="Test Vendor")])
         await session.flush()
         session.add(AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop"))
-        for emp_code, role in (("ADM", "ADMIN"), ("ITA", "IT_TEAM")):
-            session.add(AssetUser(company_id=co_a.id, emp_code=emp_code, name=emp_code, asset_user_type="EMPLOYEE",
+        for code, role in (("ADM", "ADMIN"), ("ITA", "OPERATOR")):
+            session.add(AssetUser(company_id=co_a.id, code=code, name=code, asset_user_type="EMPLOYEE",
                                location_id=loc_a.id, department_id=dept_a.id, role=role,
-                               password_hash=hash_password("Passw0rd!"), must_change_password=False))
+                               login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False))
         ids = {"A": co_a.id, "B": co_b.id, None: None}
         for scope, prefix in rules:
             session.add(CodeRule(company_id=ids[scope], prefix_template=prefix, suffix_template="",
@@ -65,8 +65,8 @@ async def _setup(rules):
     return co_a.id, co_b.id
 
 
-async def _headers(client, company_id, emp_code):
-    resp = await client.post("/api/auth/login", json={"company_id": company_id, "login_id": emp_code, "password": "Passw0rd!"})
+async def _headers(client, company_id, code):
+    resp = await client.post("/api/auth/login", json={"company_id": company_id, "login_id": code, "password": "Passw0rd!"})
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 

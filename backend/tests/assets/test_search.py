@@ -1,4 +1,4 @@
-from datetime import date
+﻿from datetime import date
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.assets.service import procure_assets
@@ -10,7 +10,7 @@ from app.numbering.models import CodeRule
 async def test_search_by_serial_and_scoped_bulk_move(client):
     async with SessionLocal() as session:
         co = Company(code="CKS-SR1", name="Search Test Co")
-        cat = AssetCategory(code="IT-SR1", name="IT")
+        cat = AssetCategory(code="IT-SR1", name="IT", asset_domain="IT")
         session.add_all([co, cat])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="MOU", name="Mouse")
@@ -19,13 +19,13 @@ async def test_search_by_serial_and_scoped_bulk_move(client):
         dept = Department(name="IT-SR1")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = AssetUser(company_id=co.id, emp_code="ITSTOCK-SR1", name="IT Stock-HO", asset_user_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-        store = AssetUser(company_id=co.id, emp_code="ALC-SR1", name="ALC", asset_user_type="STORE",
-                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-        it_admin = AssetUser(company_id=co.id, emp_code="ITA-SR1", name="IT Admin", asset_user_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, code="ITSTOCK-SR1", name="IT Stock-HO", asset_user_type="STOCK_POINT",
+                        location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        store = AssetUser(company_id=co.id, code="ALC-SR1", name="ALC", asset_user_type="STORE",
+                        location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        it_admin = AssetUser(company_id=co.id, code="ITA-SR1", name="IT Admin", asset_user_type="EMPLOYEE",
                            location_id=loc.id, department_id=dept.id, role="ADMIN",
-                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                           login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/CK_",
                          suffix_template="", start_number=1, pad_width=0)
         session.add_all([stock, store, it_admin, rule])
@@ -66,7 +66,7 @@ async def test_am11_search_by_description_substring(client):
     than its generated code."""
     async with SessionLocal() as session:
         co = Company(code="CKS-SR2", name="Description Search Co")
-        cat = AssetCategory(code="IT-SR2", name="IT")
+        cat = AssetCategory(code="IT-SR2", name="IT", asset_domain="IT")
         session.add_all([co, cat])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
@@ -75,11 +75,11 @@ async def test_am11_search_by_description_substring(client):
         dept = Department(name="IT-SR2")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = AssetUser(company_id=co.id, emp_code="ITSTOCK-SR2", name="IT Stock-HO", asset_user_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-        it_admin = AssetUser(company_id=co.id, emp_code="ITA-SR2", name="IT Admin", asset_user_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, code="ITSTOCK-SR2", name="IT Stock-HO", asset_user_type="STOCK_POINT",
+                        location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        it_admin = AssetUser(company_id=co.id, code="ITA-SR2", name="IT Admin", asset_user_type="EMPLOYEE",
                            location_id=loc.id, department_id=dept.id, role="ADMIN",
-                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                           login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/CK2_",
                          suffix_template="", start_number=1, pad_width=0)
         session.add_all([stock, it_admin, rule])
@@ -106,7 +106,7 @@ async def test_am11_list_resolves_asset_user_and_company_names(client):
     a page-scoped batch lookup."""
     async with SessionLocal() as session:
         co = Company(code="CKS-SR3", name="AssetUser Name Co")
-        cat = AssetCategory(code="IT-SR3", name="IT")
+        cat = AssetCategory(code="IT-SR3", name="IT", asset_domain="IT")
         session.add_all([co, cat])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
@@ -115,11 +115,11 @@ async def test_am11_list_resolves_asset_user_and_company_names(client):
         dept = Department(name="IT-SR3")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = AssetUser(company_id=co.id, emp_code="ITSTOCK-SR3", name="IT Stock-HO", asset_user_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-        it_admin = AssetUser(company_id=co.id, emp_code="ITA-SR3", name="IT Admin", asset_user_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, code="ITSTOCK-SR3", name="IT Stock-HO", asset_user_type="STOCK_POINT",
+                        location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        it_admin = AssetUser(company_id=co.id, code="ITA-SR3", name="IT Admin", asset_user_type="EMPLOYEE",
                            location_id=loc.id, department_id=dept.id, role="ADMIN",
-                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                           login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/CK3_",
                          suffix_template="", start_number=1, pad_width=0)
         session.add_all([stock, it_admin, rule])
@@ -146,7 +146,7 @@ async def test_am11_list_resolves_category_subcategory_vendor_and_cost_center_na
     back as names, not bare ids, via the same page-scoped batch lookup."""
     async with SessionLocal() as session:
         co = Company(code="CKS-SR4", name="Label Resolution Co")
-        cat = AssetCategory(code="IT-SR4", name="IT Equipment")
+        cat = AssetCategory(code="IT-SR4", name="IT Equipment", asset_domain="IT")
         vendor = Vendor(code="VEN-SR4", name="Acme Supplies")
         session.add_all([co, cat, vendor])
         await session.flush()
@@ -156,11 +156,11 @@ async def test_am11_list_resolves_category_subcategory_vendor_and_cost_center_na
         dept = Department(name="IT-SR4")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = AssetUser(company_id=co.id, emp_code="ITSTOCK-SR4", name="IT Stock-HO", asset_user_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-        it_admin = AssetUser(company_id=co.id, emp_code="ITA-SR4", name="IT Admin", asset_user_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, code="ITSTOCK-SR4", name="IT Stock-HO", asset_user_type="STOCK_POINT",
+                        location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        it_admin = AssetUser(company_id=co.id, code="ITA-SR4", name="IT Admin", asset_user_type="EMPLOYEE",
                            location_id=loc.id, department_id=dept.id, role="ADMIN",
-                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                           login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/CK4_",
                          suffix_template="", start_number=1, pad_width=0)
         session.add_all([stock, it_admin, rule])

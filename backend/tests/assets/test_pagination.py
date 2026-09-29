@@ -1,4 +1,4 @@
-"""GET /api/assets honours limit/offset with an accurate total (the Asset Register
+﻿"""GET /api/assets honours limit/offset with an accurate total (the Asset Register
 pages through it), and the Excel export never silently truncates."""
 from datetime import date
 from io import BytesIO
@@ -17,7 +17,7 @@ from app.reports import router as reports_router
 async def _setup(n_assets=5, other_company_assets=2):
     async with SessionLocal() as session:
         cos = [Company(code="PGA", name="PGA Co"), Company(code="PGB", name="PGB Co")]
-        cat = AssetCategory(code="IT", name="IT")
+        cat = AssetCategory(code="IT", name="IT", asset_domain="IT")
         session.add_all([*cos, cat])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
@@ -26,14 +26,14 @@ async def _setup(n_assets=5, other_company_assets=2):
         ccs = [CostCenter(company_id=c.id, code="HO01", name="HO") for c in cos]
         session.add_all([sub, *locs, dept, *ccs])
         await session.flush()
-        stocks = [AssetUser(company_id=c.id, emp_code=f"STK-{c.code}", name="Stock", asset_user_type="IT_STOCK",
-                         location_id=locs[i].id, department_id=dept.id, role="ASSET_USER") for i, c in enumerate(cos)]
-        it_a = AssetUser(company_id=cos[0].id, emp_code="ITA", name="IT A", asset_user_type="EMPLOYEE",
-                      location_id=locs[0].id, department_id=dept.id, role="IT_TEAM",
-                      password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        admin = AssetUser(company_id=cos[1].id, emp_code="ADM", name="Admin", asset_user_type="EMPLOYEE",
+        stocks = [AssetUser(company_id=c.id, code=f"STK-{c.code}", name="Stock", asset_user_type="STOCK_POINT",
+                         location_id=locs[i].id, department_id=dept.id, role="SELF_SERVICE") for i, c in enumerate(cos)]
+        it_a = AssetUser(company_id=cos[0].id, code="ITA", name="IT A", asset_user_type="EMPLOYEE",
+                      location_id=locs[0].id, department_id=dept.id, role="OPERATOR",
+                      login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        admin = AssetUser(company_id=cos[1].id, code="ADM", name="Admin", asset_user_type="EMPLOYEE",
                        location_id=locs[1].id, department_id=dept.id, role="ADMIN",
-                       password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                       login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         session.add_all([*stocks, it_a, admin,
                          CodeRule(company_id=None, prefix_template="{company.code}/", suffix_template="",
                                   start_number=1, pad_width=0)])
@@ -48,8 +48,8 @@ async def _setup(n_assets=5, other_company_assets=2):
         return cos[0].id
 
 
-async def _headers(client, company_id, emp_code="ITA"):
-    resp = await client.post("/api/auth/login", json={"company_id": company_id, "login_id": emp_code, "password": "Passw0rd!"})
+async def _headers(client, company_id, code="ITA"):
+    resp = await client.post("/api/auth/login", json={"company_id": company_id, "login_id": code, "password": "Passw0rd!"})
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 

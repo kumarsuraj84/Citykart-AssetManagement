@@ -1,4 +1,4 @@
-"""AM-18: Warranty Years becomes the real input on every asset-creation
+﻿"""AM-18: Warranty Years becomes the real input on every asset-creation
 path; Warranty Upto is always server-computed from it, never typed
 directly. See app.assets.service.compute_warranty_upto for the formula."""
 from datetime import date
@@ -32,7 +32,7 @@ def test_leap_day_purchase_date_falls_back_to_feb_28_on_a_non_leap_target_year()
 async def _setup(suffix: str):
     async with SessionLocal() as session:
         co = Company(code=f"AM18-{suffix}", name=f"AM18 Co {suffix}")
-        cat = AssetCategory(code=f"AM18-{suffix}", name="IT")
+        cat = AssetCategory(code=f"AM18-{suffix}", name="IT", asset_domain="IT")
         vendor = Vendor(code=f"AM18-{suffix}", name="AM18 Test Vendor")
         session.add_all([co, cat, vendor])
         await session.flush()
@@ -42,11 +42,11 @@ async def _setup(suffix: str):
         dept = Department(name=f"AM18-{suffix}")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = AssetUser(company_id=co.id, emp_code=f"STK-{suffix}", name="IT Stock", asset_user_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, code=f"STK-{suffix}", name="IT Stock", asset_user_type="STOCK_POINT",
+                        location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        admin = AssetUser(company_id=co.id, code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
-                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                        login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=co.id, prefix_template=f"AM18/{suffix}/", suffix_template="",
                          start_number=1, pad_width=0)
         session.add_all([stock, admin, rule])
@@ -54,8 +54,8 @@ async def _setup(suffix: str):
         return {"co": co, "cc": cc, "cat": cat, "sub": sub, "vendor": vendor, "stock": stock, "admin": admin}
 
 
-async def _headers(client, emp_code):
-    resp = await client.post("/api/auth/login", json={"login_id": emp_code, "password": "Passw0rd!"})
+async def _headers(client, code):
+    resp = await client.post("/api/auth/login", json={"login_id": code, "password": "Passw0rd!"})
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 
@@ -102,7 +102,7 @@ class TestProcureAssetsWarrantyComputation:
 class TestAddAssetApiWarrantyYears:
     async def test_add_asset_defaults_warranty_years_to_zero(self, client):
         ids = await _setup("API1")
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.post("/api/assets", json={
             "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
             "subcategory_id": ids["sub"].id, "description": "No Warranty Field Sent",
@@ -119,7 +119,7 @@ class TestAddAssetApiWarrantyYears:
 
     async def test_add_asset_explicit_warranty_years(self, client):
         ids = await _setup("API2")
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.post("/api/assets", json={
             "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
             "subcategory_id": ids["sub"].id, "description": "Two Year Warranty",
@@ -152,7 +152,7 @@ class TestOrdinaryEditWarrantyYears:
             asset_id = asset.id
             assert asset.warranty_years is None
 
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.put(f"/api/assets/{asset_id}", json={
             "description": "Pre-AM18 Asset, description only edit",
             "warranty_years": None,
@@ -173,7 +173,7 @@ class TestOrdinaryEditWarrantyYears:
             await session.commit()
             asset_id = asset.id
 
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.put(f"/api/assets/{asset_id}", json={
             "description": "Now Warrantied", "warranty_years": 3,
         }, headers=headers)
@@ -193,7 +193,7 @@ class TestOrdinaryEditWarrantyYears:
             await session.commit()
             asset_id = asset.id
 
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         await client.put(f"/api/assets/{asset_id}", json={
             "description": "Same Warranty Twice", "warranty_years": 2,
         }, headers=headers)

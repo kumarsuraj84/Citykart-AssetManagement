@@ -1,4 +1,4 @@
-import pytest
+﻿import pytest
 from datetime import date, datetime, timedelta, timezone
 from app.core.db import SessionLocal
 from app.lifecycle.service import apply_event
@@ -10,7 +10,7 @@ from app.assets.models import Asset
 
 async def _fixture(session, suffix):
     co = Company(code=f"CKS-{suffix}", name="Lifecycle Test Co")
-    cat = AssetCategory(code=f"IT-{suffix}", name="IT")
+    cat = AssetCategory(code=f"IT-{suffix}", name="IT", asset_domain="IT")
     session.add_all([co, cat])
     await session.flush()
     sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
@@ -19,18 +19,18 @@ async def _fixture(session, suffix):
     dept = Department(name=f"IT-{suffix}")
     session.add_all([sub, cc, loc, dept])
     await session.flush()
-    stock = AssetUser(company_id=co.id, emp_code=f"ITSTOCK-{suffix}", name="IT Stock-HO",
-                    asset_user_type="IT_STOCK", location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-    ankur = AssetUser(company_id=co.id, emp_code=f"CS-{suffix}", name="Ankur",
-                    asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-    it_actor = AssetUser(company_id=co.id, emp_code=f"ITA-{suffix}", name="IT Actor",
-                       asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="IT_TEAM")
+    stock = AssetUser(company_id=co.id, code=f"ITSTOCK-{suffix}", name="IT Stock-HO",
+                    asset_user_type="STOCK_POINT", location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+    ankur = AssetUser(company_id=co.id, code=f"CS-{suffix}", name="Ankur",
+                    asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+    it_actor = AssetUser(company_id=co.id, code=f"ITA-{suffix}", name="IT Actor",
+                       asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="OPERATOR")
     session.add_all([stock, ankur, it_actor])
     await session.flush()
     asset = Asset(asset_code=f"FA/HO01/IT/LAP/CK_{suffix}", company_id=co.id, cost_center_id=cc.id,
                    category_id=cat.id, subcategory_id=sub.id, description="Fixture Laptop",
                    purchase_date=date(2025, 12, 10), status="IN_STOCK", current_asset_user_id=stock.id,
-                   status_since=date(2025, 12, 10))
+                   status_since=date(2025, 12, 10), asset_domain="IT")
     session.add(asset)
     await session.flush()
     return asset, stock, ankur, it_actor

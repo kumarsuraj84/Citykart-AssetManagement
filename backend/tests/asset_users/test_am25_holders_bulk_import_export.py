@@ -1,4 +1,4 @@
-"""AM-25: AssetUser bulk Import/Export -- reuses app.masters.bulk_import_export
+﻿"""AM-25: AssetUser bulk Import/Export -- reuses app.masters.bulk_import_export
 (the same generic engine every master master uses), ADMIN-only, imported
 asset_users get no password (activated later via the existing Reset Password
 action)."""
@@ -32,12 +32,12 @@ async def _setup(suffix: str):
         dept = Department(name=f"AM25HD-{suffix}")
         session.add_all([loc, dept])
         await session.flush()
-        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
+        admin = AssetUser(company_id=co.id, code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
-                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        ita = AssetUser(company_id=co.id, emp_code=f"ITA-{suffix}", name="IT Team", asset_user_type="EMPLOYEE",
-                     location_id=loc.id, department_id=dept.id, role="IT_TEAM",
-                     password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                        login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
+        ita = AssetUser(company_id=co.id, code=f"ITA-{suffix}", name="IT Team", asset_user_type="EMPLOYEE",
+                     location_id=loc.id, department_id=dept.id, role="OPERATOR",
+                     login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         session.add_all([admin, ita])
         await session.commit()
         return {"co": co, "loc": loc, "dept": dept, "admin": f"ADM-{suffix}", "ita": f"ITA-{suffix}"}
@@ -53,7 +53,7 @@ async def _post_file(client, path, content, headers):
     return await client.post(path, files={"file": ("a.xlsx", io.BytesIO(content), XLSX)}, headers=headers)
 
 
-HEADER = ["Company Code", "Emp Code", "Name", "Type", "Location Code", "Department", "Email", "Phone", "Role"]
+HEADER = ["Company Code", "Code", "Name", "Type", "Location Code", "Department", "Email", "Phone", "Role"]
 
 
 async def test_template_has_the_expected_columns(client):
@@ -71,7 +71,7 @@ async def test_import_creates_a_asset_user_with_no_password_yet(client):
     headers = await _login(client, ids["admin"])
     content = _xlsx(HEADER, [[
         ids["co"].code, "NEWEMP1", "New Employee", "EMPLOYEE", ids["loc"].code, ids["dept"].name,
-        "new@example.test", "9998887777", "ASSET_USER",
+        "new@example.test", "9998887777", "SELF_SERVICE",
     ]])
 
     resp = await _post_file(client, "/api/asset-users/import/commit", content, headers)
@@ -80,18 +80,18 @@ async def test_import_creates_a_asset_user_with_no_password_yet(client):
 
     async with SessionLocal() as session:
         from sqlalchemy import select
-        row = (await session.execute(select(AssetUser).where(AssetUser.emp_code == "NEWEMP1"))).scalars().first()
+        row = (await session.execute(select(AssetUser).where(AssetUser.code == "NEWEMP1"))).scalars().first()
         assert row is not None
         assert row.password_hash is None
         assert row.must_change_password is True
-        assert row.role == "ASSET_USER"
+        assert row.role == "SELF_SERVICE"
         assert row.email == "new@example.test"
 
 
 async def test_import_requires_admin_not_it_team(client):
     ids = await _setup("IMP2")
     ita_headers = await _login(client, ids["ita"])
-    content = _xlsx(HEADER, [[ids["co"].code, "X1", "X", "EMPLOYEE", ids["loc"].code, None, None, None, "ASSET_USER"]])
+    content = _xlsx(HEADER, [[ids["co"].code, "X1", "X", "EMPLOYEE", ids["loc"].code, None, None, None, "SELF_SERVICE"]])
     resp = await _post_file(client, "/api/asset-users/import/commit", content, ita_headers)
     assert resp.status_code == 403
 
@@ -99,7 +99,7 @@ async def test_import_requires_admin_not_it_team(client):
 async def test_import_rejects_an_invalid_asset_user_type_as_a_row_error(client):
     ids = await _setup("IMP3")
     headers = await _login(client, ids["admin"])
-    content = _xlsx(HEADER, [[ids["co"].code, "X2", "X", "NOT_A_TYPE", ids["loc"].code, None, None, None, "ASSET_USER"]])
+    content = _xlsx(HEADER, [[ids["co"].code, "X2", "X", "NOT_A_TYPE", ids["loc"].code, None, None, None, "SELF_SERVICE"]])
     resp = await _post_file(client, "/api/asset-users/import/commit", content, headers)
     assert resp.status_code == 200
     body = resp.json()
@@ -117,7 +117,7 @@ async def test_import_department_is_optional_and_resolved_by_name(client):
 
     async with SessionLocal() as session:
         from sqlalchemy import select
-        row = (await session.execute(select(AssetUser).where(AssetUser.emp_code == "X3"))).scalars().first()
+        row = (await session.execute(select(AssetUser).where(AssetUser.code == "X3"))).scalars().first()
         assert row.department_id is None
         assert row.role == "VIEWER"
 

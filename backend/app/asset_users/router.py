@@ -1,13 +1,13 @@
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+﻿from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
-from app.core.deps import STAFF_ROLES, get_current_asset_user, require_role, scoped_company_ids
+from app.core.deps import READ_ROLES, get_current_asset_user, require_primary_owner, require_role, scoped_company_ids
 from app.asset_users.service import AssetUserService
 from app.asset_users.schemas import CompanyAccessIn, CompanyAccessOut, AssetUserIn, AssetUserOut, ResetPasswordOut
-from app.asset_users.models import ASSET_USER_TYPES, ROLES, AssetUser
+from app.asset_users.models import ALLOWED_ASSET_DOMAINS, ASSET_USER_TYPES, PRIMARY_ASSET_DOMAINS, ROLES, AssetUser
 from app.masters.bulk_import_export import (
     FieldSpec, ImportScopeError, ImportTemplateError,
     build_template as build_import_template, commit_import, export_rows, preview_import,
@@ -20,15 +20,17 @@ router = APIRouter(prefix="/api/asset-users", tags=["asset-users"])
 # AM-25: AssetUser import reuses the exact same generic engine every master
 # uses (app.masters.bulk_import_export) rather than a bespoke copy -- the
 # only thing genuinely different here is that it's ADMIN-only (matching
-# create_asset_user's own role requirement, stricter than the ADMIN+IT_TEAM
+# create_asset_user's own role requirement, stricter than the ADMIN+OPERATOR
 # masters use) and that an imported asset_user gets no password (password_hash
 # stays NULL, must_change_password defaults True on the model itself) --
 # an ADMIN activates login for one afterward via the existing Reset
 # Password action, same as any other asset_user that doesn't need one yet
-# (STORE/IT_STOCK/INSTALLED types typically never do).
+# (STORE/STOCK_POINT/INSTALLED types typically never do). The Primary Owner
+# is never created via import -- it has no company/location/code to import
+# against (see require_primary_owner in app.core.deps).
 ASSET_USER_IMPORT_FIELDS = [
     FieldSpec("Company Code", "company_id", required=True, lookup=(Company, "code")),
-    FieldSpec("Emp Code", "emp_code", required=True, max_length=50),
+    FieldSpec("Code", "code", required=True, max_length=50),
     FieldSpec("Name", "name", required=True, max_length=200),
     FieldSpec("Type", "asset_user_type", required=True, kind="enum", enum_values=ASSET_USER_TYPES),
     FieldSpec("Location Code", "location_id", required=True, lookup=(Location, "code"), scope_by="company_id"),
@@ -124,6 +126,22 @@ def _validate_asset_user_fields(data: dict) -> None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"asset_user_type must be one of {ASSET_USER_TYPES}")
     if data.get("role") not in ROLES:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"role must be one of {ROLES}")
+    domain = data.get("primary_asset_domain")
+    if domain is not None and domain not in PRIMARY_ASSET_DOMAINS:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"primary_asset_domain must be one of {PRIMARY_ASSET_DOMAINS}")
+    allowed_domains = data.get("allowed_asset_domains")
+    if allowed_domains is not None and allowed_domains not in ALLOWED_ASSET_DOMAINS:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"allowed_asset_domains must be one of {ALLOWED_ASSET_DOMAINS}")
+    # Spec §13: primary_asset_domain/allowed_asset_domains are only meaningful
+    # for a login-capable operational asset_user -- refuse rather than
+    # silently store them on a STORE/INSTALLED/STOCK_POINT point-record or a
+    # not-yet-activated EMPLOYEE. Email is deliberately NOT gated here: a
+    # EMPLOYEE may have a contact email before login is ever enabled for them.
+    if not data.get("login_enabled") and (domain or allowed_domains):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "primary_asset_domain/allowed_asset_domains require login_enabled",
+        )
 
 
 async def _validate_asset_user_references(session: AsyncSession, data: dict) -> None:
@@ -156,7 +174,7 @@ async def list_asset_users(
     company_id: int | None = Query(None),
     asset_user_type: str | None = Query(None),
     session: AsyncSession = Depends(get_session),
-    asset_user=Depends(require_role(*STAFF_ROLES)),
+    asset_user=Depends(require_role(*READ_ROLES)),
 ):
     # Staff only: the list carries every asset_user's email/phone, and a ASSET_USER may
     # only see their own currently-held assets (spec §6) -- 403 for them.
@@ -180,13 +198,13 @@ async def create_asset_user(
     try:
         return await AssetUserService(session).create(data, asset_user.id)
     except IntegrityError:
-        # AM-09: `emp_code` is unique per company (AssetUser.__table_args__) -- reusing
+        # AM-09: `code` is unique per company (AssetUser.__table_args__) -- reusing
         # one is an ordinary mistake, not malformed input, and previously hit an
         # unhandled 500 (a raw asyncpg UniqueViolationError) instead of a normal
         # validation error. Rollback is required before the session can be used
         # again in this request (a failed INSERT leaves the transaction aborted).
         await session.rollback()
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "an employee code already exists for this company")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "a code already exists for this company")
 
 
 @router.put("/{asset_user_id}", response_model=AssetUserOut)
@@ -203,7 +221,7 @@ async def update_asset_user(
         obj = await AssetUserService(session).update(asset_user_id, data, asset_user.id)
     except IntegrityError:
         await session.rollback()
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "an employee code already exists for this company")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "a code already exists for this company")
     if obj is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     return obj
@@ -215,9 +233,43 @@ async def deactivate_asset_user(
     session: AsyncSession = Depends(get_session),
     asset_user=Depends(require_role("ADMIN")),
 ):
-    ok = await AssetUserService(session).deactivate(asset_user_id, asset_user.id)
+    try:
+        ok = await AssetUserService(session).deactivate(asset_user_id, asset_user.id)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
     if not ok:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
+
+
+@router.post("/{asset_user_id}/primary-owner", response_model=AssetUserOut)
+async def grant_primary_owner(
+    asset_user_id: int,
+    session: AsyncSession = Depends(get_session),
+    actor=Depends(require_primary_owner()),
+):
+    """Only an existing Primary Owner may create another one (spec: "fixed",
+    never selectable through the ordinary Role dropdown or Add/Edit form) --
+    see require_primary_owner in app.core.deps for why this is not merely
+    ADMIN-gated."""
+    obj = await AssetUserService(session).set_primary_owner(asset_user_id, True, actor.id)
+    if obj is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    return obj
+
+
+@router.delete("/{asset_user_id}/primary-owner", response_model=AssetUserOut)
+async def revoke_primary_owner(
+    asset_user_id: int,
+    session: AsyncSession = Depends(get_session),
+    actor=Depends(require_primary_owner()),
+):
+    try:
+        obj = await AssetUserService(session).set_primary_owner(asset_user_id, False, actor.id)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    if obj is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    return obj
 
 
 @router.post("/{asset_user_id}/reset-password", response_model=ResetPasswordOut)
@@ -226,6 +278,14 @@ async def reset_password(
     session: AsyncSession = Depends(get_session),
     actor=Depends(require_role("ADMIN")),
 ):
+    # Spec §51: Reset Password only applies to a login-capable asset_user --
+    # a STORE/INSTALLED/STOCK_POINT point-record (or an EMPLOYEE that was
+    # never activated for login) has nothing meaningful to reset.
+    target = await AssetUserService(session).get(asset_user_id)
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    if not target.login_enabled:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "this asset user is not login-enabled")
     temp = await AssetUserService(session).reset_password(asset_user_id, actor.id)
     if temp is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)

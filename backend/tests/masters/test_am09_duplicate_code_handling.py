@@ -1,4 +1,4 @@
-"""AM-09: every master has a unique `code` (some scoped, e.g. CostCenter's
+﻿"""AM-09: every master has a unique `code` (some scoped, e.g. CostCenter's
 (company_id, code)) -- a caller reusing an existing code is an ordinary
 mistake, not malformed input, and previously hit an unhandled 500 (a raw
 asyncpg UniqueViolationError propagating out of build_master_router's
@@ -23,9 +23,9 @@ async def _seed_company_admin(company_code="DUPC"):
         session.add_all([loc, dept])
         await session.flush()
         asset_user = AssetUser(
-            company_id=co.id, emp_code="DUPADM", name="Dup Admin", asset_user_type="EMPLOYEE",
+            company_id=co.id, code="DUPADM", name="Dup Admin", asset_user_type="EMPLOYEE",
             location_id=loc.id, department_id=dept.id, role="ADMIN",
-            password_hash=hash_password("Passw0rd!"), must_change_password=False,
+            login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False,
         )
         session.add(asset_user)
         await session.commit()
@@ -37,15 +37,21 @@ async def test_duplicate_category_code_on_create_is_a_controlled_422_not_500(cli
     resp = await client.post("/api/auth/login", json={"login_id": "DUPADM", "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
-    first = await client.post("/api/masters/categories", json={"code": "DUPCAT", "name": "First"}, headers=headers)
+    first = await client.post(
+        "/api/masters/categories", json={"code": "DUPCAT", "name": "First", "asset_domain": "IT"}, headers=headers,
+    )
     assert first.status_code == 201
 
-    second = await client.post("/api/masters/categories", json={"code": "DUPCAT", "name": "Second"}, headers=headers)
+    second = await client.post(
+        "/api/masters/categories", json={"code": "DUPCAT", "name": "Second", "asset_domain": "IT"}, headers=headers,
+    )
     assert second.status_code == 422
     assert "already exists" in second.json()["detail"]
 
     # The failed attempt must not corrupt the session for a subsequent, valid request.
-    third = await client.post("/api/masters/categories", json={"code": "NOTDUP", "name": "Third"}, headers=headers)
+    third = await client.post(
+        "/api/masters/categories", json={"code": "NOTDUP", "name": "Third", "asset_domain": "IT"}, headers=headers,
+    )
     assert third.status_code == 201
 
 

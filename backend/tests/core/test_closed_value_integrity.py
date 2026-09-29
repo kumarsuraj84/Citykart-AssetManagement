@@ -1,4 +1,4 @@
-"""Closed-value integrity: 8 columns whose values are conceptually a closed
+﻿"""Closed-value integrity: 8 columns whose values are conceptually a closed
 set (an enum), but are plain VARCHAR at the database level:
 
   asset.status                    ASSET_STATUSES   (app.assets.models)
@@ -49,17 +49,17 @@ async def _company_with_admin(code):
         session.add_all([loc, dept])
         await session.flush()
         admin = AssetUser(
-            company_id=co.id, emp_code=f"ADM-{code}", name="Admin",
+            company_id=co.id, code=f"ADM-{code}", name="Admin",
             asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id,
-            role="ADMIN", password_hash=hash_password("Passw0rd!"), must_change_password=False,
+            role="ADMIN", login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False,
         )
         session.add(admin)
         await session.commit()
         return co.id, loc.id, dept.id
 
 
-async def _headers(client, emp_code):
-    resp = await client.post("/api/auth/login", json={"login_id": emp_code, "password": "Passw0rd!"})
+async def _headers(client, code):
+    resp = await client.post("/api/auth/login", json={"login_id": code, "password": "Passw0rd!"})
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 
@@ -68,7 +68,7 @@ class TestAssetUserTypeValidated:
         co_id, loc_id, dept_id = await _company_with_admin("CVI1")
         headers = await _headers(client, "ADM-CVI1")
         resp = await client.post("/api/asset-users", json={
-            "company_id": co_id, "emp_code": "BADTYPE1", "name": "Bad Type AssetUser",
+            "company_id": co_id, "code": "BADTYPE1", "name": "Bad Type AssetUser",
             "asset_user_type": "NOT_A_REAL_TYPE", "location_id": loc_id, "department_id": dept_id,
         }, headers=headers)
         assert resp.status_code == 422
@@ -78,8 +78,8 @@ class TestAssetUserTypeValidated:
         co_id, loc_id, dept_id = await _company_with_admin("CVI1B")
         headers = await _headers(client, "ADM-CVI1B")
         resp = await client.post("/api/asset-users", json={
-            "company_id": co_id, "emp_code": "GOODTYPE1", "name": "Good Type AssetUser",
-            "asset_user_type": "IT_STOCK", "location_id": loc_id, "department_id": dept_id,
+            "company_id": co_id, "code": "GOODTYPE1", "name": "Good Type AssetUser",
+            "asset_user_type": "STOCK_POINT", "location_id": loc_id, "department_id": dept_id,
         }, headers=headers)
         assert resp.status_code == 201
 
@@ -89,7 +89,7 @@ class TestAssetUserRoleValidated:
         co_id, loc_id, dept_id = await _company_with_admin("CVI2")
         headers = await _headers(client, "ADM-CVI2")
         resp = await client.post("/api/asset-users", json={
-            "company_id": co_id, "emp_code": "BADROLE1", "name": "Bad Role AssetUser",
+            "company_id": co_id, "code": "BADROLE1", "name": "Bad Role AssetUser",
             "asset_user_type": "EMPLOYEE", "location_id": loc_id, "department_id": dept_id,
             "role": "SUPER_ADMIN_GOD_MODE",
         }, headers=headers)
@@ -127,7 +127,7 @@ class TestEventTypeIsProtectedIndirectly:
         the same LifecycleError -> 422 path a legal-but-wrong-state event uses."""
         async with SessionLocal() as session:
             co = Company(code="CVI4", name="CVI4 Co")
-            cat = AssetCategory(code="IT-CVI4", name="IT")
+            cat = AssetCategory(code="IT-CVI4", name="IT", asset_domain="IT")
             session.add_all([co, cat])
             await session.flush()
             sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
@@ -136,11 +136,11 @@ class TestEventTypeIsProtectedIndirectly:
             dept = Department(name="IT-CVI4")
             session.add_all([sub, cc, loc, dept])
             await session.flush()
-            stock = AssetUser(company_id=co.id, emp_code="STOCK-CVI4", name="IT Stock-HO",
-                            asset_user_type="IT_STOCK", location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-            admin = AssetUser(company_id=co.id, emp_code="ADM-CVI4", name="Admin",
+            stock = AssetUser(company_id=co.id, code="STOCK-CVI4", name="IT Stock-HO",
+                            asset_user_type="STOCK_POINT", location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+            admin = AssetUser(company_id=co.id, code="ADM-CVI4", name="Admin",
                             asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="ADMIN",
-                            password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                            login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
             rule = CodeRule(company_id=None, prefix_template="FA/CVI4/", suffix_template="",
                              start_number=1, pad_width=0)
             session.add_all([stock, admin, rule])

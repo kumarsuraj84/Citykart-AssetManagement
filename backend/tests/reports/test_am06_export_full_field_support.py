@@ -1,4 +1,4 @@
-"""AM-06: the asset register export gains the full V1 field set (procurement,
+﻿"""AM-06: the asset register export gains the full V1 field set (procurement,
 PI Number, human-readable labels, Custom Field columns); a new, separate
 field-change-audit export is added; the movement log export is confirmed
 unchanged. See docs/ai/DECISIONS.md for why these are three separate
@@ -19,7 +19,7 @@ async def _setup(code="EXP06"):
     async with SessionLocal() as session:
         co = Company(code=f"{code}A", name=f"{code} Co A")
         co_b = Company(code=f"{code}B", name=f"{code} Co B")
-        cat = AssetCategory(code=f"CAT-{code}", name="IT")
+        cat = AssetCategory(code=f"CAT-{code}", name="IT", asset_domain="IT")
         vendor = Vendor(code=f"VND-{code}", name="Acme Traders")
         brand = Brand(code=f"BR1-{code}", name="Dell")
         brand2 = Brand(code=f"BR2-{code}", name="HP")
@@ -31,11 +31,11 @@ async def _setup(code="EXP06"):
         dept = Department(name=f"IT-{code}")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = AssetUser(company_id=co.id, emp_code=f"STK-{code}", name="IT Stock-HO", asset_user_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{code}", name="Admin", asset_user_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, code=f"STK-{code}", name="IT Stock-HO", asset_user_type="STOCK_POINT",
+                        location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        admin = AssetUser(company_id=co.id, code=f"ADM-{code}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
-                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                        login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         # Company-scoped (never company_id=None/Global): a Global rule from one
         # _setup() call would otherwise be visible to (and, via
         # get_active_rule's "latest global rule wins" tiebreak, could even win
@@ -52,8 +52,8 @@ async def _setup(code="EXP06"):
         }
 
 
-async def _headers(client, emp_code):
-    resp = await client.post("/api/auth/login", json={"login_id": emp_code, "password": "Passw0rd!"})
+async def _headers(client, code):
+    resp = await client.post("/api/auth/login", json={"login_id": code, "password": "Passw0rd!"})
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 
@@ -79,7 +79,7 @@ class TestAssetRegisterExportColumns:
             await session.commit()
             asset_code = asset.asset_code
 
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.get("/api/reports/export/assets", headers=headers)
         assert resp.status_code == 200
         wb = openpyxl.load_workbook(BytesIO(resp.content))
@@ -95,7 +95,7 @@ class TestAssetRegisterExportColumns:
         assert row_by_header["Company"] == ids["co"].name  # human-readable, not a raw id
         assert row_by_header["Vendor"] == "Acme Traders"
         assert row_by_header["Current AssetUser"] == "IT Stock-HO"
-        assert row_by_header["AssetUser Type"] == "IT_STOCK"
+        assert row_by_header["AssetUser Type"] == "STOCK_POINT"
 
     async def test_export_includes_custom_field_columns_keyed_by_field_key(self, client):
         ids = await _setup("COL2")
@@ -111,7 +111,7 @@ class TestAssetRegisterExportColumns:
             await session.commit()
             asset_code = asset.asset_code
 
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.get("/api/reports/export/assets", headers=headers)
         wb = openpyxl.load_workbook(BytesIO(resp.content))
         ws = wb.active
@@ -144,7 +144,7 @@ class TestAssetRegisterExportColumns:
             db_field.is_active = False
             await session.commit()
 
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.get("/api/reports/export/assets", headers=headers)
         wb = openpyxl.load_workbook(BytesIO(resp.content))
         ws = wb.active
@@ -157,9 +157,9 @@ class TestAssetRegisterExportColumns:
         ids = await _setup("COL4")
         async with SessionLocal() as session:
             session.add(CustomField(field_key="col4_other", label="Other", field_type="text", company_id=ids["co_b_id"]))
-            it_team = AssetUser(company_id=ids["co"].id, emp_code="ITT-COL4", name="IT Team", asset_user_type="EMPLOYEE",
+            it_team = AssetUser(company_id=ids["co"].id, code="ITT-COL4", name="IT Team", asset_user_type="EMPLOYEE",
                               location_id=ids["stock"].location_id, department_id=ids["stock"].department_id,
-                              role="IT_TEAM", password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                              role="OPERATOR", login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
             session.add(it_team)
             await session.commit()
         async with SessionLocal() as session:
@@ -192,7 +192,7 @@ class TestFieldChangeAuditExport:
         # AssetUpdateIn is a full-replace PUT (docs/ai/DECISIONS.md): a field
         # omitted from the body resets to its schema default, not "left
         # unchanged" -- every editable field must be resubmitted each time.
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         full_body = {
             "legacy_asset_code": None, "brand_id": ids["brand"], "model": None, "serial_number": None,
             "description": "Audit Export Laptop", "vendor_id": None, "po_number": None, "po_date": None,
@@ -236,7 +236,7 @@ class TestFieldChangeAuditExport:
             await session.commit()
             asset_id, asset_code = asset.id, asset.asset_code
 
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         resp = await client.post(
             f"/api/assets/{asset_id}/corrections",
             json={"purchase_date": "2025-05-15", "reason": "Invoice date was mis-keyed at entry"},
@@ -260,10 +260,10 @@ class TestFieldChangeAuditExport:
         ids_a = await _setup("AUD2A")
         ids_b = await _setup("AUD2B")
         async with SessionLocal() as session:
-            it_team_b = AssetUser(company_id=ids_b["co"].id, emp_code="ITT-AUD2B", name="IT Team B",
+            it_team_b = AssetUser(company_id=ids_b["co"].id, code="ITT-AUD2B", name="IT Team B",
                                 asset_user_type="EMPLOYEE", location_id=ids_b["stock"].location_id,
-                                department_id=ids_b["stock"].department_id, role="IT_TEAM",
-                                password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                                department_id=ids_b["stock"].department_id, role="OPERATOR",
+                                login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
             session.add(it_team_b)
             await session.commit()
         async with SessionLocal() as session:
@@ -275,7 +275,7 @@ class TestFieldChangeAuditExport:
             await session.commit()
             asset_a_id, asset_a_code = asset_a.id, asset_a.asset_code
 
-        headers_a = await _headers(client, ids_a["admin"].emp_code)
+        headers_a = await _headers(client, ids_a["admin"].code)
         await client.put(f"/api/assets/{asset_a_id}", json={"description": "changed by A"}, headers=headers_a)
 
         headers_b = await _headers(client, "ITT-AUD2B")
@@ -287,10 +287,10 @@ class TestFieldChangeAuditExport:
     async def test_asset_user_role_cannot_export_field_changes(self, client):
         ids = await _setup("AUD3")
         async with SessionLocal() as session:
-            asset_user_role = AssetUser(company_id=ids["co"].id, emp_code="HLD-AUD3", name="Just A AssetUser",
+            asset_user_role = AssetUser(company_id=ids["co"].id, code="HLD-AUD3", name="Just A AssetUser",
                                   asset_user_type="EMPLOYEE", location_id=ids["stock"].location_id,
-                                  department_id=ids["stock"].department_id, role="ASSET_USER",
-                                  password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                                  department_id=ids["stock"].department_id, role="SELF_SERVICE",
+                                  login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
             session.add(asset_user_role)
             await session.commit()
         headers = await _headers(client, "HLD-AUD3")
@@ -307,9 +307,9 @@ class TestMovementExportUnchanged:
 
         ids = await _setup("MOV1")
         async with SessionLocal() as session:
-            employee = AssetUser(company_id=ids["co"].id, emp_code="EMP-MOV1", name="Original Name",
+            employee = AssetUser(company_id=ids["co"].id, code="EMP-MOV1", name="Original Name",
                                asset_user_type="EMPLOYEE", location_id=ids["stock"].location_id,
-                               department_id=ids["stock"].department_id, role="ASSET_USER")
+                               department_id=ids["stock"].department_id, role="SELF_SERVICE")
             session.add(employee)
             await session.commit()
         async with SessionLocal() as session:
@@ -329,7 +329,7 @@ class TestMovementExportUnchanged:
             db_employee.name = "Renamed Later"
             await session.commit()
 
-        headers = await _headers(client, ids["admin"].emp_code)
+        headers = await _headers(client, ids["admin"].code)
         today = date.today()
         resp = await client.get(
             f"/api/reports/export/movements?from_date={(today - timedelta(days=1)).isoformat()}"

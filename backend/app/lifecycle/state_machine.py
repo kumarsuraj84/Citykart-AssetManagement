@@ -6,7 +6,7 @@ _STOCK_LIKE_STATUS_BY_ASSET_USER_TYPE = {
     "EMPLOYEE": "ALLOTTED",
     "STORE": "ALLOTTED",
     "INSTALLED": "INSTALLED",
-    "IT_STOCK": "IN_STOCK",
+    "STOCK_POINT": "IN_STOCK",
 }
 
 _TERMINAL_STATUSES = {"DISPOSED", "SOLD", "SCRAPPED"}
@@ -61,7 +61,7 @@ def transition(current_status: str, event_type: str, to_asset_user_type: str | N
             raise LifecycleError(f"unknown asset user type '{to_asset_user_type}'")
         result_status = _STOCK_LIKE_STATUS_BY_ASSET_USER_TYPE[to_asset_user_type]
         if result_status != "IN_STOCK":
-            raise LifecycleError("FOUND asset must be returned to IT_STOCK, not another asset user type")
+            raise LifecycleError("FOUND asset must be returned to a STOCK_POINT, not another asset user type")
         return "IN_STOCK"
 
     if event_type in ("DISPOSED", "SOLD", "SCRAPPED"):

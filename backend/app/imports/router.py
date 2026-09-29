@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+﻿from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
-from app.core.deps import require_role, scoped_company_ids
+from app.core.deps import WRITE_ROLES, require_role, scoped_company_ids
 from app.imports.asset_import_service import (
     ImportScopeError, ImportTemplateError, build_template, commit_import, preview_import,
 )
@@ -18,7 +18,7 @@ ImportMode = Query("add", pattern="^(add|edit)$")
 
 
 @router.get("/template")
-async def download_template(mode: str = ImportMode, _h=Depends(require_role("ADMIN", "IT_TEAM"))):
+async def download_template(mode: str = ImportMode, _h=Depends(require_role(*WRITE_ROLES))):
     filename = "asset_import_edit_template.xlsx" if mode == "edit" else "asset_import_template.xlsx"
     return Response(
         content=build_template(mode),
@@ -30,7 +30,7 @@ async def download_template(mode: str = ImportMode, _h=Depends(require_role("ADM
 @router.post("/preview", response_model=ImportPreviewOut)
 async def preview(
     file: UploadFile = File(...), mode: str = ImportMode, session: AsyncSession = Depends(get_session),
-    actor=Depends(require_role("ADMIN", "IT_TEAM")),
+    actor=Depends(require_role(*WRITE_ROLES)),
 ):
     content = await file.read()
     try:
@@ -42,7 +42,7 @@ async def preview(
 @router.post("/commit", response_model=ImportCommitOut)
 async def commit(
     file: UploadFile = File(...), mode: str = ImportMode, session: AsyncSession = Depends(get_session),
-    actor=Depends(require_role("ADMIN", "IT_TEAM")),
+    actor=Depends(require_role(*WRITE_ROLES)),
 ):
     content = await file.read()
     try:

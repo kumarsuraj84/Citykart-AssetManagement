@@ -5,6 +5,7 @@ from app.core.db import Base
 from app.core.models import AuditMixin
 
 ASSET_STATUSES = ("IN_STOCK", "ALLOTTED", "INSTALLED", "UNDER_REPAIR", "DISPOSED", "SOLD", "SCRAPPED", "LOST")
+ASSET_DOMAINS = ("IT", "NON_IT")
 
 
 class Asset(Base, AuditMixin):
@@ -59,6 +60,13 @@ class Asset(Base, AuditMixin):
     status: Mapped[str] = mapped_column(String(20))
     current_asset_user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("asset_user.id"))
     status_since: Mapped[date] = mapped_column(Date)
+
+    # IT / NON_IT, derived server-side from Category.asset_domain at creation
+    # (see app.assets.service) -- never trusted from the client, and never
+    # silently rewritten by a later Category reclassification. Correcting an
+    # existing asset's own domain goes through the same Controlled Correction
+    # flow as category/subcategory/purchase_date, with a mandatory reason.
+    asset_domain: Mapped[str] = mapped_column(String(10))
 
     custom_fields: Mapped[dict] = mapped_column(JSON, default=dict)
 

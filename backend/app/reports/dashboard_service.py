@@ -45,7 +45,7 @@ async def dashboard_data(session: AsyncSession, allowed_company_ids: list[int] |
     stock_stmt = (
         base.join(AssetUser, Asset.current_asset_user_id == AssetUser.id)
         .join(Location, AssetUser.location_id == Location.id)
-        .where(AssetUser.asset_user_type == "IT_STOCK")
+        .where(AssetUser.asset_user_type == "STOCK_POINT")
         .with_only_columns(Location.name, func.count())
         .group_by(Location.name)
     )

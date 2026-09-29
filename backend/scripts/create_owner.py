@@ -66,11 +66,11 @@ async def ensure_owner(session: AsyncSession) -> dict:
         await session.flush()
 
     # Scoped by company_id too: AssetUser's real uniqueness constraint is
-    # (company_id, emp_code), not emp_code alone (see app/asset-users/models.py),
-    # so a global lookup here would silently reuse a same-emp_code asset_user
+    # (company_id, code), not code alone (see app/asset_users/models.py),
+    # so a global lookup here would silently reuse a same-code asset_user
     # belonging to a different company instead of this one.
     asset_user = (
-        await session.execute(select(AssetUser).where(and_(AssetUser.company_id == company.id, AssetUser.emp_code == EMP_CODE)))
+        await session.execute(select(AssetUser).where(and_(AssetUser.company_id == company.id, AssetUser.code == EMP_CODE)))
     ).scalars().first()
 
     temp_password: str | None = None
@@ -85,13 +85,15 @@ async def ensure_owner(session: AsyncSession) -> dict:
         temp_password = secrets.token_urlsafe(9)
         asset_user = AssetUser(
             company_id=company.id,
-            emp_code=EMP_CODE,
+            code=EMP_CODE,
             name=ASSET_USER_NAME,
             asset_user_type="EMPLOYEE",
             location_id=location.id,
             department_id=department.id,
             email=ASSET_USER_EMAIL,
             role="ADMIN",
+            login_enabled=True,
+            primary_asset_domain="ALL",
             password_hash=hash_password(temp_password),
             must_change_password=True,
         )

@@ -30,16 +30,17 @@ async def ensure_seed_admin(session: AsyncSession, company_code: str = "E2E", pa
         await session.flush()
 
     # Scoped by company_id too: AssetUser's real uniqueness constraint is
-    # (company_id, emp_code), not emp_code alone, so a global lookup here
+    # (company_id, code), not code alone, so a global lookup here
     # would silently reuse another company's SEEDADMIN asset_user instead of
     # creating one scoped to this company_code.
     asset_user = (
-        await session.execute(select(AssetUser).where(and_(AssetUser.company_id == company.id, AssetUser.emp_code == "SEEDADMIN")))
+        await session.execute(select(AssetUser).where(and_(AssetUser.company_id == company.id, AssetUser.code == "SEEDADMIN")))
     ).scalars().first()
     if asset_user is None:
         asset_user = AssetUser(
-            company_id=company.id, emp_code="SEEDADMIN", name="Seed Admin", asset_user_type="EMPLOYEE",
+            company_id=company.id, code="SEEDADMIN", name="Seed Admin", asset_user_type="EMPLOYEE",
             location_id=location.id, department_id=department.id, role="ADMIN",
+            login_enabled=True, primary_asset_domain="ALL",
             password_hash=hash_password(password), must_change_password=False,
         )
         session.add(asset_user)

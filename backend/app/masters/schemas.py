@@ -120,10 +120,17 @@ class CostCenterOut(CostCenterIn):
 class AssetCategoryIn(BaseModel):
     code: str
     name: str
+    # IT / NON_IT (app.masters.models.ASSET_DOMAINS) -- the FUTURE default
+    # domain for assets created under this category (spec §17/§41). Required:
+    # every category must be explicitly classified, never guessed.
+    asset_domain: str
 
 
 class AssetCategoryEditIn(BaseModel):
     name: str
+    # Spec §43: changing this affects FUTURE assets only -- an existing
+    # Asset's own asset_domain snapshot is never rewritten by this edit.
+    asset_domain: str
 
 
 class AssetCategoryOut(AssetCategoryIn):

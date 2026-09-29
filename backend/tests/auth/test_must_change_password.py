@@ -1,4 +1,4 @@
-"""Server-side enforcement of `must_change_password` (spec §7.1: "Forced password
+﻿"""Server-side enforcement of `must_change_password` (spec §7.1: "Forced password
 change on first login"). Client-side routing alone is bypassable with curl, so
 `get_current_asset_user` itself refuses every authenticated route except the
 change-password endpoint until the asset_user has actually changed it."""
@@ -17,9 +17,9 @@ async def _make_asset_user(session, must_change: bool, code="CKSM1"):
     session.add_all([loc, dept])
     await session.flush()
     asset_user = AssetUser(
-        company_id=co.id, emp_code=f"EMP-{code}", name="New Joiner",
+        company_id=co.id, code=f"EMP-{code}", name="New Joiner",
         asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id,
-        role="ADMIN", password_hash=hash_password("TempPassw0rd!"), must_change_password=must_change,
+        role="ADMIN", login_enabled=True, password_hash=hash_password("TempPassw0rd!"), must_change_password=must_change,
     )
     session.add(asset_user)
     await session.commit()
@@ -28,7 +28,7 @@ async def _make_asset_user(session, must_change: bool, code="CKSM1"):
 
 async def _login(client, co, asset_user, password="TempPassw0rd!"):
     resp = await client.post("/api/auth/login", json={
-        "login_id": asset_user.emp_code, "password": password,
+        "login_id": asset_user.code, "password": password,
     })
     assert resp.status_code == 200
     return resp.json()

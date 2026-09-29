@@ -1,4 +1,4 @@
-"""Company-owned master data (cost centers, and the company rows themselves) may
+﻿"""Company-owned master data (cost centers, and the company rows themselves) may
 only be written by a non-ADMIN actor inside their own company scope."""
 from app.core.db import SessionLocal
 from app.core.security import hash_password
@@ -18,17 +18,17 @@ async def _setup():
         await session.flush()
         cc_a = CostCenter(company_id=a.id, code="A01", name="A cc")
         cc_b = CostCenter(company_id=b.id, code="B01", name="B cc")
-        for emp_code, role in (("ADM", "ADMIN"), ("ITA", "IT_TEAM")):
-            session.add(AssetUser(company_id=a.id, emp_code=emp_code, name=emp_code, asset_user_type="EMPLOYEE",
+        for code, role in (("ADM", "ADMIN"), ("ITA", "OPERATOR")):
+            session.add(AssetUser(company_id=a.id, code=code, name=code, asset_user_type="EMPLOYEE",
                                location_id=loc.id, department_id=dept.id, role=role,
-                               password_hash=hash_password("Passw0rd!"), must_change_password=False))
+                               login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False))
         session.add_all([cc_a, cc_b])
         await session.commit()
         return a.id, b.id, cc_a.id, cc_b.id
 
 
-async def _headers(client, company_id, emp_code):
-    resp = await client.post("/api/auth/login", json={"company_id": company_id, "login_id": emp_code, "password": "Passw0rd!"})
+async def _headers(client, company_id, code):
+    resp = await client.post("/api/auth/login", json={"company_id": company_id, "login_id": code, "password": "Passw0rd!"})
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 
@@ -84,5 +84,7 @@ async def test_admin_is_unrestricted_and_global_masters_unaffected(client):
 
     assert (await client.post("/api/masters/cost-centers", json={"company_id": b, "code": "Y", "name": "Y"}, headers=admin)).status_code == 201
     assert (await client.delete(f"/api/masters/cost-centers/{cc_b}", headers=admin)).status_code == 204
-    # Categories are global (no company_id) -- IT_TEAM may still manage them.
-    assert (await client.post("/api/masters/categories", json={"code": "IT", "name": "IT"}, headers=it)).status_code == 201
+    # Categories are global (no company_id) -- OPERATOR may still manage them.
+    assert (
+        await client.post("/api/masters/categories", json={"code": "IT", "name": "IT", "asset_domain": "IT"}, headers=it)
+    ).status_code == 201

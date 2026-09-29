@@ -1,4 +1,4 @@
-from app.core.db import SessionLocal
+﻿from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.masters.models import Company, Location, Department
 from app.asset_users.models import AssetUser
@@ -13,9 +13,9 @@ async def test_create_code_rule(client):
         dept = Department(name="IT-CKS7")
         session.add_all([loc, dept])
         await session.flush()
-        asset_user = AssetUser(company_id=co.id, emp_code="NADMIN", name="N Admin", asset_user_type="EMPLOYEE",
+        asset_user = AssetUser(company_id=co.id, code="NADMIN", name="N Admin", asset_user_type="EMPLOYEE",
                          location_id=loc.id, department_id=dept.id, role="ADMIN",
-                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                         login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         session.add(asset_user)
         await session.commit()
 
@@ -39,9 +39,9 @@ async def test_write_access_is_admin_only(client):
         dept = Department(name="IT-CKS8")
         session.add_all([loc, dept])
         await session.flush()
-        asset_user = AssetUser(company_id=co.id, emp_code="NVIEWER", name="N Viewer", asset_user_type="EMPLOYEE",
+        asset_user = AssetUser(company_id=co.id, code="NVIEWER", name="N Viewer", asset_user_type="EMPLOYEE",
                          location_id=loc.id, department_id=dept.id, role="VIEWER",
-                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                         login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         session.add(asset_user)
         await session.commit()
 

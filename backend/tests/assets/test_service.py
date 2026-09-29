@@ -1,4 +1,4 @@
-from datetime import date
+﻿from datetime import date
 from app.core.db import SessionLocal
 from app.assets.service import procure_assets
 from app.masters.models import Company, CostCenter, AssetCategory, AssetSubcategory, Location, Department
@@ -14,7 +14,7 @@ async def test_procure_assets_creates_quantity_with_tax_and_codes():
         # are "FA/HO01/IT/MOU/CK_n". The per-test table TRUNCATE in conftest.py's
         # _truncate_tables fixture means no cross-test/cross-file uniqueness collision risk,
         # so there's no need to suffix this code the way other fixtures do.
-        cat = AssetCategory(code="IT", name="IT")
+        cat = AssetCategory(code="IT", name="IT", asset_domain="IT")
         session.add_all([co, cat])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="MOU", name="Mouse")
@@ -23,10 +23,10 @@ async def test_procure_assets_creates_quantity_with_tax_and_codes():
         dept = Department(name="IT-PR1")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = AssetUser(company_id=co.id, emp_code="ITSTOCK-PR1", name="IT Stock-HO",
-                        asset_user_type="IT_STOCK", location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-        it_actor = AssetUser(company_id=co.id, emp_code="ITA-PR1", name="IT Actor",
-                           asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="IT_TEAM")
+        stock = AssetUser(company_id=co.id, code="ITSTOCK-PR1", name="IT Stock-HO",
+                        asset_user_type="STOCK_POINT", location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        it_actor = AssetUser(company_id=co.id, code="ITA-PR1", name="IT Actor",
+                           asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="OPERATOR")
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/CK_",
                          suffix_template="", start_number=1, pad_width=0)
         session.add_all([stock, it_actor, rule])

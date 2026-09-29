@@ -1,4 +1,4 @@
-"""Spec §6: a ASSET_USER sees ONLY the assets they currently hold. Company-wide KPIs,
+﻿"""Spec §6: a ASSET_USER sees ONLY the assets they currently hold. Company-wide KPIs,
 the company movement log (other people's names) and the asset_user directory (other
 people's email/phone) are staff-only (ADMIN / IT_TEAM / VIEWER)."""
 from datetime import date
@@ -15,7 +15,7 @@ from app.numbering.models import CodeRule
 async def _setup():
     async with SessionLocal() as session:
         co = Company(code="HRA", name="HRA Co")
-        cat = AssetCategory(code="IT", name="IT")
+        cat = AssetCategory(code="IT", name="IT", asset_domain="IT")
         session.add_all([co, cat])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
@@ -26,13 +26,13 @@ async def _setup():
         await session.flush()
 
         def person(code, role, asset_user_type="EMPLOYEE"):
-            return AssetUser(company_id=co.id, emp_code=code, name=f"Person {code}", asset_user_type=asset_user_type,
+            return AssetUser(company_id=co.id, code=code, name=f"Person {code}", asset_user_type=asset_user_type,
                           location_id=loc.id, department_id=dept.id, role=role, email=f"{code.lower()}@example.com",
-                          phone="99999", password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                          phone="99999", login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
 
-        stock = person("STOCK", "ASSET_USER", "IT_STOCK")
-        admin, it_team, viewer, asset_user, other = (person("ADM", "ADMIN"), person("ITT", "IT_TEAM"),
-                                                 person("VWR", "VIEWER"), person("HLD", "ASSET_USER"), person("OTH", "ASSET_USER"))
+        stock = person("STOCK", "SELF_SERVICE", "STOCK_POINT")
+        admin, it_team, viewer, asset_user, other = (person("ADM", "ADMIN"), person("ITT", "OPERATOR"),
+                                                 person("VWR", "VIEWER"), person("HLD", "SELF_SERVICE"), person("OTH", "SELF_SERVICE"))
         session.add_all([stock, admin, it_team, viewer, asset_user, other,
                          CodeRule(company_id=None, prefix_template="FA/", suffix_template="", start_number=1, pad_width=0)])
         await session.commit()
@@ -47,8 +47,8 @@ async def _setup():
         return co.id, mine.id, theirs.id
 
 
-async def _headers(client, company_id, emp_code):
-    resp = await client.post("/api/auth/login", json={"company_id": company_id, "login_id": emp_code, "password": "Passw0rd!"})
+async def _headers(client, company_id, code):
+    resp = await client.post("/api/auth/login", json={"company_id": company_id, "login_id": code, "password": "Passw0rd!"})
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 
@@ -69,11 +69,11 @@ async def test_asset_user_gets_403_on_staff_only_endpoints(client):
 
 async def test_staff_roles_still_reach_those_endpoints(client):
     co_id, _, _ = await _setup()
-    for emp_code in ("ADM", "ITT", "VWR"):
-        headers = await _headers(client, co_id, emp_code)
+    for code in ("ADM", "ITT", "VWR"):
+        headers = await _headers(client, co_id, code)
         for path in STAFF_ONLY:
             resp = await client.get(path, headers=headers)
-            assert resp.status_code == 200, (emp_code, path)
+            assert resp.status_code == 200, (code, path)
 
 
 async def test_asset_user_asset_list_still_scoped_to_own_held_assets(client):

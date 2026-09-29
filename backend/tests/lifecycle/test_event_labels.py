@@ -1,4 +1,4 @@
-"""GET /api/assets/{id}/events carries a ready-to-display `label` built with
+﻿"""GET /api/assets/{id}/events carries a ready-to-display `label` built with
 label_for_event and the real asset_user names (spec §5 custody wording), e.g.
 "Allotted to Ankur Test" -- not just the raw event_type/status_after."""
 from app.core.db import SessionLocal
@@ -11,7 +11,7 @@ from app.numbering.models import CodeRule
 async def _setup():
     async with SessionLocal() as session:
         co = Company(code="LBL", name="Label Co")
-        cat = AssetCategory(code="IT", name="IT")
+        cat = AssetCategory(code="IT", name="IT", asset_domain="IT")
         session.add_all([co, cat])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
@@ -22,15 +22,15 @@ async def _setup():
         session.add_all([sub, cc, loc, dept, vendor])
         await session.flush()
 
-        def h(code, name, asset_user_type, role="ASSET_USER", **kw):
-            return AssetUser(company_id=co.id, emp_code=code, name=name, asset_user_type=asset_user_type,
+        def h(code, name, asset_user_type, role="SELF_SERVICE", **kw):
+            return AssetUser(company_id=co.id, code=code, name=name, asset_user_type=asset_user_type,
                           location_id=loc.id, department_id=dept.id, role=role, **kw)
 
-        stock = h("STK", "IT Stock-HO", "IT_STOCK")
+        stock = h("STK", "IT Stock-HO", "STOCK_POINT")
         emp = h("EMP", "Ankur Test", "EMPLOYEE")
         store = h("STR", "Store Karol Bagh", "STORE")
         admin = h("ADM", "Admin", "EMPLOYEE", role="ADMIN",
-                  password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                  login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         session.add_all([stock, emp, store, admin,
                          CodeRule(company_id=None, prefix_template="FA/", suffix_template="", start_number=1, pad_width=0)])
         await session.commit()

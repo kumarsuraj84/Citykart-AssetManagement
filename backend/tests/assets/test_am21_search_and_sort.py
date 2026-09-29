@@ -1,4 +1,4 @@
-"""AM-21: GET /api/assets gains sort_by/sort_dir (a whitelisted set of real
+﻿"""AM-21: GET /api/assets gains sort_by/sort_dir (a whitelisted set of real
 Asset columns, never a raw client-supplied identifier used directly), and
 the free-text search box now also covers Barcode/Brand/Model."""
 from datetime import date
@@ -13,7 +13,7 @@ from app.numbering.models import CodeRule
 async def _setup(suffix: str):
     async with SessionLocal() as session:
         co = Company(code=f"AM21-{suffix}", name=f"AM21 Co {suffix}")
-        cat = AssetCategory(code=f"AM21-{suffix}", name="IT")
+        cat = AssetCategory(code=f"AM21-{suffix}", name="IT", asset_domain="IT")
         session.add_all([co, cat])
         await session.flush()
         cc = CostCenter(company_id=co.id, code="HO", name="Head Office")
@@ -21,11 +21,11 @@ async def _setup(suffix: str):
         dept = Department(name=f"AM21-{suffix}")
         session.add_all([cc, loc, dept])
         await session.flush()
-        stock = AssetUser(company_id=co.id, emp_code=f"STK-{suffix}", name="IT Stock", asset_user_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
-        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, code=f"STK-{suffix}", name="IT Stock", asset_user_type="STOCK_POINT",
+                        location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        admin = AssetUser(company_id=co.id, code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
-                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                        login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=co.id, prefix_template=f"AM21/{suffix}/", suffix_template="",
                          start_number=1, pad_width=0)
         session.add_all([stock, admin, rule])

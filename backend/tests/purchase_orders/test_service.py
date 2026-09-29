@@ -1,4 +1,4 @@
-import pytest
+﻿import pytest
 from datetime import date
 from app.core.db import SessionLocal
 from app.core.security import hash_password
@@ -14,7 +14,7 @@ async def _setup(suffix: str):
     async with SessionLocal() as session:
         co = Company(code=f"PO-SVC-{suffix}", name=f"PO Service Test Co {suffix}")
         co2 = Company(code=f"PO-SVC2-{suffix}", name=f"PO Service Other Co {suffix}")
-        cat = AssetCategory(code=f"PO-SVC-{suffix}", name="IT")
+        cat = AssetCategory(code=f"PO-SVC-{suffix}", name="IT", asset_domain="IT")
         session.add_all([co, co2, cat])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
@@ -24,9 +24,9 @@ async def _setup(suffix: str):
         dept = Department(name=f"PO-SVC-{suffix}")
         session.add_all([sub, cc, cc_other, loc, dept])
         await session.flush()
-        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
+        admin = AssetUser(company_id=co.id, code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
-                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
+                        login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         session.add(admin)
         await session.commit()
 

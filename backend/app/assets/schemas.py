@@ -92,6 +92,10 @@ class AssetOut(BaseModel):
     status: str
     current_asset_user_id: int
     status_since: date
+    # IT / NON_IT, derived server-side from Category at creation and never
+    # editable via ordinary Edit -- see app.assets.service.procure_assets
+    # and the Controlled Correction flow (spec §18/§44).
+    asset_domain: str
     custom_fields: dict
     # AM-11: the register must be able to answer "who holds it" without a
     # click into every row -- CKAM's own stated core guarantee
@@ -164,6 +168,10 @@ class AssetCorrectionIn(BaseModel):
     category_id: int | None = None
     subcategory_id: int | None = None
     purchase_date: date | None = None
+    # Spec §44: IT / NON_IT -- corrects THIS asset's own asset_domain
+    # snapshot only, never the Category's own default. Same reason/ADMIN-only
+    # discipline as every other field this correction endpoint touches.
+    asset_domain: str | None = None
     reason: str
 
 

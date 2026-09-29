@@ -1,4 +1,4 @@
-import pytest
+﻿import pytest
 from fastapi import HTTPException
 from app.core.db import SessionLocal
 from app.core.deps import get_current_asset_user, require_role, scoped_company_ids
@@ -21,7 +21,7 @@ async def test_scoped_company_ids_admin_sees_all():
 
 async def test_scoped_company_ids_asset_user_sees_own_company_only():
     async with SessionLocal() as session:
-        assert await scoped_company_ids(session, _FakeAssetUser("ASSET_USER", 7, id=0)) == [7]
+        assert await scoped_company_ids(session, _FakeAssetUser("SELF_SERVICE", 7, id=0)) == [7]
 
 
 async def test_scoped_company_ids_honors_asset_user_company_access_grants(client):
@@ -39,9 +39,9 @@ async def test_scoped_company_ids_honors_asset_user_company_access_grants(client
         session.add_all([loc, dept])
         await session.flush()
         staff = AssetUser(
-            company_id=co_a.id, emp_code="DEPS-ITT", name="Deps IT Team", asset_user_type="EMPLOYEE",
-            location_id=loc.id, department_id=dept.id, role="IT_TEAM",
-            password_hash=hash_password("Passw0rd!"), must_change_password=False,
+            company_id=co_a.id, code="DEPS-ITT", name="Deps IT Team", asset_user_type="EMPLOYEE",
+            location_id=loc.id, department_id=dept.id, role="OPERATOR",
+            login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False,
         )
         session.add(staff)
         await session.flush()
@@ -53,16 +53,16 @@ async def test_scoped_company_ids_honors_asset_user_company_access_grants(client
 
 
 def test_require_role_rejects_wrong_role():
-    checker = require_role("ADMIN", "IT_TEAM")
+    checker = require_role("ADMIN", "OPERATOR")
     with pytest.raises(HTTPException) as exc:
         checker(_FakeAssetUser("VIEWER", 1))
     assert exc.value.status_code == 403
 
 
 def test_require_role_allows_matching_role():
-    checker = require_role("ADMIN", "IT_TEAM")
-    result = checker(_FakeAssetUser("IT_TEAM", 1))
-    assert result.role == "IT_TEAM"
+    checker = require_role("ADMIN", "OPERATOR")
+    result = checker(_FakeAssetUser("OPERATOR", 1))
+    assert result.role == "OPERATOR"
 
 
 async def test_get_current_asset_user_rejects_refresh_token():

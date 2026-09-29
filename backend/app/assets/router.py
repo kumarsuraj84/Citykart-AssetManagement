@@ -1,11 +1,14 @@
-from datetime import date, datetime, timezone
+﻿from datetime import date, datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
-from app.core.deps import ensure_company_in_scope, get_current_asset_user, require_role, scoped_company_ids
+from app.core.deps import (
+    WRITE_ROLES, allowed_asset_domains, ensure_company_in_scope, get_current_asset_user, is_self_service,
+    require_role, scoped_company_ids,
+)
 from app.assets.audit_service import AUDITED_SCALAR_FIELDS, record_field_changes
 from app.assets.correction_service import correct_asset, UNSET as CORRECTION_UNSET
 from app.assets.custom_field_values import validate_custom_field_values
@@ -70,7 +73,7 @@ async def _page_label_maps(session: AsyncSession, items: list[Asset]) -> tuple[d
     Also returns a asset_user_id -> current asset_user's Location name map (a second
     hop off AssetUser.location_id), and a asset_user_id -> AssetUser.asset_user_type map --
     Asset Movement needs "where is this asset right now" (which asset_user, that
-    asset_user's location, and whether that asset_user is IT_STOCK vs an actual
+    asset_user's location, and whether that asset_user is STOCK_POINT vs an actual
     person/store/install so an operator can see at a glance they're about to
     move something out of someone's hands, not out of a warehouse), same
     page-scoped batch-lookup pattern, never a per-row join."""
@@ -113,7 +116,7 @@ async def _page_label_maps(session: AsyncSession, items: list[Asset]) -> tuple[d
 async def create_asset(
     body: AssetCreateIn,
     session: AsyncSession = Depends(get_session),
-    actor=Depends(require_role("ADMIN", "IT_TEAM")),
+    actor=Depends(require_role(*WRITE_ROLES)),
 ):
     # Write-scope check: an IT_TEAM actor can only *read* their own company's data,
     # so they must not be able to create assets in any other company either.
@@ -148,6 +151,7 @@ async def list_assets(
     category_id: int | None = Query(None),
     asset_user_id: int | None = Query(None),
     company_id: int | None = Query(None),
+    domain: str | None = Query(None),
     q: str | None = Query(None),
     sort_by: str | None = Query(None),
     sort_dir: str = Query("asc"),
@@ -156,21 +160,25 @@ async def list_assets(
     session: AsyncSession = Depends(get_session),
     asset_user=Depends(get_current_asset_user),
 ):
-    """Scoped exactly like `_get_scoped_asset`: a ASSET_USER only ever sees assets they
-    currently hold (so `asset_user_id` is pinned to their own id, ignoring any value the
-    caller passed, and the company filter is left unrestricted since asset_user_id already
-    narrows it); everyone else is scoped to `scoped_company_ids` (None = ADMIN,
-    unrestricted). AM-21: `sort_by` must be one of search_assets.SORTABLE_COLUMNS --
-    an unrecognized value is silently ignored (falls back to the existing
-    newest-first order) rather than a 422, so an old cached frontend bundle
-    or a stale saved link never breaks."""
-    if asset_user.role == "ASSET_USER":
+    """Scoped exactly like `_get_scoped_asset`: a SELF_SERVICE asset_user only ever sees
+    assets they currently hold (so `asset_user_id` is pinned to their own id, ignoring
+    any value the caller passed, and the company filter is left unrestricted since
+    asset_user_id already narrows it); everyone else is scoped to `scoped_company_ids`
+    (None = ADMIN, unrestricted) AND `allowed_asset_domains` (None = ADMIN/SELF_SERVICE
+    unrestricted, spec §14/§15 -- an OPERATOR/VIEWER can never widen past their own
+    configured domain by passing a `domain` outside it, see search_assets). AM-21:
+    `sort_by` must be one of search_assets.SORTABLE_COLUMNS -- an unrecognized value is
+    silently ignored (falls back to the existing newest-first order) rather than a 422,
+    so an old cached frontend bundle or a stale saved link never breaks."""
+    if is_self_service(asset_user):
         asset_user_id = asset_user.id
         allowed = None
     else:
         allowed = await scoped_company_ids(session, asset_user)
+    domains = await allowed_asset_domains(session, asset_user)
     items, total = await search_assets(
         session, allowed, status, category_id, asset_user_id, company_id, q, sort_by, sort_dir, limit, offset,
+        allowed_domains=domains, domain=domain,
     )
     (
         asset_user_labels, company_labels, category_labels, subcategory_labels, vendor_labels, cost_center_labels,
@@ -226,7 +234,7 @@ async def _bulk_apply_event(
 async def bulk_move(
     body: BulkMoveIn,
     session: AsyncSession = Depends(get_session),
-    actor=Depends(require_role("ADMIN", "IT_TEAM")),
+    actor=Depends(require_role(*WRITE_ROLES)),
 ):
     moved, failed = await _bulk_apply_event(body.asset_ids, "MOVED", body.to_asset_user_id, None, session, actor)
     await session.commit()
@@ -237,7 +245,7 @@ async def bulk_move(
 async def bulk_action(
     body: BulkActionIn,
     session: AsyncSession = Depends(get_session),
-    actor=Depends(require_role("ADMIN", "IT_TEAM")),
+    actor=Depends(require_role(*WRITE_ROLES)),
 ):
     done, failed = await _bulk_apply_event(
         body.asset_ids, body.event_type, body.to_asset_user_id, body.remarks, session, actor,
@@ -251,13 +259,16 @@ async def _get_scoped_asset(asset_id: int, session: AsyncSession, asset_user) ->
     if asset is None or asset.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
 
-    if asset_user.role == "ASSET_USER":
+    if is_self_service(asset_user):
         if asset.current_asset_user_id != asset_user.id:
             raise HTTPException(status.HTTP_404_NOT_FOUND)
         return asset
 
     allowed_companies = await scoped_company_ids(session, asset_user)
     if allowed_companies is not None and asset.company_id not in allowed_companies:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    domains = await allowed_asset_domains(session, asset_user)
+    if domains is not None and asset.asset_domain not in domains:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     return asset
 
@@ -348,7 +359,7 @@ async def update_asset(
     asset_id: int,
     body: AssetUpdateIn,
     session: AsyncSession = Depends(get_session),
-    actor=Depends(require_role("ADMIN", "IT_TEAM")),
+    actor=Depends(require_role(*WRITE_ROLES)),
 ):
     """AM-02: the first general edit surface for an asset's EDITABLE DESCRIPTIVE
     DATA (see the Asset Field Policy Matrix in docs/ai/AM-02_ASSET_DATA_MODEL_REPORT.md)
@@ -421,7 +432,7 @@ async def correct_asset_classification(
     asset_id: int,
     body: AssetCorrectionIn,
     session: AsyncSession = Depends(get_session),
-    actor=Depends(require_role("ADMIN", "IT_TEAM")),
+    actor=Depends(require_role(*WRITE_ROLES)),
 ):
     """AM-07: a deliberately separate, narrower operation from
     `PUT /api/assets/{id}` for correcting Category, Subcategory, and/or
@@ -435,12 +446,19 @@ async def correct_asset_classification(
     null" -- see `AssetCorrectionIn`'s own docstring."""
     asset = await _get_scoped_asset(asset_id, session, actor)
     fields_set = body.model_fields_set
+    # Spec §44: correcting asset_domain (Responsibility) is ADMIN only --
+    # stricter than the ADMIN+OPERATOR gate the rest of this endpoint uses
+    # for Category/Subcategory/Purchase Date, which predates the domain
+    # rebuild and is left unchanged.
+    if "asset_domain" in fields_set and actor.role != "ADMIN":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "only ADMIN may correct an asset's Responsibility")
     try:
         await correct_asset(
             session, asset, actor,
             category_id=body.category_id if "category_id" in fields_set else CORRECTION_UNSET,
             subcategory_id=body.subcategory_id if "subcategory_id" in fields_set else CORRECTION_UNSET,
             purchase_date_value=body.purchase_date if "purchase_date" in fields_set else CORRECTION_UNSET,
+            asset_domain=body.asset_domain if "asset_domain" in fields_set else CORRECTION_UNSET,
             reason=body.reason,
         )
     except ValueError as exc:
