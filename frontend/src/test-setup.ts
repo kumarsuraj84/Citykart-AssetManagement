@@ -25,6 +25,18 @@ if (typeof Element.prototype.scrollIntoView !== "function") {
   Element.prototype.scrollIntoView = () => {};
 }
 
+// jsdom doesn't implement ResizeObserver, but cmdk's Command (the shared
+// SearchableSelect combobox) uses it internally to track its list size.
+// Without this no-op polyfill, opening a SearchableSelect in tests throws
+// "ResizeObserver is not defined".
+if (typeof window.ResizeObserver !== "function") {
+  window.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}
+
 // jsdom doesn't implement matchMedia, but the shared Sidebar component's
 // use-mobile hook (AppShell's nav) calls it to detect the mobile breakpoint.
 // Without this, any test that renders AppShell throws "not a function".

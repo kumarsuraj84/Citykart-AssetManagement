@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { FormField } from "@/components/shared/FormField";
@@ -219,16 +220,13 @@ export function AssetMovement() {
 
         {action.needsAssetUser && (
           <FormField htmlFor="movement-asset-user" label="Destination Asset User" required>
-            <Select value={selectValue(toAssetUserId)} onValueChange={setToAssetUserId}>
-              <SelectTrigger id="movement-asset-user" aria-label="Destination Asset User">
-                <SelectValue placeholder="Select…" />
-              </SelectTrigger>
-              <SelectContent>
-                {asset_users.map((h) => (
-                  <SelectItem key={h.id} value={String(h.id)}>{h.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              id="movement-asset-user"
+              aria-label="Destination Asset User"
+              value={selectValue(toAssetUserId)}
+              onValueChange={setToAssetUserId}
+              options={asset_users.map((h) => ({ value: String(h.id), label: h.name }))}
+            />
           </FormField>
         )}
       </div>

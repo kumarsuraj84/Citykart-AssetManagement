@@ -15,6 +15,7 @@ import {
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionHeading } from "@/components/shared/SectionHeading";
 import { FormField } from "@/components/shared/FormField";
+import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { ErrorState } from "@/components/shared/ErrorState";
 
@@ -104,7 +105,7 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-export function AddAssetForm({ companyId }: { companyId: number }) {
+export function AddAssetForm({ companyId }: { companyId: number | null }) {
   const navigate = useNavigate();
   const [form, setForm] = useState<FormState>(emptyForm);
   const [customValues, setCustomValues] = useState<Record<string, CustomFieldValue>>({});
@@ -114,10 +115,22 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
   // more than one company (ADMIN, or OPERATOR with company-access grants)
   // can pick a different one. Selecting a different company resets every
   // company-scoped choice below it (Cost Centre, Initial AssetUser), the same
-  // way changing Category already resets Sub-Category.
-  const [selectedCompanyId, setSelectedCompanyId] = useState(companyId);
+  // way changing Category already resets Sub-Category. `companyId` is null
+  // for the Primary Owner (a company-less bootstrap account, spec: Asset
+  // User RBAC rebuild) -- it has no home company to default to, so it picks
+  // the first of `myCompanies` once that loads instead (see the effect below).
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(companyId);
   const myCompaniesQ = useQuery({ queryKey: ["asset_users", "me", "companies"], queryFn: () => apiClient.get<Option[]>("/asset-users/me/companies") });
   const myCompanies = myCompaniesQ.data ?? [];
+
+  if (selectedCompanyId === null && myCompanies.length > 0) {
+    // Runs during render, not an effect: React discards this render and
+    // re-renders synchronously with the new state (the documented pattern
+    // for deriving state from a prop/query that wasn't ready on mount),
+    // so the very first paint never flashes the company-less, all-queries-
+    // disabled state.
+    setSelectedCompanyId(myCompanies[0].id);
+  }
 
   // AM-08: Category and Vendor are genuinely global masters (no company_id
   // column at all -- confirmed against the actual schema, not assumed from
@@ -133,6 +146,7 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
   const costCentersQ = useQuery({
     queryKey: ["masters", "cost-centers", selectedCompanyId],
     queryFn: () => apiClient.get<Option[]>(`/masters/cost-centers?company_id=${selectedCompanyId}`),
+    enabled: selectedCompanyId != null,
   });
   const vendorsQ = useQuery({ queryKey: ["masters", "vendors"], queryFn: () => apiClient.get<Option[]>("/masters/vendors") });
   const brandsQ = useQuery({ queryKey: ["masters", "brands"], queryFn: () => apiClient.get<Option[]>("/masters/brands") });
@@ -149,6 +163,7 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
   const stockAssetUsersQ = useQuery({
     queryKey: ["asset_users", "STOCK_POINT", selectedCompanyId],
     queryFn: () => apiClient.get<Option[]>(`/asset-users?asset_user_type=STOCK_POINT&company_id=${selectedCompanyId}`),
+    enabled: selectedCompanyId != null,
   });
 
   const categories = categoriesQ.data ?? [];
@@ -210,6 +225,7 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
   // is already logged (see AssetCreateIn's own docstring). They can be
   // filled in later via Edit once available.
   const canSave =
+    selectedCompanyId != null &&
     form.description.trim().length > 0 &&
     form.categoryId !== "" &&
     form.subcategoryId !== "" &&
@@ -327,36 +343,28 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
               before (silently the caller's own home company). */}
           {myCompanies.length > 1 && (
             <FormField htmlFor="company" label="Company" required>
-              <Select
-                value={String(selectedCompanyId)}
+              <SearchableSelect
+                id="company"
+                aria-label="Company"
+                value={selectedCompanyId != null ? String(selectedCompanyId) : undefined}
                 onValueChange={(v) => {
                   setSelectedCompanyId(Number(v));
                   setField("costCenterId", "");
                   setField("initialAssetUserId", "");
                 }}
-              >
-                <SelectTrigger id="company" aria-label="Company">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {myCompanies.map((c) => (
-                    <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                options={myCompanies.map((c) => ({ value: String(c.id), label: c.name }))}
+              />
             </FormField>
           )}
           <FormField htmlFor="cost-center" label="Cost Centre" required>
-            <Select value={selectValue(form.costCenterId)} onValueChange={(v) => setField("costCenterId", v)} disabled={mastersLoading}>
-              <SelectTrigger id="cost-center" aria-label="Cost Centre">
-                <SelectValue placeholder="Select…" />
-              </SelectTrigger>
-              <SelectContent>
-                {costCenters.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              id="cost-center"
+              aria-label="Cost Centre"
+              value={selectValue(form.costCenterId)}
+              onValueChange={(v) => setField("costCenterId", v)}
+              disabled={mastersLoading}
+              options={costCenters.map((c) => ({ value: String(c.id), label: c.name }))}
+            />
             {!mastersLoading && !hasCostCenterOption && (
               <p className="text-sm text-destructive">
                 No active cost centres are configured for this company. Add one under Setup &gt; Cost Centers first.
@@ -370,36 +378,28 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
         <SectionHeading>Asset Classification</SectionHeading>
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField htmlFor="category" label="Category" required>
-            <Select
+            <SearchableSelect
+              id="category"
+              aria-label="Category"
               value={selectValue(form.categoryId)}
               onValueChange={(v) => {
                 setField("categoryId", v);
                 setField("subcategoryId", "");
               }}
               disabled={mastersLoading}
-            >
-              <SelectTrigger id="category" aria-label="Category">
-                <SelectValue placeholder="Select…" />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={categories.map((c) => ({ value: String(c.id), label: c.name }))}
+            />
           </FormField>
 
           <FormField htmlFor="subcategory" label="Sub-Category" required>
-            <Select value={selectValue(form.subcategoryId)} onValueChange={(v) => setField("subcategoryId", v)} disabled={mastersLoading}>
-              <SelectTrigger id="subcategory" aria-label="Sub-Category">
-                <SelectValue placeholder="Select…" />
-              </SelectTrigger>
-              <SelectContent>
-                {visibleSubcategories.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              id="subcategory"
+              aria-label="Sub-Category"
+              value={selectValue(form.subcategoryId)}
+              onValueChange={(v) => setField("subcategoryId", v)}
+              disabled={mastersLoading}
+              options={visibleSubcategories.map((c) => ({ value: String(c.id), label: c.name }))}
+            />
           </FormField>
 
           <FormField htmlFor="description" label="Description" required className="sm:col-span-2">
@@ -415,16 +415,14 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
               own, so giving it its own row keeps the three Number/Date pairs below aligned
               as actual pairs instead of drifting by one slot (AM-13 density pass). */}
           <FormField htmlFor="vendor" label="Vendor" required className="sm:col-span-2">
-            <Select value={selectValue(form.vendorId)} onValueChange={(v) => setField("vendorId", v)} disabled={mastersLoading}>
-              <SelectTrigger id="vendor" aria-label="Vendor">
-                <SelectValue placeholder="Select…" />
-              </SelectTrigger>
-              <SelectContent>
-                {vendors.map((v) => (
-                  <SelectItem key={v.id} value={String(v.id)}>{v.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              id="vendor"
+              aria-label="Vendor"
+              value={selectValue(form.vendorId)}
+              onValueChange={(v) => setField("vendorId", v)}
+              disabled={mastersLoading}
+              options={vendors.map((v) => ({ value: String(v.id), label: v.name }))}
+            />
           </FormField>
 
           <FormField htmlFor="po-number" label="PO Number" helperText="Optional -- add it once you have it.">
@@ -461,16 +459,14 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
         <SectionHeading>Asset Details</SectionHeading>
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField htmlFor="brand" label="Brand" helperText="Optional.">
-            <Select value={selectValue(form.brandId)} onValueChange={(v) => setField("brandId", v)} disabled={mastersLoading}>
-              <SelectTrigger id="brand" aria-label="Brand">
-                <SelectValue placeholder="Select…" />
-              </SelectTrigger>
-              <SelectContent>
-                {brands.map((b) => (
-                  <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              id="brand"
+              aria-label="Brand"
+              value={selectValue(form.brandId)}
+              onValueChange={(v) => setField("brandId", v)}
+              disabled={mastersLoading}
+              options={brands.map((b) => ({ value: String(b.id), label: b.name }))}
+            />
           </FormField>
           <FormField htmlFor="model" label="Model" helperText="Optional.">
             <Input id="model" aria-label="Model" value={form.model} onChange={(e) => setField("model", e.target.value)} />
@@ -546,16 +542,14 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
         <SectionHeading>Initial Custody</SectionHeading>
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField htmlFor="initial-asset-user" label="Goes Into" required>
-            <Select value={selectValue(form.initialAssetUserId)} onValueChange={(v) => setField("initialAssetUserId", v)} disabled={mastersLoading}>
-              <SelectTrigger id="initial-asset-user" aria-label="Goes Into">
-                <SelectValue placeholder="Select…" />
-              </SelectTrigger>
-              <SelectContent>
-                {stockAssetUsers.map((h) => (
-                  <SelectItem key={h.id} value={String(h.id)}>{h.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              id="initial-asset-user"
+              aria-label="Goes Into"
+              value={selectValue(form.initialAssetUserId)}
+              onValueChange={(v) => setField("initialAssetUserId", v)}
+              disabled={mastersLoading}
+              options={stockAssetUsers.map((h) => ({ value: String(h.id), label: h.name }))}
+            />
             {!mastersLoading && !hasAssetUserOption && (
               <p className="text-sm text-destructive">No IT Stock asset user found for this company. Add one under Setup &gt; Users first.</p>
             )}

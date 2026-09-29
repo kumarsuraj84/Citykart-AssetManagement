@@ -3,9 +3,9 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { apiClient } from "../../lib/api-client";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { FormField } from "@/components/shared/FormField";
+import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 
 interface Option {
@@ -21,7 +21,7 @@ function selectValue(v: string): string | undefined {
   return v || undefined;
 }
 
-export function NewPurchaseOrderForm({ companyId }: { companyId: number }) {
+export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }) {
   const navigate = useNavigate();
   const [poNumber, setPoNumber] = useState("");
   const [poDate, setPoDate] = useState(new Date().toISOString().slice(0, 10));
@@ -29,20 +29,27 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number }) {
   const [costCenterId, setCostCenterId] = useState("");
   // AM-24: which company this PO belongs to -- defaults to the caller's own
   // home company, selectable when they have access to more than one (see
-  // AddAssetForm's identical pattern).
-  const [selectedCompanyId, setSelectedCompanyId] = useState(companyId);
+  // AddAssetForm's identical pattern). `companyId` is null for the Primary
+  // Owner (a company-less bootstrap account) -- it picks the first of
+  // `myCompanies` once that loads instead (see the effect below).
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(companyId);
   const myCompaniesQ = useQuery({ queryKey: ["asset_users", "me", "companies"], queryFn: () => apiClient.get<Option[]>("/asset-users/me/companies") });
   const myCompanies = myCompaniesQ.data ?? [];
+
+  if (selectedCompanyId === null && myCompanies.length > 0) {
+    setSelectedCompanyId(myCompanies[0].id);
+  }
 
   const vendorsQ = useQuery({ queryKey: ["masters", "vendors"], queryFn: () => apiClient.get<Option[]>("/masters/vendors") });
   const vendors = vendorsQ.data ?? [];
   const costCentersQ = useQuery({
     queryKey: ["masters", "cost-centers", selectedCompanyId],
     queryFn: () => apiClient.get<Option[]>(`/masters/cost-centers?company_id=${selectedCompanyId}`),
+    enabled: selectedCompanyId != null,
   });
   const costCenters = costCentersQ.data ?? [];
 
-  const canSave = poNumber.trim() !== "" && poDate !== "" && costCenterId !== "";
+  const canSave = selectedCompanyId != null && poNumber.trim() !== "" && poDate !== "" && costCenterId !== "";
 
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -65,22 +72,15 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number }) {
       <div className="grid grid-cols-2 gap-4">
         {myCompanies.length > 1 && (
           <FormField htmlFor="company" label="Company" required className="col-span-2">
-            <Select
-              value={String(selectedCompanyId)}
+            <SearchableSelect
+              id="company"
+              value={selectedCompanyId != null ? String(selectedCompanyId) : undefined}
               onValueChange={(v) => {
                 setSelectedCompanyId(Number(v));
                 setCostCenterId("");
               }}
-            >
-              <SelectTrigger id="company">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {myCompanies.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={myCompanies.map((c) => ({ value: String(c.id), label: c.name }))}
+            />
           </FormField>
         )}
         <FormField htmlFor="po-number" label="PO No" required>
@@ -90,32 +90,20 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number }) {
           <Input id="po-date" type="date" value={poDate} onChange={(e) => setPoDate(e.target.value)} />
         </FormField>
         <FormField htmlFor="vendor" label="Vendor">
-          <Select value={selectValue(vendorId)} onValueChange={setVendorId}>
-            <SelectTrigger id="vendor">
-              <SelectValue placeholder="Select…" />
-            </SelectTrigger>
-            <SelectContent>
-              {vendors.map((v) => (
-                <SelectItem key={v.id} value={String(v.id)}>
-                  {v.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            id="vendor"
+            value={selectValue(vendorId)}
+            onValueChange={setVendorId}
+            options={vendors.map((v) => ({ value: String(v.id), label: v.name }))}
+          />
         </FormField>
         <FormField htmlFor="cost-center" label="Cost Centre" required>
-          <Select value={selectValue(costCenterId)} onValueChange={setCostCenterId}>
-            <SelectTrigger id="cost-center">
-              <SelectValue placeholder="Select…" />
-            </SelectTrigger>
-            <SelectContent>
-              {costCenters.map((c) => (
-                <SelectItem key={c.id} value={String(c.id)}>
-                  {c.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            id="cost-center"
+            value={selectValue(costCenterId)}
+            onValueChange={setCostCenterId}
+            options={costCenters.map((c) => ({ value: String(c.id), label: c.name }))}
+          />
         </FormField>
       </div>
 

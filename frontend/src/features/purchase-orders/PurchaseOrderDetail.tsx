@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
@@ -526,32 +526,20 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
             <Input id="line-barcode" value={lineForm.barcode} onChange={(e) => setLineForm((f) => ({ ...f, barcode: e.target.value }))} />
           </FormField>
           <FormField htmlFor="line-category" label="Category" required>
-            <Select value={selectValue(lineForm.categoryId)} onValueChange={(v) => setLineForm((f) => ({ ...f, categoryId: v, subcategoryId: "" }))}>
-              <SelectTrigger id="line-category">
-                <SelectValue placeholder="Select…" />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              id="line-category"
+              value={selectValue(lineForm.categoryId)}
+              onValueChange={(v) => setLineForm((f) => ({ ...f, categoryId: v, subcategoryId: "" }))}
+              options={categories.map((c) => ({ value: String(c.id), label: c.name }))}
+            />
           </FormField>
           <FormField htmlFor="line-subcategory" label="Sub-Category" required>
-            <Select value={selectValue(lineForm.subcategoryId)} onValueChange={(v) => setLineForm((f) => ({ ...f, subcategoryId: v }))}>
-              <SelectTrigger id="line-subcategory">
-                <SelectValue placeholder="Select…" />
-              </SelectTrigger>
-              <SelectContent>
-                {visibleSubcategories.map((s) => (
-                  <SelectItem key={s.id} value={String(s.id)}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              id="line-subcategory"
+              value={selectValue(lineForm.subcategoryId)}
+              onValueChange={(v) => setLineForm((f) => ({ ...f, subcategoryId: v }))}
+              options={visibleSubcategories.map((s) => ({ value: String(s.id), label: s.name }))}
+            />
           </FormField>
           <FormField htmlFor="line-cost" label="Cost" required>
             <Input id="line-cost" type="number" min={0.01} step="0.01" value={lineForm.purchaseCost} onChange={(e) => setLineForm((f) => ({ ...f, purchaseCost: e.target.value }))} />
@@ -563,18 +551,12 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
             <Input id="line-quantity" type="number" min={1} value={lineForm.quantity} onChange={(e) => setLineForm((f) => ({ ...f, quantity: e.target.value }))} />
           </FormField>
           <FormField htmlFor="line-brand" label="Brand">
-            <Select value={selectValue(lineForm.brandId)} onValueChange={(v) => setLineForm((f) => ({ ...f, brandId: v }))}>
-              <SelectTrigger id="line-brand">
-                <SelectValue placeholder="Select…" />
-              </SelectTrigger>
-              <SelectContent>
-                {brands.map((b) => (
-                  <SelectItem key={b.id} value={String(b.id)}>
-                    {b.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              id="line-brand"
+              value={selectValue(lineForm.brandId)}
+              onValueChange={(v) => setLineForm((f) => ({ ...f, brandId: v }))}
+              options={brands.map((b) => ({ value: String(b.id), label: b.name }))}
+            />
           </FormField>
           <FormField htmlFor="line-model" label="Model">
             <Input id="line-model" value={lineForm.model} onChange={(e) => setLineForm((f) => ({ ...f, model: e.target.value }))} />
@@ -657,18 +639,12 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
               <Input id="edit-tax" type="number" value={editForm.taxPercent} onChange={(e) => setEditForm((f) => ({ ...f, taxPercent: e.target.value }))} />
             </FormField>
             <FormField htmlFor="edit-brand" label="Brand">
-              <Select value={selectValue(editForm.brandId)} onValueChange={(v) => setEditForm((f) => ({ ...f, brandId: v }))}>
-                <SelectTrigger id="edit-brand">
-                  <SelectValue placeholder="Select…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {brands.map((b) => (
-                    <SelectItem key={b.id} value={String(b.id)}>
-                      {b.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                id="edit-brand"
+                value={selectValue(editForm.brandId)}
+                onValueChange={(v) => setEditForm((f) => ({ ...f, brandId: v }))}
+                options={brands.map((b) => ({ value: String(b.id), label: b.name }))}
+              />
             </FormField>
             <FormField htmlFor="edit-model" label="Model">
               <Input id="edit-model" value={editForm.model} onChange={(e) => setEditForm((f) => ({ ...f, model: e.target.value }))} />
@@ -820,21 +796,12 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
                   <Label htmlFor={`asset-user-${l.id}`} className="text-xs">
                     Initial Asset User<span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
                   </Label>
-                  <Select
+                  <SearchableSelect
+                    id={`asset-user-${l.id}`}
                     value={selectValue(perLine[l.id]?.assetUserId ?? "")}
                     onValueChange={(v) => setPerLine((p) => ({ ...p, [l.id]: { ...p[l.id], assetUserId: v } }))}
-                  >
-                    <SelectTrigger id={`asset-user-${l.id}`}>
-                      <SelectValue placeholder="Select…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {asset_users.map((h) => (
-                        <SelectItem key={h.id} value={String(h.id)}>
-                          {h.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    options={asset_users.map((h) => ({ value: String(h.id), label: h.name }))}
+                  />
                 </div>
               </div>
             ))}
