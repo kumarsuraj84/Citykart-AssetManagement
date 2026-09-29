@@ -21,8 +21,9 @@ async def _setup(code="AM05CF"):
         dept = Department(name=f"IT-{code}")
         session.add_all([loc, loc_b, dept])
         await session.flush()
+        # Custom Fields is master data -- Primary-Owner-only now, not merely ADMIN.
         admin = AssetUser(company_id=a.id, code=f"ADM-{code}", name="Admin", asset_user_type="EMPLOYEE",
-                        location_id=loc.id, department_id=dept.id, role="ADMIN",
+                        location_id=loc.id, department_id=dept.id, role="ADMIN", is_primary_owner=True,
                         login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         it_a = AssetUser(company_id=a.id, code=f"ITA-{code}", name="IT A", asset_user_type="EMPLOYEE",
                        location_id=loc.id, department_id=dept.id, role="OPERATOR",
@@ -84,13 +85,16 @@ class TestScopeCreationAuthorization:
         }, headers=headers)
         assert resp.status_code == 403
 
-    async def test_it_team_may_create_a_field_for_its_own_company(self, client):
+    async def test_operator_cannot_create_a_field_even_for_its_own_company(self, client):
+        """Rebuild rule: master writes are Primary-Owner-only -- OPERATOR
+        (and an ordinary ADMIN) never gets a company-scoped carve-out here,
+        unlike the old IT_TEAM behavior this test used to cover."""
         ids = await _setup("CRG4")
         headers = await _headers(client, ids["it_a"])
         resp = await client.post("/api/masters/custom-fields", json={
             "field_key": "crg4_notes", "label": "Notes", "field_type": "text", "company_id": ids["a"],
         }, headers=headers)
-        assert resp.status_code == 201
+        assert resp.status_code == 403
 
     async def test_it_team_cannot_create_a_field_for_another_company(self, client):
         ids = await _setup("CRG5")

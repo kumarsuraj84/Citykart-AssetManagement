@@ -24,7 +24,7 @@ async def _seed_company_admin(company_code="DUPC"):
         await session.flush()
         asset_user = AssetUser(
             company_id=co.id, code="DUPADM", name="Dup Admin", asset_user_type="EMPLOYEE",
-            location_id=loc.id, department_id=dept.id, role="ADMIN",
+            location_id=loc.id, department_id=dept.id, role="ADMIN", is_primary_owner=True,
             login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False,
         )
         session.add(asset_user)

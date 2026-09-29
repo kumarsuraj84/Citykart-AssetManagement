@@ -37,8 +37,9 @@ async def test_preview_and_commit_import(client):
         await session.flush()
         stock = AssetUser(company_id=co.id, code="ITSTOCK-IMP1", name="IT Stock-HO", asset_user_type="STOCK_POINT",
                         location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        # Bulk asset Import is Primary-Owner-only now, not merely ADMIN-only.
         it_admin = AssetUser(company_id=co.id, code="ITA-IMP1", name="IT Admin", asset_user_type="EMPLOYEE",
-                           location_id=loc.id, department_id=dept.id, role="ADMIN",
+                           location_id=loc.id, department_id=dept.id, role="ADMIN", is_primary_owner=True,
                            login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/CK_",
                          suffix_template="", start_number=1, pad_width=0)

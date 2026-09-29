@@ -168,7 +168,8 @@ describe("AppShell navigation", () => {
     renderAt("/dashboard");
     const nav = await screen.findByRole("navigation", { name: "Main" });
     expect(within(nav).getByRole("link", { name: "Add Asset" })).toBeInTheDocument();
-    expect(within(nav).getByRole("link", { name: "Import" })).toBeInTheDocument();
+    // Bulk asset Import is Primary-Owner-only too, same tier as Masters.
+    expect(within(nav).queryByRole("link", { name: "Import" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("link", { name: "Cost Centers" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("link", { name: "Custom Fields" })).not.toBeInTheDocument();
     // Administration (Asset Users/Code Rule) is unaffected by this change.
@@ -180,6 +181,7 @@ describe("AppShell navigation", () => {
     renderAt("/dashboard");
     const nav = await screen.findByRole("navigation", { name: "Main" });
     expect(within(nav).getByRole("link", { name: "Add Asset" })).toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Import" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("link", { name: "Cost Centers" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("link", { name: "Code Rule" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("link", { name: "Asset Users" })).not.toBeInTheDocument();

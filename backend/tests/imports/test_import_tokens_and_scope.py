@@ -53,10 +53,14 @@ async def _setup(rules):
         session.add_all([cat, Vendor(code="VND", name="Test Vendor")])
         await session.flush()
         session.add(AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop"))
-        for code, role in (("ADM", "ADMIN"), ("ITA", "OPERATOR")):
-            session.add(AssetUser(company_id=co_a.id, code=code, name=code, asset_user_type="EMPLOYEE",
-                               location_id=loc_a.id, department_id=dept_a.id, role=role,
-                               login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False))
+        session.add(AssetUser(company_id=co_a.id, code="ITA", name="ITA", asset_user_type="EMPLOYEE",
+                           location_id=loc_a.id, department_id=dept_a.id, role="OPERATOR",
+                           login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False))
+        # Bulk asset Import is Primary-Owner-only now -- a company-less
+        # bootstrap account (no company_id of its own, so it never matches
+        # the ordinary company-scoped login lookup, only the name-based one).
+        session.add(AssetUser(name="ADM", role="ADMIN", is_primary_owner=True,
+                           login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False))
         ids = {"A": co_a.id, "B": co_b.id, None: None}
         for scope, prefix in rules:
             session.add(CodeRule(company_id=ids[scope], prefix_template=prefix, suffix_template="",
@@ -128,32 +132,24 @@ async def test_import_with_unknown_token_reports_row_errors_not_500(client):
     assert await _asset_codes() == []
 
 
-async def test_it_team_cannot_import_into_another_company(client):
+async def test_operator_cannot_import_at_all_even_into_its_own_company(client):
+    """Bulk asset Import is Primary-Owner-only (rebuild rule) -- OPERATOR
+    gets 403 unconditionally, not just when a row targets another company."""
     a_id, _ = await _setup([(None, "FA/")])
     headers = await _headers(client, a_id, "ITA")
 
     content = _xlsx([_row("IMA", "O1"), _row("IMB", "O2")])
     resp = await _post(client, "/api/imports/assets/commit", content, headers)
     assert resp.status_code == 403
-    # Whole file refused -- not even the in-scope row was written.
     assert await _asset_codes() == []
 
-    # Preview flags the out-of-scope row instead of calling it valid.
     preview = await _post(client, "/api/imports/assets/preview", content, headers)
-    body = preview.json()
-    assert [r["row"] for r in body["valid_rows"]] == [2]
-    assert body["errors"][0]["row"] == 3
-    assert "scope" in body["errors"][0]["message"]
+    assert preview.status_code == 403
 
-
-async def test_it_team_can_import_into_own_company(client):
-    a_id, _ = await _setup([(None, "FA/")])
-    headers = await _headers(client, a_id, "ITA")
-    resp = await _post(client, "/api/imports/assets/commit", _xlsx([_row("IMA")]), headers)
-    assert resp.status_code == 200
-    assert resp.json()["imported"] == 1
+    only_own_company = await _post(client, "/api/imports/assets/commit", _xlsx([_row("IMA")]), headers)
+    assert only_own_company.status_code == 403
     async with SessionLocal() as session:
-        assert (await session.execute(select(func.count()).select_from(Asset))).scalar_one() == 1
+        assert (await session.execute(select(func.count()).select_from(Asset))).scalar_one() == 0
 
 
 async def test_import_rejects_a_cost_center_code_that_belongs_to_another_company(client):

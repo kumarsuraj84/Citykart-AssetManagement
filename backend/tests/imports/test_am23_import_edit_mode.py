@@ -58,8 +58,9 @@ async def _setup(suffix: str):
         await session.flush()
         stock = AssetUser(company_id=co.id, code=f"STK-{suffix}", name="IT Stock", asset_user_type="STOCK_POINT",
                         location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
+        # Bulk asset Import is Primary-Owner-only now, not merely ADMIN-only.
         admin = AssetUser(company_id=co.id, code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
-                        location_id=loc.id, department_id=dept.id, role="ADMIN",
+                        location_id=loc.id, department_id=dept.id, role="ADMIN", is_primary_owner=True,
                         login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         ita = AssetUser(company_id=co.id, code=f"ITA-{suffix}", name="IT Team", asset_user_type="EMPLOYEE",
                      location_id=loc.id, department_id=dept.id, role="OPERATOR",
@@ -232,15 +233,15 @@ async def test_a_row_with_no_fields_filled_in_besides_asset_code_is_a_row_error(
     assert "nothing to update" in body["errors"][0]["message"]
 
 
-async def test_it_team_cannot_edit_an_asset_outside_their_company_scope(client):
+async def test_operator_cannot_edit_via_import_at_all_even_within_its_own_company(client):
+    """Bulk asset Import is Primary-Owner-only (rebuild rule) -- OPERATOR
+    gets 403 unconditionally, not just when the target asset is out of scope."""
     ids = await _setup("SCOPE1")
     headers = await _login(client, ids["co"].id, ids["ita"])
     resp = await _post(client, "/api/imports/assets/commit", _xlsx([{"Asset Code": ids["asset_code"], "Brand Code": ids["brand2"]}]), headers)
-    # Own company -- allowed.
-    assert resp.status_code == 200
-    assert resp.json()["updated"] == 1
+    assert resp.status_code == 403
 
-    # A second asset that belongs to a DIFFERENT company -- refused, whole file, 403.
+    # A second asset that belongs to a DIFFERENT company -- refused too, still 403.
     async with SessionLocal() as session:
         co_b = await session.get(Company, ids["co_b"].id)
         loc = Location(company_id=co_b.id, code="SCOPE1-B", name="B HO")

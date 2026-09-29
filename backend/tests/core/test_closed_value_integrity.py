@@ -51,7 +51,8 @@ async def _company_with_admin(code):
         admin = AssetUser(
             company_id=co.id, code=f"ADM-{code}", name="Admin",
             asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id,
-            role="ADMIN", login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False,
+            role="ADMIN", is_primary_owner=True,
+            login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False,
         )
         session.add(admin)
         await session.commit()

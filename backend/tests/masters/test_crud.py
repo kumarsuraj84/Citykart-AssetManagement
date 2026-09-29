@@ -13,10 +13,12 @@ async def _admin_headers(client, company_code="CKM7"):
         dept = Department(name=f"IT-{company_code}")
         session.add_all([loc, dept])
         await session.flush()
+        # Master writes are Primary-Owner-only now, not merely ADMIN-only.
         asset_user = AssetUser(
             company_id=co.id, code="MADMIN", name="Master Admin",
             asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id,
-            role="ADMIN", login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False,
+            role="ADMIN", is_primary_owner=True,
+            login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False,
         )
         session.add(asset_user)
         await session.commit()

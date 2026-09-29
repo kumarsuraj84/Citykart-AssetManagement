@@ -222,9 +222,9 @@ function AppShell() {
   const navigate = useNavigate();
   const canWrite = role !== null && WRITE_ROLES.includes(role);
   const canReport = role !== null && REPORT_ROLES.includes(role);
-  // Master data management is Primary-Owner-only -- stricter than the ADMIN
-  // role itself (an ordinary ADMIN account, if one is ever created, has no
-  // master-write access either).
+  // Master data management AND bulk asset Import are Primary-Owner-only --
+  // stricter than the ADMIN role itself (an ordinary ADMIN account, if one
+  // is ever created, has neither master-write access nor Import).
   const canManageMasters = isPrimaryOwner;
 
   async function handleLogout() {
@@ -280,7 +280,9 @@ function AppShell() {
                       {canWrite && <SidebarNavItem to="/asset-movement" label="Asset Movement" icon={ScanBarcode} />}
                       {canWrite && <SidebarNavItem to="/print-labels" label="Print Labels" icon={Printer} />}
                       {canWrite && <SidebarNavItem to="/purchase-orders" label="Purchase Orders" icon={ClipboardList} />}
-                      {canWrite && <SidebarNavItem to="/import" label="Import" icon={Upload} />}
+                      {/* Bulk asset Import is Primary-Owner-only, not part of
+                          ADMIN/OPERATOR's shared operational rights. */}
+                      {canManageMasters && <SidebarNavItem to="/import" label="Import" icon={Upload} />}
                       <SidebarNavItem to="/reports" label="Reports" icon={BarChart3} />
                     </SidebarMenu>
                   </SidebarGroup>

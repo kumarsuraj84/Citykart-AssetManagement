@@ -37,6 +37,7 @@ async def _setup(code="AM02"):
                               asset_user_type="STOCK_POINT", location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
         admin = AssetUser(company_id=co.id, code=f"ADM-{code}", name="Admin",
                         asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="ADMIN",
+                        is_primary_owner=True,
                         login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         viewer = AssetUser(company_id=co.id, code=f"VWR-{code}", name="Viewer",
                          asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="VIEWER",

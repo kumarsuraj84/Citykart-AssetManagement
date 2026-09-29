@@ -67,8 +67,9 @@ async def _setup(code="AM06IMP"):
                         location_id=loc.id, department_id=dept.id, role="SELF_SERVICE")
         stock_b = AssetUser(company_id=co_b.id, code=f"STKB-{code}", name="IT Stock B", asset_user_type="STOCK_POINT",
                           location_id=loc_b.id, department_id=dept.id, role="SELF_SERVICE")
+        # Bulk asset Import is Primary-Owner-only now, not merely ADMIN-only.
         admin = AssetUser(company_id=co.id, code=f"ADM-{code}", name="Admin", asset_user_type="EMPLOYEE",
-                        location_id=loc.id, department_id=dept.id, role="ADMIN",
+                        location_id=loc.id, department_id=dept.id, role="ADMIN", is_primary_owner=True,
                         login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template=f"FA/{code}/", suffix_template="",
                          start_number=1, pad_width=0)

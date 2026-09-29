@@ -34,8 +34,9 @@ async def _setup(suffix: str):
         dept = Department(name=f"AM25D-{suffix}")
         session.add_all([loc, dept])
         await session.flush()
+        # Master import/export is Primary-Owner-only now, not merely ADMIN-only.
         admin = AssetUser(company_id=co.id, code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
-                        location_id=loc.id, department_id=dept.id, role="ADMIN",
+                        location_id=loc.id, department_id=dept.id, role="ADMIN", is_primary_owner=True,
                         login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         ita = AssetUser(company_id=co.id, code=f"ITA-{suffix}", name="IT Team", asset_user_type="EMPLOYEE",
                      location_id=loc.id, department_id=dept.id, role="OPERATOR",
