@@ -26,3 +26,7 @@ class ResetPasswordOut(BaseModel):
 
 class CompanyAccessIn(BaseModel):
     company_ids: list[int]
+
+
+class CompanyAccessOut(BaseModel):
+    company_ids: list[int]

@@ -1,9 +1,10 @@
-import { useState } from "react";
-import { Users, Pencil, Trash2, KeyRound } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Users, Pencil, Trash2, KeyRound, Building2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -112,6 +113,12 @@ export function HoldersScreen() {
   const [draft, setDraft] = useState<HolderDraft>(emptyDraft);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [deactivateRow, setDeactivateRow] = useState<HolderRow | null>(null);
+  // AM-24: which OTHER companies (beyond this holder's own home company)
+  // they're granted access to -- e.g. the one PO/PI person, the one
+  // labeling person, the one movement person who all need to work across
+  // more than one company, without making them ADMIN.
+  const [accessRow, setAccessRow] = useState<HolderRow | null>(null);
+  const [accessSelection, setAccessSelection] = useState<number[]>([]);
 
   const {
     data: holders = [],
@@ -173,6 +180,36 @@ export function HoldersScreen() {
       setDeactivateRow(null);
     },
   });
+
+  const accessQ = useQuery({
+    queryKey: ["holders", accessRow?.id, "company-access"],
+    queryFn: () => apiClient.get<{ company_ids: number[] }>(`/holders/${accessRow!.id}/company-access`),
+    enabled: accessRow !== null,
+  });
+
+  const accessMutation = useMutation({
+    mutationFn: () => apiClient.post(`/holders/${accessRow!.id}/company-access`, { company_ids: accessSelection }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["holders", accessRow?.id, "company-access"] });
+      setAccessRow(null);
+    },
+  });
+
+  function openAccess(h: HolderRow) {
+    setAccessRow(h);
+    setAccessSelection([]);
+  }
+
+  // Seeds the checkbox selection from the holder's current grants once
+  // they've loaded -- can't do this inline in openAccess since the fetch
+  // is async and keyed off accessRow itself.
+  useEffect(() => {
+    if (accessQ.data) setAccessSelection(accessQ.data.company_ids);
+  }, [accessQ.data]);
+
+  function toggleAccessCompany(companyId: number, checked: boolean) {
+    setAccessSelection((ids) => (checked ? [...ids, companyId] : ids.filter((id) => id !== companyId)));
+  }
 
   function setField(key: keyof HolderDraft, value: string) {
     setDraft((d) => ({ ...d, [key]: value }));
@@ -249,6 +286,9 @@ export function HoldersScreen() {
         <div className="flex justify-end gap-1">
           <Button variant="ghost" size="icon" aria-label={`Edit ${h.name}`} onClick={() => openEdit(h)}>
             <Pencil className="h-4 w-4" aria-hidden="true" />
+          </Button>
+          <Button variant="ghost" size="icon" aria-label={`Company access for ${h.name}`} onClick={() => openAccess(h)}>
+            <Building2 className="h-4 w-4" aria-hidden="true" />
           </Button>
           <Button
             variant="ghost"
@@ -436,6 +476,54 @@ export function HoldersScreen() {
               Cancel
             </Button>
             <AsyncButton onClick={handleSave} disabled={!canSave} pending={savePending} pendingLabel="Saving…">
+              Save
+            </AsyncButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={accessRow !== null} onOpenChange={(open) => !open && setAccessRow(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Company Access {accessRow ? `for ${accessRow.name}` : ""}</DialogTitle>
+          </DialogHeader>
+
+          <p className="text-sm text-muted-foreground">
+            {accessRow?.name} always has access to their own company ({accessRow ? companyName(accessRow.company_id) : ""}).
+            Check any other companies they should also be able to work in -- e.g. someone who raises POs, records
+            deliveries, prints labels, or moves assets across more than one company.
+          </p>
+
+          {accessQ.isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {companies
+                .filter((c) => c.id !== accessRow?.company_id)
+                .map((c) => (
+                  <label key={c.id} className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      aria-label={c.name}
+                      checked={accessSelection.includes(c.id)}
+                      onCheckedChange={(checked) => toggleAccessCompany(c.id, checked === true)}
+                    />
+                    {c.name}
+                  </label>
+                ))}
+            </div>
+          )}
+
+          {accessMutation.isError && (
+            <p className="text-sm text-destructive" role="alert">
+              {accessMutation.error instanceof Error ? accessMutation.error.message : "Failed to save company access."}
+            </p>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAccessRow(null)}>
+              Cancel
+            </Button>
+            <AsyncButton onClick={() => accessMutation.mutate()} pending={accessMutation.isPending} pendingLabel="Saving…">
               Save
             </AsyncButton>
           </DialogFooter>

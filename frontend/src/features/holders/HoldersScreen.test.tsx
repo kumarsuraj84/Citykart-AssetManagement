@@ -26,14 +26,16 @@ const HOLDER: Record<string, unknown> = {
 };
 
 const COMPANY = { id: 1, name: "CityKart HQ" };
+const COMPANY_B = { id: 2, name: "CityKart Ventures" };
 const LOCATION = { id: 1, name: "Head Office" };
 
-function mockGets(holders: unknown[] = [HOLDER]) {
+function mockGets(holders: unknown[] = [HOLDER], companies: unknown[] = [COMPANY]) {
   (apiClient.get as any).mockImplementation((path: string) => {
     if (path === "/holders") return Promise.resolve(holders);
-    if (path === "/masters/companies") return Promise.resolve([COMPANY]);
+    if (path === "/masters/companies") return Promise.resolve(companies);
     if (path === "/masters/locations") return Promise.resolve([LOCATION]);
     if (path === "/masters/departments") return Promise.resolve([]);
+    if (path === "/holders/1/company-access") return Promise.resolve({ company_ids: [] });
     return Promise.resolve([]);
   });
 }
@@ -220,6 +222,38 @@ describe("HoldersScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     await waitFor(() =>
       expect(apiClient.put).toHaveBeenCalledWith("/holders/1", expect.objectContaining({ role: "HOLDER" })),
+    );
+  });
+
+  it("AM-24: shows current company access grants and saves changes to them", async () => {
+    mockGets([HOLDER], [COMPANY, COMPANY_B]);
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (path === "/holders") return Promise.resolve([HOLDER]);
+      if (path === "/masters/companies") return Promise.resolve([COMPANY, COMPANY_B]);
+      if (path === "/masters/locations") return Promise.resolve([LOCATION]);
+      if (path === "/masters/departments") return Promise.resolve([]);
+      if (path === "/holders/1/company-access") return Promise.resolve({ company_ids: [] });
+      return Promise.resolve([]);
+    });
+    (apiClient.post as any).mockResolvedValue(undefined);
+
+    renderWithClient(<HoldersScreen />);
+    await waitFor(() => expect(screen.getByText("Ankur")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /company access for ankur/i }));
+    const dialog = await screen.findByRole("dialog");
+    await waitFor(() => expect(within(dialog).queryByText(/loading/i)).not.toBeInTheDocument());
+    // Own company never shows as a pickable checkbox -- always implicit.
+    expect(within(dialog).queryByText("CityKart HQ")).not.toBeInTheDocument();
+    expect(within(dialog).getByText("CityKart Ventures")).toBeInTheDocument();
+
+    const checkbox = within(dialog).getByRole("checkbox", { name: "CityKart Ventures" });
+    expect(checkbox).not.toBeChecked();
+    fireEvent.click(checkbox);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /^save$/i }));
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith("/holders/1/company-access", { company_ids: [2] }),
     );
   });
 });

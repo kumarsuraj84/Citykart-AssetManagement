@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
 from app.core.deps import STAFF_ROLES, get_current_holder, require_role, scoped_company_ids
 from app.holders.service import HolderService
-from app.holders.schemas import CompanyAccessIn, HolderIn, HolderOut, ResetPasswordOut
+from app.holders.schemas import CompanyAccessIn, CompanyAccessOut, HolderIn, HolderOut, ResetPasswordOut
 from app.holders.models import HOLDER_TYPES, ROLES
 from app.masters.models import Company, Department, Location
 from app.masters.schemas import CompanyOut
@@ -158,3 +158,19 @@ async def set_company_access(
     ok = await HolderService(session).set_company_access(holder_id, body.company_ids)
     if not ok:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
+
+
+@router.get("/{holder_id}/company-access", response_model=CompanyAccessOut)
+async def get_company_access(
+    holder_id: int,
+    session: AsyncSession = Depends(get_session),
+    _actor=Depends(require_role("ADMIN")),
+):
+    """AM-24: the extra companies (beyond the holder's own home company)
+    this holder has been granted -- lets the Holders screen show current
+    grants before the ADMIN changes them, rather than only ever writing
+    blind."""
+    company_ids = await HolderService(session).get_company_access(holder_id)
+    if company_ids is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    return CompanyAccessOut(company_ids=company_ids)

@@ -91,3 +91,14 @@ class HolderService:
             self.session.add(HolderCompanyAccess(holder_id=holder_id, company_id=cid))
         await self.session.commit()
         return True
+
+    async def get_company_access(self, holder_id: int) -> list[int] | None:
+        """None means the holder itself doesn't exist (404); an empty list is
+        a real, valid answer (no extra grants beyond their own home company)."""
+        holder = await self.session.get(Holder, holder_id)
+        if holder is None:
+            return None
+        rows = (await self.session.execute(
+            select(HolderCompanyAccess.company_id).where(HolderCompanyAccess.holder_id == holder_id)
+        )).scalars().all()
+        return list(rows)

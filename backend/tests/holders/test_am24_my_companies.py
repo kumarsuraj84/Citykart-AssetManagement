@@ -54,6 +54,29 @@ async def test_staff_with_no_grant_sees_only_their_home_company(client):
     assert codes == [ids["co_a"].code]
 
 
+async def test_get_company_access_reads_back_the_current_grants(client):
+    ids = await _setup("GET1")
+    admin_headers = await _login(client, ids["admin"])
+
+    empty_resp = await client.get(f"/api/holders/{ids['staff_id']}/company-access", headers=admin_headers)
+    assert empty_resp.status_code == 200
+    assert empty_resp.json() == {"company_ids": []}
+
+    await client.post(
+        f"/api/holders/{ids['staff_id']}/company-access", json={"company_ids": [ids["co_b"].id]}, headers=admin_headers,
+    )
+    resp = await client.get(f"/api/holders/{ids['staff_id']}/company-access", headers=admin_headers)
+    assert resp.status_code == 200
+    assert resp.json() == {"company_ids": [ids["co_b"].id]}
+
+
+async def test_get_company_access_404s_for_an_unknown_holder(client):
+    ids = await _setup("GET2")
+    admin_headers = await _login(client, ids["admin"])
+    resp = await client.get("/api/holders/999999/company-access", headers=admin_headers)
+    assert resp.status_code == 404
+
+
 async def test_granting_company_access_via_the_existing_endpoint_now_actually_works(client):
     """The real fix: before AM-24, POST .../company-access wrote the grant
     row but scoped_company_ids never read it back, so this had zero
