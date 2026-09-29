@@ -1,6 +1,8 @@
 from io import BytesIO
 import openpyxl
 import qrcode
+from barcode import Code128
+from barcode.writer import ImageWriter
 from app.assets.models import Asset
 from app.core.config import settings
 
@@ -135,4 +137,26 @@ def asset_qr_png(asset_id: int) -> bytes:
     img = qrcode.make(_asset_detail_url(asset_id))
     buf = BytesIO()
     img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+# Bulk physical labelling (scan a batch in Print Labels, print, paste on the
+# asset): deliberately a DIFFERENT encode target from `asset_qr_png` above --
+# that one encodes a deep link (for opening the asset's page from a phone
+# camera), this one encodes the bare `asset_code` as plain text, matching
+# exactly what a scan into any of this app's own scan fields (Asset
+# Movement, Asset Register search, ...) expects to receive. Symbol choice
+# (linear Code128 vs. QR) only changes which optical symbology gets
+# printed; either decodes back to the identical asset_code string.
+def asset_label_png(asset_code: str, symbol: str) -> bytes:
+    buf = BytesIO()
+    if symbol == "qr":
+        qrcode.make(asset_code).save(buf, format="PNG")
+    else:
+        # write_text=False: the code128 image would otherwise print the
+        # asset_code a second time under the bars in a tiny library font --
+        # the label's own text line (asset code + description, styled by
+        # the frontend) already covers that, in a size an operator can
+        # actually read.
+        Code128(asset_code, writer=ImageWriter()).write(buf, options={"write_text": False})
     return buf.getvalue()

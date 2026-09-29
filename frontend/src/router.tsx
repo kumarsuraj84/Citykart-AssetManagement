@@ -17,6 +17,7 @@ import {
   PackagePlus,
   ClipboardList,
   ScanBarcode,
+  Printer,
   Upload,
   BarChart3,
   Building2,
@@ -57,6 +58,7 @@ import AssetsIndexRoute from "./routes/assets/index";
 import NewAssetRoute from "./routes/assets/new";
 import AssetDetailRoute from "./routes/assets/$id";
 import AssetMovementRoute from "./routes/asset-movement";
+import PrintLabelsRoute from "./routes/print-labels";
 import PurchaseOrdersIndexRoute from "./routes/purchase-orders/index";
 import NewPurchaseOrderRoute from "./routes/purchase-orders/new";
 import PurchaseOrderDetailRoute from "./routes/purchase-orders/$id";
@@ -265,6 +267,7 @@ function AppShell() {
                       <SidebarNavItem to="/assets" label="Asset Register" icon={ListChecks} />
                       {canWrite && <SidebarNavItem to="/assets/new" label="Add Asset" icon={PackagePlus} />}
                       {canWrite && <SidebarNavItem to="/asset-movement" label="Asset Movement" icon={ScanBarcode} />}
+                      {canWrite && <SidebarNavItem to="/print-labels" label="Print Labels" icon={Printer} />}
                       {canWrite && <SidebarNavItem to="/purchase-orders" label="Purchase Orders" icon={ClipboardList} />}
                       {canWrite && <SidebarNavItem to="/import" label="Import" icon={Upload} />}
                       <SidebarNavItem to="/reports" label="Reports" icon={BarChart3} />
@@ -418,6 +421,12 @@ export const assetMovementRoute = createRoute({
   component: AssetMovementRoute,
 });
 
+export const printLabelsRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/print-labels",
+  component: PrintLabelsRoute,
+});
+
 export const purchaseOrdersIndexRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/purchase-orders",
@@ -527,6 +536,7 @@ const routeTree = rootRoute.addChildren([
     assetsNewRoute,
     assetDetailRoute,
     assetMovementRoute,
+    printLabelsRoute,
     purchaseOrdersIndexRoute,
     purchaseOrdersNewRoute,
     purchaseOrderDetailRoute,

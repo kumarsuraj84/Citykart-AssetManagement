@@ -17,7 +17,7 @@ from app.holders.models import Holder
 from app.lifecycle.service import apply_event
 from app.lifecycle.state_machine import LifecycleError
 from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location, Vendor
-from app.reports.export_service import asset_qr_png
+from app.reports.export_service import asset_label_png, asset_qr_png
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
 
@@ -486,3 +486,21 @@ async def asset_qr(
     backdoor around asset scoping."""
     await _get_scoped_asset(asset_id, session, holder)
     return Response(content=asset_qr_png(asset_id), media_type="image/png")
+
+
+@router.get("/{asset_id}/label.png")
+async def asset_label(
+    asset_id: int,
+    symbol: str = Query("barcode", pattern="^(barcode|qr)$"),
+    session: AsyncSession = Depends(get_session),
+    holder=Depends(get_current_holder),
+):
+    """Print Labels (bulk physical tagging): a linear Code128 barcode
+    (default) or a QR code, either way encoding this asset's bare
+    `asset_code` -- deliberately NOT `/qr.png` above, which encodes a deep
+    link for a different purpose (open the asset's page) and is left
+    untouched. Same `_get_scoped_asset` scoping as every other
+    `/api/assets/{id}/...` route -- a label image is not a backdoor around
+    asset scoping either."""
+    asset = await _get_scoped_asset(asset_id, session, holder)
+    return Response(content=asset_label_png(asset.asset_code, symbol), media_type="image/png")
