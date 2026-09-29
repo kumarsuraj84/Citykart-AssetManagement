@@ -287,7 +287,7 @@ router.include_router(build_master_router(
     "/vendors", models.Vendor, schemas.VendorIn, schemas.VendorOut,
     schema_edit=schemas.VendorEditIn,
     import_fields=[
-        FieldSpec("Code", "code", required=True, max_length=20),
+        FieldSpec("Code", "code", required=True, max_length=100),
         FieldSpec("Name", "name", required=True, max_length=200),
         FieldSpec("GSTIN", "gstin", max_length=20),
         FieldSpec("Contact Name", "contact_name", max_length=200),

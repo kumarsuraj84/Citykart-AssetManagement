@@ -60,7 +60,10 @@ class Brand(Base, AuditMixin, SoftDeleteMixin):
 class Vendor(Base, AuditMixin, SoftDeleteMixin):
     __tablename__ = "vendor"
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    code: Mapped[str] = mapped_column(String(20), unique=True)
+    # Wider than every other master's Code (20) -- vendor names are often
+    # used as the code itself (long registered company names), unlike
+    # Category/Location/etc's short internal codes.
+    code: Mapped[str] = mapped_column(String(100), unique=True)
     name: Mapped[str] = mapped_column(String(200))
     gstin: Mapped[str | None] = mapped_column(String(20))
     contact_name: Mapped[str | None] = mapped_column(String(200))

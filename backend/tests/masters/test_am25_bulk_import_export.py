@@ -100,7 +100,10 @@ async def test_vendor_code_over_the_column_limit_is_a_row_error_not_a_500(client
     ids = await _setup("VND4")
     headers = await _login(client, ids["admin"])
     header = ["Code", "Name", "GSTIN", "Contact Name", "Contact Phone", "Contact Email"]
-    too_long_code = "VASPS INFOTECH PRIVITE LIMITED"  # 31 chars, Vendor.code is varchar(20)
+    # Vendor.code is varchar(100) -- wider than every other master's Code
+    # (20) precisely so a real registered company name usually fits; this
+    # one is still 111 chars, over even that wider limit.
+    too_long_code = "VASPS INFOTECH PRIVATE LIMITED " * 4
     content = _xlsx(header, [
         [too_long_code, "Vasps Infotech Private Limited", None, None, None, None],
         ["VND-OK", "A Fine Vendor", None, None, None, None],
@@ -112,7 +115,7 @@ async def test_vendor_code_over_the_column_limit_is_a_row_error_not_a_500(client
     assert len(preview["valid_rows"]) == 1
     assert preview["valid_rows"][0]["values"]["Code"] == "VND-OK"
     assert len(preview["errors"]) == 1
-    assert "20 characters or fewer" in preview["errors"][0]["message"]
+    assert "100 characters or fewer" in preview["errors"][0]["message"]
 
     # The whole commit must not 500 -- the oversized row becomes a row error,
     # and the other valid row in the same file still gets imported.
@@ -121,7 +124,7 @@ async def test_vendor_code_over_the_column_limit_is_a_row_error_not_a_500(client
     body = commit_resp.json()
     assert body["imported"] == 1
     assert len(body["errors"]) == 1
-    assert "20 characters or fewer" in body["errors"][0]["message"]
+    assert "100 characters or fewer" in body["errors"][0]["message"]
 
     vendors_resp = await client.get("/api/masters/vendors", headers=headers)
     codes = [v["code"] for v in vendors_resp.json()]
