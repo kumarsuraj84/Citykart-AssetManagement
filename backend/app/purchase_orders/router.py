@@ -20,7 +20,7 @@ async def _get_scoped_po(po_id: int, session: AsyncSession, holder) -> PurchaseO
     po = await session.get(PurchaseOrder, po_id)
     if po is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "purchase order not found")
-    allowed = scoped_company_ids(holder)
+    allowed = await scoped_company_ids(session, holder)
     if allowed is not None and po.company_id not in allowed:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "purchase order not found")
     return po
@@ -31,7 +31,7 @@ async def create_po(
     body: PurchaseOrderCreateIn, session: AsyncSession = Depends(get_session),
     actor=Depends(require_role("ADMIN", "IT_TEAM")),
 ):
-    ensure_company_in_scope(actor, body.company_id)
+    await ensure_company_in_scope(session, actor, body.company_id)
     try:
         po = await create_purchase_order(session, body.model_dump(), actor)
     except ValueError as exc:
@@ -44,7 +44,7 @@ async def create_po(
 
 @router.get("", response_model=list[PurchaseOrderOut])
 async def list_pos(session: AsyncSession = Depends(get_session), holder=Depends(require_role("ADMIN", "IT_TEAM"))):
-    allowed = scoped_company_ids(holder)
+    allowed = await scoped_company_ids(session, holder)
     stmt = select(PurchaseOrder).where(PurchaseOrder.is_active.is_(True))
     if allowed is not None:
         stmt = stmt.where(PurchaseOrder.company_id.in_(allowed))

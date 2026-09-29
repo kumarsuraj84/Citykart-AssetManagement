@@ -1,9 +1,10 @@
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
 from app.core.security import decode_token
-from app.holders.models import Holder
+from app.holders.models import Holder, HolderCompanyAccess
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
@@ -52,21 +53,31 @@ def require_role(*roles: str):
 STAFF_ROLES = ("ADMIN", "IT_TEAM", "VIEWER")
 
 
-def scoped_company_ids(holder) -> list[int] | None:
+async def scoped_company_ids(session: AsyncSession, holder) -> list[int] | None:
     """None means unrestricted (ADMIN). Everyone else is scoped to their own company
-    plus any companies granted via holder_company_access (checked by the caller)."""
+    plus any companies granted via holder_company_access.
+
+    AM-24: this used to only ever return `[holder.company_id]` -- the docstring
+    promised the holder_company_access grant would be honored, but nothing here
+    actually queried it, so `POST /holders/{id}/company-access` silently had no
+    effect anywhere a scope check ran (asset/PO/reports/masters reads and
+    writes all stayed pinned to the holder's single home company). Fixed by
+    actually looking the grant table up."""
     if holder.role == "ADMIN":
         return None
-    return [holder.company_id]
+    granted = (await session.execute(
+        select(HolderCompanyAccess.company_id).where(HolderCompanyAccess.holder_id == holder.id)
+    )).scalars().all()
+    return list({holder.company_id, *granted})
 
 
-def ensure_company_in_scope(holder, company_id: int | None) -> None:
+async def ensure_company_in_scope(session: AsyncSession, holder, company_id: int | None) -> None:
     """Write-permission check for company-owned data (assets, imports, cost
     centers...): a non-ADMIN actor may only write into a company inside their own
     `scoped_company_ids`. Raises 403 -- not 404 -- because this is a permission
     check on a write the caller explicitly aimed at that company, not a read that
     must hide whether the row exists."""
-    allowed = scoped_company_ids(holder)
+    allowed = await scoped_company_ids(session, holder)
     if allowed is None:
         return
     if company_id is None or company_id not in allowed:

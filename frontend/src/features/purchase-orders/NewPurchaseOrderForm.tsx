@@ -27,12 +27,18 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number }) {
   const [poDate, setPoDate] = useState(new Date().toISOString().slice(0, 10));
   const [vendorId, setVendorId] = useState("");
   const [costCenterId, setCostCenterId] = useState("");
+  // AM-24: which company this PO belongs to -- defaults to the caller's own
+  // home company, selectable when they have access to more than one (see
+  // AddAssetForm's identical pattern).
+  const [selectedCompanyId, setSelectedCompanyId] = useState(companyId);
+  const myCompaniesQ = useQuery({ queryKey: ["holders", "me", "companies"], queryFn: () => apiClient.get<Option[]>("/holders/me/companies") });
+  const myCompanies = myCompaniesQ.data ?? [];
 
   const vendorsQ = useQuery({ queryKey: ["masters", "vendors"], queryFn: () => apiClient.get<Option[]>("/masters/vendors") });
   const vendors = vendorsQ.data ?? [];
   const costCentersQ = useQuery({
-    queryKey: ["masters", "cost-centers", companyId],
-    queryFn: () => apiClient.get<Option[]>(`/masters/cost-centers?company_id=${companyId}`),
+    queryKey: ["masters", "cost-centers", selectedCompanyId],
+    queryFn: () => apiClient.get<Option[]>(`/masters/cost-centers?company_id=${selectedCompanyId}`),
   });
   const costCenters = costCentersQ.data ?? [];
 
@@ -41,7 +47,7 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number }) {
   const saveMutation = useMutation({
     mutationFn: () =>
       apiClient.post<CreatedPurchaseOrder>("/purchase-orders", {
-        company_id: companyId,
+        company_id: selectedCompanyId,
         po_number: poNumber,
         po_date: poDate,
         vendor_id: vendorId ? Number(vendorId) : null,
@@ -57,6 +63,26 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number }) {
       <PageHeader title="New Purchase Order" description="Raise a PO, then add the assets expected on it." />
 
       <div className="grid grid-cols-2 gap-4">
+        {myCompanies.length > 1 && (
+          <FormField htmlFor="company" label="Company" required className="col-span-2">
+            <Select
+              value={String(selectedCompanyId)}
+              onValueChange={(v) => {
+                setSelectedCompanyId(Number(v));
+                setCostCenterId("");
+              }}
+            >
+              <SelectTrigger id="company">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {myCompanies.map((c) => (
+                  <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+        )}
         <FormField htmlFor="po-number" label="PO No" required>
           <Input id="po-number" value={poNumber} onChange={(e) => setPoNumber(e.target.value)} />
         </FormField>

@@ -115,7 +115,7 @@ async def create_asset(
 ):
     # Write-scope check: an IT_TEAM actor can only *read* their own company's data,
     # so they must not be able to create assets in any other company either.
-    ensure_company_in_scope(actor, body.company_id)
+    await ensure_company_in_scope(session, actor, body.company_id)
     data = body.model_dump()
     # Purchase Date is Invoice Date when Invoice Date is known
     # (docs/ai/DECISIONS.md) -- never accepted from the client (AssetCreateIn
@@ -166,7 +166,7 @@ async def list_assets(
         holder_id = holder.id
         allowed = None
     else:
-        allowed = scoped_company_ids(holder)
+        allowed = await scoped_company_ids(session, holder)
     items, total = await search_assets(
         session, allowed, status, category_id, holder_id, company_id, q, sort_by, sort_dir, limit, offset,
     )
@@ -253,7 +253,7 @@ async def _get_scoped_asset(asset_id: int, session: AsyncSession, holder) -> Ass
             raise HTTPException(status.HTTP_404_NOT_FOUND)
         return asset
 
-    allowed_companies = scoped_company_ids(holder)
+    allowed_companies = await scoped_company_ids(session, holder)
     if allowed_companies is not None and asset.company_id not in allowed_companies:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     return asset

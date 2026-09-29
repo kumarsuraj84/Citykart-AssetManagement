@@ -78,7 +78,7 @@ async def dashboard(
     register (Task 19): `scoped_company_ids` returns None for ADMIN (unrestricted,
     sees every company combined) and the caller's own company id otherwise, so a
     non-ADMIN never sees another company's KPI numbers."""
-    allowed = scoped_company_ids(holder)
+    allowed = await scoped_company_ids(session, holder)
     include_purchase_orders = holder.role in ("ADMIN", "IT_TEAM")
     return await dashboard_data(session, allowed, include_purchase_orders)
 
@@ -103,7 +103,7 @@ async def export_assets(
         holder_id = holder.id
         allowed = None
     else:
-        allowed = scoped_company_ids(holder)
+        allowed = await scoped_company_ids(session, holder)
     items, total = await search_assets(
         session, allowed, status, category_id, holder_id, company_id, q, limit=EXPORT_MAX_ROWS, offset=0,
     )
@@ -151,7 +151,7 @@ async def export_movements(
         .where(AssetEvent.event_date >= from_date, AssetEvent.event_date < to_date + timedelta(days=1))
         .order_by(AssetEvent.event_date, AssetEvent.id)
     )
-    allowed = scoped_company_ids(holder)
+    allowed = await scoped_company_ids(session, holder)
     if allowed is not None:
         stmt = stmt.where(Asset.company_id.in_(allowed))
     rows = (await session.execute(stmt)).all()
@@ -184,7 +184,7 @@ async def export_field_changes(
         .outerjoin(actor, actor.id == AssetFieldChange.actor_id)
         .order_by(AssetFieldChange.created_at, AssetFieldChange.id)
     )
-    allowed = scoped_company_ids(holder)
+    allowed = await scoped_company_ids(session, holder)
     if allowed is not None:
         stmt = stmt.where(Asset.company_id.in_(allowed))
     if from_date is not None:

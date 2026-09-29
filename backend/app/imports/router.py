@@ -34,7 +34,7 @@ async def preview(
 ):
     content = await file.read()
     try:
-        return await preview_import(session, content, scoped_company_ids(actor), mode)
+        return await preview_import(session, content, await scoped_company_ids(session, actor), mode)
     except ImportTemplateError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
 
@@ -46,7 +46,7 @@ async def commit(
 ):
     content = await file.read()
     try:
-        result = await commit_import(session, content, actor, scoped_company_ids(actor), mode)
+        result = await commit_import(session, content, actor, await scoped_company_ids(session, actor), mode)
     except ImportScopeError as exc:
         # A write aimed at a company the actor can't access: refuse the whole file
         # (nothing written) with 403, same as POST /api/assets for another company.

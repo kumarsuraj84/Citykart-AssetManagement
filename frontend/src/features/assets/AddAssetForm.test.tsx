@@ -433,4 +433,32 @@ describe("AddAssetForm", () => {
       expect(apiClient.post).toHaveBeenCalledWith("/assets", expect.objectContaining({ initial_holder_id: 5 })),
     );
   });
+
+  it("AM-24: shows a Company picker when the caller has access to more than one, and re-scopes Cost Centre on switch", async () => {
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (path === "/holders/me/companies") return Promise.resolve([{ id: 1, name: "Company A" }, { id: 2, name: "Company B" }]);
+      if (path.startsWith("/masters/categories")) return Promise.resolve([{ id: 1, code: "IT", name: "IT Equipment" }]);
+      if (path.startsWith("/masters/subcategories")) return Promise.resolve([{ id: 2, code: "LAP", name: "Laptop", category_id: 1 }]);
+      if (path.startsWith("/masters/cost-centers?company_id=1")) return Promise.resolve([{ id: 3, name: "A Cost Centre" }]);
+      if (path.startsWith("/masters/cost-centers?company_id=2")) return Promise.resolve([{ id: 30, name: "B Cost Centre" }]);
+      if (path.startsWith("/masters/vendors")) return Promise.resolve([{ id: 7, name: "Acme Traders" }]);
+      if (path.startsWith("/masters/custom-fields")) return Promise.resolve([]);
+      if (path.startsWith("/holders")) return Promise.resolve([{ id: 4, name: "IT Stock-HO" }]);
+      return Promise.resolve([]);
+    });
+    renderFormAt();
+
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /^company$/i })).toBeInTheDocument());
+    await pickSelectOption(/^cost centre$/i, "A Cost Centre");
+    expect(screen.getByRole("combobox", { name: /^cost centre$/i })).toHaveTextContent("A Cost Centre");
+
+    await pickSelectOption(/^company$/i, "Company B");
+
+    // Switching company resets the now-stale Cost Centre selection and
+    // refetches Cost Centre options scoped to the newly chosen company.
+    expect(screen.getByRole("combobox", { name: /^cost centre$/i })).not.toHaveTextContent("A Cost Centre");
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/masters/cost-centers?company_id=2"));
+    await pickSelectOption(/^cost centre$/i, "B Cost Centre");
+    expect(screen.getByRole("combobox", { name: /^cost centre$/i })).toHaveTextContent("B Cost Centre");
+  });
 });

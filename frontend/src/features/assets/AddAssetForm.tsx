@@ -109,6 +109,15 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [customValues, setCustomValues] = useState<Record<string, CustomFieldValue>>({});
   const [createdAssets, setCreatedAssets] = useState<CreatedAsset[]>([]);
+  // AM-24: which company this NEW asset belongs to -- defaults to the
+  // caller's own home company (companyId), but a caller granted access to
+  // more than one company (ADMIN, or IT_TEAM with company-access grants)
+  // can pick a different one. Selecting a different company resets every
+  // company-scoped choice below it (Cost Centre, Initial Holder), the same
+  // way changing Category already resets Sub-Category.
+  const [selectedCompanyId, setSelectedCompanyId] = useState(companyId);
+  const myCompaniesQ = useQuery({ queryKey: ["holders", "me", "companies"], queryFn: () => apiClient.get<Option[]>("/holders/me/companies") });
+  const myCompanies = myCompaniesQ.data ?? [];
 
   // AM-08: Category and Vendor are genuinely global masters (no company_id
   // column at all -- confirmed against the actual schema, not assumed from
@@ -122,8 +131,8 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
     queryFn: () => apiClient.get<(Option & { category_id: number })[]>("/masters/subcategories"),
   });
   const costCentersQ = useQuery({
-    queryKey: ["masters", "cost-centers", companyId],
-    queryFn: () => apiClient.get<Option[]>(`/masters/cost-centers?company_id=${companyId}`),
+    queryKey: ["masters", "cost-centers", selectedCompanyId],
+    queryFn: () => apiClient.get<Option[]>(`/masters/cost-centers?company_id=${selectedCompanyId}`),
   });
   const vendorsQ = useQuery({ queryKey: ["masters", "vendors"], queryFn: () => apiClient.get<Option[]>("/masters/vendors") });
   const customFieldsQ = useQuery({
@@ -137,8 +146,8 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
   // HolderService.list has no stable ordering and guessing risks silently misfiling
   // a purchase into the wrong location's stock).
   const stockHoldersQ = useQuery({
-    queryKey: ["holders", "IT_STOCK", companyId],
-    queryFn: () => apiClient.get<Option[]>(`/holders?holder_type=IT_STOCK&company_id=${companyId}`),
+    queryKey: ["holders", "IT_STOCK", selectedCompanyId],
+    queryFn: () => apiClient.get<Option[]>(`/holders?holder_type=IT_STOCK&company_id=${selectedCompanyId}`),
   });
 
   const categories = categoriesQ.data ?? [];
@@ -154,9 +163,9 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
   const customFields = useMemo(
     () =>
       (customFieldsQ.data ?? [])
-        .filter((f) => f.company_id === null || f.company_id === companyId)
+        .filter((f) => f.company_id === null || f.company_id === selectedCompanyId)
         .sort((a, b) => a.sort_order - b.sort_order),
-    [customFieldsQ.data, companyId],
+    [customFieldsQ.data, selectedCompanyId],
   );
   const visibleSubcategories = form.categoryId
     ? subcategories.filter((s) => s.category_id === Number(form.categoryId))
@@ -225,7 +234,7 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
   const saveMutation = useMutation({
     mutationFn: () =>
       apiClient.post<CreatedAsset[]>("/assets", {
-        company_id: companyId,
+        company_id: selectedCompanyId,
         cost_center_id: Number(form.costCenterId),
         category_id: Number(form.categoryId),
         subcategory_id: Number(form.subcategoryId),
@@ -311,6 +320,30 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
       <section className="flex flex-col gap-4">
         <SectionHeading>Organization</SectionHeading>
         <div className="grid gap-4 sm:grid-cols-2">
+          {/* AM-24: only shown when the caller actually has more than one
+              company to choose from -- otherwise this stays exactly as
+              before (silently the caller's own home company). */}
+          {myCompanies.length > 1 && (
+            <FormField htmlFor="company" label="Company" required>
+              <Select
+                value={String(selectedCompanyId)}
+                onValueChange={(v) => {
+                  setSelectedCompanyId(Number(v));
+                  setField("costCenterId", "");
+                  setField("initialHolderId", "");
+                }}
+              >
+                <SelectTrigger id="company" aria-label="Company">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {myCompanies.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+          )}
           <FormField htmlFor="cost-center" label="Cost Centre" required>
             <Select value={selectValue(form.costCenterId)} onValueChange={(v) => setField("costCenterId", v)} disabled={mastersLoading}>
               <SelectTrigger id="cost-center" aria-label="Cost Centre">

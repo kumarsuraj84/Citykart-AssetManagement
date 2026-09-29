@@ -73,4 +73,33 @@ describe("NewPurchaseOrderForm", () => {
 
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("PO number already used"));
   });
+
+  it("AM-24: shows a Company picker when the caller has access to more than one, and submits the chosen company", async () => {
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (path === "/holders/me/companies") return Promise.resolve([{ id: 1, name: "Company A" }, { id: 2, name: "Company B" }]);
+      if (path === "/masters/cost-centers?company_id=1") return Promise.resolve([{ id: 3, name: "A Cost Centre" }]);
+      if (path === "/masters/cost-centers?company_id=2") return Promise.resolve([{ id: 30, name: "B Cost Centre" }]);
+      return Promise.resolve([{ id: 9, name: "Acme Traders" }]);
+    });
+    (apiClient.post as any).mockResolvedValue({ id: 42 });
+    renderFormAt();
+
+    await waitFor(() => expect(screen.getByLabelText(/po no/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByLabelText(/^company/i)).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText(/^company/i));
+    fireEvent.click(await screen.findByText("Company B"));
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/masters/cost-centers?company_id=2"));
+
+    fireEvent.change(screen.getByLabelText(/po no/i), { target: { value: "PO-1" } });
+    fireEvent.click(screen.getByLabelText(/cost centre/i));
+    fireEvent.click(await screen.findByText("B Cost Centre"));
+    fireEvent.click(screen.getByRole("button", { name: /create purchase order/i }));
+
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith(
+        "/purchase-orders",
+        expect.objectContaining({ company_id: 2, cost_center_id: 30 }),
+      ),
+    );
+  });
 });

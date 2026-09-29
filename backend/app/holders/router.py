@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
@@ -7,8 +8,28 @@ from app.holders.service import HolderService
 from app.holders.schemas import CompanyAccessIn, HolderIn, HolderOut, ResetPasswordOut
 from app.holders.models import HOLDER_TYPES, ROLES
 from app.masters.models import Company, Department, Location
+from app.masters.schemas import CompanyOut
 
 router = APIRouter(prefix="/api/holders", tags=["holders"])
+
+
+@router.get("/me/companies", response_model=list[CompanyOut])
+async def my_companies(
+    session: AsyncSession = Depends(get_session),
+    holder=Depends(get_current_holder),
+):
+    """AM-24: which companies the CURRENT caller may create/write records
+    under -- their own home company, plus any granted via
+    holder_company_access (ADMIN: every active company). Add Asset/New PO
+    use this to offer a Company picker only when it's actually meaningful
+    (more than one company), rather than always silently using the
+    caller's own home company regardless of what else they've been
+    granted."""
+    allowed = await scoped_company_ids(session, holder)
+    stmt = select(Company).where(Company.is_active.is_(True)).order_by(Company.name)
+    if allowed is not None:
+        stmt = stmt.where(Company.id.in_(allowed))
+    return (await session.execute(stmt)).scalars().all()
 
 
 def _validate_holder_fields(data: dict) -> None:
@@ -55,7 +76,7 @@ async def list_holders(
 ):
     # Staff only: the list carries every holder's email/phone, and a HOLDER may
     # only see their own currently-held assets (spec §6) -- 403 for them.
-    allowed_company_ids = scoped_company_ids(holder)
+    allowed_company_ids = await scoped_company_ids(session, holder)
     return await HolderService(session).list(
         holder_type=holder_type,
         allowed_company_ids=allowed_company_ids,

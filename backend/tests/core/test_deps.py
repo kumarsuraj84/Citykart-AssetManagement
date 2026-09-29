@@ -1,22 +1,55 @@
 import pytest
 from fastapi import HTTPException
+from app.core.db import SessionLocal
 from app.core.deps import get_current_holder, require_role, scoped_company_ids
-from app.core.security import create_refresh_token
+from app.core.security import create_refresh_token, hash_password
+from app.holders.models import Holder, HolderCompanyAccess
+from app.masters.models import Company, Department, Location
 
 
 class _FakeHolder:
-    def __init__(self, role, company_id, holder_company_ids=None):
+    def __init__(self, role, company_id, id=0):  # noqa: A002 - matches the ORM attribute name
         self.role = role
         self.company_id = company_id
-        self._access = holder_company_ids or []
+        self.id = id
 
 
-def test_scoped_company_ids_admin_sees_all():
-    assert scoped_company_ids(_FakeHolder("ADMIN", 1)) is None
+async def test_scoped_company_ids_admin_sees_all():
+    # ADMIN short-circuits before ever touching the session -- None is safe here.
+    assert await scoped_company_ids(None, _FakeHolder("ADMIN", 1)) is None
 
 
-def test_scoped_company_ids_holder_sees_own_company_only():
-    assert scoped_company_ids(_FakeHolder("HOLDER", 7)) == [7]
+async def test_scoped_company_ids_holder_sees_own_company_only():
+    async with SessionLocal() as session:
+        assert await scoped_company_ids(session, _FakeHolder("HOLDER", 7, id=0)) == [7]
+
+
+async def test_scoped_company_ids_honors_holder_company_access_grants(client):
+    """AM-24: the actual bug -- holder_company_access rows were stored but
+    never queried, so a granted second company had zero effect anywhere a
+    scope check ran. Confirms the real fix with a real Holder + a real
+    HolderCompanyAccess row, not just a FakeHolder unit check."""
+    async with SessionLocal() as session:
+        co_a = Company(code="DEPS-A", name="Deps Co A")
+        co_b = Company(code="DEPS-B", name="Deps Co B")
+        session.add_all([co_a, co_b])
+        await session.flush()
+        loc = Location(code="DEPS-LOC", name="Deps HO")
+        dept = Department(name="DEPS-DEPT")
+        session.add_all([loc, dept])
+        await session.flush()
+        staff = Holder(
+            company_id=co_a.id, emp_code="DEPS-ITT", name="Deps IT Team", holder_type="EMPLOYEE",
+            location_id=loc.id, department_id=dept.id, role="IT_TEAM",
+            password_hash=hash_password("Passw0rd!"), must_change_password=False,
+        )
+        session.add(staff)
+        await session.flush()
+        session.add(HolderCompanyAccess(holder_id=staff.id, company_id=co_b.id))
+        await session.commit()
+
+        allowed = await scoped_company_ids(session, staff)
+        assert set(allowed) == {co_a.id, co_b.id}
 
 
 def test_require_role_rejects_wrong_role():

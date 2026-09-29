@@ -40,20 +40,20 @@ def build_master_router(
     sub = APIRouter(prefix=prefix)
     edit_schema = schema_edit or schema_in
 
-    def check_existing(holder, obj) -> None:
+    async def check_existing(session: AsyncSession, holder, obj) -> None:
         if company_scope == SCOPE_COMPANY_ID:
-            ensure_company_in_scope(holder, obj.company_id)
+            await ensure_company_in_scope(session, holder, obj.company_id)
         elif company_scope == SCOPE_SELF:
-            ensure_company_in_scope(holder, obj.id)
+            await ensure_company_in_scope(session, holder, obj.id)
 
-    def check_incoming(holder, data: dict) -> None:
+    async def check_incoming(session: AsyncSession, holder, data: dict) -> None:
         # AM-05: "company_id" in data -- when the PUT body uses a narrower
         # edit_schema that doesn't declare company_id at all (the normal
         # case now that it's immutable after creation), this check simply
         # doesn't apply: there's no incoming company_id to validate, because
         # the field can't be changed via this path regardless of role.
         if company_scope == SCOPE_COMPANY_ID and "company_id" in data:
-            ensure_company_in_scope(holder, data.get("company_id"))
+            await ensure_company_in_scope(session, holder, data.get("company_id"))
 
     @sub.get("", response_model=list[schema_out])
     async def list_items(
@@ -81,7 +81,7 @@ def build_master_router(
         # not honored. ADMIN (scoped_company_ids() is None) is unaffected.
         filters = {}
         if company_scope == SCOPE_COMPANY_ID:
-            allowed = scoped_company_ids(holder)
+            allowed = await scoped_company_ids(session, holder)
             if allowed is None:
                 if company_id is not None:
                     filters["company_id"] = company_id
@@ -98,8 +98,8 @@ def build_master_router(
         data = body.model_dump()
         if company_scope == SCOPE_SELF:
             # A brand-new company is by definition outside any non-ADMIN's scope.
-            ensure_company_in_scope(holder, None)
-        check_incoming(holder, data)
+            await ensure_company_in_scope(session, holder, None)
+        await check_incoming(session, holder, data)
         if validate_incoming is not None:
             try:
                 validate_incoming(data)
@@ -129,8 +129,8 @@ def build_master_router(
         if existing is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND)
         data = body.model_dump()
-        check_existing(holder, existing)  # may not edit another company's row...
-        check_incoming(holder, data)      # ...nor move an own row into another company
+        await check_existing(session, holder, existing)  # may not edit another company's row...
+        await check_incoming(session, holder, data)      # ...nor move an own row into another company
         if validate_incoming is not None:
             try:
                 validate_incoming(data)
@@ -152,7 +152,7 @@ def build_master_router(
         existing = await service.get(item_id)
         if existing is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND)
-        check_existing(holder, existing)
+        await check_existing(session, holder, existing)
         await service.deactivate(item_id, holder.id)
 
     return sub
