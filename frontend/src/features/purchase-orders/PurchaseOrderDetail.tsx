@@ -2,7 +2,6 @@ import { useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { apiClient } from "../../lib/api-client";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -73,33 +72,17 @@ function selectValue(v: string): string | undefined {
   return v || undefined;
 }
 
-// AM-16: dot + plain text, matching StatusBadge's own `compact` presentation
-// for a dense table row (live A/B on Asset Register showed a real reduction
-// in visual noise vs. a colored pill per row, status text still fully
-// legible) -- this table isn't Asset.status, so it can't reuse StatusBadge
-// itself, but reuses the identical compact dot pattern for one consistent
-// "how a status reads in a table" rule across the app.
-const LINE_STATUS_DOT: Record<string, string> = {
-  PENDING: "bg-warning",
-  DELIVERED: "bg-success",
-  CANCELLED: "bg-secondary-foreground",
-};
-
-function LineStatusBadge({ status }: { status: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 text-xs text-foreground">
-      <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", LINE_STATUS_DOT[status] ?? "bg-secondary-foreground")} aria-hidden="true" />
-      {status}
-    </span>
-  );
-}
-
-function ColumnSearchHeader({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+// `scope` disambiguates the aria-label (e.g. "Search Barcode (Pending)" vs.
+// "Search Barcode (Delivered)") now that Pending/Delivered are two separate
+// tables that can each carry a same-named column -- without it, a screen
+// reader (and anything else querying by accessible name) can't tell the two
+// apart.
+function ColumnSearchHeader({ label, value, onChange, scope }: { label: string; value: string; onChange: (v: string) => void; scope: string }) {
   return (
     <div className="flex flex-col gap-1 py-1">
       <span>{label}</span>
       <Input
-        aria-label={`Search ${label}`}
+        aria-label={`Search ${label} (${scope})`}
         placeholder="Search…"
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -281,27 +264,42 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["purchase-order", poId, "lines"] }),
   });
 
-  // --- Lines table: per-column search ---
-  const [columnFilters, setColumnFilters] = useState({
-    description: "", barcode: "", category: "", cost: "", status: "", serial: "",
-  });
-  function setColumnFilter(key: keyof typeof columnFilters, value: string) {
-    setColumnFilters((f) => ({ ...f, [key]: value }));
+  // --- Lines tables: Pending/Delivered/Cancelled are shown as three
+  // separate tables (never one mixed list) so marking delivery only ever
+  // shows rows that still need it -- a delivered row sitting in the same
+  // table as a pending one was confusing to select against. Each table
+  // keeps its own per-column search, independent of the others, since the
+  // column sets themselves differ (Serial No only exists once delivered;
+  // Edit/Cancel actions only make sense while still pending).
+  const [pendingFilters, setPendingFilters] = useState({ description: "", barcode: "", category: "", cost: "" });
+  const [deliveredFilters, setDeliveredFilters] = useState({ description: "", barcode: "", category: "", cost: "", serial: "" });
+  function setPendingFilter(key: keyof typeof pendingFilters, value: string) {
+    setPendingFilters((f) => ({ ...f, [key]: value }));
   }
-  const filteredLines = useMemo(() => {
-    const f = columnFilters;
-    return lines.filter((l) => {
-      const cost = (l.total_cost ?? 0).toFixed(2);
-      return (
-        l.description.toLowerCase().includes(f.description.toLowerCase()) &&
-        (l.barcode ?? "").toLowerCase().includes(f.barcode.toLowerCase()) &&
-        categoryName(l.category_id).toLowerCase().includes(f.category.toLowerCase()) &&
-        cost.includes(f.cost.toLowerCase()) &&
-        l.status.toLowerCase().includes(f.status.toLowerCase()) &&
-        (l.serial_number ?? "").toLowerCase().includes(f.serial.toLowerCase())
-      );
-    });
-  }, [lines, columnFilters, categories]);
+  function setDeliveredFilter(key: keyof typeof deliveredFilters, value: string) {
+    setDeliveredFilters((f) => ({ ...f, [key]: value }));
+  }
+  function matchesCommonFilters(l: PendingAssetRow, f: { description: string; barcode: string; category: string; cost: string }) {
+    const cost = (l.total_cost ?? 0).toFixed(2);
+    return (
+      l.description.toLowerCase().includes(f.description.toLowerCase()) &&
+      (l.barcode ?? "").toLowerCase().includes(f.barcode.toLowerCase()) &&
+      categoryName(l.category_id).toLowerCase().includes(f.category.toLowerCase()) &&
+      cost.includes(f.cost.toLowerCase())
+    );
+  }
+  const pendingLines = useMemo(
+    () => lines.filter((l) => l.status === "PENDING" && matchesCommonFilters(l, pendingFilters)),
+    [lines, pendingFilters, categories],
+  );
+  const deliveredLines = useMemo(
+    () => lines.filter((l) =>
+      l.status === "DELIVERED" && matchesCommonFilters(l, deliveredFilters) &&
+      (l.serial_number ?? "").toLowerCase().includes(deliveredFilters.serial.toLowerCase()),
+    ),
+    [lines, deliveredFilters, categories],
+  );
+  const cancelledLines = useMemo(() => lines.filter((l) => l.status === "CANCELLED"), [lines]);
 
   // --- Selection + Delivery Done ---
   const [selected, setSelected] = useState<number[]>([]);
@@ -309,15 +307,14 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     setSelected((s) => (checked ? [...s, id] : s.filter((x) => x !== id)));
   }
 
-  // Select All acts only on the currently-visible (filtered) PENDING rows --
+  // Select All acts only on the currently-visible (filtered) Pending rows --
   // a hidden/filtered-out row's own selection state is never touched by it,
   // matching the requested "select all of what's currently filtered, or
   // everything if nothing is filtered" behavior.
-  const selectableVisibleLines = useMemo(() => filteredLines.filter((l) => l.status === "PENDING"), [filteredLines]);
   const isAllVisibleSelected =
-    selectableVisibleLines.length > 0 && selectableVisibleLines.every((l) => selected.includes(l.id));
+    pendingLines.length > 0 && pendingLines.every((l) => selected.includes(l.id));
   function toggleAllVisible(checked: boolean) {
-    const visibleIds = new Set(selectableVisibleLines.map((l) => l.id));
+    const visibleIds = new Set(pendingLines.map((l) => l.id));
     setSelected((s) =>
       checked ? [...new Set([...s, ...visibleIds])] : s.filter((id) => !visibleIds.has(id)),
     );
@@ -358,70 +355,100 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     },
   });
 
-  const lineColumns: DataTableColumn<PendingAssetRow>[] = [
+  const pendingColumns: DataTableColumn<PendingAssetRow>[] = [
     {
       key: "select",
-      header: selectableVisibleLines.length > 0 ? (
+      header: pendingLines.length > 0 ? (
         <Checkbox
           aria-label="Select all pending lines"
           checked={isAllVisibleSelected}
           onCheckedChange={(checked) => toggleAllVisible(checked === true)}
         />
       ) : null,
-      cell: (l) =>
-        l.status === "PENDING" ? (
-          <Checkbox
-            aria-label={`Select ${l.description}`}
-            checked={selected.includes(l.id)}
-            onCheckedChange={(checked) => toggleOne(l.id, checked === true)}
-          />
-        ) : null,
+      cell: (l) => (
+        <Checkbox
+          aria-label={`Select ${l.description}`}
+          checked={selected.includes(l.id)}
+          onCheckedChange={(checked) => toggleOne(l.id, checked === true)}
+        />
+      ),
     },
     {
       key: "description",
-      header: <ColumnSearchHeader label="Description" value={columnFilters.description} onChange={(v) => setColumnFilter("description", v)} />,
+      header: <ColumnSearchHeader label="Description" value={pendingFilters.description} onChange={(v) => setPendingFilter("description", v)} scope="Pending" />,
       cell: (l) => l.description,
     },
     {
       key: "barcode",
-      header: <ColumnSearchHeader label="Barcode" value={columnFilters.barcode} onChange={(v) => setColumnFilter("barcode", v)} />,
+      header: <ColumnSearchHeader label="Barcode" value={pendingFilters.barcode} onChange={(v) => setPendingFilter("barcode", v)} scope="Pending" />,
       cell: (l) => l.barcode ?? "—",
     },
     {
       key: "category",
-      header: <ColumnSearchHeader label="Category" value={columnFilters.category} onChange={(v) => setColumnFilter("category", v)} />,
+      header: <ColumnSearchHeader label="Category" value={pendingFilters.category} onChange={(v) => setPendingFilter("category", v)} scope="Pending" />,
       cell: (l) => categoryName(l.category_id),
     },
     {
       key: "cost",
-      header: <ColumnSearchHeader label="PO Value" value={columnFilters.cost} onChange={(v) => setColumnFilter("cost", v)} />,
+      header: <ColumnSearchHeader label="PO Value" value={pendingFilters.cost} onChange={(v) => setPendingFilter("cost", v)} scope="Pending" />,
       headerClassName: "text-right", cellClassName: "text-right tabular-nums",
       cell: (l) => (l.total_cost ?? 0).toFixed(2),
     },
     {
-      key: "status",
-      header: <ColumnSearchHeader label="Status" value={columnFilters.status} onChange={(v) => setColumnFilter("status", v)} />,
-      cell: (l) => <LineStatusBadge status={l.status} />,
+      key: "actions",
+      header: "",
+      cell: (l) => (
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => openEdit(l)}>
+            Edit
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => cancelMutation.mutate(l.id)}>
+            Cancel
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  const deliveredColumns: DataTableColumn<PendingAssetRow>[] = [
+    {
+      key: "description",
+      header: <ColumnSearchHeader label="Description" value={deliveredFilters.description} onChange={(v) => setDeliveredFilter("description", v)} scope="Delivered" />,
+      cell: (l) => l.description,
+    },
+    {
+      key: "barcode",
+      header: <ColumnSearchHeader label="Barcode" value={deliveredFilters.barcode} onChange={(v) => setDeliveredFilter("barcode", v)} scope="Delivered" />,
+      cell: (l) => l.barcode ?? "—",
+    },
+    {
+      key: "category",
+      header: <ColumnSearchHeader label="Category" value={deliveredFilters.category} onChange={(v) => setDeliveredFilter("category", v)} scope="Delivered" />,
+      cell: (l) => categoryName(l.category_id),
+    },
+    {
+      key: "cost",
+      header: <ColumnSearchHeader label="PO Value" value={deliveredFilters.cost} onChange={(v) => setDeliveredFilter("cost", v)} scope="Delivered" />,
+      headerClassName: "text-right", cellClassName: "text-right tabular-nums",
+      cell: (l) => (l.total_cost ?? 0).toFixed(2),
     },
     {
       key: "serial",
-      header: <ColumnSearchHeader label="Serial No" value={columnFilters.serial} onChange={(v) => setColumnFilter("serial", v)} />,
+      header: <ColumnSearchHeader label="Serial No" value={deliveredFilters.serial} onChange={(v) => setDeliveredFilter("serial", v)} scope="Delivered" />,
       cell: (l) => l.serial_number ?? "—",
     },
+  ];
+
+  // No search boxes here -- cancelled lines are a small, rarely-reviewed
+  // tail, not something an operator hunts through the way pending/delivered
+  // rows get searched while working a PO.
+  const cancelledColumns: DataTableColumn<PendingAssetRow>[] = [
+    { key: "description", header: "Description", cell: (l) => l.description },
+    { key: "barcode", header: "Barcode", cell: (l) => l.barcode ?? "—" },
+    { key: "category", header: "Category", cell: (l) => categoryName(l.category_id) },
     {
-      key: "actions",
-      header: "",
-      cell: (l) =>
-        l.status === "PENDING" ? (
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => openEdit(l)}>
-              Edit
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => cancelMutation.mutate(l.id)}>
-              Cancel
-            </Button>
-          </div>
-        ) : null,
+      key: "cost", header: "PO Value", headerClassName: "text-right", cellClassName: "text-right tabular-nums",
+      cell: (l) => (l.total_cost ?? 0).toFixed(2),
     },
   ];
 
@@ -560,13 +587,43 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
         )}
       </div>
 
-      <DataTable
-        columns={lineColumns}
-        rows={filteredLines}
-        rowKey={(l) => l.id}
-        isLoading={linesQ.isLoading}
-        emptyState={<EmptyState title={lines.length === 0 ? "No lines added yet." : "No lines match the current search."} />}
-      />
+      <div className="rounded-md border p-3">
+        <h2 className="mb-2 text-sm font-semibold">Pending Delivery ({pendingLines.length})</h2>
+        <DataTable
+          columns={pendingColumns}
+          rows={pendingLines}
+          rowKey={(l) => l.id}
+          isLoading={linesQ.isLoading}
+          emptyState={
+            <EmptyState title={pendingCount === 0 ? "Nothing pending delivery." : "No pending lines match the current search."} />
+          }
+        />
+      </div>
+
+      <div className="rounded-md border p-3">
+        <h2 className="mb-2 text-sm font-semibold">Delivered ({deliveredLines.length})</h2>
+        <DataTable
+          columns={deliveredColumns}
+          rows={deliveredLines}
+          rowKey={(l) => l.id}
+          isLoading={linesQ.isLoading}
+          emptyState={
+            <EmptyState title={deliveredCount === 0 ? "Nothing delivered yet." : "No delivered lines match the current search."} />
+          }
+        />
+      </div>
+
+      {cancelledLines.length > 0 && (
+        <div className="rounded-md border p-3">
+          <h2 className="mb-2 text-sm font-semibold">Cancelled ({cancelledLines.length})</h2>
+          <DataTable
+            columns={cancelledColumns}
+            rows={cancelledLines}
+            rowKey={(l) => l.id}
+            emptyState={<EmptyState title="No cancelled lines." />}
+          />
+        </div>
+      )}
 
       <Dialog open={editingLine !== null} onOpenChange={(open) => !open && setEditingLine(null)}>
         <DialogContent>
@@ -690,15 +747,21 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
 
           <div className="grid shrink-0 grid-cols-3 gap-2">
             <div className="flex flex-col gap-1">
-              <Label htmlFor="invoice-number" className="text-xs">Invoice No</Label>
+              <Label htmlFor="invoice-number" className="text-xs">
+                Invoice No<span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
+              </Label>
               <Input id="invoice-number" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1">
-              <Label htmlFor="invoice-date" className="text-xs">Invoice Date</Label>
+              <Label htmlFor="invoice-date" className="text-xs">
+                Invoice Date<span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
+              </Label>
               <Input id="invoice-date" type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1">
-              <Label htmlFor="invoice-amount" className="text-xs">Invoice Amount</Label>
+              <Label htmlFor="invoice-amount" className="text-xs">
+                Invoice Amount<span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
+              </Label>
               <Input id="invoice-amount" type="number" value={invoiceAmount} onChange={(e) => setInvoiceAmount(e.target.value)} />
             </div>
           </div>

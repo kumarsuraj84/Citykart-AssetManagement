@@ -58,7 +58,7 @@ describe("PurchaseOrderDetail", () => {
     renderDetailAt();
     await waitFor(() => expect(screen.getByText(/PO-2026-001/)).toBeInTheDocument());
     expect(screen.getByText("Dell Laptop")).toBeInTheDocument();
-    expect(screen.getByText("PENDING")).toBeInTheDocument();
+    expect(screen.getByText(/pending delivery \(1\)/i)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText(/Head Office/)).toBeInTheDocument());
     expect(screen.getByText("BC-777")).toBeInTheDocument();
   });
@@ -185,6 +185,22 @@ describe("PurchaseOrderDetail", () => {
     );
   });
 
+  it("AM-22 UAT: Invoice No/Date/Amount are visibly marked required in the Delivery Done dialog (backend rejects a delivery missing any of them, so Confirm silently staying disabled with no required-marker was a real trap)", async () => {
+    mockGets([PENDING_LINE]);
+    renderDetailAt();
+    await waitFor(() => expect(screen.getByText("Dell Laptop")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /select dell laptop/i }));
+    fireEvent.click(screen.getByRole("button", { name: /mark 1 delivery done/i }));
+
+    const dialog = screen.getByRole("dialog");
+    for (const id of ["invoice-number", "invoice-date", "invoice-amount"]) {
+      const labelEl = dialog.querySelector(`label[for="${id}"]`);
+      expect(labelEl).not.toBeNull();
+      expect(labelEl!.querySelector('[aria-hidden="true"]')?.textContent).toBe("*");
+    }
+  });
+
   it("checking \"No serial number\" for a delivery line disables its input and submits N/A", async () => {
     mockGets([PENDING_LINE]);
     (apiClient.post as any).mockResolvedValue([{ ...PENDING_LINE, status: "DELIVERED" }]);
@@ -236,7 +252,7 @@ describe("PurchaseOrderDetail", () => {
     await waitFor(() => expect(screen.getByText("Dell Laptop")).toBeInTheDocument());
     expect(screen.getByText("Logitech Mouse")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText(/^search barcode$/i), { target: { value: "CT123" } });
+    fireEvent.change(screen.getByLabelText(/^search barcode \(pending\)$/i), { target: { value: "CT123" } });
 
     await waitFor(() => expect(screen.queryByText("Dell Laptop")).not.toBeInTheDocument());
     expect(screen.getByText("Logitech Mouse")).toBeInTheDocument();
@@ -246,7 +262,7 @@ describe("PurchaseOrderDetail", () => {
 
     // Clearing the filter reveals Dell Laptop again, still unselected by the
     // earlier Select All (which only ever touched the filtered set).
-    fireEvent.change(screen.getByLabelText(/^search barcode$/i), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText(/^search barcode \(pending\)$/i), { target: { value: "" } });
     await waitFor(() => expect(screen.getByText("Dell Laptop")).toBeInTheDocument());
     expect(screen.getByRole("checkbox", { name: /select dell laptop/i })).not.toBeChecked();
     expect(screen.getByRole("checkbox", { name: /select logitech mouse/i })).toBeChecked();
