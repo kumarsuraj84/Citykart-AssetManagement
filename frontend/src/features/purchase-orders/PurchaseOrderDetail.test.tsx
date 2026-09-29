@@ -27,7 +27,8 @@ const PENDING_LINE = {
   status: "PENDING", serial_number: null, delivered_asset_id: null,
 };
 const DELIVERED_LINE = {
-  ...PENDING_LINE, id: 11, description: "HP Printer", status: "DELIVERED", serial_number: "SN-999", delivered_asset_id: 99,
+  ...PENDING_LINE, id: 11, description: "HP Printer", status: "DELIVERED", serial_number: "SN-999",
+  invoice_number: "INV-777", delivered_asset_id: 99,
 };
 const PENDING_LINE_2 = {
   ...PENDING_LINE, id: 12, description: "Logitech Mouse", barcode: "CT123",
@@ -284,5 +285,52 @@ describe("PurchaseOrderDetail", () => {
 
     await waitFor(() => expect(within(dialog).getByRole("alert")).toHaveTextContent(/not PENDING/));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("AM-19: lists each distinct delivered Invoice Number with its own Record PI action", async () => {
+    mockGets([PENDING_LINE, DELIVERED_LINE]);
+    renderDetailAt();
+    await waitFor(() => expect(screen.getByText("Dell Laptop")).toBeInTheDocument());
+
+    expect(screen.getByText("INV-777")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /record pi/i })).toBeInTheDocument();
+  });
+
+  it("AM-19: Record PI posts to the record-pi endpoint and shows the result", async () => {
+    mockGets([DELIVERED_LINE]);
+    (apiClient.post as any).mockResolvedValue({ invoice_number: "INV-777", updated: ["FA/1"], skipped: [] });
+    renderDetailAt();
+    await waitFor(() => expect(screen.getByText("INV-777")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /record pi/i }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText(/pi number/i), { target: { value: "PI-2001" } });
+    fireEvent.change(within(dialog).getByLabelText(/pi date/i), { target: { value: "2026-02-15" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith("/purchase-orders/1/record-pi", {
+        invoice_number: "INV-777", pi_number: "PI-2001", pi_date: "2026-02-15", overwrite: false,
+      }),
+    );
+    expect(await within(dialog).findByText(/updated/i)).toBeInTheDocument();
+  });
+
+  it("AM-19: Overwrite existing values checkbox is sent through to the request", async () => {
+    mockGets([DELIVERED_LINE]);
+    (apiClient.post as any).mockResolvedValue({ invoice_number: "INV-777", updated: ["FA/1"], skipped: [] });
+    renderDetailAt();
+    await waitFor(() => expect(screen.getByText("INV-777")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /record pi/i }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText(/pi number/i), { target: { value: "PI-CORRECTED" } });
+    fireEvent.change(within(dialog).getByLabelText(/pi date/i), { target: { value: "2026-02-15" } });
+    fireEvent.click(within(dialog).getByLabelText(/overwrite existing values/i));
+    fireEvent.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith("/purchase-orders/1/record-pi", expect.objectContaining({ overwrite: true })),
+    );
   });
 });

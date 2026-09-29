@@ -71,6 +71,8 @@ async def test_deliver_pending_assets_creates_real_assets_with_distinct_serials(
             assert asset.status == "IN_STOCK"
             assert asset.invoice_number == "INV-001"
             assert asset.invoice_date == date(2026, 2, 1)
+            # AM-19: Invoice Amount now lands on the Asset itself too.
+            assert float(asset.invoice_amount) == 3540.0
             assert asset.po_number == "PO-DLV-1"
             assert asset.po_date == date(2026, 1, 1)
             assert asset.purchase_date == date(2026, 2, 1)

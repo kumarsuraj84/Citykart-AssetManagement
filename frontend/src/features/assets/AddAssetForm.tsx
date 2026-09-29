@@ -59,12 +59,12 @@ interface FormState {
   poDate: string;
   invoiceNumber: string;
   invoiceDate: string;
+  invoiceAmount: string;
   piNumber: string;
   piDate: string;
   purchaseCost: string;
   taxPercent: string;
   initialHolderId: string;
-  quantity: string;
 }
 
 const emptyForm: FormState = {
@@ -83,12 +83,12 @@ const emptyForm: FormState = {
   poDate: "",
   invoiceNumber: "",
   invoiceDate: "",
+  invoiceAmount: "",
   piNumber: "",
   piDate: "",
   purchaseCost: "0",
   taxPercent: "0",
   initialHolderId: "",
-  quantity: "1",
 };
 
 // Empty-string sentinel for a Radix Select with no selection yet -- it can't take
@@ -194,18 +194,16 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
 
   const hasHolderOption = stockHolders.length > 0;
   const hasCostCenterOption = costCenters.length > 0;
+  // AM-19: PO/Invoice/PI No+Date are no longer required here -- ground
+  // reality is that paperwork routinely arrives after the physical asset
+  // is already logged (see AssetCreateIn's own docstring). They can be
+  // filled in later via Edit once available.
   const canSave =
     form.description.trim().length > 0 &&
     form.categoryId !== "" &&
     form.subcategoryId !== "" &&
     form.costCenterId !== "" &&
     form.vendorId !== "" &&
-    form.poNumber.trim() !== "" &&
-    form.poDate !== "" &&
-    form.invoiceNumber.trim() !== "" &&
-    form.invoiceDate !== "" &&
-    form.piNumber.trim() !== "" &&
-    form.piDate !== "" &&
     (form.noSerialNumber || form.serialNumber.trim() !== "") &&
     form.initialHolderId !== "" &&
     !customFields.some(requiredCustomFieldMissing);
@@ -238,28 +236,29 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
         serial_number: form.noSerialNumber ? "N/A" : form.serialNumber.trim(),
         warranty_years: Number(form.warrantyYears) || 0,
         vendor_id: Number(form.vendorId),
-        po_number: form.poNumber,
-        po_date: form.poDate,
-        invoice_number: form.invoiceNumber,
-        invoice_date: form.invoiceDate,
-        pi_number: form.piNumber,
-        pi_date: form.piDate,
+        po_number: form.poNumber || null,
+        po_date: form.poDate || null,
+        invoice_number: form.invoiceNumber || null,
+        invoice_date: form.invoiceDate || null,
+        invoice_amount: form.invoiceAmount === "" ? null : Number(form.invoiceAmount),
+        pi_number: form.piNumber || null,
+        pi_date: form.piDate || null,
         purchase_cost: purchaseCost,
         tax_percent: taxPercent,
-        // Purchase Date is never user-entered -- it's always Invoice Date
-        // (docs/ai/DECISIONS.md); the backend derives it too, so this key
-        // is simply omitted from the payload.
+        // Purchase Date is never user-entered -- it's Invoice Date when
+        // given (docs/ai/DECISIONS.md), or today when Invoice Date isn't
+        // known yet; the backend derives it either way, so this key is
+        // simply omitted from the payload.
         initial_holder_id: Number(form.initialHolderId),
-        quantity: Number(form.quantity) || 1,
         custom_fields: buildCustomFieldsPayload(),
       }),
     onSuccess: (created) => {
-      // Asset Code is always server-generated, never guessed client-side. A
-      // single-asset save goes straight to its Asset 360 (AM-04 §12); the
-      // "buying 20 mice" bulk case creates several assets at once, so there is
-      // no single destination to jump to -- list every generated code instead,
-      // each linking to its own Asset 360 (existing product behavior this
-      // stage's authorization explicitly allows keeping).
+      // Asset Code is always server-generated, never guessed client-side.
+      // AM-19: every save now creates exactly one asset (Quantity was
+      // removed -- Import is the tool for a genuine multi-unit bulk add),
+      // so this always takes the single-asset branch straight to Asset 360
+      // (AM-04 §12); the length!==1 branch is dead but left in place as a
+      // harmless defensive fallback rather than ripped out.
       if (created.length === 1) {
         navigate({ to: "/assets/$id", params: { id: String(created[0].id) } });
         return;
@@ -393,29 +392,31 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
             </Select>
           </FormField>
 
-          <FormField htmlFor="po-number" label="PO Number" required>
+          <FormField htmlFor="po-number" label="PO Number" helperText="Optional -- add it once you have it.">
             <Input id="po-number" aria-label="PO Number" value={form.poNumber} onChange={(e) => setField("poNumber", e.target.value)} />
           </FormField>
-          <FormField htmlFor="po-date" label="PO Date" required>
+          <FormField htmlFor="po-date" label="PO Date" helperText="Optional.">
             <Input id="po-date" aria-label="PO Date" type="date" value={form.poDate} onChange={(e) => setField("poDate", e.target.value)} />
           </FormField>
 
-          <FormField htmlFor="invoice-number" label="Invoice Number" required>
+          <FormField htmlFor="invoice-number" label="Invoice Number" helperText="Optional -- add it once you have it.">
             <Input id="invoice-number" aria-label="Invoice Number" value={form.invoiceNumber} onChange={(e) => setField("invoiceNumber", e.target.value)} />
           </FormField>
           <FormField
             htmlFor="invoice-date"
             label="Invoice Date"
-            required
-            helperText="Purchase Date is always the same as Invoice Date, so it's no longer asked for separately."
+            helperText="Optional. When given, Purchase Date is set to this date; when left blank, Purchase Date defaults to today instead."
           >
             <Input id="invoice-date" aria-label="Invoice Date" type="date" value={form.invoiceDate} onChange={(e) => setField("invoiceDate", e.target.value)} />
           </FormField>
+          <FormField htmlFor="invoice-amount" label="Invoice Amount" helperText="Optional.">
+            <Input id="invoice-amount" aria-label="Invoice Amount" type="number" min={0} step="0.01" value={form.invoiceAmount} onChange={(e) => setField("invoiceAmount", e.target.value)} />
+          </FormField>
 
-          <FormField htmlFor="pi-number" label="PI Number" required helperText="CityKart's internal reference for the payment made to the vendor.">
+          <FormField htmlFor="pi-number" label="PI Number" helperText="CityKart's internal reference for the payment made to the vendor. Usually arrives from Finance after delivery -- leave blank and add it later.">
             <Input id="pi-number" aria-label="PI Number" value={form.piNumber} onChange={(e) => setField("piNumber", e.target.value)} />
           </FormField>
-          <FormField htmlFor="pi-date" label="PI Date" required>
+          <FormField htmlFor="pi-date" label="PI Date" helperText="Optional.">
             <Input id="pi-date" aria-label="PI Date" type="date" value={form.piDate} onChange={(e) => setField("piDate", e.target.value)} />
           </FormField>
         </div>
@@ -514,10 +515,6 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
             {!mastersLoading && !hasHolderOption && (
               <p className="text-sm text-destructive">No IT Stock holder found for this company. Add one under Setup &gt; Users first.</p>
             )}
-          </FormField>
-
-          <FormField htmlFor="quantity" label="Quantity" helperText="For procuring several identical units at once.">
-            <Input id="quantity" aria-label="Quantity" type="number" min={1} max={100} value={form.quantity} onChange={(e) => setField("quantity", e.target.value)} />
           </FormField>
         </div>
       </section>

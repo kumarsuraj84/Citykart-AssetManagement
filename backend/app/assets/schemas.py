@@ -4,14 +4,24 @@ from pydantic import BaseModel, ConfigDict
 
 class AssetCreateIn(BaseModel):
     """Purchase Date is deliberately NOT a field here -- per business rule
-    (docs/ai/DECISIONS.md), it is always the same as Invoice Date, and is
-    derived by the router (never accepted from the client), exactly like
-    the Purchase Order delivery path already derives it from Invoice Date
-    too. Category/Sub-Category/Vendor/PO No+Date/Invoice No+Date/PI
-    No+Date are all mandatory on direct creation (tightened from optional
-    -- see DECISIONS.md for the "why"; this deliberately does NOT touch
-    the PO/Pending Asset entry path's own fields, nor AM-07's correction
-    workflow)."""
+    (docs/ai/DECISIONS.md), it is always Invoice Date when Invoice Date is
+    given, and is derived by the router (never accepted from the client),
+    exactly like the Purchase Order delivery path already derives it from
+    Invoice Date too. AM-19: PO/Invoice/PI No+Date are now OPTIONAL here --
+    ground reality is that Invoice (and sometimes even PO) paperwork often
+    isn't in hand yet when the physical asset is being logged, and PI
+    specifically always arrives later from Finance; each can be filled in
+    afterward via ordinary Edit. When Invoice Date is left blank, Purchase
+    Date falls back to today's date (the day the asset is logged) instead
+    -- see app.assets.router.create_asset. Category/Sub-Category/Vendor
+    remain mandatory (always known at entry time in practice). This
+    deliberately does NOT touch the PO/Pending Asset entry path's own
+    fields, nor AM-07's correction workflow.
+
+    AM-19: `quantity` is gone -- every submission creates exactly one
+    asset now (a quantity>1 batch only ever worked for the "N/A" no-serial
+    case anyway, since a real Serial Number can't be shared; Import is the
+    correct tool for a genuine multi-unit bulk add)."""
     company_id: int
     cost_center_id: int
     category_id: int
@@ -24,12 +34,13 @@ class AssetCreateIn(BaseModel):
     serial_number: str
     description: str
     vendor_id: int
-    po_number: str
-    po_date: date
-    invoice_number: str
-    invoice_date: date
-    pi_number: str
-    pi_date: date
+    po_number: str | None = None
+    po_date: date | None = None
+    invoice_number: str | None = None
+    invoice_date: date | None = None
+    invoice_amount: float | None = None
+    pi_number: str | None = None
+    pi_date: date | None = None
     purchase_cost: float | None = None
     tax_percent: float | None = None
     # AM-18: the real input -- 0 means "no warranty" (Warranty Upto then
@@ -39,7 +50,6 @@ class AssetCreateIn(BaseModel):
     initial_holder_id: int
     legacy_asset_code: str | None = None
     custom_fields: dict | None = None
-    quantity: int = 1
 
 
 class AssetOut(BaseModel):
@@ -69,6 +79,7 @@ class AssetOut(BaseModel):
     po_date: date | None
     invoice_number: str | None
     invoice_date: date | None
+    invoice_amount: float | None
     pi_number: str | None
     pi_date: date | None
     purchase_cost: float | None
@@ -159,7 +170,7 @@ class AssetUpdateIn(BaseModel):
     current_holder_id/status_since (lifecycle-controlled, apply_event only),
     category_id/subcategory_id/purchase_date (controlled master/date
     references -- not yet exposed via generic edit, see the report), and
-    quantity/initial_holder_id (create-only, meaningless on an existing row).
+    initial_holder_id (create-only, meaningless on an existing row).
     A PUT replaces this whole editable subset in one call, matching this
     codebase's existing convention (e.g. HolderIn on `PUT /api/holders/{id}`)
     rather than a partial-PATCH merge."""
@@ -174,6 +185,7 @@ class AssetUpdateIn(BaseModel):
     po_date: date | None = None
     invoice_number: str | None = None
     invoice_date: date | None = None
+    invoice_amount: float | None = None
     pi_number: str | None = None
     pi_date: date | None = None
     purchase_cost: float | None = None

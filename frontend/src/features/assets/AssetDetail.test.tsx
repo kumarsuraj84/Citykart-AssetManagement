@@ -25,7 +25,7 @@ const FULL_ASSET = {
   status: "IN_STOCK", company_id: 1, cost_center_id: 3, category_id: 1, subcategory_id: 2,
   brand: "Dell", model: "Latitude 5440", serial_number: "SN-ABC123", barcode: "BC-XYZ789",
   vendor_id: 7, po_number: "PO-1001", po_date: "2025-05-20",
-  invoice_number: "INV-2001", invoice_date: "2025-05-25",
+  invoice_number: "INV-2001", invoice_date: "2025-05-25", invoice_amount: 70800,
   pi_number: "PI-3001", pi_date: "2025-05-22",
   purchase_cost: 60000, tax_percent: 18, tax_amount: 10800, total_cost: 70800,
   purchase_date: "2025-06-01", warranty_years: 3, warranty_upto: "2027-06-01",

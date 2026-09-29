@@ -54,6 +54,7 @@ interface Asset {
   po_date: string | null;
   invoice_number: string | null;
   invoice_date: string | null;
+  invoice_amount: number | null;
   pi_number: string | null;
   pi_date: string | null;
   purchase_cost: number | null;
@@ -141,6 +142,7 @@ interface EditFormState {
   poDate: string;
   invoiceNumber: string;
   invoiceDate: string;
+  invoiceAmount: string;
   piNumber: string;
   piDate: string;
   purchaseCost: string;
@@ -164,6 +166,7 @@ function editFormFromAsset(asset: Asset): EditFormState {
     poDate: asset.po_date ?? "",
     invoiceNumber: asset.invoice_number ?? "",
     invoiceDate: asset.invoice_date ?? "",
+    invoiceAmount: asset.invoice_amount != null ? String(asset.invoice_amount) : "",
     piNumber: asset.pi_number ?? "",
     piDate: asset.pi_date ?? "",
     purchaseCost: asset.purchase_cost != null ? String(asset.purchase_cost) : "0",
@@ -391,6 +394,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
         po_date: f.poDate || null,
         invoice_number: f.invoiceNumber || null,
         invoice_date: f.invoiceDate || null,
+        invoice_amount: f.invoiceAmount === "" ? null : Number(f.invoiceAmount),
         pi_number: f.piNumber || null,
         pi_date: f.piDate || null,
         purchase_cost: Number(f.purchaseCost) || 0,
@@ -611,6 +615,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
             <FormField htmlFor="edit-po-date" label="PO Date"><Input id="edit-po-date" aria-label="PO Date" type="date" value={editForm.poDate} onChange={(e) => setEditField("poDate", e.target.value)} /></FormField>
             <FormField htmlFor="edit-invoice-number" label="Invoice Number"><Input id="edit-invoice-number" aria-label="Invoice Number" value={editForm.invoiceNumber} onChange={(e) => setEditField("invoiceNumber", e.target.value)} /></FormField>
             <FormField htmlFor="edit-invoice-date" label="Invoice Date"><Input id="edit-invoice-date" aria-label="Invoice Date" type="date" value={editForm.invoiceDate} onChange={(e) => setEditField("invoiceDate", e.target.value)} /></FormField>
+            <FormField htmlFor="edit-invoice-amount" label="Invoice Amount"><Input id="edit-invoice-amount" aria-label="Invoice Amount" type="number" min={0} step="0.01" value={editForm.invoiceAmount} onChange={(e) => setEditField("invoiceAmount", e.target.value)} /></FormField>
             <FormField htmlFor="edit-pi-number" label="PI Number" helperText="CityKart's internal reference for the payment made to the vendor."><Input id="edit-pi-number" aria-label="PI Number" value={editForm.piNumber} onChange={(e) => setEditField("piNumber", e.target.value)} /></FormField>
             <FormField htmlFor="edit-pi-date" label="PI Date"><Input id="edit-pi-date" aria-label="PI Date" type="date" value={editForm.piDate} onChange={(e) => setEditField("piDate", e.target.value)} /></FormField>
             <FormField htmlFor="edit-purchase-cost" label="Purchase Cost"><Input id="edit-purchase-cost" aria-label="Purchase Cost" type="number" value={editForm.purchaseCost} onChange={(e) => setEditField("purchaseCost", e.target.value)} /></FormField>
@@ -730,6 +735,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
               <ReadField label="PO Date" value={asset.po_date} />
               <ReadField label="Invoice Number" value={asset.invoice_number} />
               <ReadField label="Invoice Date" value={asset.invoice_date} />
+              <ReadField label="Invoice Amount" value={asset.invoice_amount != null ? asset.invoice_amount.toFixed(2) : null} />
               <ReadField label="PI Number" value={asset.pi_number} />
               <ReadField label="PI Date" value={asset.pi_date} />
               <ReadField label="Purchase Date" value={asset.purchase_date} />

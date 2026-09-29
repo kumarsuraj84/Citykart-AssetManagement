@@ -22,7 +22,7 @@ from app.masters.models import AssetCategory, AssetSubcategory, Vendor
 # excluding custom_fields (diffed separately below, per-key).
 AUDITED_SCALAR_FIELDS = (
     "legacy_asset_code", "brand", "model", "serial_number", "barcode", "description",
-    "vendor_id", "po_number", "po_date", "invoice_number", "invoice_date",
+    "vendor_id", "po_number", "po_date", "invoice_number", "invoice_date", "invoice_amount",
     "pi_number", "pi_date", "purchase_cost", "tax_percent", "warranty_years",
 )
 # AM-18: warranty_years is the real input (like purchase_cost/tax_percent

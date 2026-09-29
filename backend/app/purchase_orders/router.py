@@ -6,11 +6,11 @@ from app.core.deps import ensure_company_in_scope, require_role, scoped_company_
 from app.purchase_orders.models import PurchaseOrder, PendingAsset
 from app.purchase_orders.schemas import (
     DeliveryDoneIn, PendingAssetLineIn, PendingAssetLineUpdateIn, PendingAssetOut,
-    PurchaseOrderCreateIn, PurchaseOrderOut,
+    PurchaseOrderCreateIn, PurchaseOrderOut, RecordPiIn, RecordPiOut,
 )
 from app.purchase_orders.service import (
     add_pending_asset_line, cancel_pending_asset_line, create_purchase_order,
-    deliver_pending_assets, update_pending_asset_line,
+    deliver_pending_assets, record_pi_for_invoice, update_pending_asset_line,
 )
 
 router = APIRouter(prefix="/api/purchase-orders", tags=["purchase-orders"])
@@ -142,3 +142,18 @@ async def deliver(
     for line in delivered:
         await session.refresh(line)
     return delivered
+
+
+@router.post("/{po_id}/record-pi", response_model=RecordPiOut)
+async def record_pi(
+    po_id: int, body: RecordPiIn, session: AsyncSession = Depends(get_session),
+    actor=Depends(require_role("ADMIN", "IT_TEAM")),
+):
+    po = await _get_scoped_po(po_id, session, actor)
+    result = await record_pi_for_invoice(
+        session, po, body.invoice_number, body.pi_number, body.pi_date, body.overwrite, actor,
+    )
+    if not result["updated"] and not result["skipped"]:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"no delivered assets found for invoice {body.invoice_number!r} on this purchase order")
+    await session.commit()
+    return result

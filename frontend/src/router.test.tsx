@@ -15,7 +15,7 @@ const ASSET = {
   id: 123, asset_code: "FA/HO01/IT/LAP/CK_123", legacy_asset_code: null, description: "Scanned Laptop",
   status: "IN_STOCK", company_id: 1, cost_center_id: 1, category_id: 1, subcategory_id: null,
   brand: null, model: null, serial_number: null, vendor_id: null, po_number: null, po_date: null,
-  invoice_number: null, invoice_date: null, pi_number: null, pi_date: null, purchase_cost: null,
+  invoice_number: null, invoice_date: null, invoice_amount: null, pi_number: null, pi_date: null, purchase_cost: null,
   tax_percent: null, tax_amount: null, total_cost: null, purchase_date: "2025-01-01",
   warranty_years: null, warranty_upto: null,
   current_holder_id: 1, status_since: "2025-01-01", custom_fields: {},

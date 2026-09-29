@@ -86,3 +86,23 @@ class DeliveryDoneIn(BaseModel):
     invoice_date: date
     invoice_amount: float
     lines: list[DeliveryLineIn]
+
+
+class RecordPiIn(BaseModel):
+    """AM-19: PI arrives per Invoice, not per PO -- a PO delivered across
+    several partial deliveries gets one Invoice (and later one PI) per
+    delivery, never a single PI for the whole PO. See
+    app.purchase_orders.service.record_pi_for_invoice."""
+    invoice_number: str
+    pi_number: str
+    pi_date: date
+    # False (default): only fills in assets whose PI is still blank.
+    # True: overwrites every matching asset's PI, the deliberate escape
+    # hatch for fixing a typo across all of them at once.
+    overwrite: bool = False
+
+
+class RecordPiOut(BaseModel):
+    invoice_number: str
+    updated: list[str]
+    skipped: list[str]

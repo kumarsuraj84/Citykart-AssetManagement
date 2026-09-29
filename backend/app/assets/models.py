@@ -35,6 +35,10 @@ class Asset(Base, AuditMixin):
     po_date: Mapped[date | None] = mapped_column(Date)
     invoice_number: Mapped[str | None] = mapped_column(String(100))
     invoice_date: Mapped[date | None] = mapped_column(Date)
+    invoice_amount: Mapped[float | None] = mapped_column(Numeric(14, 2))
+    """AM-19: previously only captured transiently on the PO Delivery Done
+    payload (DeliveryDoneIn.invoice_amount) and never copied onto the
+    Asset itself -- there was nowhere on Asset 360 to see or fix it."""
     pi_number: Mapped[str | None] = mapped_column(String(100))
     pi_date: Mapped[date | None] = mapped_column(Date)
     purchase_cost: Mapped[float | None] = mapped_column(Numeric(14, 2))

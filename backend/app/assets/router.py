@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -77,14 +77,18 @@ async def create_asset(
     # Write-scope check: an IT_TEAM actor can only *read* their own company's data,
     # so they must not be able to create assets in any other company either.
     ensure_company_in_scope(actor, body.company_id)
-    data = body.model_dump(exclude={"quantity"})
-    # Purchase Date is always Invoice Date (docs/ai/DECISIONS.md) -- never
-    # accepted from the client (AssetCreateIn has no purchase_date field at
-    # all), derived here the same way deliver_pending_assets derives it for
-    # the PO path.
-    data["purchase_date"] = data["invoice_date"]
+    data = body.model_dump()
+    # Purchase Date is Invoice Date when Invoice Date is known
+    # (docs/ai/DECISIONS.md) -- never accepted from the client (AssetCreateIn
+    # has no purchase_date field at all), derived here the same way
+    # deliver_pending_assets derives it for the PO path. AM-19: Invoice Date
+    # is now optional (ground reality -- it often isn't in hand yet when the
+    # physical asset is logged); when it's missing, Purchase Date falls back
+    # to today, the day the asset is actually being logged.
+    data["purchase_date"] = data["invoice_date"] or date.today()
     try:
-        assets = await procure_assets(session, data, quantity=body.quantity, actor=actor)
+        # AM-19: quantity is gone -- every call creates exactly one asset.
+        assets = await procure_assets(session, data, quantity=1, actor=actor)
     except (ValueError, LifecycleError) as exc:
         # e.g. no active code rule, an unresolvable code-rule token, initial holder /
         # cost center from another company, a future purchase date -- all problems
@@ -301,7 +305,7 @@ async def update_asset(
 
     for field in (
         "legacy_asset_code", "brand", "model", "serial_number", "barcode", "description",
-        "vendor_id", "po_number", "po_date", "invoice_number", "invoice_date",
+        "vendor_id", "po_number", "po_date", "invoice_number", "invoice_date", "invoice_amount",
         "pi_number", "pi_date", "purchase_cost", "tax_percent",
     ):
         setattr(asset, field, data[field])

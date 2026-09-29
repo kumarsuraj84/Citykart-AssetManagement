@@ -49,9 +49,11 @@ async function pickSelectOption(label: RegExp | string, optionName: RegExp | str
   fireEvent.click(option);
 }
 
-// Sub-Category/Vendor/PO/Invoice/PI/Serial Number are all mandatory now
-// (docs/ai/DECISIONS.md) -- every test that expects Save to become enabled
-// needs these filled, on top of whatever Category/Cost Centre/Holder
+// Sub-Category/Vendor/Serial Number are mandatory (docs/ai/DECISIONS.md);
+// PO/Invoice/PI are optional as of AM-19 but filled in here anyway for
+// tests that want a fully-populated form, not just the minimum Save needs.
+// Every test that expects Save to become enabled needs at least the
+// mandatory subset filled, on top of whatever Category/Cost Centre/Holder
 // selection it already makes. The Serial Number label query is anchored
 // (^...$) because an unanchored /serial number/i also matches the "No
 // serial number" checkbox's own aria-label.
@@ -307,14 +309,9 @@ describe("AddAssetForm", () => {
     expect(await screen.findByText(/cost center must belong to the same company/i)).toBeInTheDocument();
   });
 
-  it("computes a tax preview live and lists every generated code (without navigating) for a multi-quantity create", async () => {
+  it("computes a tax preview live", async () => {
     mockGets();
-    (apiClient.post as any).mockResolvedValue([
-      { id: 10, asset_code: "FA/HO01/IT/LAP/CK_1" },
-      { id: 11, asset_code: "FA/HO01/IT/LAP/CK_2" },
-    ]);
-
-    const router = renderFormAt();
+    renderFormAt();
 
     fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Test Laptop" } });
     fireEvent.change(screen.getByLabelText(/purchase cost/i), { target: { value: "1000" } });
@@ -322,33 +319,40 @@ describe("AddAssetForm", () => {
 
     expect(screen.getByTestId("tax-amount")).toHaveTextContent("180.00");
     expect(screen.getByTestId("total-cost")).toHaveTextContent("1180.00");
+  });
 
-    fireEvent.change(screen.getByLabelText(/quantity/i), { target: { value: "2" } });
+  it("AM-19: has no Quantity field -- every save creates exactly one asset", async () => {
+    mockGets();
+    renderFormAt();
+    await screen.findByLabelText(/description/i);
+    expect(screen.queryByLabelText(/quantity/i)).not.toBeInTheDocument();
+  });
 
-    // Required selects start blank and Save stays disabled until each is
-    // explicitly picked -- nothing here is auto-filled on the admin's behalf.
-    expect(screen.getByRole("button", { name: /save/i })).toBeDisabled();
+  it("AM-19: PO/Invoice/PI No+Date are optional -- Save is enabled without them", async () => {
+    mockGets();
+    (apiClient.post as any).mockResolvedValue([{ id: 10, asset_code: "FA/HO01/IT/LAP/CK_1" }]);
+    const router = renderFormAt();
 
+    fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "No Paperwork Yet" } });
+    fireEvent.change(screen.getByLabelText(/^serial number\*?$/i), { target: { value: "SN-1" } });
     await pickSelectOption(/^category$/i, "IT Equipment");
+    await pickSelectOption(/sub-category/i, "Laptop");
+    await pickSelectOption(/^vendor$/i, "Acme Traders");
     await pickSelectOption(/cost centre/i, "Head Office");
     await pickSelectOption(/goes into/i, "IT Stock-HO");
-    await fillMandatoryProcurementFields();
 
     await waitFor(() => expect(screen.getByRole("button", { name: /save/i })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
 
-    await waitFor(() => expect(screen.getByText(/FA\/HO01\/IT\/LAP\/CK_1/)).toBeInTheDocument());
-    expect(screen.getByText(/FA\/HO01\/IT\/LAP\/CK_2/)).toBeInTheDocument();
-    // A bulk create has no single destination -- stays on the form, doesn't navigate.
-    expect(router.state.location.pathname).toBe("/assets/new");
-
+    await waitFor(() => expect(router.state.location.pathname).toBe("/assets/10"));
     expect(apiClient.post).toHaveBeenCalledWith(
       "/assets",
       expect.objectContaining({
-        company_id: 1, category_id: 1, cost_center_id: 3, description: "Test Laptop",
-        purchase_cost: 1000, tax_percent: 18, initial_holder_id: 4, quantity: 2,
+        po_number: null, po_date: null, invoice_number: null, invoice_date: null,
+        invoice_amount: null, pi_number: null, pi_date: null,
       }),
     );
+    expect(apiClient.post).not.toHaveBeenCalledWith("/assets", expect.objectContaining({ quantity: expect.anything() }));
   });
 
   it("AM-08: requests Cost Centre options scoped to this asset's own company", async () => {

@@ -206,6 +206,7 @@ async def procure_assets(session: AsyncSession, data: dict, quantity: int, actor
             po_date=data.get("po_date"),
             invoice_number=data.get("invoice_number"),
             invoice_date=data.get("invoice_date"),
+            invoice_amount=data.get("invoice_amount"),
             pi_number=data.get("pi_number"),
             pi_date=data.get("pi_date"),
             purchase_cost=purchase_cost,

@@ -1,5 +1,8 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from uuid import uuid4
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.assets.models import Asset, AssetFieldChange
 from app.assets.service import compute_tax, procure_assets
 from app.holders.models import Holder
 from app.masters.models import AssetCategory, AssetSubcategory, CostCenter
@@ -142,6 +145,7 @@ async def deliver_pending_assets(
                     "initial_holder_id": delivery["initial_holder_id"],
                     "po_number": po_number, "po_date": po_date, "vendor_id": vendor_id,
                     "invoice_number": invoice_number, "invoice_date": invoice_date,
+                    "invoice_amount": invoice_amount,
                 },
                 quantity=1, actor=actor,
             )
@@ -157,3 +161,68 @@ async def deliver_pending_assets(
         delivered.append(line)
     await session.flush()
     return delivered
+
+
+async def record_pi_for_invoice(
+    session: AsyncSession, purchase_order: PurchaseOrder, invoice_number: str,
+    pi_number: str, pi_date: date, overwrite: bool, actor: Holder,
+) -> dict:
+    """AM-19: PI Number/Date arrive from Finance well after delivery, and
+    ground reality is one PO can be delivered across several invoices (a
+    vendor's partial delivery), each getting its OWN PI later -- so this is
+    keyed by (purchase_order, invoice_number), never the whole PO, and
+    never a single flag on the PO itself. Applies to every Asset that was
+    delivered under this exact PO+invoice combination (via the frozen
+    pending_asset traceability rows, never a po_number/invoice_number
+    string match, which could theoretically collide across POs).
+
+    `overwrite=False` (the default, and the safer everyday choice): only
+    fills in assets whose pi_number is still blank, leaving anything
+    already entered untouched. `overwrite=True` is the deliberate,
+    explicit escape hatch for fixing a typo across every asset from this
+    invoice at once, instead of opening each one individually.
+
+    Writes an ordinary (reason=NULL) AssetFieldChange row per field
+    actually changed per asset, all sharing one request_id -- same
+    audit-trail shape app.assets.audit_service.record_field_changes
+    already uses for a single-asset edit, just applied across many assets
+    in one call."""
+    stmt = select(PendingAsset).where(
+        PendingAsset.purchase_order_id == purchase_order.id,
+        PendingAsset.invoice_number == invoice_number,
+        PendingAsset.delivered_asset_id.is_not(None),
+    )
+    lines = (await session.execute(stmt)).scalars().all()
+
+    request_id = str(uuid4())
+    updated: list[str] = []
+    skipped: list[str] = []
+    for line in lines:
+        asset = await session.get(Asset, line.delivered_asset_id)
+        if asset is None:
+            continue
+        already_set = bool((asset.pi_number or "").strip())
+        if already_set and not overwrite:
+            skipped.append(asset.asset_code)
+            continue
+
+        changes = [
+            ("pi_number", asset.pi_number, pi_number),
+            ("pi_date", asset.pi_date, pi_date),
+        ]
+        for field_name, old, new in changes:
+            if old == new:
+                continue
+            session.add(AssetFieldChange(
+                asset_id=asset.id, field_name=field_name,
+                old_value=str(old) if old is not None else None,
+                new_value=str(new) if new is not None else None,
+                actor_id=actor.id, request_id=request_id,
+            ))
+        asset.pi_number = pi_number
+        asset.pi_date = pi_date
+        asset.updated_by = actor.id
+        updated.append(asset.asset_code)
+
+    await session.flush()
+    return {"invoice_number": invoice_number, "updated": updated, "skipped": skipped}

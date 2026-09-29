@@ -8,6 +8,7 @@ found the real gap was AssetOut never returning them, and nothing validating
 values written to custom_fields against the CustomField master. This file
 proves both are now fixed, and that the new PUT endpoint only ever touches
 the editable descriptive subset -- never identity or lifecycle fields."""
+from datetime import date
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.holders.models import Holder
@@ -108,11 +109,13 @@ class TestProcurementFieldsRoundTrip:
         assert listed["items"][0]["pi_number"] == "PI-3001"
 
     async def test_descriptive_fields_are_optional_the_procurement_identity_fields_are_not(self, client):
-        """Category/Sub-Category/Vendor/PO No+Date/Invoice No+Date/PI No+Date/
-        Serial Number are mandatory on direct creation (see AssetCreateIn's
-        docstring / DECISIONS.md); the still-optional subset is the purely
-        descriptive extras -- brand/model/purchase_cost/tax_percent/
-        warranty_years/legacy_asset_code/custom_fields."""
+        """Category/Sub-Category/Vendor/Serial Number are mandatory on direct
+        creation (see AssetCreateIn's docstring / DECISIONS.md); the
+        optional subset is the descriptive extras -- brand/model/
+        purchase_cost/tax_percent/warranty_years/legacy_asset_code/
+        custom_fields -- plus, as of AM-19, PO/Invoice/PI No+Date/Invoice
+        Amount too (ground reality: that paperwork often isn't in hand yet
+        when the asset is physically logged)."""
         ids = await _setup("PRC2")
         headers = await _headers(client, ids["admin_code"])
         minimal = {
@@ -126,6 +129,71 @@ class TestProcurementFieldsRoundTrip:
         resp = await client.post("/api/assets", json=minimal, headers=headers)
         assert resp.status_code == 201
         assert resp.json()[0]["brand"] is None
+
+    async def test_invoice_amount_round_trips(self, client):
+        """AM-19: Invoice Amount is a real field on the Asset now, editable
+        via ordinary Edit like the rest of the invoice fields."""
+        ids = await _setup("PRC6")
+        headers = await _headers(client, ids["admin_code"])
+        [created] = (await client.post(
+            "/api/assets", json=_asset_body(ids, invoice_amount=70800.0), headers=headers,
+        )).json()
+        assert created["invoice_amount"] == 70800.0
+
+        got = (await client.get(f"/api/assets/{created['id']}", headers=headers)).json()
+        assert got["invoice_amount"] == 70800.0
+
+    async def test_po_invoice_pi_are_genuinely_optional_purchase_date_falls_back_to_today(self, client):
+        """AM-19: none of PO/Invoice/PI No+Date is required at creation --
+        Finance's paperwork routinely arrives after the physical asset is
+        already logged. When Invoice Date is omitted, Purchase Date can't
+        be derived from it (docs/ai/DECISIONS.md's own rule), so it falls
+        back to today instead."""
+        ids = await _setup("PRC3")
+        headers = await _headers(client, ids["admin_code"])
+        bare = {
+            "company_id": ids["co"], "cost_center_id": ids["cc"], "category_id": ids["cat"],
+            "subcategory_id": ids["sub"], "description": "No Paperwork Yet",
+            "initial_holder_id": ids["stock"], "vendor_id": ids["vendor"],
+            "serial_number": "SN-PRC3",
+        }
+        resp = await client.post("/api/assets", json=bare, headers=headers)
+        assert resp.status_code == 201, resp.text
+        created = resp.json()[0]
+        assert created["po_number"] is None
+        assert created["invoice_number"] is None
+        assert created["invoice_amount"] is None
+        assert created["pi_number"] is None
+        assert created["purchase_date"] == date.today().isoformat()
+
+    async def test_category_subcategory_vendor_serial_number_remain_mandatory(self, client):
+        ids = await _setup("PRC4")
+        headers = await _headers(client, ids["admin_code"])
+        base = {
+            "company_id": ids["co"], "cost_center_id": ids["cc"], "category_id": ids["cat"],
+            "subcategory_id": ids["sub"], "description": "Missing A Required Field",
+            "initial_holder_id": ids["stock"], "vendor_id": ids["vendor"], "serial_number": "SN-PRC4",
+        }
+        for missing_field in ("category_id", "subcategory_id", "vendor_id", "serial_number"):
+            body = {k: v for k, v in base.items() if k != missing_field}
+            resp = await client.post("/api/assets", json=body, headers=headers)
+            assert resp.status_code == 422, f"expected 422 with {missing_field!r} missing, got {resp.status_code}"
+
+    async def test_quantity_is_no_longer_accepted_every_submission_creates_exactly_one_asset(self, client):
+        """AM-19: `quantity` was removed from AssetCreateIn entirely -- a
+        client still sending it (an old cached frontend bundle, a stale API
+        script) has it silently ignored, never creates more than one asset."""
+        ids = await _setup("PRC5")
+        headers = await _headers(client, ids["admin_code"])
+        body = {
+            "company_id": ids["co"], "cost_center_id": ids["cc"], "category_id": ids["cat"],
+            "subcategory_id": ids["sub"], "description": "Still Only One",
+            "initial_holder_id": ids["stock"], "vendor_id": ids["vendor"], "serial_number": "SN-PRC5",
+            "quantity": 5,
+        }
+        resp = await client.post("/api/assets", json=body, headers=headers)
+        assert resp.status_code == 201
+        assert len(resp.json()) == 1
 
 
 class TestAssetUpdate:

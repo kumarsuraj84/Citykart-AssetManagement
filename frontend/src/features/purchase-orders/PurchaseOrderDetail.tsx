@@ -54,7 +54,14 @@ interface PendingAssetRow {
   total_cost: number | null;
   status: "PENDING" | "DELIVERED" | "CANCELLED";
   serial_number: string | null;
+  invoice_number: string | null;
   delivered_asset_id: number | null;
+}
+
+interface RecordPiResult {
+  invoice_number: string;
+  updated: string[];
+  skipped: string[];
 }
 
 interface Option {
@@ -151,6 +158,39 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const totalValue = lines
     .filter((l) => l.status !== "CANCELLED")
     .reduce((sum, l) => sum + (l.total_cost ?? 0), 0);
+
+  // --- Record PI (AM-19) ---
+  // PI arrives from Finance per Invoice, not per PO -- a PO delivered across
+  // several partial deliveries can have several invoices, each getting its
+  // own PI later. Derived entirely from already-fetched `lines`, zero extra
+  // requests, matching the KPI summary row's own pattern above.
+  const deliveredInvoiceNumbers = Array.from(new Set(
+    lines.filter((l) => l.status === "DELIVERED" && l.invoice_number).map((l) => l.invoice_number as string),
+  ));
+  const [recordPiInvoice, setRecordPiInvoice] = useState<string | null>(null);
+  const [recordPiForm, setRecordPiForm] = useState({ piNumber: "", piDate: "", overwrite: false });
+  const [recordPiResult, setRecordPiResult] = useState<RecordPiResult | null>(null);
+
+  function openRecordPi(invoiceNumber: string) {
+    setRecordPiInvoice(invoiceNumber);
+    setRecordPiForm({ piNumber: "", piDate: "", overwrite: false });
+    setRecordPiResult(null);
+  }
+
+  const recordPiMutation = useMutation({
+    mutationFn: () =>
+      apiClient.post<RecordPiResult>(`/purchase-orders/${poId}/record-pi`, {
+        invoice_number: recordPiInvoice,
+        pi_number: recordPiForm.piNumber,
+        pi_date: recordPiForm.piDate,
+        overwrite: recordPiForm.overwrite,
+      }),
+    onSuccess: (result) => {
+      setRecordPiResult(result);
+      qc.invalidateQueries({ queryKey: ["purchase-order", poId, "lines"] });
+    },
+  });
+  const canRecordPi = recordPiForm.piNumber.trim() !== "" && recordPiForm.piDate !== "";
 
   // --- Add Line form ---
   // AM-14: collapsed by default -- the form previously stayed permanently
@@ -418,6 +458,26 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
         <SummaryTile label="Value" value={totalValue.toFixed(2)} />
       </div>
 
+      {deliveredInvoiceNumbers.length > 0 && (
+        <div className="rounded-md border p-3">
+          <h2 className="mb-2 text-sm font-semibold">Invoices delivered under this PO</h2>
+          <p className="mb-2 text-xs text-muted-foreground">
+            PI Number/Date arrive from Finance per invoice, not per PO -- a partial delivery on a
+            different invoice gets its own PI, recorded separately.
+          </p>
+          <ul className="flex flex-col gap-1.5">
+            {deliveredInvoiceNumbers.map((invoiceNumber) => (
+              <li key={invoiceNumber} className="flex items-center justify-between gap-2 rounded-sm border bg-muted/40 px-2 py-1.5 text-sm">
+                <span className="font-medium">{invoiceNumber}</span>
+                <Button size="sm" variant="outline" onClick={() => openRecordPi(invoiceNumber)}>
+                  Record PI
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="rounded-md border p-3">
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-semibold">Add Line</h2>
@@ -548,6 +608,69 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
             <AsyncButton onClick={() => editMutation.mutate()} disabled={!canSaveEdit} pending={editMutation.isPending} pendingLabel="Saving…">
               Save
             </AsyncButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={recordPiInvoice !== null} onOpenChange={(open) => !open && setRecordPiInvoice(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Record PI for invoice {recordPiInvoice}</DialogTitle>
+          </DialogHeader>
+          {recordPiResult ? (
+            <div className="flex flex-col gap-2 text-sm">
+              <p>
+                Updated <span className="font-semibold tabular-nums">{recordPiResult.updated.length}</span> asset(s).
+              </p>
+              {recordPiResult.skipped.length > 0 && (
+                <p className="text-muted-foreground">
+                  Skipped <span className="font-semibold tabular-nums">{recordPiResult.skipped.length}</span> asset(s)
+                  that already had a PI Number (tick "Overwrite existing values" and run it again to force-correct them).
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <FormField htmlFor="record-pi-number" label="PI Number" required>
+                <Input
+                  id="record-pi-number" aria-label="PI Number" value={recordPiForm.piNumber}
+                  onChange={(e) => setRecordPiForm((f) => ({ ...f, piNumber: e.target.value }))}
+                />
+              </FormField>
+              <FormField htmlFor="record-pi-date" label="PI Date" required>
+                <Input
+                  id="record-pi-date" aria-label="PI Date" type="date" value={recordPiForm.piDate}
+                  onChange={(e) => setRecordPiForm((f) => ({ ...f, piDate: e.target.value }))}
+                />
+              </FormField>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  aria-label="Overwrite existing values"
+                  checked={recordPiForm.overwrite}
+                  onCheckedChange={(checked) => setRecordPiForm((f) => ({ ...f, overwrite: checked === true }))}
+                />
+                Overwrite existing values
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Off (default): only fills in assets from this invoice that don't have a PI yet.
+                On: replaces the PI on every asset from this invoice, even ones already set -- use this to fix a typo.
+              </p>
+              {recordPiMutation.isError && (
+                <p className="text-sm text-destructive" role="alert">
+                  {recordPiMutation.error instanceof Error ? recordPiMutation.error.message : "Failed to record PI."}
+                </p>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRecordPiInvoice(null)}>
+              {recordPiResult ? "Close" : "Cancel"}
+            </Button>
+            {!recordPiResult && (
+              <AsyncButton onClick={() => recordPiMutation.mutate()} disabled={!canRecordPi} pending={recordPiMutation.isPending} pendingLabel="Saving…">
+                Save
+              </AsyncButton>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
