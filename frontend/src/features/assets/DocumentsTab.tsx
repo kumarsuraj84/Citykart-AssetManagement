@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+﻿import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import { downloadFile } from "../../lib/auth-fetch";
@@ -40,7 +40,7 @@ function formatSize(bytes: number): string {
 export function DocumentsTab({ assetId }: { assetId: number }) {
   const qc = useQueryClient();
   const role = useAuthStore((s) => s.role);
-  const canUpload = role === "ADMIN" || role === "IT_TEAM";
+  const canUpload = role === "ADMIN" || role === "OPERATOR";
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [docType, setDocType] = useState("invoice");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);

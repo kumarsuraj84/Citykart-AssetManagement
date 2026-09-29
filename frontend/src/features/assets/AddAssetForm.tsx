@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { apiClient } from "../../lib/api-client";
@@ -111,7 +111,7 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
   const [createdAssets, setCreatedAssets] = useState<CreatedAsset[]>([]);
   // AM-24: which company this NEW asset belongs to -- defaults to the
   // caller's own home company (companyId), but a caller granted access to
-  // more than one company (ADMIN, or IT_TEAM with company-access grants)
+  // more than one company (ADMIN, or OPERATOR with company-access grants)
   // can pick a different one. Selecting a different company resets every
   // company-scoped choice below it (Cost Centre, Initial AssetUser), the same
   // way changing Category already resets Sub-Category.
@@ -140,15 +140,15 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
     queryKey: ["masters", "custom-fields"],
     queryFn: () => apiClient.get<CustomFieldDef[]>("/masters/custom-fields"),
   });
-  // Scoped to this company's IT_STOCK asset_users only -- a company can have more than
+  // Scoped to this company's STOCK_POINT asset_users only -- a company can have more than
   // one (one per location), so the backend deliberately has no server-side default
   // and requires an explicit initial_asset_user_id. The admin must explicitly choose
   // one; canSave below blocks submission until they do (never auto-picked, since
   // AssetUserService.list has no stable ordering and guessing risks silently misfiling
   // a purchase into the wrong location's stock).
   const stockAssetUsersQ = useQuery({
-    queryKey: ["asset_users", "IT_STOCK", selectedCompanyId],
-    queryFn: () => apiClient.get<Option[]>(`/asset-users?asset_user_type=IT_STOCK&company_id=${selectedCompanyId}`),
+    queryKey: ["asset_users", "STOCK_POINT", selectedCompanyId],
+    queryFn: () => apiClient.get<Option[]>(`/asset-users?asset_user_type=STOCK_POINT&company_id=${selectedCompanyId}`),
   });
 
   const categories = categoriesQ.data ?? [];

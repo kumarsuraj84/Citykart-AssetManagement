@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+﻿import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { authFetch, navigation, safeNextPath, PASSWORD_CHANGE_REQUIRED_DETAIL } from "./auth-fetch";
 import { useAuthStore } from "./auth-store";
 
@@ -12,7 +12,7 @@ describe("authFetch", () => {
   let assignSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    useAuthStore.getState().setAuth({ accessToken: "old-token", role: "ADMIN", companyId: 2, mustChangePassword: false });
+    useAuthStore.getState().setAuth({ accessToken: "old-token", role: "ADMIN", companyId: 2, isPrimaryOwner: false, mustChangePassword: false });
     assignSpy = vi.spyOn(navigation, "assign").mockImplementation(() => {});
     window.history.replaceState(null, "", "/assets/42?tab=history");
   });

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+﻿import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
@@ -42,7 +42,7 @@ function mockApiGet(dashboardData: unknown, vendors: { id: number; name: string 
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, mustChangePassword: false });
+  useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: false, mustChangePassword: false });
 });
 
 afterEach(() => useAuthStore.getState().logout());
@@ -179,7 +179,7 @@ describe("Dashboard", () => {
   });
 
   it("hides the Purchase Orders card for a VIEWER, who cannot access the module itself", async () => {
-    useAuthStore.getState().setAuth({ accessToken: "tok", role: "VIEWER", companyId: 1, mustChangePassword: false });
+    useAuthStore.getState().setAuth({ accessToken: "tok", role: "VIEWER", companyId: 1, isPrimaryOwner: false, mustChangePassword: false });
     mockApiGet(baseDashboardData);
     renderDashboard();
 

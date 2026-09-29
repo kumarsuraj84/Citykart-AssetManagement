@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+﻿import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AssetDetail } from "./AssetDetail";
@@ -32,7 +32,7 @@ const FULL_ASSET = {
   current_asset_user_id: 5, status_since: "2025-06-01",
   custom_fields: { asset_tag: "TAG-1", retired_field: "kept for history" },
   category_name: "IT Equipment", subcategory_name: "Laptop", cost_center_name: "Head Office",
-  vendor_name: "Acme Traders", brand_name: "Dell", current_asset_user_name: "IT Stock-HO", current_asset_user_type: "IT_STOCK",
+  vendor_name: "Acme Traders", brand_name: "Dell", current_asset_user_name: "IT Stock-HO", current_asset_user_type: "STOCK_POINT",
   location_name: "Head Office", department_name: "IT",
 };
 
@@ -333,7 +333,7 @@ describe("AssetDetail (Asset 360)", () => {
   });
 
   it("hides all lifecycle action buttons, and the Edit action, for ASSET_USER-role viewers", async () => {
-    mockAuth("ASSET_USER");
+    mockAuth("SELF_SERVICE");
     mockGets();
 
     renderWithClient(<AssetDetail assetId={1} />);

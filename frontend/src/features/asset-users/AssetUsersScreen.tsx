@@ -36,18 +36,21 @@ import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField } from "@/components/shared/FormField";
 import { BulkImportExport } from "@/components/shared/BulkImportExport";
 
-const ASSET_USER_TYPES = ["EMPLOYEE", "STORE", "INSTALLED", "IT_STOCK"] as const;
-const ROLES = ["ADMIN", "IT_TEAM", "VIEWER", "ASSET_USER"] as const;
+const ASSET_USER_TYPES = ["EMPLOYEE", "STORE", "INSTALLED", "STOCK_POINT"] as const;
+// The Primary Owner is deliberately excluded -- it's fixed, not selectable
+// here (see require_primary_owner on the backend); this list is what
+// ordinary ADMIN-managed accounts may be set to.
+const ROLES = ["ADMIN", "OPERATOR", "VIEWER", "SELF_SERVICE"] as const;
 
-// IT_STOCK/INSTALLED asset_users aren't people -- they're a location's own
+// STOCK_POINT/INSTALLED asset_users aren't people -- they're a location's own
 // stock/install bucket (one per physical location a company has), which
-// made the ordinary "Emp Code"/Name fields confusing to fill in (there's
+// made the ordinary "Code"/Name fields confusing to fill in (there's
 // no employee). This config drives dynamic labels, an auto-suggested
 // code/name derived from the chosen Location so nobody has to invent one,
 // and the coverage checklist below ("which locations still need a stock
 // point") -- see the product discussion that prompted this.
 const TYPE_POINT_CONFIG: Partial<Record<(typeof ASSET_USER_TYPES)[number], { prefix: string; noun: string }>> = {
-  IT_STOCK: { prefix: "STK", noun: "Stock Point" },
+  STOCK_POINT: { prefix: "STK", noun: "Stock Point" },
   INSTALLED: { prefix: "INS", noun: "Install Point" },
 };
 
@@ -57,22 +60,24 @@ function pointConfigFor(assetUserType: string) {
 
 // Alphanumeric-only, uppercased -- matches how every master's own Code
 // column is conventionally written; a location code/name can contain
-// spaces or punctuation a asset_user's emp_code shouldn't carry verbatim.
+// spaces or punctuation a asset_user's code shouldn't carry verbatim.
 function slug(value: string): string {
   return value.toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
 interface AssetUserRow {
   id: number;
-  company_id: number;
-  emp_code: string;
+  company_id: number | null;
+  code: string | null;
   name: string;
-  asset_user_type: string;
-  location_id: number;
+  asset_user_type: string | null;
+  location_id: number | null;
   department_id: number | null;
   email: string | null;
   phone: string | null;
   role: string;
+  is_primary_owner: boolean;
+  login_enabled: boolean;
   is_active: boolean;
 }
 
@@ -95,7 +100,7 @@ interface Department {
 
 interface AssetUserDraft {
   company_id: string;
-  emp_code: string;
+  code: string;
   name: string;
   asset_user_type: string;
   location_id: string;
@@ -103,31 +108,37 @@ interface AssetUserDraft {
   email: string;
   phone: string;
   role: string;
+  loginEnabled: boolean;
 }
 
 const emptyDraft: AssetUserDraft = {
   company_id: "",
-  emp_code: "",
+  code: "",
   name: "",
   asset_user_type: "",
   location_id: "",
   department_id: "",
   email: "",
   phone: "",
-  role: "ASSET_USER",
+  role: "SELF_SERVICE",
+  loginEnabled: false,
 };
 
 function buildPayload(draft: AssetUserDraft) {
   return {
     company_id: Number(draft.company_id),
-    emp_code: draft.emp_code,
+    code: draft.code,
     name: draft.name,
     asset_user_type: draft.asset_user_type,
     location_id: Number(draft.location_id),
     department_id: draft.department_id ? Number(draft.department_id) : null,
-    email: draft.email || null,
+    // Email/Role are only meaningful for a login-capable asset_user (spec
+    // §10/§24/§51) -- a STORE/INSTALLED/STOCK_POINT point-record, or an
+    // EMPLOYEE not yet activated for login, gets neither.
+    email: draft.loginEnabled ? draft.email || null : null,
     phone: draft.phone || null,
-    role: draft.role,
+    role: draft.loginEnabled ? draft.role : "SELF_SERVICE",
+    login_enabled: draft.loginEnabled,
   };
 }
 
@@ -176,7 +187,14 @@ export function AssetUsersScreen() {
     queryFn: () => apiClient.get<Department[]>("/masters/departments"),
   });
 
-  const companyName = (id: number) => companies.find((c) => c.id === id)?.name ?? String(id);
+  const companyName = (id: number | null) => (id === null ? "—" : companies.find((c) => c.id === id)?.name ?? String(id));
+
+  // The Primary Owner is a fixed, company-less bootstrap account managed
+  // through its own protected grant/revoke flow, not this ordinary
+  // Add/Edit/Deactivate CRUD screen (see app.core.deps.require_primary_owner).
+  // It's excluded from this list entirely rather than half-rendered with
+  // blank Company/Location/Code cells.
+  const visibleAssetUsers = asset_users.filter((h) => !h.is_primary_owner);
 
   const createMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) => apiClient.post("/asset-users", payload),
@@ -246,15 +264,15 @@ export function AssetUsersScreen() {
   }
 
   // A blank Code/Name is auto-suggested from the chosen Location once both
-  // Type (IT_STOCK/INSTALLED) and Location are known -- never overwrites
+  // Type (STOCK_POINT/INSTALLED) and Location are known -- never overwrites
   // something already typed (a manual edit always wins), so this only ever
   // fires on a fresh Add before the admin has touched either field.
   function suggestPointFields(d: AssetUserDraft, assetUserType: string, locationId: string): Partial<AssetUserDraft> {
     const config = pointConfigFor(assetUserType);
-    if (!config || d.emp_code.trim() !== "" || d.name.trim() !== "") return {};
+    if (!config || d.code.trim() !== "" || d.name.trim() !== "") return {};
     const location = locations.find((l) => l.id === Number(locationId));
     if (!location) return {};
-    return { emp_code: `${config.prefix}-${slug(location.code)}`, name: `${config.noun} - ${location.name}` };
+    return { code: `${config.prefix}-${slug(location.code)}`, name: `${config.noun} - ${location.name}` };
   }
 
   // Location is company-scoped now -- a location picked under a previous
@@ -284,15 +302,16 @@ export function AssetUsersScreen() {
     setEditingId(h.id);
     setOriginalRole(h.role);
     setDraft({
-      company_id: String(h.company_id),
-      emp_code: h.emp_code,
+      company_id: String(h.company_id ?? ""),
+      code: h.code ?? "",
       name: h.name,
-      asset_user_type: h.asset_user_type,
-      location_id: String(h.location_id),
+      asset_user_type: h.asset_user_type ?? "",
+      location_id: String(h.location_id ?? ""),
       department_id: h.department_id ? String(h.department_id) : "",
       email: h.email ?? "",
       phone: h.phone ?? "",
       role: h.role,
+      loginEnabled: h.login_enabled,
     });
     setFormOpen(true);
   }
@@ -320,20 +339,20 @@ export function AssetUsersScreen() {
   // AM-08: `location_id` is a required (NOT NULL) foreign key on AssetUser --
   // it was never actually optional (see DECISIONS.md) -- so Save must be
   // blocked, not merely default a blank Select to the `0` sentinel that used
-  // to reach the backend as an unhandled 500. Company/Emp Code/Name/Type are
+  // to reach the backend as an unhandled 500. Company/Code/Name/Type are
   // likewise required by AssetUserIn; Department stays genuinely optional.
   const canSave =
     draft.company_id !== "" &&
-    draft.emp_code.trim().length > 0 &&
+    draft.code.trim().length > 0 &&
     draft.name.trim().length > 0 &&
     draft.asset_user_type !== "" &&
     draft.location_id !== "";
 
   const activePointConfig = pointConfigFor(draft.asset_user_type);
-  const codeLabel = activePointConfig ? `${activePointConfig.noun} Code` : "Emp Code";
+  const codeLabel = activePointConfig ? `${activePointConfig.noun} Code` : "Code";
   const nameLabel = activePointConfig ? `${activePointConfig.noun} Name` : "Name";
 
-  // "Which of this company's locations already have an IT_STOCK/INSTALLED
+  // "Which of this company's locations already have a STOCK_POINT/INSTALLED
   // point, and which still need one" -- the confusion this whole feature
   // addresses (see TYPE_POINT_CONFIG's own comment). Only shown once both
   // Type and Company are picked, since coverage is scoped per company.
@@ -349,10 +368,10 @@ export function AssetUsersScreen() {
   }, [activePointConfig, draft.asset_user_type, draft.company_id, asset_users, locations]);
 
   const columns: DataTableColumn<AssetUserRow>[] = [
-    { key: "emp_code", header: "Emp Code", cell: (h) => h.emp_code },
+    { key: "code", header: "Code", cell: (h) => h.code },
     { key: "name", header: "Name", cell: (h) => h.name },
     { key: "asset_user_type", header: "Type", cell: (h) => h.asset_user_type },
-    { key: "role", header: "Role", cell: (h) => h.role },
+    { key: "role", header: "Role", cell: (h) => (h.login_enabled ? h.role : "—") },
     { key: "company", header: "Company", cell: (h) => companyName(h.company_id) },
     {
       key: "__actions",
@@ -367,14 +386,16 @@ export function AssetUsersScreen() {
           <Button variant="ghost" size="icon" aria-label={`Company access for ${h.name}`} onClick={() => openAccess(h)}>
             <Building2 className="h-4 w-4" aria-hidden="true" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={`Reset password for ${h.name}`}
-            onClick={() => resetMutation.mutate(h.id)}
-          >
-            <KeyRound className="h-4 w-4" aria-hidden="true" />
-          </Button>
+          {h.login_enabled && (
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={`Reset password for ${h.name}`}
+              onClick={() => resetMutation.mutate(h.id)}
+            >
+              <KeyRound className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -407,7 +428,7 @@ export function AssetUsersScreen() {
 
       <DataTable<AssetUserRow>
         columns={columns}
-        rows={asset_users}
+        rows={visibleAssetUsers}
         rowKey={(h) => h.id}
         isLoading={isLoading}
         isError={isError}
@@ -503,12 +524,12 @@ export function AssetUsersScreen() {
               </Select>
             </FormField>
 
-            <FormField htmlFor="emp_code" label={codeLabel} required>
+            <FormField htmlFor="code" label={codeLabel} required>
               <Input
-                id="emp_code"
+                id="code"
                 aria-label={codeLabel}
-                value={draft.emp_code}
-                onChange={(e) => setField("emp_code", e.target.value)}
+                value={draft.code}
+                onChange={(e) => setField("code", e.target.value)}
               />
             </FormField>
 
@@ -536,15 +557,6 @@ export function AssetUsersScreen() {
               </Select>
             </FormField>
 
-            <FormField htmlFor="email" label="Email">
-              <Input
-                id="email"
-                aria-label="Email"
-                value={draft.email}
-                onChange={(e) => setField("email", e.target.value)}
-              />
-            </FormField>
-
             <FormField htmlFor="phone" label="Phone">
               <Input
                 id="phone"
@@ -555,32 +567,61 @@ export function AssetUsersScreen() {
             </FormField>
 
             <FormField
-              htmlFor="role"
-              label="Role"
-              helperText={
-                editingId != null
-                  ? `Current role: ${originalRole}. Controls what this person can see and do in CKAM.`
-                  : "Controls what this person can see and do in CKAM."
-              }
+              htmlFor="login_enabled"
+              label="Login Enabled"
+              helperText="Only a login-enabled person can sign in and needs an Access Role. A Store/Install Point/Stock Point normally stays off."
             >
-              <Select value={draft.role || undefined} onValueChange={(v) => setField("role", v)}>
-                <SelectTrigger id="role" aria-label="Role">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ROLES.map((r) => (
-                    <SelectItem key={r} value={r}>
-                      {r}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {roleChanged && (
-                <p className="text-xs font-medium text-warning" role="alert">
-                  Changing role from {originalRole} to {draft.role} will immediately change this person's access.
-                </p>
-              )}
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  id="login_enabled"
+                  aria-label="Login Enabled"
+                  checked={draft.loginEnabled}
+                  onCheckedChange={(checked) => setDraft((d) => ({ ...d, loginEnabled: checked === true }))}
+                />
+                Can this person sign in to CKAM?
+              </label>
             </FormField>
+
+            {draft.loginEnabled && (
+              <>
+                <FormField htmlFor="email" label="Email">
+                  <Input
+                    id="email"
+                    aria-label="Email"
+                    value={draft.email}
+                    onChange={(e) => setField("email", e.target.value)}
+                  />
+                </FormField>
+
+                <FormField
+                  htmlFor="role"
+                  label="Access Role"
+                  helperText={
+                    editingId != null
+                      ? `Current role: ${originalRole}. Controls what this person can see and do in CKAM.`
+                      : "Controls what this person can see and do in CKAM."
+                  }
+                >
+                  <Select value={draft.role || undefined} onValueChange={(v) => setField("role", v)}>
+                    <SelectTrigger id="role" aria-label="Access Role">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ROLES.map((r) => (
+                        <SelectItem key={r} value={r}>
+                          {r}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {roleChanged && (
+                    <p className="text-xs font-medium text-warning" role="alert">
+                      Changing role from {originalRole} to {draft.role} will immediately change this person's access.
+                    </p>
+                  )}
+                </FormField>
+              </>
+            )}
 
             {saveError && (
               <p className="text-sm text-destructive" role="alert">

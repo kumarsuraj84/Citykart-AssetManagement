@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+﻿import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient, ApiError } from "../../lib/api-client";
 import { authFetch } from "../../lib/auth-fetch";
@@ -67,6 +67,8 @@ interface Asset {
   status: string;
   current_asset_user_id: number;
   status_since: string;
+  // IT / NON_IT, derived server-side from Category at creation (spec §18).
+  asset_domain: string;
   custom_fields: Record<string, unknown>;
   category_name: string | null;
   subcategory_name: string | null;
@@ -223,7 +225,7 @@ const CHANGE_COLUMNS: DataTableColumn<FieldChange>[] = [
 export function AssetDetail({ assetId }: { assetId: number }) {
   const qc = useQueryClient();
   const role = useAuthStore((s) => s.role);
-  const canEdit = role === "ADMIN" || role === "IT_TEAM";
+  const canEdit = role === "ADMIN" || role === "OPERATOR";
   const [activeAction, setActiveAction] = useState<ActionDef | null>(null);
   const [form, setForm] = useState<ActionFormState>(emptyActionForm);
   const [qrUrl, setQrUrl] = useState<string | null>(null);
@@ -268,7 +270,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
   const { data: asset_users = [] } = useQuery({
     queryKey: ["asset_users", asset?.company_id],
     queryFn: () => apiClient.get<AssetUserOption[]>(`/asset-users?company_id=${asset!.company_id}`),
-    enabled: asset?.company_id != null && role !== "ASSET_USER",
+    enabled: asset?.company_id != null && role !== "SELF_SERVICE",
   });
   const { data: vendors = [] } = useQuery({
     queryKey: ["masters", "vendors"],
@@ -550,7 +552,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
           {asset.current_asset_user_type && ` (${asset.current_asset_user_type.replace(/_/g, " ").toLowerCase()})`}
           {asset.location_name && <> · {asset.location_name}</>}
         </p>
-        {!editing && role !== "ASSET_USER" && actions.length > 0 && (
+        {!editing && role !== "SELF_SERVICE" && actions.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {actions.map((a) => (
               <Button key={a.eventType + a.label} variant="secondary" size="sm" onClick={() => openAction(a)}>
@@ -763,6 +765,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
 
           <TabsContent value="custody" className="pt-4">
             <dl className="grid gap-4 lg:grid-cols-2">
+              <ReadField label="Responsibility" value={asset.asset_domain === "NON_IT" ? "Admin / Non-IT" : asset.asset_domain} />
               <ReadField label="Current Asset User" value={asset.current_asset_user_name} />
               <ReadField label="Asset User Type" value={asset.current_asset_user_type?.replace(/_/g, " ")} />
               <ReadField label="Location" value={asset.location_name} />

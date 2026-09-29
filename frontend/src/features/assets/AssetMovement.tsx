@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import { actionsFor } from "./actionRules";
@@ -61,10 +61,10 @@ function isEligible(status: string, eventType: string): boolean {
 
 // An operator scanning a batch should be able to tell at a glance that an
 // asset is currently with a real person/store/install, not sitting in an
-// IT_STOCK warehouse bin -- moving it means pulling it out of someone's
+// STOCK_POINT warehouse bin -- moving it means pulling it out of someone's
 // hands, worth a second look before it's bundled into a bulk action.
 function isNotInItStock(assetUserType: string | null): boolean {
-  return assetUserType !== null && assetUserType !== "IT_STOCK";
+  return assetUserType !== null && assetUserType !== "STOCK_POINT";
 }
 
 function selectValue(v: string): string | undefined {
@@ -296,7 +296,7 @@ export function AssetMovement() {
               <span className="text-xs text-muted-foreground">Sort:</span>
               <QueueSortButton label="Code" sortKey="asset_code" />
               <QueueSortButton label="Description" sortKey="description" />
-              <QueueSortButton label="Asset User" sortKey="asset_user" />
+              <QueueSortButton label="Asset User" sortKey="SELF_SERVICE" />
               <QueueSortButton label="Status" sortKey="status" />
             </div>
           )}

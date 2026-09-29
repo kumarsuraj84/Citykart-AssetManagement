@@ -56,6 +56,8 @@ interface AssetRow {
   warranty_upto: string | null;
   status: string;
   status_since: string;
+  // IT / NON_IT, derived server-side from Category at creation (spec §18).
+  asset_domain: string;
   // AM-11: populated server-side by a page-scoped batch lookup (never a
   // per-row join) -- the register must answer "who holds it, in which
   // company" without a click into every row. Extended to Category/
@@ -95,6 +97,7 @@ function asOptionArray(data: unknown): Option[] {
 export const PAGE_SIZE = 50;
 
 const dash = (v: string | null | undefined) => (v === null || v === undefined || v === "" ? "—" : v);
+const domainLabel = (v: string) => (v === "NON_IT" ? "Admin / Non-IT" : v);
 // Matches AssetDetail.tsx's own ReadField formatting for these same four
 // money fields (toFixed(2), no currency symbol) -- one number convention
 // across the register and Asset 360, not two.
@@ -124,6 +127,7 @@ const ASSET_OPTIONAL_COLUMNS: AssetColumnDef[] = [
   { key: "serial_number", label: "Serial Number", defaultVisible: true, cell: (a) => dash(a.serial_number) },
   { key: "status", label: "Status", defaultVisible: true, cell: (a) => <StatusBadge status={a.status} compact /> },
   { key: "asset_user", label: "Asset User", defaultVisible: true, cell: (a) => dash(a.current_asset_user_name) },
+  { key: "asset_domain", label: "Responsibility", defaultVisible: true, cell: (a) => domainLabel(a.asset_domain) },
   { key: "company", label: "Company", defaultVisible: true, cell: (a) => dash(a.company_name) },
   { key: "legacy_asset_code", label: "Legacy Asset Code", defaultVisible: false, cell: (a) => dash(a.legacy_asset_code) },
   { key: "barcode", label: "Barcode", defaultVisible: false, cell: (a) => dash(a.barcode) },
@@ -205,6 +209,7 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
   const navigate = useNavigate();
   const [q, setQRaw] = useState("");
   const [status, setStatusRaw] = useState(initialStatus ?? "");
+  const [domain, setDomainRaw] = useState("");
   const [categoryId, setCategoryIdRaw] = useState("");
   const [assetUserId, setAssetUserIdRaw] = useState("");
   const [companyId, setCompanyIdRaw] = useState("");
@@ -242,6 +247,7 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
   }
   const setQ = resettingPage(setQRaw);
   const setStatus = resettingPage(setStatusRaw);
+  const setDomain = resettingPage(setDomainRaw);
   const setCategoryId = resettingPage(setCategoryIdRaw);
   const setAssetUserId = resettingPage(setAssetUserIdRaw);
   const setCompanyId = resettingPage(setCompanyIdRaw);
@@ -272,6 +278,7 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
   const queryString = new URLSearchParams({
     ...(q ? { q } : {}),
     ...(status ? { status } : {}),
+    ...(domain ? { domain } : {}),
     ...(categoryId ? { category_id: categoryId } : {}),
     ...(assetUserId ? { asset_user_id: assetUserId } : {}),
     ...(companyId ? { company_id: companyId } : {}),
@@ -281,7 +288,7 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
   }).toString();
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["assets", "register", q, status, categoryId, assetUserId, companyId, sortBy, sortDir, page],
+    queryKey: ["assets", "register", q, status, domain, categoryId, assetUserId, companyId, sortBy, sortDir, page],
     queryFn: () => apiClient.get<{ items: AssetRow[]; total: number }>(`/assets?${queryString}`),
   });
   const items = data?.items ?? [];
@@ -422,6 +429,20 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
           </div>
 
           <div className="flex flex-col gap-1.5">
+            <Label htmlFor="filter-domain">Responsibility</Label>
+            <Select value={domain || ALL} onValueChange={(v) => setDomain(v === ALL ? "" : v)}>
+              <SelectTrigger id="filter-domain" aria-label="Responsibility" className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All</SelectItem>
+                <SelectItem value="IT">IT</SelectItem>
+                <SelectItem value="NON_IT">Admin / Non-IT</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
             <Label htmlFor="filter-category">Category</Label>
             <Select value={categoryId || ALL} onValueChange={(v) => setCategoryId(v === ALL ? "" : v)}>
               <SelectTrigger id="filter-category" aria-label="Category" className="w-40">
@@ -525,7 +546,7 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
         emptyState={
           <EmptyState
             title="No assets found."
-            description={q || status || categoryId || assetUserId || companyId ? "Try a different search or filter." : undefined}
+            description={q || status || domain || categoryId || assetUserId || companyId ? "Try a different search or filter." : undefined}
           />
         }
         selection={{

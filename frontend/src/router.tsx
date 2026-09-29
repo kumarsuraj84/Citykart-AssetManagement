@@ -87,22 +87,22 @@ function validateNextSearch(search: Record<string, unknown>): NextSearch {
   return { next: safeNextPath(search.next) };
 }
 
-// A ASSET_USER lands on their own read-only asset list; everyone else lands on the
-// operational dashboard. Used both right after login and to bounce an already
-// authenticated visitor away from /login.
+// A SELF_SERVICE asset_user lands on their own read-only asset list; everyone
+// else lands on the operational dashboard. Used both right after login and to
+// bounce an already authenticated visitor away from /login.
 function landingPathFor(role: string | null): string {
-  return role === "ASSET_USER" ? "/my-assets" : "/dashboard";
+  return role === "SELF_SERVICE" ? "/my-assets" : "/dashboard";
 }
 
 function destinationAfterAuth(role: string | null, next: string | undefined): string {
   return safeNextPath(next) ?? landingPathFor(role);
 }
 
-// Spec §6 "Roles and access".
-const WRITE_ROLES = ["ADMIN", "IT_TEAM"];
-const REPORT_ROLES = ["ADMIN", "IT_TEAM", "VIEWER"];
+// Asset User / RBAC rebuild: roles are now ADMIN/OPERATOR/VIEWER/SELF_SERVICE.
+const WRITE_ROLES = ["ADMIN", "OPERATOR"];
+const REPORT_ROLES = ["ADMIN", "OPERATOR", "VIEWER"];
 
-// "Setup lists" -- IT_TEAM may manage masters but not users/roles/code rule (§6).
+// "Setup lists" -- OPERATOR may manage masters but not users/roles/code rule.
 const MASTER_SETUP_LINKS: { to: string; label: string; icon: LucideIcon }[] = [
   { to: "/setup/companies", label: "Companies", icon: Building2 },
   { to: "/setup/locations", label: "Locations", icon: MapPin },
@@ -172,8 +172,11 @@ function ChangePasswordPage() {
       new_password: values.newPassword,
     });
     const s = useAuthStore.getState();
-    if (s.accessToken && s.role !== null && s.companyId !== null) {
-      s.setAuth({ accessToken: s.accessToken, role: s.role, companyId: s.companyId, mustChangePassword: false });
+    if (s.accessToken && s.role !== null) {
+      s.setAuth({
+        accessToken: s.accessToken, role: s.role, companyId: s.companyId,
+        isPrimaryOwner: s.isPrimaryOwner, mustChangePassword: false,
+      });
     }
     router.history.push(destinationAfterAuth(s.role, next));
   }
@@ -215,9 +218,14 @@ function SidebarNavItem({ to, label, icon: Icon }: { to: string; label: string; 
 
 function AppShell() {
   const role = useAuthStore((s) => s.role);
+  const isPrimaryOwner = useAuthStore((s) => s.isPrimaryOwner);
   const navigate = useNavigate();
   const canWrite = role !== null && WRITE_ROLES.includes(role);
   const canReport = role !== null && REPORT_ROLES.includes(role);
+  // Master data management is Primary-Owner-only -- stricter than the ADMIN
+  // role itself (an ordinary ADMIN account, if one is ever created, has no
+  // master-write access either).
+  const canManageMasters = isPrimaryOwner;
 
   async function handleLogout() {
     await logoutSession();
@@ -278,7 +286,7 @@ function AppShell() {
                   </SidebarGroup>
                 )}
 
-                {canWrite && (
+                {canManageMasters && (
                   <SidebarGroup>
                     <SidebarGroupLabel>Masters</SidebarGroupLabel>
                     <SidebarMenu>

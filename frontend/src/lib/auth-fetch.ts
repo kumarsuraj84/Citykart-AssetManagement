@@ -14,7 +14,8 @@ export interface SessionPayload {
   access_token: string;
   must_change_password: boolean;
   role: string;
-  company_id: number;
+  company_id: number | null;
+  is_primary_owner: boolean;
 }
 
 /**
@@ -35,6 +36,7 @@ export function applySession(data: SessionPayload): void {
     accessToken: data.access_token,
     role: data.role,
     companyId: data.company_id,
+    isPrimaryOwner: data.is_primary_owner,
     mustChangePassword: data.must_change_password,
   });
 }
@@ -85,8 +87,11 @@ export function redirectToLogin(): void {
 
 function redirectToChangePassword(): void {
   const state = useAuthStore.getState();
-  if (state.accessToken && state.role !== null && state.companyId !== null) {
-    state.setAuth({ accessToken: state.accessToken, role: state.role, companyId: state.companyId, mustChangePassword: true });
+  if (state.accessToken && state.role !== null) {
+    state.setAuth({
+      accessToken: state.accessToken, role: state.role, companyId: state.companyId,
+      isPrimaryOwner: state.isPrimaryOwner, mustChangePassword: true,
+    });
   }
   if (window.location.pathname.startsWith("/change-password")) return;
   const next = safeNextPath(currentPath());

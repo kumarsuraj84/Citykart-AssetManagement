@@ -19,7 +19,7 @@ const REPO_ROOT = path.resolve(__dirname, "..", "..");
 
 export interface SeedAssetUser {
   id: number;
-  emp_code: string;
+  code: string;
   name: string;
 }
 
@@ -34,7 +34,7 @@ export interface SeedContext {
   vendor: { id: number; name: string };
   stock: SeedAssetUser;
   /** A test-only EMPLOYEE asset_user. Deliberately NOT named/coded like the real
-   * Ankur Pahwa (CS6872) account in this environment -- see fixtures' emp_code
+   * Ankur Pahwa (CS6872) account in this environment -- see fixtures' code
    * below, which is a distinct, timestamp-suffixed code. */
   employee: SeedAssetUser;
   employeePassword: string;
@@ -189,6 +189,7 @@ export async function seedTestCompany(baseURL: string, reg: SeedRegistry): Promi
   const category = await api<{ id: number; name: string }>(baseURL, "POST", "/api/masters/categories", token, {
     code: `E2E${codeTs}`,
     name: `E2E IT ${ts}`,
+    asset_domain: "IT",
   });
   reg.masters.push(["categories", category.id]);
   const subcategory = await api<{ id: number; name: string }>(baseURL, "POST", "/api/masters/subcategories", token, {
@@ -226,22 +227,23 @@ export async function seedTestCompany(baseURL: string, reg: SeedRegistry): Promi
   };
 
   const stock = await mkAssetUser({
-    emp_code: `STK${ts}`,
+    code: `STK${ts}`,
     name: `E2E IT Stock ${ts}`,
-    asset_user_type: "IT_STOCK",
-    role: "ASSET_USER",
+    asset_user_type: "STOCK_POINT",
+    role: "SELF_SERVICE",
   });
   const employee = await mkAssetUser({
-    emp_code: `EMP${ts}`,
+    code: `EMP${ts}`,
     name: `E2E Test Employee ${ts}`,
     asset_user_type: "EMPLOYEE",
-    role: "ASSET_USER",
+    role: "SELF_SERVICE",
+    login_enabled: true,
   });
   const store = await mkAssetUser({
-    emp_code: `STR${ts}`,
+    code: `STR${ts}`,
     name: `E2E Test Store ${ts}`,
     asset_user_type: "STORE",
-    role: "ASSET_USER",
+    role: "SELF_SERVICE",
   });
 
   const employeeReset = await api<{ temp_password: string }>(

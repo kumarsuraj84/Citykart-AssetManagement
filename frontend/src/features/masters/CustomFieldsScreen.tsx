@@ -107,10 +107,13 @@ function parseChoices(raw: string): { choices: string[] } | null {
 
 export function CustomFieldsScreen() {
   const qc = useQueryClient();
-  const role = useAuthStore((s) => s.role);
   const companyId = useAuthStore((s) => s.companyId);
-  const canManageGlobal = role === "ADMIN";
-  const canCreate = role === "ADMIN" || role === "IT_TEAM";
+  const isPrimaryOwner = useAuthStore((s) => s.isPrimaryOwner);
+  // Custom Fields is a master (spec: master data management is
+  // Primary-Owner-only) -- ADMIN/OPERATOR no longer have write access here
+  // regardless of scope, matching the backend's require_primary_owner() gate.
+  const canManageGlobal = isPrimaryOwner;
+  const canCreate = isPrimaryOwner;
 
   const [createOpen, setCreateOpen] = useState(false);
   const [createDraft, setCreateDraft] = useState<CreateDraft>(emptyCreateDraft);
@@ -138,10 +141,8 @@ export function CustomFieldsScreen() {
     queryFn: () => apiClient.get<Company[]>("/masters/companies"),
   });
 
-  function canManage(field: CustomFieldRow): boolean {
-    if (role === "ADMIN") return true;
-    if (role === "IT_TEAM") return field.company_id === companyId;
-    return false;
+  function canManage(_field: CustomFieldRow): boolean {
+    return isPrimaryOwner;
   }
 
   const createMutation = useMutation({

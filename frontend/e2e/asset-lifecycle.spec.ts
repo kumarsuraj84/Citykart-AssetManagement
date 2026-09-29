@@ -132,7 +132,7 @@ test("full custody journey: procure, allot, return, allot again", async ({ page,
   // current_asset_user_id == their own id -- must be empty of it)
   await page.getByRole("button", { name: "Log out", exact: true }).click();
   await expect(page).toHaveURL(/\/login$/);
-  await loginAs(page, ctx.employee.emp_code, ctx.employeePassword);
+  await loginAs(page, ctx.employee.code, ctx.employeePassword);
 
   // The employee signed in with the admin-issued temporary password, so the app
   // forces a password change before anything else is reachable.

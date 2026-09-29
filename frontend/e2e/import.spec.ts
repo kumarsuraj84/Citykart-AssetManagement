@@ -98,7 +98,7 @@ test("import journey: fixture file -> preview -> commit -> find the asset -> PI 
     "invoice-date": "2025-06-01",
     "pi-number": "PI-E2E-IMPORT",
     "vendor-code": vendorCode,
-    "initial-asset_user-code": ctx.stock.emp_code,
+    "initial-asset_user-code": ctx.stock.code,
     "custom-field-key": fieldKey,
     "custom-field-value": "WARR-E2E-9",
   });

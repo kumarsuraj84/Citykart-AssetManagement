@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
-from app.core.deps import WRITE_ROLES, get_current_asset_user, require_role
+from app.core.deps import get_current_asset_user, require_primary_owner
 from app.assets.custom_field_values import any_asset_has_value_for
 from app.masters.models import FIELD_TYPES, CustomField
 from app.masters.schemas import CustomFieldEditIn, CustomFieldIn, CustomFieldOut
@@ -24,22 +24,6 @@ def _validate_field_type(field_type: str) -> None:
     # AM-02 closed that gap; unchanged here.
     if field_type not in FIELD_TYPES:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"field_type must be one of {FIELD_TYPES}")
-
-
-def _check_scope_authorization(asset_user, company_id: int | None) -> None:
-    """ADMIN (which the Primary Owner's row always carries as its `role`)
-    may create/manage a field at any scope, Global included. OPERATOR may
-    only create/manage a field scoped to its own company -- never Global,
-    since a Global field affects every company OPERATOR isn't authorized to
-    touch (AM-05 §20's explicit V1 safety rule). VIEWER/SELF_SERVICE never
-    reach this -- every route below is gated by require_role(*WRITE_ROLES)
-    first."""
-    if asset_user.role == "ADMIN":
-        return
-    if company_id is None:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only ADMIN may create or manage a Global custom field")
-    if company_id != asset_user.company_id:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not permitted to manage custom fields for this company")
 
 
 @router.get("", response_model=list[CustomFieldOut])
@@ -59,11 +43,10 @@ async def list_custom_fields(
 async def create_custom_field(
     body: CustomFieldIn,
     session: AsyncSession = Depends(get_session),
-    asset_user=Depends(require_role(*WRITE_ROLES)),
+    asset_user=Depends(require_primary_owner()),
 ):
     data = body.model_dump()
     _validate_field_type(data["field_type"])
-    _check_scope_authorization(asset_user, data.get("company_id"))
 
     existing = (await session.execute(
         select(CustomField).where(CustomField.field_key == data["field_key"])
@@ -79,25 +62,20 @@ async def update_custom_field(
     item_id: int,
     body: CustomFieldEditIn,
     session: AsyncSession = Depends(get_session),
-    asset_user=Depends(require_role(*WRITE_ROLES)),
+    asset_user=Depends(require_primary_owner()),
 ):
     service = MasterCRUDService(CustomField, session)
     existing = await service.get(item_id)
     if existing is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
 
-    # Must be authorized for the field's current scope...
-    _check_scope_authorization(asset_user, existing.company_id)
-
     data = body.model_dump()
     new_company_id = data.get("company_id")
     if new_company_id != existing.company_id:
-        # ...and, if actually changing scope, for the new scope too, and
-        # only while no asset has a stored value under this key yet (AM-05
-        # §22 -- otherwise the scope change could make a value invisible to
-        # the company that entered it, or expose it to a company it was
-        # never meant for).
-        _check_scope_authorization(asset_user, new_company_id)
+        # Changing scope is only allowed while no asset has a stored value
+        # under this key yet (AM-05 §22) -- otherwise the scope change could
+        # make a value invisible to the company that entered it, or expose
+        # it to a company it was never meant for.
         if await any_asset_has_value_for(session, existing.field_key):
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -111,11 +89,10 @@ async def update_custom_field(
 async def deactivate_custom_field(
     item_id: int,
     session: AsyncSession = Depends(get_session),
-    asset_user=Depends(require_role(*WRITE_ROLES)),
+    asset_user=Depends(require_primary_owner()),
 ):
     service = MasterCRUDService(CustomField, session)
     existing = await service.get(item_id)
     if existing is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
-    _check_scope_authorization(asset_user, existing.company_id)
     await service.deactivate(item_id, asset_user.id)

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+﻿import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ImportScreen } from "./ImportScreen";
 import { apiClient } from "../../lib/api-client";
@@ -111,7 +111,7 @@ describe("ImportScreen", () => {
   });
 
   it("downloads the template with the bearer token, not via a bare (401-ing) link", async () => {
-    useAuthStore.getState().setAuth({ accessToken: "test-token", role: "ADMIN", companyId: 1, mustChangePassword: false });
+    useAuthStore.getState().setAuth({ accessToken: "test-token", role: "ADMIN", companyId: 1, isPrimaryOwner: false, mustChangePassword: false });
     window.URL.createObjectURL = vi.fn().mockReturnValue("blob:template");
     window.URL.revokeObjectURL = vi.fn();
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, blob: () => Promise.resolve(new Blob(["x"])) });
@@ -141,7 +141,7 @@ describe("ImportScreen", () => {
   });
 
   it("switching to Edit mode downloads the edit template and previews/commits with mode=edit", async () => {
-    useAuthStore.getState().setAuth({ accessToken: "test-token", role: "ADMIN", companyId: 1, mustChangePassword: false });
+    useAuthStore.getState().setAuth({ accessToken: "test-token", role: "ADMIN", companyId: 1, isPrimaryOwner: false, mustChangePassword: false });
     window.URL.createObjectURL = vi.fn().mockReturnValue("blob:template");
     window.URL.revokeObjectURL = vi.fn();
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, blob: () => Promise.resolve(new Blob(["x"])) });

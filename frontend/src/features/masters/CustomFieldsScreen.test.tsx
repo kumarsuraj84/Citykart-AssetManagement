@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+﻿import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CustomFieldsScreen } from "./CustomFieldsScreen";
@@ -36,7 +36,7 @@ afterEach(() => useAuthStore.getState().logout());
 
 describe("CustomFieldsScreen", () => {
   it("shows a human-readable scope (Global or company name) per field", async () => {
-    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, mustChangePassword: false });
+    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: false, mustChangePassword: false });
     mockGets();
     renderWithClient(<CustomFieldsScreen />);
 
@@ -47,8 +47,8 @@ describe("CustomFieldsScreen", () => {
     expect(within(rows[3]).getByText("CityKart Retail")).toBeInTheDocument();
   });
 
-  it("ADMIN can create a Global field", async () => {
-    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, mustChangePassword: false });
+  it("the Primary Owner can create a Global field", async () => {
+    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: true, mustChangePassword: false });
     mockGets();
     (apiClient.post as any).mockResolvedValue({ ...FIELDS[0], id: 9 });
 
@@ -69,7 +69,7 @@ describe("CustomFieldsScreen", () => {
   });
 
   it("rejects a field key with spaces or uppercase before ever calling the API", async () => {
-    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, mustChangePassword: false });
+    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: true, mustChangePassword: false });
     mockGets();
 
     renderWithClient(<CustomFieldsScreen />);
@@ -84,48 +84,43 @@ describe("CustomFieldsScreen", () => {
     expect(apiClient.post).not.toHaveBeenCalled();
   });
 
-  it("IT_TEAM has no Global option and can only create for its own company", async () => {
-    useAuthStore.getState().setAuth({ accessToken: "tok", role: "IT_TEAM", companyId: 1, mustChangePassword: false });
+  it("an ordinary ADMIN (not the Primary Owner) has no Add Custom Field button at all", async () => {
+    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: false, mustChangePassword: false });
     mockGets();
-    (apiClient.post as any).mockResolvedValue({ ...FIELDS[1], id: 10 });
-
     renderWithClient(<CustomFieldsScreen />);
+
     await waitFor(() => expect(screen.getByText("Warranty Card #")).toBeInTheDocument());
-
-    fireEvent.click(screen.getByRole("button", { name: /add custom field/i }));
-    // A locked, read-only scope field naming their own company -- no selector to escalate scope from.
-    expect(screen.queryByRole("combobox", { name: "Scope" })).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Scope")).toHaveValue("CityKart HQ");
-
-    fireEvent.change(screen.getByLabelText("Label"), { target: { value: "Rack Slot" } });
-    fireEvent.change(screen.getByLabelText("Field Key"), { target: { value: "rack_slot" } });
-    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
-
-    await waitFor(() =>
-      expect(apiClient.post).toHaveBeenCalledWith(
-        "/masters/custom-fields",
-        expect.objectContaining({ company_id: 1 }),
-      ),
-    );
+    expect(screen.queryByRole("button", { name: /add custom field/i })).not.toBeInTheDocument();
   });
 
-  it("only shows Edit/Deactivate actions for fields the current actor may manage", async () => {
-    useAuthStore.getState().setAuth({ accessToken: "tok", role: "IT_TEAM", companyId: 1, mustChangePassword: false });
+  it("OPERATOR has no Add Custom Field button either -- master data is Primary-Owner-only", async () => {
+    useAuthStore.getState().setAuth({ accessToken: "tok", role: "OPERATOR", companyId: 1, isPrimaryOwner: false, mustChangePassword: false });
     mockGets();
     renderWithClient(<CustomFieldsScreen />);
 
     await waitFor(() => expect(screen.getByText("Warranty Card #")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /add custom field/i })).not.toBeInTheDocument();
+  });
 
-    // IT_TEAM (company 1) may manage its own company's field...
-    expect(screen.getByRole("button", { name: /^edit store tag$/i })).toBeInTheDocument();
-    // ...but not the Global field...
+  it("only the Primary Owner sees Edit/Deactivate actions on any field, regardless of scope", async () => {
+    useAuthStore.getState().setAuth({ accessToken: "tok", role: "OPERATOR", companyId: 1, isPrimaryOwner: false, mustChangePassword: false });
+    mockGets();
+    renderWithClient(<CustomFieldsScreen />);
+
+    await waitFor(() => expect(screen.getByText("Warranty Card #")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /^edit store tag$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^edit warranty card #$/i })).not.toBeInTheDocument();
-    // ...nor another company's field.
     expect(screen.queryByRole("button", { name: /^edit other company tag$/i })).not.toBeInTheDocument();
+
+    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: true, mustChangePassword: false });
+    renderWithClient(<CustomFieldsScreen />);
+    await waitFor(() => expect(screen.getAllByText("Warranty Card #").length).toBeGreaterThan(0));
+    expect(screen.getByRole("button", { name: /^edit store tag$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^edit other company tag$/i })).toBeInTheDocument();
   });
 
   it("field_key and field_type are shown read-only in the Edit dialog, never as inputs", async () => {
-    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, mustChangePassword: false });
+    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: true, mustChangePassword: false });
     mockGets();
     renderWithClient(<CustomFieldsScreen />);
 
@@ -140,7 +135,7 @@ describe("CustomFieldsScreen", () => {
   });
 
   it("requires a stronger confirmation naming every company before making a Global field required", async () => {
-    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, mustChangePassword: false });
+    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: true, mustChangePassword: false });
     mockGets();
     (apiClient.put as any).mockResolvedValue({ ...FIELDS[0], is_required: true });
 
@@ -162,7 +157,7 @@ describe("CustomFieldsScreen", () => {
   });
 
   it("names the specific company in the confirmation for a company-specific field", async () => {
-    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, mustChangePassword: false });
+    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: true, mustChangePassword: false });
     mockGets();
     (apiClient.put as any).mockResolvedValue({ ...FIELDS[1], is_required: true });
 
@@ -179,7 +174,7 @@ describe("CustomFieldsScreen", () => {
   });
 
   it("deactivates a field only after confirming", async () => {
-    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, mustChangePassword: false });
+    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: true, mustChangePassword: false });
     mockGets();
     (apiClient.delete as any).mockResolvedValue(undefined);
 

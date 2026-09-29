@@ -23,6 +23,9 @@ class LoginResponse(BaseModel):
     # None for the Primary Owner -- a company-less bootstrap account (see
     # app.asset_users.models.AssetUser.is_primary_owner).
     company_id: int | None
+    # The frontend needs this directly (not just `role`): master-data
+    # management is Primary-Owner-only, stricter than the ADMIN role itself.
+    is_primary_owner: bool
 
 
 MIN_PASSWORD_LENGTH = 8

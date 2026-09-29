@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+﻿import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
@@ -72,7 +72,7 @@ async function fillMandatoryProcurementFields() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, mustChangePassword: false });
+  useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: false, mustChangePassword: false });
 });
 
 afterEach(() => useAuthStore.getState().logout());
@@ -266,7 +266,7 @@ describe("AddAssetForm", () => {
           current_asset_user_id: 4, status_since: "2025-06-01", custom_fields: {},
           category_name: "IT Equipment", subcategory_name: null, cost_center_name: "Head Office", vendor_name: null,
           brand_name: null,
-          current_asset_user_name: "IT Stock-HO", current_asset_user_type: "IT_STOCK", location_name: null, department_name: null,
+          current_asset_user_name: "IT Stock-HO", current_asset_user_type: "STOCK_POINT", location_name: null, department_name: null,
         });
       }
       if (path === "/assets/42/events") return Promise.resolve([]);

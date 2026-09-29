@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+﻿import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AssetUsersScreen } from "./AssetUsersScreen";
@@ -14,14 +14,16 @@ function renderWithClient(ui: React.ReactElement) {
 const ASSET_USER: Record<string, unknown> = {
   id: 1,
   company_id: 1,
-  emp_code: "CS6872",
+  code: "CS6872",
   name: "Ankur",
   asset_user_type: "EMPLOYEE",
   location_id: 1,
   department_id: 1,
   email: null,
   phone: null,
-  role: "ASSET_USER",
+  role: "SELF_SERVICE",
+  login_enabled: true,
+  is_primary_owner: false,
   is_active: true,
 };
 
@@ -79,7 +81,7 @@ describe("AssetUsersScreen", () => {
 
   it("adds a new asset_user via the Add dialog", async () => {
     mockGets([]);
-    (apiClient.post as any).mockResolvedValue({ ...ASSET_USER, id: 2, emp_code: "NEW01", name: "New Hire" });
+    (apiClient.post as any).mockResolvedValue({ ...ASSET_USER, id: 2, code: "NEW01", name: "New Hire" });
 
     renderWithClient(<AssetUsersScreen />);
 
@@ -87,26 +89,28 @@ describe("AssetUsersScreen", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
 
-    fireEvent.change(screen.getByLabelText("Emp Code"), { target: { value: "NEW01" } });
+    fireEvent.change(screen.getByLabelText("Code"), { target: { value: "NEW01" } });
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "New Hire" } });
     await pickSelectOption("Company", "CityKart HQ");
     await pickSelectOption("Type", "EMPLOYEE");
     await pickSelectOption("Location", "Head Office");
-    // Role defaults to ASSET_USER already, so no interaction needed for it.
+    // Login Enabled stays unchecked -- Role/Email aren't shown, and the
+    // payload's role falls back to SELF_SERVICE, with no interaction needed.
 
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith("/asset-users", {
         company_id: 1,
-        emp_code: "NEW01",
+        code: "NEW01",
         name: "New Hire",
         asset_user_type: "EMPLOYEE",
         location_id: 1,
         department_id: null,
         email: null,
         phone: null,
-        role: "ASSET_USER",
+        role: "SELF_SERVICE",
+        login_enabled: false,
       }),
     );
   });
@@ -121,7 +125,7 @@ describe("AssetUsersScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: /^edit ankur$/i }));
 
     // Prefilled from the existing row.
-    expect(screen.getByLabelText("Emp Code")).toHaveValue("CS6872");
+    expect(screen.getByLabelText("Code")).toHaveValue("CS6872");
     expect(screen.getByLabelText("Name")).toHaveValue("Ankur");
 
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Ankur K" } });
@@ -130,14 +134,15 @@ describe("AssetUsersScreen", () => {
     await waitFor(() =>
       expect(apiClient.put).toHaveBeenCalledWith("/asset-users/1", {
         company_id: 1,
-        emp_code: "CS6872",
+        code: "CS6872",
         name: "Ankur K",
         asset_user_type: "EMPLOYEE",
         location_id: 1,
         department_id: 1,
         email: null,
         phone: null,
-        role: "ASSET_USER",
+        role: "SELF_SERVICE",
+        login_enabled: true,
       }),
     );
   });
@@ -187,7 +192,7 @@ describe("AssetUsersScreen", () => {
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/masters/companies"));
     fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
 
-    fireEvent.change(screen.getByLabelText("Emp Code"), { target: { value: "NOLOC" } });
+    fireEvent.change(screen.getByLabelText("Code"), { target: { value: "NOLOC" } });
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "No Location" } });
     await pickSelectOption("Company", "CityKart HQ");
     await pickSelectOption("Type", "EMPLOYEE");
@@ -206,7 +211,7 @@ describe("AssetUsersScreen", () => {
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/masters/companies"));
     fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
 
-    fireEvent.change(screen.getByLabelText("Emp Code"), { target: { value: "NEW02" } });
+    fireEvent.change(screen.getByLabelText("Code"), { target: { value: "NEW02" } });
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "New Hire 2" } });
     await pickSelectOption("Company", "CityKart HQ");
     await pickSelectOption("Type", "EMPLOYEE");
@@ -231,7 +236,7 @@ describe("AssetUsersScreen", () => {
     expect(screen.queryByText(/will immediately change this person's access/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     await waitFor(() =>
-      expect(apiClient.put).toHaveBeenCalledWith("/asset-users/1", expect.objectContaining({ role: "ASSET_USER" })),
+      expect(apiClient.put).toHaveBeenCalledWith("/asset-users/1", expect.objectContaining({ role: "SELF_SERVICE" })),
     );
   });
 
@@ -269,18 +274,18 @@ describe("AssetUsersScreen", () => {
 
   it("IT_STOCK/INSTALLED: picking a Location auto-fills Code/Name and relabels the fields", async () => {
     mockGets([], [COMPANY], [LOCATION, LOCATION_WH1]);
-    (apiClient.post as any).mockResolvedValue({ ...ASSET_USER, id: 3, emp_code: "STK-WH1" });
+    (apiClient.post as any).mockResolvedValue({ ...ASSET_USER, id: 3, code: "STK-WH1" });
 
     renderWithClient(<AssetUsersScreen />);
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/masters/companies"));
     fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
 
     await pickSelectOption("Company", "CityKart HQ");
-    await pickSelectOption("Type", "IT_STOCK");
-    // Labels relabel away from the "Emp Code"/"Name" wording once a non-person type is picked.
+    await pickSelectOption("Type", "STOCK_POINT");
+    // Labels relabel away from the "Code"/"Name" wording once a non-person type is picked.
     expect(screen.getByText("Stock Point Code")).toBeInTheDocument();
     expect(screen.getByText("Stock Point Name")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Emp Code")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Code")).not.toBeInTheDocument();
 
     await pickSelectOption("Location", "Warehouse 1");
     expect(screen.getByLabelText("Stock Point Code")).toHaveValue("STK-WH1");
@@ -290,7 +295,7 @@ describe("AssetUsersScreen", () => {
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith(
         "/asset-users",
-        expect.objectContaining({ emp_code: "STK-WH1", name: "Stock Point - Warehouse 1", asset_user_type: "IT_STOCK" }),
+        expect.objectContaining({ code: "STK-WH1", name: "Stock Point - Warehouse 1", asset_user_type: "STOCK_POINT" }),
       ),
     );
   });
@@ -302,7 +307,7 @@ describe("AssetUsersScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
 
     await pickSelectOption("Company", "CityKart HQ");
-    await pickSelectOption("Type", "IT_STOCK");
+    await pickSelectOption("Type", "STOCK_POINT");
     fireEvent.change(screen.getByLabelText("Stock Point Code"), { target: { value: "MY-OWN-CODE" } });
     fireEvent.change(screen.getByLabelText("Stock Point Name"), { target: { value: "My Own Name" } });
 
@@ -312,14 +317,14 @@ describe("AssetUsersScreen", () => {
   });
 
   it("shows a coverage checklist of which locations already have an IT_STOCK point for the chosen company", async () => {
-    const stockAtHo = { ...ASSET_USER, id: 5, emp_code: "STK-HO", name: "Stock Point - Head Office", asset_user_type: "IT_STOCK", location_id: 1 };
+    const stockAtHo = { ...ASSET_USER, id: 5, code: "STK-HO", name: "Stock Point - Head Office", asset_user_type: "STOCK_POINT", location_id: 1 };
     mockGets([ASSET_USER, stockAtHo], [COMPANY], [LOCATION, LOCATION_WH1]);
     renderWithClient(<AssetUsersScreen />);
     await waitFor(() => expect(screen.getByText("Ankur")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
 
     await pickSelectOption("Company", "CityKart HQ");
-    await pickSelectOption("Type", "IT_STOCK");
+    await pickSelectOption("Type", "STOCK_POINT");
 
     expect(await screen.findByText(/coverage for this company/i)).toBeInTheDocument();
     expect(screen.getByText("Head Office")).toBeInTheDocument();

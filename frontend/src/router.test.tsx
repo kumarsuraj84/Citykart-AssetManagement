@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+﻿import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
@@ -20,7 +20,7 @@ const ASSET = {
   warranty_years: null, warranty_upto: null,
   current_asset_user_id: 1, status_since: "2025-01-01", custom_fields: {},
   category_name: null, subcategory_name: null, cost_center_name: null, vendor_name: null, brand_name: null,
-  current_asset_user_name: "IT Stock-HO", current_asset_user_type: "IT_STOCK", location_name: null, department_name: null,
+  current_asset_user_name: "IT Stock-HO", current_asset_user_type: "STOCK_POINT", location_name: null, department_name: null,
 };
 
 function mockApi() {
@@ -46,8 +46,8 @@ function renderAt(url: string) {
   return router;
 }
 
-function loginAs(role: string, mustChangePassword = false) {
-  useAuthStore.getState().setAuth({ accessToken: "tok", role, companyId: 1, mustChangePassword });
+function loginAs(role: string, mustChangePassword = false, isPrimaryOwner = false) {
+  useAuthStore.getState().setAuth({ accessToken: "tok", role, companyId: isPrimaryOwner ? null : 1, isPrimaryOwner, mustChangePassword });
 }
 
 async function submitLogin() {
@@ -84,7 +84,7 @@ describe("route guards", () => {
   });
 
   it("keeps bouncing to change-password whatever page is requested", async () => {
-    loginAs("IT_TEAM", true);
+    loginAs("OPERATOR", true);
     for (const url of ["/assets", "/setup/asset-users", "/my-assets", "/"]) {
       const router = renderAt(url);
       await waitFor(() => expect(router.state.location.pathname).toBe("/change-password"));
@@ -104,7 +104,7 @@ describe("login flow", () => {
   });
 
   it("lands on the role's home page when there is no next", async () => {
-    (apiClient.post as any).mockResolvedValue({ access_token: "tok", must_change_password: false, role: "ASSET_USER", company_id: 1 });
+    (apiClient.post as any).mockResolvedValue({ access_token: "tok", must_change_password: false, role: "SELF_SERVICE", company_id: 1 });
     const router = renderAt("/login");
     await submitLogin();
     await waitFor(() => expect(router.state.location.pathname).toBe("/my-assets"));
@@ -149,8 +149,8 @@ describe("AppShell navigation", () => {
   // The Setup dropdown is gone -- Masters/Administration are always-visible
   // sidebar groups now, so their links are just ordinary nav links.
 
-  it("gives an ADMIN every screen, including Import, Reports and all Setup screens", async () => {
-    loginAs("ADMIN");
+  it("gives the Primary Owner every screen, including Import, Reports, Masters and all Setup screens", async () => {
+    loginAs("ADMIN", false, true);
     renderAt("/dashboard");
     const nav = await screen.findByRole("navigation", { name: "Main" });
     for (const name of [
@@ -163,11 +163,24 @@ describe("AppShell navigation", () => {
     expect(within(nav).getByRole("link", { name: "Code Rule" })).toHaveAttribute("href", "/setup/code-rule");
   });
 
-  it("gives IT_TEAM the masters but not asset_users/users or the code rule", async () => {
-    loginAs("IT_TEAM");
+  it("gives an ordinary ADMIN the operational screens but never Masters -- only the Primary Owner manages master data", async () => {
+    loginAs("ADMIN");
     renderAt("/dashboard");
     const nav = await screen.findByRole("navigation", { name: "Main" });
-    expect(within(nav).getByRole("link", { name: "Cost Centers" })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Add Asset" })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Import" })).toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Cost Centers" })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Custom Fields" })).not.toBeInTheDocument();
+    // Administration (Asset Users/Code Rule) is unaffected by this change.
+    expect(within(nav).getByRole("link", { name: "Asset Users" })).toBeInTheDocument();
+  });
+
+  it("gives OPERATOR the same operational screens as ADMIN but no Masters or Administration", async () => {
+    loginAs("OPERATOR");
+    renderAt("/dashboard");
+    const nav = await screen.findByRole("navigation", { name: "Main" });
+    expect(within(nav).getByRole("link", { name: "Add Asset" })).toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Cost Centers" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("link", { name: "Code Rule" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("link", { name: "Asset Users" })).not.toBeInTheDocument();
   });
@@ -183,7 +196,7 @@ describe("AppShell navigation", () => {
   });
 
   it("gives a ASSET_USER only My Assets", async () => {
-    loginAs("ASSET_USER");
+    loginAs("SELF_SERVICE");
     renderAt("/my-assets");
     const nav = await screen.findByRole("navigation", { name: "Main" });
     expect(within(nav).getAllByRole("link").map((l) => l.textContent)).toEqual(["My Assets"]);

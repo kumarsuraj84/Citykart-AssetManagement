@@ -12,9 +12,9 @@ import { ErrorState } from "@/components/shared/ErrorState";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 
 // Matches router.tsx's own WRITE_ROLES: the Purchase Orders module is
-// ADMIN/IT_TEAM only, so this card (and the data behind it -- see
+// ADMIN/OPERATOR only, so this card (and the data behind it -- see
 // dashboard_service.py's include_purchase_orders) is too.
-const PURCHASE_ORDER_ROLES = ["ADMIN", "IT_TEAM"];
+const PURCHASE_ORDER_ROLES = ["ADMIN", "OPERATOR"];
 
 interface DashboardData {
   status_counts: Record<string, number>;
