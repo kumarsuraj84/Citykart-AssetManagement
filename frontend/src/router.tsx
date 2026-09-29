@@ -16,6 +16,7 @@ import {
   ListChecks,
   PackagePlus,
   ClipboardList,
+  ScanBarcode,
   Upload,
   BarChart3,
   Building2,
@@ -55,6 +56,7 @@ import MyAssetsRoute from "./routes/my-assets";
 import AssetsIndexRoute from "./routes/assets/index";
 import NewAssetRoute from "./routes/assets/new";
 import AssetDetailRoute from "./routes/assets/$id";
+import AssetMovementRoute from "./routes/asset-movement";
 import PurchaseOrdersIndexRoute from "./routes/purchase-orders/index";
 import NewPurchaseOrderRoute from "./routes/purchase-orders/new";
 import PurchaseOrderDetailRoute from "./routes/purchase-orders/$id";
@@ -262,6 +264,7 @@ function AppShell() {
                     <SidebarMenu>
                       <SidebarNavItem to="/assets" label="Asset Register" icon={ListChecks} />
                       {canWrite && <SidebarNavItem to="/assets/new" label="Add Asset" icon={PackagePlus} />}
+                      {canWrite && <SidebarNavItem to="/asset-movement" label="Asset Movement" icon={ScanBarcode} />}
                       {canWrite && <SidebarNavItem to="/purchase-orders" label="Purchase Orders" icon={ClipboardList} />}
                       {canWrite && <SidebarNavItem to="/import" label="Import" icon={Upload} />}
                       <SidebarNavItem to="/reports" label="Reports" icon={BarChart3} />
@@ -409,6 +412,12 @@ export const assetDetailRoute = createRoute({
   },
 });
 
+export const assetMovementRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/asset-movement",
+  component: AssetMovementRoute,
+});
+
 export const purchaseOrdersIndexRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/purchase-orders",
@@ -517,6 +526,7 @@ const routeTree = rootRoute.addChildren([
     assetsIndexRoute,
     assetsNewRoute,
     assetDetailRoute,
+    assetMovementRoute,
     purchaseOrdersIndexRoute,
     purchaseOrdersNewRoute,
     purchaseOrderDetailRoute,

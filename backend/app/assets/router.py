@@ -37,6 +37,26 @@ class BulkMoveOut(BaseModel):
     failed: list[dict]
 
 
+class BulkActionIn(BaseModel):
+    """AM-20: the Asset Movement console -- scan a batch of assets by Serial
+    Number/Asset Code, pick ONE action and (for the actions that need one) ONE
+    destination Holder for the whole batch, apply to all of them at once.
+    `event_type` is any of actionRules.ts's own set (MOVED/SENT_FOR_REPAIR/
+    LOST/DISPOSED/SOLD/SCRAPPED/RECEIVED_FROM_REPAIR/FOUND) -- the backend
+    state machine (app.lifecycle.state_machine.transition) remains the real
+    authority on which is actually legal from each asset's current status,
+    exactly as it already is for the single-asset action buttons."""
+    asset_ids: list[int]
+    event_type: str
+    to_holder_id: int | None = None
+    remarks: str | None = None
+
+
+class BulkActionOut(BaseModel):
+    done: int
+    failed: list[dict]
+
+
 async def _page_label_maps(session: AsyncSession, items: list[Asset]) -> tuple[dict, dict, dict, dict, dict, dict]:
     """AM-11: page-scoped id->name lookups for the register's columns -- only
     the distinct ids actually present on this one page (at most `limit`,
@@ -140,15 +160,20 @@ async def list_assets(
     return AssetListOut(items=out_items, total=total)
 
 
-@router.post("/bulk-move", response_model=BulkMoveOut)
-async def bulk_move(
-    body: BulkMoveIn,
-    session: AsyncSession = Depends(get_session),
-    actor=Depends(require_role("ADMIN", "IT_TEAM")),
-):
-    moved = 0
-    failed = []
-    for asset_id in body.asset_ids:
+async def _bulk_apply_event(
+    asset_ids: list[int], event_type: str, to_holder_id: int | None, remarks: str | None,
+    session: AsyncSession, actor,
+) -> tuple[int, list[dict]]:
+    """Shared by /bulk-move (MOVED only, kept for backward compatibility with
+    the Asset Register's existing bulk-move) and /bulk-action (AM-20, any
+    event type). One asset's failure never aborts the rest of the batch --
+    each is its own try/except, matching the original bulk_move's own
+    reasoning: a scan/checkbox session naturally mixes a few ineligible or
+    out-of-scope assets in with many valid ones, and losing the whole batch
+    over one bad item would be far worse than reporting it and moving on."""
+    done = 0
+    failed: list[dict] = []
+    for asset_id in asset_ids:
         try:
             asset = await _get_scoped_asset(asset_id, session, actor)
         except HTTPException:
@@ -158,12 +183,35 @@ async def bulk_move(
             failed.append({"asset_id": asset_id, "reason": "not found"})
             continue
         try:
-            await apply_event(session, asset, "MOVED", to_holder_id=body.to_holder_id, actor=actor)
-            moved += 1
+            await apply_event(session, asset, event_type, to_holder_id=to_holder_id, actor=actor, remarks=remarks)
+            done += 1
         except LifecycleError as exc:
             failed.append({"asset_id": asset_id, "reason": str(exc)})
+    return done, failed
+
+
+@router.post("/bulk-move", response_model=BulkMoveOut)
+async def bulk_move(
+    body: BulkMoveIn,
+    session: AsyncSession = Depends(get_session),
+    actor=Depends(require_role("ADMIN", "IT_TEAM")),
+):
+    moved, failed = await _bulk_apply_event(body.asset_ids, "MOVED", body.to_holder_id, None, session, actor)
     await session.commit()
     return BulkMoveOut(moved=moved, failed=failed)
+
+
+@router.post("/bulk-action", response_model=BulkActionOut)
+async def bulk_action(
+    body: BulkActionIn,
+    session: AsyncSession = Depends(get_session),
+    actor=Depends(require_role("ADMIN", "IT_TEAM")),
+):
+    done, failed = await _bulk_apply_event(
+        body.asset_ids, body.event_type, body.to_holder_id, body.remarks, session, actor,
+    )
+    await session.commit()
+    return BulkActionOut(done=done, failed=failed)
 
 
 async def _get_scoped_asset(asset_id: int, session: AsyncSession, holder) -> Asset:
