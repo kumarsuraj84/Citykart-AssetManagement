@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { apiClient } from "../../lib/api-client";
@@ -5,6 +6,8 @@ import { useAuthStore } from "../../lib/auth-store";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -199,10 +202,23 @@ const allocationColumns: DataTableColumn<AllocationRow>[] = [
   },
 ];
 
+// Spec §37/§67: "All" is the always-safe default -- the caller's own
+// primary_asset_domain isn't threaded into the frontend auth session, so
+// rather than guess it this simply starts unfiltered and lets anyone
+// (ADMIN/Primary Owner included, since this is a convenience view, never
+// an authorization restriction -- spec §14) narrow it themselves.
+const DOMAIN_OPTIONS = [
+  { value: "ALL", label: "All" },
+  { value: "IT", label: "IT" },
+  { value: "NON_IT", label: "Admin / Non-IT" },
+];
+
 export function Dashboard() {
+  const [domain, setDomain] = useState("ALL");
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["dashboard"],
-    queryFn: () => apiClient.get<DashboardData>("/reports/dashboard"),
+    queryKey: ["dashboard", domain],
+    queryFn: () =>
+      apiClient.get<DashboardData>(`/reports/dashboard${domain !== "ALL" ? `?domain=${domain}` : ""}`),
   });
   const role = useAuthStore((s) => s.role);
   const canSeePurchaseOrders = role !== null && PURCHASE_ORDER_ROLES.includes(role);
@@ -218,7 +234,25 @@ export function Dashboard() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Dashboard" description="Asset counts, stock levels and alerts across your companies." />
+      <PageHeader
+        title="Dashboard"
+        description="Asset counts, stock levels and alerts across your companies."
+        actions={
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="dashboard-domain" className="text-xs text-muted-foreground">My Responsibility</Label>
+            <Select value={domain} onValueChange={setDomain}>
+              <SelectTrigger id="dashboard-domain" aria-label="My Responsibility" className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DOMAIN_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        }
+      />
 
       {isError ? (
         <ErrorState message="Couldn't load the dashboard." onRetry={() => refetch()} />
@@ -287,7 +321,7 @@ export function Dashboard() {
             <Card>
               <CardHeader>
                 <CardTitle>Stock by Location</CardTitle>
-                <CardDescription>Assets currently sitting in IT stock, by location.</CardDescription>
+                <CardDescription>Assets currently at a stock point, by location.</CardDescription>
               </CardHeader>
               <CardContent>
                 <DataTable

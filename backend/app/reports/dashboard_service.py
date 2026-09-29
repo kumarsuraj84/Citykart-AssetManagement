@@ -29,15 +29,29 @@ RECENT_ACTIVITY_LIMIT = 5
 OPEN_PURCHASE_ORDERS_LIMIT = 5
 
 
-async def dashboard_data(session: AsyncSession, allowed_company_ids: list[int] | None, include_purchase_orders: bool) -> dict:
+async def dashboard_data(
+    session: AsyncSession,
+    allowed_company_ids: list[int] | None,
+    include_purchase_orders: bool,
+    allowed_domains: tuple[str, ...] | None = None,
+    domain: str | None = None,
+) -> dict:
     """Scoped exactly like `search_assets`/`_get_scoped_asset`: `allowed_company_ids` is
     `scoped_company_ids(asset_user)` -- None means unrestricted (ADMIN sees every company's
     data combined), a list means the caller only ever sees rows for their own company/ies.
-    Soft-deleted assets (data-entry mistakes, Task 16) are excluded from every figure here,
-    same as the asset register."""
+    `allowed_domains` (spec §14/§15/§37/§67) is the caller's server-side domain scope from
+    `allowed_asset_domains()` -- None means unrestricted, a tuple restricts every figure
+    below to those domains; `domain` is the optional "My Responsibility" selector, a
+    further narrowing within whatever `allowed_domains` already permits (never a way to
+    widen past it). Soft-deleted assets (data-entry mistakes, Task 16) are excluded from
+    every figure here, same as the asset register."""
     base = select(Asset).where(Asset.deleted_at.is_(None))
     if allowed_company_ids is not None:
         base = base.where(Asset.company_id.in_(allowed_company_ids))
+    if allowed_domains is not None:
+        base = base.where(Asset.asset_domain.in_(allowed_domains))
+    if domain is not None and (allowed_domains is None or domain in allowed_domains):
+        base = base.where(Asset.asset_domain == domain)
 
     count_stmt = base.with_only_columns(Asset.status, func.count()).group_by(Asset.status)
     status_counts = {row[0]: row[1] for row in (await session.execute(count_stmt)).all()}
@@ -100,6 +114,10 @@ async def dashboard_data(session: AsyncSession, allowed_company_ids: list[int] |
     )
     if allowed_company_ids is not None:
         recent_stmt = recent_stmt.where(Asset.company_id.in_(allowed_company_ids))
+    if allowed_domains is not None:
+        recent_stmt = recent_stmt.where(Asset.asset_domain.in_(allowed_domains))
+    if domain is not None and (allowed_domains is None or domain in allowed_domains):
+        recent_stmt = recent_stmt.where(Asset.asset_domain == domain)
     recent_stmt = recent_stmt.order_by(AssetEvent.event_date.desc(), AssetEvent.id.desc()).limit(RECENT_ACTIVITY_LIMIT)
     recent_rows = (await session.execute(recent_stmt)).all()
     recent_events = [row[0] for row in recent_rows]
@@ -142,6 +160,10 @@ async def dashboard_data(session: AsyncSession, allowed_company_ids: list[int] |
         )
         if allowed_company_ids is not None:
             pending_stmt = pending_stmt.where(PendingAsset.company_id.in_(allowed_company_ids))
+        if allowed_domains is not None:
+            pending_stmt = pending_stmt.where(PendingAsset.asset_domain.in_(allowed_domains))
+        if domain is not None and (allowed_domains is None or domain in allowed_domains):
+            pending_stmt = pending_stmt.where(PendingAsset.asset_domain == domain)
         pending_count, pending_value = (await session.execute(pending_stmt)).one()
         pending_po_summary = {"count": pending_count, "value": float(pending_value)}
 

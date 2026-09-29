@@ -74,17 +74,21 @@ async def _export_custom_field_keys(session: AsyncSession, items: list[Asset]) -
 
 @router.get("/dashboard", response_model=DashboardOut)
 async def dashboard(
+    domain: str | None = Query(None),
     session: AsyncSession = Depends(get_session),
     asset_user=Depends(require_role(*READ_ROLES)),
 ):
-    """Staff only: a ASSET_USER sees only the assets they hold (spec §6), never
-    company-wide KPIs/alerts, so they get 403 here. Scoped exactly like the asset
+    """Staff only: a SELF_SERVICE asset_user sees only the assets they hold (spec §6),
+    never company-wide KPIs/alerts, so they get 403 here. Scoped exactly like the asset
     register (Task 19): `scoped_company_ids` returns None for ADMIN (unrestricted,
     sees every company combined) and the caller's own company id otherwise, so a
-    non-ADMIN never sees another company's KPI numbers."""
+    non-ADMIN never sees another company's KPI numbers. `domain` is the optional "My
+    Responsibility" selector (spec §37/§67) -- always further narrowed by the caller's
+    own `allowed_asset_domains` server-side, never trusted to widen past it."""
     allowed = await scoped_company_ids(session, asset_user)
+    domains = await allowed_asset_domains(session, asset_user)
     include_purchase_orders = asset_user.role in WRITE_ROLES
-    return await dashboard_data(session, allowed, include_purchase_orders)
+    return await dashboard_data(session, allowed, include_purchase_orders, allowed_domains=domains, domain=domain)
 
 
 @router.get("/export/assets")

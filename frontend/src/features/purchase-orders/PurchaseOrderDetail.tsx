@@ -68,6 +68,17 @@ interface Option {
   name: string;
 }
 
+interface CategoryOption extends Option {
+  // IT / NON_IT (spec §17/§19) -- drives the read-only Responsibility
+  // preview on the Add Line dialog; the backend independently re-derives
+  // it from this Category when the line is saved.
+  asset_domain: string;
+}
+
+function domainLabel(value: string): string {
+  return value === "NON_IT" ? "Admin / Non-IT" : value;
+}
+
 function selectValue(v: string): string | undefined {
   return v || undefined;
 }
@@ -104,7 +115,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     queryKey: ["purchase-order", poId, "lines"],
     queryFn: () => apiClient.get<PendingAssetRow[]>(`/purchase-orders/${poId}/lines`),
   });
-  const categoriesQ = useQuery({ queryKey: ["masters", "categories"], queryFn: () => apiClient.get<Option[]>("/masters/categories") });
+  const categoriesQ = useQuery({ queryKey: ["masters", "categories"], queryFn: () => apiClient.get<CategoryOption[]>("/masters/categories") });
   const subcategoriesQ = useQuery({
     queryKey: ["masters", "subcategories"],
     queryFn: () => apiClient.get<(Option & { category_id: number })[]>("/masters/subcategories"),
@@ -541,6 +552,16 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
               options={visibleSubcategories.map((s) => ({ value: String(s.id), label: s.name }))}
             />
           </FormField>
+          {lineForm.categoryId && (
+            <FormField htmlFor="line-responsibility" label="Responsibility" helperText="Derived from Category.">
+              <Input
+                id="line-responsibility"
+                value={domainLabel(categories.find((c) => c.id === Number(lineForm.categoryId))?.asset_domain ?? "")}
+                disabled
+                readOnly
+              />
+            </FormField>
+          )}
           <FormField htmlFor="line-cost" label="Cost" required>
             <Input id="line-cost" type="number" min={0.01} step="0.01" value={lineForm.purchaseCost} onChange={(e) => setLineForm((f) => ({ ...f, purchaseCost: e.target.value }))} />
           </FormField>

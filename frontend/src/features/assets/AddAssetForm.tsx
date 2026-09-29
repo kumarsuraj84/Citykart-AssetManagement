@@ -25,6 +25,17 @@ interface Option {
   name: string;
 }
 
+interface CategoryOption extends Option {
+  // IT / NON_IT (spec §17/§18) -- drives the read-only Responsibility
+  // preview below; the backend independently re-derives the same value
+  // from this Category at save time, never trusting this display value.
+  asset_domain: string;
+}
+
+function domainLabel(value: string): string {
+  return value === "NON_IT" ? "Admin / Non-IT" : value;
+}
+
 interface CustomFieldDef {
   id: number;
   field_key: string;
@@ -138,7 +149,7 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
   // list every row for every company; only Cost Centre is company-owned and
   // is now filtered to this asset's own company via the same opt-in
   // `company_id` query param the Initial AssetUser lookup below already uses.
-  const categoriesQ = useQuery({ queryKey: ["masters", "categories"], queryFn: () => apiClient.get<Option[]>("/masters/categories") });
+  const categoriesQ = useQuery({ queryKey: ["masters", "categories"], queryFn: () => apiClient.get<CategoryOption[]>("/masters/categories") });
   const subcategoriesQ = useQuery({
     queryKey: ["masters", "subcategories"],
     queryFn: () => apiClient.get<(Option & { category_id: number })[]>("/masters/subcategories"),
@@ -187,6 +198,12 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
   const visibleSubcategories = form.categoryId
     ? subcategories.filter((s) => s.category_id === Number(form.categoryId))
     : subcategories;
+  // Spec §21: a read-only preview only -- the backend independently
+  // re-derives asset_domain from category_id at save time (procure_assets),
+  // never trusting anything the client sends.
+  const selectedCategoryDomain = form.categoryId
+    ? categories.find((c) => c.id === Number(form.categoryId))?.asset_domain
+    : undefined;
 
   const mastersQueries = [categoriesQ, subcategoriesQ, costCentersQ, vendorsQ, brandsQ, customFieldsQ, stockAssetUsersQ];
   const mastersError = mastersQueries.some((q) => q.isError);
@@ -401,6 +418,12 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
               options={visibleSubcategories.map((c) => ({ value: String(c.id), label: c.name }))}
             />
           </FormField>
+
+          {selectedCategoryDomain && (
+            <FormField htmlFor="responsibility" label="Responsibility" helperText="Derived from Category -- not editable here.">
+              <Input id="responsibility" aria-label="Responsibility" value={domainLabel(selectedCategoryDomain)} disabled readOnly />
+            </FormField>
+          )}
 
           <FormField htmlFor="description" label="Description" required className="sm:col-span-2">
             <Input id="description" aria-label="Description" value={form.description} onChange={(e) => setField("description", e.target.value)} />
