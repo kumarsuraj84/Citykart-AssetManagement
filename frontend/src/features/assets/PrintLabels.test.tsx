@@ -58,6 +58,17 @@ describe("PrintLabels", () => {
     expect(screen.getByRole("button", { name: /print 1 label/i })).toBeEnabled();
   });
 
+  it("shows the Serial Number on the previewed label, alongside the Asset Code", async () => {
+    mockGets({ "SN-001": [LAPTOP] });
+    renderPrintLabels();
+
+    fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "SN-001" } });
+    fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
+
+    await waitFor(() => expect(screen.getByText(/Queued \(1\)/)).toBeInTheDocument());
+    expect(screen.getByText(`SN: ${LAPTOP.serial_number}`)).toBeInTheDocument();
+  });
+
   it("shows an error when nothing matches", async () => {
     mockGets({});
     renderPrintLabels();

@@ -306,6 +306,9 @@ export function PrintLabels() {
                   <LabelImage assetId={a.id} symbol={symbol} />
                 </div>
                 <p className="w-full shrink-0 truncate font-mono text-[9px] font-semibold leading-tight">{a.asset_code}</p>
+                {a.serial_number && (
+                  <p className="w-full shrink-0 truncate font-mono text-[8px] leading-tight">SN: {a.serial_number}</p>
+                )}
                 <p className="w-full shrink-0 truncate text-[8px] leading-tight text-muted-foreground">{a.description}</p>
               </div>
             ))}
