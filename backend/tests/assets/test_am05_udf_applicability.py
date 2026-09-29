@@ -14,9 +14,11 @@ async def _setup(code="AM05UDF"):
     async with SessionLocal() as session:
         a = Company(code=f"{code}A", name=f"{code} Co A")
         b = Company(code=f"{code}B", name=f"{code} Co B")
-        loc = Location(code=f"{code}-HO", name="HO")
+        session.add_all([a, b])
+        await session.flush()
+        loc = Location(company_id=a.id, code=f"{code}-HO", name="HO")
         dept = Department(name=f"IT-{code}")
-        session.add_all([a, b, loc, dept])
+        session.add_all([loc, dept])
         await session.flush()
         admin = Holder(company_id=a.id, emp_code=f"ADM-{code}", name="Admin", holder_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",

@@ -27,7 +27,7 @@ async def _setup(suffix: str):
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="SUB", name="FI Sub")
         cc = CostCenter(company_id=co.id, code="HO01", name="HO")
-        loc = Location(code=f"FI-HO-{suffix}", name="HO")
+        loc = Location(company_id=co.id, code=f"FI-HO-{suffix}", name="HO")
         dept = Department(name=f"FI-IT-{suffix}")
         vendor = Vendor(code=f"VND-FI-{suffix}", name="FI Vendor")
         session.add_all([sub, cc, loc, dept, vendor])

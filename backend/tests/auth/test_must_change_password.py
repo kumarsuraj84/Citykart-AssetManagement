@@ -10,9 +10,11 @@ from app.masters.models import Company, Department, Location
 
 async def _make_holder(session, must_change: bool, code="CKSM1"):
     co = Company(code=code, name="Must Change Co")
-    loc = Location(code=f"{code}-HO", name="HO")
+    session.add(co)
+    await session.flush()
+    loc = Location(company_id=co.id, code=f"{code}-HO", name="HO")
     dept = Department(name=f"IT-{code}")
-    session.add_all([co, loc, dept])
+    session.add_all([loc, dept])
     await session.flush()
     holder = Holder(
         company_id=co.id, emp_code=f"EMP-{code}", name="New Joiner",

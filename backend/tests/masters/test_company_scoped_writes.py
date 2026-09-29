@@ -10,9 +10,11 @@ async def _setup():
     async with SessionLocal() as session:
         a = Company(code="MSA", name="MSA Co")
         b = Company(code="MSB", name="MSB Co")
-        loc = Location(code="MS-HO", name="HO")
+        session.add_all([a, b])
+        await session.flush()
+        loc = Location(company_id=a.id, code="MS-HO", name="HO")
         dept = Department(name="IT-MS")
-        session.add_all([a, b, loc, dept])
+        session.add_all([loc, dept])
         await session.flush()
         cc_a = CostCenter(company_id=a.id, code="A01", name="A cc")
         cc_b = CostCenter(company_id=b.id, code="B01", name="B cc")

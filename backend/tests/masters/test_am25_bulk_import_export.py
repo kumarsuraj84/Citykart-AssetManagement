@@ -1,7 +1,7 @@
 """AM-25: generic bulk Import/Export, wired into every master via
 build_master_router(import_fields=...). Exercises the three distinct
 company-scope shapes (SCOPE_SELF for Companies, SCOPE_COMPANY_ID for Cost
-Centres, SCOPE_NONE for Vendors/Categories/Subcategories/Locations/
+Centres and Locations, SCOPE_NONE for Vendors/Categories/Subcategories/
 Departments) plus the FK-by-code lookup + export round-trip."""
 import io
 import openpyxl
@@ -30,7 +30,7 @@ async def _setup(suffix: str):
         co_b = Company(code=f"AM25B-{suffix}", name=f"AM25 Co B {suffix}")
         session.add_all([co, co_b])
         await session.flush()
-        loc = Location(code=f"AM25L-{suffix}", name="HO")
+        loc = Location(company_id=co.id, code=f"AM25L-{suffix}", name="HO")
         dept = Department(name=f"AM25D-{suffix}")
         session.add_all([loc, dept])
         await session.flush()
@@ -139,6 +139,43 @@ async def test_vendor_missing_required_column_is_a_template_error(client):
     resp = await _post_file(client, "/api/masters/vendors/import/preview", content, headers)
     assert resp.status_code == 422
     assert "Name" in resp.text
+
+
+# --- Locations: SCOPE_COMPANY_ID + Company Code FK lookup (Location moved
+# from SCOPE_NONE to company-scoped -- same shape as Cost Centre) ---
+
+async def test_location_import_resolves_company_code_and_scopes_it_team(client):
+    ids = await _setup("LOC1")
+    header = ["Company Code", "Code", "Name", "Address"]
+
+    admin_headers = await _login(client, ids["admin"])
+    content = _xlsx(header, [[ids["co"].code, "WH1", "Warehouse 1", "123 Main St"]])
+    resp = await _post_file(client, "/api/masters/locations/import/commit", content, admin_headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"imported": 1, "errors": []}
+
+    # IT_TEAM (scoped to ids["co"] only) importing a row for co_b is refused whole-file, 403.
+    ita_headers = await _login(client, ids["ita"])
+    other_content = _xlsx(header, [[ids["co_b"].code, "WH2", "Warehouse 2", None]])
+    resp2 = await _post_file(client, "/api/masters/locations/import/commit", other_content, ita_headers)
+    assert resp2.status_code == 403
+
+
+async def test_location_export_round_trips_company_code(client):
+    ids = await _setup("LOC2")
+    headers = await _login(client, ids["admin"])
+
+    export_resp = await client.get("/api/masters/locations/export", headers=headers)
+    assert export_resp.status_code == 200
+    wb = openpyxl.load_workbook(io.BytesIO(export_resp.content))
+    ws = wb.active
+    header = [c.value for c in next(ws.iter_rows(min_row=1, max_row=1))]
+    assert header == ["Company Code", "Code", "Name", "Address"]
+
+    content = _xlsx(header, [[ids["co"].code, "EXP-LOC", "Export Location", None]])
+    resp = await _post_file(client, "/api/masters/locations/import/commit", content, headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"imported": 1, "errors": []}
 
 
 # --- Brands: SCOPE_NONE, same shape as Categories (added for the Brand

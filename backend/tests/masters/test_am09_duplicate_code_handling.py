@@ -16,9 +16,11 @@ from app.masters.models import Company, Department, Location
 async def _seed_company_admin(company_code="DUPC"):
     async with SessionLocal() as session:
         co = Company(code=company_code, name="Dup Code Test Co")
-        loc = Location(code=f"{company_code}-HO", name="HO")
+        session.add(co)
+        await session.flush()
+        loc = Location(company_id=co.id, code=f"{company_code}-HO", name="HO")
         dept = Department(name=f"IT-{company_code}")
-        session.add_all([co, loc, dept])
+        session.add_all([loc, dept])
         await session.flush()
         holder = Holder(
             company_id=co.id, emp_code="DUPADM", name="Dup Admin", holder_type="EMPLOYEE",

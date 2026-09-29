@@ -21,18 +21,18 @@ async def _setup(n_assets=5, other_company_assets=2):
         session.add_all([*cos, cat])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
-        loc = Location(code="PG-HO", name="HO")
+        locs = [Location(company_id=c.id, code=f"PG-HO-{c.code}", name="HO") for c in cos]
         dept = Department(name="IT-PG")
         ccs = [CostCenter(company_id=c.id, code="HO01", name="HO") for c in cos]
-        session.add_all([sub, loc, dept, *ccs])
+        session.add_all([sub, *locs, dept, *ccs])
         await session.flush()
         stocks = [Holder(company_id=c.id, emp_code=f"STK-{c.code}", name="Stock", holder_type="IT_STOCK",
-                         location_id=loc.id, department_id=dept.id, role="HOLDER") for c in cos]
+                         location_id=locs[i].id, department_id=dept.id, role="HOLDER") for i, c in enumerate(cos)]
         it_a = Holder(company_id=cos[0].id, emp_code="ITA", name="IT A", holder_type="EMPLOYEE",
-                      location_id=loc.id, department_id=dept.id, role="IT_TEAM",
+                      location_id=locs[0].id, department_id=dept.id, role="IT_TEAM",
                       password_hash=hash_password("Passw0rd!"), must_change_password=False)
         admin = Holder(company_id=cos[1].id, emp_code="ADM", name="Admin", holder_type="EMPLOYEE",
-                       location_id=loc.id, department_id=dept.id, role="ADMIN",
+                       location_id=locs[1].id, department_id=dept.id, role="ADMIN",
                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
         session.add_all([*stocks, it_a, admin,
                          CodeRule(company_id=None, prefix_template="{company.code}/", suffix_template="",

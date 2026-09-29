@@ -21,7 +21,7 @@ async def _setup(code_suffix: str):
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
         cc = CostCenter(company_id=co.id, code="HO01", name="HO")
-        loc = Location(code=f"HO-{code_suffix}", name="HO")
+        loc = Location(company_id=co.id, code=f"HO-{code_suffix}", name="HO")
         dept = Department(name=f"IT-{code_suffix}")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
@@ -99,25 +99,26 @@ async def test_am12_exception_counts_are_company_scoped():
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
         cc_a = CostCenter(company_id=co_a.id, code="HO01", name="HO")
         cc_b = CostCenter(company_id=co_b.id, code="HO01", name="HO")
-        loc = Location(code="HO-EX3", name="HO")
+        loc_a = Location(company_id=co_a.id, code="HO-EX3A", name="HO")
+        loc_b = Location(company_id=co_b.id, code="HO-EX3B", name="HO")
         dept = Department(name="IT-EX3")
-        session.add_all([sub, cc_a, cc_b, loc, dept])
+        session.add_all([sub, cc_a, cc_b, loc_a, loc_b, dept])
         await session.flush()
         stock_a = Holder(company_id=co_a.id, emp_code="STK-EX3A", name="Stock A", holder_type="IT_STOCK",
-                          location_id=loc.id, department_id=dept.id, role="HOLDER")
+                          location_id=loc_a.id, department_id=dept.id, role="HOLDER")
         it_team_a = Holder(company_id=co_a.id, emp_code="ITT-EX3A", name="IT Team A", holder_type="EMPLOYEE",
-                            location_id=loc.id, department_id=dept.id, role="IT_TEAM",
+                            location_id=loc_a.id, department_id=dept.id, role="IT_TEAM",
                             password_hash=hash_password("Passw0rd!"), must_change_password=False)
         viewer_a = Holder(company_id=co_a.id, emp_code="VWR-EX3A", name="Viewer A", holder_type="EMPLOYEE",
-                           location_id=loc.id, department_id=dept.id, role="VIEWER",
+                           location_id=loc_a.id, department_id=dept.id, role="VIEWER",
                            password_hash=hash_password("Passw0rd!"), must_change_password=False)
         stock_b = Holder(company_id=co_b.id, emp_code="STK-EX3B", name="Stock B", holder_type="IT_STOCK",
-                          location_id=loc.id, department_id=dept.id, role="HOLDER")
+                          location_id=loc_b.id, department_id=dept.id, role="HOLDER")
         admin_b = Holder(company_id=co_b.id, emp_code="ADM-EX3B", name="Admin B", holder_type="EMPLOYEE",
-                          location_id=loc.id, department_id=dept.id, role="ADMIN",
+                          location_id=loc_b.id, department_id=dept.id, role="ADMIN",
                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
         admin_global = Holder(company_id=co_a.id, emp_code="SUPERADM-EX3", name="Super Admin", holder_type="EMPLOYEE",
-                               location_id=loc.id, department_id=dept.id, role="ADMIN",
+                               location_id=loc_a.id, department_id=dept.id, role="ADMIN",
                                password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/EX3_",
                          suffix_template="", start_number=1, pad_width=0)
@@ -169,22 +170,23 @@ async def test_am12_recent_activity_ordering_limit_and_scoping():
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
         cc_a = CostCenter(company_id=co_a.id, code="HO01", name="HO")
         cc_b = CostCenter(company_id=co_b.id, code="HO01", name="HO")
-        loc = Location(code="HO-RA1", name="HO")
+        loc_a = Location(company_id=co_a.id, code="HO-RA1A", name="HO")
+        loc_b = Location(company_id=co_b.id, code="HO-RA1B", name="HO")
         dept = Department(name="IT-RA1")
-        session.add_all([sub, cc_a, cc_b, loc, dept])
+        session.add_all([sub, cc_a, cc_b, loc_a, loc_b, dept])
         await session.flush()
         stock_a = Holder(company_id=co_a.id, emp_code="STK-RA1A", name="Stock A", holder_type="IT_STOCK",
-                          location_id=loc.id, department_id=dept.id, role="HOLDER")
+                          location_id=loc_a.id, department_id=dept.id, role="HOLDER")
         admin_a = Holder(company_id=co_a.id, emp_code="ADM-RA1A", name="Admin A", holder_type="EMPLOYEE",
-                          location_id=loc.id, department_id=dept.id, role="IT_TEAM",
+                          location_id=loc_a.id, department_id=dept.id, role="IT_TEAM",
                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
         emp_a = Holder(company_id=co_a.id, emp_code="EMP-RA1A", name="Employee A", holder_type="EMPLOYEE",
-                        location_id=loc.id, department_id=dept.id, role="HOLDER",
+                        location_id=loc_a.id, department_id=dept.id, role="HOLDER",
                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
         stock_b = Holder(company_id=co_b.id, emp_code="STK-RA1B", name="Stock B", holder_type="IT_STOCK",
-                          location_id=loc.id, department_id=dept.id, role="HOLDER")
+                          location_id=loc_b.id, department_id=dept.id, role="HOLDER")
         admin_b = Holder(company_id=co_b.id, emp_code="ADM-RA1B", name="Admin B", holder_type="EMPLOYEE",
-                          location_id=loc.id, department_id=dept.id, role="ADMIN",
+                          location_id=loc_b.id, department_id=dept.id, role="ADMIN",
                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/RA1_",
                          suffix_template="", start_number=1, pad_width=0)

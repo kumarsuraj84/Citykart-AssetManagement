@@ -8,9 +8,11 @@ from app.holders.models import Holder
 async def test_emp_code_unique_within_company():
     async with SessionLocal() as session:
         co = Company(code="CKS2", name="Test Co")
-        loc = Location(code="HO2", name="Head Office 2")
+        session.add(co)
+        await session.flush()
+        loc = Location(company_id=co.id, code="HO2", name="Head Office 2")
         dept = Department(name="IT-Test")
-        session.add_all([co, loc, dept])
+        session.add_all([loc, dept])
         await session.flush()
         company_id = co.id  # captured before the rollback below expires `co`
 
@@ -47,9 +49,11 @@ async def test_email_unique_within_company_case_insensitive():
     NULL must make that structurally impossible, including across case."""
     async with SessionLocal() as session:
         co = Company(code="CKS-EM1", name="Email Unique Test Co")
-        loc = Location(code="HO-EM1", name="Head Office EM1")
+        session.add(co)
+        await session.flush()
+        loc = Location(company_id=co.id, code="HO-EM1", name="Head Office EM1")
         dept = Department(name="IT-EM1")
-        session.add_all([co, loc, dept])
+        session.add_all([loc, dept])
         await session.flush()
 
         session.add(Holder(
@@ -84,10 +88,12 @@ async def test_email_can_repeat_across_different_companies():
     async with SessionLocal() as session:
         co_a = Company(code="CKS-EM2A", name="Email Cross-Company Co A")
         co_b = Company(code="CKS-EM2B", name="Email Cross-Company Co B")
-        loc_a = Location(code="HO-EM2A", name="Head Office EM2A")
-        loc_b = Location(code="HO-EM2B", name="Head Office EM2B")
+        session.add_all([co_a, co_b])
+        await session.flush()
+        loc_a = Location(company_id=co_a.id, code="HO-EM2A", name="Head Office EM2A")
+        loc_b = Location(company_id=co_b.id, code="HO-EM2B", name="Head Office EM2B")
         dept = Department(name="IT-EM2")
-        session.add_all([co_a, co_b, loc_a, loc_b, dept])
+        session.add_all([loc_a, loc_b, dept])
         await session.flush()
 
         session.add(Holder(

@@ -60,12 +60,15 @@ class CompanyOut(CompanyIn):
 
 
 class LocationIn(BaseModel):
+    company_id: int
     code: str
     name: str
     address: str | None = None
 
 
 class LocationEditIn(BaseModel):
+    """`company_id`/`code` omitted deliberately -- both immutable after
+    creation (AM-05), same rule as CostCenter's own edit schema."""
     name: str
     address: str | None = None
 

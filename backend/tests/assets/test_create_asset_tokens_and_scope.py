@@ -12,7 +12,7 @@ async def _company(session, code):
     co = Company(code=code, name=f"{code} Co")
     session.add(co)
     await session.flush()
-    loc = Location(code=f"{code}-LOC", name=f"{code} HO")
+    loc = Location(company_id=co.id, code=f"{code}-LOC", name=f"{code} HO")
     dept = Department(name=f"IT-{code}")
     cc = CostCenter(company_id=co.id, code="HO01", name="HO")
     session.add_all([loc, dept, cc])

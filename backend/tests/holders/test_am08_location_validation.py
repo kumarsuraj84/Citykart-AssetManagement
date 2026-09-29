@@ -14,9 +14,11 @@ from app.masters.models import Company, Department, Location
 async def _admin_headers(client, company_code="LOCA"):
     async with SessionLocal() as session:
         co = Company(code=company_code, name="Location Test Co")
-        loc = Location(code=f"{company_code}-HO", name="HO")
+        session.add(co)
+        await session.flush()
+        loc = Location(company_id=co.id, code=f"{company_code}-HO", name="HO")
         dept = Department(name=f"IT-{company_code}")
-        session.add_all([co, loc, dept])
+        session.add_all([loc, dept])
         await session.flush()
         holder = Holder(
             company_id=co.id, emp_code="LOCADM", name="Loc Admin", holder_type="EMPLOYEE",
@@ -82,6 +84,30 @@ async def test_nonexistent_department_id_is_rejected_with_a_controlled_422(clien
     }, headers=headers)
     assert resp.status_code == 422
     assert "department" in resp.json()["detail"].lower()
+
+
+async def test_location_from_a_different_company_is_rejected_with_a_controlled_422(client):
+    """Location became a company-scoped master -- a holder's location must
+    belong to that same holder's own company, the same rule Cost Centre
+    already enforces. Prevents e.g. accidentally pointing a Stores holder
+    at one of Ventures' locations."""
+    headers, company_id, _location_id, department_id = await _admin_headers(client)
+    async with SessionLocal() as session:
+        other_co = Company(code="LOCB", name="Other Location Co")
+        session.add(other_co)
+        await session.flush()
+        other_loc = Location(company_id=other_co.id, code="LOCB-HO", name="Other HO")
+        session.add(other_loc)
+        await session.commit()
+        other_location_id = other_loc.id
+
+    resp = await client.post("/api/holders", json={
+        "company_id": company_id, "emp_code": "WRONGLOC", "name": "Wrong Location",
+        "holder_type": "EMPLOYEE", "location_id": other_location_id, "department_id": department_id,
+        "email": None, "phone": None, "role": "HOLDER",
+    }, headers=headers)
+    assert resp.status_code == 422
+    assert "same company" in resp.json()["detail"].lower()
 
 
 async def test_valid_location_and_omitted_optional_department_succeed(client):

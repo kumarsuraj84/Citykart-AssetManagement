@@ -31,7 +31,7 @@ HOLDER_IMPORT_FIELDS = [
     FieldSpec("Emp Code", "emp_code", required=True, max_length=50),
     FieldSpec("Name", "name", required=True, max_length=200),
     FieldSpec("Type", "holder_type", required=True, kind="enum", enum_values=HOLDER_TYPES),
-    FieldSpec("Location Code", "location_id", required=True, lookup=(Location, "code")),
+    FieldSpec("Location Code", "location_id", required=True, lookup=(Location, "code"), scope_by="company_id"),
     FieldSpec("Department", "department_id", lookup=(Department, "name")),
     FieldSpec("Email", "email", max_length=200),
     FieldSpec("Phone", "phone", max_length=30),
@@ -142,6 +142,8 @@ async def _validate_holder_references(session: AsyncSession, data: dict) -> None
     location = await session.get(Location, data.get("location_id"))
     if location is None or not location.is_active:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "location not found or inactive")
+    if location.company_id != data.get("company_id"):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "location must belong to the same company as the holder")
     department_id = data.get("department_id")
     if department_id is not None:
         department = await session.get(Department, department_id)

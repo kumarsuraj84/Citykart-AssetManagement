@@ -58,14 +58,15 @@ async def _setup(code="AM06IMP"):
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
         other_cat = AssetCategory(code=f"OTHERCAT-{code}", name="Furniture")
         cc = CostCenter(company_id=co.id, code="HO01", name="HO")
-        loc = Location(code=f"HO-{code}", name="HO")
+        loc = Location(company_id=co.id, code=f"HO-{code}", name="HO")
+        loc_b = Location(company_id=co_b.id, code=f"HOB-{code}", name="HO B")
         dept = Department(name=f"IT-{code}")
-        session.add_all([sub, other_cat, cc, loc, dept])
+        session.add_all([sub, other_cat, cc, loc, loc_b, dept])
         await session.flush()
         stock = Holder(company_id=co.id, emp_code=f"STK-{code}", name="IT Stock-HO", holder_type="IT_STOCK",
                         location_id=loc.id, department_id=dept.id, role="HOLDER")
         stock_b = Holder(company_id=co_b.id, emp_code=f"STKB-{code}", name="IT Stock B", holder_type="IT_STOCK",
-                          location_id=loc.id, department_id=dept.id, role="HOLDER")
+                          location_id=loc_b.id, department_id=dept.id, role="HOLDER")
         admin = Holder(company_id=co.id, emp_code=f"ADM-{code}", name="Admin", holder_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
                         password_hash=hash_password("Passw0rd!"), must_change_password=False)

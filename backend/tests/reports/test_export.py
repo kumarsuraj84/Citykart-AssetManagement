@@ -17,7 +17,7 @@ async def _setup_company(session, suffix: str):
     await session.flush()
     sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
     cc = CostCenter(company_id=co.id, code="HO01", name="HO")
-    loc = Location(code=f"HO-{suffix}", name="HO")
+    loc = Location(company_id=co.id, code=f"HO-{suffix}", name="HO")
     dept = Department(name=f"IT-{suffix}")
     session.add_all([sub, cc, loc, dept])
     await session.flush()
@@ -79,7 +79,7 @@ async def test_export_assets_and_movements_scope_by_company():
 
     async with SessionLocal() as session:
         co_a, cat_a, sub_a, cc_a, loc, dept, stock_a, _admin_a = await _setup_company(session, "SC2A")
-        co_b, cat_b, sub_b, cc_b, _loc_b, _dept_b, stock_b, admin_b = await _setup_company(session, "SC2B")
+        co_b, cat_b, sub_b, cc_b, loc_b, _dept_b, stock_b, admin_b = await _setup_company(session, "SC2B")
         # Company A's caller is IT_TEAM (not ADMIN) so scoped_company_ids actually
         # restricts it -- ADMIN is unrestricted by design, which would prove nothing.
         it_team_a = Holder(company_id=co_a.id, emp_code="ITT-SC2A", name="IT Team A", holder_type="EMPLOYEE",
@@ -88,7 +88,7 @@ async def test_export_assets_and_movements_scope_by_company():
         emp_a = Holder(company_id=co_a.id, emp_code="EMP-SC2A", name="Employee A", holder_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="HOLDER")
         emp_b = Holder(company_id=co_b.id, emp_code="EMP-SC2B", name="Employee B", holder_type="EMPLOYEE",
-                        location_id=loc.id, department_id=dept.id, role="HOLDER")
+                        location_id=loc_b.id, department_id=dept.id, role="HOLDER")
         session.add_all([it_team_a, emp_a, emp_b])
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/CK_",
                          suffix_template="", start_number=1, pad_width=0)

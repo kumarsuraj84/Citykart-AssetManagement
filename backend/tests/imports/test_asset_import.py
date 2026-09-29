@@ -31,7 +31,7 @@ async def test_preview_and_commit_import(client):
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
         cc = CostCenter(company_id=co.id, code="HO01", name="HO")
-        loc = Location(code="HO-IMP1", name="HO")
+        loc = Location(company_id=co.id, code="HO-IMP1", name="HO")
         dept = Department(name="IT-IMP1")
         session.add_all([sub, cc, loc, dept])
         await session.flush()

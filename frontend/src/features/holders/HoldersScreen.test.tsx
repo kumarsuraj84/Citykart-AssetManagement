@@ -27,14 +27,23 @@ const HOLDER: Record<string, unknown> = {
 
 const COMPANY = { id: 1, name: "CityKart HQ" };
 const COMPANY_B = { id: 2, name: "CityKart Ventures" };
-const LOCATION = { id: 1, code: "HO", name: "Head Office" };
-const LOCATION_WH1 = { id: 2, code: "WH1", name: "Warehouse 1" };
+const LOCATION = { id: 1, company_id: 1, code: "HO", name: "Head Office" };
+const LOCATION_WH1 = { id: 2, company_id: 1, code: "WH1", name: "Warehouse 1" };
 
-function mockGets(holders: unknown[] = [HOLDER], companies: unknown[] = [COMPANY], locations: unknown[] = [LOCATION]) {
+// Locations are company-scoped -- mimic the real API's own `?company_id=`
+// filtering rather than returning every location for every company.
+function mockGets(
+  holders: unknown[] = [HOLDER],
+  companies: unknown[] = [COMPANY],
+  locations: { id: number; company_id: number }[] = [LOCATION],
+) {
   (apiClient.get as any).mockImplementation((path: string) => {
     if (path === "/holders") return Promise.resolve(holders);
     if (path === "/masters/companies") return Promise.resolve(companies);
-    if (path === "/masters/locations") return Promise.resolve(locations);
+    if (path.startsWith("/masters/locations")) {
+      const companyId = Number(new URL(path, "http://x").searchParams.get("company_id"));
+      return Promise.resolve(locations.filter((l) => l.company_id === companyId));
+    }
     if (path === "/masters/departments") return Promise.resolve([]);
     if (path === "/holders/1/company-access") return Promise.resolve({ company_ids: [] });
     return Promise.resolve([]);
@@ -292,6 +301,7 @@ describe("HoldersScreen", () => {
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/masters/companies"));
     fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
 
+    await pickSelectOption("Company", "CityKart HQ");
     await pickSelectOption("Type", "IT_STOCK");
     fireEvent.change(screen.getByLabelText("Stock Point Code"), { target: { value: "MY-OWN-CODE" } });
     fireEvent.change(screen.getByLabelText("Stock Point Name"), { target: { value: "My Own Name" } });

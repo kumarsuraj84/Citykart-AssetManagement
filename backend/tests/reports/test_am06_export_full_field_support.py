@@ -27,7 +27,7 @@ async def _setup(code="EXP06"):
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
         cc = CostCenter(company_id=co.id, code="HO01", name="HO")
-        loc = Location(code=f"HO-{code}", name="HO")
+        loc = Location(company_id=co.id, code=f"HO-{code}", name="HO")
         dept = Department(name=f"IT-{code}")
         session.add_all([sub, cc, loc, dept])
         await session.flush()

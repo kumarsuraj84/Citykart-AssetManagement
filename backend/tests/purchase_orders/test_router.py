@@ -16,7 +16,7 @@ async def _setup(suffix: str, second_company: bool = False):
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
         cc = CostCenter(company_id=co.id, code="HO", name="Head Office")
-        loc = Location(code=f"PO-RTR-{suffix}", name="HO")
+        loc = Location(company_id=co.id, code=f"PO-RTR-{suffix}", name="HO")
         dept = Department(name=f"PO-RTR-{suffix}")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
@@ -50,12 +50,15 @@ async def _setup(suffix: str, second_company: bool = False):
             session.add_all([co_b, cat_b])
             await session.flush()
             cc_b = CostCenter(company_id=co_b.id, code="HO", name="Head Office")
+            loc_b = Location(company_id=co_b.id, code=f"PO-RTR-{suffix}B", name="HO B")
+            session.add(loc_b)
+            await session.flush()
             # IT_TEAM, not ADMIN: ADMIN is deliberately unrestricted across every
             # company (scoped_company_ids returns None for it), so an isolation
             # test needs a genuinely company-scoped role to prove anything --
             # same reasoning the existing dashboard/asset isolation tests use.
             it_team_b = Holder(company_id=co_b.id, emp_code=f"ITT-{suffix}B", name="IT Team B", holder_type="EMPLOYEE",
-                                location_id=loc.id, department_id=dept.id, role="IT_TEAM",
+                                location_id=loc_b.id, department_id=dept.id, role="IT_TEAM",
                                 password_hash=hash_password("Passw0rd!"), must_change_password=False)
             session.add_all([cc_b, it_team_b])
             await session.commit()

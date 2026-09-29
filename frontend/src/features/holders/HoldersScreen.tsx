@@ -83,6 +83,7 @@ interface Company {
 
 interface Location {
   id: number;
+  company_id: number;
   code: string;
   name: string;
 }
@@ -161,9 +162,13 @@ export function HoldersScreen() {
     queryFn: () => apiClient.get<Company[]>("/masters/companies"),
   });
 
+  // Locations are company-scoped now (like Cost Centres already were) -- only
+  // fetch/show the picked company's own locations, not everyone's mixed
+  // together (the exact confusion the coverage checklist below exposed).
   const { data: locations = [] } = useQuery({
-    queryKey: ["masters", "locations"],
-    queryFn: () => apiClient.get<Location[]>("/masters/locations"),
+    queryKey: ["masters", "locations", draft.company_id],
+    queryFn: () => apiClient.get<Location[]>(`/masters/locations?company_id=${draft.company_id}`),
+    enabled: draft.company_id !== "",
   });
 
   const { data: departments = [] } = useQuery({
@@ -250,6 +255,14 @@ export function HoldersScreen() {
     const location = locations.find((l) => l.id === Number(locationId));
     if (!location) return {};
     return { emp_code: `${config.prefix}-${slug(location.code)}`, name: `${config.noun} - ${location.name}` };
+  }
+
+  // Location is company-scoped now -- a location picked under a previous
+  // Company selection may not even belong to the new one, so it's cleared
+  // (along with any auto-suggested Code/Name, which only made sense paired
+  // with that location) rather than silently left pointing at the wrong company.
+  function handleCompanyChange(value: string) {
+    setDraft((d) => ({ ...d, company_id: value, location_id: "" }));
   }
 
   function handleTypeChange(value: string) {
@@ -418,7 +431,7 @@ export function HoldersScreen() {
 
           <div className="flex flex-col gap-4">
             <FormField htmlFor="company_id" label="Company" required>
-              <Select value={draft.company_id || undefined} onValueChange={(v) => setField("company_id", v)}>
+              <Select value={draft.company_id || undefined} onValueChange={handleCompanyChange}>
                 <SelectTrigger id="company_id" aria-label="Company">
                   <SelectValue placeholder="Select…" />
                 </SelectTrigger>

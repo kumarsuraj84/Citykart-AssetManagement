@@ -84,13 +84,19 @@ async def test_create_owner_is_idempotent_and_does_not_touch_password_on_rerun()
 
 
 async def test_create_owner_reuses_existing_head_office_location_under_different_code():
-    """Location's real DB-enforced uniqueness is on `code`, but this
-    script invents its own code ("HO"). If "Head Office" already exists
-    under some other code (e.g. created earlier via the Setup UI), the
-    script must reuse that row by name, not create a duplicate "Head
-    Office" location under "HO"."""
+    """Location's real DB-enforced uniqueness is on (company_id, code), but
+    this script invents its own code ("HO"). If "Head Office" already
+    exists under some other code for this same company (e.g. created
+    earlier via the Setup UI), the script must reuse that row by name, not
+    create a duplicate "Head Office" location under "HO"."""
     async with SessionLocal() as session:
-        existing_location = Location(code="OFFICE-01", name="Head Office")
+        # Location is company-scoped now -- the pre-existing "Head Office"
+        # must belong to the same "CKS" company ensure_owner will look up
+        # (and, on a first run, create) for this to be a genuine reuse case.
+        company = Company(code="CKS", name="Citykart Stores")
+        session.add(company)
+        await session.flush()
+        existing_location = Location(company_id=company.id, code="OFFICE-01", name="Head Office")
         session.add(existing_location)
         await session.flush()
         existing_location_id = existing_location.id

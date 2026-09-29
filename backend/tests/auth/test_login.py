@@ -6,9 +6,11 @@ from app.holders.models import Holder
 
 async def _make_admin(session, company_code="CKS3", emp_code="ADMIN1", email=None):
     co = Company(code=company_code, name="Auth Test Co")
-    loc = Location(code=f"{company_code}-HO", name="HO")
+    session.add(co)
+    await session.flush()
+    loc = Location(company_id=co.id, code=f"{company_code}-HO", name="HO")
     dept = Department(name=f"IT-{company_code}")
-    session.add_all([co, loc, dept])
+    session.add_all([loc, dept])
     await session.flush()
     holder = Holder(
         company_id=co.id, emp_code=emp_code, name="Admin",

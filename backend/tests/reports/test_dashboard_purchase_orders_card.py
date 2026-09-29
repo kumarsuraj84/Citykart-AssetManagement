@@ -16,7 +16,7 @@ async def _setup(suffix: str):
         session.add_all([co, cat])
         await session.flush()
         cc = CostCenter(company_id=co.id, code="HO", name="Head Office")
-        loc = Location(code=f"DASH-PO-{suffix}", name="HO")
+        loc = Location(company_id=co.id, code=f"DASH-PO-{suffix}", name="HO")
         dept = Department(name=f"DASH-PO-{suffix}")
         session.add_all([cc, loc, dept])
         await session.flush()
@@ -130,15 +130,16 @@ async def test_open_purchase_orders_is_capped_and_company_scoped():
         await session.flush()
         cc_a = CostCenter(company_id=co_a.id, code="HO", name="Head Office")
         cc_b = CostCenter(company_id=co_b.id, code="HO", name="Head Office")
-        loc = Location(code="DASH-PO-D4", name="HO")
+        loc_a = Location(company_id=co_a.id, code="DASH-PO-D4A", name="HO")
+        loc_b = Location(company_id=co_b.id, code="DASH-PO-D4B", name="HO")
         dept = Department(name="DASH-PO-D4")
-        session.add_all([cc_a, cc_b, loc, dept])
+        session.add_all([cc_a, cc_b, loc_a, loc_b, dept])
         await session.flush()
         admin_a = Holder(company_id=co_a.id, emp_code="ADM-D4A", name="Admin A", holder_type="EMPLOYEE",
-                          location_id=loc.id, department_id=dept.id, role="IT_TEAM",
+                          location_id=loc_a.id, department_id=dept.id, role="IT_TEAM",
                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
         admin_b = Holder(company_id=co_b.id, emp_code="ADM-D4B", name="Admin B", holder_type="EMPLOYEE",
-                          location_id=loc.id, department_id=dept.id, role="IT_TEAM",
+                          location_id=loc_b.id, department_id=dept.id, role="IT_TEAM",
                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
         session.add_all([admin_a, admin_b])
         await session.commit()

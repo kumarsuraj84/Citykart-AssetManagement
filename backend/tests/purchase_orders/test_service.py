@@ -20,7 +20,7 @@ async def _setup(suffix: str):
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
         cc = CostCenter(company_id=co.id, code="HO", name="Head Office")
         cc_other = CostCenter(company_id=co2.id, code="HO", name="Head Office")
-        loc = Location(code=f"PO-SVC-{suffix}", name="HO")
+        loc = Location(company_id=co.id, code=f"PO-SVC-{suffix}", name="HO")
         dept = Department(name=f"PO-SVC-{suffix}")
         session.add_all([sub, cc, cc_other, loc, dept])
         await session.flush()

@@ -15,9 +15,11 @@ async def ensure_seed_admin(session: AsyncSession, company_code: str = "E2E", pa
         session.add(company)
         await session.flush()
 
-    location = (await session.execute(select(Location).where(Location.code == f"{company_code}-HO"))).scalars().first()
+    location = (await session.execute(
+        select(Location).where(and_(Location.company_id == company.id, Location.code == f"{company_code}-HO"))
+    )).scalars().first()
     if location is None:
-        location = Location(code=f"{company_code}-HO", name="Seed HO")
+        location = Location(company_id=company.id, code=f"{company_code}-HO", name="Seed HO")
         session.add(location)
         await session.flush()
 

@@ -15,7 +15,7 @@ async def test_dashboard_counts_and_warranty_alert(client):
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
         cc = CostCenter(company_id=co.id, code="HO01", name="HO")
-        loc = Location(code="HO-DB1", name="HO")
+        loc = Location(company_id=co.id, code="HO-DB1", name="HO")
         dept = Department(name="IT-DB1")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
@@ -62,26 +62,27 @@ async def test_dashboard_scopes_by_company_and_long_allocation_alert():
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
         cc_a = CostCenter(company_id=co_a.id, code="HO01", name="HO")
         cc_b = CostCenter(company_id=co_b.id, code="HO01", name="HO")
-        loc = Location(code="HO-DB2", name="HO")
+        loc_a = Location(company_id=co_a.id, code="HO-DB2A", name="HO")
+        loc_b = Location(company_id=co_b.id, code="HO-DB2B", name="HO")
         dept = Department(name="IT-DB2")
-        session.add_all([sub, cc_a, cc_b, loc, dept])
+        session.add_all([sub, cc_a, cc_b, loc_a, loc_b, dept])
         await session.flush()
 
         stock_a = Holder(company_id=co_a.id, emp_code="ITSTOCK-DB2A", name="IT Stock A", holder_type="IT_STOCK",
-                          location_id=loc.id, department_id=dept.id, role="HOLDER")
+                          location_id=loc_a.id, department_id=dept.id, role="HOLDER")
         # role=IT_TEAM (not ADMIN) so this holder is genuinely scoped to its own company --
         # scoped_company_ids(holder) returns None (unrestricted, sees everything) for
         # ADMIN by design, so proving per-company scoping requires a non-ADMIN caller.
         admin_a = Holder(company_id=co_a.id, emp_code="ITA-DB2A", name="IT Team A", holder_type="EMPLOYEE",
-                          location_id=loc.id, department_id=dept.id, role="IT_TEAM",
+                          location_id=loc_a.id, department_id=dept.id, role="IT_TEAM",
                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
         holder_a = Holder(company_id=co_a.id, emp_code="EMP-DB2A", name="Employee A", holder_type="EMPLOYEE",
-                           location_id=loc.id, department_id=dept.id, role="HOLDER",
+                           location_id=loc_a.id, department_id=dept.id, role="HOLDER",
                            password_hash=hash_password("Passw0rd!"), must_change_password=False)
         stock_b = Holder(company_id=co_b.id, emp_code="ITSTOCK-DB2B", name="IT Stock B", holder_type="IT_STOCK",
-                          location_id=loc.id, department_id=dept.id, role="HOLDER")
+                          location_id=loc_b.id, department_id=dept.id, role="HOLDER")
         admin_b = Holder(company_id=co_b.id, emp_code="ITA-DB2B", name="IT Admin B", holder_type="EMPLOYEE",
-                          location_id=loc.id, department_id=dept.id, role="ADMIN",
+                          location_id=loc_b.id, department_id=dept.id, role="ADMIN",
                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/CK_",
                          suffix_template="", start_number=1, pad_width=0)

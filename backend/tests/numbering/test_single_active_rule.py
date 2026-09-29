@@ -16,9 +16,11 @@ from app.numbering.service import get_active_rule
 async def _admin(client, code):
     async with SessionLocal() as session:
         co = Company(code=code, name=f"{code} Co")
-        loc = Location(code=f"{code}-HO", name="HO")
+        session.add(co)
+        await session.flush()
+        loc = Location(company_id=co.id, code=f"{code}-HO", name="HO")
         dept = Department(name=f"IT-{code}")
-        session.add_all([co, loc, dept])
+        session.add_all([loc, dept])
         await session.flush()
         session.add(Holder(company_id=co.id, emp_code="RADMIN", name="Rule Admin", holder_type="EMPLOYEE",
                            location_id=loc.id, department_id=dept.id, role="ADMIN",

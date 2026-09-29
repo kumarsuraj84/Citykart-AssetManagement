@@ -7,9 +7,11 @@ from app.holders.models import Holder
 async def _admin_headers(client, company_code="CKM7"):
     async with SessionLocal() as session:
         co = Company(code=company_code, name="Masters Test Co")
-        loc = Location(code=f"{company_code}-HO", name="HO")
+        session.add(co)
+        await session.flush()
+        loc = Location(company_id=co.id, code=f"{company_code}-HO", name="HO")
         dept = Department(name=f"IT-{company_code}")
-        session.add_all([co, loc, dept])
+        session.add_all([loc, dept])
         await session.flush()
         holder = Holder(
             company_id=co.id, emp_code="MADMIN", name="Master Admin",

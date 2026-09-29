@@ -16,7 +16,7 @@ async def _setup(code="AM04"):
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
         cc = CostCenter(company_id=co.id, code="HO01", name="HO")
-        loc = Location(code=f"{code}-HO", name="HO")
+        loc = Location(company_id=co.id, code=f"{code}-HO", name="HO")
         dept = Department(name=f"IT-{code}")
         vendor = Vendor(code=f"VND-{code}", name="Test Vendor")
         brand1 = Brand(code=f"BR1-{code}", name="Dell")

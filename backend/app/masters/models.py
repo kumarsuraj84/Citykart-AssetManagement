@@ -13,8 +13,15 @@ class Company(Base, AuditMixin, SoftDeleteMixin):
 
 class Location(Base, AuditMixin, SoftDeleteMixin):
     __tablename__ = "location"
+    __table_args__ = (UniqueConstraint("company_id", "code"),)
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    code: Mapped[str] = mapped_column(String(20), unique=True)
+    # Company-scoped, matching CostCenter's own shape -- a physical location
+    # (HO, a warehouse, ...) belongs to exactly one company; two companies
+    # sharing one office are two distinct Location rows (see the product
+    # discussion that prompted this -- coverage checklists and the Location
+    # picker were showing every company's locations mixed together).
+    company_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("company.id"))
+    code: Mapped[str] = mapped_column(String(20))
     name: Mapped[str] = mapped_column(String(200))
     address: Mapped[str | None] = mapped_column(String(500))
 

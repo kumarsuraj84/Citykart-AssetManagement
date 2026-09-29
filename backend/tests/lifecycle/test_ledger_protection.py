@@ -16,7 +16,7 @@ async def test_asset_event_cannot_be_updated_or_deleted():
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
         cc = CostCenter(company_id=co.id, code="HO01", name="HO")
-        loc = Location(code="HO-LG1", name="HO")
+        loc = Location(company_id=co.id, code="HO-LG1", name="HO")
         dept = Department(name="IT-LG1")
         session.add_all([sub, cc, loc, dept])
         await session.flush()

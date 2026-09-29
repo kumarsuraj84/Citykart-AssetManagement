@@ -34,7 +34,7 @@ async def test_scoped_company_ids_honors_holder_company_access_grants(client):
         co_b = Company(code="DEPS-B", name="Deps Co B")
         session.add_all([co_a, co_b])
         await session.flush()
-        loc = Location(code="DEPS-LOC", name="Deps HO")
+        loc = Location(company_id=co_a.id, code="DEPS-LOC", name="Deps HO")
         dept = Department(name="DEPS-DEPT")
         session.add_all([loc, dept])
         await session.flush()

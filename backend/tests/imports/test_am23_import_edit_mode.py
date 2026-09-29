@@ -52,7 +52,7 @@ async def _setup(suffix: str):
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
         cc = CostCenter(company_id=co.id, code="HO", name="Head Office")
-        loc = Location(code=f"AM23E-{suffix}", name="HO")
+        loc = Location(company_id=co.id, code=f"AM23E-{suffix}", name="HO")
         dept = Department(name=f"AM23E-{suffix}")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
@@ -243,7 +243,7 @@ async def test_it_team_cannot_edit_an_asset_outside_their_company_scope(client):
     # A second asset that belongs to a DIFFERENT company -- refused, whole file, 403.
     async with SessionLocal() as session:
         co_b = await session.get(Company, ids["co_b"].id)
-        loc = Location(code="SCOPE1-B", name="B HO")
+        loc = Location(company_id=co_b.id, code="SCOPE1-B", name="B HO")
         dept = Department(name="SCOPE1-B")
         session.add_all([loc, dept])
         await session.flush()

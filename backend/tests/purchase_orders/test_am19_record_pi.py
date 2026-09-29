@@ -17,7 +17,7 @@ async def _setup(suffix: str):
         session.add_all([company, cat])
         await session.flush()
         cc = CostCenter(company_id=company.id, code="HO", name="Head Office")
-        loc = Location(code=f"AM19-{suffix}", name="HO")
+        loc = Location(company_id=company.id, code=f"AM19-{suffix}", name="HO")
         dept = Department(name=f"AM19-{suffix}")
         session.add_all([cc, loc, dept])
         await session.flush()

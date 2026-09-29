@@ -7,9 +7,11 @@ from app.holders.models import Holder
 async def test_create_code_rule(client):
     async with SessionLocal() as session:
         co = Company(code="CKS7", name="Numbering Test Co")
-        loc = Location(code="CKS7-HO", name="HO")
+        session.add(co)
+        await session.flush()
+        loc = Location(company_id=co.id, code="CKS7-HO", name="HO")
         dept = Department(name="IT-CKS7")
-        session.add_all([co, loc, dept])
+        session.add_all([loc, dept])
         await session.flush()
         holder = Holder(company_id=co.id, emp_code="NADMIN", name="N Admin", holder_type="EMPLOYEE",
                          location_id=loc.id, department_id=dept.id, role="ADMIN",
@@ -31,9 +33,11 @@ async def test_create_code_rule(client):
 async def test_write_access_is_admin_only(client):
     async with SessionLocal() as session:
         co = Company(code="CKS8", name="Numbering Non-Admin Co")
-        loc = Location(code="CKS8-HO", name="HO")
+        session.add(co)
+        await session.flush()
+        loc = Location(company_id=co.id, code="CKS8-HO", name="HO")
         dept = Department(name="IT-CKS8")
-        session.add_all([co, loc, dept])
+        session.add_all([loc, dept])
         await session.flush()
         holder = Holder(company_id=co.id, emp_code="NVIEWER", name="N Viewer", holder_type="EMPLOYEE",
                          location_id=loc.id, department_id=dept.id, role="VIEWER",

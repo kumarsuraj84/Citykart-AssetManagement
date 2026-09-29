@@ -234,9 +234,10 @@ router.include_router(build_master_router(
     ],
 ))
 router.include_router(build_master_router(
-    "/locations", models.Location, schemas.LocationIn, schemas.LocationOut,
+    "/locations", models.Location, schemas.LocationIn, schemas.LocationOut, SCOPE_COMPANY_ID,
     schema_edit=schemas.LocationEditIn,
     import_fields=[
+        FieldSpec("Company Code", "company_id", required=True, lookup=(models.Company, "code")),
         FieldSpec("Code", "code", required=True, max_length=20),
         FieldSpec("Name", "name", required=True, max_length=200),
         FieldSpec("Address", "address", max_length=500),

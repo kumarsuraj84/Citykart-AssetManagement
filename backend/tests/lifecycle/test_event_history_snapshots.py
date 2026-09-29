@@ -25,7 +25,7 @@ async def _setup():
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
         cc = CostCenter(company_id=co.id, code="HO01", name="HO")
-        loc = Location(code="SNAP-HO", name="HO")
+        loc = Location(company_id=co.id, code="SNAP-HO", name="HO")
         dept = Department(name="IT-SNAP")
         vendor = Vendor(code="VND-SNAP", name="Snapshot Vendor")
         session.add_all([sub, cc, loc, dept, vendor])

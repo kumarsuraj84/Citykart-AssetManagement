@@ -14,7 +14,7 @@ async def _base_fixtures(session, suffix="AM1"):
     await session.flush()
     sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
     cc = CostCenter(company_id=co.id, code="HO01", name="Head Office")
-    loc = Location(code=f"HO-{suffix}", name="HO")
+    loc = Location(company_id=co.id, code=f"HO-{suffix}", name="HO")
     dept = Department(name=f"IT-Dept-{suffix}")
     session.add_all([sub, cc, loc, dept])
     await session.flush()

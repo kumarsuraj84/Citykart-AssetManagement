@@ -14,9 +14,12 @@ async def _setup(code="AM05CF"):
     async with SessionLocal() as session:
         a = Company(code=f"{code}A", name=f"{code} Co A")
         b = Company(code=f"{code}B", name=f"{code} Co B")
-        loc = Location(code=f"{code}-HO", name="HO")
+        session.add_all([a, b])
+        await session.flush()
+        loc = Location(company_id=a.id, code=f"{code}-HO", name="HO")
+        loc_b = Location(company_id=b.id, code=f"{code}-HOB", name="HO B")
         dept = Department(name=f"IT-{code}")
-        session.add_all([a, b, loc, dept])
+        session.add_all([loc, loc_b, dept])
         await session.flush()
         admin = Holder(company_id=a.id, emp_code=f"ADM-{code}", name="Admin", holder_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
@@ -25,7 +28,7 @@ async def _setup(code="AM05CF"):
                        location_id=loc.id, department_id=dept.id, role="IT_TEAM",
                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
         it_b = Holder(company_id=b.id, emp_code=f"ITB-{code}", name="IT B", holder_type="EMPLOYEE",
-                       location_id=loc.id, department_id=dept.id, role="IT_TEAM",
+                       location_id=loc_b.id, department_id=dept.id, role="IT_TEAM",
                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
         viewer_a = Holder(company_id=a.id, emp_code=f"VWA-{code}", name="Viewer A", holder_type="EMPLOYEE",
                            location_id=loc.id, department_id=dept.id, role="VIEWER",

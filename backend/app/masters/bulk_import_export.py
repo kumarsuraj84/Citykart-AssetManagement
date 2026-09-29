@@ -38,6 +38,14 @@ class FieldSpec:
       unchanged.
     `kind`: "text" | "int" | "float" | "bool" | "enum" -- ignored when
       `lookup` is set (a lookup always resolves to an int id).
+    `scope_by`: when set, the lookup is additionally filtered to
+      `{scope_by: data[scope_by]}` -- for a lookup target whose own code is
+      only unique *within* another already-resolved field (e.g. Location's
+      code is unique per company, not globally, so "Location Code" must be
+      resolved scoped to this row's own already-looked-up company_id).
+      `scope_by` must name a field that an earlier FieldSpec in the same
+      list already resolved (column order in the list matters here, unlike
+      everywhere else in this module).
     """
     header: str
     field: str
@@ -46,6 +54,7 @@ class FieldSpec:
     kind: str = "text"
     enum_values: tuple[str, ...] = ()
     max_length: int | None = None
+    scope_by: str | None = None
 
 
 class ImportTemplateError(ValueError):
@@ -173,7 +182,10 @@ async def _validate_rows(
                 continue
             if f.lookup is not None:
                 lookup_model, lookup_attr = f.lookup
-                obj = await _lookup(session, lookup_model, **{lookup_attr: raw})
+                filters = {lookup_attr: raw}
+                if f.scope_by is not None:
+                    filters[f.scope_by] = data.get(f.scope_by)
+                obj = await _lookup(session, lookup_model, **filters)
                 if obj is None:
                     errors.append({"row": row_idx, "field": f.header, "message": f"unknown {f.header} '{raw}'"})
                     row_error = True

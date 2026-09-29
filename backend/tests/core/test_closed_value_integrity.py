@@ -42,9 +42,11 @@ from datetime import date
 async def _company_with_admin(code):
     async with SessionLocal() as session:
         co = Company(code=code, name=f"{code} Co")
-        loc = Location(code=f"{code}-HO", name="HO")
+        session.add(co)
+        await session.flush()
+        loc = Location(company_id=co.id, code=f"{code}-HO", name="HO")
         dept = Department(name=f"IT-{code}")
-        session.add_all([co, loc, dept])
+        session.add_all([loc, dept])
         await session.flush()
         admin = Holder(
             company_id=co.id, emp_code=f"ADM-{code}", name="Admin",
@@ -130,7 +132,7 @@ class TestEventTypeIsProtectedIndirectly:
             await session.flush()
             sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
             cc = CostCenter(company_id=co.id, code="HO01", name="HO")
-            loc = Location(code="HO-CVI4", name="HO")
+            loc = Location(company_id=co.id, code="HO-CVI4", name="HO")
             dept = Department(name="IT-CVI4")
             session.add_all([sub, cc, loc, dept])
             await session.flush()

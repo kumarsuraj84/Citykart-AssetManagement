@@ -15,9 +15,11 @@ async def _setup():
     async with SessionLocal() as session:
         a = Company(code="CCA", name="CC Co A")
         b = Company(code="CCB", name="CC Co B")
-        loc = Location(code="CC-HO", name="HO")
+        session.add_all([a, b])
+        await session.flush()
+        loc = Location(company_id=a.id, code="CC-HO", name="HO")
         dept = Department(name="IT-CC")
-        session.add_all([a, b, loc, dept])
+        session.add_all([loc, dept])
         await session.flush()
         cc_a = CostCenter(company_id=a.id, code="A01", name="A cc")
         cc_b = CostCenter(company_id=b.id, code="B01", name="B cc")
@@ -42,7 +44,7 @@ async def _add_it_team(company_id, emp_code):
     company_id column) so this helper doesn't depend on _setup()'s own
     loc/dept rows, which it doesn't return."""
     async with SessionLocal() as session:
-        loc = Location(code=f"L-{emp_code}", name="HO")
+        loc = Location(company_id=company_id, code=f"L-{emp_code}", name="HO")
         dept = Department(name=f"D-{emp_code}")
         session.add_all([loc, dept])
         await session.flush()

@@ -28,7 +28,7 @@ async def _setup(suffix: str):
         co = Company(code=f"AM25H-{suffix}", name=f"AM25 Holders Co {suffix}")
         session.add(co)
         await session.flush()
-        loc = Location(code=f"AM25HL-{suffix}", name="HO")
+        loc = Location(company_id=co.id, code=f"AM25HL-{suffix}", name="HO")
         dept = Department(name=f"AM25HD-{suffix}")
         session.add_all([loc, dept])
         await session.flush()
