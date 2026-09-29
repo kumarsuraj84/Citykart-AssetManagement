@@ -98,6 +98,7 @@ async def export_assets(
     asset_user_id: int | None = Query(None),
     company_id: int | None = Query(None),
     q: str | None = Query(None),
+    domain: str | None = Query(None),
     session: AsyncSession = Depends(get_session),
     asset_user=Depends(get_current_asset_user),
 ):
@@ -106,7 +107,10 @@ async def export_assets(
     their own id (so they only ever export the assets they currently hold, regardless
     of any `asset_user_id`/`company_id` they pass in) and every other role is scoped by
     `scoped_company_ids` (None = ADMIN, unrestricted; otherwise just their own
-    company) -- a non-ADMIN caller can never export another company's rows."""
+    company) -- a non-ADMIN caller can never export another company's rows. `domain`
+    is the optional Responsibility filter (spec §38), same as the register's own --
+    always further bounded server-side by allowed_asset_domains, never a way to widen
+    past it (see search_assets)."""
     if is_self_service(asset_user):
         asset_user_id = asset_user.id
         allowed = None
@@ -115,7 +119,7 @@ async def export_assets(
     domains = await allowed_asset_domains(session, asset_user)
     items, total = await search_assets(
         session, allowed, status, category_id, asset_user_id, company_id, q, limit=EXPORT_MAX_ROWS, offset=0,
-        allowed_domains=domains,
+        allowed_domains=domains, domain=domain,
     )
     if total > EXPORT_MAX_ROWS:
         # Refuse loudly rather than hand back a silently truncated register.

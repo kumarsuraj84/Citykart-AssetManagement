@@ -29,6 +29,14 @@ function asOptionArray(data: unknown): Option[] {
 const ASSET_STATUSES = ["IN_STOCK", "ALLOTTED", "INSTALLED", "UNDER_REPAIR", "DISPOSED", "SOLD", "SCRAPPED", "LOST"];
 const ALL = "ALL";
 
+// Same Responsibility values/labels as AssetRegister's own filter (spec §38) --
+// always further bounded server-side by the caller's allowed_asset_domains,
+// never a way to widen past it (see search_assets).
+const DOMAINS = [
+  { value: "IT", label: "IT" },
+  { value: "NON_IT", label: "Admin / Non-IT" },
+];
+
 function toDateInput(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
@@ -51,6 +59,7 @@ function downloadXlsx(path: string, filename: string): Promise<void> {
 export function ReportsScreen() {
   const [status, setStatus] = useState("");
   const [categoryId, setCategoryId] = useState("");
+  const [domain, setDomain] = useState("");
   const [movementsFrom, setMovementsFrom] = useState(defaultFromDate());
   const [movementsTo, setMovementsTo] = useState(toDateInput(new Date()));
   const [changesFrom, setChangesFrom] = useState(defaultFromDate());
@@ -76,6 +85,7 @@ export function ReportsScreen() {
       const params = new URLSearchParams({
         ...(status ? { status } : {}),
         ...(categoryId ? { category_id: categoryId } : {}),
+        ...(domain ? { domain } : {}),
       }).toString();
       await downloadXlsx(`/reports/export/assets${params ? `?${params}` : ""}`, "asset_register.xlsx");
     } catch (err) {
@@ -151,6 +161,21 @@ export function ReportsScreen() {
                   {categories.map((c) => (
                     <SelectItem key={c.id} value={String(c.id)}>
                       {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField htmlFor="assets-domain" label="Responsibility" className="w-40">
+              <Select value={domain || ALL} onValueChange={(v) => setDomain(v === ALL ? "" : v)}>
+                <SelectTrigger id="assets-domain" aria-label="Responsibility">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All</SelectItem>
+                  {DOMAINS.map((d) => (
+                    <SelectItem key={d.value} value={d.value}>
+                      {d.label}
                     </SelectItem>
                   ))}
                 </SelectContent>

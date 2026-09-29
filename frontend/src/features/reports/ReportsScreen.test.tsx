@@ -93,6 +93,24 @@ describe("ReportsScreen", () => {
     ));
   });
 
+  it("downloads the asset register filtered by Responsibility (spec §38)", async () => {
+    const blob = new Blob(["xlsx-bytes"]);
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, blob: () => Promise.resolve(blob) });
+    window.fetch = fetchMock as any;
+
+    renderWithClient();
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Responsibility" }));
+    fireEvent.click(await screen.findByRole("option", { name: "IT" }));
+
+    fireEvent.click(screen.getByRole("button", { name: /download asset register/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/reports/export/assets?domain=IT"),
+      expect.anything(),
+    ));
+  });
+
   it("downloads the field change audit using the chosen from/to dates", async () => {
     const blob = new Blob(["xlsx-bytes"]);
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, blob: () => Promise.resolve(blob) });

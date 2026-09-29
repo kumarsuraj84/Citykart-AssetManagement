@@ -5,6 +5,9 @@ configured allowed_asset_domains. This is the server-side enforcement of
 that rule on the actual asset read paths (list + detail), not just the
 deps.py helper in isolation."""
 from datetime import date
+from io import BytesIO
+
+import openpyxl
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.assets.models import Asset
@@ -115,3 +118,38 @@ async def test_domain_filter_query_param_is_clamped_to_the_callers_own_scope(cli
     ids = {item["id"] for item in resp.json()["items"]}
     assert non_it_asset_id not in ids
     assert it_asset_id in ids
+
+
+def _asset_codes_in_workbook(xlsx_bytes: bytes) -> set[str]:
+    wb = openpyxl.load_workbook(BytesIO(xlsx_bytes))
+    ws = wb.active
+    return {row[0] for row in ws.iter_rows(min_row=2, values_only=True)}
+
+
+async def test_export_assets_domain_filter_narrows_the_workbook_rows(client):
+    """spec §38: the Reports screen's Asset Register export gets the same
+    Responsibility filter as the in-app register (GET /api/assets)."""
+    suffix = "S5"
+    _co_id, it_asset_id, non_it_asset_id = await _setup(suffix)
+    headers = await _login(client, f"ADM-{suffix}")
+
+    resp = await client.get("/api/reports/export/assets?domain=IT", headers=headers)
+    assert resp.status_code == 200
+    codes = _asset_codes_in_workbook(resp.content)
+    assert f"FA/HO01/IT/CAT/CK_IT_{suffix}" in codes
+    assert f"FA/HO01/NIT/CAT/CK_NIT_{suffix}" not in codes
+
+
+async def test_export_assets_domain_filter_is_clamped_to_the_callers_own_scope(client):
+    """Same clamp as the in-app register's own domain filter -- an OPERATOR
+    restricted to IT can't widen the export past their own scope by passing
+    ?domain=NON_IT."""
+    suffix = "S6"
+    _co_id, it_asset_id, non_it_asset_id = await _setup(suffix)
+    headers = await _login(client, f"ITOP-{suffix}")
+
+    resp = await client.get("/api/reports/export/assets?domain=NON_IT", headers=headers)
+    assert resp.status_code == 200
+    codes = _asset_codes_in_workbook(resp.content)
+    assert f"FA/HO01/IT/CAT/CK_IT_{suffix}" in codes
+    assert f"FA/HO01/NIT/CAT/CK_NIT_{suffix}" not in codes
