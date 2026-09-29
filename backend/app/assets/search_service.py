@@ -12,7 +12,6 @@ SORTABLE_COLUMNS: dict[str, object] = {
     "asset_code": Asset.asset_code,
     "legacy_asset_code": Asset.legacy_asset_code,
     "description": Asset.description,
-    "brand": Asset.brand,
     "model": Asset.model,
     "serial_number": Asset.serial_number,
     "barcode": Asset.barcode,
@@ -71,8 +70,12 @@ async def search_assets(
             Asset.description.ilike(pattern),
             # AM-21: rounds the register's own search box out to every
             # remaining free-text identifier column an operator might scan
-            # or type -- barcode/brand/model were the ones still missing.
-            Asset.barcode.ilike(pattern), Asset.brand.ilike(pattern), Asset.model.ilike(pattern),
+            # or type -- barcode/model were the ones still missing. Brand
+            # was here too until it became a master FK (brand_id) --
+            # dropped from free-text search for the same reason
+            # category_id/vendor_id never were, matching this file's own
+            # SORTABLE_COLUMNS comment above.
+            Asset.barcode.ilike(pattern), Asset.model.ilike(pattern),
         ))
 
     # COUNT(*) in the database over the same filtered query, rather than

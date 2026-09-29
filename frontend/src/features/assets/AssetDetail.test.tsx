@@ -23,7 +23,7 @@ function renderWithClient(ui: React.ReactElement) {
 const FULL_ASSET = {
   id: 1, asset_code: "FA/HO01/IT/LAP/CK_1", legacy_asset_code: "OLD-001", description: "Laptop",
   status: "IN_STOCK", company_id: 1, cost_center_id: 3, category_id: 1, subcategory_id: 2,
-  brand: "Dell", model: "Latitude 5440", serial_number: "SN-ABC123", barcode: "BC-XYZ789",
+  brand_id: 9, model: "Latitude 5440", serial_number: "SN-ABC123", barcode: "BC-XYZ789",
   vendor_id: 7, po_number: "PO-1001", po_date: "2025-05-20",
   invoice_number: "INV-2001", invoice_date: "2025-05-25", invoice_amount: 70800,
   pi_number: "PI-3001", pi_date: "2025-05-22",
@@ -32,7 +32,7 @@ const FULL_ASSET = {
   current_holder_id: 5, status_since: "2025-06-01",
   custom_fields: { asset_tag: "TAG-1", retired_field: "kept for history" },
   category_name: "IT Equipment", subcategory_name: "Laptop", cost_center_name: "Head Office",
-  vendor_name: "Acme Traders", current_holder_name: "IT Stock-HO", current_holder_type: "IT_STOCK",
+  vendor_name: "Acme Traders", brand_name: "Dell", current_holder_name: "IT Stock-HO", current_holder_type: "IT_STOCK",
   location_name: "Head Office", department_name: "IT",
 };
 
@@ -57,6 +57,7 @@ function mockGets(overrides: Record<string, unknown> = {}) {
     if (path === "/assets/1/changes") return Promise.resolve(overrides.changes ?? []);
     if (path.startsWith("/holders")) return Promise.resolve(overrides.holders ?? [{ id: 5, name: "Ankur" }]);
     if (path.startsWith("/masters/vendors")) return Promise.resolve(overrides.vendors ?? [{ id: 7, name: "Acme Traders" }]);
+    if (path.startsWith("/masters/brands")) return Promise.resolve(overrides.brands ?? [{ id: 9, name: "Dell" }, { id: 10, name: "HP" }]);
     if (path.startsWith("/masters/custom-fields")) return Promise.resolve(overrides.customFieldDefs ?? CUSTOM_FIELD_DEFS);
     if (path.startsWith("/masters/categories")) return Promise.resolve(overrides.categories ?? CATEGORIES);
     if (path.startsWith("/masters/subcategories")) return Promise.resolve(overrides.subcategories ?? SUBCATEGORIES);
@@ -206,16 +207,16 @@ describe("AssetDetail (Asset 360)", () => {
 
   it("displays the field-change audit under Changes, distinct from lifecycle History", async () => {
     mockGets({
-      changes: [{ id: 1, field_name: "brand", old_value: "Dell", new_value: "HP", actor_id: 9, actor_name: "Admin", request_id: "r1", created_at: "2025-07-01T00:00:00Z" }],
+      changes: [{ id: 1, field_name: "brand_id", old_value: "Dell (#9)", new_value: "HP (#10)", actor_id: 9, actor_name: "Admin", request_id: "r1", created_at: "2025-07-01T00:00:00Z" }],
     });
     renderWithClient(<AssetDetail assetId={1} />);
     await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
 
     clickTab("Changes");
     const panel = await screen.findByRole("tabpanel", { name: "Changes" });
-    expect(within(panel).getByText("brand")).toBeInTheDocument();
-    expect(within(panel).getByText("Dell")).toBeInTheDocument();
-    expect(within(panel).getByText("HP")).toBeInTheDocument();
+    expect(within(panel).getByText("brand_id")).toBeInTheDocument();
+    expect(within(panel).getByText("Dell (#9)")).toBeInTheDocument();
+    expect(within(panel).getByText("HP (#10)")).toBeInTheDocument();
     expect(within(panel).getByText("Admin")).toBeInTheDocument();
   });
 
@@ -279,13 +280,13 @@ describe("AssetDetail (Asset 360)", () => {
 
   it("saves an edit through PUT /api/assets/{id} and refreshes the displayed data", async () => {
     mockGets();
-    (apiClient.put as any).mockResolvedValue({ ...FULL_ASSET, brand: "HP" });
+    (apiClient.put as any).mockResolvedValue({ ...FULL_ASSET, brand_id: 10, brand_name: "HP" });
     renderWithClient(<AssetDetail assetId={1} />);
     await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
 
     fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
-    const brandInput = await screen.findByLabelText(/^brand$/i);
-    fireEvent.change(brandInput, { target: { value: "HP" } });
+    await screen.findByLabelText(/^brand$/i);
+    await pickSelectOption(/^brand$/i, "HP");
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(apiClient.put).toHaveBeenCalledWith(
@@ -506,7 +507,7 @@ describe("AssetDetail -- AM-07 asset correction", () => {
           reason: "Wrong category selected initially",
         },
         {
-          id: 2, field_name: "brand", old_value: "Dell", new_value: "HP",
+          id: 2, field_name: "brand_id", old_value: "Dell (#9)", new_value: "HP (#10)",
           actor_id: 9, actor_name: "Admin", request_id: "r2", created_at: "2025-07-02T00:00:00Z",
           reason: null,
         },

@@ -49,7 +49,7 @@ interface FormState {
   costCenterId: string;
   description: string;
   legacyAssetCode: string;
-  brand: string;
+  brandId: string;
   model: string;
   serialNumber: string;
   noSerialNumber: boolean;
@@ -73,7 +73,7 @@ const emptyForm: FormState = {
   costCenterId: "",
   description: "",
   legacyAssetCode: "",
-  brand: "",
+  brandId: "",
   model: "",
   serialNumber: "",
   noSerialNumber: false,
@@ -135,6 +135,7 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
     queryFn: () => apiClient.get<Option[]>(`/masters/cost-centers?company_id=${selectedCompanyId}`),
   });
   const vendorsQ = useQuery({ queryKey: ["masters", "vendors"], queryFn: () => apiClient.get<Option[]>("/masters/vendors") });
+  const brandsQ = useQuery({ queryKey: ["masters", "brands"], queryFn: () => apiClient.get<Option[]>("/masters/brands") });
   const customFieldsQ = useQuery({
     queryKey: ["masters", "custom-fields"],
     queryFn: () => apiClient.get<CustomFieldDef[]>("/masters/custom-fields"),
@@ -154,6 +155,7 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
   const subcategories = subcategoriesQ.data ?? [];
   const costCenters = costCentersQ.data ?? [];
   const vendors = vendorsQ.data ?? [];
+  const brands = brandsQ.data ?? [];
   const stockHolders = stockHoldersQ.data ?? [];
   // AM-05: only fields applicable to THIS asset's company -- Global
   // (company_id null) plus this company's own -- ever render, are
@@ -171,7 +173,7 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
     ? subcategories.filter((s) => s.category_id === Number(form.categoryId))
     : subcategories;
 
-  const mastersQueries = [categoriesQ, subcategoriesQ, costCentersQ, vendorsQ, customFieldsQ, stockHoldersQ];
+  const mastersQueries = [categoriesQ, subcategoriesQ, costCentersQ, vendorsQ, brandsQ, customFieldsQ, stockHoldersQ];
   const mastersError = mastersQueries.some((q) => q.isError);
   const mastersLoading = mastersQueries.some((q) => q.isLoading);
 
@@ -240,7 +242,7 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
         subcategory_id: Number(form.subcategoryId),
         description: form.description,
         legacy_asset_code: form.legacyAssetCode || null,
-        brand: form.brand || null,
+        brand_id: form.brandId ? Number(form.brandId) : null,
         model: form.model || null,
         serial_number: form.noSerialNumber ? "N/A" : form.serialNumber.trim(),
         warranty_years: Number(form.warrantyYears) || 0,
@@ -459,7 +461,16 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
         <SectionHeading>Asset Details</SectionHeading>
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField htmlFor="brand" label="Brand" helperText="Optional.">
-            <Input id="brand" aria-label="Brand" value={form.brand} onChange={(e) => setField("brand", e.target.value)} />
+            <Select value={selectValue(form.brandId)} onValueChange={(v) => setField("brandId", v)} disabled={mastersLoading}>
+              <SelectTrigger id="brand" aria-label="Brand">
+                <SelectValue placeholder="Select…" />
+              </SelectTrigger>
+              <SelectContent>
+                {brands.map((b) => (
+                  <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </FormField>
           <FormField htmlFor="model" label="Model" helperText="Optional.">
             <Input id="model" aria-label="Model" value={form.model} onChange={(e) => setField("model", e.target.value)} />

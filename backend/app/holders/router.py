@@ -28,13 +28,13 @@ router = APIRouter(prefix="/api/holders", tags=["holders"])
 # (STORE/IT_STOCK/INSTALLED types typically never do).
 HOLDER_IMPORT_FIELDS = [
     FieldSpec("Company Code", "company_id", required=True, lookup=(Company, "code")),
-    FieldSpec("Emp Code", "emp_code", required=True),
-    FieldSpec("Name", "name", required=True),
+    FieldSpec("Emp Code", "emp_code", required=True, max_length=50),
+    FieldSpec("Name", "name", required=True, max_length=200),
     FieldSpec("Type", "holder_type", required=True, kind="enum", enum_values=HOLDER_TYPES),
     FieldSpec("Location Code", "location_id", required=True, lookup=(Location, "code")),
     FieldSpec("Department", "department_id", lookup=(Department, "name")),
-    FieldSpec("Email", "email"),
-    FieldSpec("Phone", "phone"),
+    FieldSpec("Email", "email", max_length=200),
+    FieldSpec("Phone", "phone", max_length=30),
     FieldSpec("Role", "role", required=True, kind="enum", enum_values=ROLES),
 ]
 

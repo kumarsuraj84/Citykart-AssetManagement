@@ -19,7 +19,7 @@ from app.assets.models import Asset
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.holders.models import Holder
-from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, CustomField, Department, Location, Vendor
+from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, CustomField, Department, Location, Vendor
 from app.numbering.models import CodeRule
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -29,7 +29,7 @@ HEADER = [
     "Description", "Legacy Asset Code",
     "Vendor Code", "PO Number", "PO Date", "Invoice Number", "Invoice Date", "Invoice Amount",
     "PI Number", "PI Date", "Purchase Cost", "Tax %",
-    "Brand", "Model", "Serial Number", "Warranty Years",
+    "Brand Code", "Model", "Serial Number", "Warranty Years",
     "Initial Holder Code", "Quantity",
 ]
 
@@ -52,7 +52,8 @@ async def _setup(code="AM06IMP"):
         co_b = Company(code=f"{code}B", name=f"{code} Co B")
         cat = AssetCategory(code=f"CAT-{code}", name="IT")
         vendor = Vendor(code=f"VND-{code}", name="Acme Traders")
-        session.add_all([co, co_b, cat, vendor])
+        brand = Brand(code=f"BRD-{code}", name="Dell")
+        session.add_all([co, co_b, cat, vendor, brand])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
         other_cat = AssetCategory(code=f"OTHERCAT-{code}", name="Furniture")
@@ -76,6 +77,7 @@ async def _setup(code="AM06IMP"):
             "a": co.id, "b": co_b.id, "a_code": co.code, "admin": f"ADM-{code}",
             "stock": f"STK-{code}", "stock_b": f"STKB-{code}",
             "cc": "HO01", "cat": cat.code, "other_cat": other_cat.code, "sub": sub.code, "vendor": vendor.code,
+            "brand": brand.code, "brand_id": brand.id,
         }
 
 
@@ -121,7 +123,7 @@ class TestProcurementFieldSupport:
             "PO Number": "PO-1", "PO Date": "2025-05-01", "Invoice Number": "INV-1", "Invoice Date": "2025-05-02",
             "Invoice Amount": 70800,
             "PI Number": "PI-1", "PI Date": "2025-05-03", "Purchase Cost": 60000, "Tax %": 18,
-            "Brand": "Dell", "Model": "Latitude 5440", "Serial Number": "SN-ABC", "Warranty Years": 3,
+            "Brand Code": ids["brand"], "Model": "Latitude 5440", "Serial Number": "SN-ABC", "Warranty Years": 3,
         })
         resp = await _post(client, "/api/imports/assets/commit", _xlsx([row]), headers)
         assert resp.status_code == 200, resp.text
@@ -135,7 +137,7 @@ class TestProcurementFieldSupport:
         assert asset.po_number == "PO-1"
         assert asset.invoice_number == "INV-1"
         assert float(asset.invoice_amount) == 70800.0
-        assert asset.brand == "Dell" and asset.model == "Latitude 5440" and asset.serial_number == "SN-ABC"
+        assert asset.brand_id == ids["brand_id"] and asset.model == "Latitude 5440" and asset.serial_number == "SN-ABC"
         assert asset.warranty_years == 3
         # AM-23: purchase_date is derived from Invoice Date (2025-05-02, this
         # row's own override) + 3 years, minus 1 day.

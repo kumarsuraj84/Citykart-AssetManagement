@@ -50,6 +50,13 @@ class AssetSubcategory(Base, AuditMixin, SoftDeleteMixin):
     name: Mapped[str] = mapped_column(String(200))
 
 
+class Brand(Base, AuditMixin, SoftDeleteMixin):
+    __tablename__ = "brand"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    code: Mapped[str] = mapped_column(String(20), unique=True)
+    name: Mapped[str] = mapped_column(String(200))
+
+
 class Vendor(Base, AuditMixin, SoftDeleteMixin):
     __tablename__ = "vendor"
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)

@@ -3,7 +3,7 @@ from datetime import date
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.holders.models import Holder
-from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location
+from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Department, Location
 from app.purchase_orders.models import PurchaseOrder
 from app.purchase_orders.service import (
     add_pending_asset_line, cancel_pending_asset_line, create_purchase_order, update_pending_asset_line,
@@ -92,14 +92,17 @@ async def test_brand_model_warranty_years_are_shared_across_every_unit_a_quantit
     async with SessionLocal() as session:
         po = await session.get(PurchaseOrder, ctx["po"].id)
         admin = await session.get(Holder, ctx["admin"].id)
+        brand = Brand(code="Q1D-DELL", name="Dell")
+        session.add(brand)
+        await session.flush()
         lines = await add_pending_asset_line(session, po, {
             "description": "Laptop", "category_id": ctx["cat"].id,
-            "brand": "Dell", "model": "Latitude 5440", "warranty_years": 3, "quantity": 3,
+            "brand_id": brand.id, "model": "Latitude 5440", "warranty_years": 3, "quantity": 3,
         }, admin)
         await session.commit()
 
         assert len(lines) == 3
-        assert all(line.brand == "Dell" and line.model == "Latitude 5440" and line.warranty_years == 3 for line in lines)
+        assert all(line.brand_id == brand.id and line.model == "Latitude 5440" and line.warranty_years == 3 for line in lines)
 
 
 async def test_add_pending_asset_line_defaults_warranty_years_to_zero():
@@ -110,7 +113,7 @@ async def test_add_pending_asset_line_defaults_warranty_years_to_zero():
         [line] = await add_pending_asset_line(session, po, {
             "description": "Laptop", "category_id": ctx["cat"].id, "warranty_years": 0, "quantity": 1,
         }, admin)
-        assert line.brand is None
+        assert line.brand_id is None
         assert line.model is None
         assert line.warranty_years == 0
 
@@ -120,6 +123,9 @@ async def test_update_pending_asset_line_can_change_brand_model_warranty_years()
     async with SessionLocal() as session:
         po = await session.get(PurchaseOrder, ctx["po"].id)
         admin = await session.get(Holder, ctx["admin"].id)
+        brand = Brand(code="Q1F-HP", name="HP")
+        session.add(brand)
+        await session.flush()
         [line] = await add_pending_asset_line(session, po, {
             "description": "Laptop", "category_id": ctx["cat"].id, "warranty_years": 1, "quantity": 1,
         }, admin)
@@ -127,9 +133,9 @@ async def test_update_pending_asset_line_can_change_brand_model_warranty_years()
 
         updated = await update_pending_asset_line(session, line, {
             "description": "Laptop", "category_id": ctx["cat"].id,
-            "brand": "HP", "model": "EliteBook", "warranty_years": 5,
+            "brand_id": brand.id, "model": "EliteBook", "warranty_years": 5,
         }, admin)
-        assert updated.brand == "HP"
+        assert updated.brand_id == brand.id
         assert updated.model == "EliteBook"
         assert updated.warranty_years == 5
 

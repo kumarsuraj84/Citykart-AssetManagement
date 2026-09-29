@@ -4,7 +4,7 @@ asset_field_change audit trail written by PUT /api/assets/{id}."""
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.holders.models import Holder
-from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, CustomField, Department, Location, Vendor
+from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, CustomField, Department, Location, Vendor
 from app.numbering.models import CodeRule
 
 
@@ -19,7 +19,10 @@ async def _setup(code="AM04"):
         loc = Location(code=f"{code}-HO", name="HO")
         dept = Department(name=f"IT-{code}")
         vendor = Vendor(code=f"VND-{code}", name="Test Vendor")
-        session.add_all([sub, cc, loc, dept, vendor])
+        brand1 = Brand(code=f"BR1-{code}", name="Dell")
+        brand2 = Brand(code=f"BR2-{code}", name="HP")
+        brand3 = Brand(code=f"BR3-{code}", name="Lenovo")
+        session.add_all([sub, cc, loc, dept, vendor, brand1, brand2, brand3])
         await session.flush()
         stock = Holder(company_id=co.id, emp_code=f"STK-{code}", name="IT Stock-HO",
                         holder_type="IT_STOCK", location_id=loc.id, department_id=dept.id, role="HOLDER")
@@ -38,6 +41,7 @@ async def _setup(code="AM04"):
         await session.commit()
         return {
             "co": co.id, "cc": cc.id, "cat": cat.id, "sub": sub.id, "vendor": vendor.id,
+            "brand1": brand1.id, "brand2": brand2.id, "brand3": brand3.id,
             "stock": stock.id, "admin_code": f"ADM-{code}", "viewer_code": f"VWR-{code}",
             "it_team_code": f"ITT-{code}", "admin_id": admin.id,
         }
@@ -70,7 +74,7 @@ def _asset_body(ids, **overrides):
 # not a shortcut to skip.
 def _full_update_body(asset: dict, **overrides):
     body = {
-        "legacy_asset_code": asset["legacy_asset_code"], "brand": asset["brand"], "model": asset["model"],
+        "legacy_asset_code": asset["legacy_asset_code"], "brand_id": asset["brand_id"], "model": asset["model"],
         "serial_number": asset["serial_number"], "description": asset["description"],
         "vendor_id": asset["vendor_id"], "po_number": asset["po_number"], "po_date": asset["po_date"],
         "invoice_number": asset["invoice_number"], "invoice_date": asset["invoice_date"],
@@ -163,23 +167,23 @@ class TestFieldChangeAudit:
     async def test_changing_a_field_creates_an_audit_row_with_correct_old_new_and_actor(self, client):
         ids = await _setup("AUD1")
         headers = await _headers(client, ids["admin_code"])
-        [created] = (await client.post("/api/assets", json=_asset_body(ids, brand="Dell"), headers=headers)).json()
+        [created] = (await client.post("/api/assets", json=_asset_body(ids, brand_id=ids["brand1"]), headers=headers)).json()
 
         await client.put(f"/api/assets/{created['id']}", json={
-            "description": created["description"], "brand": "HP",
+            "description": created["description"], "brand_id": ids["brand2"],
         }, headers=headers)
 
         changes = (await client.get(f"/api/assets/{created['id']}/changes", headers=headers)).json()
-        brand_change = next(c for c in changes if c["field_name"] == "brand")
-        assert brand_change["old_value"] == "Dell"
-        assert brand_change["new_value"] == "HP"
+        brand_change = next(c for c in changes if c["field_name"] == "brand_id")
+        assert "Dell" in brand_change["old_value"]
+        assert "HP" in brand_change["new_value"]
         assert brand_change["actor_id"] == ids["admin_id"]
         assert brand_change["actor_name"] == "Admin"
 
     async def test_unchanged_field_does_not_create_an_audit_row(self, client):
         ids = await _setup("AUD2")
         headers = await _headers(client, ids["admin_code"])
-        [created] = (await client.post("/api/assets", json=_asset_body(ids, brand="Dell"), headers=headers)).json()
+        [created] = (await client.post("/api/assets", json=_asset_body(ids, brand_id=ids["brand1"]), headers=headers)).json()
 
         await client.put(f"/api/assets/{created['id']}", json=_full_update_body(created), headers=headers)
 
@@ -189,15 +193,15 @@ class TestFieldChangeAudit:
     async def test_multiple_changed_fields_produce_one_row_each_sharing_a_request_id(self, client):
         ids = await _setup("AUD3")
         headers = await _headers(client, ids["admin_code"])
-        [created] = (await client.post("/api/assets", json=_asset_body(ids, brand="Dell", model="Old"), headers=headers)).json()
+        [created] = (await client.post("/api/assets", json=_asset_body(ids, brand_id=ids["brand1"], model="Old"), headers=headers)).json()
 
         await client.put(f"/api/assets/{created['id']}", json=_full_update_body(
-            created, description="New description", brand="HP", model="New",
+            created, description="New description", brand_id=ids["brand2"], model="New",
         ), headers=headers)
 
         changes = (await client.get(f"/api/assets/{created['id']}/changes", headers=headers)).json()
         field_names = {c["field_name"] for c in changes}
-        assert field_names == {"description", "brand", "model"}
+        assert field_names == {"description", "brand_id", "model"}
         assert len({c["request_id"] for c in changes}) == 1
 
     async def test_custom_field_change_is_audited_per_key(self, client):
@@ -241,10 +245,10 @@ class TestFieldChangeAudit:
     async def test_a_failed_edit_leaves_no_audit_rows(self, client):
         ids = await _setup("AUD6")
         headers = await _headers(client, ids["admin_code"])
-        [created] = (await client.post("/api/assets", json=_asset_body(ids, brand="Dell"), headers=headers)).json()
+        [created] = (await client.post("/api/assets", json=_asset_body(ids, brand_id=ids["brand1"]), headers=headers)).json()
 
         resp = await client.put(f"/api/assets/{created['id']}", json={
-            "description": "won't be saved", "brand": "HP", "custom_fields": {"no_such_field": "x"},
+            "description": "won't be saved", "brand_id": ids["brand2"], "custom_fields": {"no_such_field": "x"},
         }, headers=headers)
         assert resp.status_code == 422
 
@@ -252,7 +256,7 @@ class TestFieldChangeAudit:
         assert changes == []
         # And the field really wasn't changed either -- the whole edit rolled back.
         got = (await client.get(f"/api/assets/{created['id']}", headers=headers)).json()
-        assert got["brand"] == "Dell"
+        assert got["brand_id"] == ids["brand1"]
 
     async def test_a_lifecycle_event_writes_to_asset_event_only_not_the_field_change_audit(self, client):
         ids = await _setup("AUD7")
@@ -292,12 +296,12 @@ class TestFieldChangeAudit:
     async def test_audit_read_is_chronologically_ordered(self, client):
         ids = await _setup("AUD10")
         headers = await _headers(client, ids["admin_code"])
-        [created] = (await client.post("/api/assets", json=_asset_body(ids, brand="A"), headers=headers)).json()
+        [created] = (await client.post("/api/assets", json=_asset_body(ids, brand_id=ids["brand1"]), headers=headers)).json()
 
-        await client.put(f"/api/assets/{created['id']}", json={"description": created["description"], "brand": "B"}, headers=headers)
-        await client.put(f"/api/assets/{created['id']}", json={"description": created["description"], "brand": "C"}, headers=headers)
+        await client.put(f"/api/assets/{created['id']}", json={"description": created["description"], "brand_id": ids["brand2"]}, headers=headers)
+        await client.put(f"/api/assets/{created['id']}", json={"description": created["description"], "brand_id": ids["brand3"]}, headers=headers)
 
         changes = (await client.get(f"/api/assets/{created['id']}/changes", headers=headers)).json()
-        brand_changes = [c for c in changes if c["field_name"] == "brand"]
-        assert [c["new_value"] for c in brand_changes] == ["B", "C"]
+        brand_changes = [c for c in changes if c["field_name"] == "brand_id"]
+        assert [c["new_value"] for c in brand_changes] == [f"HP (#{ids['brand2']})", f"Lenovo (#{ids['brand3']})"]
         assert brand_changes[0]["created_at"] <= brand_changes[1]["created_at"]

@@ -78,7 +78,7 @@ def assets_to_xlsx(assets: list[Asset], labels: dict, custom_field_keys: list[st
             float(a.tax_percent) if a.tax_percent is not None else None,
             float(a.tax_amount) if a.tax_amount is not None else None,
             float(a.total_cost) if a.total_cost is not None else None,
-            a.brand, a.model, a.serial_number,
+            labels["brand"].get(a.brand_id) if a.brand_id else None, a.model, a.serial_number,
             a.warranty_upto.isoformat() if a.warranty_upto else None,
             a.legacy_asset_code,
         ] + [a.custom_fields.get(k) for k in custom_field_keys]))

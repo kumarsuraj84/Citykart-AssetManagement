@@ -14,7 +14,7 @@ import openpyxl
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.holders.models import Holder
-from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location, Vendor
+from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Department, Location, Vendor
 from app.numbering.models import CodeRule
 from app.reports.export_service import _sanitize_cell
 
@@ -73,11 +73,20 @@ def test_sanitize_cell_prefixes_every_formula_trigger_character():
 async def test_asset_register_export_neutralizes_a_formula_injection_attempt(client):
     ids = await _setup("A1")
     headers = await _headers(client, ids)
+    async with SessionLocal() as session:
+        # A Brand's own `name` is just as free-text/user-controlled as
+        # Vendor's (both already covered by the same _sanitize_row call in
+        # assets_to_xlsx) -- this is Brand's namesake of the same attack,
+        # now via the master row's name rather than a direct asset field.
+        brand = Brand(code=f"FI-{ids['co'].code}", name="+1+1")
+        session.add(brand)
+        await session.commit()
+        brand_id = brand.id
     create_resp = await client.post("/api/assets", json={
         "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
         "subcategory_id": ids["sub"].id, "description": "=cmd|'/c calc'!A0",
         "invoice_date": "2025-01-01", "initial_holder_id": ids["stock"].id,
-        "brand": "+1+1", "model": "-2-2", "legacy_asset_code": "@SUM(A1:A9)",
+        "brand_id": brand_id, "model": "-2-2", "legacy_asset_code": "@SUM(A1:A9)",
         "vendor_id": ids["vendor"].id, "po_number": "PO-1", "po_date": "2024-12-20",
         "invoice_number": "INV-1", "pi_number": "PI-1", "pi_date": "2024-12-25",
         "serial_number": "SN-FI-A1",

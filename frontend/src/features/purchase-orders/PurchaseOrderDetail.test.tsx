@@ -41,6 +41,7 @@ function mockGets(lines: unknown[]) {
     if (path.startsWith("/masters/categories")) return Promise.resolve([{ id: 1, name: "IT Equipment" }]);
     if (path.startsWith("/masters/subcategories")) return Promise.resolve([{ id: 2, name: "Laptop", category_id: 1 }]);
     if (path.startsWith("/masters/cost-centers")) return Promise.resolve([{ id: 3, name: "Head Office" }]);
+    if (path.startsWith("/masters/brands")) return Promise.resolve([{ id: 9, name: "Dell" }]);
     if (path.startsWith("/holders")) return Promise.resolve([{ id: 5, name: "IT Stock-HO" }]);
     return Promise.resolve([]);
   });
@@ -93,6 +94,37 @@ describe("PurchaseOrderDetail", () => {
       expect(apiClient.post).toHaveBeenCalledWith(
         "/purchase-orders/1/lines",
         expect.objectContaining({ description: "Dell Laptop", barcode: "BC-BATCH-9", subcategory_id: 2, purchase_cost: 1000 }),
+      ),
+    );
+  });
+
+  it("posts an Add Line request with the selected Brand's id, not free text", async () => {
+    mockGets([]);
+    (apiClient.post as any).mockResolvedValue([PENDING_LINE]);
+    renderDetailAt();
+    await waitFor(() => expect(screen.getByRole("button", { name: /\+ add line/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /\+ add line/i }));
+    await waitFor(() => expect(screen.getByLabelText(/^description\*?$/i)).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText(/^description\*?$/i), { target: { value: "Dell Laptop" } });
+    fireEvent.change(screen.getByLabelText(/^barcode\*?$/i), { target: { value: "BC-BATCH-9" } });
+
+    fireEvent.click(screen.getByLabelText(/^category\*?$/i));
+    fireEvent.click(await screen.findByText("IT Equipment"));
+    fireEvent.click(screen.getByLabelText(/^sub-category\*?$/i));
+    fireEvent.click(await screen.findByText("Laptop"));
+    fireEvent.change(screen.getByLabelText(/^cost\*?$/i), { target: { value: "1000" } });
+
+    fireEvent.click(screen.getByLabelText(/^brand$/i));
+    fireEvent.click(await screen.findByText("Dell"));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /add line/i })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: /add line/i }));
+
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith(
+        "/purchase-orders/1/lines",
+        expect.objectContaining({ brand_id: 9 }),
       ),
     );
   });

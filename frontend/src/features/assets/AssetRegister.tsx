@@ -38,7 +38,7 @@ interface AssetRow {
   asset_code: string;
   legacy_asset_code: string | null;
   description: string;
-  brand: string | null;
+  brand_id: number | null;
   model: string | null;
   serial_number: string | null;
   barcode: string | null;
@@ -67,6 +67,7 @@ interface AssetRow {
   subcategory_name: string | null;
   cost_center_name: string | null;
   vendor_name: string | null;
+  brand_name: string | null;
 }
 
 interface Option {
@@ -118,7 +119,7 @@ const ASSET_OPTIONAL_COLUMNS: AssetColumnDef[] = [
   { key: "category", label: "Category", defaultVisible: true, cell: (a) => dash(a.category_name) },
   { key: "subcategory", label: "Sub-Category", defaultVisible: true, cell: (a) => dash(a.subcategory_name) },
   { key: "description", label: "Description", defaultVisible: true, cell: (a) => a.description },
-  { key: "brand", label: "Brand", defaultVisible: true, cell: (a) => dash(a.brand) },
+  { key: "brand", label: "Brand", defaultVisible: true, cell: (a) => dash(a.brand_name) },
   { key: "model", label: "Model", defaultVisible: true, cell: (a) => dash(a.model) },
   { key: "serial_number", label: "Serial Number", defaultVisible: true, cell: (a) => dash(a.serial_number) },
   { key: "status", label: "Status", defaultVisible: true, cell: (a) => <StatusBadge status={a.status} compact /> },
@@ -164,7 +165,7 @@ const ASSET_OPTIONAL_COLUMNS: AssetColumnDef[] = [
 // subcategory/holder/company/vendor/cost_center) are page-scoped label
 // lookups, not sortable database columns, so they're deliberately left out.
 const SORTABLE_COLUMN_KEYS = new Set([
-  "description", "brand", "model", "serial_number", "status", "legacy_asset_code", "barcode",
+  "description", "model", "serial_number", "status", "legacy_asset_code", "barcode",
   "po_number", "po_date", "invoice_number", "invoice_date", "pi_number", "pi_date",
   "purchase_cost", "tax_percent", "tax_amount", "total_cost", "purchase_date", "warranty_upto", "status_since",
 ]);

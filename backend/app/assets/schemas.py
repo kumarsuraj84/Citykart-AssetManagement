@@ -26,7 +26,7 @@ class AssetCreateIn(BaseModel):
     cost_center_id: int
     category_id: int
     subcategory_id: int
-    brand: str | None = None
+    brand_id: int | None = None
     model: str | None = None
     # Mandatory -- "N/A" (case-insensitive) is the reserved placeholder for
     # a unit that genuinely has no serial; see
@@ -69,7 +69,7 @@ class AssetOut(BaseModel):
     cost_center_id: int
     category_id: int
     subcategory_id: int | None
-    brand: str | None
+    brand_id: int | None
     model: str | None
     serial_number: str | None
     barcode: str | None
@@ -111,6 +111,7 @@ class AssetOut(BaseModel):
     subcategory_name: str | None = None
     cost_center_name: str | None = None
     vendor_name: str | None = None
+    brand_name: str | None = None
 
 
 class AssetDetailOut(AssetOut):
@@ -126,6 +127,7 @@ class AssetDetailOut(AssetOut):
     subcategory_name: str | None
     cost_center_name: str | None
     vendor_name: str | None
+    brand_name: str | None
     current_holder_name: str | None
     current_holder_type: str | None
     location_name: str | None
@@ -177,7 +179,7 @@ class AssetUpdateIn(BaseModel):
     codebase's existing convention (e.g. HolderIn on `PUT /api/holders/{id}`)
     rather than a partial-PATCH merge."""
     legacy_asset_code: str | None = None
-    brand: str | None = None
+    brand_id: int | None = None
     model: str | None = None
     serial_number: str | None = None
     barcode: str | None = None

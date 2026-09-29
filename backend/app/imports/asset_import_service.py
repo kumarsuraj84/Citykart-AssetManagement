@@ -42,7 +42,7 @@ from app.assets.service import check_serial_number_unique, compute_tax, compute_
 from app.holders.models import Holder
 from app.lifecycle.service import apply_event
 from app.lifecycle.state_machine import LifecycleError
-from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Location, Vendor
+from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Location, Vendor
 from app.numbering.models import CodeRule
 from app.numbering.service import build_code_tokens, generate_code, get_active_rule
 from app.assets.models import Asset
@@ -61,7 +61,7 @@ ADD_TEMPLATE_COLUMNS = [
     "Description", "Legacy Asset Code",
     "Vendor Code", "PO Number", "PO Date", "Invoice Number", "Invoice Date", "Invoice Amount",
     "PI Number", "PI Date", "Purchase Cost", "Tax %",
-    "Brand", "Model", "Serial Number", "Warranty Years",
+    "Brand Code", "Model", "Serial Number", "Warranty Years",
     "Initial Holder Code", "Quantity",
 ]
 
@@ -83,7 +83,7 @@ ADD_REQUIRED_COLUMNS = [
 # nothing creation-only (no Company/Cost Centre/Initial Holder/Quantity --
 # meaningless on a row that already exists).
 EDIT_TEMPLATE_COLUMNS = [
-    "Asset Code", "Legacy Asset Code", "Brand", "Model", "Serial Number", "Barcode",
+    "Asset Code", "Legacy Asset Code", "Brand Code", "Model", "Serial Number", "Barcode",
     "Description", "Vendor Code", "PO Number", "PO Date", "Invoice Number", "Invoice Date",
     "Invoice Amount", "PI Number", "PI Date", "Purchase Cost", "Tax %", "Warranty Years",
 ]
@@ -220,9 +220,9 @@ def _parse_edit_warranty_years(value):
 
 
 def _cell_or_unset(value):
-    """Plain-text edit-mode fields (Legacy Asset Code, Brand, Model,
-    Barcode, Description, PO/Invoice/PI Number): blank means untouched;
-    anything else is used as-is."""
+    """Plain-text edit-mode fields (Legacy Asset Code, Model, Barcode,
+    Description, PO/Invoice/PI Number): blank means untouched; anything
+    else is used as-is."""
     return _UNSET if _is_blank(value) else value
 
 
@@ -346,6 +346,16 @@ async def _validate_add_rows(
             errors.append({"row": row_idx, "field": "Description", "message": "Description is required"})
             continue
 
+        # Brand is optional, matching AssetCreateIn.brand_id -- a blank
+        # cell means no brand; a filled one must resolve to a real Brand.
+        brand_code = cell("Brand Code")
+        brand = None
+        if not _is_blank(brand_code):
+            brand = await _lookup(session, Brand, code=brand_code)
+            if brand is None:
+                errors.append({"row": row_idx, "field": "Brand Code", "message": f"unknown Brand Code '{brand_code}'"})
+                continue
+
         holder_code = cell("Initial Holder Code")
         holder = await _lookup(session, Holder, company_id=company.id, emp_code=holder_code)
         if holder is None:
@@ -448,7 +458,7 @@ async def _validate_add_rows(
             "invoice_amount": invoice_amount,
             "pi_number": cell("PI Number"), "pi_date": pi_date,
             "purchase_cost": purchase_cost, "tax_percent": tax_percent,
-            "brand": cell("Brand"), "model": cell("Model"), "serial_number": serial_number,
+            "brand": brand, "model": cell("Model"), "serial_number": serial_number,
             "warranty_years": warranty_years, "custom_fields": custom_values,
         })
 
@@ -509,7 +519,7 @@ async def _validate_edit_rows(
         row_error = False
 
         for field, column in (
-            ("legacy_asset_code", "Legacy Asset Code"), ("brand", "Brand"), ("model", "Model"),
+            ("legacy_asset_code", "Legacy Asset Code"), ("model", "Model"),
             ("barcode", "Barcode"), ("description", "Description"),
             ("po_number", "PO Number"), ("invoice_number", "Invoice Number"), ("pi_number", "PI Number"),
         ):
@@ -537,6 +547,14 @@ async def _validate_edit_rows(
                 errors.append({"row": row_idx, "field": "Vendor Code", "message": f"unknown Vendor Code '{vendor_code}'"})
                 continue
             updates["vendor_id"] = vendor.id
+
+        brand_code = cell("Brand Code")
+        if not _is_blank(brand_code):
+            brand = await _lookup(session, Brand, code=brand_code)
+            if brand is None:
+                errors.append({"row": row_idx, "field": "Brand Code", "message": f"unknown Brand Code '{brand_code}'"})
+                continue
+            updates["brand_id"] = brand.id
 
         try:
             for field, column, label in (
@@ -774,7 +792,7 @@ async def _commit_add(
                         asset_code=code, legacy_asset_code=r["legacy_asset_code"], company_id=r["company"].id,
                         cost_center_id=r["cost_center"].id, category_id=r["category"].id,
                         subcategory_id=r["subcategory"].id if r["subcategory"] else None,
-                        brand=r["brand"], model=r["model"], serial_number=r["serial_number"],
+                        brand_id=r["brand"].id if r["brand"] else None, model=r["model"], serial_number=r["serial_number"],
                         description=r["description"],
                         vendor_id=r["vendor"].id if r["vendor"] else None,
                         po_number=r["po_number"], po_date=r["po_date"],

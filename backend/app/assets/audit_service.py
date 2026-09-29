@@ -16,12 +16,12 @@ of picking up category/subcategory/purchase_date just because
 from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.assets.models import AssetFieldChange
-from app.masters.models import AssetCategory, AssetSubcategory, Vendor
+from app.masters.models import AssetCategory, AssetSubcategory, Brand, Vendor
 
 # The editable descriptive/procurement scalar fields AssetUpdateIn accepts,
 # excluding custom_fields (diffed separately below, per-key).
 AUDITED_SCALAR_FIELDS = (
-    "legacy_asset_code", "brand", "model", "serial_number", "barcode", "description",
+    "legacy_asset_code", "brand_id", "model", "serial_number", "barcode", "description",
     "vendor_id", "po_number", "po_date", "invoice_number", "invoice_date", "invoice_amount",
     "pi_number", "pi_date", "purchase_cost", "tax_percent", "warranty_years",
 )
@@ -46,6 +46,17 @@ async def _describe_vendor(session: AsyncSession, vendor_id) -> str | None:
     vendor = await session.get(Vendor, vendor_id)
     name = vendor.name if vendor is not None else "unknown vendor"
     return f"{name} (#{vendor_id})"
+
+
+async def _describe_brand(session: AsyncSession, brand_id) -> str | None:
+    """Same reasoning as `_describe_vendor` -- brand became a master FK
+    (was free text before), so its audit trail needs the same name+id
+    snapshot to stay readable after a future rename."""
+    if brand_id is None:
+        return None
+    brand = await session.get(Brand, brand_id)
+    name = brand.name if brand is not None else "unknown brand"
+    return f"{name} (#{brand_id})"
 
 
 async def _describe_category(session: AsyncSession, category_id) -> str | None:
@@ -91,6 +102,9 @@ async def record_field_changes(
         if field == "vendor_id":
             old_str = await _describe_vendor(session, old)
             new_str = await _describe_vendor(session, new)
+        elif field == "brand_id":
+            old_str = await _describe_brand(session, old)
+            new_str = await _describe_brand(session, new)
         else:
             old_str, new_str = _serialize(old), _serialize(new)
         rows.append(AssetFieldChange(

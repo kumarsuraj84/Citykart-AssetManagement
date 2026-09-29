@@ -12,7 +12,7 @@ from datetime import date
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.holders.models import Holder
-from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, CustomField, Department, Location, Vendor
+from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, CustomField, Department, Location, Vendor
 from app.numbering.models import CodeRule
 
 
@@ -27,7 +27,9 @@ async def _setup(code="AM02"):
         loc = Location(code=f"{code}-HO", name="HO")
         dept = Department(name=f"IT-{code}")
         vendor = Vendor(code=f"VND-{code}", name="Test Vendor")
-        session.add_all([sub, cc, loc, dept, vendor])
+        brand = Brand(code=f"DELL-{code}", name="Dell")
+        brand2 = Brand(code=f"HP-{code}", name="HP")
+        session.add_all([sub, cc, loc, dept, vendor, brand, brand2])
         await session.flush()
         stock = Holder(company_id=co.id, emp_code=f"STK-{code}", name="IT Stock-HO",
                         holder_type="IT_STOCK", location_id=loc.id, department_id=dept.id, role="HOLDER")
@@ -48,6 +50,7 @@ async def _setup(code="AM02"):
         await session.commit()
         return {
             "co": co.id, "cc": cc.id, "cat": cat.id, "sub": sub.id, "vendor": vendor.id,
+            "brand": brand.id, "brand2": brand2.id,
             "stock": stock.id, "other_stock": other_stock.id, "admin_code": f"ADM-{code}",
             "viewer_code": f"VWR-{code}", "it_team_code": f"ITT-{code}",
         }
@@ -66,7 +69,7 @@ def _asset_body(ids, **overrides):
         "vendor_id": ids["vendor"], "po_number": "PO-1001", "po_date": "2025-05-20",
         "invoice_number": "INV-2001", "invoice_date": "2025-05-25",
         "pi_number": "PI-3001", "pi_date": "2025-05-22",
-        "brand": "Dell", "model": "Latitude 5440", "serial_number": "SN-ABC123",
+        "brand_id": ids["brand"], "model": "Latitude 5440", "serial_number": "SN-ABC123",
         "purchase_cost": 60000, "tax_percent": 18, "warranty_years": 3,
     }
     body.update(overrides)
@@ -88,7 +91,8 @@ class TestProcurementFieldsRoundTrip:
         assert got["po_number"] == "PO-1001"
         assert got["po_date"] == "2025-05-20"
         assert got["vendor_id"] == ids["vendor"]
-        assert got["brand"] == "Dell"
+        assert got["brand_id"] == ids["brand"]
+        assert got["brand_name"] == "Dell"
         assert got["model"] == "Latitude 5440"
         assert got["serial_number"] == "SN-ABC123"
         assert got["warranty_years"] == 3
@@ -128,7 +132,7 @@ class TestProcurementFieldsRoundTrip:
         }
         resp = await client.post("/api/assets", json=minimal, headers=headers)
         assert resp.status_code == 201
-        assert resp.json()[0]["brand"] is None
+        assert resp.json()[0]["brand_id"] is None
 
     async def test_invoice_amount_round_trips(self, client):
         """AM-19: Invoice Amount is a real field on the Asset now, editable
@@ -204,7 +208,7 @@ class TestAssetUpdate:
         asset_id = created["id"]
 
         resp = await client.put(f"/api/assets/{asset_id}", json={
-            "description": "Updated Description", "brand": "HP", "model": "EliteBook",
+            "description": "Updated Description", "brand_id": ids["brand2"], "model": "EliteBook",
             "serial_number": "SN-NEW999", "barcode": "BC-NEW999", "pi_number": "PI-9999", "pi_date": "2025-07-01",
             "invoice_number": "INV-9999", "invoice_date": "2025-07-02",
             "po_number": "PO-9999", "po_date": "2025-06-30",
@@ -214,7 +218,7 @@ class TestAssetUpdate:
         assert resp.status_code == 200
         body = resp.json()
         assert body["description"] == "Updated Description"
-        assert body["brand"] == "HP"
+        assert body["brand_id"] == ids["brand2"]
         assert body["barcode"] == "BC-NEW999"
         assert body["pi_number"] == "PI-9999"
         assert body["purchase_cost"] == 70000

@@ -10,14 +10,14 @@ from app.assets.service import procure_assets
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.holders.models import Holder
-from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, CustomField, Department, Location, Vendor
+from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, CustomField, Department, Location, Vendor
 from app.numbering.models import CodeRule
 from sqlalchemy import select
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 EDIT_HEADER = [
-    "Asset Code", "Legacy Asset Code", "Brand", "Model", "Serial Number", "Barcode",
+    "Asset Code", "Legacy Asset Code", "Brand Code", "Model", "Serial Number", "Barcode",
     "Description", "Vendor Code", "PO Number", "PO Date", "Invoice Number", "Invoice Date",
     "Invoice Amount", "PI Number", "PI Date", "Purchase Cost", "Tax %", "Warranty Years",
 ]
@@ -46,7 +46,9 @@ async def _setup(suffix: str):
         cat = AssetCategory(code=f"AM23E-{suffix}", name="IT")
         vendor = Vendor(code=f"VND-{suffix}", name="Vendor One")
         vendor2 = Vendor(code=f"VND2-{suffix}", name="Vendor Two")
-        session.add_all([co, co_b, cat, vendor, vendor2])
+        brand = Brand(code=f"BR-{suffix}", name="OldBrand")
+        brand2 = Brand(code=f"BR2-{suffix}", name="NewBrand")
+        session.add_all([co, co_b, cat, vendor, vendor2, brand, brand2])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
         cc = CostCenter(company_id=co.id, code="HO", name="Head Office")
@@ -71,7 +73,7 @@ async def _setup(suffix: str):
             "company_id": co.id, "cost_center_id": cc.id, "category_id": cat.id, "subcategory_id": sub.id,
             "description": "Original Description", "purchase_date": date(2025, 6, 1),
             "serial_number": f"SN-{suffix}-ORIG", "initial_holder_id": stock.id,
-            "brand": "OldBrand", "model": "OldModel", "vendor_id": vendor.id,
+            "brand_id": brand.id, "model": "OldModel", "vendor_id": vendor.id,
             "purchase_cost": 1000, "tax_percent": 10, "warranty_years": 2,
         }, quantity=1, actor=admin)
         await session.commit()
@@ -79,6 +81,7 @@ async def _setup(suffix: str):
             "co": co, "co_b": co_b, "admin": f"ADM-{suffix}", "ita": f"ITA-{suffix}",
             "asset_id": asset.id, "asset_code": asset.asset_code,
             "vendor": vendor.code, "vendor2": vendor2.code,
+            "brand": brand.code, "brand_id": brand.id, "brand2": brand2.code, "brand2_id": brand2.id,
         }
 
 
@@ -122,7 +125,7 @@ async def test_blank_cells_leave_every_other_field_untouched(client):
     asset = await _get_asset(ids["asset_id"])
     assert asset.pi_number == "PI-999"
     assert asset.pi_date == date(2026, 1, 5)
-    assert asset.brand == "OldBrand"
+    assert asset.brand_id == ids["brand_id"]
     assert asset.model == "OldModel"
     assert asset.description == "Original Description"
     assert float(asset.purchase_cost) == 1000.0
@@ -133,7 +136,7 @@ async def test_provided_fields_are_updated_together(client):
     ids = await _setup("MULTI1")
     headers = await _login(client, ids["co"].id, ids["admin"])
     row = {
-        "Asset Code": ids["asset_code"], "Brand": "NewBrand", "Model": "NewModel",
+        "Asset Code": ids["asset_code"], "Brand Code": ids["brand2"], "Model": "NewModel",
         "Description": "Updated Description", "Vendor Code": ids["vendor2"],
         "Purchase Cost": 2000, "Tax %": 20,
     }
@@ -143,7 +146,7 @@ async def test_provided_fields_are_updated_together(client):
     assert body["updated"] == 1
 
     asset = await _get_asset(ids["asset_id"])
-    assert asset.brand == "NewBrand"
+    assert asset.brand_id == ids["brand2_id"]
     assert asset.model == "NewModel"
     assert asset.description == "Updated Description"
     assert float(asset.purchase_cost) == 2000.0
@@ -160,7 +163,7 @@ async def test_warranty_years_only_recomputes_warranty_upto_when_provided(client
     assert before.warranty_upto == date(2027, 5, 31)  # 2025-06-01 + 2y - 1d
 
     # Row 1: no Warranty Years mentioned -- untouched.
-    resp = await _post(client, "/api/imports/assets/commit", _xlsx([{"Asset Code": ids["asset_code"], "Brand": "X"}]), headers)
+    resp = await _post(client, "/api/imports/assets/commit", _xlsx([{"Asset Code": ids["asset_code"], "Brand Code": ids["brand2"]}]), headers)
     assert resp.status_code == 200
     mid = await _get_asset(ids["asset_id"])
     assert mid.warranty_years == 2
@@ -212,7 +215,7 @@ async def test_serial_number_uniqueness_is_enforced_and_excludes_self(client):
 async def test_unknown_asset_code_is_a_row_error(client):
     ids = await _setup("UNK1")
     headers = await _login(client, ids["co"].id, ids["admin"])
-    resp = await _post(client, "/api/imports/assets/commit", _xlsx([{"Asset Code": "NOPE-DOES-NOT-EXIST", "Brand": "X"}]), headers)
+    resp = await _post(client, "/api/imports/assets/commit", _xlsx([{"Asset Code": "NOPE-DOES-NOT-EXIST", "Brand Code": ids["brand2"]}]), headers)
     assert resp.status_code == 200
     body = resp.json()
     assert body["updated"] == 0
@@ -232,7 +235,7 @@ async def test_a_row_with_no_fields_filled_in_besides_asset_code_is_a_row_error(
 async def test_it_team_cannot_edit_an_asset_outside_their_company_scope(client):
     ids = await _setup("SCOPE1")
     headers = await _login(client, ids["co"].id, ids["ita"])
-    resp = await _post(client, "/api/imports/assets/commit", _xlsx([{"Asset Code": ids["asset_code"], "Brand": "X"}]), headers)
+    resp = await _post(client, "/api/imports/assets/commit", _xlsx([{"Asset Code": ids["asset_code"], "Brand Code": ids["brand2"]}]), headers)
     # Own company -- allowed.
     assert resp.status_code == 200
     assert resp.json()["updated"] == 1
@@ -264,7 +267,7 @@ async def test_it_team_cannot_edit_an_asset_outside_their_company_scope(client):
         await session.commit()
         asset_b_code = asset_b.asset_code
 
-    resp = await _post(client, "/api/imports/assets/commit", _xlsx([{"Asset Code": asset_b_code, "Brand": "X"}]), headers)
+    resp = await _post(client, "/api/imports/assets/commit", _xlsx([{"Asset Code": asset_b_code, "Brand Code": ids["brand2"]}]), headers)
     assert resp.status_code == 403
 
 
@@ -292,7 +295,7 @@ async def test_custom_field_values_are_merged_not_replaced(client):
 async def test_edit_writes_an_audit_row_only_for_genuinely_changed_fields(client):
     ids = await _setup("AUDIT1")
     headers = await _login(client, ids["co"].id, ids["admin"])
-    row = {"Asset Code": ids["asset_code"], "Brand": "NewBrand", "Model": "OldModel"}  # Model unchanged
+    row = {"Asset Code": ids["asset_code"], "Brand Code": ids["brand2"], "Model": "OldModel"}  # Model unchanged
     resp = await _post(client, "/api/imports/assets/commit", _xlsx([row]), headers)
     assert resp.status_code == 200
     assert resp.json()["updated"] == 1
@@ -302,19 +305,19 @@ async def test_edit_writes_an_audit_row_only_for_genuinely_changed_fields(client
             select(AssetFieldChange).where(AssetFieldChange.asset_id == ids["asset_id"])
         )).scalars().all()
     fields_changed = {c.field_name for c in changes}
-    assert "brand" in fields_changed
+    assert "brand_id" in fields_changed
     assert "model" not in fields_changed
 
 
 async def test_preview_never_writes_to_the_database(client):
     ids = await _setup("PREV1")
     headers = await _login(client, ids["co"].id, ids["admin"])
-    resp = await _post(client, "/api/imports/assets/preview", _xlsx([{"Asset Code": ids["asset_code"], "Brand": "ShouldNotStick"}]), headers)
+    resp = await _post(client, "/api/imports/assets/preview", _xlsx([{"Asset Code": ids["asset_code"], "Brand Code": ids["brand2"]}]), headers)
     assert resp.status_code == 200
     body = resp.json()
     assert len(body["valid_rows"]) == 1
     assert body["valid_rows"][0]["asset_code"] == ids["asset_code"]
-    assert "brand" in body["valid_rows"][0]["fields_changed"]
+    assert "brand_id" in body["valid_rows"][0]["fields_changed"]
 
     asset = await _get_asset(ids["asset_id"])
-    assert asset.brand == "OldBrand"  # untouched
+    assert asset.brand_id == ids["brand_id"]  # untouched

@@ -1,6 +1,21 @@
 from pydantic import BaseModel, ConfigDict
 
 
+class BrandIn(BaseModel):
+    code: str
+    name: str
+
+
+class BrandEditIn(BaseModel):
+    name: str
+
+
+class BrandOut(BrandIn):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    is_active: bool
+
+
 class VendorIn(BaseModel):
     code: str
     name: str

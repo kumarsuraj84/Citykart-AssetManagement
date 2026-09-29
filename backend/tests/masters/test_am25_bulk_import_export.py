@@ -8,7 +8,7 @@ import openpyxl
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.holders.models import Holder
-from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location, Vendor
+from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Department, Location, Vendor
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -96,6 +96,39 @@ async def test_vendor_duplicate_code_is_a_row_error_not_a_500(client):
     assert "already exists" in body["errors"][0]["message"]
 
 
+async def test_vendor_code_over_the_column_limit_is_a_row_error_not_a_500(client):
+    ids = await _setup("VND4")
+    headers = await _login(client, ids["admin"])
+    header = ["Code", "Name", "GSTIN", "Contact Name", "Contact Phone", "Contact Email"]
+    too_long_code = "VASPS INFOTECH PRIVITE LIMITED"  # 31 chars, Vendor.code is varchar(20)
+    content = _xlsx(header, [
+        [too_long_code, "Vasps Infotech Private Limited", None, None, None, None],
+        ["VND-OK", "A Fine Vendor", None, None, None, None],
+    ])
+
+    preview_resp = await _post_file(client, "/api/masters/vendors/import/preview", content, headers)
+    assert preview_resp.status_code == 200, preview_resp.text
+    preview = preview_resp.json()
+    assert len(preview["valid_rows"]) == 1
+    assert preview["valid_rows"][0]["values"]["Code"] == "VND-OK"
+    assert len(preview["errors"]) == 1
+    assert "20 characters or fewer" in preview["errors"][0]["message"]
+
+    # The whole commit must not 500 -- the oversized row becomes a row error,
+    # and the other valid row in the same file still gets imported.
+    commit_resp = await _post_file(client, "/api/masters/vendors/import/commit", content, headers)
+    assert commit_resp.status_code == 200, commit_resp.text
+    body = commit_resp.json()
+    assert body["imported"] == 1
+    assert len(body["errors"]) == 1
+    assert "20 characters or fewer" in body["errors"][0]["message"]
+
+    vendors_resp = await client.get("/api/masters/vendors", headers=headers)
+    codes = [v["code"] for v in vendors_resp.json()]
+    assert "VND-OK" in codes
+    assert too_long_code not in codes
+
+
 async def test_vendor_missing_required_column_is_a_template_error(client):
     ids = await _setup("VND3")
     headers = await _login(client, ids["admin"])
@@ -103,6 +136,47 @@ async def test_vendor_missing_required_column_is_a_template_error(client):
     resp = await _post_file(client, "/api/masters/vendors/import/preview", content, headers)
     assert resp.status_code == 422
     assert "Name" in resp.text
+
+
+# --- Brands: SCOPE_NONE, same shape as Categories (added for the Brand
+# master itself, since it's newly wired into build_master_router) ---
+
+async def test_brand_template_and_commit(client):
+    ids = await _setup("BRD1")
+    headers = await _login(client, ids["admin"])
+
+    tpl_resp = await client.get("/api/masters/brands/import/template", headers=headers)
+    assert tpl_resp.status_code == 200
+    wb = openpyxl.load_workbook(io.BytesIO(tpl_resp.content))
+    header = [c.value for c in next(wb.active.iter_rows(min_row=1, max_row=1))]
+    assert header == ["Code", "Name"]
+
+    content = _xlsx(header, [["DELL-AM25", "Dell"]])
+    commit_resp = await _post_file(client, "/api/masters/brands/import/commit", content, headers)
+    assert commit_resp.status_code == 200, commit_resp.text
+    assert commit_resp.json() == {"imported": 1, "errors": []}
+
+    brands_resp = await client.get("/api/masters/brands", headers=headers)
+    codes = [b["code"] for b in brands_resp.json()]
+    assert "DELL-AM25" in codes
+
+
+async def test_brand_ordinary_crud(client):
+    ids = await _setup("BRD2")
+    headers = await _login(client, ids["admin"])
+
+    create_resp = await client.post("/api/masters/brands", json={"code": "HP-BRD2", "name": "HP"}, headers=headers)
+    assert create_resp.status_code == 201, create_resp.text
+    brand_id = create_resp.json()["id"]
+
+    update_resp = await client.put(f"/api/masters/brands/{brand_id}", json={"name": "HP Inc."}, headers=headers)
+    assert update_resp.status_code == 200
+    assert update_resp.json()["name"] == "HP Inc."
+
+    deact_resp = await client.delete(f"/api/masters/brands/{brand_id}", headers=headers)
+    assert deact_resp.status_code == 204
+    codes = [b["code"] for b in (await client.get("/api/masters/brands", headers=headers)).json()]
+    assert "HP-BRD2" not in codes
 
 
 # --- Cost Centres: SCOPE_COMPANY_ID + Company Code FK lookup ---

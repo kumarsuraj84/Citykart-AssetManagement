@@ -11,7 +11,7 @@ from app.assets.service import procure_assets
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.holders.models import Holder
-from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, CustomField, Department, Location, Vendor
+from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, CustomField, Department, Location, Vendor
 from app.numbering.models import CodeRule
 
 
@@ -21,7 +21,9 @@ async def _setup(code="EXP06"):
         co_b = Company(code=f"{code}B", name=f"{code} Co B")
         cat = AssetCategory(code=f"CAT-{code}", name="IT")
         vendor = Vendor(code=f"VND-{code}", name="Acme Traders")
-        session.add_all([co, co_b, cat, vendor])
+        brand = Brand(code=f"BR1-{code}", name="Dell")
+        brand2 = Brand(code=f"BR2-{code}", name="HP")
+        session.add_all([co, co_b, cat, vendor, brand, brand2])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
         cc = CostCenter(company_id=co.id, code="HO01", name="HO")
@@ -45,6 +47,7 @@ async def _setup(code="EXP06"):
         await session.commit()
         return {
             "co": co, "co_b_id": co_b.id, "cc": cc, "cat": cat, "sub": sub, "vendor": vendor,
+            "brand": brand.id, "brand2": brand2.id,
             "stock": stock, "admin": admin,
         }
 
@@ -70,7 +73,7 @@ class TestAssetRegisterExportColumns:
                 "invoice_number": "INV-COL1", "invoice_date": date(2025, 5, 2),
                 "pi_number": "PI-COL1", "pi_date": date(2025, 5, 3),
                 "purchase_cost": 60000, "tax_percent": 18,
-                "brand": "Dell", "model": "Latitude", "serial_number": "SN-COL1",
+                "brand_id": ids["brand"], "model": "Latitude", "serial_number": "SN-COL1",
                 "warranty_upto": date(2027, 6, 1),
             }, quantity=1, actor=ids["admin"])
             await session.commit()
@@ -181,7 +184,7 @@ class TestFieldChangeAuditExport:
             [asset] = await procure_assets(session, {
                 "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
                 "description": "Audit Export Laptop", "purchase_date": date(2025, 6, 1),
-                "initial_holder_id": ids["stock"].id, "brand": "Dell",
+                "initial_holder_id": ids["stock"].id, "brand_id": ids["brand"],
             }, quantity=1, actor=ids["admin"])
             await session.commit()
             asset_id, asset_code = asset.id, asset.asset_code
@@ -191,7 +194,7 @@ class TestFieldChangeAuditExport:
         # unchanged" -- every editable field must be resubmitted each time.
         headers = await _headers(client, ids["admin"].emp_code)
         full_body = {
-            "legacy_asset_code": None, "brand": "Dell", "model": None, "serial_number": None,
+            "legacy_asset_code": None, "brand_id": ids["brand"], "model": None, "serial_number": None,
             "description": "Audit Export Laptop", "vendor_id": None, "po_number": None, "po_date": None,
             "invoice_number": None, "invoice_date": None, "pi_number": None, "pi_date": None,
             # procure_assets defaults an unset cost/tax to 0 (Decimal), not None --
@@ -199,8 +202,8 @@ class TestFieldChangeAuditExport:
             # spurious 0.00 -> None "change".
             "purchase_cost": 0, "tax_percent": 0, "warranty_years": None, "custom_fields": None,
         }
-        await client.put(f"/api/assets/{asset_id}", json={**full_body, "brand": "HP"}, headers=headers)
-        await client.put(f"/api/assets/{asset_id}", json={**full_body, "brand": "HP", "description": "Audit Export Laptop v2"}, headers=headers)
+        await client.put(f"/api/assets/{asset_id}", json={**full_body, "brand_id": ids["brand2"]}, headers=headers)
+        await client.put(f"/api/assets/{asset_id}", json={**full_body, "brand_id": ids["brand2"], "description": "Audit Export Laptop v2"}, headers=headers)
 
         resp = await client.get("/api/reports/export/field-changes", headers=headers)
         assert resp.status_code == 200
@@ -209,8 +212,8 @@ class TestFieldChangeAuditExport:
         assert _header_row(ws) == ["Asset Code", "Field", "Old Value", "New Value", "Actor", "Changed At", "Request ID", "Reason"]
         rows = [dict(zip(_header_row(ws), r)) for r in ws.iter_rows(min_row=2, values_only=True) if r[0] == asset_code]
         assert len(rows) == 2  # one brand change, one description change (in that PUT order)
-        assert rows[0]["Field"] == "brand"
-        assert rows[0]["Old Value"] == "Dell" and rows[0]["New Value"] == "HP"
+        assert rows[0]["Field"] == "brand_id"
+        assert rows[0]["Old Value"] == f"Dell (#{ids['brand']})" and rows[0]["New Value"] == f"HP (#{ids['brand2']})"
         assert rows[0]["Actor"] == "Admin"
         # AM-17 DEF-02: an ordinary edit's rows carry no Reason (that column
         # is what distinguishes them from a controlled correction).

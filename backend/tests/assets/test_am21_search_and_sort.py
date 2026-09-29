@@ -39,14 +39,14 @@ async def _login(client, login_id):
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 
-async def _make_asset(ids, description, serial, brand=None, model=None, barcode=None):
+async def _make_asset(ids, description, serial, model=None, barcode=None):
     async with SessionLocal() as session:
         admin = await session.get(Holder, ids["admin"].id)
         [asset] = await procure_assets(session, {
             "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
             "description": description, "purchase_date": date(2026, 1, 1),
             "serial_number": serial, "initial_holder_id": ids["stock"].id,
-            "brand": brand, "model": model, "barcode": barcode,
+            "model": model, "barcode": barcode,
         }, quantity=1, actor=admin)
         await session.commit()
         return asset.id
@@ -96,11 +96,16 @@ async def test_unrecognized_sort_by_is_ignored_not_a_422(client):
     assert resp.status_code == 200
 
 
-async def test_search_now_also_covers_barcode_brand_model(client):
+async def test_search_now_also_covers_barcode_model(client):
+    """AM-21 originally covered Brand too, but Brand became a master FK
+    (brand_id) once it moved out of free text -- it's no longer part of
+    this free-text search, matching category_id/vendor_id, which were
+    never in it either (see search_service.py's own SORTABLE_COLUMNS
+    comment)."""
     ids = await _setup("SRT4")
     headers = await _login(client, ids["admin_emp"])
-    await _make_asset(ids, "Searchable Item", "SN-SRT4-1", brand="Dell", model="Latitude", barcode="BC-UNIQUE-999")
+    await _make_asset(ids, "Searchable Item", "SN-SRT4-1", model="Latitude", barcode="BC-UNIQUE-999")
 
-    for q in ("Dell", "Latitude", "BC-UNIQUE-999"):
+    for q in ("Latitude", "BC-UNIQUE-999"):
         resp = await client.get(f"/api/assets?q={q}", headers=headers)
         assert resp.json()["total"] == 1, f"expected exactly 1 match searching {q!r}"

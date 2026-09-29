@@ -44,7 +44,7 @@ interface Asset {
   cost_center_id: number;
   category_id: number;
   subcategory_id: number | null;
-  brand: string | null;
+  brand_id: number | null;
   model: string | null;
   serial_number: string | null;
   barcode: string | null;
@@ -72,6 +72,7 @@ interface Asset {
   subcategory_name: string | null;
   cost_center_name: string | null;
   vendor_name: string | null;
+  brand_name: string | null;
   current_holder_name: string | null;
   current_holder_type: string | null;
   location_name: string | null;
@@ -132,7 +133,7 @@ const emptyActionForm: ActionFormState = {
 
 interface EditFormState {
   legacyAssetCode: string;
-  brand: string;
+  brandId: string;
   model: string;
   serialNumber: string;
   barcode: string;
@@ -156,7 +157,7 @@ interface EditFormState {
 function editFormFromAsset(asset: Asset): EditFormState {
   return {
     legacyAssetCode: asset.legacy_asset_code ?? "",
-    brand: asset.brand ?? "",
+    brandId: asset.brand_id ? String(asset.brand_id) : "",
     model: asset.model ?? "",
     serialNumber: asset.serial_number ?? "",
     barcode: asset.barcode ?? "",
@@ -274,6 +275,11 @@ export function AssetDetail({ assetId }: { assetId: number }) {
     queryFn: () => apiClient.get<HolderOption[]>("/masters/vendors"),
     enabled: editing,
   });
+  const { data: brands = [] } = useQuery({
+    queryKey: ["masters", "brands"],
+    queryFn: () => apiClient.get<MasterOption[]>("/masters/brands"),
+    enabled: editing,
+  });
   const { data: customFieldDefsRaw = [] } = useQuery({
     queryKey: ["masters", "custom-fields"],
     queryFn: () => apiClient.get<CustomFieldDef[]>("/masters/custom-fields"),
@@ -384,7 +390,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
       const f = editForm!;
       return apiClient.put<Asset>(`/assets/${assetId}`, {
         legacy_asset_code: f.legacyAssetCode || null,
-        brand: f.brand || null,
+        brand_id: f.brandId ? Number(f.brandId) : null,
         model: f.model || null,
         serial_number: f.serialNumber || null,
         barcode: f.barcode || null,
@@ -562,7 +568,14 @@ export function AssetDetail({ assetId }: { assetId: number }) {
             <FormField htmlFor="edit-description" label="Description" required className="sm:col-span-2">
               <Textarea id="edit-description" aria-label="Description" value={editForm.description} onChange={(e) => setEditField("description", e.target.value)} />
             </FormField>
-            <FormField htmlFor="edit-brand" label="Brand"><Input id="edit-brand" aria-label="Brand" value={editForm.brand} onChange={(e) => setEditField("brand", e.target.value)} /></FormField>
+            <FormField htmlFor="edit-brand" label="Brand">
+              <Select value={selectValue(editForm.brandId)} onValueChange={(v) => setEditField("brandId", v)}>
+                <SelectTrigger id="edit-brand" aria-label="Brand"><SelectValue placeholder="Select…" /></SelectTrigger>
+                <SelectContent>
+                  {brands.map((b) => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FormField>
             <FormField htmlFor="edit-model" label="Model"><Input id="edit-model" aria-label="Model" value={editForm.model} onChange={(e) => setEditField("model", e.target.value)} /></FormField>
             <FormField
               htmlFor="edit-serial"
@@ -721,7 +734,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
               <ReadField label="Description" value={asset.description} />
               <ReadField label="Category" value={asset.category_name} />
               <ReadField label="Sub-Category" value={asset.subcategory_name} />
-              <ReadField label="Brand" value={asset.brand} />
+              <ReadField label="Brand" value={asset.brand_name} />
               <ReadField label="Model" value={asset.model} />
               <ReadField label="Serial Number" value={asset.serial_number} />
               <ReadField label="Barcode" value={asset.barcode} />

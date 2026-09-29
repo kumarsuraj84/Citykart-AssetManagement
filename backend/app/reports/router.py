@@ -12,7 +12,7 @@ from app.core.db import get_session
 from app.core.deps import STAFF_ROLES, get_current_holder, require_role, scoped_company_ids
 from app.holders.models import Holder
 from app.lifecycle.models import AssetEvent
-from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Location, Vendor
+from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Location, Vendor
 from app.reports.dashboard_service import dashboard_data
 from app.reports.export_service import assets_to_xlsx, field_changes_to_xlsx, movements_to_xlsx
 from app.reports.schemas import DashboardOut
@@ -40,13 +40,14 @@ async def _export_label_maps(session: AsyncSession) -> dict:
     categories = {c.id: c.name for c in (await session.execute(select(AssetCategory))).scalars().all()}
     subcategories = {c.id: c.name for c in (await session.execute(select(AssetSubcategory))).scalars().all()}
     vendors = {v.id: v.name for v in (await session.execute(select(Vendor))).scalars().all()}
+    brands = {b.id: b.name for b in (await session.execute(select(Brand))).scalars().all()}
     locations = {loc.id: loc.name for loc in (await session.execute(select(Location))).scalars().all()}
     holders: dict[int, dict] = {}
     for h in (await session.execute(select(Holder))).scalars().all():
         holders[h.id] = {"name": h.name, "holder_type": h.holder_type, "location_name": locations.get(h.location_id)}
     return {
         "company": companies, "cost_center": cost_centers, "category": categories,
-        "subcategory": subcategories, "vendor": vendors, "holder": holders,
+        "subcategory": subcategories, "vendor": vendors, "holder": holders, "brand": brands,
     }
 
 

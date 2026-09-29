@@ -37,6 +37,7 @@ function mockGets({ holders = [{ id: 4, name: "IT Stock-HO" }], customFields = [
     if (path.startsWith("/masters/subcategories")) return Promise.resolve([{ id: 2, code: "LAP", name: "Laptop", category_id: 1 }]);
     if (path.startsWith("/masters/cost-centers")) return Promise.resolve([{ id: 3, code: "HO01", name: "Head Office" }]);
     if (path.startsWith("/masters/vendors")) return Promise.resolve([{ id: 7, code: "VND1", name: "Acme Traders" }]);
+    if (path.startsWith("/masters/brands")) return Promise.resolve([{ id: 9, code: "DELL", name: "Dell" }]);
     if (path.startsWith("/masters/custom-fields")) return Promise.resolve(customFields);
     if (path.startsWith("/holders")) return Promise.resolve(holders);
     return Promise.resolve([]);
@@ -94,6 +95,7 @@ describe("AddAssetForm", () => {
     await pickSelectOption(/cost centre/i, "Head Office");
     await pickSelectOption(/goes into/i, "IT Stock-HO");
     await pickSelectOption(/^vendor$/i, "Acme Traders");
+    await pickSelectOption(/^brand$/i, "Dell");
 
     fireEvent.change(screen.getByLabelText(/po number/i), { target: { value: "PO-1" } });
     fireEvent.change(screen.getByLabelText(/po date/i), { target: { value: "2025-06-01" } });
@@ -111,7 +113,7 @@ describe("AddAssetForm", () => {
       expect(apiClient.post).toHaveBeenCalledWith(
         "/assets",
         expect.objectContaining({
-          vendor_id: 7, po_number: "PO-1", po_date: "2025-06-01",
+          vendor_id: 7, brand_id: 9, po_number: "PO-1", po_date: "2025-06-01",
           invoice_number: "INV-1", invoice_date: "2025-06-02",
           pi_number: "PI-1", pi_date: "2025-06-03", warranty_years: 3,
           serial_number: "SN-1",
@@ -258,11 +260,12 @@ describe("AddAssetForm", () => {
         return Promise.resolve({
           id: 42, asset_code: "FA/HO01/IT/LAP/CK_42", legacy_asset_code: null, description: "Test Laptop",
           status: "IN_STOCK", company_id: 1, cost_center_id: 3, category_id: 1, subcategory_id: null,
-          brand: null, model: null, serial_number: null, vendor_id: null, po_number: null, po_date: null,
+          brand_id: null, model: null, serial_number: null, vendor_id: null, po_number: null, po_date: null,
           invoice_number: null, invoice_date: null, pi_number: null, pi_date: null, purchase_cost: 0,
           tax_percent: 0, tax_amount: 0, total_cost: 0, purchase_date: "2025-06-01", warranty_upto: null,
           current_holder_id: 4, status_since: "2025-06-01", custom_fields: {},
           category_name: "IT Equipment", subcategory_name: null, cost_center_name: "Head Office", vendor_name: null,
+          brand_name: null,
           current_holder_name: "IT Stock-HO", current_holder_type: "IT_STOCK", location_name: null, department_name: null,
         });
       }

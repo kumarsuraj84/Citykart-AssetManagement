@@ -44,7 +44,7 @@ interface PendingAssetRow {
   barcode: string | null;
   category_id: number;
   subcategory_id: number | null;
-  brand: string | null;
+  brand_id: number | null;
   model: string | null;
   warranty_years: number | null;
   cost_center_id: number;
@@ -122,12 +122,14 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   // AM-14: the header previously named PO Date/Cost Centre but never Vendor --
   // the same master-list lookup PurchaseOrdersList.tsx already uses.
   const vendorsQ = useQuery({ queryKey: ["masters", "vendors"], queryFn: () => apiClient.get<Option[]>("/masters/vendors") });
+  const brandsQ = useQuery({ queryKey: ["masters", "brands"], queryFn: () => apiClient.get<Option[]>("/masters/brands") });
 
   const categories = categoriesQ.data ?? [];
   const subcategories = subcategoriesQ.data ?? [];
   const costCenters = costCentersQ.data ?? [];
   const holders = holdersQ.data ?? [];
   const vendors = vendorsQ.data ?? [];
+  const brands = brandsQ.data ?? [];
   const lines = linesQ.data ?? [];
   const categoryName = (id: number) => categories.find((c) => c.id === id)?.name ?? String(id);
   const costCenterName = (id: number | null) => (id == null ? "—" : costCenters.find((c) => c.id === id)?.name ?? String(id));
@@ -182,7 +184,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const [showAddLine, setShowAddLine] = useState(false);
   const [lineForm, setLineForm] = useState({
     description: "", barcode: "", categoryId: "", subcategoryId: "",
-    brand: "", model: "", warrantyYears: "0",
+    brandId: "", model: "", warrantyYears: "0",
     purchaseCost: "0", taxPercent: "0", quantity: "1",
   });
   const visibleSubcategories = lineForm.categoryId
@@ -205,7 +207,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
         barcode: lineForm.barcode || null,
         category_id: Number(lineForm.categoryId),
         subcategory_id: lineForm.subcategoryId ? Number(lineForm.subcategoryId) : null,
-        brand: lineForm.brand || null,
+        brand_id: lineForm.brandId ? Number(lineForm.brandId) : null,
         model: lineForm.model || null,
         warranty_years: Number(lineForm.warrantyYears) || 0,
         purchase_cost: Number(lineForm.purchaseCost) || 0,
@@ -216,7 +218,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
       qc.invalidateQueries({ queryKey: ["purchase-order", poId, "lines"] });
       setLineForm({
         description: "", barcode: "", categoryId: "", subcategoryId: "",
-        brand: "", model: "", warrantyYears: "0", purchaseCost: "0", taxPercent: "0", quantity: "1",
+        brandId: "", model: "", warrantyYears: "0", purchaseCost: "0", taxPercent: "0", quantity: "1",
       });
     },
   });
@@ -225,7 +227,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const [editingLine, setEditingLine] = useState<PendingAssetRow | null>(null);
   const [editForm, setEditForm] = useState({
     description: "", barcode: "", categoryId: "", subcategoryId: "",
-    brand: "", model: "", warrantyYears: "0", purchaseCost: "0", taxPercent: "0",
+    brandId: "", model: "", warrantyYears: "0", purchaseCost: "0", taxPercent: "0",
   });
 
   function openEdit(line: PendingAssetRow) {
@@ -233,7 +235,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     setEditForm({
       description: line.description, barcode: line.barcode ?? "", categoryId: String(line.category_id),
       subcategoryId: line.subcategory_id ? String(line.subcategory_id) : "",
-      brand: line.brand ?? "", model: line.model ?? "", warrantyYears: String(line.warranty_years ?? 0),
+      brandId: line.brand_id ? String(line.brand_id) : "", model: line.model ?? "", warrantyYears: String(line.warranty_years ?? 0),
       purchaseCost: String(line.purchase_cost ?? 0),
       taxPercent: String(line.tax_percent ?? 0),
     });
@@ -248,7 +250,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
       apiClient.put<PendingAssetRow>(`/purchase-orders/lines/${editingLine!.id}`, {
         description: editForm.description, barcode: editForm.barcode || null, category_id: Number(editForm.categoryId),
         subcategory_id: editForm.subcategoryId ? Number(editForm.subcategoryId) : null,
-        brand: editForm.brand || null, model: editForm.model || null,
+        brand_id: editForm.brandId ? Number(editForm.brandId) : null, model: editForm.model || null,
         warranty_years: Number(editForm.warrantyYears) || 0,
         purchase_cost: Number(editForm.purchaseCost) || 0, tax_percent: Number(editForm.taxPercent) || 0,
       }),
@@ -561,7 +563,18 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
             <Input id="line-quantity" type="number" min={1} value={lineForm.quantity} onChange={(e) => setLineForm((f) => ({ ...f, quantity: e.target.value }))} />
           </FormField>
           <FormField htmlFor="line-brand" label="Brand">
-            <Input id="line-brand" value={lineForm.brand} onChange={(e) => setLineForm((f) => ({ ...f, brand: e.target.value }))} />
+            <Select value={selectValue(lineForm.brandId)} onValueChange={(v) => setLineForm((f) => ({ ...f, brandId: v }))}>
+              <SelectTrigger id="line-brand">
+                <SelectValue placeholder="Select…" />
+              </SelectTrigger>
+              <SelectContent>
+                {brands.map((b) => (
+                  <SelectItem key={b.id} value={String(b.id)}>
+                    {b.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </FormField>
           <FormField htmlFor="line-model" label="Model">
             <Input id="line-model" value={lineForm.model} onChange={(e) => setLineForm((f) => ({ ...f, model: e.target.value }))} />
@@ -644,7 +657,18 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
               <Input id="edit-tax" type="number" value={editForm.taxPercent} onChange={(e) => setEditForm((f) => ({ ...f, taxPercent: e.target.value }))} />
             </FormField>
             <FormField htmlFor="edit-brand" label="Brand">
-              <Input id="edit-brand" value={editForm.brand} onChange={(e) => setEditForm((f) => ({ ...f, brand: e.target.value }))} />
+              <Select value={selectValue(editForm.brandId)} onValueChange={(v) => setEditForm((f) => ({ ...f, brandId: v }))}>
+                <SelectTrigger id="edit-brand">
+                  <SelectValue placeholder="Select…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {brands.map((b) => (
+                    <SelectItem key={b.id} value={String(b.id)}>
+                      {b.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </FormField>
             <FormField htmlFor="edit-model" label="Model">
               <Input id="edit-model" value={editForm.model} onChange={(e) => setEditForm((f) => ({ ...f, model: e.target.value }))} />

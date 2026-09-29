@@ -16,7 +16,7 @@ from app.assets.service import check_serial_number_unique, compute_tax, compute_
 from app.holders.models import Holder
 from app.lifecycle.service import apply_event
 from app.lifecycle.state_machine import LifecycleError
-from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location, Vendor
+from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Department, Location, Vendor
 from app.reports.export_service import asset_label_png, asset_qr_png
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
@@ -57,7 +57,7 @@ class BulkActionOut(BaseModel):
     failed: list[dict]
 
 
-async def _page_label_maps(session: AsyncSession, items: list[Asset]) -> tuple[dict, dict, dict, dict, dict, dict, dict, dict]:
+async def _page_label_maps(session: AsyncSession, items: list[Asset]) -> tuple[dict, dict, dict, dict, dict, dict, dict, dict, dict]:
     """AM-11: page-scoped id->name lookups for the register's columns -- only
     the distinct ids actually present on this one page (at most `limit`,
     currently capped at 200), never every holder/company/category/etc in the
@@ -80,6 +80,7 @@ async def _page_label_maps(session: AsyncSession, items: list[Asset]) -> tuple[d
     subcategory_ids = {a.subcategory_id for a in items if a.subcategory_id is not None}
     vendor_ids = {a.vendor_id for a in items if a.vendor_id is not None}
     cost_center_ids = {a.cost_center_id for a in items}
+    brand_ids = {a.brand_id for a in items if a.brand_id is not None}
 
     async def _labels(model, ids: set[int]) -> dict[int, str]:
         if not ids:
@@ -93,6 +94,7 @@ async def _page_label_maps(session: AsyncSession, items: list[Asset]) -> tuple[d
     subcategories = await _labels(AssetSubcategory, subcategory_ids)
     vendors = await _labels(Vendor, vendor_ids)
     cost_centers = await _labels(CostCenter, cost_center_ids)
+    brands = await _labels(Brand, brand_ids)
 
     holder_detail_rows = []
     if holder_ids:
@@ -104,7 +106,7 @@ async def _page_label_maps(session: AsyncSession, items: list[Asset]) -> tuple[d
     holder_locations = {hid: location_names.get(loc_id) for hid, loc_id, _ in holder_detail_rows}
     holder_types = {hid: holder_type for hid, _, holder_type in holder_detail_rows}
 
-    return holders, companies, categories, subcategories, vendors, cost_centers, holder_locations, holder_types
+    return holders, companies, categories, subcategories, vendors, cost_centers, holder_locations, holder_types, brands
 
 
 @router.post("", response_model=list[AssetOut], status_code=201)
@@ -172,7 +174,7 @@ async def list_assets(
     )
     (
         holder_labels, company_labels, category_labels, subcategory_labels, vendor_labels, cost_center_labels,
-        holder_locations, holder_types,
+        holder_locations, holder_types, brand_labels,
     ) = await _page_label_maps(session, items)
     out_items = []
     for a in items:
@@ -185,6 +187,7 @@ async def list_assets(
         out.subcategory_name = subcategory_labels.get(a.subcategory_id) if a.subcategory_id else None
         out.vendor_name = vendor_labels.get(a.vendor_id) if a.vendor_id else None
         out.cost_center_name = cost_center_labels.get(a.cost_center_id)
+        out.brand_name = brand_labels.get(a.brand_id) if a.brand_id else None
         out_items.append(out)
     return AssetListOut(items=out_items, total=total)
 
@@ -268,6 +271,7 @@ async def _to_detail_out(session: AsyncSession, asset: Asset) -> AssetDetailOut:
     subcategory = await session.get(AssetSubcategory, asset.subcategory_id) if asset.subcategory_id else None
     cost_center = await session.get(CostCenter, asset.cost_center_id)
     vendor = await session.get(Vendor, asset.vendor_id) if asset.vendor_id else None
+    brand = await session.get(Brand, asset.brand_id) if asset.brand_id else None
     current_holder = await session.get(Holder, asset.current_holder_id)
     company = await session.get(Company, asset.company_id)
     location = await session.get(Location, current_holder.location_id) if current_holder else None
@@ -283,7 +287,7 @@ async def _to_detail_out(session: AsyncSession, asset: Asset) -> AssetDetailOut:
     base = AssetOut.model_validate(asset).model_dump(
         exclude={
             "current_holder_name", "current_holder_location_name", "current_holder_type",
-            "company_name", "category_name", "subcategory_name", "cost_center_name", "vendor_name",
+            "company_name", "category_name", "subcategory_name", "cost_center_name", "vendor_name", "brand_name",
         }
     )
     return AssetDetailOut(
@@ -294,6 +298,7 @@ async def _to_detail_out(session: AsyncSession, asset: Asset) -> AssetDetailOut:
         subcategory_name=subcategory.name if subcategory else None,
         cost_center_name=cost_center.name if cost_center else None,
         vendor_name=vendor.name if vendor else None,
+        brand_name=brand.name if brand else None,
         current_holder_type=current_holder.holder_type if current_holder else None,
         location_name=location.name if location else None,
         department_name=department.name if department else None,
@@ -384,7 +389,7 @@ async def update_asset(
     tax_amount, total_cost = compute_tax(data.get("purchase_cost"), data.get("tax_percent"))
 
     for field in (
-        "legacy_asset_code", "brand", "model", "serial_number", "barcode", "description",
+        "legacy_asset_code", "brand_id", "model", "serial_number", "barcode", "description",
         "vendor_id", "po_number", "po_date", "invoice_number", "invoice_date", "invoice_amount",
         "pi_number", "pi_date", "purchase_cost", "tax_percent",
     ):

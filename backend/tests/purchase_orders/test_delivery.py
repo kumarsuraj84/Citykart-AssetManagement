@@ -5,7 +5,7 @@ from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.assets.models import Asset
 from app.holders.models import Holder
-from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location, Vendor
+from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Department, Location, Vendor
 from app.numbering.models import CodeRule
 from app.purchase_orders.models import PendingAsset, PurchaseOrder
 from app.purchase_orders.service import add_pending_asset_line, deliver_pending_assets
@@ -193,9 +193,12 @@ async def test_deliver_computes_warranty_upto_from_the_lines_warranty_years():
     async with SessionLocal() as session:
         po = await session.get(PurchaseOrder, ctx["po"].id)
         admin = await session.get(Holder, ctx["admin"].id)
+        brand = Brand(code="D7-DELL", name="Dell")
+        session.add(brand)
+        await session.flush()
         [line] = await add_pending_asset_line(session, po, {
             "description": "Laptop", "category_id": ctx["cat"].id,
-            "brand": "Dell", "model": "Latitude 5440", "warranty_years": 3, "quantity": 1,
+            "brand_id": brand.id, "model": "Latitude 5440", "warranty_years": 3, "quantity": 1,
         }, admin)
         await session.commit()
 
@@ -206,7 +209,7 @@ async def test_deliver_computes_warranty_upto_from_the_lines_warranty_years():
         await session.commit()
 
         asset = await session.get(Asset, delivered.delivered_asset_id)
-        assert asset.brand == "Dell"
+        assert asset.brand_id == brand.id
         assert asset.model == "Latitude 5440"
         assert asset.warranty_years == 3
         # purchase_date (== invoice_date, 2026-04-10) + 3 years, minus 1 day.

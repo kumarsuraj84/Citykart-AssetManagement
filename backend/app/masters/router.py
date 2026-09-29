@@ -229,24 +229,24 @@ router.include_router(build_master_router(
     "/companies", models.Company, schemas.CompanyIn, schemas.CompanyOut, SCOPE_SELF,
     schema_edit=schemas.CompanyEditIn,
     import_fields=[
-        FieldSpec("Code", "code", required=True),
-        FieldSpec("Name", "name", required=True),
+        FieldSpec("Code", "code", required=True, max_length=20),
+        FieldSpec("Name", "name", required=True, max_length=200),
     ],
 ))
 router.include_router(build_master_router(
     "/locations", models.Location, schemas.LocationIn, schemas.LocationOut,
     schema_edit=schemas.LocationEditIn,
     import_fields=[
-        FieldSpec("Code", "code", required=True),
-        FieldSpec("Name", "name", required=True),
-        FieldSpec("Address", "address"),
+        FieldSpec("Code", "code", required=True, max_length=20),
+        FieldSpec("Name", "name", required=True, max_length=200),
+        FieldSpec("Address", "address", max_length=500),
     ],
 ))
 router.include_router(build_master_router(
     "/departments", models.Department, schemas.DepartmentIn, schemas.DepartmentOut,
     schema_edit=schemas.DepartmentEditIn,
     import_fields=[
-        FieldSpec("Name", "name", required=True),
+        FieldSpec("Name", "name", required=True, max_length=200),
     ],
 ))
 router.include_router(build_master_router(
@@ -254,16 +254,16 @@ router.include_router(build_master_router(
     schema_edit=schemas.CostCenterEditIn,
     import_fields=[
         FieldSpec("Company Code", "company_id", required=True, lookup=(models.Company, "code")),
-        FieldSpec("Code", "code", required=True),
-        FieldSpec("Name", "name", required=True),
+        FieldSpec("Code", "code", required=True, max_length=20),
+        FieldSpec("Name", "name", required=True, max_length=200),
     ],
 ))
 router.include_router(build_master_router(
     "/categories", models.AssetCategory, schemas.AssetCategoryIn, schemas.AssetCategoryOut,
     schema_edit=schemas.AssetCategoryEditIn,
     import_fields=[
-        FieldSpec("Code", "code", required=True),
-        FieldSpec("Name", "name", required=True),
+        FieldSpec("Code", "code", required=True, max_length=20),
+        FieldSpec("Name", "name", required=True, max_length=200),
     ],
 ))
 router.include_router(build_master_router(
@@ -271,20 +271,28 @@ router.include_router(build_master_router(
     schema_edit=schemas.AssetSubcategoryEditIn,
     import_fields=[
         FieldSpec("Category Code", "category_id", required=True, lookup=(models.AssetCategory, "code")),
-        FieldSpec("Code", "code", required=True),
-        FieldSpec("Name", "name", required=True),
+        FieldSpec("Code", "code", required=True, max_length=20),
+        FieldSpec("Name", "name", required=True, max_length=200),
+    ],
+))
+router.include_router(build_master_router(
+    "/brands", models.Brand, schemas.BrandIn, schemas.BrandOut,
+    schema_edit=schemas.BrandEditIn,
+    import_fields=[
+        FieldSpec("Code", "code", required=True, max_length=20),
+        FieldSpec("Name", "name", required=True, max_length=200),
     ],
 ))
 router.include_router(build_master_router(
     "/vendors", models.Vendor, schemas.VendorIn, schemas.VendorOut,
     schema_edit=schemas.VendorEditIn,
     import_fields=[
-        FieldSpec("Code", "code", required=True),
-        FieldSpec("Name", "name", required=True),
-        FieldSpec("GSTIN", "gstin"),
-        FieldSpec("Contact Name", "contact_name"),
-        FieldSpec("Contact Phone", "contact_phone"),
-        FieldSpec("Contact Email", "contact_email"),
+        FieldSpec("Code", "code", required=True, max_length=20),
+        FieldSpec("Name", "name", required=True, max_length=200),
+        FieldSpec("GSTIN", "gstin", max_length=20),
+        FieldSpec("Contact Name", "contact_name", max_length=200),
+        FieldSpec("Contact Phone", "contact_phone", max_length=30),
+        FieldSpec("Contact Email", "contact_email", max_length=200),
     ],
 ))
 

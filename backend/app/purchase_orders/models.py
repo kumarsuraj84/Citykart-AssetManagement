@@ -37,7 +37,7 @@ class PendingAsset(Base, AuditMixin):
     category_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("asset_category.id"))
     subcategory_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("asset_subcategory.id"))
     cost_center_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("cost_center.id"))
-    brand: Mapped[str | None] = mapped_column(String(200))
+    brand_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("brand.id"))
     model: Mapped[str | None] = mapped_column(String(200))
     warranty_years: Mapped[int | None] = mapped_column(Integer)
     """AM-18: entered once per line, like barcode/description -- shared by

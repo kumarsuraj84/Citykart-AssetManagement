@@ -21,7 +21,7 @@ class Asset(Base, AuditMixin):
     cost_center_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("cost_center.id"))
     category_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("asset_category.id"))
     subcategory_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("asset_subcategory.id"))
-    brand: Mapped[str | None] = mapped_column(String(200))
+    brand_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("brand.id"))
     model: Mapped[str | None] = mapped_column(String(200))
     serial_number: Mapped[str | None] = mapped_column(String(200))
     barcode: Mapped[str | None] = mapped_column(String(200))

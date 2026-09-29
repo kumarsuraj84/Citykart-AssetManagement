@@ -20,7 +20,7 @@ from datetime import date, datetime
 from io import BytesIO
 import openpyxl
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.reports.export_service import _sanitize_row
 
@@ -45,6 +45,7 @@ class FieldSpec:
     lookup: tuple[type, str] | None = None
     kind: str = "text"
     enum_values: tuple[str, ...] = ()
+    max_length: int | None = None
 
 
 class ImportTemplateError(ValueError):
@@ -210,7 +211,15 @@ async def _validate_rows(
                     break
                 data[f.field] = text
             else:
-                data[f.field] = str(raw).strip()
+                text = str(raw).strip()
+                if f.max_length is not None and len(text) > f.max_length:
+                    errors.append({
+                        "row": row_idx, "field": f.header,
+                        "message": f"{f.header} must be {f.max_length} characters or fewer (got {len(text)})",
+                    })
+                    row_error = True
+                    break
+                data[f.field] = text
         if row_error:
             continue
 
@@ -261,6 +270,12 @@ async def commit_import(
             imported += 1
         except IntegrityError:
             errors.append({"row": r["row"], "message": "a record with this code already exists"})
+        except DataError:
+            # Defense-in-depth: a row-level DB error that field-level
+            # validation above didn't already catch (e.g. an unforeseen
+            # column constraint) reports as a per-row error, not a 500 that
+            # kills every other valid row in the same file.
+            errors.append({"row": r["row"], "message": "this row could not be saved -- one of its values is invalid"})
 
     await session.flush()
     return {"imported": imported, "errors": errors}
