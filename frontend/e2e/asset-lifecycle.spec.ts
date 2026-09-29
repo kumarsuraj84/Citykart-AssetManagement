@@ -89,19 +89,19 @@ test("full custody journey: procure, allot, return, allot again", async ({ page,
 
   // ---- Allot to the test EMPLOYEE asset_user ----
   await page.getByRole("button", { name: "Move / Allot", exact: true }).click();
-  await selectRadix(page, "AssetUser", ctx.employee.name);
+  await selectRadix(page, "Asset User", ctx.employee.name);
   await page.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(page.getByText("ALLOTTED", { exact: true })).toBeVisible();
 
   // ---- Return to IT Stock ----
   await page.getByRole("button", { name: "Move / Transfer", exact: true }).click();
-  await selectRadix(page, "AssetUser", ctx.stock.name);
+  await selectRadix(page, "Asset User", ctx.stock.name);
   await page.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(page.getByText("IN STOCK", { exact: true })).toBeVisible();
 
   // ---- Allot to the test STORE asset_user ----
   await page.getByRole("button", { name: "Move / Allot", exact: true }).click();
-  await selectRadix(page, "AssetUser", ctx.store.name);
+  await selectRadix(page, "Asset User", ctx.store.name);
   await page.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(page.getByText("ALLOTTED", { exact: true })).toBeVisible();
 

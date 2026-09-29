@@ -59,7 +59,7 @@ test("asset correction journey: correct classification and purchase date, Asset 
   // A second Category/Sub-Category to correct INTO -- registered for
   // teardown just like seedTestCompany's own masters.
   const category2 = await api<{ id: number; name: string }>(baseURL!, "POST", "/api/masters/categories", token, {
-    code: `E2E2${Date.now().toString(36)}`, name: `E2E Correction Target Category ${Date.now()}`,
+    code: `E2E2${Date.now().toString(36)}`, name: `E2E Correction Target Category ${Date.now()}`, asset_domain: "IT",
   });
   registry.masters.push(["categories", category2.id]);
   const subcategory2 = await api<{ id: number; name: string }>(baseURL!, "POST", "/api/masters/subcategories", token, {

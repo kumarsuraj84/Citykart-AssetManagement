@@ -37,9 +37,19 @@ async def ensure_seed_admin(session: AsyncSession, company_code: str = "E2E", pa
         await session.execute(select(AssetUser).where(and_(AssetUser.company_id == company.id, AssetUser.code == "SEEDADMIN")))
     ).scalars().first()
     if asset_user is None:
+        # is_primary_owner=True: masters and Import are now Primary-Owner-only
+        # (docs/ai/DECISIONS.md, Asset User RBAC rebuild), and every E2E spec's
+        # fixture (frontend/e2e/fixtures.ts::seedTestCompany) provisions its own
+        # test company's masters through this account's token before any
+        # ordinary-ADMIN flow is exercised. A company-scoped Primary Owner is
+        # legal (AssetUser's ck_asset_user_ordinary_fields_required constraint
+        # is an OR, not an XOR) -- this stays company-scoped like every other
+        # field here, it just also carries the unconditional master/import
+        # write access a plain "ADMIN" role no longer has. Dev/E2E-only: never
+        # run against production (see module docstring / create_owner.py).
         asset_user = AssetUser(
             company_id=company.id, code="SEEDADMIN", name="Seed Admin", asset_user_type="EMPLOYEE",
-            location_id=location.id, department_id=department.id, role="ADMIN",
+            location_id=location.id, department_id=department.id, role="ADMIN", is_primary_owner=True,
             login_enabled=True, primary_asset_domain="ALL",
             password_hash=hash_password(password), must_change_password=False,
         )

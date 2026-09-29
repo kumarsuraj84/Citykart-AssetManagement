@@ -94,9 +94,12 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   await page.getByRole("button", { name: "Add Line", exact: true }).click();
 
   // ---- Confirm 3 individual PENDING units now exist for this line ----
+  // (the Pending Delivery table has no per-row status badge -- every row in
+  // it is implicitly PENDING, same status the section heading's own count
+  // already reflects)
   const lineCheckboxes = page.getByRole("checkbox", { name: `Select ${lineDescription}` });
   await expect(lineCheckboxes).toHaveCount(3);
-  await expect(page.getByText("PENDING", { exact: true })).toHaveCount(3);
+  await expect(page.getByRole("heading", { name: "Pending Delivery (3)", exact: true })).toBeVisible();
 
   // ---- Select exactly 2 of the 3 pending units ----
   await lineCheckboxes.nth(0).click();
@@ -121,7 +124,7 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   // since both units share the identical "Serial Number"/"Initial AssetUser"
   // label text.)
   const serialInputs = deliverDialog.locator('input[id^="serial-"]');
-  const asset_userTriggers = deliverDialog.locator('[id^="asset_user-"]');
+  const asset_userTriggers = deliverDialog.locator('[id^="asset-user-"]');
   await expect(serialInputs).toHaveCount(2);
   await expect(asset_userTriggers).toHaveCount(2);
 
@@ -139,9 +142,10 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   await deliverDialog.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(deliverDialog).not.toBeVisible();
 
-  // ---- Exactly 2 units DELIVERED, the 3rd still PENDING ----
-  await expect(page.getByText("DELIVERED", { exact: true })).toHaveCount(2);
-  await expect(page.getByText("PENDING", { exact: true })).toHaveCount(1);
+  // ---- Exactly 2 units DELIVERED, the 3rd still PENDING (section heading
+  // counts -- see the "no per-row status badge" note above) ----
+  await expect(page.getByRole("heading", { name: "Delivered (2)", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Pending Delivery (1)", exact: true })).toBeVisible();
 
   // ---- 2 new Assets now exist -- verified via the Asset Register, since
   // PurchaseOrderDetail has no link to the delivered asset -- searching by
@@ -198,8 +202,8 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   // Number (reusing unit A's serialA) is rejected end to end, with a visible
   // UI error, not silently accepted. ----
   await page.goto(poPath);
-  await expect(page.getByText("PENDING", { exact: true })).toHaveCount(1);
-  await expect(page.getByText("DELIVERED", { exact: true })).toHaveCount(2);
+  await expect(page.getByRole("heading", { name: "Pending Delivery (1)", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Delivered (2)", exact: true })).toBeVisible();
 
   const lastCheckbox = page.getByRole("checkbox", { name: `Select ${lineDescription}` });
   await expect(lastCheckbox).toHaveCount(1);
@@ -212,7 +216,7 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   await dupDialog.locator("#invoice-date").fill("2026-01-16");
   await dupDialog.locator("#invoice-amount").fill("1050");
   await dupDialog.locator('input[id^="serial-"]').fill(serialA); // duplicate, real value -- not "N/A"
-  await dupDialog.locator('[id^="asset_user-"]').click();
+  await dupDialog.locator('[id^="asset-user-"]').click();
   await page.getByRole("option", { name: ctx.store.name, exact: true }).click();
   await dupDialog.getByRole("button", { name: "Confirm", exact: true }).click();
 
@@ -222,6 +226,6 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   await expect(dupDialog).toBeVisible();
   await dupDialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(dupDialog).not.toBeVisible();
-  await expect(page.getByText("PENDING", { exact: true })).toHaveCount(1);
-  await expect(page.getByText("DELIVERED", { exact: true })).toHaveCount(2);
+  await expect(page.getByRole("heading", { name: "Pending Delivery (1)", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Delivered (2)", exact: true })).toBeVisible();
 });

@@ -18,3 +18,8 @@ async def test_seed_admin_is_idempotent():
         rows = (await session.execute(stmt)).scalars().all()
         assert len(rows) == 1
         assert rows[0].role == "ADMIN"
+        # Masters/Import are Primary-Owner-only now -- E2E fixtures (frontend/e2e/
+        # fixtures.ts) provision test-company masters through this account's
+        # token, so it must carry is_primary_owner (dev/E2E-only bootstrap, see
+        # this script's own comment; never run against production).
+        assert rows[0].is_primary_owner is True
