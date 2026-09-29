@@ -23,8 +23,12 @@ from app.masters.models import AssetCategory, AssetSubcategory, Vendor
 AUDITED_SCALAR_FIELDS = (
     "legacy_asset_code", "brand", "model", "serial_number", "barcode", "description",
     "vendor_id", "po_number", "po_date", "invoice_number", "invoice_date",
-    "pi_number", "pi_date", "purchase_cost", "tax_percent", "warranty_upto",
+    "pi_number", "pi_date", "purchase_cost", "tax_percent", "warranty_years",
 )
+# AM-18: warranty_years is the real input (like purchase_cost/tax_percent
+# above); warranty_upto is a derived column (like tax_amount/total_cost,
+# neither of which is audited separately either) -- see
+# app.assets.service.compute_warranty_upto.
 
 
 def _serialize(value) -> str | None:

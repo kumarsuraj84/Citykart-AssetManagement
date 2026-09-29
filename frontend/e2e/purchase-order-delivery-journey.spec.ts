@@ -165,7 +165,9 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   const procurement = page.getByRole("tabpanel", { name: "Procurement" });
   await expect(procurement.getByText(poNumber, { exact: true })).toBeVisible();
   await expect(procurement.getByText(invoiceNumber, { exact: true })).toBeVisible();
-  await expect(procurement.getByText(invoiceDate, { exact: true })).toHaveCount(2); // Invoice Date and Purchase Date both equal it
+  // Invoice Date, Purchase Date, and Warranty Upto (AM-18: the line's Warranty
+  // Years was left at its default of 0, so Warranty Upto == Purchase Date too).
+  await expect(procurement.getByText(invoiceDate, { exact: true })).toHaveCount(3);
 
   await page.getByRole("tab", { name: "Custody", exact: true }).click();
   const custody = page.getByRole("tabpanel", { name: "Custody" });

@@ -12,7 +12,7 @@ from app.assets.custom_field_values import validate_custom_field_values
 from app.assets.models import Asset, AssetFieldChange
 from app.assets.schemas import AssetCorrectionIn, AssetCreateIn, AssetDetailOut, AssetFieldChangeOut, AssetOut, AssetUpdateIn
 from app.assets.search_service import search_assets
-from app.assets.service import check_serial_number_unique, compute_tax, procure_assets
+from app.assets.service import check_serial_number_unique, compute_tax, compute_warranty_upto, procure_assets
 from app.holders.models import Holder
 from app.lifecycle.service import apply_event
 from app.lifecycle.state_machine import LifecycleError
@@ -302,11 +302,18 @@ async def update_asset(
     for field in (
         "legacy_asset_code", "brand", "model", "serial_number", "barcode", "description",
         "vendor_id", "po_number", "po_date", "invoice_number", "invoice_date",
-        "pi_number", "pi_date", "purchase_cost", "tax_percent", "warranty_upto",
+        "pi_number", "pi_date", "purchase_cost", "tax_percent",
     ):
         setattr(asset, field, data[field])
     asset.tax_amount = tax_amount
     asset.total_cost = total_cost
+    # AM-18: None means "leave exactly as-is" -- a legacy NULL-warranty_years
+    # asset's existing warranty_upto (manually entered or NULL, from before
+    # this feature existed) is never touched by an edit that doesn't mention
+    # warranty at all. An explicit int (0 or more) recomputes both.
+    if data["warranty_years"] is not None:
+        asset.warranty_years = data["warranty_years"]
+        asset.warranty_upto = compute_warranty_upto(asset.purchase_date, data["warranty_years"])
     if replacing_custom_fields:
         asset.custom_fields = data["custom_fields"]
     asset.updated_by = actor.id

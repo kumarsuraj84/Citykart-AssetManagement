@@ -99,7 +99,7 @@ describe("AddAssetForm", () => {
     fireEvent.change(screen.getByLabelText(/invoice date/i), { target: { value: "2025-06-02" } });
     fireEvent.change(screen.getByLabelText(/pi number/i), { target: { value: "PI-1" } });
     fireEvent.change(screen.getByLabelText(/pi date/i), { target: { value: "2025-06-03" } });
-    fireEvent.change(screen.getByLabelText(/warranty upto/i), { target: { value: "2027-06-01" } });
+    fireEvent.change(screen.getByLabelText(/warranty years/i), { target: { value: "3" } });
     fireEvent.change(screen.getByLabelText(/^serial number\*?$/i), { target: { value: "SN-1" } });
 
     await waitFor(() => expect(screen.getByRole("button", { name: /save/i })).toBeEnabled());
@@ -111,7 +111,7 @@ describe("AddAssetForm", () => {
         expect.objectContaining({
           vendor_id: 7, po_number: "PO-1", po_date: "2025-06-01",
           invoice_number: "INV-1", invoice_date: "2025-06-02",
-          pi_number: "PI-1", pi_date: "2025-06-03", warranty_upto: "2027-06-01",
+          pi_number: "PI-1", pi_date: "2025-06-03", warranty_years: 3,
           serial_number: "SN-1",
         }),
       ),

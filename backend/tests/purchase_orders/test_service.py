@@ -86,6 +86,54 @@ async def test_add_pending_asset_line_without_barcode_leaves_it_null():
         assert line.barcode is None
 
 
+async def test_brand_model_warranty_years_are_shared_across_every_unit_a_quantity_line_creates():
+    """AM-18: same per-line, shared-across-units convention as Barcode."""
+    ctx = await _setup("Q1D")
+    async with SessionLocal() as session:
+        po = await session.get(PurchaseOrder, ctx["po"].id)
+        admin = await session.get(Holder, ctx["admin"].id)
+        lines = await add_pending_asset_line(session, po, {
+            "description": "Laptop", "category_id": ctx["cat"].id,
+            "brand": "Dell", "model": "Latitude 5440", "warranty_years": 3, "quantity": 3,
+        }, admin)
+        await session.commit()
+
+        assert len(lines) == 3
+        assert all(line.brand == "Dell" and line.model == "Latitude 5440" and line.warranty_years == 3 for line in lines)
+
+
+async def test_add_pending_asset_line_defaults_warranty_years_to_zero():
+    ctx = await _setup("Q1E")
+    async with SessionLocal() as session:
+        po = await session.get(PurchaseOrder, ctx["po"].id)
+        admin = await session.get(Holder, ctx["admin"].id)
+        [line] = await add_pending_asset_line(session, po, {
+            "description": "Laptop", "category_id": ctx["cat"].id, "warranty_years": 0, "quantity": 1,
+        }, admin)
+        assert line.brand is None
+        assert line.model is None
+        assert line.warranty_years == 0
+
+
+async def test_update_pending_asset_line_can_change_brand_model_warranty_years():
+    ctx = await _setup("Q1F")
+    async with SessionLocal() as session:
+        po = await session.get(PurchaseOrder, ctx["po"].id)
+        admin = await session.get(Holder, ctx["admin"].id)
+        [line] = await add_pending_asset_line(session, po, {
+            "description": "Laptop", "category_id": ctx["cat"].id, "warranty_years": 1, "quantity": 1,
+        }, admin)
+        await session.commit()
+
+        updated = await update_pending_asset_line(session, line, {
+            "description": "Laptop", "category_id": ctx["cat"].id,
+            "brand": "HP", "model": "EliteBook", "warranty_years": 5,
+        }, admin)
+        assert updated.brand == "HP"
+        assert updated.model == "EliteBook"
+        assert updated.warranty_years == 5
+
+
 async def test_create_purchase_order_rejects_cost_centre_from_another_company():
     ctx = await _setup("Q2")
     async with SessionLocal() as session:

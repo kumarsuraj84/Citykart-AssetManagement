@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Numeric, String
+from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Integer, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.db import Base
 from app.core.models import AuditMixin, SoftDeleteMixin
@@ -37,6 +37,13 @@ class PendingAsset(Base, AuditMixin):
     category_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("asset_category.id"))
     subcategory_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("asset_subcategory.id"))
     cost_center_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("cost_center.id"))
+    brand: Mapped[str | None] = mapped_column(String(200))
+    model: Mapped[str | None] = mapped_column(String(200))
+    warranty_years: Mapped[int | None] = mapped_column(Integer)
+    """AM-18: entered once per line, like barcode/description -- shared by
+    every unit this line's quantity creates. Converted into the delivered
+    Asset's own warranty_years (and, from that, its computed warranty_upto)
+    at Delivery Done -- see app.purchase_orders.service.deliver_pending_assets."""
     purchase_cost: Mapped[float | None] = mapped_column(Numeric(14, 2))
     tax_percent: Mapped[float | None] = mapped_column(Numeric(5, 2))
     tax_amount: Mapped[float | None] = mapped_column(Numeric(14, 2))

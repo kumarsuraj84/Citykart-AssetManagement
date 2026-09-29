@@ -66,7 +66,7 @@ def _asset_body(ids, **overrides):
         "invoice_number": "INV-2001", "invoice_date": "2025-05-25",
         "pi_number": "PI-3001", "pi_date": "2025-05-22",
         "brand": "Dell", "model": "Latitude 5440", "serial_number": "SN-ABC123",
-        "purchase_cost": 60000, "tax_percent": 18, "warranty_upto": "2027-06-01",
+        "purchase_cost": 60000, "tax_percent": 18, "warranty_years": 3,
     }
     body.update(overrides)
     return body
@@ -90,7 +90,10 @@ class TestProcurementFieldsRoundTrip:
         assert got["brand"] == "Dell"
         assert got["model"] == "Latitude 5440"
         assert got["serial_number"] == "SN-ABC123"
-        assert got["warranty_upto"] == "2027-06-01"
+        assert got["warranty_years"] == 3
+        # AM-18: warranty_upto is now derived from purchase_date (which
+        # equals invoice_date, 2025-05-25) + warranty_years - 1 day.
+        assert got["warranty_upto"] == "2028-05-24"
         assert got["category_id"] == ids["cat"]
         assert got["cost_center_id"] == ids["cc"]
         assert got["subcategory_id"] == ids["sub"]
@@ -109,7 +112,7 @@ class TestProcurementFieldsRoundTrip:
         Serial Number are mandatory on direct creation (see AssetCreateIn's
         docstring / DECISIONS.md); the still-optional subset is the purely
         descriptive extras -- brand/model/purchase_cost/tax_percent/
-        warranty_upto/legacy_asset_code/custom_fields."""
+        warranty_years/legacy_asset_code/custom_fields."""
         ids = await _setup("PRC2")
         headers = await _headers(client, ids["admin_code"])
         minimal = {
@@ -138,7 +141,7 @@ class TestAssetUpdate:
             "invoice_number": "INV-9999", "invoice_date": "2025-07-02",
             "po_number": "PO-9999", "po_date": "2025-06-30",
             "vendor_id": ids["vendor"], "purchase_cost": 70000, "tax_percent": 18,
-            "warranty_upto": "2028-01-01", "custom_fields": {},
+            "warranty_years": 5, "custom_fields": {},
         }, headers=headers)
         assert resp.status_code == 200
         body = resp.json()

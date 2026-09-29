@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, JSON, Numeric, String, func
+from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Integer, JSON, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.db import Base
 from app.core.models import AuditMixin
@@ -42,6 +42,14 @@ class Asset(Base, AuditMixin):
     tax_amount: Mapped[float | None] = mapped_column(Numeric(14, 2))
     total_cost: Mapped[float | None] = mapped_column(Numeric(14, 2))
     purchase_date: Mapped[date] = mapped_column(Date)
+    warranty_years: Mapped[int | None] = mapped_column(Integer)
+    """The actual input (AM-18): 0 means "no warranty", NULL means "never
+    set" (every asset created before this feature). warranty_upto below is
+    always derived from this + purchase_date for any asset that has a
+    warranty_years value -- see app.assets.service.compute_warranty_upto.
+    A NULL-warranty_years asset's warranty_upto is left exactly as it was
+    before this feature existed (manually entered or NULL), never touched
+    or backfilled."""
     warranty_upto: Mapped[date | None] = mapped_column(Date)
 
     status: Mapped[str] = mapped_column(String(20))

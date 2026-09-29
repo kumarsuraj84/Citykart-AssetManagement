@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient, ApiError } from "../../lib/api-client";
 import { authFetch } from "../../lib/auth-fetch";
 import { useAuthStore } from "../../lib/auth-store";
+import { computeWarrantyUpto } from "../../lib/warranty";
 import { actionsFor, type ActionDef } from "./actionRules";
 import { Timeline, type AssetEvent } from "./Timeline";
 import { DocumentsTab } from "./DocumentsTab";
@@ -60,6 +61,7 @@ interface Asset {
   tax_amount: number | null;
   total_cost: number | null;
   purchase_date: string;
+  warranty_years: number | null;
   warranty_upto: string | null;
   status: string;
   current_holder_id: number;
@@ -143,7 +145,10 @@ interface EditFormState {
   piDate: string;
   purchaseCost: string;
   taxPercent: string;
-  warrantyUpto: string;
+  // AM-18: "" means "leave exactly as-is, don't recompute Warranty Upto"
+  // (a legacy asset's warranty_years may genuinely be unset) -- distinct
+  // from an explicit "0" ("no warranty"). See the submit payload below.
+  warrantyYears: string;
 }
 
 function editFormFromAsset(asset: Asset): EditFormState {
@@ -163,7 +168,7 @@ function editFormFromAsset(asset: Asset): EditFormState {
     piDate: asset.pi_date ?? "",
     purchaseCost: asset.purchase_cost != null ? String(asset.purchase_cost) : "0",
     taxPercent: asset.tax_percent != null ? String(asset.tax_percent) : "0",
-    warrantyUpto: asset.warranty_upto ?? "",
+    warrantyYears: asset.warranty_years != null ? String(asset.warranty_years) : "",
   };
 }
 
@@ -390,7 +395,9 @@ export function AssetDetail({ assetId }: { assetId: number }) {
         pi_date: f.piDate || null,
         purchase_cost: Number(f.purchaseCost) || 0,
         tax_percent: Number(f.taxPercent) || 0,
-        warranty_upto: f.warrantyUpto || null,
+        // AM-18: "" -> null ("leave exactly as-is, don't recompute"),
+        // otherwise the explicit int the user typed (0 included).
+        warranty_years: f.warrantyYears.trim() === "" ? null : Number(f.warrantyYears),
         custom_fields: buildEditCustomFieldsPayload(),
       });
     },
@@ -586,7 +593,20 @@ export function AssetDetail({ assetId }: { assetId: number }) {
                 </SelectContent>
               </Select>
             </FormField>
-            <FormField htmlFor="edit-warranty" label="Warranty Upto"><Input id="edit-warranty" aria-label="Warranty Upto" type="date" value={editForm.warrantyUpto} onChange={(e) => setEditField("warrantyUpto", e.target.value)} /></FormField>
+            <FormField
+              htmlFor="edit-warranty-years" label="Warranty Years"
+              helperText={
+                editForm.warrantyYears.trim() === ""
+                  ? "Never set for this asset -- leave blank to keep it that way."
+                  : `Warranty Upto (preview): ${computeWarrantyUpto(asset.purchase_date, Number(editForm.warrantyYears) || 0)}`
+              }
+            >
+              <Input
+                id="edit-warranty-years" aria-label="Warranty Years" type="number" min={0} step={1}
+                value={editForm.warrantyYears}
+                onChange={(e) => setEditField("warrantyYears", e.target.value)}
+              />
+            </FormField>
             <FormField htmlFor="edit-po-number" label="PO Number"><Input id="edit-po-number" aria-label="PO Number" value={editForm.poNumber} onChange={(e) => setEditField("poNumber", e.target.value)} /></FormField>
             <FormField htmlFor="edit-po-date" label="PO Date"><Input id="edit-po-date" aria-label="PO Date" type="date" value={editForm.poDate} onChange={(e) => setEditField("poDate", e.target.value)} /></FormField>
             <FormField htmlFor="edit-invoice-number" label="Invoice Number"><Input id="edit-invoice-number" aria-label="Invoice Number" value={editForm.invoiceNumber} onChange={(e) => setEditField("invoiceNumber", e.target.value)} /></FormField>
@@ -717,6 +737,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
               <ReadField label="Tax %" value={asset.tax_percent != null ? asset.tax_percent.toFixed(2) : null} />
               <ReadField label="Tax Amount" value={asset.tax_amount != null ? asset.tax_amount.toFixed(2) : null} />
               <ReadField label="Total Cost" value={asset.total_cost != null ? asset.total_cost.toFixed(2) : null} />
+              <ReadField label="Warranty Years" value={asset.warranty_years != null ? String(asset.warranty_years) : null} />
               <ReadField label="Warranty Upto" value={asset.warranty_upto} />
             </dl>
           </TabsContent>

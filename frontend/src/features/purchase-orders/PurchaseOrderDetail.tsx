@@ -45,6 +45,9 @@ interface PendingAssetRow {
   barcode: string | null;
   category_id: number;
   subcategory_id: number | null;
+  brand: string | null;
+  model: string | null;
+  warranty_years: number | null;
   cost_center_id: number;
   purchase_cost: number | null;
   tax_percent: number | null;
@@ -156,6 +159,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const [showAddLine, setShowAddLine] = useState(false);
   const [lineForm, setLineForm] = useState({
     description: "", barcode: "", categoryId: "", subcategoryId: "",
+    brand: "", model: "", warrantyYears: "0",
     purchaseCost: "0", taxPercent: "0", quantity: "1",
   });
   const visibleSubcategories = lineForm.categoryId
@@ -167,7 +171,9 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     lineForm.categoryId !== "" &&
     lineForm.subcategoryId !== "" &&
     Number(lineForm.purchaseCost) > 0 &&
-    Number(lineForm.quantity) >= 1;
+    Number(lineForm.quantity) >= 1 &&
+    lineForm.warrantyYears.trim() !== "" &&
+    Number(lineForm.warrantyYears) >= 0;
 
   const addLineMutation = useMutation({
     mutationFn: () =>
@@ -176,37 +182,51 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
         barcode: lineForm.barcode || null,
         category_id: Number(lineForm.categoryId),
         subcategory_id: lineForm.subcategoryId ? Number(lineForm.subcategoryId) : null,
+        brand: lineForm.brand || null,
+        model: lineForm.model || null,
+        warranty_years: Number(lineForm.warrantyYears) || 0,
         purchase_cost: Number(lineForm.purchaseCost) || 0,
         tax_percent: Number(lineForm.taxPercent) || 0,
         quantity: Number(lineForm.quantity) || 1,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["purchase-order", poId, "lines"] });
-      setLineForm({ description: "", barcode: "", categoryId: "", subcategoryId: "", purchaseCost: "0", taxPercent: "0", quantity: "1" });
+      setLineForm({
+        description: "", barcode: "", categoryId: "", subcategoryId: "",
+        brand: "", model: "", warrantyYears: "0", purchaseCost: "0", taxPercent: "0", quantity: "1",
+      });
     },
   });
 
   // --- Edit line dialog ---
   const [editingLine, setEditingLine] = useState<PendingAssetRow | null>(null);
-  const [editForm, setEditForm] = useState({ description: "", barcode: "", categoryId: "", subcategoryId: "", purchaseCost: "0", taxPercent: "0" });
+  const [editForm, setEditForm] = useState({
+    description: "", barcode: "", categoryId: "", subcategoryId: "",
+    brand: "", model: "", warrantyYears: "0", purchaseCost: "0", taxPercent: "0",
+  });
 
   function openEdit(line: PendingAssetRow) {
     setEditingLine(line);
     setEditForm({
       description: line.description, barcode: line.barcode ?? "", categoryId: String(line.category_id),
       subcategoryId: line.subcategory_id ? String(line.subcategory_id) : "",
+      brand: line.brand ?? "", model: line.model ?? "", warrantyYears: String(line.warranty_years ?? 0),
       purchaseCost: String(line.purchase_cost ?? 0),
       taxPercent: String(line.tax_percent ?? 0),
     });
   }
 
-  const canSaveEdit = editForm.description.trim() !== "" && editForm.barcode.trim() !== "" && Number(editForm.purchaseCost) > 0;
+  const canSaveEdit =
+    editForm.description.trim() !== "" && editForm.barcode.trim() !== "" && Number(editForm.purchaseCost) > 0 &&
+    editForm.warrantyYears.trim() !== "" && Number(editForm.warrantyYears) >= 0;
 
   const editMutation = useMutation({
     mutationFn: () =>
       apiClient.put<PendingAssetRow>(`/purchase-orders/lines/${editingLine!.id}`, {
         description: editForm.description, barcode: editForm.barcode || null, category_id: Number(editForm.categoryId),
         subcategory_id: editForm.subcategoryId ? Number(editForm.subcategoryId) : null,
+        brand: editForm.brand || null, model: editForm.model || null,
+        warranty_years: Number(editForm.warrantyYears) || 0,
         purchase_cost: Number(editForm.purchaseCost) || 0, tax_percent: Number(editForm.taxPercent) || 0,
       }),
     onSuccess: () => {
@@ -453,6 +473,15 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
           <FormField htmlFor="line-quantity" label="Quantity" required>
             <Input id="line-quantity" type="number" min={1} value={lineForm.quantity} onChange={(e) => setLineForm((f) => ({ ...f, quantity: e.target.value }))} />
           </FormField>
+          <FormField htmlFor="line-brand" label="Brand">
+            <Input id="line-brand" value={lineForm.brand} onChange={(e) => setLineForm((f) => ({ ...f, brand: e.target.value }))} />
+          </FormField>
+          <FormField htmlFor="line-model" label="Model">
+            <Input id="line-model" value={lineForm.model} onChange={(e) => setLineForm((f) => ({ ...f, model: e.target.value }))} />
+          </FormField>
+          <FormField htmlFor="line-warranty-years" label="Warranty Years" required helperText="Enter 0 if there is no warranty.">
+            <Input id="line-warranty-years" type="number" min={0} step={1} value={lineForm.warrantyYears} onChange={(e) => setLineForm((f) => ({ ...f, warrantyYears: e.target.value }))} />
+          </FormField>
         </div>
         {addLineMutation.isError && (
           <p className="mt-2 text-sm text-destructive" role="alert">
@@ -496,6 +525,15 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
             </FormField>
             <FormField htmlFor="edit-tax" label="Tax %">
               <Input id="edit-tax" type="number" value={editForm.taxPercent} onChange={(e) => setEditForm((f) => ({ ...f, taxPercent: e.target.value }))} />
+            </FormField>
+            <FormField htmlFor="edit-brand" label="Brand">
+              <Input id="edit-brand" value={editForm.brand} onChange={(e) => setEditForm((f) => ({ ...f, brand: e.target.value }))} />
+            </FormField>
+            <FormField htmlFor="edit-model" label="Model">
+              <Input id="edit-model" value={editForm.model} onChange={(e) => setEditForm((f) => ({ ...f, model: e.target.value }))} />
+            </FormField>
+            <FormField htmlFor="edit-warranty-years" label="Warranty Years" required helperText="Enter 0 if there is no warranty.">
+              <Input id="edit-warranty-years" type="number" min={0} step={1} value={editForm.warrantyYears} onChange={(e) => setEditForm((f) => ({ ...f, warrantyYears: e.target.value }))} />
             </FormField>
           </div>
           {editMutation.isError && (

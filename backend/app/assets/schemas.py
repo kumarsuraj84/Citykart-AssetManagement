@@ -32,7 +32,10 @@ class AssetCreateIn(BaseModel):
     pi_date: date
     purchase_cost: float | None = None
     tax_percent: float | None = None
-    warranty_upto: date | None = None
+    # AM-18: the real input -- 0 means "no warranty" (Warranty Upto then
+    # equals Purchase Date); Warranty Upto itself is never accepted here,
+    # it's always server-computed. See app.assets.service.compute_warranty_upto.
+    warranty_years: int = 0
     initial_holder_id: int
     legacy_asset_code: str | None = None
     custom_fields: dict | None = None
@@ -73,6 +76,7 @@ class AssetOut(BaseModel):
     tax_amount: float | None
     total_cost: float | None
     purchase_date: date
+    warranty_years: int | None
     warranty_upto: date | None
     status: str
     current_holder_id: int
@@ -174,5 +178,10 @@ class AssetUpdateIn(BaseModel):
     pi_date: date | None = None
     purchase_cost: float | None = None
     tax_percent: float | None = None
-    warranty_upto: date | None = None
+    # AM-18: replaces the old raw warranty_upto input -- None means "leave
+    # exactly as-is, don't recompute" (a legacy NULL-warranty_years asset's
+    # existing warranty_upto is never touched by an unrelated edit); an
+    # explicit int (0 or more) recomputes warranty_upto from it. See
+    # app.assets.router.update_asset / app.assets.service.compute_warranty_upto.
+    warranty_years: int | None = None
     custom_fields: dict | None = None

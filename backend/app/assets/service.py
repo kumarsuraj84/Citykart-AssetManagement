@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,6 +51,32 @@ async def check_serial_number_unique(
     existing = (await session.execute(stmt)).scalars().first()
     if existing is not None:
         raise ValueError(f'serial number "{serial_number}" is already used by asset {existing.asset_code}')
+
+
+def _add_years(d: date, years: int) -> date:
+    """`date.replace(year=...)` raises ValueError for Feb 29 landing on a
+    target year that isn't a leap year -- fall back to Feb 28, the same
+    convention most warranty/subscription systems use for a Feb-29 anchor
+    date."""
+    try:
+        return d.replace(year=d.year + years)
+    except ValueError:
+        return d.replace(month=2, day=28, year=d.year + years)
+
+
+def compute_warranty_upto(purchase_date: date, warranty_years: int) -> date:
+    """AM-18: the one shared formula for every creation/edit path (Add
+    Asset, PO Delivery, Import, Asset 360 Edit) -- `warranty_years` is
+    always the real input now, `warranty_upto` is always derived from it,
+    never typed directly. `0` means "no warranty": the warranty period is
+    considered to have already elapsed, matching the day of purchase.
+    A positive N means "covered through the day before the Nth
+    anniversary" (10-Apr-2026 purchase + 3 years -> 09-Apr-2029), the
+    inclusive convention warranty cards and subscription terms commonly
+    use."""
+    if warranty_years <= 0:
+        return purchase_date
+    return _add_years(purchase_date, warranty_years) - timedelta(days=1)
 
 
 def compute_tax(purchase_cost, tax_percent) -> tuple[Decimal, Decimal]:
@@ -141,6 +167,18 @@ async def procure_assets(session: AsyncSession, data: dict, quantity: int, actor
     tax_percent = Decimal(str(data.get("tax_percent") or 0))
     tax_amount, total_cost = compute_tax(purchase_cost, tax_percent)
 
+    # AM-18: warranty_years is the real input on every public creation path
+    # (AssetCreateIn/PendingAssetLineIn/Import all require it); a caller
+    # that omits it entirely (internal/service-level, e.g. a test building
+    # `data` directly) gets the old pass-through behavior instead, so this
+    # never breaks a call site that predates this feature.
+    warranty_years = data.get("warranty_years")
+    warranty_upto = (
+        compute_warranty_upto(data["purchase_date"], warranty_years)
+        if warranty_years is not None
+        else data.get("warranty_upto")
+    )
+
     event_date = datetime.combine(data["purchase_date"], datetime.min.time()).replace(tzinfo=timezone.utc)
 
     created: list[Asset] = []
@@ -175,7 +213,8 @@ async def procure_assets(session: AsyncSession, data: dict, quantity: int, actor
             tax_amount=tax_amount,
             total_cost=total_cost,
             purchase_date=data["purchase_date"],
-            warranty_upto=data.get("warranty_upto"),
+            warranty_years=warranty_years,
+            warranty_upto=warranty_upto,
             # Initial status set directly here, not through apply_event — this is the one
             # documented exception (see apply_event's docstring): a freshly-inserted row
             # needs a non-null status/holder before the state machine has anything to

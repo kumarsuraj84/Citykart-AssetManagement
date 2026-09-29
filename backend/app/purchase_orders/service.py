@@ -62,6 +62,7 @@ async def add_pending_asset_line(
             purchase_order_id=purchase_order.id, company_id=purchase_order.company_id,
             description=data["description"], barcode=data.get("barcode"), category_id=data["category_id"],
             subcategory_id=data.get("subcategory_id"), cost_center_id=purchase_order.cost_center_id,
+            brand=data.get("brand"), model=data.get("model"), warranty_years=data.get("warranty_years"),
             purchase_cost=purchase_cost, tax_percent=tax_percent,
             tax_amount=tax_amount, total_cost=total_cost, status="PENDING",
             created_by=actor.id, updated_by=actor.id,
@@ -81,6 +82,9 @@ async def update_pending_asset_line(session: AsyncSession, line: PendingAsset, d
     line.barcode = data.get("barcode")
     line.category_id = data["category_id"]
     line.subcategory_id = data.get("subcategory_id")
+    line.brand = data.get("brand")
+    line.model = data.get("model")
+    line.warranty_years = data.get("warranty_years")
     line.purchase_cost = data.get("purchase_cost")
     line.tax_percent = data.get("tax_percent")
     line.tax_amount = tax_amount
@@ -133,6 +137,7 @@ async def deliver_pending_assets(
                     "category_id": line.category_id, "subcategory_id": line.subcategory_id,
                     "description": line.description, "barcode": line.barcode, "purchase_cost": line.purchase_cost,
                     "tax_percent": line.tax_percent, "purchase_date": invoice_date,
+                    "brand": line.brand, "model": line.model, "warranty_years": line.warranty_years,
                     "serial_number": delivery["serial_number"],
                     "initial_holder_id": delivery["initial_holder_id"],
                     "po_number": po_number, "po_date": po_date, "vendor_id": vendor_id,

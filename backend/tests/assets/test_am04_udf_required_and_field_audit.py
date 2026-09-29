@@ -76,7 +76,7 @@ def _full_update_body(asset: dict, **overrides):
         "invoice_number": asset["invoice_number"], "invoice_date": asset["invoice_date"],
         "pi_number": asset["pi_number"], "pi_date": asset["pi_date"],
         "purchase_cost": asset["purchase_cost"], "tax_percent": asset["tax_percent"],
-        "warranty_upto": asset["warranty_upto"], "custom_fields": asset["custom_fields"],
+        "warranty_years": asset["warranty_years"], "custom_fields": asset["custom_fields"],
     }
     body.update(overrides)
     return body

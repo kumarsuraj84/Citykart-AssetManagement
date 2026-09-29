@@ -21,7 +21,7 @@ HEADER = [
     "Description", "Legacy Asset Code", "Purchase Date",
     "Vendor Code", "PO Number", "PO Date", "Invoice Number", "Invoice Date",
     "PI Number", "PI Date", "Purchase Cost", "Tax %",
-    "Brand", "Model", "Serial Number", "Warranty Upto",
+    "Brand", "Model", "Serial Number", "Warranty Years",
     "Initial Holder Code", "Quantity",
 ]
 
@@ -103,7 +103,7 @@ class TestProcurementFieldSupport:
             "Legacy Asset Code": "OLD-PROC1", "Vendor Code": ids["vendor"],
             "PO Number": "PO-1", "PO Date": "2025-05-01", "Invoice Number": "INV-1", "Invoice Date": "2025-05-02",
             "PI Number": "PI-1", "PI Date": "2025-05-03", "Purchase Cost": 60000, "Tax %": 18,
-            "Brand": "Dell", "Model": "Latitude 5440", "Serial Number": "SN-ABC", "Warranty Upto": "2027-06-01",
+            "Brand": "Dell", "Model": "Latitude 5440", "Serial Number": "SN-ABC", "Warranty Years": 3,
         })
         resp = await _post(client, "/api/imports/assets/commit", _xlsx([row]), headers)
         assert resp.status_code == 200, resp.text
@@ -117,7 +117,9 @@ class TestProcurementFieldSupport:
         assert asset.po_number == "PO-1"
         assert asset.invoice_number == "INV-1"
         assert asset.brand == "Dell" and asset.model == "Latitude 5440" and asset.serial_number == "SN-ABC"
-        assert asset.warranty_upto == date(2027, 6, 1)
+        assert asset.warranty_years == 3
+        # AM-18: purchase_date (2025-06-01) + 3 years, minus 1 day.
+        assert asset.warranty_upto == date(2028, 5, 31)
         assert float(asset.purchase_cost) == 60000.0
         assert float(asset.tax_amount) == 10800.0
         assert float(asset.total_cost) == 70800.0

@@ -183,6 +183,34 @@ async def test_deliver_inherits_vendor_from_the_parent_purchase_order():
         assert asset.vendor_id == vendor.id
 
 
+async def test_deliver_computes_warranty_upto_from_the_lines_warranty_years():
+    """AM-18: Brand/Model/Warranty Years are entered once at Add Line, and
+    Warranty Upto can only be computed once Invoice Date is finally known,
+    at Delivery Done."""
+    ctx = await _setup("D7")
+    async with SessionLocal() as session:
+        po = await session.get(PurchaseOrder, ctx["po"].id)
+        admin = await session.get(Holder, ctx["admin"].id)
+        [line] = await add_pending_asset_line(session, po, {
+            "description": "Laptop", "category_id": ctx["cat"].id,
+            "brand": "Dell", "model": "Latitude 5440", "warranty_years": 3, "quantity": 1,
+        }, admin)
+        await session.commit()
+
+        [delivered] = await deliver_pending_assets(
+            session, [line], {line.id: {"serial_number": "SN-D7", "initial_holder_id": ctx["stock"].id}},
+            po.po_number, po.po_date, po.vendor_id, "INV-D7", date(2026, 4, 10), 1000.0, admin,
+        )
+        await session.commit()
+
+        asset = await session.get(Asset, delivered.delivered_asset_id)
+        assert asset.brand == "Dell"
+        assert asset.model == "Latitude 5440"
+        assert asset.warranty_years == 3
+        # purchase_date (== invoice_date, 2026-04-10) + 3 years, minus 1 day.
+        assert asset.warranty_upto == date(2029, 4, 9)
+
+
 async def test_deliver_generates_sequential_distinct_asset_codes():
     ctx = await _setup("D5")
     async with SessionLocal() as session:

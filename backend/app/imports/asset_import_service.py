@@ -26,7 +26,7 @@ import openpyxl
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.assets.custom_field_values import applicable_custom_fields, validate_custom_field_values
-from app.assets.service import check_serial_number_unique, compute_tax
+from app.assets.service import check_serial_number_unique, compute_tax, compute_warranty_upto
 from app.holders.models import Holder
 from app.lifecycle.service import apply_event
 from app.lifecycle.state_machine import LifecycleError
@@ -44,7 +44,7 @@ TEMPLATE_COLUMNS = [
     "Description", "Legacy Asset Code", "Purchase Date",
     "Vendor Code", "PO Number", "PO Date", "Invoice Number", "Invoice Date",
     "PI Number", "PI Date", "Purchase Cost", "Tax %",
-    "Brand", "Model", "Serial Number", "Warranty Upto",
+    "Brand", "Model", "Serial Number", "Warranty Years",
     "Initial Holder Code", "Quantity",
 ]
 
@@ -123,6 +123,20 @@ def _parse_quantity(value) -> int:
     if quantity < 1:
         raise ValueError("Quantity must be at least 1")
     return quantity
+
+
+def _parse_warranty_years(value) -> int:
+    """AM-18: mandatory like Add Asset's own warranty_years -- blank means 0
+    ("no warranty"), matching AssetCreateIn's own schema default."""
+    if _is_blank(value):
+        return 0
+    try:
+        years = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"Warranty Years '{value}' must be a whole number")
+    if years < 0:
+        raise ValueError("Warranty Years cannot be negative")
+    return years
 
 
 def _parse_optional_number(value, label: str) -> float:
@@ -286,9 +300,14 @@ async def _validate_rows(
             po_date = _parse_optional_date(cell("PO Date"), "PO Date")
             invoice_date = _parse_optional_date(cell("Invoice Date"), "Invoice Date")
             pi_date = _parse_optional_date(cell("PI Date"), "PI Date")
-            warranty_upto = _parse_optional_date(cell("Warranty Upto"), "Warranty Upto")
         except ValueError as exc:
             errors.append({"row": row_idx, "message": str(exc)})
+            continue
+
+        try:
+            warranty_years = _parse_warranty_years(cell("Warranty Years"))
+        except ValueError as exc:
+            errors.append({"row": row_idx, "field": "Warranty Years", "message": str(exc)})
             continue
 
         try:
@@ -346,7 +365,7 @@ async def _validate_rows(
             "pi_number": cell("PI Number"), "pi_date": pi_date,
             "purchase_cost": purchase_cost, "tax_percent": tax_percent,
             "brand": cell("Brand"), "model": cell("Model"), "serial_number": cell("Serial Number"),
-            "warranty_upto": warranty_upto, "custom_fields": custom_values,
+            "warranty_years": warranty_years, "custom_fields": custom_values,
         })
 
     return valid_rows, errors, scope_violations
@@ -444,7 +463,8 @@ async def commit_import(
                         pi_number=r["pi_number"], pi_date=r["pi_date"],
                         purchase_cost=Decimal(str(r["purchase_cost"])), tax_percent=Decimal(str(r["tax_percent"])),
                         tax_amount=tax_amount, total_cost=total_cost,
-                        purchase_date=purchase_date, warranty_upto=r["warranty_upto"],
+                        purchase_date=purchase_date, warranty_years=r["warranty_years"],
+                        warranty_upto=compute_warranty_upto(purchase_date, r["warranty_years"]),
                         # Initial status set directly here, not through apply_event -- the same
                         # documented exception app.assets.service.procure_assets uses: a freshly
                         # inserted row needs a non-null status/holder before the state machine has

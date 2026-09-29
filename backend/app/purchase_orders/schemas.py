@@ -26,6 +26,12 @@ class PendingAssetLineIn(BaseModel):
     barcode: str | None = None
     category_id: int
     subcategory_id: int | None = None
+    brand: str | None = None
+    model: str | None = None
+    # AM-18: mandatory like Add Asset's own warranty_years -- 0 means "no
+    # warranty". Entered once per line, inherited by every unit this line's
+    # quantity creates, same as barcode/description already are.
+    warranty_years: int = 0
     purchase_cost: float | None = None
     tax_percent: float | None = None
     quantity: int = 1
@@ -36,6 +42,9 @@ class PendingAssetLineUpdateIn(BaseModel):
     barcode: str | None = None
     category_id: int
     subcategory_id: int | None = None
+    brand: str | None = None
+    model: str | None = None
+    warranty_years: int = 0
     purchase_cost: float | None = None
     tax_percent: float | None = None
 
@@ -49,6 +58,9 @@ class PendingAssetOut(BaseModel):
     barcode: str | None
     category_id: int
     subcategory_id: int | None
+    brand: str | None
+    model: str | None
+    warranty_years: int | None
     cost_center_id: int
     purchase_cost: float | None
     tax_percent: float | None

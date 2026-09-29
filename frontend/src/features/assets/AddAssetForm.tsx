@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { apiClient } from "../../lib/api-client";
+import { computeWarrantyUpto } from "../../lib/warranty";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -52,7 +53,7 @@ interface FormState {
   model: string;
   serialNumber: string;
   noSerialNumber: boolean;
-  warrantyUpto: string;
+  warrantyYears: string;
   vendorId: string;
   poNumber: string;
   poDate: string;
@@ -76,7 +77,7 @@ const emptyForm: FormState = {
   model: "",
   serialNumber: "",
   noSerialNumber: false,
-  warrantyUpto: "",
+  warrantyYears: "0",
   vendorId: "",
   poNumber: "",
   poDate: "",
@@ -177,6 +178,12 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
   const taxPercent = Number(form.taxPercent) || 0;
   const taxAmount = useMemo(() => round2((purchaseCost * taxPercent) / 100), [purchaseCost, taxPercent]);
   const totalCost = round2(purchaseCost + taxAmount);
+  // Purchase Date is always Invoice Date (never user-entered) -- Warranty
+  // Upto's own preview anchors on the same field for the same reason.
+  const warrantyUptoPreview = useMemo(
+    () => computeWarrantyUpto(form.invoiceDate, Number(form.warrantyYears) || 0),
+    [form.invoiceDate, form.warrantyYears],
+  );
 
   function requiredCustomFieldMissing(field: CustomFieldDef): boolean {
     if (!field.is_required) return false;
@@ -229,7 +236,7 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
         brand: form.brand || null,
         model: form.model || null,
         serial_number: form.noSerialNumber ? "N/A" : form.serialNumber.trim(),
-        warranty_upto: form.warrantyUpto || null,
+        warranty_years: Number(form.warrantyYears) || 0,
         vendor_id: Number(form.vendorId),
         po_number: form.poNumber,
         po_date: form.poDate,
@@ -451,8 +458,20 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
               </label>
             </div>
           </FormField>
-          <FormField htmlFor="warranty-upto" label="Warranty Upto" helperText="Optional.">
-            <Input id="warranty-upto" aria-label="Warranty Upto" type="date" value={form.warrantyUpto} onChange={(e) => setField("warrantyUpto", e.target.value)} />
+          <FormField
+            htmlFor="warranty-years"
+            label="Warranty Years"
+            helperText={
+              warrantyUptoPreview
+                ? `Warranty Upto (preview): ${warrantyUptoPreview}`
+                : "Enter 0 if this asset has no warranty."
+            }
+          >
+            <Input
+              id="warranty-years" aria-label="Warranty Years" type="number" min={0} step={1}
+              value={form.warrantyYears}
+              onChange={(e) => setField("warrantyYears", e.target.value)}
+            />
           </FormField>
           <FormField htmlFor="legacy-asset-code" label="Legacy Asset Code" helperText="From the previous system, if applicable.">
             <Input id="legacy-asset-code" aria-label="Legacy Asset Code" value={form.legacyAssetCode} onChange={(e) => setField("legacyAssetCode", e.target.value)} />

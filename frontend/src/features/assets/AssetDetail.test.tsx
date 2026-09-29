@@ -28,7 +28,7 @@ const FULL_ASSET = {
   invoice_number: "INV-2001", invoice_date: "2025-05-25",
   pi_number: "PI-3001", pi_date: "2025-05-22",
   purchase_cost: 60000, tax_percent: 18, tax_amount: 10800, total_cost: 70800,
-  purchase_date: "2025-06-01", warranty_upto: "2027-06-01",
+  purchase_date: "2025-06-01", warranty_years: 3, warranty_upto: "2027-06-01",
   current_holder_id: 5, status_since: "2025-06-01",
   custom_fields: { asset_tag: "TAG-1", retired_field: "kept for history" },
   category_name: "IT Equipment", subcategory_name: "Laptop", cost_center_name: "Head Office",

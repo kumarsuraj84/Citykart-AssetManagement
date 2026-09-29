@@ -197,7 +197,7 @@ class TestFieldChangeAuditExport:
             # procure_assets defaults an unset cost/tax to 0 (Decimal), not None --
             # these must match that, or the very first no-op field lands as a
             # spurious 0.00 -> None "change".
-            "purchase_cost": 0, "tax_percent": 0, "warranty_upto": None, "custom_fields": None,
+            "purchase_cost": 0, "tax_percent": 0, "warranty_years": None, "custom_fields": None,
         }
         await client.put(f"/api/assets/{asset_id}", json={**full_body, "brand": "HP"}, headers=headers)
         await client.put(f"/api/assets/{asset_id}", json={**full_body, "brand": "HP", "description": "Audit Export Laptop v2"}, headers=headers)
