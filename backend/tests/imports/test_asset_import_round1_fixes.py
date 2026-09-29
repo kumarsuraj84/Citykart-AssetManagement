@@ -22,17 +22,22 @@ import openpyxl
 from sqlalchemy import select
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.masters.models import Company, CostCenter, AssetCategory, AssetSubcategory, Location, Department
+from app.masters.models import Company, CostCenter, AssetCategory, AssetSubcategory, Location, Department, Vendor
 from app.holders.models import Holder
 from app.numbering.models import CodeRule
 from app.assets.models import Asset
 
 
 def _build_workbook(rows: list[list]) -> bytes:
+    """AM-23: no "Purchase Date" column any more (derived from Invoice
+    Date, else today, same as Add Asset) -- Vendor Code/Serial Number are
+    now mandatory columns too. Every row below supplies a valid Vendor
+    Code/"N/A" Serial Number via the trailing two positions, added on top
+    of this file's original minimal header/row shape."""
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.append(["Legacy Asset Code", "Company Code", "Cost Centre Code", "Category Code", "Subcategory Code",
-               "Description", "Purchase Date", "Initial Holder Code"])
+               "Description", "Invoice Date", "Initial Holder Code", "Vendor Code", "Serial Number"])
     for row in rows:
         ws.append(row)
     buf = io.BytesIO()
@@ -42,11 +47,12 @@ def _build_workbook(rows: list[list]) -> bytes:
 
 async def _seed_company(code_suffix: str):
     """Creates the shared masters + an ADMIN actor + an IT_STOCK holder for a fresh,
-    uniquely-suffixed company, and returns (company, admin_holder, stock_holder)."""
+    uniquely-suffixed company, and returns (company, admin_holder, stock_holder, vendor)."""
     async with SessionLocal() as session:
         co = Company(code=f"CKS-{code_suffix}", name=f"Import Fix Test Co {code_suffix}")
         cat = AssetCategory(code=f"IT-{code_suffix}", name="IT")
-        session.add_all([co, cat])
+        vendor = Vendor(code=f"VND-{code_suffix}", name="Test Vendor")
+        session.add_all([co, cat, vendor])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
         cc = CostCenter(company_id=co.id, code="HO01", name="HO")
@@ -66,14 +72,15 @@ async def _seed_company(code_suffix: str):
         await session.refresh(co)
         await session.refresh(it_admin)
         await session.refresh(stock)
-    return co, it_admin, stock
+        await session.refresh(vendor)
+    return co, it_admin, stock, vendor
 
 
 async def test_import_to_non_stock_holder_succeeds_with_allotted_status(client):
     """Finding 1: a row whose holder is EMPLOYEE (not IT_STOCK) must import
     successfully, with the resulting asset ending up ALLOTTED to that employee --
     not raise a LifecycleError from a mis-set bootstrap status."""
-    co, it_admin, _stock = await _seed_company("F1")
+    co, it_admin, _stock, vendor = await _seed_company("F1")
 
     async with SessionLocal() as session:
         loc = (await session.execute(select(Location).where(Location.code == "HO-F1"))).scalars().first()
@@ -88,7 +95,7 @@ async def test_import_to_non_stock_holder_succeeds_with_allotted_status(client):
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     xlsx = _build_workbook([
-        ["OLD-EMP-1", "CKS-F1", "HO01", "IT-F1", "LAP", "Legacy Laptop for Jane", "2020-01-15", "EMP-F1"],
+        ["OLD-EMP-1", "CKS-F1", "HO01", "IT-F1", "LAP", "Legacy Laptop for Jane", "2020-01-15", "EMP-F1", vendor.code, "N/A"],
     ])
 
     preview_resp = await client.post("/api/imports/assets/preview",
@@ -120,14 +127,14 @@ async def test_apply_event_failure_mid_batch_is_reported_not_500(client):
     row, which apply_event rejects with LifecycleError('event date cannot be in the
     future')) must show up as a per-row commit error, not crash the whole request --
     and the rest of the batch must still import."""
-    co, it_admin, stock = await _seed_company("F2")
+    co, it_admin, stock, vendor = await _seed_company("F2")
 
     resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": "ITA-F2", "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     xlsx = _build_workbook([
-        ["OLD-FUT-1", "CKS-F2", "HO01", "IT-F2", "LAP", "Future dated laptop", "2099-01-01", "ITSTOCK-F2"],
-        ["OLD-OK-1", "CKS-F2", "HO01", "IT-F2", "LAP", "Ordinary laptop", "2020-01-15", "ITSTOCK-F2"],
+        ["OLD-FUT-1", "CKS-F2", "HO01", "IT-F2", "LAP", "Future dated laptop", "2099-01-01", "ITSTOCK-F2", vendor.code, "N/A"],
+        ["OLD-OK-1", "CKS-F2", "HO01", "IT-F2", "LAP", "Ordinary laptop", "2020-01-15", "ITSTOCK-F2", vendor.code, "N/A"],
     ])
 
     preview_resp = await client.post("/api/imports/assets/preview",
@@ -157,17 +164,19 @@ async def test_apply_event_failure_mid_batch_is_reported_not_500(client):
         assert ok.status == "IN_STOCK"
 
 
-async def test_malformed_purchase_date_is_a_preview_time_row_error_not_a_commit_crash(client):
-    """Finding 3: a garbage purchase_date must be reported as a row-level validation
-    error at preview time (same as any other bad cell), and commit must re-report the
-    same error rather than raising an uncaught ValueError / 500."""
-    co, it_admin, stock = await _seed_company("F3")
+async def test_malformed_invoice_date_is_a_preview_time_row_error_not_a_commit_crash(client):
+    """Finding 3 (updated for AM-23, which derives purchase_date from
+    Invoice Date rather than accepting a direct Purchase Date column): a
+    garbage Invoice Date must be reported as a row-level validation error
+    at preview time (same as any other bad cell), and commit must
+    re-report the same error rather than raising an uncaught ValueError / 500."""
+    co, it_admin, stock, vendor = await _seed_company("F3")
 
     resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": "ITA-F3", "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     xlsx = _build_workbook([
-        ["OLD-BADDATE-1", "CKS-F3", "HO01", "IT-F3", "LAP", "Bad date laptop", "not-a-date", "ITSTOCK-F3"],
+        ["OLD-BADDATE-1", "CKS-F3", "HO01", "IT-F3", "LAP", "Bad date laptop", "not-a-date", "ITSTOCK-F3", vendor.code, "N/A"],
     ])
 
     preview_resp = await client.post("/api/imports/assets/preview",
@@ -178,7 +187,7 @@ async def test_malformed_purchase_date_is_a_preview_time_row_error_not_a_commit_
     assert body["valid_rows"] == []
     assert len(body["errors"]) == 1
     assert body["errors"][0]["row"] == 2
-    assert "Purchase Date" in body["errors"][0]["message"]
+    assert "Invoice Date" in body["errors"][0]["message"]
 
     commit_resp = await client.post("/api/imports/assets/commit",
         files={"file": ("assets.xlsx", io.BytesIO(xlsx), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
@@ -188,7 +197,7 @@ async def test_malformed_purchase_date_is_a_preview_time_row_error_not_a_commit_
     assert commit_body["imported"] == 0
     assert len(commit_body["errors"]) == 1
     assert commit_body["errors"][0]["row"] == 2
-    assert "Purchase Date" in commit_body["errors"][0]["message"]
+    assert "Invoice Date" in commit_body["errors"][0]["message"]
 
     async with SessionLocal() as session:
         asset = (await session.execute(select(Asset).where(Asset.legacy_asset_code == "OLD-BADDATE-1"))).scalars().first()

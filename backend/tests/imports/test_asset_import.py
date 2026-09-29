@@ -3,16 +3,18 @@ from datetime import date
 import openpyxl
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.masters.models import Company, CostCenter, AssetCategory, AssetSubcategory, Location, Department
+from app.masters.models import Company, CostCenter, AssetCategory, AssetSubcategory, Location, Department, Vendor
 from app.holders.models import Holder
 from app.numbering.models import CodeRule
 
 
 def _build_workbook(rows: list[list]) -> bytes:
+    """AM-23: no "Purchase Date" column (derived from Invoice Date, else
+    today); Vendor Code/Serial Number are now mandatory columns too."""
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.append(["Legacy Asset Code", "Company Code", "Cost Centre Code", "Category Code", "Subcategory Code",
-               "Description", "Purchase Date", "Initial Holder Code"])
+               "Description", "Invoice Date", "Initial Holder Code", "Vendor Code", "Serial Number"])
     for row in rows:
         ws.append(row)
     buf = io.BytesIO()
@@ -24,7 +26,8 @@ async def test_preview_and_commit_import(client):
     async with SessionLocal() as session:
         co = Company(code="CKS-IMP1", name="Import Test Co")
         cat = AssetCategory(code="IT-IMP1", name="IT")
-        session.add_all([co, cat])
+        vendor = Vendor(code="VND-IMP1", name="Import Test Vendor")
+        session.add_all([co, cat, vendor])
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
         cc = CostCenter(company_id=co.id, code="HO01", name="HO")
@@ -46,8 +49,8 @@ async def test_preview_and_commit_import(client):
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     xlsx = _build_workbook([
-        ["OLD-001", "CKS-IMP1", "HO01", "IT-IMP1", "LAP", "Legacy Laptop 1", "2020-01-15", "ITSTOCK-IMP1"],
-        ["OLD-002", "CKS-IMP1", "HO01", "IT-IMP1", "BADSUB", "Legacy Laptop 2", "2020-01-15", "ITSTOCK-IMP1"],
+        ["OLD-001", "CKS-IMP1", "HO01", "IT-IMP1", "LAP", "Legacy Laptop 1", "2020-01-15", "ITSTOCK-IMP1", "VND-IMP1", "N/A"],
+        ["OLD-002", "CKS-IMP1", "HO01", "IT-IMP1", "BADSUB", "Legacy Laptop 2", "2020-01-15", "ITSTOCK-IMP1", "VND-IMP1", "N/A"],
     ])
     preview_resp = await client.post("/api/imports/assets/preview",
         files={"file": ("assets.xlsx", io.BytesIO(xlsx), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},

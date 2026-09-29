@@ -2,7 +2,15 @@
 procurement/descriptive field Add Asset supports, Quantity (multi-create
 per row), and company-scoped Custom Fields via the `Custom:<field_key>`
 column convention. See docs/ai/DECISIONS.md for the exact column contract
-this reuses (app/imports/asset_import_service.py::TEMPLATE_COLUMNS)."""
+this reuses (app/imports/asset_import_service.py::ADD_TEMPLATE_COLUMNS).
+
+AM-23: Subcategory Code/Vendor Code/Serial Number are now mandatory here
+too (matching AssetCreateIn -- Add Asset's own contract), and Purchase
+Date is no longer a column at all (derived from Invoice Date, else
+today's date, exactly like Add Asset). `_base_row` below supplies a valid
+Vendor Code and "N/A" Serial Number by default so every existing test that
+doesn't care about either keeps working unchanged; tests that DO care
+override them explicitly."""
 import io
 from datetime import date
 import openpyxl
@@ -18,8 +26,8 @@ XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 HEADER = [
     "Company Code", "Cost Centre Code", "Category Code", "Subcategory Code",
-    "Description", "Legacy Asset Code", "Purchase Date",
-    "Vendor Code", "PO Number", "PO Date", "Invoice Number", "Invoice Date",
+    "Description", "Legacy Asset Code",
+    "Vendor Code", "PO Number", "PO Date", "Invoice Number", "Invoice Date", "Invoice Amount",
     "PI Number", "PI Date", "Purchase Cost", "Tax %",
     "Brand", "Model", "Serial Number", "Warranty Years",
     "Initial Holder Code", "Quantity",
@@ -80,7 +88,16 @@ def _base_row(ids, **overrides):
     row = {
         "Company Code": ids["a_code"], "Cost Centre Code": ids["cc"], "Category Code": ids["cat"],
         "Subcategory Code": ids["sub"], "Description": "Import Test Laptop",
-        "Purchase Date": "2025-06-01", "Initial Holder Code": ids["stock"],
+        # AM-23: Purchase Date is derived from Invoice Date (else today),
+        # never a direct column -- rows that need a specific Purchase Date
+        # for a test now set "Invoice Date" instead.
+        "Invoice Date": "2025-06-01",
+        "Vendor Code": ids["vendor"],
+        # "N/A" (never a real value) so this default is always safe under a
+        # Quantity>1 row too -- a real Serial Number can't repeat across
+        # several units of the same row.
+        "Serial Number": "N/A",
+        "Initial Holder Code": ids["stock"],
     }
     row.update(overrides)
     return row
@@ -102,6 +119,7 @@ class TestProcurementFieldSupport:
         row = _base_row(ids, **{
             "Legacy Asset Code": "OLD-PROC1", "Vendor Code": ids["vendor"],
             "PO Number": "PO-1", "PO Date": "2025-05-01", "Invoice Number": "INV-1", "Invoice Date": "2025-05-02",
+            "Invoice Amount": 70800,
             "PI Number": "PI-1", "PI Date": "2025-05-03", "Purchase Cost": 60000, "Tax %": 18,
             "Brand": "Dell", "Model": "Latitude 5440", "Serial Number": "SN-ABC", "Warranty Years": 3,
         })
@@ -116,10 +134,13 @@ class TestProcurementFieldSupport:
         assert asset.pi_date == date(2025, 5, 3)
         assert asset.po_number == "PO-1"
         assert asset.invoice_number == "INV-1"
+        assert float(asset.invoice_amount) == 70800.0
         assert asset.brand == "Dell" and asset.model == "Latitude 5440" and asset.serial_number == "SN-ABC"
         assert asset.warranty_years == 3
-        # AM-18: purchase_date (2025-06-01) + 3 years, minus 1 day.
-        assert asset.warranty_upto == date(2028, 5, 31)
+        # AM-23: purchase_date is derived from Invoice Date (2025-05-02, this
+        # row's own override) + 3 years, minus 1 day.
+        assert asset.purchase_date == date(2025, 5, 2)
+        assert asset.warranty_upto == date(2028, 5, 1)
         assert float(asset.purchase_cost) == 60000.0
         assert float(asset.tax_amount) == 10800.0
         assert float(asset.total_cost) == 70800.0
@@ -135,15 +156,20 @@ class TestProcurementFieldSupport:
         assert body["imported"] == 0
         assert "unknown Vendor Code" in body["errors"][0]["message"]
 
-    async def test_procurement_fields_are_optional(self, client):
+    async def test_po_invoice_pi_and_cost_fields_remain_optional(self, client):
+        """AM-23: Vendor Code/Serial Number are now mandatory (base_row
+        already supplies both), but PO/Invoice/PI Number+Date and Purchase
+        Cost/Tax % stay optional -- ground reality is that paperwork often
+        isn't in hand yet, same as Add Asset itself."""
         ids = await _setup("PROC3")
         headers = await _headers(client, ids["admin"])
-        row = _base_row(ids, **{"Legacy Asset Code": "OLD-PROC3"})
+        row = _base_row(ids, **{"Legacy Asset Code": "OLD-PROC3", "PO Number": None, "PI Number": None})
         resp = await _post(client, "/api/imports/assets/commit", _xlsx([row]), headers)
         assert resp.status_code == 200
         assert resp.json()["imported"] == 1
         [asset] = await _assets_by_legacy("OLD-PROC3")
-        assert asset.vendor_id is None
+        assert asset.po_number is None
+        assert asset.pi_number is None
         assert float(asset.purchase_cost) == 0.0
 
 
@@ -299,15 +325,18 @@ class TestMasterLookupIntegrity:
         assert body["imported"] == 0
         assert "unknown Subcategory Code" in body["errors"][0]["message"]
 
-    async def test_subcategory_is_optional(self, client):
+    async def test_subcategory_code_is_required(self, client):
+        """AM-23: Subcategory Code is now mandatory, matching
+        AssetCreateIn.subcategory_id (Add Asset's own contract)."""
         ids = await _setup("XCO3")
         headers = await _headers(client, ids["admin"])
         row = _base_row(ids, **{"Legacy Asset Code": "OLD-XCO3", "Subcategory Code": None})
         resp = await _post(client, "/api/imports/assets/commit", _xlsx([row]), headers)
         assert resp.status_code == 200
-        assert resp.json()["imported"] == 1
-        [asset] = await _assets_by_legacy("OLD-XCO3")
-        assert asset.subcategory_id is None
+        body = resp.json()
+        assert body["imported"] == 0
+        assert "Subcategory Code is required" in body["errors"][0]["message"]
+        assert await _assets_by_legacy("OLD-XCO3") == []
 
 
 class TestQuantityAndTransactionSafety:
@@ -329,7 +358,10 @@ class TestQuantityAndTransactionSafety:
         ids = await _setup("QTY2")
         headers = await _headers(client, ids["admin"])
         row = _base_row(ids, **{
-            "Legacy Asset Code": "OLD-QTY2", "Quantity": 3, "Purchase Date": "2099-01-01",
+            # AM-23: Purchase Date is derived from Invoice Date -- this row
+            # forces a future purchase_date the same way Add Asset's own
+            # Invoice Date field would.
+            "Legacy Asset Code": "OLD-QTY2", "Quantity": 3, "Invoice Date": "2099-01-01",
         })
         resp = await _post(client, "/api/imports/assets/commit", _xlsx([row]), headers)
         assert resp.status_code == 200

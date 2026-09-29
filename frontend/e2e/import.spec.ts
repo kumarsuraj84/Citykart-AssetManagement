@@ -77,10 +77,10 @@ test("import journey: fixture file -> preview -> commit -> find the asset -> PI 
   const companyCode = await codeOf(baseURL!, token, "companies", ctx.company.id);
   const costCentreCode = await codeOf(baseURL!, token, "cost-centers", ctx.costCenter.id);
   const categoryCode = await codeOf(baseURL!, token, "categories", ctx.category.id);
-  // The seeded company's code rule template includes {subcategory.code}
-  // (see fixtures.ts), so it must resolve to a real value even though AM-06
-  // made Subcategory optional at the import-parsing level.
+  // AM-23: Subcategory Code (and Vendor Code, Serial Number) are mandatory
+  // columns now, matching Add Asset's own contract.
   const subcategoryCode = await codeOf(baseURL!, token, "subcategories", ctx.subcategory.id);
+  const vendorCode = await codeOf(baseURL!, token, "vendors", ctx.vendor.id);
 
   const fieldKey = `e2e_warranty_${Date.now()}`;
   await api(baseURL!, "POST", "/api/masters/custom-fields", token, {
@@ -95,8 +95,9 @@ test("import journey: fixture file -> preview -> commit -> find the asset -> PI 
     "subcategory-code": subcategoryCode,
     "description": "E2E Import Journey Laptop",
     "legacy-asset-code": legacyCode,
-    "purchase-date": "2025-06-01",
+    "invoice-date": "2025-06-01",
     "pi-number": "PI-E2E-IMPORT",
+    "vendor-code": vendorCode,
     "initial-holder-code": ctx.stock.emp_code,
     "custom-field-key": fieldKey,
     "custom-field-value": "WARR-E2E-9",

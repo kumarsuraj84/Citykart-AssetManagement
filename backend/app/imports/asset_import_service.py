@@ -18,13 +18,25 @@ UDF applicability/type/required-ness (AM-05's exact rule), and
 Asset). Atomicity/duplicate-detection/numbering semantics are UNCHANGED
 from the pre-AM-06 behavior -- see the module-level notes on
 `commit_import` below.
-"""
+
+AM-23: Import now has two independent modes, `"add"` (this module's
+original behaviour, kept up to date with Add Asset's own contract --
+Purchase Date is derived from Invoice Date exactly like Add Asset itself,
+never a direct column; Subcategory/Vendor/Serial Number are mandatory,
+matching AssetCreateIn) and `"edit"` (new: bulk-corrects existing assets by
+Asset Code). Edit mode deliberately does NOT reuse AssetUpdateIn's
+full-replace-on-PUT contract -- a bulk edit template's blank cell means
+"leave this field exactly as it is", never "clear it", since one row is
+typically only touching one or two fields (e.g. filling in a PI Number
+across many rows) and must never blank out everything else about that
+asset. See `_validate_edit_rows`/`_commit_edit` below."""
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from io import BytesIO
 import openpyxl
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.assets.audit_service import AUDITED_SCALAR_FIELDS, record_field_changes
 from app.assets.custom_field_values import applicable_custom_fields, validate_custom_field_values
 from app.assets.service import check_serial_number_unique, compute_tax, compute_warranty_upto
 from app.holders.models import Holder
@@ -39,35 +51,62 @@ from app.assets.models import Asset
 # (backend mapping, format, requiredness, lookup rule). Order here is only
 # the order `build_template` writes them in; parsing below is by header
 # name, not position, so an uploaded file's column order never matters.
-TEMPLATE_COLUMNS = [
+# AM-23: no "Purchase Date" column -- derived from Invoice Date exactly
+# like Add Asset itself (see `_derive_purchase_date` below), never accepted
+# directly. "Quantity" stays -- Import remains the tool for a genuine
+# multi-unit bulk add (Add Asset itself dropped Quantity in AM-19, since a
+# real Serial Number can never be shared across units anyway).
+ADD_TEMPLATE_COLUMNS = [
     "Company Code", "Cost Centre Code", "Category Code", "Subcategory Code",
-    "Description", "Legacy Asset Code", "Purchase Date",
-    "Vendor Code", "PO Number", "PO Date", "Invoice Number", "Invoice Date",
+    "Description", "Legacy Asset Code",
+    "Vendor Code", "PO Number", "PO Date", "Invoice Number", "Invoice Date", "Invoice Amount",
     "PI Number", "PI Date", "Purchase Cost", "Tax %",
     "Brand", "Model", "Serial Number", "Warranty Years",
     "Initial Holder Code", "Quantity",
 ]
 
-# Columns without which a row can never be validated -- checked against the
-# workbook's header row once, before any row is even read, so a malformed
-# template produces one clear file-level error instead of nonsense per-row
-# "unknown company_code 'None'" noise.
-REQUIRED_COLUMNS = [
-    "Company Code", "Cost Centre Code", "Category Code", "Description",
-    "Purchase Date", "Initial Holder Code",
+# AM-23: Subcategory Code/Vendor Code/Serial Number moved here from optional
+# -- AssetCreateIn (Add Asset's own contract) has required subcategory_id/
+# vendor_id/serial_number; a genuinely serial-less unit still has a value to
+# enter ("N/A", case-insensitive-exempt from uniqueness -- see
+# check_serial_number_unique), the same escape hatch Add Asset itself relies on.
+ADD_REQUIRED_COLUMNS = [
+    "Company Code", "Cost Centre Code", "Category Code", "Subcategory Code",
+    "Description", "Vendor Code", "Serial Number", "Initial Holder Code",
 ]
+
+# AM-23: the bulk Edit-mode template -- Asset Code is the mandatory match
+# key; every other column is the ordinary-editable descriptive/procurement
+# subset AssetUpdateIn accepts (see docs/ai/AM-02_ASSET_DATA_MODEL_REPORT.md's
+# Asset Field Policy Matrix), MINUS Category/Subcategory/Purchase Date
+# (correction-workflow-only, see app.assets.correction_service) and PLUS
+# nothing creation-only (no Company/Cost Centre/Initial Holder/Quantity --
+# meaningless on a row that already exists).
+EDIT_TEMPLATE_COLUMNS = [
+    "Asset Code", "Legacy Asset Code", "Brand", "Model", "Serial Number", "Barcode",
+    "Description", "Vendor Code", "PO Number", "PO Date", "Invoice Number", "Invoice Date",
+    "Invoice Amount", "PI Number", "PI Date", "Purchase Cost", "Tax %", "Warranty Years",
+]
+EDIT_REQUIRED_COLUMNS = ["Asset Code"]
 
 # Any header starting with this prefix is a Custom Field value column; the
 # part after it is the field's stable `field_key` (never its display
 # label -- a label rename must never break a saved spreadsheet). See
-# docs/ai/DECISIONS.md for the full convention.
+# docs/ai/DECISIONS.md for the full convention. Applies to both modes.
 CUSTOM_FIELD_PREFIX = "Custom:"
 
+# AM-23: a blank cell in Edit mode means "leave this field exactly as it
+# is" -- this sentinel (never `None`, which is itself a valid value some
+# fields could theoretically want to set) marks "not provided", so
+# `_validate_edit_rows` can tell "cell was blank" apart from "cell asked to
+# clear this field" everywhere below.
+_UNSET = object()
 
-def build_template() -> bytes:
+
+def build_template(mode: str = "add") -> bytes:
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.append(TEMPLATE_COLUMNS)
+    ws.append(EDIT_TEMPLATE_COLUMNS if mode == "edit" else ADD_TEMPLATE_COLUMNS)
     buf = BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -95,16 +134,6 @@ def _parse_date_value(value, label: str) -> date:
         except ValueError:
             raise ValueError(f"{label} '{value}' is not a valid date (expected YYYY-MM-DD)")
     raise ValueError(f"{label} '{value}' is not a valid date (expected YYYY-MM-DD)")
-
-
-def _parse_purchase_date(value) -> date:
-    """Required -- shared by `_validate_rows` (so both preview and commit apply the exact
-    same rule) rather than left for commit to parse on its own -- a malformed date used to
-    pass preview as "valid" and then raise an uncaught ValueError inside the commit loop,
-    silently 500-ing a request that preview had just told the caller was clean."""
-    if _is_blank(value):
-        raise ValueError("Purchase Date is required")
-    return _parse_date_value(value, "Purchase Date")
 
 
 def _parse_optional_date(value, label: str) -> date | None:
@@ -150,6 +179,53 @@ def _parse_optional_number(value, label: str) -> float:
         raise ValueError(f"{label} '{value}' must be a number")
 
 
+def _derive_purchase_date(invoice_date: date | None) -> date:
+    """AM-23: matches app.assets.router.create_asset exactly -- Purchase
+    Date is Invoice Date when known, else today (the day the row is
+    actually being imported), never a directly-entered column."""
+    return invoice_date or date.today()
+
+
+# --- Edit-mode-only parsers: a blank cell means "leave untouched" (_UNSET),
+# never a default value -- contrast with the add-mode parsers above, where
+# blank means "use this default" because every add-mode row creates a brand
+# new Asset that needs a real value for every field either way.
+def _parse_edit_optional_date(value, label: str):
+    if _is_blank(value):
+        return _UNSET
+    return _parse_date_value(value, label)
+
+
+def _parse_edit_optional_number(value, label: str):
+    if _is_blank(value):
+        return _UNSET
+    if isinstance(value, bool):
+        raise ValueError(f"{label} must be a number")
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{label} '{value}' must be a number")
+
+
+def _parse_edit_warranty_years(value):
+    if _is_blank(value):
+        return _UNSET
+    try:
+        years = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"Warranty Years '{value}' must be a whole number")
+    if years < 0:
+        raise ValueError("Warranty Years cannot be negative")
+    return years
+
+
+def _cell_or_unset(value):
+    """Plain-text edit-mode fields (Legacy Asset Code, Brand, Model,
+    Barcode, Description, PO/Invoice/PI Number): blank means untouched;
+    anything else is used as-is."""
+    return _UNSET if _is_blank(value) else value
+
+
 def _coerce_custom_value(raw, field_type: str):
     """Mirrors validate_custom_field_values's own type rules, but converts a raw
     Excel cell (which may already be a str/float/bool/date/datetime, depending on
@@ -186,8 +262,8 @@ class ImportTemplateError(ValueError):
     file-level problem, not a row-level one."""
 
 
-def _out_of_scope_message(company_code) -> str:
-    return f"Company Code '{company_code}' is outside your company scope"
+def _out_of_scope_message(label) -> str:
+    return f"'{label}' is outside your company scope"
 
 
 def _read_header(ws) -> dict[str, int]:
@@ -198,7 +274,7 @@ def _read_header(ws) -> dict[str, int]:
     return {str(h).strip(): idx for idx, h in enumerate(header_row) if h is not None and str(h).strip() != ""}
 
 
-async def _validate_rows(
+async def _validate_add_rows(
     session: AsyncSession, content: bytes, allowed_company_ids: list[int] | None = None,
 ) -> tuple[list[dict], list[dict], list[dict]]:
     """Returns (valid_rows, errors, scope_violations). `allowed_company_ids` is the
@@ -209,7 +285,7 @@ async def _validate_rows(
     ws = wb.active
     header = _read_header(ws)
 
-    missing = [c for c in REQUIRED_COLUMNS if c not in header]
+    missing = [c for c in ADD_REQUIRED_COLUMNS if c not in header]
     if missing:
         raise ImportTemplateError(
             f"missing required column(s): {', '.join(missing)} -- re-download the template",
@@ -252,28 +328,22 @@ async def _validate_rows(
             errors.append({"row": row_idx, "field": "Category Code", "message": f"unknown Category Code '{cat_code}'"})
             continue
 
-        # Optional, same as Add Asset's own Sub-Category field -- a blank cell
-        # means "no sub-category", not a validation error.
+        # AM-23: mandatory, matching AssetCreateIn.subcategory_id.
         sub_code = cell("Subcategory Code")
-        subcategory = None
-        if not _is_blank(sub_code):
-            subcategory = await _lookup(session, AssetSubcategory, category_id=category.id, code=sub_code)
-            if subcategory is None:
-                errors.append({
-                    "row": row_idx, "field": "Subcategory Code",
-                    "message": f"unknown Subcategory Code '{sub_code}' for category '{cat_code}'",
-                })
-                continue
+        if _is_blank(sub_code):
+            errors.append({"row": row_idx, "field": "Subcategory Code", "message": "Subcategory Code is required"})
+            continue
+        subcategory = await _lookup(session, AssetSubcategory, category_id=category.id, code=sub_code)
+        if subcategory is None:
+            errors.append({
+                "row": row_idx, "field": "Subcategory Code",
+                "message": f"unknown Subcategory Code '{sub_code}' for category '{cat_code}'",
+            })
+            continue
 
         description = cell("Description")
         if _is_blank(description):
             errors.append({"row": row_idx, "field": "Description", "message": "Description is required"})
-            continue
-
-        try:
-            purchase_date = _parse_purchase_date(cell("Purchase Date"))
-        except ValueError as exc:
-            errors.append({"row": row_idx, "field": "Purchase Date", "message": str(exc)})
             continue
 
         holder_code = cell("Initial Holder Code")
@@ -288,13 +358,23 @@ async def _validate_rows(
             errors.append({"row": row_idx, "field": "Quantity", "message": str(exc)})
             continue
 
-        vendor = None
+        # AM-23: mandatory, matching AssetCreateIn.vendor_id.
         vendor_code = cell("Vendor Code")
-        if not _is_blank(vendor_code):
-            vendor = await _lookup(session, Vendor, code=vendor_code)
-            if vendor is None:
-                errors.append({"row": row_idx, "field": "Vendor Code", "message": f"unknown Vendor Code '{vendor_code}'"})
-                continue
+        if _is_blank(vendor_code):
+            errors.append({"row": row_idx, "field": "Vendor Code", "message": "Vendor Code is required"})
+            continue
+        vendor = await _lookup(session, Vendor, code=vendor_code)
+        if vendor is None:
+            errors.append({"row": row_idx, "field": "Vendor Code", "message": f"unknown Vendor Code '{vendor_code}'"})
+            continue
+
+        # AM-23: mandatory, matching AssetCreateIn.serial_number ("N/A" is
+        # the reserved, case-insensitive-exempt placeholder for a unit that
+        # genuinely has none -- see check_serial_number_unique).
+        serial_number = cell("Serial Number")
+        if _is_blank(serial_number):
+            errors.append({"row": row_idx, "field": "Serial Number", "message": "Serial Number is required (use \"N/A\" if this unit genuinely has none)"})
+            continue
 
         try:
             po_date = _parse_optional_date(cell("PO Date"), "PO Date")
@@ -303,6 +383,8 @@ async def _validate_rows(
         except ValueError as exc:
             errors.append({"row": row_idx, "message": str(exc)})
             continue
+        # AM-23: derived, exactly like Add Asset itself -- never a direct column.
+        purchase_date = _derive_purchase_date(invoice_date)
 
         try:
             warranty_years = _parse_warranty_years(cell("Warranty Years"))
@@ -313,6 +395,7 @@ async def _validate_rows(
         try:
             purchase_cost = _parse_optional_number(cell("Purchase Cost"), "Purchase Cost")
             tax_percent = _parse_optional_number(cell("Tax %"), "Tax %")
+            invoice_amount = _parse_optional_number(cell("Invoice Amount"), "Invoice Amount")
         except ValueError as exc:
             errors.append({"row": row_idx, "message": str(exc)})
             continue
@@ -362,17 +445,200 @@ async def _validate_rows(
             "quantity": quantity, "vendor": vendor,
             "po_number": cell("PO Number"), "po_date": po_date,
             "invoice_number": cell("Invoice Number"), "invoice_date": invoice_date,
+            "invoice_amount": invoice_amount,
             "pi_number": cell("PI Number"), "pi_date": pi_date,
             "purchase_cost": purchase_cost, "tax_percent": tax_percent,
-            "brand": cell("Brand"), "model": cell("Model"), "serial_number": cell("Serial Number"),
+            "brand": cell("Brand"), "model": cell("Model"), "serial_number": serial_number,
             "warranty_years": warranty_years, "custom_fields": custom_values,
         })
 
     return valid_rows, errors, scope_violations
 
 
-async def preview_import(session: AsyncSession, content: bytes, allowed_company_ids: list[int] | None = None) -> dict:
-    valid_rows, errors, _ = await _validate_rows(session, content, allowed_company_ids)
+async def _validate_edit_rows(
+    session: AsyncSession, content: bytes, allowed_company_ids: list[int] | None = None,
+) -> tuple[list[dict], list[dict], list[dict]]:
+    """AM-23: Edit mode's own validator -- matches an existing Asset by its
+    Asset Code (the one column every asset already has, always known,
+    always unique) and builds a PARTIAL update dict of only the columns
+    that were actually filled in for that row. A blank cell is never an
+    error and never clears a field -- it simply means this row doesn't
+    touch that field (see the module docstring). Same
+    (valid_rows, errors, scope_violations) shape as `_validate_add_rows`,
+    so the router/preview/commit plumbing doesn't need to know which mode
+    it's looking at."""
+    wb = openpyxl.load_workbook(BytesIO(content))
+    ws = wb.active
+    header = _read_header(ws)
+
+    missing = [c for c in EDIT_REQUIRED_COLUMNS if c not in header]
+    if missing:
+        raise ImportTemplateError(
+            f"missing required column(s): {', '.join(missing)} -- re-download the template",
+        )
+    custom_headers = [h for h in header if h.startswith(CUSTOM_FIELD_PREFIX)]
+
+    valid_rows: list[dict] = []
+    errors: list[dict] = []
+    scope_violations: list[dict] = []
+    applicable_cache: dict[int, dict] = {}
+
+    for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        if row is None or all(v is None for v in row):
+            continue
+
+        def cell(name: str):
+            idx = header.get(name)
+            return row[idx] if idx is not None and idx < len(row) else None
+
+        asset_code = cell("Asset Code")
+        if _is_blank(asset_code):
+            errors.append({"row": row_idx, "field": "Asset Code", "message": "Asset Code is required"})
+            continue
+        asset = await _lookup(session, Asset, asset_code=asset_code)
+        if asset is None or asset.deleted_at is not None:
+            errors.append({"row": row_idx, "field": "Asset Code", "message": f"unknown Asset Code '{asset_code}'"})
+            continue
+        if allowed_company_ids is not None and asset.company_id not in allowed_company_ids:
+            violation = {"row": row_idx, "field": "Asset Code", "message": _out_of_scope_message(asset_code)}
+            errors.append(violation)
+            scope_violations.append(violation)
+            continue
+
+        updates: dict = {}
+        row_error = False
+
+        for field, column in (
+            ("legacy_asset_code", "Legacy Asset Code"), ("brand", "Brand"), ("model", "Model"),
+            ("barcode", "Barcode"), ("description", "Description"),
+            ("po_number", "PO Number"), ("invoice_number", "Invoice Number"), ("pi_number", "PI Number"),
+        ):
+            value = _cell_or_unset(cell(column))
+            if value is not _UNSET:
+                updates[field] = value
+
+        serial_number = _cell_or_unset(cell("Serial Number"))
+        if serial_number is not _UNSET:
+            if serial_number != asset.serial_number:
+                try:
+                    await check_serial_number_unique(session, serial_number, exclude_asset_id=asset.id)
+                except ValueError as exc:
+                    errors.append({"row": row_idx, "field": "Serial Number", "message": str(exc)})
+                    row_error = True
+            if not row_error:
+                updates["serial_number"] = serial_number
+        if row_error:
+            continue
+
+        vendor_code = cell("Vendor Code")
+        if not _is_blank(vendor_code):
+            vendor = await _lookup(session, Vendor, code=vendor_code)
+            if vendor is None:
+                errors.append({"row": row_idx, "field": "Vendor Code", "message": f"unknown Vendor Code '{vendor_code}'"})
+                continue
+            updates["vendor_id"] = vendor.id
+
+        try:
+            for field, column, label in (
+                ("po_date", "PO Date", "PO Date"), ("invoice_date", "Invoice Date", "Invoice Date"),
+                ("pi_date", "PI Date", "PI Date"),
+            ):
+                value = _parse_edit_optional_date(cell(column), label)
+                if value is not _UNSET:
+                    updates[field] = value
+        except ValueError as exc:
+            errors.append({"row": row_idx, "message": str(exc)})
+            continue
+
+        try:
+            for field, column, label in (
+                ("invoice_amount", "Invoice Amount", "Invoice Amount"),
+                ("purchase_cost", "Purchase Cost", "Purchase Cost"),
+                ("tax_percent", "Tax %", "Tax %"),
+            ):
+                value = _parse_edit_optional_number(cell(column), label)
+                if value is not _UNSET:
+                    updates[field] = value
+        except ValueError as exc:
+            errors.append({"row": row_idx, "message": str(exc)})
+            continue
+
+        try:
+            warranty_years = _parse_edit_warranty_years(cell("Warranty Years"))
+            if warranty_years is not _UNSET:
+                updates["warranty_years"] = warranty_years
+        except ValueError as exc:
+            errors.append({"row": row_idx, "field": "Warranty Years", "message": str(exc)})
+            continue
+
+        # Company-scoped Custom Field values, same AM-05 applicability rule
+        # as add mode -- but never enforce_required here: a partial edit
+        # that doesn't mention a required custom field at all must not be
+        # blocked by it (same reasoning as ordinary PUT /api/assets/{id},
+        # see app.assets.custom_field_values's own module docstring).
+        if asset.company_id not in applicable_cache:
+            applicable_cache[asset.company_id] = await applicable_custom_fields(session, asset.company_id)
+        applicable = applicable_cache[asset.company_id]
+
+        custom_updates: dict = {}
+        custom_error = False
+        for header_name in custom_headers:
+            raw = cell(header_name)
+            if _is_blank(raw):
+                continue
+            key = header_name[len(CUSTOM_FIELD_PREFIX):].strip()
+            field = applicable.get(key)
+            if field is None:
+                errors.append({
+                    "row": row_idx, "field": header_name,
+                    "message": f"custom field '{key}' is not applicable to this asset's company "
+                               "(unknown, inactive, or scoped to a different company)",
+                })
+                custom_error = True
+                break
+            try:
+                custom_updates[key] = _coerce_custom_value(raw, field.field_type)
+            except ValueError as exc:
+                errors.append({"row": row_idx, "field": header_name, "message": f"custom field '{key}' {exc}"})
+                custom_error = True
+                break
+        if custom_error:
+            continue
+
+        if custom_updates:
+            try:
+                await validate_custom_field_values(session, custom_updates, company_id=asset.company_id, enforce_required=False)
+            except ValueError as exc:
+                errors.append({"row": row_idx, "message": str(exc)})
+                continue
+
+        if not updates and not custom_updates:
+            errors.append({"row": row_idx, "message": "no editable fields were filled in for this row -- nothing to update"})
+            continue
+
+        valid_rows.append({
+            "row": row_idx, "asset": asset, "asset_code": asset.asset_code,
+            "updates": updates, "custom_updates": custom_updates,
+        })
+
+    return valid_rows, errors, scope_violations
+
+
+async def preview_import(session: AsyncSession, content: bytes, allowed_company_ids: list[int] | None = None, mode: str = "add") -> dict:
+    if mode == "edit":
+        valid_rows, errors, _ = await _validate_edit_rows(session, content, allowed_company_ids)
+        return {
+            "valid_rows": [
+                {
+                    "row": r["row"], "asset_code": r["asset_code"],
+                    "fields_changed": sorted(list(r["updates"].keys()) + [f"Custom:{k}" for k in r["custom_updates"]]),
+                }
+                for r in valid_rows
+            ],
+            "errors": errors,
+        }
+
+    valid_rows, errors, _ = await _validate_add_rows(session, content, allowed_company_ids)
     return {
         "valid_rows": [
             {
@@ -387,7 +653,60 @@ async def preview_import(session: AsyncSession, content: bytes, allowed_company_
     }
 
 
-async def commit_import(
+async def _commit_edit(session: AsyncSession, content: bytes, actor: Holder, allowed_company_ids: list[int] | None = None) -> dict:
+    """AM-23: every OTHER valid row still commits if one row fails (e.g. a
+    serial number collision surfaced only at commit time, not preview) --
+    same VALID-ROWS-ONLY, per-row-savepoint philosophy `_commit_add`
+    already uses, just one Asset UPDATE instead of one-or-more Asset
+    INSERTs per row."""
+    valid_rows, errors, scope_violations = await _validate_edit_rows(session, content, allowed_company_ids)
+    if scope_violations:
+        raise ImportScopeError("; ".join(f"row {v['row']}: {v['message']}" for v in scope_violations))
+
+    updated = 0
+    for r in valid_rows:
+        asset = r["asset"]
+        try:
+            async with session.begin_nested():
+                before = {field: getattr(asset, field) for field in AUDITED_SCALAR_FIELDS}
+                before["custom_fields"] = dict(asset.custom_fields)
+
+                for field, value in r["updates"].items():
+                    setattr(asset, field, value)
+
+                # Always recomputed from the EFFECTIVE (possibly untouched)
+                # purchase_cost/tax_percent -- same rule ordinary Edit (PUT
+                # /api/assets/{id}) already applies on every save, now over
+                # values that may not have been part of this row at all.
+                tax_amount, total_cost = compute_tax(asset.purchase_cost, asset.tax_percent)
+                asset.tax_amount = tax_amount
+                asset.total_cost = total_cost
+
+                # Same AM-18 rule as ordinary Edit: only recomputed when
+                # this row actually mentioned Warranty Years.
+                if "warranty_years" in r["updates"]:
+                    asset.warranty_upto = compute_warranty_upto(asset.purchase_date, asset.warranty_years)
+
+                if r["custom_updates"]:
+                    # MERGE, never replace -- a row's custom-field columns
+                    # are just as partial as its ordinary ones.
+                    asset.custom_fields = {**asset.custom_fields, **r["custom_updates"]}
+
+                asset.updated_by = actor.id
+
+                after = {field: getattr(asset, field) for field in AUDITED_SCALAR_FIELDS}
+                after["custom_fields"] = dict(asset.custom_fields)
+                await record_field_changes(session, asset_id=asset.id, actor_id=actor.id, before=before, after=after)
+
+            updated += 1
+        except (LifecycleError, ValueError) as exc:
+            errors.append({"row": r["row"], "message": str(exc)})
+
+    await session.flush()
+    return {"updated": updated, "errors": errors}
+
+
+async def _commit_add(
     session: AsyncSession, content: bytes, actor: Holder, allowed_company_ids: list[int] | None = None,
 ) -> dict:
     """Raises ImportScopeError (-> 403) if any row targets a company outside
@@ -402,7 +721,7 @@ async def commit_import(
     units with no way to explain to the user which ones "count"), so a
     mid-row failure discards that whole row's units, not just the failed one.
     """
-    valid_rows, errors, scope_violations = await _validate_rows(session, content, allowed_company_ids)
+    valid_rows, errors, scope_violations = await _validate_add_rows(session, content, allowed_company_ids)
     if scope_violations:
         raise ImportScopeError("; ".join(f"row {v['row']}: {v['message']}" for v in scope_violations))
 
@@ -460,6 +779,7 @@ async def commit_import(
                         vendor_id=r["vendor"].id if r["vendor"] else None,
                         po_number=r["po_number"], po_date=r["po_date"],
                         invoice_number=r["invoice_number"], invoice_date=r["invoice_date"],
+                        invoice_amount=r["invoice_amount"],
                         pi_number=r["pi_number"], pi_date=r["pi_date"],
                         purchase_cost=Decimal(str(r["purchase_cost"])), tax_percent=Decimal(str(r["tax_percent"])),
                         tax_amount=tax_amount, total_cost=total_cost,
@@ -490,3 +810,11 @@ async def commit_import(
 
     await session.flush()
     return {"imported": imported, "errors": errors}
+
+
+async def commit_import(
+    session: AsyncSession, content: bytes, actor: Holder, allowed_company_ids: list[int] | None = None, mode: str = "add",
+) -> dict:
+    if mode == "edit":
+        return await _commit_edit(session, content, actor, allowed_company_ids)
+    return await _commit_add(session, content, actor, allowed_company_ids)

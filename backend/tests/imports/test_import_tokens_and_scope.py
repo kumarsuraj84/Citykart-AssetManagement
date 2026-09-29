@@ -8,7 +8,7 @@ from app.assets.models import Asset
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.holders.models import Holder
-from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location
+from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location, Vendor
 from app.numbering.models import CodeRule
 from sqlalchemy import func, select
 
@@ -16,10 +16,12 @@ XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 def _xlsx(rows):
+    """AM-23: no "Purchase Date" column (derived from Invoice Date, else
+    today); Vendor Code/Serial Number are now mandatory columns too."""
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.append(["Legacy Asset Code", "Company Code", "Cost Centre Code", "Category Code", "Subcategory Code",
-               "Description", "Purchase Date", "Initial Holder Code"])
+               "Description", "Invoice Date", "Initial Holder Code", "Vendor Code", "Serial Number"])
     for row in rows:
         ws.append(row)
     buf = io.BytesIO()
@@ -46,7 +48,9 @@ async def _setup(rules):
         co_a, loc_a, dept_a = await _company(session, "IMA")
         co_b, _, _ = await _company(session, "IMB")
         cat = AssetCategory(code="IT", name="IT")
-        session.add(cat)
+        # Vendor is a global master (not company-scoped), so one code
+        # serves every row/company in this file.
+        session.add_all([cat, Vendor(code="VND", name="Test Vendor")])
         await session.flush()
         session.add(AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop"))
         for emp_code, role in (("ADM", "ADMIN"), ("ITA", "IT_TEAM")):
@@ -67,7 +71,7 @@ async def _headers(client, company_id, emp_code):
 
 
 def _row(company="IMA", legacy="OLD-1"):
-    return [legacy, company, "HO01", "IT", "LAP", "Legacy Laptop", "2020-01-15", f"STOCK-{company}"]
+    return [legacy, company, "HO01", "IT", "LAP", "Legacy Laptop", "2020-01-15", f"STOCK-{company}", "VND", "N/A"]
 
 
 async def _post(client, path, content, headers):
@@ -85,7 +89,7 @@ async def test_import_fills_company_location_and_date_tokens(client):
 
     resp = await _post(client, "/api/imports/assets/commit", _xlsx([_row()]), headers)
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"imported": 1, "errors": []}
+    assert resp.json() == {"imported": 1, "updated": None, "errors": []}
     # location.code comes from the row's resolved holder's location.
     assert await _asset_codes() == ["IMA/IMA-LOC/2020/2001/1"]
 
@@ -167,7 +171,7 @@ async def test_import_rejects_a_cost_center_code_that_belongs_to_another_company
     headers = await _headers(client, a_id, "ADM")
 
     content = _xlsx([[
-        "OLD-XCO", "IMA", "B-ONLY", "IT", "LAP", "Cross-company Laptop", "2020-01-15", "STOCK-IMA",
+        "OLD-XCO", "IMA", "B-ONLY", "IT", "LAP", "Cross-company Laptop", "2020-01-15", "STOCK-IMA", "VND", "N/A",
     ]])
     resp = await _post(client, "/api/imports/assets/commit", content, headers)
     assert resp.status_code == 200
