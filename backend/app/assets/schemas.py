@@ -101,6 +101,8 @@ class AssetOut(BaseModel):
     # system), never a per-row join. `None` only if the referenced holder/
     # company row is somehow missing -- should not happen in practice.
     current_holder_name: str | None = None
+    current_holder_location_name: str | None = None
+    current_holder_type: str | None = None
     company_name: str | None = None
     # Asset Register "show every field" pass: the register needs human-readable
     # labels for these FK columns too, not just holder/company (AM-11's original

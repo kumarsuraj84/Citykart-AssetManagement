@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { FormField } from "@/components/shared/FormField";
 import { AsyncButton } from "@/components/shared/AsyncButton";
@@ -25,6 +26,8 @@ interface AssetSearchResult {
   description: string;
   status: string;
   current_holder_name: string | null;
+  current_holder_location_name: string | null;
+  current_holder_type: string | null;
 }
 
 interface QueuedAsset extends AssetSearchResult {
@@ -54,6 +57,14 @@ const BULK_ACTIONS: { eventType: string; label: string; needsHolder: boolean }[]
 
 function isEligible(status: string, eventType: string): boolean {
   return actionsFor(status).some((a) => a.eventType === eventType);
+}
+
+// An operator scanning a batch should be able to tell at a glance that an
+// asset is currently with a real person/store/install, not sitting in an
+// IT_STOCK warehouse bin -- moving it means pulling it out of someone's
+// hands, worth a second look before it's bundled into a bulk action.
+function isNotInItStock(holderType: string | null): boolean {
+  return holderType !== null && holderType !== "IT_STOCK";
 }
 
 function selectValue(v: string): string | undefined {
@@ -256,8 +267,18 @@ export function AssetMovement() {
           <ul className="flex flex-col gap-1">
             {candidates.map((a) => (
               <li key={a.id}>
-                <Button type="button" variant="ghost" size="sm" className="w-full justify-start" onClick={() => addToQueue(a)}>
-                  {a.asset_code} — {a.description} ({a.serial_number ?? "no serial"})
+                <Button type="button" variant="ghost" size="sm" className="w-full flex-col items-start" onClick={() => addToQueue(a)}>
+                  <span className="flex items-center gap-1.5">
+                    {a.asset_code} — {a.description} ({a.serial_number ?? "no serial"})
+                    {isNotInItStock(a.current_holder_type) && (
+                      <Badge variant="outline" className="border-transparent bg-warning-soft text-on-warning-soft px-1.5 py-0 text-[10px] font-medium">
+                        Not in IT Stock
+                      </Badge>
+                    )}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    Holder: {a.current_holder_name ?? "—"} ({a.current_holder_location_name ?? "—"}) · Status: {a.status}
+                  </span>
                 </Button>
               </li>
             ))}
@@ -295,15 +316,30 @@ export function AssetMovement() {
           <EmptyState title="No matches" description="Try a different search." />
         ) : (
           <ul className="flex flex-col gap-1.5">
-            {sortedQueue.map((a) => (
+            {sortedQueue.map((a) => {
+              const notInStock = isNotInItStock(a.current_holder_type);
+              return (
               <li
                 key={a.id}
-                className={`flex items-center justify-between gap-2 rounded-sm border px-2 py-1.5 text-sm ${a.eligible ? "bg-muted/40" : "border-destructive/50 bg-destructive/5"}`}
+                className={`flex items-center justify-between gap-2 rounded-sm border px-2 py-1.5 text-sm ${
+                  !a.eligible
+                    ? "border-destructive/50 bg-destructive/5"
+                    : notInStock
+                      ? "border-warning/50 bg-warning-soft"
+                      : "bg-muted/40"
+                }`}
               >
                 <div className="flex flex-col">
-                  <span className="font-medium">{a.asset_code} — {a.description}</span>
+                  <span className="flex items-center gap-1.5 font-medium">
+                    {a.asset_code} — {a.description} ({a.serial_number ?? "no serial"})
+                    {notInStock && (
+                      <Badge variant="outline" className="border-transparent bg-warning-soft text-on-warning-soft px-1.5 py-0 text-[10px] font-medium">
+                        Not in IT Stock
+                      </Badge>
+                    )}
+                  </span>
                   <span className="text-xs text-muted-foreground">
-                    Holder: {a.current_holder_name ?? "—"} · Status: {a.status}
+                    Holder: {a.current_holder_name ?? "—"} ({a.current_holder_location_name ?? "—"}) · Status: {a.status}
                     {!a.eligible && ` · not eligible for "${action.label}" from this status`}
                   </span>
                 </div>
@@ -311,7 +347,8 @@ export function AssetMovement() {
                   Remove
                 </Button>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </div>

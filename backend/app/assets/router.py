@@ -57,7 +57,7 @@ class BulkActionOut(BaseModel):
     failed: list[dict]
 
 
-async def _page_label_maps(session: AsyncSession, items: list[Asset]) -> tuple[dict, dict, dict, dict, dict, dict]:
+async def _page_label_maps(session: AsyncSession, items: list[Asset]) -> tuple[dict, dict, dict, dict, dict, dict, dict, dict]:
     """AM-11: page-scoped id->name lookups for the register's columns -- only
     the distinct ids actually present on this one page (at most `limit`,
     currently capped at 200), never every holder/company/category/etc in the
@@ -65,7 +65,15 @@ async def _page_label_maps(session: AsyncSession, items: list[Asset]) -> tuple[d
     fine for a bounded export but would be wasteful on every register page
     view/filter keystroke). Extended beyond the original Holder/Company pair
     to Category/Sub-Category/Vendor/Cost Centre so the "show every field"
-    register pass can label those FK columns too instead of showing bare ids."""
+    register pass can label those FK columns too instead of showing bare ids.
+
+    Also returns a holder_id -> current holder's Location name map (a second
+    hop off Holder.location_id), and a holder_id -> Holder.holder_type map --
+    Asset Movement needs "where is this asset right now" (which holder, that
+    holder's location, and whether that holder is IT_STOCK vs an actual
+    person/store/install so an operator can see at a glance they're about to
+    move something out of someone's hands, not out of a warehouse), same
+    page-scoped batch-lookup pattern, never a per-row join."""
     holder_ids = {a.current_holder_id for a in items}
     company_ids = {a.company_id for a in items}
     category_ids = {a.category_id for a in items}
@@ -85,7 +93,18 @@ async def _page_label_maps(session: AsyncSession, items: list[Asset]) -> tuple[d
     subcategories = await _labels(AssetSubcategory, subcategory_ids)
     vendors = await _labels(Vendor, vendor_ids)
     cost_centers = await _labels(CostCenter, cost_center_ids)
-    return holders, companies, categories, subcategories, vendors, cost_centers
+
+    holder_detail_rows = []
+    if holder_ids:
+        holder_detail_rows = (await session.execute(
+            select(Holder.id, Holder.location_id, Holder.holder_type).where(Holder.id.in_(holder_ids)),
+        )).all()
+    location_ids = {loc_id for _, loc_id, _ in holder_detail_rows if loc_id is not None}
+    location_names = await _labels(Location, location_ids)
+    holder_locations = {hid: location_names.get(loc_id) for hid, loc_id, _ in holder_detail_rows}
+    holder_types = {hid: holder_type for hid, _, holder_type in holder_detail_rows}
+
+    return holders, companies, categories, subcategories, vendors, cost_centers, holder_locations, holder_types
 
 
 @router.post("", response_model=list[AssetOut], status_code=201)
@@ -151,13 +170,16 @@ async def list_assets(
     items, total = await search_assets(
         session, allowed, status, category_id, holder_id, company_id, q, sort_by, sort_dir, limit, offset,
     )
-    holder_labels, company_labels, category_labels, subcategory_labels, vendor_labels, cost_center_labels = (
-        await _page_label_maps(session, items)
-    )
+    (
+        holder_labels, company_labels, category_labels, subcategory_labels, vendor_labels, cost_center_labels,
+        holder_locations, holder_types,
+    ) = await _page_label_maps(session, items)
     out_items = []
     for a in items:
         out = AssetOut.model_validate(a)
         out.current_holder_name = holder_labels.get(a.current_holder_id)
+        out.current_holder_location_name = holder_locations.get(a.current_holder_id)
+        out.current_holder_type = holder_types.get(a.current_holder_id)
         out.company_name = company_labels.get(a.company_id)
         out.category_name = category_labels.get(a.category_id)
         out.subcategory_name = subcategory_labels.get(a.subcategory_id) if a.subcategory_id else None
@@ -259,7 +281,10 @@ async def _to_detail_out(session: AsyncSession, asset: Asset) -> AssetDetailOut:
     # dump here so this endpoint's own, already-fetched rows are the ones that win,
     # not a duplicate keyword argument.
     base = AssetOut.model_validate(asset).model_dump(
-        exclude={"current_holder_name", "company_name", "category_name", "subcategory_name", "cost_center_name", "vendor_name"}
+        exclude={
+            "current_holder_name", "current_holder_location_name", "current_holder_type",
+            "company_name", "category_name", "subcategory_name", "cost_center_name", "vendor_name",
+        }
     )
     return AssetDetailOut(
         **base,
