@@ -9,16 +9,26 @@ Rules that apply to every change, regardless of stage. Read before editing.
   in `REVIEW_FINDINGS.md` or `DECISIONS.md` first, then decide separately
   whether to make it.
 - **`lifecycle/service.py::apply_event` is the only writer** of
-  `Asset.status` / `current_holder_id` / `status_since`. Nothing else may
+  `Asset.status` / `current_asset_user_id` / `status_since`. Nothing else may
   touch these fields.
 - **No hard deletes of business records, ever.** Soft-deactivate
   (`is_active=false`) only. This includes remediating incidents — deactivate,
   don't delete.
 - **Backend authorization is authoritative.** Never weaken a server-side
-  role/company/holder check because the frontend already hides the action.
-  Hiding a button is UX; the 403 is the actual control.
-- **Company/holder scoping is mandatory on every read.** ADMIN sees
-  everything; every other role is scoped.
+  role/company/domain/Asset-User check because the frontend already hides
+  the action. Hiding a button is UX; the 403 is the actual control.
+- **Company and domain scoping are mandatory on every read.** ADMIN and the
+  Primary Owner see everything; OPERATOR/VIEWER are scoped by both company
+  and their configured `allowed_asset_domains`; SELF_SERVICE is scoped to
+  its own custody only.
+- **Master data (Companies/Locations/.../Custom Fields) and bulk asset
+  Import require `is_primary_owner`, not merely an ADMIN role check.** An
+  ordinary ADMIN account has no master-write or Import access either — see
+  `app.core.deps.require_primary_owner`.
+- **`Asset.asset_domain` is derived server-side from Category at creation,
+  never client-supplied**, and never changed by an ordinary edit — only
+  through the existing Controlled Correction flow, ADMIN-only, with a
+  mandatory reason.
 
 ## Database
 
@@ -95,7 +105,7 @@ evidence):
   Laptop"`), so a test asset is self-documenting in every export, every
   dashboard widget, and every list view it appears in — not just in its
   owning company's own name.
-- **Holder emp_code prefix:** `UAT-<stage>-...` (e.g. `UAT-AM11-ADM`,
+- **Asset User code prefix:** `UAT-<stage>-...` (e.g. `UAT-AM11-ADM`,
   `UAT-AM11-STK`), mirroring the company-code convention.
 
 **Prefer an isolated, clearly-named UAT company over inserting new test

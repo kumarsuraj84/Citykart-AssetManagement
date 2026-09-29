@@ -1304,3 +1304,99 @@ row" (dot) and "single-record identity/summary" (pill, kept) follows
 directly from *why* the pill existed in the first place — enough room to
 carry emphasis without competing against 20+ other rows for the same
 attention.
+
+## 2026-09-29 — Asset User / RBAC / Responsibility rebuild — supersedes entries #16.2 and #12.5/#12.9
+
+**Decision:** The user authorized a deliberate rebuild of CKAM's
+Asset User/access model, executed and shipped this stage (see
+`ASSET_USER_RBAC_REBUILD_REPORT.md` for full detail):
+
+- Access roles `ADMIN`/`IT_TEAM`/`VIEWER`/`ASSET_USER` (the last was
+  `HOLDER` before the prior Holder→AssetUser rename) become
+  `ADMIN`/`OPERATOR`/`VIEWER`/`SELF_SERVICE`.
+- Asset User type `IT_STOCK` becomes `STOCK_POINT` — a stock point may
+  hold IT or Admin/Non-IT assets equally; the word "IT" no longer belongs
+  in the generic stock-location model.
+- A new **Primary Owner** designation (`AssetUser.is_primary_owner`) is
+  introduced: a single, fixed, company-less bootstrap account (seeded as
+  "Admin", logs in by name), unconditional full access always, never
+  selectable via the ordinary Role dropdown, grantable only by an
+  existing Primary Owner, and the last one can never be removed.
+- Master data (Companies/Locations/Departments/Cost Centres/Categories/
+  Sub-Categories/Vendors/Brands/Custom Fields) and bulk asset Import
+  become **Primary-Owner-only** — stricter than the ADMIN role itself. An
+  ordinary ADMIN account keeps the same operational rights as OPERATOR
+  (Purchase Orders, Delivery, PI, Add Asset, Asset Movement, Print
+  Labels) and nothing more. In practice CityKart does not assign ADMIN to
+  ordinary staff; OPERATOR is used instead, with Primary Owner reserved
+  for the one true administrator.
+- A new IT / NON_IT **Asset Responsibility** dimension is added:
+  `AssetCategory.asset_domain` (the future default for assets created
+  under it) and `Asset.asset_domain`/`PendingAsset.asset_domain` (a
+  server-derived snapshot at creation time, immune to a later Category
+  reclassification, correctable only via the existing Controlled
+  Correction flow, ADMIN-only, with a mandatory reason). ADMIN and the
+  Primary Owner always work across both domains regardless of their own
+  configured `primary_asset_domain`; OPERATOR/VIEWER are restricted to
+  their configured `allowed_asset_domains`.
+- Login capability becomes an explicit `login_enabled` flag on Asset
+  User, formalizing what was already true implicitly (a `password_hash`
+  was already optional per row).
+- `AssetUser.emp_code` is renamed to the generic `code` (confirmed safe
+  by audit — see the preflight artifact).
+- Two spec rules that were conditionally worded rather than absolute
+  (stock/install-point uniqueness enforcement; whether OPERATOR may
+  manage masters) became admin-editable settings (`app_setting` table)
+  rather than a hardcoded guess, both defaulting to the spec's own
+  recommended safe value.
+
+**This explicitly supersedes:**
+- **Entry #16.2** ("V1 scope locked (AM-01 authorization)" — "Single
+  current-holder/custody concept... provided its holder types
+  (EMPLOYEE/STORE/INSTALLED/IT_STOCK) genuinely represent CityKart's real
+  custody scenarios"): the custody-type set itself is reconfirmed as
+  correct (EMPLOYEE/STORE/INSTALLED unchanged); only the `IT_STOCK` name
+  changes to `STOCK_POINT`, and the single-current-custodian model is
+  unchanged.
+- **Entry #12.5/#12.9** ("AM-05 scope locked (Masters + Holders...)" —
+  ADMIN/IT_TEAM custom-field mutation authorization, and "Holder.role
+  stays ADMIN-only to change"): custom fields are now master data and
+  therefore Primary-Owner-only to create/manage, not ADMIN+IT_TEAM
+  company-scoped as originally decided; role changes on an Asset User
+  remain ADMIN-only as before, unaffected.
+
+**Why:** Direct user authorization (see session transcript), refining an
+initial "ADMIN has full rights" assumption once the user clarified, mid-
+implementation, that master data and bulk Import specifically needed to
+be reserved for a single fixed super-user account distinct from the
+ordinary ADMIN role — so that day-to-day staff (given ADMIN or OPERATOR)
+can never touch foundational reference data, only the one designated
+owner can.
+
+**Data safety:** the live dev database held essentially no data at the
+time of migration (1 real Asset User row, 0 assets, 2 unambiguous IT
+categories) — every value-migration statement in the rebuild's Alembic
+migration is a real, tested transformation (verified against both a
+genuinely empty DB and the existing dev/test DBs), not a 0-row no-op left
+untested. See the preflight artifact
+(`ASSET_USER_RBAC_REBUILD_PREFLIGHT.md`) for the full risk assessment.
+
+**Closing-gap addendum (same day):** a follow-up pass against the full
+spec closed the remaining named gaps: a read-only Responsibility preview
+on Add Asset and the PO Add-Line dialog; a Dashboard "My Responsibility"
+selector narrowing every KPI/alert server-side; a matching Responsibility
+filter on the Reports screen's Asset Register export; and one new
+permanent Playwright spec exercising the whole rebuild end to end
+(IT/NON_IT procurement, Responsibility preview/filter/Asset-360 display,
+and a genuinely ordinary ADMIN proven to have no master/Import access).
+Running the full existing E2E suite against a fresh isolated stack (not
+previously done this stage) surfaced a real regression — the dev/E2E
+bootstrap account (`scripts.seed_admin`) needed Primary Owner rights it
+didn't have, since masters/Import moved behind that gate — plus three
+pre-existing spec bugs from earlier renames (a stale `asset_domain`-less
+category, a stale `"AssetUser"` label, a stale `asset_user-` id prefix
+and a nonexistent per-row status badge assertion), none of which the
+unit/integration suites could have caught. All fixed and reverified
+green. `docs/deployment.md`'s real-deployment runbook was also corrected
+(`holder`→`asset_user`/`IT_STOCK`→`STOCK_POINT` throughout, including a
+go-live SQL check that queried a table/column no longer in the schema).

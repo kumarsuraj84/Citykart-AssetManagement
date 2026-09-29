@@ -1,19 +1,44 @@
 # CKAM — Current Stage
 
-**Stage:** AM-17, a current-HEAD full business-workflow UAT + Release
-Candidate revalidation, is complete — verdict **CURRENT RC READY WITH
-NON-BLOCKING OBSERVATIONS** (a DEV/UAT software-readiness judgment, NOT
-production deployment authorization). See "What's actually done as of
-AM-17" below and `AM-17_CURRENT_HEAD_FULL_UAT_REPORT.md` for full detail.
-Four evidenced defects (P1/P2/P2/P2) found and fixed, each with a
-regression test; one new permanent Playwright spec closes the standing
-Purchase-Order E2E gap. No business rule, schema, or design-system token
-changed.
+**Stage:** Asset User / RBAC / Responsibility Rebuild — complete. See
+`ASSET_USER_RBAC_REBUILD_REPORT.md` for full detail and the formal verdict.
+Summary: roles `ADMIN/IT_TEAM/VIEWER/ASSET_USER(was HOLDER)` became
+`ADMIN/OPERATOR/VIEWER/SELF_SERVICE`; asset-user-type `IT_STOCK` became
+`STOCK_POINT`; a new fixed **Primary Owner** designation (company-less,
+unconditional full access, seeded as "Admin") was introduced, separate from
+Access Role; master data (Companies/Locations/.../Custom Fields) and bulk
+asset Import became Primary-Owner-only, not merely ADMIN-only; a new IT /
+NON_IT **Asset Responsibility** dimension was added to Category (future
+default) and Asset/PendingAsset (server-derived snapshot at creation);
+central authorization helpers replaced 26 scattered role checks; a
+reusable searchable (type-to-filter) dropdown component was added and
+rolled out to Add Asset, Purchase Orders (+ line items + delivery), and
+Asset Movement; the Responsibility dimension is now also surfaced on the
+Dashboard ("My Responsibility" selector, narrowing every KPI/alert
+server-side) and the Reports screen's Asset Register export filter, with
+a read-only Responsibility preview on Add Asset and the PO Add-Line
+dialog. Migration verified against both a genuinely empty DB and the
+existing dev/test DBs — single Alembic head. Backend 448/448, frontend
+233/233, and the full permanent Playwright E2E suite (7 specs, including
+a new one dedicated to this rebuild) all green; fixing that E2E suite
+also caught and fixed a real regression (masters/Import's dev/E2E
+bootstrap account needed Primary Owner rights it didn't have) plus three
+pre-existing spec bugs from earlier renames, none of which any
+unit/integration test had caught.
 **Environment: DEVELOPMENT / UAT. Production deployment remains DEFERRED.**
 **Next:** Await explicit user direction. Do NOT automatically begin
 another development or design stage.
 
-**Previous stage:** AM-16, a Lovable-guided visual refinement pass — see
+**Previous stage:** AM-17, a current-HEAD full business-workflow UAT +
+Release Candidate revalidation — verdict **CURRENT RC READY WITH
+NON-BLOCKING OBSERVATIONS** (a DEV/UAT software-readiness judgment, NOT
+production deployment authorization). See "What's actually done as of
+AM-17" below and `AM-17_CURRENT_HEAD_FULL_UAT_REPORT.md` for full detail.
+This is now superseded by the rebuild above wherever it describes
+Holder/IT_TEAM/IT_STOCK terminology — its evidence about *behavior* other
+than naming remains valid.
+
+**Before that:** AM-16, a Lovable-guided visual refinement pass — see
 "What's actually done as of AM-16" below. It touched 5 frontend files
 only (`components/shared/StatusBadge.tsx`,
 `features/assets/AssetRegister.tsx`, `features/dashboard/Dashboard.tsx`,
