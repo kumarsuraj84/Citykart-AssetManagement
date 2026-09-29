@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,11 +7,92 @@ from app.core.db import get_session
 from app.core.deps import STAFF_ROLES, get_current_holder, require_role, scoped_company_ids
 from app.holders.service import HolderService
 from app.holders.schemas import CompanyAccessIn, CompanyAccessOut, HolderIn, HolderOut, ResetPasswordOut
-from app.holders.models import HOLDER_TYPES, ROLES
+from app.holders.models import HOLDER_TYPES, ROLES, Holder
+from app.masters.bulk_import_export import (
+    FieldSpec, ImportScopeError, ImportTemplateError,
+    build_template as build_import_template, commit_import, export_rows, preview_import,
+)
 from app.masters.models import Company, Department, Location
 from app.masters.schemas import CompanyOut
 
 router = APIRouter(prefix="/api/holders", tags=["holders"])
+
+# AM-25: Holder import reuses the exact same generic engine every master
+# uses (app.masters.bulk_import_export) rather than a bespoke copy -- the
+# only thing genuinely different here is that it's ADMIN-only (matching
+# create_holder's own role requirement, stricter than the ADMIN+IT_TEAM
+# masters use) and that an imported holder gets no password (password_hash
+# stays NULL, must_change_password defaults True on the model itself) --
+# an ADMIN activates login for one afterward via the existing Reset
+# Password action, same as any other holder that doesn't need one yet
+# (STORE/IT_STOCK/INSTALLED types typically never do).
+HOLDER_IMPORT_FIELDS = [
+    FieldSpec("Company Code", "company_id", required=True, lookup=(Company, "code")),
+    FieldSpec("Emp Code", "emp_code", required=True),
+    FieldSpec("Name", "name", required=True),
+    FieldSpec("Type", "holder_type", required=True, kind="enum", enum_values=HOLDER_TYPES),
+    FieldSpec("Location Code", "location_id", required=True, lookup=(Location, "code")),
+    FieldSpec("Department", "department_id", lookup=(Department, "name")),
+    FieldSpec("Email", "email"),
+    FieldSpec("Phone", "phone"),
+    FieldSpec("Role", "role", required=True, kind="enum", enum_values=ROLES),
+]
+
+
+@router.get("/export")
+async def export_holders(
+    session: AsyncSession = Depends(get_session),
+    holder=Depends(require_role("ADMIN")),
+):
+    allowed = await scoped_company_ids(session, holder)
+    content = await export_rows(session, Holder, HOLDER_IMPORT_FIELDS, allowed, "company_id")
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=holders_export.xlsx"},
+    )
+
+
+@router.get("/import/template")
+async def holders_import_template(_h=Depends(require_role("ADMIN"))):
+    return Response(
+        content=build_import_template(HOLDER_IMPORT_FIELDS),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=holders_import_template.xlsx"},
+    )
+
+
+@router.post("/import/preview")
+async def holders_import_preview(
+    file: UploadFile = File(...), session: AsyncSession = Depends(get_session),
+    holder=Depends(require_role("ADMIN")),
+):
+    content = await file.read()
+    allowed = await scoped_company_ids(session, holder)
+    try:
+        return await preview_import(session, HOLDER_IMPORT_FIELDS, content, allowed, "company_id")
+    except ImportTemplateError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+
+
+@router.post("/import/commit")
+async def holders_import_commit(
+    file: UploadFile = File(...), session: AsyncSession = Depends(get_session),
+    holder=Depends(require_role("ADMIN")),
+):
+    content = await file.read()
+    allowed = await scoped_company_ids(session, holder)
+    try:
+        result = await commit_import(session, Holder, HOLDER_IMPORT_FIELDS, content, holder, allowed, "company_id")
+    except ImportScopeError as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc))
+    except ImportTemplateError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    await session.commit()
+    return result
 
 
 @router.get("/me/companies", response_model=list[CompanyOut])

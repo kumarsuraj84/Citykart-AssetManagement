@@ -1,9 +1,14 @@
 from typing import Callable
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
 from app.core.deps import ensure_company_in_scope, get_current_holder, require_role, scoped_company_ids
+from app.masters.bulk_import_export import (
+    FieldSpec, ImportScopeError, ImportTemplateError,
+    build_template as build_import_template, commit_import, export_rows, preview_import,
+)
 from app.masters.custom_fields_router import router as custom_fields_router
 from app.masters.service import MasterCRUDService
 from app.masters import models, schemas
@@ -24,6 +29,7 @@ def build_master_router(
     prefix: str, model, schema_in, schema_out, company_scope: str | None = SCOPE_NONE,
     validate_incoming: Callable[[dict], None] | None = None,
     schema_edit=None,
+    import_fields: list[FieldSpec] | None = None,
 ):
     """`validate_incoming`, when given, is called with the request body's `model_dump()`
     on both create and update, before the row is written -- for closed-value fields a
@@ -155,36 +161,131 @@ def build_master_router(
         await check_existing(session, holder, existing)
         await service.deactivate(item_id, holder.id)
 
+    # AM-25: bulk Import/Export -- only mounted when this master opted in
+    # with `import_fields`. company_field mirrors this router's own
+    # company_scope (SCOPE_COMPANY_ID -> the row's own "company_id" column,
+    # SCOPE_SELF -> the Companies master's own "id", SCOPE_NONE -> no
+    # company scoping at all), so the same authorization rule create_item
+    # already enforces applies to every imported row too.
+    if import_fields is not None:
+        company_field = {SCOPE_COMPANY_ID: "company_id", SCOPE_SELF: "id", SCOPE_NONE: None}[company_scope]
+
+        @sub.get("/export")
+        async def export_items(
+            session: AsyncSession = Depends(get_session),
+            holder=Depends(require_role("ADMIN", "IT_TEAM")),
+        ):
+            allowed = await scoped_company_ids(session, holder)
+            content = await export_rows(session, model, import_fields, allowed, company_field)
+            return Response(
+                content=content,
+                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                headers={"Content-Disposition": f"attachment; filename={prefix.strip('/')}_export.xlsx"},
+            )
+
+        @sub.get("/import/template")
+        async def import_template(_h=Depends(require_role("ADMIN", "IT_TEAM"))):
+            return Response(
+                content=build_import_template(import_fields),
+                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                headers={"Content-Disposition": f"attachment; filename={prefix.strip('/')}_import_template.xlsx"},
+            )
+
+        @sub.post("/import/preview")
+        async def import_preview(
+            file: UploadFile = File(...), session: AsyncSession = Depends(get_session),
+            holder=Depends(require_role("ADMIN", "IT_TEAM")),
+        ):
+            content = await file.read()
+            allowed = await scoped_company_ids(session, holder)
+            try:
+                return await preview_import(session, import_fields, content, allowed, company_field)
+            except ImportTemplateError as exc:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+
+        @sub.post("/import/commit")
+        async def import_commit(
+            file: UploadFile = File(...), session: AsyncSession = Depends(get_session),
+            holder=Depends(require_role("ADMIN", "IT_TEAM")),
+        ):
+            content = await file.read()
+            allowed = await scoped_company_ids(session, holder)
+            try:
+                result = await commit_import(session, model, import_fields, content, holder, allowed, company_field)
+            except ImportScopeError as exc:
+                raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc))
+            except ImportTemplateError as exc:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+            except ValueError as exc:
+                await session.rollback()
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+            await session.commit()
+            return result
+
     return sub
 
 
 router.include_router(build_master_router(
     "/companies", models.Company, schemas.CompanyIn, schemas.CompanyOut, SCOPE_SELF,
     schema_edit=schemas.CompanyEditIn,
+    import_fields=[
+        FieldSpec("Code", "code", required=True),
+        FieldSpec("Name", "name", required=True),
+    ],
 ))
 router.include_router(build_master_router(
     "/locations", models.Location, schemas.LocationIn, schemas.LocationOut,
     schema_edit=schemas.LocationEditIn,
+    import_fields=[
+        FieldSpec("Code", "code", required=True),
+        FieldSpec("Name", "name", required=True),
+        FieldSpec("Address", "address"),
+    ],
 ))
 router.include_router(build_master_router(
     "/departments", models.Department, schemas.DepartmentIn, schemas.DepartmentOut,
     schema_edit=schemas.DepartmentEditIn,
+    import_fields=[
+        FieldSpec("Name", "name", required=True),
+    ],
 ))
 router.include_router(build_master_router(
     "/cost-centers", models.CostCenter, schemas.CostCenterIn, schemas.CostCenterOut, SCOPE_COMPANY_ID,
     schema_edit=schemas.CostCenterEditIn,
+    import_fields=[
+        FieldSpec("Company Code", "company_id", required=True, lookup=(models.Company, "code")),
+        FieldSpec("Code", "code", required=True),
+        FieldSpec("Name", "name", required=True),
+    ],
 ))
 router.include_router(build_master_router(
     "/categories", models.AssetCategory, schemas.AssetCategoryIn, schemas.AssetCategoryOut,
     schema_edit=schemas.AssetCategoryEditIn,
+    import_fields=[
+        FieldSpec("Code", "code", required=True),
+        FieldSpec("Name", "name", required=True),
+    ],
 ))
 router.include_router(build_master_router(
     "/subcategories", models.AssetSubcategory, schemas.AssetSubcategoryIn, schemas.AssetSubcategoryOut,
     schema_edit=schemas.AssetSubcategoryEditIn,
+    import_fields=[
+        FieldSpec("Category Code", "category_id", required=True, lookup=(models.AssetCategory, "code")),
+        FieldSpec("Code", "code", required=True),
+        FieldSpec("Name", "name", required=True),
+    ],
 ))
 router.include_router(build_master_router(
     "/vendors", models.Vendor, schemas.VendorIn, schemas.VendorOut,
     schema_edit=schemas.VendorEditIn,
+    import_fields=[
+        FieldSpec("Code", "code", required=True),
+        FieldSpec("Name", "name", required=True),
+        FieldSpec("GSTIN", "gstin"),
+        FieldSpec("Contact Name", "contact_name"),
+        FieldSpec("Contact Phone", "contact_phone"),
+        FieldSpec("Contact Email", "contact_email"),
+    ],
 ))
 
 # AM-05: Custom Fields has its own bespoke router (scope authorization +

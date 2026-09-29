@@ -36,6 +36,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField as FormFieldShell } from "@/components/shared/FormField";
 import { useTableSort } from "@/components/shared/useTableSort";
+import { BulkImportExport } from "@/components/shared/BulkImportExport";
 
 function buildPayload(formFields: FormField[], draft: Record<string, unknown>) {
   const payload: Record<string, unknown> = {};
@@ -250,7 +251,16 @@ export function MasterCrudScreen<T extends object>({
     <div className="flex flex-col gap-4">
       <PageHeader
         title={config.title}
-        actions={<Button onClick={openCreate}>Add {singular}</Button>}
+        actions={
+          <>
+            <BulkImportExport
+              resource={config.resource}
+              label={config.title}
+              onImported={() => qc.invalidateQueries({ queryKey: ["masters", config.resource] })}
+            />
+            <Button onClick={openCreate}>Add {singular}</Button>
+          </>
+        }
       />
 
       <Input

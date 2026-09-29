@@ -34,6 +34,7 @@ import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField } from "@/components/shared/FormField";
+import { BulkImportExport } from "@/components/shared/BulkImportExport";
 
 const HOLDER_TYPES = ["EMPLOYEE", "STORE", "INSTALLED", "IT_STOCK"] as const;
 const ROLES = ["ADMIN", "IT_TEAM", "VIEWER", "HOLDER"] as const;
@@ -313,7 +314,20 @@ export function HoldersScreen() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Holders" actions={<Button onClick={openAdd}>Add</Button>} />
+      <PageHeader
+        title="Holders"
+        actions={
+          <>
+            <BulkImportExport
+              resource="holders"
+              label="Holders"
+              basePath="/holders"
+              onImported={() => qc.invalidateQueries({ queryKey: ["holders"] })}
+            />
+            <Button onClick={openAdd}>Add</Button>
+          </>
+        }
+      />
 
       <DataTable<HolderRow>
         columns={columns}
