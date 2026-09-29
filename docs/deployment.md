@@ -43,12 +43,31 @@ specific admin machine.
      minutes). Set it to `true` only once the site is served over HTTPS.
 2. `docker compose up -d --build`
 3. Run migrations: `docker compose exec api alembic upgrade head`
-4. Create the first ADMIN holder:
-   - **For this deployment**, the real owner account (Ankur Pahwa, Citykart Stores) is created with `docker compose exec api python -m scripts.create_owner`. It is idempotent (safe to re-run) and on its *first* run only, prints a one-time temporary password to stdout — relay it to the account owner out-of-band. `must_change_password` is set, and the app enforces it: after the first login with the temporary password the user is taken to a "Set a new password" screen, and the API refuses every other request (HTTP 403) until the password has been changed. Re-running the script never touches an already-created holder's password. See `backend/scripts/create_owner.py`.
-   - For dev/E2E setups needing a generic, throwaway admin instead, use `docker compose exec api python -m scripts.seed_admin --company-code E2E --password '<something-random>'`. **Never run this against a database that is, or will become, production** — see "End-to-end (Playwright) tests" below. See `backend/scripts/seed_admin.py`.
-5. Visit `http://<server-ip>:3211/` and log in. With nothing configured yet, go to **Setup → Code Rule**
-   (assets can't be numbered without one), then **Setup → Holders & Users** to create at least one
-   `IT_STOCK` holder per stock location, before adding the first asset.
+4. Create the first two accounts (the Asset User / RBAC / Responsibility rebuild split ordinary account
+   creation from master-data setup — see `docs/ai/DECISIONS.md`):
+   - **The Primary Owner** ("Admin", the single, fixed, company-less bootstrap account with unconditional
+     full access — this is the *only* login that can create Masters, e.g. Categories/Locations/Cost
+     Centers/Vendors, or use bulk Import) already exists after `alembic upgrade head`: the RBAC-rebuild
+     migration seeds it and prints its one-time temporary password to the migration log. If that log is no
+     longer available, an existing Primary Owner can grant a new one (`POST /api/asset-users/{id}/grant-primary-owner`),
+     or reset this one's password directly in the database as a last resort.
+   - **For this deployment**, the real owner's own day-to-day account (Ankur Pahwa, Citykart Stores) is
+     created with `docker compose exec api python -m scripts.create_owner`. This is an ordinary
+     company-scoped ADMIN, *not* the Primary Owner — it can create Purchase Orders, deliver them, add
+     assets, move/allot, and print labels, but **cannot** create or edit Masters or use Import (spec: "no
+     master involvement" for the ADMIN role). It is idempotent (safe to re-run) and on its *first* run
+     only, prints a one-time temporary password to stdout — relay it to the account owner out-of-band.
+     `must_change_password` is set, and the app enforces it: after the first login with the temporary
+     password the user is taken to a "Set a new password" screen, and the API refuses every other request
+     (HTTP 403) until the password has been changed. Re-running the script never touches an
+     already-created asset user's password. See `backend/scripts/create_owner.py`.
+   - For dev/E2E setups needing a generic, throwaway admin instead, use `docker compose exec api python -m scripts.seed_admin --company-code E2E --password '<something-random>'` — this one *is* also granted Primary Owner rights (dev/E2E-only bootstrap convenience, so the E2E fixture can provision its own test masters). **Never run this against a database that is, or will become, production** — see "End-to-end (Playwright) tests" below. See `backend/scripts/seed_admin.py`.
+5. Visit `http://<server-ip>:3211/` and log in **as the Primary Owner ("Admin")** to set up Masters: go to
+   **Setup → Code Rule** (assets can't be numbered without one) and **Setup → Categories/Locations/Cost
+   Centers/...** as needed, then **Setup → Asset Users** to create at least one `STOCK_POINT` asset user per
+   stock location, before adding the first asset. Ankur Pahwa's own ADMIN login can also reach Setup →
+   Asset Users and Setup → Code Rule (both stay ADMIN-level, not Primary-Owner-only), but not the Masters
+   group.
 
 ## Day-to-day
 - Logs: `docker compose logs -f api`
@@ -67,10 +86,11 @@ specific admin machine.
 ## End-to-end (Playwright) tests
 
 `frontend/e2e/` drives the real app in a browser. Its fixture **writes real data** into whatever stack it
-targets: it creates a company, a `SEEDADMIN` ADMIN login (via `scripts.seed_admin`), holders and masters, and
-the test itself records an asset with ledger events. A `test.afterEach` teardown deactivates the company,
-every holder (SEEDADMIN last) and every master it created — also when the test fails — but the test asset
-and its custody events **cannot** be removed: the asset ledger is append-only by design.
+targets: it creates a company, a `SEEDADMIN` ADMIN login (via `scripts.seed_admin`, also granted Primary
+Owner rights so it can provision the test masters it needs), asset users and masters, and the test itself
+records an asset with ledger events. A `test.afterEach` teardown deactivates the company, every asset user
+(SEEDADMIN last) and every master it created — also when the test fails — but the test asset and its custody
+events **cannot** be removed: the asset ledger is append-only by design.
 
 So run Playwright against a **dedicated E2E/staging stack**, never against a stack whose database anyone might
 later back up and restore into production. A separate Compose project on the same machine is enough — it gets
@@ -93,8 +113,9 @@ cd .. && COMPOSE_PROJECT_NAME=ckam-e2e docker compose down -v
 
 > **Before using any backup to seed production:** backups taken on the dev/demo machine (including every
 > file already in this repo's `backups/` folder) may contain test data — E2E companies, `SEEDADMIN` ADMIN
-> logins with known passwords, test holders and assets. Do not restore one onto the production server without
-> first running the test-account check in "Moving from the dev machine to the production server", step 1.
+> logins with known passwords (and Primary Owner rights), test asset users and assets. Do not restore one
+> onto the production server without first running the test-account check in "Moving from the dev machine
+> to the production server", step 1.
 
 - Nightly automatic backup to `${BACKUP_DIR}`, 14-day retention, run by the `backup` service (cron, `0 2 * * *`) — see `docker-compose.yml` and `ops/backup.sh`. The `backup` service must be running for this (`docker compose up -d` starts it).
 - **Where `BACKUP_DIR` should point on the production server:** an absolute path on a disk other than the one holding Docker's volumes (so one disk failure can't take both the database and its backups), and which is itself copied off the server (NAS share, external drive rotation, or the company file server's backup), e.g. `BACKUP_DIR=/srv/ckam-backups` (Linux) or `BACKUP_DIR=D:/ckam-backups` (Windows). Create the folder before `docker compose up`. The default `./backups` (inside the repo checkout) is only suitable for development.
@@ -111,7 +132,7 @@ cd .. && COMPOSE_PROJECT_NAME=ckam-e2e docker compose down -v
 > intended environment** (e.g. `docker compose ps` / `hostname` / check you are not accidentally
 > pointed at production while testing) — a restore aimed at the wrong stack is unrecoverable.
 
-`ops/restore.sh <db_backup.sql.gz> <uploads_backup.tar.gz>` replays a plain-SQL `pg_dump` (schema + data) and untars the uploads archive. `restore.sh` runs `psql -v ON_ERROR_STOP=1` (so any single failed statement aborts the whole restore with a non-zero exit code, instead of silently printing "Restore complete." over a partial load) and `set -o pipefail` (so a failure earlier in the `gunzip | psql` pipe is not masked by `psql` succeeding on empty input). Because it is a plain SQL dump (not `pg_restore --clean`), **it must be run against a database with no existing schema** — otherwise every `CREATE TABLE`/`ALTER TABLE`/`ADD CONSTRAINT` statement collides with the objects already there, and if constraints are already active, `COPY` can fail with foreign-key violations partway through (this was verified by testing: restoring into a merely-truncated database produced dozens of errors and a partially-loaded `holder` table, while restoring into a database whose schema had been dropped — i.e. a genuinely fresh state — completed cleanly with correct row counts and no errors). **Do not run `alembic upgrade head` before a restore** — that creates the very schema that then collides with the dump. Running it *after* a restore is fine (and needed if the code is newer than the dump — see step 5).
+`ops/restore.sh <db_backup.sql.gz> <uploads_backup.tar.gz>` replays a plain-SQL `pg_dump` (schema + data) and untars the uploads archive. `restore.sh` runs `psql -v ON_ERROR_STOP=1` (so any single failed statement aborts the whole restore with a non-zero exit code, instead of silently printing "Restore complete." over a partial load) and `set -o pipefail` (so a failure earlier in the `gunzip | psql` pipe is not masked by `psql` succeeding on empty input). Because it is a plain SQL dump (not `pg_restore --clean`), **it must be run against a database with no existing schema** — otherwise every `CREATE TABLE`/`ALTER TABLE`/`ADD CONSTRAINT` statement collides with the objects already there, and if constraints are already active, `COPY` can fail with foreign-key violations partway through (this was verified by testing: restoring into a merely-truncated database produced dozens of errors and a partially-loaded `asset_user` table (named `holder` at the time this was tested; renamed since — see `docs/ai/DECISIONS.md`), while restoring into a database whose schema had been dropped — i.e. a genuinely fresh state — completed cleanly with correct row counts and no errors). **Do not run `alembic upgrade head` before a restore** — that creates the very schema that then collides with the dump. Running it *after* a restore is fine (and needed if the code is newer than the dump — see step 5).
 
 Steps for a real restore (the `restore.sh` script runs inside the `backup` service, so that service must be running):
 1. **Stop the `api` service first** (`docker compose stop api`) to avoid writes during restore, and make sure `backup` is up: `docker compose up -d db backup`.
@@ -134,28 +155,35 @@ and the restore would then collide with it (see the warning in "Restore" above).
 > safer than carrying the dev database over.
 
 1. **On the dev machine, BEFORE taking the backup: make sure no test/E2E accounts or companies exist.**
-   E2E runs create companies coded `E2E-…` with `SEEDADMIN` ADMIN logins and test holders; a leftover one
-   is an ADMIN account with a password that may be known to anyone who has read the repository. Run:
+   E2E runs create companies coded `E2E-…` with `SEEDADMIN` ADMIN logins (also granted Primary Owner
+   rights) and test asset users; a leftover one is a Primary-Owner-capable account with a password that may
+   be known to anyone who has read the repository. Run:
    ```bash
    docker compose exec db psql -U ckam -d ckam -c "
      SELECT c.id AS company_id, c.code, c.is_active AS company_active,
-            h.id AS holder_id, h.emp_code, h.name, h.role, h.is_active,
-            h.password_hash IS NOT NULL AS can_log_in
-     FROM holder h JOIN company c ON c.id = h.company_id
-     WHERE h.emp_code ILIKE '%SEEDADMIN%' OR h.emp_code ILIKE '%TEST%' OR h.emp_code ILIKE '%E2E%'
-        OR h.name ILIKE '%E2E%' OR h.name ILIKE '%TEST%' OR c.code ILIKE 'E2E%'
-     ORDER BY c.id, h.id;"
+            u.id AS asset_user_id, u.code, u.name, u.role, u.is_primary_owner, u.is_active,
+            u.password_hash IS NOT NULL AS can_log_in
+     FROM asset_user u LEFT JOIN company c ON c.id = u.company_id
+     WHERE u.code ILIKE '%SEEDADMIN%' OR u.code ILIKE '%TEST%' OR u.code ILIKE '%E2E%'
+        OR u.name ILIKE '%E2E%' OR u.name ILIKE '%TEST%' OR c.code ILIKE 'E2E%'
+     ORDER BY c.id, u.id;"
    ```
-   Every row returned must be understood. For any test account or company found, deactivate it and remove
-   its ability to log in (this app never hard-deletes), then re-run the query to confirm:
+   (`LEFT JOIN`, not `JOIN`: a Primary Owner row's `company_id` can be `NULL` — see
+   `docs/ai/DECISIONS.md` — and must still show up in this check, not be silently excluded by an inner
+   join.) Every row returned must be understood — an `is_primary_owner = t` row is especially sensitive,
+   since it carries unconditional master/Import access as well as login. For any test account or company
+   found, deactivate it and remove its ability to log in (this app never hard-deletes), then re-run the
+   query to confirm:
    ```bash
    docker compose exec db psql -U ckam -d ckam -c "
-     UPDATE holder SET is_active = false, password_hash = NULL
-       WHERE emp_code ILIKE '%SEEDADMIN%' OR company_id IN (SELECT id FROM company WHERE code ILIKE 'E2E%');
+     UPDATE asset_user SET is_active = false, password_hash = NULL
+       WHERE code ILIKE '%SEEDADMIN%' OR company_id IN (SELECT id FROM company WHERE code ILIKE 'E2E%');
      UPDATE company SET is_active = false WHERE code ILIKE 'E2E%';"
    ```
-   (Adjust the `WHERE` clauses to what the check actually found — do not deactivate a real account.)
-   Also check that the real admin's own password is not a default/temporary one.
+   (Adjust the `WHERE` clauses to what the check actually found — do not deactivate a real account, and
+   never deactivate every `is_primary_owner = t` row: at least one must remain, or no one can create Masters
+   or grant a new Primary Owner again.) Also check that the real admin's own password is not a
+   default/temporary one.
 2. Still on the dev machine: `docker compose exec backup sh /scripts/backup.sh` to take a full snapshot
    **after** step 1. Do not use any older file from `backups/` — those predate the cleanup.
 3. Copy the repo (or `git clone` from the GitHub remote) and the two new backup files to the server; put the
@@ -168,4 +196,4 @@ and the restore would then collide with it (see the warning in "Restore" above).
    e. `docker compose exec api alembic upgrade head` — applies any migrations newer than the dump (a no-op otherwise); `docker compose exec api alembic current` should then report `(head)`.
    f. Re-run the test-account query from step 1 against the server's database and confirm it returns nothing active.
    g. `docker compose logs api` must **not** show the `SECURITY WARNING` about `JWT_SECRET`.
-   h. Visit `http://<server-ip>:3211/` and log in with an account from the restored data — skip the seed-admin step from First-time setup, since the restore already brought over the admin holder(s).
+   h. Visit `http://<server-ip>:3211/` and log in with an account from the restored data — skip the account-creation step from First-time setup, since the restore already brought over the Primary Owner and the admin asset user(s).
