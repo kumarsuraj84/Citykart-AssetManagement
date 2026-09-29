@@ -2,7 +2,7 @@
 only be written by a non-ADMIN actor inside their own company scope."""
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.masters.models import Company, CostCenter, Department, Location
 
 
@@ -19,7 +19,7 @@ async def _setup():
         cc_a = CostCenter(company_id=a.id, code="A01", name="A cc")
         cc_b = CostCenter(company_id=b.id, code="B01", name="B cc")
         for emp_code, role in (("ADM", "ADMIN"), ("ITA", "IT_TEAM")):
-            session.add(Holder(company_id=a.id, emp_code=emp_code, name=emp_code, holder_type="EMPLOYEE",
+            session.add(AssetUser(company_id=a.id, emp_code=emp_code, name=emp_code, asset_user_type="EMPLOYEE",
                                location_id=loc.id, department_id=dept.id, role=role,
                                password_hash=hash_password("Passw0rd!"), must_change_password=False))
         session.add_all([cc_a, cc_b])

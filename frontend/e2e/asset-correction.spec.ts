@@ -80,7 +80,7 @@ test("asset correction journey: correct classification and purchase date, Asset 
     // Serial Number is mandatory + globally unique now (docs/ai/DECISIONS.md);
     // "N/A" is the reserved exempt placeholder, safe to reuse across runs.
     serial_number: "N/A",
-    initial_holder_id: ctx.stock.id,
+    initial_asset_user_id: ctx.stock.id,
   });
 
   await loginAs(page, ctx.admin.empCode, ctx.admin.password);

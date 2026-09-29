@@ -1,12 +1,12 @@
-"""AM-25: Holder bulk Import/Export -- reuses app.masters.bulk_import_export
+"""AM-25: AssetUser bulk Import/Export -- reuses app.masters.bulk_import_export
 (the same generic engine every master master uses), ADMIN-only, imported
-holders get no password (activated later via the existing Reset Password
+asset_users get no password (activated later via the existing Reset Password
 action)."""
 import io
 import openpyxl
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.masters.models import Company, Department, Location
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -25,17 +25,17 @@ def _xlsx(header: list[str], rows: list[list]) -> bytes:
 
 async def _setup(suffix: str):
     async with SessionLocal() as session:
-        co = Company(code=f"AM25H-{suffix}", name=f"AM25 Holders Co {suffix}")
+        co = Company(code=f"AM25H-{suffix}", name=f"AM25 AssetUsers Co {suffix}")
         session.add(co)
         await session.flush()
         loc = Location(company_id=co.id, code=f"AM25HL-{suffix}", name="HO")
         dept = Department(name=f"AM25HD-{suffix}")
         session.add_all([loc, dept])
         await session.flush()
-        admin = Holder(company_id=co.id, emp_code=f"ADM-{suffix}", name="Admin", holder_type="EMPLOYEE",
+        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        ita = Holder(company_id=co.id, emp_code=f"ITA-{suffix}", name="IT Team", holder_type="EMPLOYEE",
+        ita = AssetUser(company_id=co.id, emp_code=f"ITA-{suffix}", name="IT Team", asset_user_type="EMPLOYEE",
                      location_id=loc.id, department_id=dept.id, role="IT_TEAM",
                      password_hash=hash_password("Passw0rd!"), must_change_password=False)
         session.add_all([admin, ita])
@@ -59,48 +59,48 @@ HEADER = ["Company Code", "Emp Code", "Name", "Type", "Location Code", "Departme
 async def test_template_has_the_expected_columns(client):
     ids = await _setup("TPL1")
     headers = await _login(client, ids["admin"])
-    resp = await client.get("/api/holders/import/template", headers=headers)
+    resp = await client.get("/api/asset-users/import/template", headers=headers)
     assert resp.status_code == 200
     wb = openpyxl.load_workbook(io.BytesIO(resp.content))
     header = [c.value for c in next(wb.active.iter_rows(min_row=1, max_row=1))]
     assert header == HEADER
 
 
-async def test_import_creates_a_holder_with_no_password_yet(client):
+async def test_import_creates_a_asset_user_with_no_password_yet(client):
     ids = await _setup("IMP1")
     headers = await _login(client, ids["admin"])
     content = _xlsx(HEADER, [[
         ids["co"].code, "NEWEMP1", "New Employee", "EMPLOYEE", ids["loc"].code, ids["dept"].name,
-        "new@example.test", "9998887777", "HOLDER",
+        "new@example.test", "9998887777", "ASSET_USER",
     ]])
 
-    resp = await _post_file(client, "/api/holders/import/commit", content, headers)
+    resp = await _post_file(client, "/api/asset-users/import/commit", content, headers)
     assert resp.status_code == 200, resp.text
     assert resp.json() == {"imported": 1, "errors": []}
 
     async with SessionLocal() as session:
         from sqlalchemy import select
-        row = (await session.execute(select(Holder).where(Holder.emp_code == "NEWEMP1"))).scalars().first()
+        row = (await session.execute(select(AssetUser).where(AssetUser.emp_code == "NEWEMP1"))).scalars().first()
         assert row is not None
         assert row.password_hash is None
         assert row.must_change_password is True
-        assert row.role == "HOLDER"
+        assert row.role == "ASSET_USER"
         assert row.email == "new@example.test"
 
 
 async def test_import_requires_admin_not_it_team(client):
     ids = await _setup("IMP2")
     ita_headers = await _login(client, ids["ita"])
-    content = _xlsx(HEADER, [[ids["co"].code, "X1", "X", "EMPLOYEE", ids["loc"].code, None, None, None, "HOLDER"]])
-    resp = await _post_file(client, "/api/holders/import/commit", content, ita_headers)
+    content = _xlsx(HEADER, [[ids["co"].code, "X1", "X", "EMPLOYEE", ids["loc"].code, None, None, None, "ASSET_USER"]])
+    resp = await _post_file(client, "/api/asset-users/import/commit", content, ita_headers)
     assert resp.status_code == 403
 
 
-async def test_import_rejects_an_invalid_holder_type_as_a_row_error(client):
+async def test_import_rejects_an_invalid_asset_user_type_as_a_row_error(client):
     ids = await _setup("IMP3")
     headers = await _login(client, ids["admin"])
-    content = _xlsx(HEADER, [[ids["co"].code, "X2", "X", "NOT_A_TYPE", ids["loc"].code, None, None, None, "HOLDER"]])
-    resp = await _post_file(client, "/api/holders/import/commit", content, headers)
+    content = _xlsx(HEADER, [[ids["co"].code, "X2", "X", "NOT_A_TYPE", ids["loc"].code, None, None, None, "ASSET_USER"]])
+    resp = await _post_file(client, "/api/asset-users/import/commit", content, headers)
     assert resp.status_code == 200
     body = resp.json()
     assert body["imported"] == 0
@@ -111,22 +111,22 @@ async def test_import_department_is_optional_and_resolved_by_name(client):
     ids = await _setup("IMP4")
     headers = await _login(client, ids["admin"])
     content = _xlsx(HEADER, [[ids["co"].code, "X3", "No Dept Employee", "EMPLOYEE", ids["loc"].code, None, None, None, "VIEWER"]])
-    resp = await _post_file(client, "/api/holders/import/commit", content, headers)
+    resp = await _post_file(client, "/api/asset-users/import/commit", content, headers)
     assert resp.status_code == 200, resp.text
     assert resp.json() == {"imported": 1, "errors": []}
 
     async with SessionLocal() as session:
         from sqlalchemy import select
-        row = (await session.execute(select(Holder).where(Holder.emp_code == "X3"))).scalars().first()
+        row = (await session.execute(select(AssetUser).where(AssetUser.emp_code == "X3"))).scalars().first()
         assert row.department_id is None
         assert row.role == "VIEWER"
 
 
-async def test_export_round_trips_and_excludes_inactive_holders(client):
+async def test_export_round_trips_and_excludes_inactive_asset_users(client):
     ids = await _setup("EXP1")
     headers = await _login(client, ids["admin"])
 
-    export_resp = await client.get("/api/holders/export", headers=headers)
+    export_resp = await client.get("/api/asset-users/export", headers=headers)
     assert export_resp.status_code == 200
     wb = openpyxl.load_workbook(io.BytesIO(export_resp.content))
     ws = wb.active

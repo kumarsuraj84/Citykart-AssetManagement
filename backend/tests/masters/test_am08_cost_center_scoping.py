@@ -5,7 +5,7 @@ master, no `company_id` column) must silently ignore the same query param
 rather than error."""
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.masters.models import AssetCategory, Company, CostCenter, Department, Location
 
 
@@ -24,8 +24,8 @@ async def _setup():
         cc_a = CostCenter(company_id=a.id, code="A01", name="A cc")
         cc_b = CostCenter(company_id=b.id, code="B01", name="B cc")
         cat = AssetCategory(code="CCCAT", name="CC Category")
-        session.add(Holder(
-            company_id=a.id, emp_code="CCADM", name="CC Admin", holder_type="EMPLOYEE",
+        session.add(AssetUser(
+            company_id=a.id, emp_code="CCADM", name="CC Admin", asset_user_type="EMPLOYEE",
             location_id=loc.id, department_id=dept.id, role="ADMIN",
             password_hash=hash_password("Passw0rd!"), must_change_password=False,
         ))
@@ -48,8 +48,8 @@ async def _add_it_team(company_id, emp_code):
         dept = Department(name=f"D-{emp_code}")
         session.add_all([loc, dept])
         await session.flush()
-        session.add(Holder(
-            company_id=company_id, emp_code=emp_code, name="CC IT Team", holder_type="EMPLOYEE",
+        session.add(AssetUser(
+            company_id=company_id, emp_code=emp_code, name="CC IT Team", asset_user_type="EMPLOYEE",
             location_id=loc.id, department_id=dept.id, role="IT_TEAM",
             password_hash=hash_password("Passw0rd!"), must_change_password=False,
         ))

@@ -103,7 +103,7 @@ describe("authFetch", () => {
 
   it("leaves an ordinary 403 alone", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(jsonResponse(403, { detail: "Not permitted for this action" })));
-    await authFetch("/holders");
+    await authFetch("/asset-users");
     expect(assignSpy).not.toHaveBeenCalled();
     expect(useAuthStore.getState().accessToken).toBe("old-token");
   });

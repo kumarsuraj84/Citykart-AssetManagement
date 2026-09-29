@@ -39,18 +39,18 @@ const ERROR_COLUMNS: DataTableColumn<RowError>[] = [
 
 /** AM-25: one shared Import/Export UI for every master (Companies/
  * Locations/Departments/Cost Centres/Categories/Sub-Categories/Vendors --
- * embedded once in MasterCrudScreen, covering all of them) and for Holders
- * (embedded directly in HoldersScreen, which doesn't use MasterCrudScreen).
+ * embedded once in MasterCrudScreen, covering all of them) and for AssetUsers
+ * (embedded directly in AssetUsersScreen, which doesn't use MasterCrudScreen).
  * `resource` is the same path segment already used for the master's own
- * CRUD endpoint (`/masters/{resource}`) or "holders" itself -- the backend
+ * CRUD endpoint (`/masters/{resource}`) or "asset_users" itself -- the backend
  * (app.masters.bulk_import_export, wired in per-master via
  * build_master_router's `import_fields`) owns every column definition, so
  * nothing about a specific master's fields needs to be known here: the
  * preview table's columns are built from whatever the backend's own
  * template/preview response actually contains. */
-/** `basePath` defaults to `/masters/{resource}` (every master) -- Holders
- * doesn't live under /masters at all, so HoldersScreen passes an explicit
- * basePath="/holders" instead. */
+/** `basePath` defaults to `/masters/{resource}` (every master) -- AssetUsers
+ * doesn't live under /masters at all, so AssetUsersScreen passes an explicit
+ * basePath="/asset-users" instead. */
 export function BulkImportExport({
   resource, label, onImported, basePath,
 }: {

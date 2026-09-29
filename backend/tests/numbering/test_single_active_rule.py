@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.masters.models import Company, Department, Location
 from app.numbering.models import CodeRule
 from app.numbering.service import get_active_rule
@@ -22,7 +22,7 @@ async def _admin(client, code):
         dept = Department(name=f"IT-{code}")
         session.add_all([loc, dept])
         await session.flush()
-        session.add(Holder(company_id=co.id, emp_code="RADMIN", name="Rule Admin", holder_type="EMPLOYEE",
+        session.add(AssetUser(company_id=co.id, emp_code="RADMIN", name="Rule Admin", asset_user_type="EMPLOYEE",
                            location_id=loc.id, department_id=dept.id, role="ADMIN",
                            password_hash=hash_password("Passw0rd!"), must_change_password=False))
         await session.commit()

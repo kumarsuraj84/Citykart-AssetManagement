@@ -36,38 +36,38 @@ import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField } from "@/components/shared/FormField";
 import { BulkImportExport } from "@/components/shared/BulkImportExport";
 
-const HOLDER_TYPES = ["EMPLOYEE", "STORE", "INSTALLED", "IT_STOCK"] as const;
-const ROLES = ["ADMIN", "IT_TEAM", "VIEWER", "HOLDER"] as const;
+const ASSET_USER_TYPES = ["EMPLOYEE", "STORE", "INSTALLED", "IT_STOCK"] as const;
+const ROLES = ["ADMIN", "IT_TEAM", "VIEWER", "ASSET_USER"] as const;
 
-// IT_STOCK/INSTALLED holders aren't people -- they're a location's own
+// IT_STOCK/INSTALLED asset_users aren't people -- they're a location's own
 // stock/install bucket (one per physical location a company has), which
 // made the ordinary "Emp Code"/Name fields confusing to fill in (there's
 // no employee). This config drives dynamic labels, an auto-suggested
 // code/name derived from the chosen Location so nobody has to invent one,
 // and the coverage checklist below ("which locations still need a stock
 // point") -- see the product discussion that prompted this.
-const TYPE_POINT_CONFIG: Partial<Record<(typeof HOLDER_TYPES)[number], { prefix: string; noun: string }>> = {
+const TYPE_POINT_CONFIG: Partial<Record<(typeof ASSET_USER_TYPES)[number], { prefix: string; noun: string }>> = {
   IT_STOCK: { prefix: "STK", noun: "Stock Point" },
   INSTALLED: { prefix: "INS", noun: "Install Point" },
 };
 
-function pointConfigFor(holderType: string) {
-  return TYPE_POINT_CONFIG[holderType as (typeof HOLDER_TYPES)[number]];
+function pointConfigFor(assetUserType: string) {
+  return TYPE_POINT_CONFIG[assetUserType as (typeof ASSET_USER_TYPES)[number]];
 }
 
 // Alphanumeric-only, uppercased -- matches how every master's own Code
 // column is conventionally written; a location code/name can contain
-// spaces or punctuation a holder's emp_code shouldn't carry verbatim.
+// spaces or punctuation a asset_user's emp_code shouldn't carry verbatim.
 function slug(value: string): string {
   return value.toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
-interface HolderRow {
+interface AssetUserRow {
   id: number;
   company_id: number;
   emp_code: string;
   name: string;
-  holder_type: string;
+  asset_user_type: string;
   location_id: number;
   department_id: number | null;
   email: string | null;
@@ -93,11 +93,11 @@ interface Department {
   name: string;
 }
 
-interface HolderDraft {
+interface AssetUserDraft {
   company_id: string;
   emp_code: string;
   name: string;
-  holder_type: string;
+  asset_user_type: string;
   location_id: string;
   department_id: string;
   email: string;
@@ -105,24 +105,24 @@ interface HolderDraft {
   role: string;
 }
 
-const emptyDraft: HolderDraft = {
+const emptyDraft: AssetUserDraft = {
   company_id: "",
   emp_code: "",
   name: "",
-  holder_type: "",
+  asset_user_type: "",
   location_id: "",
   department_id: "",
   email: "",
   phone: "",
-  role: "HOLDER",
+  role: "ASSET_USER",
 };
 
-function buildPayload(draft: HolderDraft) {
+function buildPayload(draft: AssetUserDraft) {
   return {
     company_id: Number(draft.company_id),
     emp_code: draft.emp_code,
     name: draft.name,
-    holder_type: draft.holder_type,
+    asset_user_type: draft.asset_user_type,
     location_id: Number(draft.location_id),
     department_id: draft.department_id ? Number(draft.department_id) : null,
     email: draft.email || null,
@@ -131,30 +131,30 @@ function buildPayload(draft: HolderDraft) {
   };
 }
 
-export function HoldersScreen() {
+export function AssetUsersScreen() {
   const qc = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [originalRole, setOriginalRole] = useState<string | null>(null);
-  const [draft, setDraft] = useState<HolderDraft>(emptyDraft);
+  const [draft, setDraft] = useState<AssetUserDraft>(emptyDraft);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
-  const [deactivateRow, setDeactivateRow] = useState<HolderRow | null>(null);
-  // AM-24: which OTHER companies (beyond this holder's own home company)
+  const [deactivateRow, setDeactivateRow] = useState<AssetUserRow | null>(null);
+  // AM-24: which OTHER companies (beyond this asset_user's own home company)
   // they're granted access to -- e.g. the one PO/PI person, the one
   // labeling person, the one movement person who all need to work across
   // more than one company, without making them ADMIN.
-  const [accessRow, setAccessRow] = useState<HolderRow | null>(null);
+  const [accessRow, setAccessRow] = useState<AssetUserRow | null>(null);
   const [accessSelection, setAccessSelection] = useState<number[]>([]);
 
   const {
-    data: holders = [],
+    data: asset_users = [],
     isLoading,
     isError,
     error,
     refetch,
   } = useQuery({
-    queryKey: ["holders"],
-    queryFn: () => apiClient.get<HolderRow[]>("/holders"),
+    queryKey: ["asset_users"],
+    queryFn: () => apiClient.get<AssetUserRow[]>("/asset-users"),
   });
 
   const { data: companies = [] } = useQuery({
@@ -179,58 +179,58 @@ export function HoldersScreen() {
   const companyName = (id: number) => companies.find((c) => c.id === id)?.name ?? String(id);
 
   const createMutation = useMutation({
-    mutationFn: (payload: Record<string, unknown>) => apiClient.post("/holders", payload),
+    mutationFn: (payload: Record<string, unknown>) => apiClient.post("/asset-users", payload),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["holders"] });
+      qc.invalidateQueries({ queryKey: ["asset_users"] });
       closeForm();
     },
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, payload }: { id: number; payload: Record<string, unknown> }) =>
-      apiClient.put(`/holders/${id}`, payload),
+      apiClient.put(`/asset-users/${id}`, payload),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["holders"] });
+      qc.invalidateQueries({ queryKey: ["asset_users"] });
       closeForm();
     },
   });
 
   const resetMutation = useMutation({
-    mutationFn: (id: number) => apiClient.post<{ temp_password: string }>(`/holders/${id}/reset-password`),
+    mutationFn: (id: number) => apiClient.post<{ temp_password: string }>(`/asset-users/${id}/reset-password`),
     onSuccess: (data) => {
       setTempPassword(data.temp_password);
-      qc.invalidateQueries({ queryKey: ["holders"] });
+      qc.invalidateQueries({ queryKey: ["asset_users"] });
     },
   });
 
   const deactivateMutation = useMutation({
-    mutationFn: (id: number) => apiClient.delete(`/holders/${id}`),
+    mutationFn: (id: number) => apiClient.delete(`/asset-users/${id}`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["holders"] });
+      qc.invalidateQueries({ queryKey: ["asset_users"] });
       setDeactivateRow(null);
     },
   });
 
   const accessQ = useQuery({
-    queryKey: ["holders", accessRow?.id, "company-access"],
-    queryFn: () => apiClient.get<{ company_ids: number[] }>(`/holders/${accessRow!.id}/company-access`),
+    queryKey: ["asset_users", accessRow?.id, "company-access"],
+    queryFn: () => apiClient.get<{ company_ids: number[] }>(`/asset-users/${accessRow!.id}/company-access`),
     enabled: accessRow !== null,
   });
 
   const accessMutation = useMutation({
-    mutationFn: () => apiClient.post(`/holders/${accessRow!.id}/company-access`, { company_ids: accessSelection }),
+    mutationFn: () => apiClient.post(`/asset-users/${accessRow!.id}/company-access`, { company_ids: accessSelection }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["holders", accessRow?.id, "company-access"] });
+      qc.invalidateQueries({ queryKey: ["asset_users", accessRow?.id, "company-access"] });
       setAccessRow(null);
     },
   });
 
-  function openAccess(h: HolderRow) {
+  function openAccess(h: AssetUserRow) {
     setAccessRow(h);
     setAccessSelection([]);
   }
 
-  // Seeds the checkbox selection from the holder's current grants once
+  // Seeds the checkbox selection from the asset_user's current grants once
   // they've loaded -- can't do this inline in openAccess since the fetch
   // is async and keyed off accessRow itself.
   useEffect(() => {
@@ -241,7 +241,7 @@ export function HoldersScreen() {
     setAccessSelection((ids) => (checked ? [...ids, companyId] : ids.filter((id) => id !== companyId)));
   }
 
-  function setField(key: keyof HolderDraft, value: string) {
+  function setField(key: keyof AssetUserDraft, value: string) {
     setDraft((d) => ({ ...d, [key]: value }));
   }
 
@@ -249,8 +249,8 @@ export function HoldersScreen() {
   // Type (IT_STOCK/INSTALLED) and Location are known -- never overwrites
   // something already typed (a manual edit always wins), so this only ever
   // fires on a fresh Add before the admin has touched either field.
-  function suggestPointFields(d: HolderDraft, holderType: string, locationId: string): Partial<HolderDraft> {
-    const config = pointConfigFor(holderType);
+  function suggestPointFields(d: AssetUserDraft, assetUserType: string, locationId: string): Partial<AssetUserDraft> {
+    const config = pointConfigFor(assetUserType);
     if (!config || d.emp_code.trim() !== "" || d.name.trim() !== "") return {};
     const location = locations.find((l) => l.id === Number(locationId));
     if (!location) return {};
@@ -266,11 +266,11 @@ export function HoldersScreen() {
   }
 
   function handleTypeChange(value: string) {
-    setDraft((d) => ({ ...d, holder_type: value, ...suggestPointFields(d, value, d.location_id) }));
+    setDraft((d) => ({ ...d, asset_user_type: value, ...suggestPointFields(d, value, d.location_id) }));
   }
 
   function handleLocationChange(value: string) {
-    setDraft((d) => ({ ...d, location_id: value, ...suggestPointFields(d, d.holder_type, value) }));
+    setDraft((d) => ({ ...d, location_id: value, ...suggestPointFields(d, d.asset_user_type, value) }));
   }
 
   function openAdd() {
@@ -280,14 +280,14 @@ export function HoldersScreen() {
     setFormOpen(true);
   }
 
-  function openEdit(h: HolderRow) {
+  function openEdit(h: AssetUserRow) {
     setEditingId(h.id);
     setOriginalRole(h.role);
     setDraft({
       company_id: String(h.company_id),
       emp_code: h.emp_code,
       name: h.name,
-      holder_type: h.holder_type,
+      asset_user_type: h.asset_user_type,
       location_id: String(h.location_id),
       department_id: h.department_id ? String(h.department_id) : "",
       email: h.email ?? "",
@@ -317,19 +317,19 @@ export function HoldersScreen() {
   const roleChanged = originalRole !== null && draft.role !== originalRole;
   const savePending = createMutation.isPending || updateMutation.isPending;
   const saveError = createMutation.error ?? updateMutation.error;
-  // AM-08: `location_id` is a required (NOT NULL) foreign key on Holder --
+  // AM-08: `location_id` is a required (NOT NULL) foreign key on AssetUser --
   // it was never actually optional (see DECISIONS.md) -- so Save must be
   // blocked, not merely default a blank Select to the `0` sentinel that used
   // to reach the backend as an unhandled 500. Company/Emp Code/Name/Type are
-  // likewise required by HolderIn; Department stays genuinely optional.
+  // likewise required by AssetUserIn; Department stays genuinely optional.
   const canSave =
     draft.company_id !== "" &&
     draft.emp_code.trim().length > 0 &&
     draft.name.trim().length > 0 &&
-    draft.holder_type !== "" &&
+    draft.asset_user_type !== "" &&
     draft.location_id !== "";
 
-  const activePointConfig = pointConfigFor(draft.holder_type);
+  const activePointConfig = pointConfigFor(draft.asset_user_type);
   const codeLabel = activePointConfig ? `${activePointConfig.noun} Code` : "Emp Code";
   const nameLabel = activePointConfig ? `${activePointConfig.noun} Name` : "Name";
 
@@ -341,17 +341,17 @@ export function HoldersScreen() {
     if (!activePointConfig || draft.company_id === "") return null;
     const companyId = Number(draft.company_id);
     const coveredIds = new Set(
-      holders
-        .filter((h) => h.company_id === companyId && h.holder_type === draft.holder_type && h.is_active)
+      asset_users
+        .filter((h) => h.company_id === companyId && h.asset_user_type === draft.asset_user_type && h.is_active)
         .map((h) => h.location_id),
     );
     return locations.map((l) => ({ location: l, covered: coveredIds.has(l.id) }));
-  }, [activePointConfig, draft.holder_type, draft.company_id, holders, locations]);
+  }, [activePointConfig, draft.asset_user_type, draft.company_id, asset_users, locations]);
 
-  const columns: DataTableColumn<HolderRow>[] = [
+  const columns: DataTableColumn<AssetUserRow>[] = [
     { key: "emp_code", header: "Emp Code", cell: (h) => h.emp_code },
     { key: "name", header: "Name", cell: (h) => h.name },
-    { key: "holder_type", header: "Type", cell: (h) => h.holder_type },
+    { key: "asset_user_type", header: "Type", cell: (h) => h.asset_user_type },
     { key: "role", header: "Role", cell: (h) => h.role },
     { key: "company", header: "Company", cell: (h) => companyName(h.company_id) },
     {
@@ -391,23 +391,23 @@ export function HoldersScreen() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title="Holders"
+        title="Asset Users"
         actions={
           <>
             <BulkImportExport
-              resource="holders"
-              label="Holders"
-              basePath="/holders"
-              onImported={() => qc.invalidateQueries({ queryKey: ["holders"] })}
+              resource="asset-users"
+              label="Asset Users"
+              basePath="/asset-users"
+              onImported={() => qc.invalidateQueries({ queryKey: ["asset_users"] })}
             />
             <Button onClick={openAdd}>Add</Button>
           </>
         }
       />
 
-      <DataTable<HolderRow>
+      <DataTable<AssetUserRow>
         columns={columns}
-        rows={holders}
+        rows={asset_users}
         rowKey={(h) => h.id}
         isLoading={isLoading}
         isError={isError}
@@ -416,7 +416,7 @@ export function HoldersScreen() {
         emptyState={
           <EmptyState
             icon={Users}
-            title="No holders yet"
+            title="No asset users yet"
             description="Add employees, stores, or stock locations that can hold assets."
             action={<Button onClick={openAdd}>Add</Button>}
           />
@@ -445,13 +445,13 @@ export function HoldersScreen() {
               </Select>
             </FormField>
 
-            <FormField htmlFor="holder_type" label="Type" required>
-              <Select value={draft.holder_type || undefined} onValueChange={handleTypeChange}>
-                <SelectTrigger id="holder_type" aria-label="Type">
+            <FormField htmlFor="asset_user_type" label="Type" required>
+              <Select value={draft.asset_user_type || undefined} onValueChange={handleTypeChange}>
+                <SelectTrigger id="asset_user_type" aria-label="Type">
                   <SelectValue placeholder="Select…" />
                 </SelectTrigger>
                 <SelectContent>
-                  {HOLDER_TYPES.map((t) => (
+                  {ASSET_USER_TYPES.map((t) => (
                     <SelectItem key={t} value={t}>
                       {t}
                     </SelectItem>
@@ -651,7 +651,7 @@ export function HoldersScreen() {
       {/*
         One-time temp-password reveal. `tempPassword` is held only in this
         component's local state -- it is never logged, never written to the
-        holders list/cache, and is cleared (not merely hidden) the moment the
+        asset_users list/cache, and is cleared (not merely hidden) the moment the
         dialog closes so it cannot be read back afterwards.
       */}
       <AlertDialog open={tempPassword !== null} onOpenChange={(open) => !open && setTempPassword(null)}>

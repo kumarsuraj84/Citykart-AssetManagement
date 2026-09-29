@@ -21,10 +21,10 @@ def verify_password(raw: str, hashed: str) -> bool:
         return False
 
 
-def create_access_token(holder_id: int, role: str, company_scope: int | None) -> str:
+def create_access_token(asset_user_id: int, role: str, company_scope: int | None) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_access_minutes)
     payload = {
-        "sub": str(holder_id),
+        "sub": str(asset_user_id),
         "role": role,
         "company_scope": company_scope,
         "type": "access",
@@ -33,9 +33,9 @@ def create_access_token(holder_id: int, role: str, company_scope: int | None) ->
     return jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
 
 
-def create_refresh_token(holder_id: int) -> str:
+def create_refresh_token(asset_user_id: int) -> str:
     expire = datetime.now(timezone.utc) + timedelta(hours=settings.jwt_refresh_hours)
-    payload = {"sub": str(holder_id), "type": "refresh", "exp": expire}
+    payload = {"sub": str(asset_user_id), "type": "refresh", "exp": expire}
     return jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
 
 

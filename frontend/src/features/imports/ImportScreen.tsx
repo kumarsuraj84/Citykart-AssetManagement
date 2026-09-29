@@ -20,7 +20,7 @@ interface AddPreviewRow {
   category: string;
   subcategory: string | null;
   description: string;
-  holder: string;
+  asset_user: string;
   quantity: number;
 }
 
@@ -56,7 +56,7 @@ const ADD_PREVIEW_COLUMNS: DataTableColumn<AddPreviewRow>[] = [
     cell: (r) => (r.subcategory ? `${r.category} / ${r.subcategory}` : r.category),
   },
   { key: "description", header: "Description", cell: (r) => r.description },
-  { key: "holder", header: "Goes Into", cell: (r) => r.holder },
+  { key: "asset_user", header: "Goes Into", cell: (r) => r.asset_user },
   { key: "quantity", header: "Qty", cell: (r) => r.quantity },
 ];
 

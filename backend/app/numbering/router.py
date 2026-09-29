@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
-from app.core.deps import get_current_holder, require_role
+from app.core.deps import get_current_asset_user, require_role
 from app.numbering.models import CodeRule
 from app.numbering.schemas import CodeRuleIn, CodeRuleOut
 from app.numbering.service import make_sole_active_rule
@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api/code-rules", tags=["numbering"])
 
 
 @router.get("", response_model=list[CodeRuleOut])
-async def list_rules(session: AsyncSession = Depends(get_session), _h=Depends(get_current_holder)):
+async def list_rules(session: AsyncSession = Depends(get_session), _h=Depends(get_current_asset_user)):
     stmt = select(CodeRule).where(CodeRule.is_active.is_(True)).order_by(CodeRule.id.desc())
     return (await session.execute(stmt)).scalars().all()
 

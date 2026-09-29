@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { HoldersScreen } from "./HoldersScreen";
+import { AssetUsersScreen } from "./AssetUsersScreen";
 import { apiClient } from "../../lib/api-client";
 
 vi.mock("../../lib/api-client");
@@ -11,17 +11,17 @@ function renderWithClient(ui: React.ReactElement) {
   return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
 }
 
-const HOLDER: Record<string, unknown> = {
+const ASSET_USER: Record<string, unknown> = {
   id: 1,
   company_id: 1,
   emp_code: "CS6872",
   name: "Ankur",
-  holder_type: "EMPLOYEE",
+  asset_user_type: "EMPLOYEE",
   location_id: 1,
   department_id: 1,
   email: null,
   phone: null,
-  role: "HOLDER",
+  role: "ASSET_USER",
   is_active: true,
 };
 
@@ -33,19 +33,19 @@ const LOCATION_WH1 = { id: 2, company_id: 1, code: "WH1", name: "Warehouse 1" };
 // Locations are company-scoped -- mimic the real API's own `?company_id=`
 // filtering rather than returning every location for every company.
 function mockGets(
-  holders: unknown[] = [HOLDER],
+  asset_users: unknown[] = [ASSET_USER],
   companies: unknown[] = [COMPANY],
   locations: { id: number; company_id: number }[] = [LOCATION],
 ) {
   (apiClient.get as any).mockImplementation((path: string) => {
-    if (path === "/holders") return Promise.resolve(holders);
+    if (path === "/asset-users") return Promise.resolve(asset_users);
     if (path === "/masters/companies") return Promise.resolve(companies);
     if (path.startsWith("/masters/locations")) {
       const companyId = Number(new URL(path, "http://x").searchParams.get("company_id"));
       return Promise.resolve(locations.filter((l) => l.company_id === companyId));
     }
     if (path === "/masters/departments") return Promise.resolve([]);
-    if (path === "/holders/1/company-access") return Promise.resolve({ company_ids: [] });
+    if (path === "/asset-users/1/company-access") return Promise.resolve({ company_ids: [] });
     return Promise.resolve([]);
   });
 }
@@ -56,18 +56,18 @@ async function pickSelectOption(label: RegExp | string, optionName: RegExp | str
   fireEvent.click(option);
 }
 
-describe("HoldersScreen", () => {
-  it("resets a holder's password and shows the temp password", async () => {
+describe("AssetUsersScreen", () => {
+  it("resets a asset_user's password and shows the temp password", async () => {
     mockGets();
     (apiClient.post as any).mockResolvedValue({ temp_password: "abc123XYZ" });
 
-    renderWithClient(<HoldersScreen />);
+    renderWithClient(<AssetUsersScreen />);
 
     await waitFor(() => expect(screen.getByText("Ankur")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: /reset password/i }));
 
     await waitFor(() => expect(screen.getByText("abc123XYZ")).toBeInTheDocument());
-    expect(apiClient.post).toHaveBeenCalledWith("/holders/1/reset-password");
+    expect(apiClient.post).toHaveBeenCalledWith("/asset-users/1/reset-password");
 
     // The temp password dialog uses proper alertdialog semantics.
     expect(screen.getByRole("alertdialog")).toBeInTheDocument();
@@ -77,11 +77,11 @@ describe("HoldersScreen", () => {
     await waitFor(() => expect(screen.queryByText("abc123XYZ")).not.toBeInTheDocument());
   });
 
-  it("adds a new holder via the Add dialog", async () => {
+  it("adds a new asset_user via the Add dialog", async () => {
     mockGets([]);
-    (apiClient.post as any).mockResolvedValue({ ...HOLDER, id: 2, emp_code: "NEW01", name: "New Hire" });
+    (apiClient.post as any).mockResolvedValue({ ...ASSET_USER, id: 2, emp_code: "NEW01", name: "New Hire" });
 
-    renderWithClient(<HoldersScreen />);
+    renderWithClient(<AssetUsersScreen />);
 
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/masters/companies"));
 
@@ -92,30 +92,30 @@ describe("HoldersScreen", () => {
     await pickSelectOption("Company", "CityKart HQ");
     await pickSelectOption("Type", "EMPLOYEE");
     await pickSelectOption("Location", "Head Office");
-    // Role defaults to HOLDER already, so no interaction needed for it.
+    // Role defaults to ASSET_USER already, so no interaction needed for it.
 
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() =>
-      expect(apiClient.post).toHaveBeenCalledWith("/holders", {
+      expect(apiClient.post).toHaveBeenCalledWith("/asset-users", {
         company_id: 1,
         emp_code: "NEW01",
         name: "New Hire",
-        holder_type: "EMPLOYEE",
+        asset_user_type: "EMPLOYEE",
         location_id: 1,
         department_id: null,
         email: null,
         phone: null,
-        role: "HOLDER",
+        role: "ASSET_USER",
       }),
     );
   });
 
   it("prefills the Edit dialog and saves changes via PUT", async () => {
     mockGets();
-    (apiClient.put as any).mockResolvedValue({ ...HOLDER, name: "Ankur K" });
+    (apiClient.put as any).mockResolvedValue({ ...ASSET_USER, name: "Ankur K" });
 
-    renderWithClient(<HoldersScreen />);
+    renderWithClient(<AssetUsersScreen />);
 
     await waitFor(() => expect(screen.getByText("Ankur")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: /^edit ankur$/i }));
@@ -128,47 +128,47 @@ describe("HoldersScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() =>
-      expect(apiClient.put).toHaveBeenCalledWith("/holders/1", {
+      expect(apiClient.put).toHaveBeenCalledWith("/asset-users/1", {
         company_id: 1,
         emp_code: "CS6872",
         name: "Ankur K",
-        holder_type: "EMPLOYEE",
+        asset_user_type: "EMPLOYEE",
         location_id: 1,
         department_id: 1,
         email: null,
         phone: null,
-        role: "HOLDER",
+        role: "ASSET_USER",
       }),
     );
   });
 
-  it("shows a loading skeleton, then an empty state with an Add action when there are no holders", async () => {
+  it("shows a loading skeleton, then an empty state with an Add action when there are no asset_users", async () => {
     mockGets([]);
-    renderWithClient(<HoldersScreen />);
+    renderWithClient(<AssetUsersScreen />);
 
-    await waitFor(() => expect(screen.getByText(/no holders yet/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/no asset users yet/i)).toBeInTheDocument());
     expect(screen.getAllByRole("button", { name: /^add$/i }).length).toBeGreaterThan(0);
   });
 
   it("shows an error state with a retry that refetches", async () => {
     (apiClient.get as any).mockImplementationOnce((path: string) => {
-      if (path === "/holders") return Promise.reject(new Error("holders down"));
+      if (path === "/asset-users") return Promise.reject(new Error("asset_users down"));
       return Promise.resolve([]);
     });
-    renderWithClient(<HoldersScreen />);
+    renderWithClient(<AssetUsersScreen />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("holders down");
+    expect(await screen.findByRole("alert")).toHaveTextContent("asset_users down");
 
     mockGets();
     fireEvent.click(screen.getByRole("button", { name: /try again/i }));
     await waitFor(() => expect(screen.getByText("Ankur")).toBeInTheDocument());
   });
 
-  it("deactivates a holder only after confirming in the dialog", async () => {
+  it("deactivates a asset_user only after confirming in the dialog", async () => {
     mockGets();
     (apiClient.delete as any).mockResolvedValue(undefined);
 
-    renderWithClient(<HoldersScreen />);
+    renderWithClient(<AssetUsersScreen />);
     await waitFor(() => expect(screen.getByText("Ankur")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: /^deactivate ankur$/i }));
@@ -177,12 +177,12 @@ describe("HoldersScreen", () => {
     expect(apiClient.delete).not.toHaveBeenCalled();
 
     fireEvent.click(within(dialog).getByRole("button", { name: /^deactivate$/i }));
-    await waitFor(() => expect(apiClient.delete).toHaveBeenCalledWith("/holders/1"));
+    await waitFor(() => expect(apiClient.delete).toHaveBeenCalledWith("/asset-users/1"));
   });
 
   it("AM-08: blocks Save with Location left blank -- never submits the old 0 sentinel", async () => {
     mockGets([]);
-    renderWithClient(<HoldersScreen />);
+    renderWithClient(<AssetUsersScreen />);
 
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/masters/companies"));
     fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
@@ -202,7 +202,7 @@ describe("HoldersScreen", () => {
     mockGets([]);
     (apiClient.post as any).mockRejectedValue(new Error("location not found or inactive"));
 
-    renderWithClient(<HoldersScreen />);
+    renderWithClient(<AssetUsersScreen />);
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/masters/companies"));
     fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
 
@@ -220,9 +220,9 @@ describe("HoldersScreen", () => {
 
   it("warns before saving a role change, and role is not reset by unrelated field edits", async () => {
     mockGets();
-    (apiClient.put as any).mockResolvedValue({ ...HOLDER, name: "Ankur K" });
+    (apiClient.put as any).mockResolvedValue({ ...ASSET_USER, name: "Ankur K" });
 
-    renderWithClient(<HoldersScreen />);
+    renderWithClient(<AssetUsersScreen />);
     await waitFor(() => expect(screen.getByText("Ankur")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: /^edit ankur$/i }));
 
@@ -231,23 +231,23 @@ describe("HoldersScreen", () => {
     expect(screen.queryByText(/will immediately change this person's access/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     await waitFor(() =>
-      expect(apiClient.put).toHaveBeenCalledWith("/holders/1", expect.objectContaining({ role: "HOLDER" })),
+      expect(apiClient.put).toHaveBeenCalledWith("/asset-users/1", expect.objectContaining({ role: "ASSET_USER" })),
     );
   });
 
   it("AM-24: shows current company access grants and saves changes to them", async () => {
-    mockGets([HOLDER], [COMPANY, COMPANY_B]);
+    mockGets([ASSET_USER], [COMPANY, COMPANY_B]);
     (apiClient.get as any).mockImplementation((path: string) => {
-      if (path === "/holders") return Promise.resolve([HOLDER]);
+      if (path === "/asset-users") return Promise.resolve([ASSET_USER]);
       if (path === "/masters/companies") return Promise.resolve([COMPANY, COMPANY_B]);
       if (path === "/masters/locations") return Promise.resolve([LOCATION]);
       if (path === "/masters/departments") return Promise.resolve([]);
-      if (path === "/holders/1/company-access") return Promise.resolve({ company_ids: [] });
+      if (path === "/asset-users/1/company-access") return Promise.resolve({ company_ids: [] });
       return Promise.resolve([]);
     });
     (apiClient.post as any).mockResolvedValue(undefined);
 
-    renderWithClient(<HoldersScreen />);
+    renderWithClient(<AssetUsersScreen />);
     await waitFor(() => expect(screen.getByText("Ankur")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: /company access for ankur/i }));
@@ -263,15 +263,15 @@ describe("HoldersScreen", () => {
 
     fireEvent.click(within(dialog).getByRole("button", { name: /^save$/i }));
     await waitFor(() =>
-      expect(apiClient.post).toHaveBeenCalledWith("/holders/1/company-access", { company_ids: [2] }),
+      expect(apiClient.post).toHaveBeenCalledWith("/asset-users/1/company-access", { company_ids: [2] }),
     );
   });
 
   it("IT_STOCK/INSTALLED: picking a Location auto-fills Code/Name and relabels the fields", async () => {
     mockGets([], [COMPANY], [LOCATION, LOCATION_WH1]);
-    (apiClient.post as any).mockResolvedValue({ ...HOLDER, id: 3, emp_code: "STK-WH1" });
+    (apiClient.post as any).mockResolvedValue({ ...ASSET_USER, id: 3, emp_code: "STK-WH1" });
 
-    renderWithClient(<HoldersScreen />);
+    renderWithClient(<AssetUsersScreen />);
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/masters/companies"));
     fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
 
@@ -289,15 +289,15 @@ describe("HoldersScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith(
-        "/holders",
-        expect.objectContaining({ emp_code: "STK-WH1", name: "Stock Point - Warehouse 1", holder_type: "IT_STOCK" }),
+        "/asset-users",
+        expect.objectContaining({ emp_code: "STK-WH1", name: "Stock Point - Warehouse 1", asset_user_type: "IT_STOCK" }),
       ),
     );
   });
 
   it("IT_STOCK: a manually-typed Code/Name is never overwritten by picking a Location afterward", async () => {
     mockGets([], [COMPANY], [LOCATION, LOCATION_WH1]);
-    renderWithClient(<HoldersScreen />);
+    renderWithClient(<AssetUsersScreen />);
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/masters/companies"));
     fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
 
@@ -312,9 +312,9 @@ describe("HoldersScreen", () => {
   });
 
   it("shows a coverage checklist of which locations already have an IT_STOCK point for the chosen company", async () => {
-    const stockAtHo = { ...HOLDER, id: 5, emp_code: "STK-HO", name: "Stock Point - Head Office", holder_type: "IT_STOCK", location_id: 1 };
-    mockGets([HOLDER, stockAtHo], [COMPANY], [LOCATION, LOCATION_WH1]);
-    renderWithClient(<HoldersScreen />);
+    const stockAtHo = { ...ASSET_USER, id: 5, emp_code: "STK-HO", name: "Stock Point - Head Office", asset_user_type: "IT_STOCK", location_id: 1 };
+    mockGets([ASSET_USER, stockAtHo], [COMPANY], [LOCATION, LOCATION_WH1]);
+    renderWithClient(<AssetUsersScreen />);
     await waitFor(() => expect(screen.getByText("Ankur")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
 

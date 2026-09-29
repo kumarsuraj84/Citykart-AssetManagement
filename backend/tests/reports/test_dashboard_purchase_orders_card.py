@@ -4,7 +4,7 @@ delivery -- pending_po_summary (count/value) and open_purchase_orders
 from datetime import date
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.masters.models import AssetCategory, Company, CostCenter, Department, Location
 from app.purchase_orders.service import add_pending_asset_line, cancel_pending_asset_line, create_purchase_order
 
@@ -20,7 +20,7 @@ async def _setup(suffix: str):
         dept = Department(name=f"DASH-PO-{suffix}")
         session.add_all([cc, loc, dept])
         await session.flush()
-        admin = Holder(company_id=co.id, emp_code=f"ADM-{suffix}", name="Admin", holder_type="EMPLOYEE",
+        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
         session.add(admin)
@@ -37,7 +37,7 @@ async def _login(client, company_id, login_id):
 async def test_pending_po_summary_counts_only_pending_lines_and_sums_value(client):
     ctx = await _setup("D1")
     async with SessionLocal() as session:
-        admin = await session.get(Holder, ctx["admin"].id)
+        admin = await session.get(AssetUser, ctx["admin"].id)
         po = await create_purchase_order(session, {
             "company_id": ctx["co"].id, "po_number": "PO-1", "po_date": date(2026, 1, 1), "cost_center_id": ctx["cc"].id,
         }, admin)
@@ -69,8 +69,8 @@ async def test_viewer_sees_dashboard_but_never_po_data(client):
     purchase-orders itself would 403 them."""
     ctx = await _setup("D2B")
     async with SessionLocal() as session:
-        admin = await session.get(Holder, ctx["admin"].id)
-        viewer = Holder(company_id=ctx["co"].id, emp_code="VWR-D2B", name="Viewer", holder_type="EMPLOYEE",
+        admin = await session.get(AssetUser, ctx["admin"].id)
+        viewer = AssetUser(company_id=ctx["co"].id, emp_code="VWR-D2B", name="Viewer", asset_user_type="EMPLOYEE",
                          location_id=admin.location_id, department_id=admin.department_id, role="VIEWER",
                          password_hash=hash_password("Passw0rd!"), must_change_password=False)
         session.add(viewer)
@@ -93,7 +93,7 @@ async def test_viewer_sees_dashboard_but_never_po_data(client):
 async def test_open_purchase_orders_lists_only_pos_with_a_pending_line(client):
     ctx = await _setup("D3")
     async with SessionLocal() as session:
-        admin = await session.get(Holder, ctx["admin"].id)
+        admin = await session.get(AssetUser, ctx["admin"].id)
         po_open = await create_purchase_order(session, {
             "company_id": ctx["co"].id, "po_number": "PO-OPEN", "po_date": date(2026, 1, 1), "cost_center_id": ctx["cc"].id,
         }, admin)
@@ -135,10 +135,10 @@ async def test_open_purchase_orders_is_capped_and_company_scoped():
         dept = Department(name="DASH-PO-D4")
         session.add_all([cc_a, cc_b, loc_a, loc_b, dept])
         await session.flush()
-        admin_a = Holder(company_id=co_a.id, emp_code="ADM-D4A", name="Admin A", holder_type="EMPLOYEE",
+        admin_a = AssetUser(company_id=co_a.id, emp_code="ADM-D4A", name="Admin A", asset_user_type="EMPLOYEE",
                           location_id=loc_a.id, department_id=dept.id, role="IT_TEAM",
                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        admin_b = Holder(company_id=co_b.id, emp_code="ADM-D4B", name="Admin B", holder_type="EMPLOYEE",
+        admin_b = AssetUser(company_id=co_b.id, emp_code="ADM-D4B", name="Admin B", asset_user_type="EMPLOYEE",
                           location_id=loc_b.id, department_id=dept.id, role="IT_TEAM",
                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
         session.add_all([admin_a, admin_b])

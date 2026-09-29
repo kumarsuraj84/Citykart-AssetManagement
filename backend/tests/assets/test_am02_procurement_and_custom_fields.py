@@ -11,7 +11,7 @@ the editable descriptive subset -- never identity or lifecycle fields."""
 from datetime import date
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, CustomField, Department, Location, Vendor
 from app.numbering.models import CodeRule
 
@@ -31,18 +31,18 @@ async def _setup(code="AM02"):
         brand2 = Brand(code=f"HP-{code}", name="HP")
         session.add_all([sub, cc, loc, dept, vendor, brand, brand2])
         await session.flush()
-        stock = Holder(company_id=co.id, emp_code=f"STK-{code}", name="IT Stock-HO",
-                        holder_type="IT_STOCK", location_id=loc.id, department_id=dept.id, role="HOLDER")
-        other_stock = Holder(company_id=co.id, emp_code=f"STK2-{code}", name="IT Stock-WH",
-                              holder_type="IT_STOCK", location_id=loc.id, department_id=dept.id, role="HOLDER")
-        admin = Holder(company_id=co.id, emp_code=f"ADM-{code}", name="Admin",
-                        holder_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="ADMIN",
+        stock = AssetUser(company_id=co.id, emp_code=f"STK-{code}", name="IT Stock-HO",
+                        asset_user_type="IT_STOCK", location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+        other_stock = AssetUser(company_id=co.id, emp_code=f"STK2-{code}", name="IT Stock-WH",
+                              asset_user_type="IT_STOCK", location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{code}", name="Admin",
+                        asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="ADMIN",
                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        viewer = Holder(company_id=co.id, emp_code=f"VWR-{code}", name="Viewer",
-                         holder_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="VIEWER",
+        viewer = AssetUser(company_id=co.id, emp_code=f"VWR-{code}", name="Viewer",
+                         asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="VIEWER",
                          password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        it_team = Holder(company_id=co.id, emp_code=f"ITT-{code}", name="IT Team",
-                          holder_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="IT_TEAM",
+        it_team = AssetUser(company_id=co.id, emp_code=f"ITT-{code}", name="IT Team",
+                          asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="IT_TEAM",
                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
         session.add_all([stock, other_stock, admin, viewer, it_team,
                          CodeRule(company_id=None, prefix_template=f"FA/{code}/", suffix_template="",
@@ -65,7 +65,7 @@ def _asset_body(ids, **overrides):
     body = {
         "company_id": ids["co"], "cost_center_id": ids["cc"], "category_id": ids["cat"],
         "subcategory_id": ids["sub"], "description": "Procurement Test Laptop",
-        "purchase_date": "2025-06-01", "initial_holder_id": ids["stock"],
+        "purchase_date": "2025-06-01", "initial_asset_user_id": ids["stock"],
         "vendor_id": ids["vendor"], "po_number": "PO-1001", "po_date": "2025-05-20",
         "invoice_number": "INV-2001", "invoice_date": "2025-05-25",
         "pi_number": "PI-3001", "pi_date": "2025-05-22",
@@ -125,7 +125,7 @@ class TestProcurementFieldsRoundTrip:
         minimal = {
             "company_id": ids["co"], "cost_center_id": ids["cc"], "category_id": ids["cat"],
             "subcategory_id": ids["sub"], "description": "Bare Minimum Asset",
-            "initial_holder_id": ids["stock"], "vendor_id": ids["vendor"],
+            "initial_asset_user_id": ids["stock"], "vendor_id": ids["vendor"],
             "po_number": "PO-2001", "po_date": "2025-05-20",
             "invoice_number": "INV-2002", "invoice_date": "2025-06-01",
             "pi_number": "PI-3002", "pi_date": "2025-05-22", "serial_number": "SN-PRC2",
@@ -158,7 +158,7 @@ class TestProcurementFieldsRoundTrip:
         bare = {
             "company_id": ids["co"], "cost_center_id": ids["cc"], "category_id": ids["cat"],
             "subcategory_id": ids["sub"], "description": "No Paperwork Yet",
-            "initial_holder_id": ids["stock"], "vendor_id": ids["vendor"],
+            "initial_asset_user_id": ids["stock"], "vendor_id": ids["vendor"],
             "serial_number": "SN-PRC3",
         }
         resp = await client.post("/api/assets", json=bare, headers=headers)
@@ -176,7 +176,7 @@ class TestProcurementFieldsRoundTrip:
         base = {
             "company_id": ids["co"], "cost_center_id": ids["cc"], "category_id": ids["cat"],
             "subcategory_id": ids["sub"], "description": "Missing A Required Field",
-            "initial_holder_id": ids["stock"], "vendor_id": ids["vendor"], "serial_number": "SN-PRC4",
+            "initial_asset_user_id": ids["stock"], "vendor_id": ids["vendor"], "serial_number": "SN-PRC4",
         }
         for missing_field in ("category_id", "subcategory_id", "vendor_id", "serial_number"):
             body = {k: v for k, v in base.items() if k != missing_field}
@@ -192,7 +192,7 @@ class TestProcurementFieldsRoundTrip:
         body = {
             "company_id": ids["co"], "cost_center_id": ids["cc"], "category_id": ids["cat"],
             "subcategory_id": ids["sub"], "description": "Still Only One",
-            "initial_holder_id": ids["stock"], "vendor_id": ids["vendor"], "serial_number": "SN-PRC5",
+            "initial_asset_user_id": ids["stock"], "vendor_id": ids["vendor"], "serial_number": "SN-PRC5",
             "quantity": 5,
         }
         resp = await client.post("/api/assets", json=body, headers=headers)
@@ -226,7 +226,7 @@ class TestAssetUpdate:
         assert body["total_cost"] == 82600.0
 
     async def test_put_cannot_change_identity_or_lifecycle_fields(self, client):
-        """asset_code/company_id/cost_center_id/category_id/status/current_holder_id
+        """asset_code/company_id/cost_center_id/category_id/status/current_asset_user_id
         aren't in AssetUpdateIn at all -- sending them is simply ignored (Pydantic's
         default behaviour for a field it doesn't declare), not partially honoured."""
         ids = await _setup("UPD2")
@@ -238,7 +238,7 @@ class TestAssetUpdate:
         resp = await client.put(f"/api/assets/{asset_id}", json={
             "description": "Still just a description update",
             "asset_code": "HACKED-CODE", "company_id": 999999, "cost_center_id": 999999,
-            "category_id": 999999, "status": "DISPOSED", "current_holder_id": ids["other_stock"],
+            "category_id": 999999, "status": "DISPOSED", "current_asset_user_id": ids["other_stock"],
         }, headers=headers)
         assert resp.status_code == 200
         body = resp.json()
@@ -247,7 +247,7 @@ class TestAssetUpdate:
         assert body["cost_center_id"] == ids["cc"]
         assert body["category_id"] == ids["cat"]
         assert body["status"] == "IN_STOCK"
-        assert body["current_holder_id"] == ids["stock"]
+        assert body["current_asset_user_id"] == ids["stock"]
 
     async def test_viewer_cannot_update_an_asset(self, client):
         ids = await _setup("UPD3")

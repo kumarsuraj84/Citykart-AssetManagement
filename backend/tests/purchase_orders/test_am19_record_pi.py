@@ -5,7 +5,7 @@ Number/Date to every asset delivered under a given (PO, Invoice Number)
 pair, never the whole PO."""
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.masters.models import AssetCategory, Company, CostCenter, Department, Location
 from app.numbering.models import CodeRule
 
@@ -21,12 +21,12 @@ async def _setup(suffix: str):
         dept = Department(name=f"AM19-{suffix}")
         session.add_all([cc, loc, dept])
         await session.flush()
-        stock = Holder(company_id=company.id, emp_code=f"STK-{suffix}", name="IT Stock", holder_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="HOLDER")
-        admin = Holder(company_id=company.id, emp_code=f"ADM-{suffix}", name="Admin", holder_type="EMPLOYEE",
+        stock = AssetUser(company_id=company.id, emp_code=f"STK-{suffix}", name="IT Stock", asset_user_type="IT_STOCK",
+                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+        admin = AssetUser(company_id=company.id, emp_code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        viewer = Holder(company_id=company.id, emp_code=f"VWR-{suffix}", name="Viewer", holder_type="EMPLOYEE",
+        viewer = AssetUser(company_id=company.id, emp_code=f"VWR-{suffix}", name="Viewer", asset_user_type="EMPLOYEE",
                          location_id=loc.id, department_id=dept.id, role="VIEWER",
                          password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=company.id, prefix_template=f"AM19/{suffix}/", suffix_template="",
@@ -55,7 +55,7 @@ async def _po_with_delivery(client, headers, ctx, po_number, invoice_number, qty
     deliver_resp = await client.post(f"/api/purchase-orders/{po_id}/deliver", json={
         "invoice_number": invoice_number, "invoice_date": "2026-02-01", "invoice_amount": 1000 * qty,
         "lines": [
-            {"pending_asset_id": line["id"], "serial_number": f"{serial_prefix}-{i}", "initial_holder_id": ctx["stock_id"]}
+            {"pending_asset_id": line["id"], "serial_number": f"{serial_prefix}-{i}", "initial_asset_user_id": ctx["stock_id"]}
             for i, line in enumerate(lines)
         ],
     }, headers=headers)
@@ -151,14 +151,14 @@ async def test_record_pi_is_scoped_to_the_exact_po_and_invoice_never_a_different
     deliver1 = await client.post(f"/api/purchase-orders/{po_id}/deliver", json={
         "invoice_number": "INV-BATCH-1", "invoice_date": "2026-02-01", "invoice_amount": 2000,
         "lines": [
-            {"pending_asset_id": l["id"], "serial_number": f"SN-B1-{i}", "initial_holder_id": ctx["stock_id"]}
+            {"pending_asset_id": l["id"], "serial_number": f"SN-B1-{i}", "initial_asset_user_id": ctx["stock_id"]}
             for i, l in enumerate(lines_batch1)
         ],
     }, headers=headers)
     deliver2 = await client.post(f"/api/purchase-orders/{po_id}/deliver", json={
         "invoice_number": "INV-BATCH-2", "invoice_date": "2026-02-10", "invoice_amount": 1000,
         "lines": [
-            {"pending_asset_id": l["id"], "serial_number": "SN-B2-0", "initial_holder_id": ctx["stock_id"]}
+            {"pending_asset_id": l["id"], "serial_number": "SN-B2-0", "initial_asset_user_id": ctx["stock_id"]}
             for l in lines_batch2
         ],
     }, headers=headers)
@@ -259,11 +259,11 @@ class TestPiStatusOnPoListAndGet:
         }, headers=headers)).json()
         await client.post(f"/api/purchase-orders/{po_id}/deliver", json={
             "invoice_number": "INV-A", "invoice_date": "2026-02-01", "invoice_amount": 1000,
-            "lines": [{"pending_asset_id": lines1[0]["id"], "serial_number": "SN-A", "initial_holder_id": ctx["stock_id"]}],
+            "lines": [{"pending_asset_id": lines1[0]["id"], "serial_number": "SN-A", "initial_asset_user_id": ctx["stock_id"]}],
         }, headers=headers)
         await client.post(f"/api/purchase-orders/{po_id}/deliver", json={
             "invoice_number": "INV-B", "invoice_date": "2026-02-10", "invoice_amount": 1000,
-            "lines": [{"pending_asset_id": lines2[0]["id"], "serial_number": "SN-B", "initial_holder_id": ctx["stock_id"]}],
+            "lines": [{"pending_asset_id": lines2[0]["id"], "serial_number": "SN-B", "initial_asset_user_id": ctx["stock_id"]}],
         }, headers=headers)
         # Only INV-A's PI recorded -- INV-B's is still outstanding.
         await client.post(f"/api/purchase-orders/{po_id}/record-pi", json={
@@ -288,11 +288,11 @@ class TestPiStatusOnPoListAndGet:
         }, headers=headers)).json()
         await client.post(f"/api/purchase-orders/{po_id}/deliver", json={
             "invoice_number": "INV-A", "invoice_date": "2026-02-01", "invoice_amount": 1000,
-            "lines": [{"pending_asset_id": lines1[0]["id"], "serial_number": "SN-A2", "initial_holder_id": ctx["stock_id"]}],
+            "lines": [{"pending_asset_id": lines1[0]["id"], "serial_number": "SN-A2", "initial_asset_user_id": ctx["stock_id"]}],
         }, headers=headers)
         await client.post(f"/api/purchase-orders/{po_id}/deliver", json={
             "invoice_number": "INV-B", "invoice_date": "2026-02-10", "invoice_amount": 1000,
-            "lines": [{"pending_asset_id": lines2[0]["id"], "serial_number": "SN-B2", "initial_holder_id": ctx["stock_id"]}],
+            "lines": [{"pending_asset_id": lines2[0]["id"], "serial_number": "SN-B2", "initial_asset_user_id": ctx["stock_id"]}],
         }, headers=headers)
         await client.post(f"/api/purchase-orders/{po_id}/record-pi", json={
             "invoice_number": "INV-A", "pi_number": "PI-A", "pi_date": "2026-02-20",

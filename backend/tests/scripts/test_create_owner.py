@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from app.core.db import SessionLocal
 from app.core.security import verify_password
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.masters.models import Company, Department, Location
 from scripts.create_owner import ensure_owner
 
@@ -20,7 +20,7 @@ async def test_create_owner_creates_expected_records_with_random_temp_password()
         company = await session.get(Company, result["company_id"])
         location = await session.get(Location, result["location_id"])
         department = await session.get(Department, result["department_id"])
-        holder = await session.get(Holder, result["holder_id"])
+        asset_user = await session.get(AssetUser, result["asset_user_id"])
 
         assert company.code == "CKS"
         assert company.name == "Citykart Stores"
@@ -30,20 +30,20 @@ async def test_create_owner_creates_expected_records_with_random_temp_password()
 
         assert department.name == "IT"
 
-        assert holder.emp_code == "CS6872"
-        assert holder.name == "Ankur Pahwa"
-        assert holder.email == "ankur.pahwa@citykartstores.com"
-        assert holder.holder_type == "EMPLOYEE"
-        assert holder.role == "ADMIN"
-        assert holder.company_id == company.id
-        assert holder.location_id == location.id
-        assert holder.department_id == department.id
-        assert holder.must_change_password is True
+        assert asset_user.emp_code == "CS6872"
+        assert asset_user.name == "Ankur Pahwa"
+        assert asset_user.email == "ankur.pahwa@citykartstores.com"
+        assert asset_user.asset_user_type == "EMPLOYEE"
+        assert asset_user.role == "ADMIN"
+        assert asset_user.company_id == company.id
+        assert asset_user.location_id == location.id
+        assert asset_user.department_id == department.id
+        assert asset_user.must_change_password is True
 
         # The generated temp password must genuinely verify against the
         # stored Argon2 hash (proves it isn't a hardcoded/fake value and
         # that no plaintext password was persisted anywhere).
-        assert verify_password(temp_password, holder.password_hash) is True
+        assert verify_password(temp_password, asset_user.password_hash) is True
 
 
 async def test_create_owner_is_idempotent_and_does_not_touch_password_on_rerun():
@@ -52,8 +52,8 @@ async def test_create_owner_is_idempotent_and_does_not_touch_password_on_rerun()
         await session.commit()
 
     async with SessionLocal() as session:
-        holder_after_first = await session.get(Holder, first["holder_id"])
-        password_hash_after_first = holder_after_first.password_hash
+        asset_user_after_first = await session.get(AssetUser, first["asset_user_id"])
+        password_hash_after_first = asset_user_after_first.password_hash
 
     async with SessionLocal() as session:
         second = await ensure_owner(session)
@@ -61,7 +61,7 @@ async def test_create_owner_is_idempotent_and_does_not_touch_password_on_rerun()
 
     assert second["created"] is False
     assert second["temp_password"] is None
-    assert second["holder_id"] == first["holder_id"]
+    assert second["asset_user_id"] == first["asset_user_id"]
     assert second["company_id"] == first["company_id"]
     assert second["location_id"] == first["location_id"]
     assert second["department_id"] == first["department_id"]
@@ -70,17 +70,17 @@ async def test_create_owner_is_idempotent_and_does_not_touch_password_on_rerun()
         companies = (await session.execute(select(Company).where(Company.code == "CKS"))).scalars().all()
         locations = (await session.execute(select(Location).where(Location.code == "HO"))).scalars().all()
         departments = (await session.execute(select(Department).where(Department.name == "IT"))).scalars().all()
-        holders = (await session.execute(select(Holder).where(Holder.emp_code == "CS6872"))).scalars().all()
+        asset_users = (await session.execute(select(AssetUser).where(AssetUser.emp_code == "CS6872"))).scalars().all()
 
         assert len(companies) == 1
         assert len(locations) == 1
         assert len(departments) == 1
-        assert len(holders) == 1
+        assert len(asset_users) == 1
 
-        holder_after_second = holders[0]
-        assert holder_after_second.id == first["holder_id"]
+        asset_user_after_second = asset_users[0]
+        assert asset_user_after_second.id == first["asset_user_id"]
         # Re-running must never silently reset a real admin's password.
-        assert holder_after_second.password_hash == password_hash_after_first
+        assert asset_user_after_second.password_hash == password_hash_after_first
 
 
 async def test_create_owner_reuses_existing_head_office_location_under_different_code():
@@ -114,5 +114,5 @@ async def test_create_owner_reuses_existing_head_office_location_under_different
         assert locations[0].id == existing_location_id
         assert locations[0].code == "OFFICE-01"  # untouched, not overwritten
 
-        holder = await session.get(Holder, result["holder_id"])
-        assert holder.location_id == existing_location_id
+        asset_user = await session.get(AssetUser, result["asset_user_id"])
+        assert asset_user.location_id == existing_location_id

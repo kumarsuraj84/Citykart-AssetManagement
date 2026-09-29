@@ -5,7 +5,7 @@ from app.core.security import hash_password
 from app.assets.service import procure_assets
 from app.documents.service import MAX_SIZE_BYTES
 from app.masters.models import Company, CostCenter, AssetCategory, AssetSubcategory, Location, Department
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.numbering.models import CodeRule
 
 
@@ -24,9 +24,9 @@ async def test_upload_and_list_document(client, tmp_path, monkeypatch):
         dept = Department(name="IT-DOC1")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = Holder(company_id=co.id, emp_code="ITSTOCK-DOC1", name="IT Stock-HO", holder_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="HOLDER")
-        it_admin = Holder(company_id=co.id, emp_code="ITA-DOC1", name="IT Admin", holder_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, emp_code="ITSTOCK-DOC1", name="IT Stock-HO", asset_user_type="IT_STOCK",
+                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+        it_admin = AssetUser(company_id=co.id, emp_code="ITA-DOC1", name="IT Admin", asset_user_type="EMPLOYEE",
                            location_id=loc.id, department_id=dept.id, role="ADMIN",
                            password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/CK_",
@@ -35,7 +35,7 @@ async def test_upload_and_list_document(client, tmp_path, monkeypatch):
         await session.commit()
         assets = await procure_assets(session, {
             "company_id": co.id, "cost_center_id": cc.id, "category_id": cat.id, "subcategory_id": sub.id,
-            "description": "Doc Laptop", "purchase_date": date(2025, 12, 10), "initial_holder_id": stock.id,
+            "description": "Doc Laptop", "purchase_date": date(2025, 12, 10), "initial_asset_user_id": stock.id,
         }, quantity=1, actor=it_admin)
         await session.commit()
         asset_id = assets[0].id
@@ -83,13 +83,13 @@ async def _setup_asset(session, co_code="CKS-DOC2"):
     dept = Department(name=f"IT-{co_code}")
     session.add_all([sub, cc, loc, dept])
     await session.flush()
-    stock = Holder(company_id=co.id, emp_code=f"ITSTOCK-{co_code}", name="IT Stock-HO", holder_type="IT_STOCK",
-                    location_id=loc.id, department_id=dept.id, role="HOLDER")
-    it_admin = Holder(company_id=co.id, emp_code=f"ITA-{co_code}", name="IT Admin", holder_type="EMPLOYEE",
+    stock = AssetUser(company_id=co.id, emp_code=f"ITSTOCK-{co_code}", name="IT Stock-HO", asset_user_type="IT_STOCK",
+                    location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+    it_admin = AssetUser(company_id=co.id, emp_code=f"ITA-{co_code}", name="IT Admin", asset_user_type="EMPLOYEE",
                        location_id=loc.id, department_id=dept.id, role="ADMIN",
                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
-    other_employee = Holder(company_id=co.id, emp_code=f"EMP-{co_code}", name="Other Employee", holder_type="EMPLOYEE",
-                             location_id=loc.id, department_id=dept.id, role="HOLDER",
+    other_employee = AssetUser(company_id=co.id, emp_code=f"EMP-{co_code}", name="Other Employee", asset_user_type="EMPLOYEE",
+                             location_id=loc.id, department_id=dept.id, role="ASSET_USER",
                              password_hash=hash_password("Passw0rd!"), must_change_password=False)
     rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/CK_",
                      suffix_template="", start_number=1, pad_width=0)
@@ -97,7 +97,7 @@ async def _setup_asset(session, co_code="CKS-DOC2"):
     await session.commit()
     assets = await procure_assets(session, {
         "company_id": co.id, "cost_center_id": cc.id, "category_id": cat.id, "subcategory_id": sub.id,
-        "description": "Doc Laptop 2", "purchase_date": date(2025, 12, 10), "initial_holder_id": stock.id,
+        "description": "Doc Laptop 2", "purchase_date": date(2025, 12, 10), "initial_asset_user_id": stock.id,
     }, quantity=1, actor=it_admin)
     await session.commit()
     return co, it_admin, other_employee, assets[0].id
@@ -208,7 +208,7 @@ async def test_disallowed_extension_is_rejected(client, tmp_path, monkeypatch):
     assert list_resp.json() == []
 
 
-async def test_holder_out_of_scope_cannot_download(client, tmp_path, monkeypatch):
+async def test_asset_user_out_of_scope_cannot_download(client, tmp_path, monkeypatch):
     from app.core.config import settings
     monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
 
@@ -227,14 +227,14 @@ async def test_holder_out_of_scope_cannot_download(client, tmp_path, monkeypatch
     )
     doc_id = upload_resp.json()["id"]
 
-    # other_employee is a HOLDER-role user who does not currently hold this asset
-    # (the IT_STOCK holder does). They must not be able to download its document,
+    # other_employee is a ASSET_USER-role user who does not currently hold this asset
+    # (the IT_STOCK asset_user does). They must not be able to download its document,
     # even though they know the (guessable, sequential) document id.
-    holder_resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": other_employee.emp_code, "password": "Passw0rd!"})
-    holder_headers = {"Authorization": f"Bearer {holder_resp.json()['access_token']}"}
+    asset_user_resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": other_employee.emp_code, "password": "Passw0rd!"})
+    asset_user_headers = {"Authorization": f"Bearer {asset_user_resp.json()['access_token']}"}
 
-    download_resp = await client.get(f"/api/documents/{doc_id}/download", headers=holder_headers)
+    download_resp = await client.get(f"/api/documents/{doc_id}/download", headers=asset_user_headers)
     assert download_resp.status_code == 404
 
-    list_resp = await client.get(f"/api/assets/{asset_id}/documents", headers=holder_headers)
+    list_resp = await client.get(f"/api/assets/{asset_id}/documents", headers=asset_user_headers)
     assert list_resp.status_code == 404

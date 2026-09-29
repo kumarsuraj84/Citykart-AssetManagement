@@ -4,10 +4,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
-from app.core.deps import STAFF_ROLES, get_current_holder, require_role, scoped_company_ids
-from app.holders.service import HolderService
-from app.holders.schemas import CompanyAccessIn, CompanyAccessOut, HolderIn, HolderOut, ResetPasswordOut
-from app.holders.models import HOLDER_TYPES, ROLES, Holder
+from app.core.deps import STAFF_ROLES, get_current_asset_user, require_role, scoped_company_ids
+from app.asset_users.service import AssetUserService
+from app.asset_users.schemas import CompanyAccessIn, CompanyAccessOut, AssetUserIn, AssetUserOut, ResetPasswordOut
+from app.asset_users.models import ASSET_USER_TYPES, ROLES, AssetUser
 from app.masters.bulk_import_export import (
     FieldSpec, ImportScopeError, ImportTemplateError,
     build_template as build_import_template, commit_import, export_rows, preview_import,
@@ -15,22 +15,22 @@ from app.masters.bulk_import_export import (
 from app.masters.models import Company, Department, Location
 from app.masters.schemas import CompanyOut
 
-router = APIRouter(prefix="/api/holders", tags=["holders"])
+router = APIRouter(prefix="/api/asset-users", tags=["asset-users"])
 
-# AM-25: Holder import reuses the exact same generic engine every master
+# AM-25: AssetUser import reuses the exact same generic engine every master
 # uses (app.masters.bulk_import_export) rather than a bespoke copy -- the
 # only thing genuinely different here is that it's ADMIN-only (matching
-# create_holder's own role requirement, stricter than the ADMIN+IT_TEAM
-# masters use) and that an imported holder gets no password (password_hash
+# create_asset_user's own role requirement, stricter than the ADMIN+IT_TEAM
+# masters use) and that an imported asset_user gets no password (password_hash
 # stays NULL, must_change_password defaults True on the model itself) --
 # an ADMIN activates login for one afterward via the existing Reset
-# Password action, same as any other holder that doesn't need one yet
+# Password action, same as any other asset_user that doesn't need one yet
 # (STORE/IT_STOCK/INSTALLED types typically never do).
-HOLDER_IMPORT_FIELDS = [
+ASSET_USER_IMPORT_FIELDS = [
     FieldSpec("Company Code", "company_id", required=True, lookup=(Company, "code")),
     FieldSpec("Emp Code", "emp_code", required=True, max_length=50),
     FieldSpec("Name", "name", required=True, max_length=200),
-    FieldSpec("Type", "holder_type", required=True, kind="enum", enum_values=HOLDER_TYPES),
+    FieldSpec("Type", "asset_user_type", required=True, kind="enum", enum_values=ASSET_USER_TYPES),
     FieldSpec("Location Code", "location_id", required=True, lookup=(Location, "code"), scope_by="company_id"),
     FieldSpec("Department", "department_id", lookup=(Department, "name")),
     FieldSpec("Email", "email", max_length=200),
@@ -40,50 +40,50 @@ HOLDER_IMPORT_FIELDS = [
 
 
 @router.get("/export")
-async def export_holders(
+async def export_asset_users(
     session: AsyncSession = Depends(get_session),
-    holder=Depends(require_role("ADMIN")),
+    asset_user=Depends(require_role("ADMIN")),
 ):
-    allowed = await scoped_company_ids(session, holder)
-    content = await export_rows(session, Holder, HOLDER_IMPORT_FIELDS, allowed, "company_id")
+    allowed = await scoped_company_ids(session, asset_user)
+    content = await export_rows(session, AssetUser, ASSET_USER_IMPORT_FIELDS, allowed, "company_id")
     return Response(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=holders_export.xlsx"},
+        headers={"Content-Disposition": "attachment; filename=asset_users_export.xlsx"},
     )
 
 
 @router.get("/import/template")
-async def holders_import_template(_h=Depends(require_role("ADMIN"))):
+async def asset_users_import_template(_h=Depends(require_role("ADMIN"))):
     return Response(
-        content=build_import_template(HOLDER_IMPORT_FIELDS),
+        content=build_import_template(ASSET_USER_IMPORT_FIELDS),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=holders_import_template.xlsx"},
+        headers={"Content-Disposition": "attachment; filename=asset_users_import_template.xlsx"},
     )
 
 
 @router.post("/import/preview")
-async def holders_import_preview(
+async def asset_users_import_preview(
     file: UploadFile = File(...), session: AsyncSession = Depends(get_session),
-    holder=Depends(require_role("ADMIN")),
+    asset_user=Depends(require_role("ADMIN")),
 ):
     content = await file.read()
-    allowed = await scoped_company_ids(session, holder)
+    allowed = await scoped_company_ids(session, asset_user)
     try:
-        return await preview_import(session, HOLDER_IMPORT_FIELDS, content, allowed, "company_id")
+        return await preview_import(session, ASSET_USER_IMPORT_FIELDS, content, allowed, "company_id")
     except ImportTemplateError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
 
 
 @router.post("/import/commit")
-async def holders_import_commit(
+async def asset_users_import_commit(
     file: UploadFile = File(...), session: AsyncSession = Depends(get_session),
-    holder=Depends(require_role("ADMIN")),
+    asset_user=Depends(require_role("ADMIN")),
 ):
     content = await file.read()
-    allowed = await scoped_company_ids(session, holder)
+    allowed = await scoped_company_ids(session, asset_user)
     try:
-        result = await commit_import(session, Holder, HOLDER_IMPORT_FIELDS, content, holder, allowed, "company_id")
+        result = await commit_import(session, AssetUser, ASSET_USER_IMPORT_FIELDS, content, asset_user, allowed, "company_id")
     except ImportScopeError as exc:
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc))
     except ImportTemplateError as exc:
@@ -98,41 +98,41 @@ async def holders_import_commit(
 @router.get("/me/companies", response_model=list[CompanyOut])
 async def my_companies(
     session: AsyncSession = Depends(get_session),
-    holder=Depends(get_current_holder),
+    asset_user=Depends(get_current_asset_user),
 ):
     """AM-24: which companies the CURRENT caller may create/write records
     under -- their own home company, plus any granted via
-    holder_company_access (ADMIN: every active company). Add Asset/New PO
+    asset_user_company_access (ADMIN: every active company). Add Asset/New PO
     use this to offer a Company picker only when it's actually meaningful
     (more than one company), rather than always silently using the
     caller's own home company regardless of what else they've been
     granted."""
-    allowed = await scoped_company_ids(session, holder)
+    allowed = await scoped_company_ids(session, asset_user)
     stmt = select(Company).where(Company.is_active.is_(True)).order_by(Company.name)
     if allowed is not None:
         stmt = stmt.where(Company.id.in_(allowed))
     return (await session.execute(stmt)).scalars().all()
 
 
-def _validate_holder_fields(data: dict) -> None:
-    # AM-01 confirmed holder_type/role accepted any string with no validation at all --
+def _validate_asset_user_fields(data: dict) -> None:
+    # AM-01 confirmed asset_user_type/role accepted any string with no validation at all --
     # AM-02 closes that gap, same pattern as documents/router.py's existing doc_type
-    # check. HOLDER_TYPES/ROLES were already defined in app/holders/models.py and used
+    # check. ASSET_USER_TYPES/ROLES were already defined in app/asset_users/models.py and used
     # everywhere else in the codebase; they just weren't checked against an incoming
     # request body.
-    if data.get("holder_type") not in HOLDER_TYPES:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"holder_type must be one of {HOLDER_TYPES}")
+    if data.get("asset_user_type") not in ASSET_USER_TYPES:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"asset_user_type must be one of {ASSET_USER_TYPES}")
     if data.get("role") not in ROLES:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"role must be one of {ROLES}")
 
 
-async def _validate_holder_references(session: AsyncSession, data: dict) -> None:
-    # AM-08: `company_id`/`location_id` are NOT NULL foreign keys on `holder`
+async def _validate_asset_user_references(session: AsyncSession, data: dict) -> None:
+    # AM-08: `company_id`/`location_id` are NOT NULL foreign keys on `asset_user`
     # (location_id is required by the schema -- it was never actually optional,
     # see DECISIONS.md); `department_id` is genuinely optional. Before AM-08 a
     # nonexistent id here (most commonly the frontend's old `0` sentinel for
     # "nothing selected") reached the database unchecked and surfaced as a raw,
-    # unhandled IntegrityError/500. This mirrors _validate_holder_fields' own
+    # unhandled IntegrityError/500. This mirrors _validate_asset_user_fields' own
     # pattern (validate before the service ever touches the session) rather
     # than catching the DB exception after the fact, per the guardrail against
     # leaking DB errors in API responses.
@@ -143,7 +143,7 @@ async def _validate_holder_references(session: AsyncSession, data: dict) -> None
     if location is None or not location.is_active:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "location not found or inactive")
     if location.company_id != data.get("company_id"):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "location must belong to the same company as the holder")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "location must belong to the same company as the asset user")
     department_id = data.get("department_id")
     if department_id is not None:
         department = await session.get(Department, department_id)
@@ -151,36 +151,36 @@ async def _validate_holder_references(session: AsyncSession, data: dict) -> None
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "department not found or inactive")
 
 
-@router.get("", response_model=list[HolderOut])
-async def list_holders(
+@router.get("", response_model=list[AssetUserOut])
+async def list_asset_users(
     company_id: int | None = Query(None),
-    holder_type: str | None = Query(None),
+    asset_user_type: str | None = Query(None),
     session: AsyncSession = Depends(get_session),
-    holder=Depends(require_role(*STAFF_ROLES)),
+    asset_user=Depends(require_role(*STAFF_ROLES)),
 ):
-    # Staff only: the list carries every holder's email/phone, and a HOLDER may
+    # Staff only: the list carries every asset_user's email/phone, and a ASSET_USER may
     # only see their own currently-held assets (spec §6) -- 403 for them.
-    allowed_company_ids = await scoped_company_ids(session, holder)
-    return await HolderService(session).list(
-        holder_type=holder_type,
+    allowed_company_ids = await scoped_company_ids(session, asset_user)
+    return await AssetUserService(session).list(
+        asset_user_type=asset_user_type,
         allowed_company_ids=allowed_company_ids,
         requested_company_id=company_id,
     )
 
 
-@router.post("", response_model=HolderOut, status_code=201)
-async def create_holder(
-    body: HolderIn,
+@router.post("", response_model=AssetUserOut, status_code=201)
+async def create_asset_user(
+    body: AssetUserIn,
     session: AsyncSession = Depends(get_session),
-    holder=Depends(require_role("ADMIN")),
+    asset_user=Depends(require_role("ADMIN")),
 ):
     data = body.model_dump()
-    _validate_holder_fields(data)
-    await _validate_holder_references(session, data)
+    _validate_asset_user_fields(data)
+    await _validate_asset_user_references(session, data)
     try:
-        return await HolderService(session).create(data, holder.id)
+        return await AssetUserService(session).create(data, asset_user.id)
     except IntegrityError:
-        # AM-09: `emp_code` is unique per company (Holder.__table_args__) -- reusing
+        # AM-09: `emp_code` is unique per company (AssetUser.__table_args__) -- reusing
         # one is an ordinary mistake, not malformed input, and previously hit an
         # unhandled 500 (a raw asyncpg UniqueViolationError) instead of a normal
         # validation error. Rollback is required before the session can be used
@@ -189,18 +189,18 @@ async def create_holder(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "an employee code already exists for this company")
 
 
-@router.put("/{holder_id}", response_model=HolderOut)
-async def update_holder(
-    holder_id: int,
-    body: HolderIn,
+@router.put("/{asset_user_id}", response_model=AssetUserOut)
+async def update_asset_user(
+    asset_user_id: int,
+    body: AssetUserIn,
     session: AsyncSession = Depends(get_session),
-    holder=Depends(require_role("ADMIN")),
+    asset_user=Depends(require_role("ADMIN")),
 ):
     data = body.model_dump()
-    _validate_holder_fields(data)
-    await _validate_holder_references(session, data)
+    _validate_asset_user_fields(data)
+    await _validate_asset_user_references(session, data)
     try:
-        obj = await HolderService(session).update(holder_id, data, holder.id)
+        obj = await AssetUserService(session).update(asset_user_id, data, asset_user.id)
     except IntegrityError:
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "an employee code already exists for this company")
@@ -209,52 +209,52 @@ async def update_holder(
     return obj
 
 
-@router.delete("/{holder_id}", status_code=204)
-async def deactivate_holder(
-    holder_id: int,
+@router.delete("/{asset_user_id}", status_code=204)
+async def deactivate_asset_user(
+    asset_user_id: int,
     session: AsyncSession = Depends(get_session),
-    holder=Depends(require_role("ADMIN")),
+    asset_user=Depends(require_role("ADMIN")),
 ):
-    ok = await HolderService(session).deactivate(holder_id, holder.id)
+    ok = await AssetUserService(session).deactivate(asset_user_id, asset_user.id)
     if not ok:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
 
 
-@router.post("/{holder_id}/reset-password", response_model=ResetPasswordOut)
+@router.post("/{asset_user_id}/reset-password", response_model=ResetPasswordOut)
 async def reset_password(
-    holder_id: int,
+    asset_user_id: int,
     session: AsyncSession = Depends(get_session),
     actor=Depends(require_role("ADMIN")),
 ):
-    temp = await HolderService(session).reset_password(holder_id, actor.id)
+    temp = await AssetUserService(session).reset_password(asset_user_id, actor.id)
     if temp is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     return ResetPasswordOut(temp_password=temp)
 
 
-@router.post("/{holder_id}/company-access", status_code=204)
+@router.post("/{asset_user_id}/company-access", status_code=204)
 async def set_company_access(
-    holder_id: int,
+    asset_user_id: int,
     body: CompanyAccessIn,
     session: AsyncSession = Depends(get_session),
     _actor=Depends(require_role("ADMIN")),
 ):
-    ok = await HolderService(session).set_company_access(holder_id, body.company_ids)
+    ok = await AssetUserService(session).set_company_access(asset_user_id, body.company_ids)
     if not ok:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
 
 
-@router.get("/{holder_id}/company-access", response_model=CompanyAccessOut)
+@router.get("/{asset_user_id}/company-access", response_model=CompanyAccessOut)
 async def get_company_access(
-    holder_id: int,
+    asset_user_id: int,
     session: AsyncSession = Depends(get_session),
     _actor=Depends(require_role("ADMIN")),
 ):
-    """AM-24: the extra companies (beyond the holder's own home company)
-    this holder has been granted -- lets the Holders screen show current
+    """AM-24: the extra companies (beyond the asset_user's own home company)
+    this asset_user has been granted -- lets the AssetUsers screen show current
     grants before the ADMIN changes them, rather than only ever writing
     blind."""
-    company_ids = await HolderService(session).get_company_access(holder_id)
+    company_ids = await AssetUserService(session).get_company_access(asset_user_id)
     if company_ids is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     return CompanyAccessOut(company_ids=company_ids)

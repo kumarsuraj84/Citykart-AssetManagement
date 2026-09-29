@@ -31,7 +31,7 @@ const CUSTOM_FIELDS = [
   { id: 5, field_key: "refurbished", label: "Refurbished?", field_type: "checkbox", options: null, is_required: false, sort_order: 5, company_id: null },
 ];
 
-function mockGets({ holders = [{ id: 4, name: "IT Stock-HO" }], customFields = [] as unknown[] } = {}) {
+function mockGets({ asset_users = [{ id: 4, name: "IT Stock-HO" }], customFields = [] as unknown[] } = {}) {
   (apiClient.get as any).mockImplementation((path: string) => {
     if (path.startsWith("/masters/categories")) return Promise.resolve([{ id: 1, code: "IT", name: "IT Equipment" }]);
     if (path.startsWith("/masters/subcategories")) return Promise.resolve([{ id: 2, code: "LAP", name: "Laptop", category_id: 1 }]);
@@ -39,7 +39,7 @@ function mockGets({ holders = [{ id: 4, name: "IT Stock-HO" }], customFields = [
     if (path.startsWith("/masters/vendors")) return Promise.resolve([{ id: 7, code: "VND1", name: "Acme Traders" }]);
     if (path.startsWith("/masters/brands")) return Promise.resolve([{ id: 9, code: "DELL", name: "Dell" }]);
     if (path.startsWith("/masters/custom-fields")) return Promise.resolve(customFields);
-    if (path.startsWith("/holders")) return Promise.resolve(holders);
+    if (path.startsWith("/asset-users")) return Promise.resolve(asset_users);
     return Promise.resolve([]);
   });
 }
@@ -54,7 +54,7 @@ async function pickSelectOption(label: RegExp | string, optionName: RegExp | str
 // PO/Invoice/PI are optional as of AM-19 but filled in here anyway for
 // tests that want a fully-populated form, not just the minimum Save needs.
 // Every test that expects Save to become enabled needs at least the
-// mandatory subset filled, on top of whatever Category/Cost Centre/Holder
+// mandatory subset filled, on top of whatever Category/Cost Centre/AssetUser
 // selection it already makes. The Serial Number label query is anchored
 // (^...$) because an unanchored /serial number/i also matches the "No
 // serial number" checkbox's own aria-label.
@@ -263,10 +263,10 @@ describe("AddAssetForm", () => {
           brand_id: null, model: null, serial_number: null, vendor_id: null, po_number: null, po_date: null,
           invoice_number: null, invoice_date: null, pi_number: null, pi_date: null, purchase_cost: 0,
           tax_percent: 0, tax_amount: 0, total_cost: 0, purchase_date: "2025-06-01", warranty_upto: null,
-          current_holder_id: 4, status_since: "2025-06-01", custom_fields: {},
+          current_asset_user_id: 4, status_since: "2025-06-01", custom_fields: {},
           category_name: "IT Equipment", subcategory_name: null, cost_center_name: "Head Office", vendor_name: null,
           brand_name: null,
-          current_holder_name: "IT Stock-HO", current_holder_type: "IT_STOCK", location_name: null, department_name: null,
+          current_asset_user_name: "IT Stock-HO", current_asset_user_type: "IT_STOCK", location_name: null, department_name: null,
         });
       }
       if (path === "/assets/42/events") return Promise.resolve([]);
@@ -276,7 +276,7 @@ describe("AddAssetForm", () => {
       if (path.startsWith("/masters/cost-centers")) return Promise.resolve([{ id: 3, code: "HO01", name: "Head Office" }]);
       if (path.startsWith("/masters/vendors")) return Promise.resolve([{ id: 7, code: "VND1", name: "Acme Traders" }]);
       if (path.startsWith("/masters/custom-fields")) return Promise.resolve([]);
-      if (path.startsWith("/holders")) return Promise.resolve([{ id: 4, name: "IT Stock-HO" }]);
+      if (path.startsWith("/asset-users")) return Promise.resolve([{ id: 4, name: "IT Stock-HO" }]);
       return Promise.resolve([]);
     });
     window.fetch = vi.fn().mockResolvedValue({ ok: false, status: 404 }) as any;
@@ -372,7 +372,7 @@ describe("AddAssetForm", () => {
     (apiClient.get as any).mockImplementation((path: string) => {
       if (path.startsWith("/masters/categories")) return Promise.resolve([{ id: 1, code: "IT", name: "IT Equipment" }]);
       if (path.startsWith("/masters/cost-centers")) return Promise.resolve([]);
-      if (path.startsWith("/holders")) return Promise.resolve([{ id: 4, name: "IT Stock-HO" }]);
+      if (path.startsWith("/asset-users")) return Promise.resolve([{ id: 4, name: "IT Stock-HO" }]);
       return Promise.resolve([]);
     });
 
@@ -386,23 +386,23 @@ describe("AddAssetForm", () => {
     expect(apiClient.post).not.toHaveBeenCalled();
   });
 
-  it("does not submit while no IT_STOCK holder is available for the company", async () => {
-    mockGets({ holders: [] });
+  it("does not submit while no IT_STOCK asset_user is available for the company", async () => {
+    mockGets({ asset_users: [] });
 
     renderFormAt();
     fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Test Laptop" } });
     await pickSelectOption(/^category$/i, "IT Equipment");
     await pickSelectOption(/cost centre/i, "Head Office");
 
-    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("/holders")));
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("/asset-users")));
 
-    expect(screen.getByText(/no it stock holder found for this company/i)).toBeInTheDocument();
+    expect(screen.getByText(/no it stock asset user found for this company/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /save/i })).toBeDisabled();
     expect(apiClient.post).not.toHaveBeenCalled();
   });
 
-  it("leaves the Initial Holder select blank when the company has more than one IT_STOCK holder, and blocks Save until one is explicitly picked", async () => {
-    mockGets({ holders: [{ id: 4, name: "IT Stock-HO" }, { id: 5, name: "IT Stock-WH-F" }] });
+  it("leaves the Initial AssetUser select blank when the company has more than one IT_STOCK asset_user, and blocks Save until one is explicitly picked", async () => {
+    mockGets({ asset_users: [{ id: 4, name: "IT Stock-HO" }, { id: 5, name: "IT Stock-WH-F" }] });
     // 2 created assets (not 1), purely so clicking Save at the end of this
     // test doesn't trigger the single-asset navigate-to-Asset-360 flow.
     (apiClient.post as any).mockResolvedValue([
@@ -415,13 +415,13 @@ describe("AddAssetForm", () => {
     await pickSelectOption(/^category$/i, "IT Equipment");
     await pickSelectOption(/cost centre/i, "Head Office");
 
-    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("/holders")));
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("/asset-users")));
 
-    // Neither of the two holders is pre-selected -- the combobox still shows
+    // Neither of the two asset_users is pre-selected -- the combobox still shows
     // its placeholder, and clicking Save without a pick must not submit.
-    const holderCombobox = screen.getByRole("combobox", { name: /goes into/i });
-    expect(holderCombobox).not.toHaveTextContent("IT Stock-HO");
-    expect(holderCombobox).not.toHaveTextContent("IT Stock-WH-F");
+    const assetUserCombobox = screen.getByRole("combobox", { name: /goes into/i });
+    expect(assetUserCombobox).not.toHaveTextContent("IT Stock-HO");
+    expect(assetUserCombobox).not.toHaveTextContent("IT Stock-WH-F");
     expect(screen.getByRole("button", { name: /save/i })).toBeDisabled();
 
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
@@ -433,20 +433,20 @@ describe("AddAssetForm", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
     await waitFor(() =>
-      expect(apiClient.post).toHaveBeenCalledWith("/assets", expect.objectContaining({ initial_holder_id: 5 })),
+      expect(apiClient.post).toHaveBeenCalledWith("/assets", expect.objectContaining({ initial_asset_user_id: 5 })),
     );
   });
 
   it("AM-24: shows a Company picker when the caller has access to more than one, and re-scopes Cost Centre on switch", async () => {
     (apiClient.get as any).mockImplementation((path: string) => {
-      if (path === "/holders/me/companies") return Promise.resolve([{ id: 1, name: "Company A" }, { id: 2, name: "Company B" }]);
+      if (path === "/asset-users/me/companies") return Promise.resolve([{ id: 1, name: "Company A" }, { id: 2, name: "Company B" }]);
       if (path.startsWith("/masters/categories")) return Promise.resolve([{ id: 1, code: "IT", name: "IT Equipment" }]);
       if (path.startsWith("/masters/subcategories")) return Promise.resolve([{ id: 2, code: "LAP", name: "Laptop", category_id: 1 }]);
       if (path.startsWith("/masters/cost-centers?company_id=1")) return Promise.resolve([{ id: 3, name: "A Cost Centre" }]);
       if (path.startsWith("/masters/cost-centers?company_id=2")) return Promise.resolve([{ id: 30, name: "B Cost Centre" }]);
       if (path.startsWith("/masters/vendors")) return Promise.resolve([{ id: 7, name: "Acme Traders" }]);
       if (path.startsWith("/masters/custom-fields")) return Promise.resolve([]);
-      if (path.startsWith("/holders")) return Promise.resolve([{ id: 4, name: "IT Stock-HO" }]);
+      if (path.startsWith("/asset-users")) return Promise.resolve([{ id: 4, name: "IT Stock-HO" }]);
       return Promise.resolve([]);
     });
     renderFormAt();

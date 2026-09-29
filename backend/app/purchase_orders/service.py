@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.assets.models import Asset, AssetFieldChange
 from app.assets.service import compute_tax, procure_assets
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.masters.models import AssetCategory, AssetSubcategory, CostCenter
 from app.purchase_orders.models import PendingAsset, PurchaseOrder
 
@@ -48,7 +48,7 @@ async def compute_pi_status(session: AsyncSession, po_ids: list[int]) -> dict[in
     return result
 
 
-async def create_purchase_order(session: AsyncSession, data: dict, actor: Holder) -> PurchaseOrder:
+async def create_purchase_order(session: AsyncSession, data: dict, actor: AssetUser) -> PurchaseOrder:
     cost_center = await session.get(CostCenter, data["cost_center_id"])
     if cost_center is None:
         raise ValueError(f"cost center {data['cost_center_id']} not found")
@@ -69,7 +69,7 @@ async def _validate_line_masters(session: AsyncSession, data: dict) -> None:
     """Same referential checks procure_assets already does for category/
     subcategory -- duplicated narrowly here (not imported) because
     procure_assets validates a *complete* asset-creation payload (also
-    requiring purchase_date/initial_holder_id/cost_center_id, none of which
+    requiring purchase_date/initial_asset_user_id/cost_center_id, none of which
     are picked at line-entry time -- cost centre lives on the parent PO,
     see create_purchase_order); this is the PO-entry-time subset only."""
     category = await session.get(AssetCategory, data["category_id"])
@@ -85,7 +85,7 @@ async def _validate_line_masters(session: AsyncSession, data: dict) -> None:
 
 
 async def add_pending_asset_line(
-    session: AsyncSession, purchase_order: PurchaseOrder, data: dict, actor: Holder,
+    session: AsyncSession, purchase_order: PurchaseOrder, data: dict, actor: AssetUser,
 ) -> list[PendingAsset]:
     """quantity>1 creates that many separate PendingAsset rows (each will get
     its own distinct serial number at Delivery Done) -- mirrors
@@ -115,7 +115,7 @@ async def add_pending_asset_line(
     return created
 
 
-async def update_pending_asset_line(session: AsyncSession, line: PendingAsset, data: dict, actor: Holder) -> PendingAsset:
+async def update_pending_asset_line(session: AsyncSession, line: PendingAsset, data: dict, actor: AssetUser) -> PendingAsset:
     if line.status != "PENDING":
         raise ValueError(f"cannot edit a {line.status.lower()} line")
     await _validate_line_masters(session, data)
@@ -136,7 +136,7 @@ async def update_pending_asset_line(session: AsyncSession, line: PendingAsset, d
     return line
 
 
-async def cancel_pending_asset_line(session: AsyncSession, line: PendingAsset, actor: Holder) -> PendingAsset:
+async def cancel_pending_asset_line(session: AsyncSession, line: PendingAsset, actor: AssetUser) -> PendingAsset:
     if line.status != "PENDING":
         raise ValueError(f"cannot cancel a {line.status.lower()} line")
     line.status = "CANCELLED"
@@ -148,7 +148,7 @@ async def cancel_pending_asset_line(session: AsyncSession, line: PendingAsset, a
 async def deliver_pending_assets(
     session: AsyncSession, lines: list[PendingAsset], deliveries: dict[int, dict],
     po_number: str, po_date, vendor_id: int | None, invoice_number: str, invoice_date, invoice_amount: float,
-    actor: Holder,
+    actor: AssetUser,
 ) -> list[PendingAsset]:
     """One procure_assets(..., quantity=1, ...) call per line -- each
     PendingAsset already represents exactly one physical unit with its own
@@ -181,7 +181,7 @@ async def deliver_pending_assets(
                     "tax_percent": line.tax_percent, "purchase_date": invoice_date,
                     "brand_id": line.brand_id, "model": line.model, "warranty_years": line.warranty_years,
                     "serial_number": delivery["serial_number"],
-                    "initial_holder_id": delivery["initial_holder_id"],
+                    "initial_asset_user_id": delivery["initial_asset_user_id"],
                     "po_number": po_number, "po_date": po_date, "vendor_id": vendor_id,
                     "invoice_number": invoice_number, "invoice_date": invoice_date,
                     "invoice_amount": invoice_amount,
@@ -190,7 +190,7 @@ async def deliver_pending_assets(
             )
             line.status = "DELIVERED"
             line.serial_number = delivery["serial_number"]
-            line.initial_holder_id = delivery["initial_holder_id"]
+            line.initial_asset_user_id = delivery["initial_asset_user_id"]
             line.invoice_number = invoice_number
             line.invoice_date = invoice_date
             line.invoice_amount = invoice_amount
@@ -204,7 +204,7 @@ async def deliver_pending_assets(
 
 async def record_pi_for_invoice(
     session: AsyncSession, purchase_order: PurchaseOrder, invoice_number: str,
-    pi_number: str, pi_date: date, overwrite: bool, actor: Holder,
+    pi_number: str, pi_date: date, overwrite: bool, actor: AssetUser,
 ) -> dict:
     """AM-19: PI Number/Date arrive from Finance well after delivery, and
     ground reality is one PO can be delivered across several invoices (a

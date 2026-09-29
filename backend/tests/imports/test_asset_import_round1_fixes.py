@@ -1,12 +1,12 @@
 """Round-1 review fixes for Task 23 (asset Excel import):
 
 1. (Critical) commit_import used to precompute the bootstrap Asset.status from the
-   target holder's type (e.g. ALLOTTED for an EMPLOYEE) *before* calling apply_event.
+   target asset_user's type (e.g. ALLOTTED for an EMPLOYEE) *before* calling apply_event.
    Since apply_event's IMPORTED transition is only defined FROM IN_STOCK, any row whose
-   holder wasn't IT_STOCK made apply_event raise immediately -- import only ever worked
-   when every row's holder happened to be IT_STOCK. Fixed by always bootstrapping
+   asset_user wasn't IT_STOCK made apply_event raise immediately -- import only ever worked
+   when every row's asset_user happened to be IT_STOCK. Fixed by always bootstrapping
    status="IN_STOCK" (exactly like procure_assets) and letting apply_event derive the
-   real post-import status from the holder's type.
+   real post-import status from the asset_user's type.
 2. (Important) a LifecycleError from apply_event used to propagate out of commit_import
    uncaught, 500-ing the whole request instead of reporting a per-row error and letting
    the rest of the batch continue -- unlike every other apply_event call site in this
@@ -23,7 +23,7 @@ from sqlalchemy import select
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.masters.models import Company, CostCenter, AssetCategory, AssetSubcategory, Location, Department, Vendor
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.numbering.models import CodeRule
 from app.assets.models import Asset
 
@@ -37,7 +37,7 @@ def _build_workbook(rows: list[list]) -> bytes:
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.append(["Legacy Asset Code", "Company Code", "Cost Centre Code", "Category Code", "Subcategory Code",
-               "Description", "Invoice Date", "Initial Holder Code", "Vendor Code", "Serial Number"])
+               "Description", "Invoice Date", "Initial AssetUser Code", "Vendor Code", "Serial Number"])
     for row in rows:
         ws.append(row)
     buf = io.BytesIO()
@@ -46,8 +46,8 @@ def _build_workbook(rows: list[list]) -> bytes:
 
 
 async def _seed_company(code_suffix: str):
-    """Creates the shared masters + an ADMIN actor + an IT_STOCK holder for a fresh,
-    uniquely-suffixed company, and returns (company, admin_holder, stock_holder, vendor)."""
+    """Creates the shared masters + an ADMIN actor + an IT_STOCK asset_user for a fresh,
+    uniquely-suffixed company, and returns (company, admin_asset_user, stock_asset_user, vendor)."""
     async with SessionLocal() as session:
         co = Company(code=f"CKS-{code_suffix}", name=f"Import Fix Test Co {code_suffix}")
         cat = AssetCategory(code=f"IT-{code_suffix}", name="IT")
@@ -60,9 +60,9 @@ async def _seed_company(code_suffix: str):
         dept = Department(name=f"IT-{code_suffix}")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = Holder(company_id=co.id, emp_code=f"ITSTOCK-{code_suffix}", name="IT Stock-HO", holder_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="HOLDER")
-        it_admin = Holder(company_id=co.id, emp_code=f"ITA-{code_suffix}", name="IT Admin", holder_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, emp_code=f"ITSTOCK-{code_suffix}", name="IT Stock-HO", asset_user_type="IT_STOCK",
+                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+        it_admin = AssetUser(company_id=co.id, emp_code=f"ITA-{code_suffix}", name="IT Admin", asset_user_type="EMPLOYEE",
                            location_id=loc.id, department_id=dept.id, role="ADMIN",
                            password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/CK_",
@@ -76,8 +76,8 @@ async def _seed_company(code_suffix: str):
     return co, it_admin, stock, vendor
 
 
-async def test_import_to_non_stock_holder_succeeds_with_allotted_status(client):
-    """Finding 1: a row whose holder is EMPLOYEE (not IT_STOCK) must import
+async def test_import_to_non_stock_asset_user_succeeds_with_allotted_status(client):
+    """Finding 1: a row whose asset_user is EMPLOYEE (not IT_STOCK) must import
     successfully, with the resulting asset ending up ALLOTTED to that employee --
     not raise a LifecycleError from a mis-set bootstrap status."""
     co, it_admin, _stock, vendor = await _seed_company("F1")
@@ -85,8 +85,8 @@ async def test_import_to_non_stock_holder_succeeds_with_allotted_status(client):
     async with SessionLocal() as session:
         loc = (await session.execute(select(Location).where(Location.code == "HO-F1"))).scalars().first()
         dept = (await session.execute(select(Department).where(Department.name == "IT-F1"))).scalars().first()
-        employee = Holder(company_id=co.id, emp_code="EMP-F1", name="Jane Employee", holder_type="EMPLOYEE",
-                           location_id=loc.id, department_id=dept.id, role="HOLDER")
+        employee = AssetUser(company_id=co.id, emp_code="EMP-F1", name="Jane Employee", asset_user_type="EMPLOYEE",
+                           location_id=loc.id, department_id=dept.id, role="ASSET_USER")
         session.add(employee)
         await session.commit()
         await session.refresh(employee)
@@ -117,7 +117,7 @@ async def test_import_to_non_stock_holder_succeeds_with_allotted_status(client):
         asset = (await session.execute(select(Asset).where(Asset.legacy_asset_code == "OLD-EMP-1"))).scalars().first()
         assert asset is not None
         assert asset.status == "ALLOTTED"
-        assert asset.current_holder_id == employee.id
+        assert asset.current_asset_user_id == employee.id
         assert asset.legacy_asset_code == "OLD-EMP-1"
         assert asset.asset_code and asset.asset_code != "OLD-EMP-1"
 

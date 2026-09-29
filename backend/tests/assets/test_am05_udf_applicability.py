@@ -5,7 +5,7 @@ behave as if it doesn't exist for this asset: it can't be set, can't be
 required, can't block creation. See app/assets/custom_field_values.py."""
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, CustomField, Department, Location, Vendor
 from app.numbering.models import CodeRule
 
@@ -20,11 +20,11 @@ async def _setup(code="AM05UDF"):
         dept = Department(name=f"IT-{code}")
         session.add_all([loc, dept])
         await session.flush()
-        admin = Holder(company_id=a.id, emp_code=f"ADM-{code}", name="Admin", holder_type="EMPLOYEE",
+        admin = AssetUser(company_id=a.id, emp_code=f"ADM-{code}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        stock_a = Holder(company_id=a.id, emp_code=f"STK-{code}", name="IT Stock A", holder_type="IT_STOCK",
-                          location_id=loc.id, department_id=dept.id, role="HOLDER")
+        stock_a = AssetUser(company_id=a.id, emp_code=f"STK-{code}", name="IT Stock A", asset_user_type="IT_STOCK",
+                          location_id=loc.id, department_id=dept.id, role="ASSET_USER")
         cc_a = CostCenter(company_id=a.id, code=f"CC-{code}", name="Cost Centre A")
         cat = AssetCategory(code=f"CAT-{code}", name="Category")
         vendor = Vendor(code=f"VND-{code}", name="Test Vendor")
@@ -50,7 +50,7 @@ def _asset_body(ids, **overrides):
     body = {
         "company_id": ids["a"], "cost_center_id": ids["cc_a"], "category_id": ids["cat"],
         "subcategory_id": ids["sub"], "description": "AM-05 UDF Applicability Test Laptop",
-        "initial_holder_id": ids["stock_a"], "vendor_id": ids["vendor"],
+        "initial_asset_user_id": ids["stock_a"], "vendor_id": ids["vendor"],
         "po_number": "PO-1", "po_date": "2025-05-20",
         "invoice_number": "INV-1", "invoice_date": "2025-06-01",
         "pi_number": "PI-1", "pi_date": "2025-05-22", "serial_number": "SN-AM05UDF",

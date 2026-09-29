@@ -74,7 +74,7 @@ import SubcategoriesSetup from "./routes/setup/subcategories";
 import VendorsSetup from "./routes/setup/vendors";
 import BrandsSetup from "./routes/setup/brands";
 import CustomFieldsSetup from "./routes/setup/custom-fields";
-import HoldersSetup from "./routes/setup/holders";
+import AssetUsersSetup from "./routes/setup/asset-users";
 import CodeRuleSetup from "./routes/setup/code-rule";
 
 /** `?next=<in-app path>`: where to go after login / the forced password change
@@ -87,11 +87,11 @@ function validateNextSearch(search: Record<string, unknown>): NextSearch {
   return { next: safeNextPath(search.next) };
 }
 
-// A HOLDER lands on their own read-only asset list; everyone else lands on the
+// A ASSET_USER lands on their own read-only asset list; everyone else lands on the
 // operational dashboard. Used both right after login and to bounce an already
 // authenticated visitor away from /login.
 function landingPathFor(role: string | null): string {
-  return role === "HOLDER" ? "/my-assets" : "/dashboard";
+  return role === "ASSET_USER" ? "/my-assets" : "/dashboard";
 }
 
 function destinationAfterAuth(role: string | null, next: string | undefined): string {
@@ -115,7 +115,7 @@ const MASTER_SETUP_LINKS: { to: string; label: string; icon: LucideIcon }[] = [
   { to: "/setup/custom-fields", label: "Custom Fields", icon: SlidersHorizontal },
 ];
 const ADMIN_SETUP_LINKS: { to: string; label: string; icon: LucideIcon }[] = [
-  { to: "/setup/holders", label: "Holders & Users", icon: UserCog },
+  { to: "/setup/asset-users", label: "Asset Users", icon: UserCog },
   { to: "/setup/code-rule", label: "Code Rule", icon: Hash },
 ];
 
@@ -523,10 +523,10 @@ export const setupCustomFieldsRoute = createRoute({
   component: CustomFieldsSetup,
 });
 
-export const setupHoldersRoute = createRoute({
+export const setupAssetUsersRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
-  path: "/setup/holders",
-  component: HoldersSetup,
+  path: "/setup/asset-users",
+  component: AssetUsersSetup,
 });
 
 export const setupCodeRuleRoute = createRoute({
@@ -561,7 +561,7 @@ const routeTree = rootRoute.addChildren([
     setupVendorsRoute,
     setupBrandsRoute,
     setupCustomFieldsRoute,
-    setupHoldersRoute,
+    setupAssetUsersRoute,
     setupCodeRuleRoute,
   ]),
 ]);

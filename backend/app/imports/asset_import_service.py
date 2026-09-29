@@ -39,7 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.assets.audit_service import AUDITED_SCALAR_FIELDS, record_field_changes
 from app.assets.custom_field_values import applicable_custom_fields, validate_custom_field_values
 from app.assets.service import check_serial_number_unique, compute_tax, compute_warranty_upto
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.lifecycle.service import apply_event
 from app.lifecycle.state_machine import LifecycleError
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Location, Vendor
@@ -62,7 +62,7 @@ ADD_TEMPLATE_COLUMNS = [
     "Vendor Code", "PO Number", "PO Date", "Invoice Number", "Invoice Date", "Invoice Amount",
     "PI Number", "PI Date", "Purchase Cost", "Tax %",
     "Brand Code", "Model", "Serial Number", "Warranty Years",
-    "Initial Holder Code", "Quantity",
+    "Initial AssetUser Code", "Quantity",
 ]
 
 # AM-23: Subcategory Code/Vendor Code/Serial Number moved here from optional
@@ -72,7 +72,7 @@ ADD_TEMPLATE_COLUMNS = [
 # check_serial_number_unique), the same escape hatch Add Asset itself relies on.
 ADD_REQUIRED_COLUMNS = [
     "Company Code", "Cost Centre Code", "Category Code", "Subcategory Code",
-    "Description", "Vendor Code", "Serial Number", "Initial Holder Code",
+    "Description", "Vendor Code", "Serial Number", "Initial AssetUser Code",
 ]
 
 # AM-23: the bulk Edit-mode template -- Asset Code is the mandatory match
@@ -80,7 +80,7 @@ ADD_REQUIRED_COLUMNS = [
 # subset AssetUpdateIn accepts (see docs/ai/AM-02_ASSET_DATA_MODEL_REPORT.md's
 # Asset Field Policy Matrix), MINUS Category/Subcategory/Purchase Date
 # (correction-workflow-only, see app.assets.correction_service) and PLUS
-# nothing creation-only (no Company/Cost Centre/Initial Holder/Quantity --
+# nothing creation-only (no Company/Cost Centre/Initial AssetUser/Quantity --
 # meaningless on a row that already exists).
 EDIT_TEMPLATE_COLUMNS = [
     "Asset Code", "Legacy Asset Code", "Brand Code", "Model", "Serial Number", "Barcode",
@@ -356,10 +356,10 @@ async def _validate_add_rows(
                 errors.append({"row": row_idx, "field": "Brand Code", "message": f"unknown Brand Code '{brand_code}'"})
                 continue
 
-        holder_code = cell("Initial Holder Code")
-        holder = await _lookup(session, Holder, company_id=company.id, emp_code=holder_code)
-        if holder is None:
-            errors.append({"row": row_idx, "field": "Initial Holder Code", "message": f"unknown Initial Holder Code '{holder_code}'"})
+        asset_user_code = cell("Initial AssetUser Code")
+        asset_user = await _lookup(session, AssetUser, company_id=company.id, emp_code=asset_user_code)
+        if asset_user is None:
+            errors.append({"row": row_idx, "field": "Initial AssetUser Code", "message": f"unknown Initial AssetUser Code '{asset_user_code}'"})
             continue
 
         try:
@@ -451,7 +451,7 @@ async def _validate_add_rows(
         valid_rows.append({
             "row": row_idx, "legacy_asset_code": cell("Legacy Asset Code"), "company": company,
             "cost_center": cost_center, "category": category, "subcategory": subcategory,
-            "description": description, "purchase_date": purchase_date, "holder": holder,
+            "description": description, "purchase_date": purchase_date, "asset_user": asset_user,
             "quantity": quantity, "vendor": vendor,
             "po_number": cell("PO Number"), "po_date": po_date,
             "invoice_number": cell("Invoice Number"), "invoice_date": invoice_date,
@@ -663,7 +663,7 @@ async def preview_import(session: AsyncSession, content: bytes, allowed_company_
                 "row": r["row"], "legacy_asset_code": r["legacy_asset_code"],
                 "company": r["company"].name, "category": r["category"].name,
                 "subcategory": r["subcategory"].name if r["subcategory"] else None,
-                "description": r["description"], "holder": r["holder"].name, "quantity": r["quantity"],
+                "description": r["description"], "asset_user": r["asset_user"].name, "quantity": r["quantity"],
             }
             for r in valid_rows
         ],
@@ -671,7 +671,7 @@ async def preview_import(session: AsyncSession, content: bytes, allowed_company_
     }
 
 
-async def _commit_edit(session: AsyncSession, content: bytes, actor: Holder, allowed_company_ids: list[int] | None = None) -> dict:
+async def _commit_edit(session: AsyncSession, content: bytes, actor: AssetUser, allowed_company_ids: list[int] | None = None) -> dict:
     """AM-23: every OTHER valid row still commits if one row fails (e.g. a
     serial number collision surfaced only at commit time, not preview) --
     same VALID-ROWS-ONLY, per-row-savepoint philosophy `_commit_add`
@@ -725,7 +725,7 @@ async def _commit_edit(session: AsyncSession, content: bytes, actor: Holder, all
 
 
 async def _commit_add(
-    session: AsyncSession, content: bytes, actor: Holder, allowed_company_ids: list[int] | None = None,
+    session: AsyncSession, content: bytes, actor: AssetUser, allowed_company_ids: list[int] | None = None,
 ) -> dict:
     """Raises ImportScopeError (-> 403) if any row targets a company outside
     `allowed_company_ids`, before writing anything -- this part of the batch
@@ -761,7 +761,7 @@ async def _commit_add(
             errors.append({"row": r["row"], "message": str(rule)})
             continue
 
-        location_id = r["holder"].location_id
+        location_id = r["asset_user"].location_id
         if location_id not in locations:
             locations[location_id] = await session.get(Location, location_id)
         purchase_date = r["purchase_date"]
@@ -805,18 +805,18 @@ async def _commit_add(
                         warranty_upto=compute_warranty_upto(purchase_date, r["warranty_years"]),
                         # Initial status set directly here, not through apply_event -- the same
                         # documented exception app.assets.service.procure_assets uses: a freshly
-                        # inserted row needs a non-null status/holder before the state machine has
+                        # inserted row needs a non-null status/asset_user before the state machine has
                         # anything to transition from. apply_event, called immediately below,
-                        # derives and writes the real post-import status from the holder's type.
+                        # derives and writes the real post-import status from the asset_user's type.
                         status="IN_STOCK",
-                        current_holder_id=r["holder"].id, status_since=purchase_date,
+                        current_asset_user_id=r["asset_user"].id, status_since=purchase_date,
                         custom_fields=r["custom_fields"],
                         created_by=actor.id, updated_by=actor.id,
                     )
                     session.add(asset)
                     await session.flush()
                     await apply_event(
-                        session, asset, "IMPORTED", to_holder_id=r["holder"].id, actor=actor,
+                        session, asset, "IMPORTED", to_asset_user_id=r["asset_user"].id, actor=actor,
                         event_date=event_date,
                         remarks=f"Imported from legacy code {r['legacy_asset_code']}" if r["legacy_asset_code"] else "Imported",
                     )
@@ -831,7 +831,7 @@ async def _commit_add(
 
 
 async def commit_import(
-    session: AsyncSession, content: bytes, actor: Holder, allowed_company_ids: list[int] | None = None, mode: str = "add",
+    session: AsyncSession, content: bytes, actor: AssetUser, allowed_company_ids: list[int] | None = None, mode: str = "add",
 ) -> dict:
     if mode == "edit":
         return await _commit_edit(session, content, actor, allowed_company_ids)

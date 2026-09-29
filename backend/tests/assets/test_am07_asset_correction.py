@@ -9,7 +9,7 @@ from app.assets.models import Asset, AssetFieldChange
 from app.assets.service import procure_assets
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.lifecycle.models import AssetEvent
 from app.lifecycle.service import apply_event
 from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location
@@ -33,31 +33,31 @@ async def _setup(code="AM07"):
         dept = Department(name=f"IT-{code}")
         session.add_all([sub, other_sub, inactive_sub, cc, loc, dept])
         await session.flush()
-        stock = Holder(company_id=co.id, emp_code=f"STK-{code}", name="IT Stock-HO", holder_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="HOLDER")
-        admin = Holder(company_id=co.id, emp_code=f"ADM-{code}", name="Admin", holder_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, emp_code=f"STK-{code}", name="IT Stock-HO", asset_user_type="IT_STOCK",
+                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{code}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        it_a = Holder(company_id=co.id, emp_code=f"ITA-{code}", name="IT A", holder_type="EMPLOYEE",
+        it_a = AssetUser(company_id=co.id, emp_code=f"ITA-{code}", name="IT A", asset_user_type="EMPLOYEE",
                       location_id=loc.id, department_id=dept.id, role="IT_TEAM",
                       password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        it_b = Holder(company_id=co_b.id, emp_code=f"ITB-{code}", name="IT B", holder_type="EMPLOYEE",
+        it_b = AssetUser(company_id=co_b.id, emp_code=f"ITB-{code}", name="IT B", asset_user_type="EMPLOYEE",
                       location_id=loc.id, department_id=dept.id, role="IT_TEAM",
                       password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        viewer = Holder(company_id=co.id, emp_code=f"VWR-{code}", name="Viewer", holder_type="EMPLOYEE",
+        viewer = AssetUser(company_id=co.id, emp_code=f"VWR-{code}", name="Viewer", asset_user_type="EMPLOYEE",
                          location_id=loc.id, department_id=dept.id, role="VIEWER",
                          password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        holder_role = Holder(company_id=co.id, emp_code=f"HLD-{code}", name="Holder Role", holder_type="EMPLOYEE",
-                              location_id=loc.id, department_id=dept.id, role="HOLDER",
+        asset_user_role = AssetUser(company_id=co.id, emp_code=f"HLD-{code}", name="AssetUser Role", asset_user_type="EMPLOYEE",
+                              location_id=loc.id, department_id=dept.id, role="ASSET_USER",
                               password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=co.id, prefix_template=f"FA/{code}/", suffix_template="",
                          start_number=1, pad_width=0)
-        session.add_all([stock, admin, it_a, it_b, viewer, holder_role, rule])
+        session.add_all([stock, admin, it_a, it_b, viewer, asset_user_role, rule])
         await session.commit()
         return {
             "co": co, "co_b": co_b, "cat": cat, "other_cat": other_cat, "inactive_cat": inactive_cat,
             "sub": sub, "other_sub": other_sub, "inactive_sub": inactive_sub, "cc": cc, "stock": stock,
-            "admin": admin, "it_a": it_a, "it_b": it_b, "viewer": viewer, "holder_role": holder_role,
+            "admin": admin, "it_a": it_a, "it_b": it_b, "viewer": viewer, "asset_user_role": asset_user_role,
         }
 
 
@@ -73,7 +73,7 @@ async def _make_asset(ids, purchase_date=date(2025, 6, 1), category=None, subcat
             "category_id": (category or ids["cat"]).id,
             "subcategory_id": (subcategory or ids["sub"]).id if (subcategory or ids["sub"]) else None,
             "description": "Correction Test Laptop", "purchase_date": purchase_date,
-            "initial_holder_id": ids["stock"].id,
+            "initial_asset_user_id": ids["stock"].id,
         }, quantity=1, actor=ids["admin"])
         await session.commit()
         await session.refresh(asset)
@@ -119,10 +119,10 @@ class TestAuthorization:
         }, headers=headers)
         assert resp.status_code == 403
 
-    async def test_holder_denied(self, client):
+    async def test_asset_user_denied(self, client):
         ids = await _setup("AUTH4")
         asset = await _make_asset(ids)
-        headers = await _headers(client, ids["holder_role"].emp_code)
+        headers = await _headers(client, ids["asset_user_role"].emp_code)
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
             "category_id": ids["other_cat"].id, "reason": "wrong category",
         }, headers=headers)
@@ -139,10 +139,10 @@ class TestAuthorization:
 
 
 class TestCategoryCorrection:
-    async def test_valid_category_correction_preserves_identity_status_and_holder(self, client):
+    async def test_valid_category_correction_preserves_identity_status_and_asset_user(self, client):
         ids = await _setup("CAT1")
         asset = await _make_asset(ids)
-        original_code, original_status, original_holder = asset.asset_code, asset.status, asset.current_holder_id
+        original_code, original_status, original_asset_user = asset.asset_code, asset.status, asset.current_asset_user_id
         headers = await _headers(client, ids["admin"].emp_code)
 
         resp = await client.post(f"/api/assets/{asset.id}/corrections", json={
@@ -155,7 +155,7 @@ class TestCategoryCorrection:
         assert body["subcategory_id"] == ids["other_sub"].id
         assert body["asset_code"] == original_code
         assert body["status"] == original_status
-        assert body["current_holder_id"] == original_holder
+        assert body["current_asset_user_id"] == original_asset_user
 
         reloaded = await _reload(asset.id)
         assert reloaded.asset_code == original_code
@@ -307,7 +307,7 @@ class TestPurchaseDateCorrection:
         ids = await _setup("PD4")
         asset = await _make_asset(ids, purchase_date=date(2025, 6, 5))
         async with SessionLocal() as session:
-            await apply_event(session, asset, "MOVED", to_holder_id=ids["stock"].id, actor=ids["admin"])
+            await apply_event(session, asset, "MOVED", to_asset_user_id=ids["stock"].id, actor=ids["admin"])
             await session.commit()
 
         async with SessionLocal() as session:

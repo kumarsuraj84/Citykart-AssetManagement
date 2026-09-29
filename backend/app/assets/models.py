@@ -57,7 +57,7 @@ class Asset(Base, AuditMixin):
     warranty_upto: Mapped[date | None] = mapped_column(Date)
 
     status: Mapped[str] = mapped_column(String(20))
-    current_holder_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("holder.id"))
+    current_asset_user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("asset_user.id"))
     status_since: Mapped[date] = mapped_column(Date)
 
     custom_fields: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -88,7 +88,7 @@ class AssetFieldChange(Base):
     field_name: Mapped[str] = mapped_column(String(100))
     old_value: Mapped[str | None] = mapped_column(String(1000))
     new_value: Mapped[str | None] = mapped_column(String(1000))
-    actor_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("holder.id"))
+    actor_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("asset_user.id"))
     request_id: Mapped[str] = mapped_column(String(36))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     # AM-07: only ever populated by a controlled asset correction (category/

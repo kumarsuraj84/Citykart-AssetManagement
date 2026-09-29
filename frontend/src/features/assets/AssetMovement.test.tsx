@@ -17,16 +17,16 @@ function renderMovement() {
 
 const LAPTOP = {
   id: 1, asset_code: "FA/HO01/IT/LAP/CK_1", serial_number: "SN-001", description: "Dell Laptop",
-  status: "ALLOTTED", current_holder_name: "Suraj",
+  status: "ALLOTTED", current_asset_user_name: "Suraj",
 };
 const SCRAPPED_MOUSE = {
   id: 2, asset_code: "FA/HO01/IT/MOU/CK_2", serial_number: "SN-002", description: "Logitech Mouse",
-  status: "SCRAPPED", current_holder_name: "IT Stock-HO",
+  status: "SCRAPPED", current_asset_user_name: "IT Stock-HO",
 };
 
 function mockGets({ searchResults = {} as Record<string, typeof LAPTOP[]> } = {}) {
   (apiClient.get as any).mockImplementation((path: string) => {
-    if (path.startsWith("/holders")) return Promise.resolve([{ id: 9, name: "IT Stock-HO" }]);
+    if (path.startsWith("/asset-users")) return Promise.resolve([{ id: 9, name: "IT Stock-HO" }]);
     if (path.startsWith("/assets?q=")) {
       const q = decodeURIComponent(path.split("q=")[1].split("&")[0]);
       const items = searchResults[q] ?? [];
@@ -101,7 +101,7 @@ describe("AssetMovement", () => {
     expect(screen.getByRole("button", { name: /apply ".*" to 0 assets/i })).toBeDisabled();
   });
 
-  it("Move requires a destination holder before Apply is enabled", async () => {
+  it("Move requires a destination asset_user before Apply is enabled", async () => {
     mockGets({ searchResults: { "SN-001": [LAPTOP] } });
     renderMovement();
 
@@ -111,7 +111,7 @@ describe("AssetMovement", () => {
 
     expect(screen.getByRole("button", { name: /apply/i })).toBeDisabled();
 
-    fireEvent.click(screen.getByRole("combobox", { name: /destination holder/i }));
+    fireEvent.click(screen.getByRole("combobox", { name: /destination asset user/i }));
     fireEvent.click(await screen.findByRole("option", { name: "IT Stock-HO" }));
 
     await waitFor(() => expect(screen.getByRole("button", { name: /apply/i })).toBeEnabled());
@@ -126,14 +126,14 @@ describe("AssetMovement", () => {
     fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
     await waitFor(() => expect(screen.getByText(/Queued \(1\)/)).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("combobox", { name: /destination holder/i }));
+    fireEvent.click(screen.getByRole("combobox", { name: /destination asset user/i }));
     fireEvent.click(await screen.findByRole("option", { name: "IT Stock-HO" }));
     await waitFor(() => expect(screen.getByRole("button", { name: /apply/i })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: /apply/i }));
 
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith("/assets/bulk-action", {
-        asset_ids: [1], event_type: "MOVED", to_holder_id: 9, remarks: null,
+        asset_ids: [1], event_type: "MOVED", to_asset_user_id: 9, remarks: null,
       }),
     );
     expect(await screen.findByTestId("bulk-action-done-count")).toHaveTextContent("1");

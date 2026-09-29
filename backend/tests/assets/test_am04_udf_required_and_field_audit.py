@@ -3,7 +3,7 @@ an edit itself replaces custom_fields, on update), and the new append-only
 asset_field_change audit trail written by PUT /api/assets/{id}."""
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, CustomField, Department, Location, Vendor
 from app.numbering.models import CodeRule
 
@@ -24,16 +24,16 @@ async def _setup(code="AM04"):
         brand3 = Brand(code=f"BR3-{code}", name="Lenovo")
         session.add_all([sub, cc, loc, dept, vendor, brand1, brand2, brand3])
         await session.flush()
-        stock = Holder(company_id=co.id, emp_code=f"STK-{code}", name="IT Stock-HO",
-                        holder_type="IT_STOCK", location_id=loc.id, department_id=dept.id, role="HOLDER")
-        admin = Holder(company_id=co.id, emp_code=f"ADM-{code}", name="Admin",
-                        holder_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="ADMIN",
+        stock = AssetUser(company_id=co.id, emp_code=f"STK-{code}", name="IT Stock-HO",
+                        asset_user_type="IT_STOCK", location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{code}", name="Admin",
+                        asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="ADMIN",
                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        viewer = Holder(company_id=co.id, emp_code=f"VWR-{code}", name="Viewer",
-                         holder_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="VIEWER",
+        viewer = AssetUser(company_id=co.id, emp_code=f"VWR-{code}", name="Viewer",
+                         asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="VIEWER",
                          password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        it_team = Holder(company_id=co.id, emp_code=f"ITT-{code}", name="IT Team",
-                          holder_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="IT_TEAM",
+        it_team = AssetUser(company_id=co.id, emp_code=f"ITT-{code}", name="IT Team",
+                          asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="IT_TEAM",
                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
         session.add_all([stock, admin, viewer, it_team,
                          CodeRule(company_id=None, prefix_template=f"FA/{code}/", suffix_template="",
@@ -56,7 +56,7 @@ def _asset_body(ids, **overrides):
     body = {
         "company_id": ids["co"], "cost_center_id": ids["cc"], "category_id": ids["cat"],
         "subcategory_id": ids["sub"], "description": "AM-04 Test Laptop",
-        "initial_holder_id": ids["stock"], "vendor_id": ids["vendor"],
+        "initial_asset_user_id": ids["stock"], "vendor_id": ids["vendor"],
         "po_number": "PO-1", "po_date": "2025-05-20",
         "invoice_number": "INV-1", "invoice_date": "2025-06-01",
         "pi_number": "PI-1", "pi_date": "2025-05-22", "serial_number": "SN-AM04",
@@ -264,7 +264,7 @@ class TestFieldChangeAudit:
         [created] = (await client.post("/api/assets", json=_asset_body(ids), headers=headers)).json()
 
         resp = await client.post(f"/api/assets/{created['id']}/events", json={
-            "event_type": "MOVED", "to_holder_id": ids["stock"],
+            "event_type": "MOVED", "to_asset_user_id": ids["stock"],
         }, headers=headers)
         assert resp.status_code == 201
 
@@ -273,7 +273,7 @@ class TestFieldChangeAudit:
         events = (await client.get(f"/api/assets/{created['id']}/events", headers=headers)).json()
         assert len(events) == 2  # PROCURED + MOVED
 
-    async def test_viewer_and_holder_cannot_edit_an_asset(self, client):
+    async def test_viewer_and_asset_user_cannot_edit_an_asset(self, client):
         ids = await _setup("AUD8")
         admin_headers = await _headers(client, ids["admin_code"])
         [created] = (await client.post("/api/assets", json=_asset_body(ids), headers=admin_headers)).json()

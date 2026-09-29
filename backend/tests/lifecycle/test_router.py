@@ -2,7 +2,7 @@ from app.core.db import SessionLocal
 from app.assets.service import procure_assets
 from app.core.security import hash_password
 from app.masters.models import Company, CostCenter, AssetCategory, AssetSubcategory, Location, Department
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.numbering.models import CodeRule
 from datetime import date
 
@@ -19,13 +19,13 @@ async def test_allot_via_events_endpoint(client):
         dept = Department(name="IT-LR1")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = Holder(company_id=co.id, emp_code="ITSTOCK-LR1", name="IT Stock-HO",
-                        holder_type="IT_STOCK", location_id=loc.id, department_id=dept.id, role="HOLDER")
-        it_admin = Holder(company_id=co.id, emp_code="ITA-LR1", name="IT Admin",
-                           holder_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="ADMIN",
+        stock = AssetUser(company_id=co.id, emp_code="ITSTOCK-LR1", name="IT Stock-HO",
+                        asset_user_type="IT_STOCK", location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+        it_admin = AssetUser(company_id=co.id, emp_code="ITA-LR1", name="IT Admin",
+                           asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="ADMIN",
                            password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        ankur = Holder(company_id=co.id, emp_code="CS-LR1", name="Ankur",
-                        holder_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="HOLDER")
+        ankur = AssetUser(company_id=co.id, emp_code="CS-LR1", name="Ankur",
+                        asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="ASSET_USER")
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/CK_",
                          suffix_template="", start_number=1, pad_width=0)
         session.add_all([stock, it_admin, ankur, rule])
@@ -33,7 +33,7 @@ async def test_allot_via_events_endpoint(client):
         assets = await procure_assets(session, {
             "company_id": co.id, "cost_center_id": cc.id, "category_id": cat.id, "subcategory_id": sub.id,
             "description": "Router Lifecycle Laptop", "purchase_date": date(2025, 12, 10),
-            "purchase_cost": 50000, "tax_percent": 18, "initial_holder_id": stock.id,
+            "purchase_cost": 50000, "tax_percent": 18, "initial_asset_user_id": stock.id,
         }, quantity=1, actor=it_admin)
         await session.commit()
         asset_id = assets[0].id
@@ -42,7 +42,7 @@ async def test_allot_via_events_endpoint(client):
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     event_resp = await client.post(f"/api/assets/{asset_id}/events", json={
-        "event_type": "MOVED", "to_holder_id": ankur.id,
+        "event_type": "MOVED", "to_asset_user_id": ankur.id,
     }, headers=headers)
     assert event_resp.status_code == 201
     assert event_resp.json()["status_after"] == "ALLOTTED"
@@ -76,10 +76,10 @@ async def test_naive_event_date_is_treated_as_utc_not_a_500(client):
         dept = Department(name="IT-LR2")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = Holder(company_id=co.id, emp_code="ITSTOCK-LR2", name="IT Stock-HO",
-                        holder_type="IT_STOCK", location_id=loc.id, department_id=dept.id, role="HOLDER")
-        it_admin = Holder(company_id=co.id, emp_code="ITA-LR2", name="IT Admin",
-                           holder_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="ADMIN",
+        stock = AssetUser(company_id=co.id, emp_code="ITSTOCK-LR2", name="IT Stock-HO",
+                        asset_user_type="IT_STOCK", location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+        it_admin = AssetUser(company_id=co.id, emp_code="ITA-LR2", name="IT Admin",
+                           asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id, role="ADMIN",
                            password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/LR2_",
                          suffix_template="", start_number=1, pad_width=0)
@@ -88,7 +88,7 @@ async def test_naive_event_date_is_treated_as_utc_not_a_500(client):
         assets = await procure_assets(session, {
             "company_id": co.id, "cost_center_id": cc.id, "category_id": cat.id, "subcategory_id": sub.id,
             "description": "Naive Date Laptop", "purchase_date": date(2025, 1, 1),
-            "purchase_cost": 0, "tax_percent": 0, "initial_holder_id": stock.id,
+            "purchase_cost": 0, "tax_percent": 0, "initial_asset_user_id": stock.id,
         }, quantity=1, actor=it_admin)
         await session.commit()
         asset_id = assets[0].id
@@ -97,7 +97,7 @@ async def test_naive_event_date_is_treated_as_utc_not_a_500(client):
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
     event_resp = await client.post(f"/api/assets/{asset_id}/events", json={
-        "event_type": "MOVED", "to_holder_id": stock.id, "event_date": "2025-06-01",
+        "event_type": "MOVED", "to_asset_user_id": stock.id, "event_date": "2025-06-01",
     }, headers=headers)
     assert event_resp.status_code == 201
     assert event_resp.json()["status_after"] == "IN_STOCK"

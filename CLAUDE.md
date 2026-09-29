@@ -24,7 +24,7 @@ Spec/plan history (superseded where `docs/ai/DECISIONS.md` overrides it):
    link in the frontend is UX, not security. Every write path re-checks role
    and company scope server-side regardless of what the UI shows.
 2. **The asset event ledger is append-only.** `lifecycle/service.py::apply_event`
-   is the only writer of `Asset.status`/`current_holder_id`/`status_since`.
+   is the only writer of `Asset.status`/`current_asset_user_id`/`status_since`.
    Never touch those fields anywhere else. No hard deletes of business
    records anywhere — soft-deactivate (`is_active=false`) only.
 3. **No schema change without an Alembic migration.** Never `create_all` at

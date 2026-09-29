@@ -3,7 +3,7 @@ errors come back as clean 422s (never raw 500s), and a non-ADMIN actor can only
 create assets inside their own company scope (403 otherwise)."""
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location, Vendor
 from app.numbering.models import CodeRule
 
@@ -17,8 +17,8 @@ async def _company(session, code):
     cc = CostCenter(company_id=co.id, code="HO01", name="HO")
     session.add_all([loc, dept, cc])
     await session.flush()
-    stock = Holder(company_id=co.id, emp_code=f"STOCK-{code}", name=f"IT Stock {code}", holder_type="IT_STOCK",
-                   location_id=loc.id, department_id=dept.id, role="HOLDER")
+    stock = AssetUser(company_id=co.id, emp_code=f"STOCK-{code}", name=f"IT Stock {code}", asset_user_type="IT_STOCK",
+                   location_id=loc.id, department_id=dept.id, role="ASSET_USER")
     vendor = Vendor(code=f"VND-{code}", name=f"{code} Vendor")
     session.add_all([stock, vendor])
     await session.flush()
@@ -33,10 +33,10 @@ async def _setup(prefix_template="FA/{cost_center.code}/{category.code}/{subcate
         session.add(cat)
         await session.flush()
         sub = AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop")
-        admin = Holder(company_id=a["co"].id, emp_code="ADM", name="Admin", holder_type="EMPLOYEE",
+        admin = AssetUser(company_id=a["co"].id, emp_code="ADM", name="Admin", asset_user_type="EMPLOYEE",
                        location_id=a["loc"].id, department_id=a["dept"].id, role="ADMIN",
                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        it_a = Holder(company_id=a["co"].id, emp_code="ITA", name="IT Team A", holder_type="EMPLOYEE",
+        it_a = AssetUser(company_id=a["co"].id, emp_code="ITA", name="IT Team A", asset_user_type="EMPLOYEE",
                       location_id=a["loc"].id, department_id=a["dept"].id, role="IT_TEAM",
                       password_hash=hash_password("Passw0rd!"), must_change_password=False)
         session.add_all([sub, admin, it_a])
@@ -60,7 +60,7 @@ def _asset_body(target, cat, sub, **overrides):
         # docstring) -- this is what actually flows into the code-rule's
         # yyyy/yy/mm date tokens and status_since below.
         "invoice_date": "2025-12-10",
-        "initial_holder_id": target["stock"].id, "quantity": 1,
+        "initial_asset_user_id": target["stock"].id, "quantity": 1,
         "vendor_id": target["vendor"].id, "po_number": "PO-1", "po_date": "2025-12-01",
         "invoice_number": "INV-1", "pi_number": "PI-1", "pi_date": "2025-12-05",
         "serial_number": "SN-TOK",
@@ -76,7 +76,7 @@ async def test_company_location_and_date_tokens_resolve_to_real_values(client):
     resp = await client.post("/api/assets", json=_asset_body(a, cat, sub), headers=headers)
     assert resp.status_code == 201, resp.text
     # company.code from the asset's company; location.code from the initial
-    # holder's location; yyyy/yy/mm from the purchase date (2025-12-10).
+    # asset_user's location; yyyy/yy/mm from the purchase date (2025-12-10).
     assert resp.json()[0]["asset_code"] == "CKA/CKA-LOC/2025/2512/1"
 
 
@@ -120,10 +120,10 @@ async def test_unresolvable_token_is_422_not_500(client):
     assert "subcategory" in resp.json()["detail"]
 
 
-async def test_initial_holder_from_other_company_is_422_not_500(client):
+async def test_initial_asset_user_from_other_company_is_422_not_500(client):
     a, b, cat, sub = await _setup()
     headers = await _headers(client, a["co"].id, "ADM")
-    resp = await client.post("/api/assets", json=_asset_body(a, cat, sub, initial_holder_id=b["stock"].id), headers=headers)
+    resp = await client.post("/api/assets", json=_asset_body(a, cat, sub, initial_asset_user_id=b["stock"].id), headers=headers)
     assert resp.status_code == 422
     assert "same company" in resp.json()["detail"]
 

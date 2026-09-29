@@ -9,7 +9,7 @@ from app.assets.models import Asset, AssetFieldChange
 from app.assets.service import procure_assets
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, CustomField, Department, Location, Vendor
 from app.numbering.models import CodeRule
 from sqlalchemy import select
@@ -56,12 +56,12 @@ async def _setup(suffix: str):
         dept = Department(name=f"AM23E-{suffix}")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = Holder(company_id=co.id, emp_code=f"STK-{suffix}", name="IT Stock", holder_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="HOLDER")
-        admin = Holder(company_id=co.id, emp_code=f"ADM-{suffix}", name="Admin", holder_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, emp_code=f"STK-{suffix}", name="IT Stock", asset_user_type="IT_STOCK",
+                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        ita = Holder(company_id=co.id, emp_code=f"ITA-{suffix}", name="IT Team", holder_type="EMPLOYEE",
+        ita = AssetUser(company_id=co.id, emp_code=f"ITA-{suffix}", name="IT Team", asset_user_type="EMPLOYEE",
                      location_id=loc.id, department_id=dept.id, role="IT_TEAM",
                      password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=co.id, prefix_template=f"AM23E/{suffix}/", suffix_template="",
@@ -72,7 +72,7 @@ async def _setup(suffix: str):
         [asset] = await procure_assets(session, {
             "company_id": co.id, "cost_center_id": cc.id, "category_id": cat.id, "subcategory_id": sub.id,
             "description": "Original Description", "purchase_date": date(2025, 6, 1),
-            "serial_number": f"SN-{suffix}-ORIG", "initial_holder_id": stock.id,
+            "serial_number": f"SN-{suffix}-ORIG", "initial_asset_user_id": stock.id,
             "brand_id": brand.id, "model": "OldModel", "vendor_id": vendor.id,
             "purchase_cost": 1000, "tax_percent": 10, "warranty_years": 2,
         }, quantity=1, actor=admin)
@@ -105,7 +105,7 @@ async def test_edit_template_has_asset_code_and_no_creation_only_columns(client)
     header = [c.value for c in next(wb.active.iter_rows(min_row=1, max_row=1))]
     assert "Asset Code" in header
     for creation_only in ("Company Code", "Cost Centre Code", "Category Code", "Subcategory Code",
-                           "Initial Holder Code", "Quantity"):
+                           "Initial AssetUser Code", "Quantity"):
         assert creation_only not in header
 
 
@@ -191,14 +191,14 @@ async def test_serial_number_uniqueness_is_enforced_and_excludes_self(client):
     # A second asset already holds "TAKEN" -- editing onto it is rejected as a row error.
     async with SessionLocal() as session:
         co = await session.get(Company, ids["co"].id)
-        stock = (await session.execute(select(Holder).where(Holder.company_id == co.id, Holder.holder_type == "IT_STOCK"))).scalars().first()
+        stock = (await session.execute(select(AssetUser).where(AssetUser.company_id == co.id, AssetUser.asset_user_type == "IT_STOCK"))).scalars().first()
         cc = (await session.execute(select(CostCenter).where(CostCenter.company_id == co.id))).scalars().first()
         cat = (await session.execute(select(AssetCategory).where(AssetCategory.code == f"AM23E-SER1"))).scalars().first()
-        admin = (await session.execute(select(Holder).where(Holder.company_id == co.id, Holder.emp_code == "ADM-SER1"))).scalars().first()
+        admin = (await session.execute(select(AssetUser).where(AssetUser.company_id == co.id, AssetUser.emp_code == "ADM-SER1"))).scalars().first()
         await procure_assets(session, {
             "company_id": co.id, "cost_center_id": cc.id, "category_id": cat.id, "subcategory_id": None,
             "description": "Other asset", "purchase_date": date(2025, 1, 1),
-            "serial_number": "TAKEN-SER1", "initial_holder_id": stock.id,
+            "serial_number": "TAKEN-SER1", "initial_asset_user_id": stock.id,
         }, quantity=1, actor=admin)
         await session.commit()
 
@@ -251,9 +251,9 @@ async def test_it_team_cannot_edit_an_asset_outside_their_company_scope(client):
         cat = AssetCategory(code="SCOPE1-B", name="IT")
         session.add_all([cc, cat])
         await session.flush()
-        stock_b = Holder(company_id=co_b.id, emp_code="STKB-SCOPE1", name="B Stock", holder_type="IT_STOCK",
-                          location_id=loc.id, department_id=dept.id, role="HOLDER")
-        admin_b = Holder(company_id=co_b.id, emp_code="ADMB-SCOPE1", name="B Admin", holder_type="EMPLOYEE",
+        stock_b = AssetUser(company_id=co_b.id, emp_code="STKB-SCOPE1", name="B Stock", asset_user_type="IT_STOCK",
+                          location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+        admin_b = AssetUser(company_id=co_b.id, emp_code="ADMB-SCOPE1", name="B Admin", asset_user_type="EMPLOYEE",
                           location_id=loc.id, department_id=dept.id, role="ADMIN",
                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule_b = CodeRule(company_id=co_b.id, prefix_template="SCOPE1B/", suffix_template="", start_number=1, pad_width=0)
@@ -262,7 +262,7 @@ async def test_it_team_cannot_edit_an_asset_outside_their_company_scope(client):
         [asset_b] = await procure_assets(session, {
             "company_id": co_b.id, "cost_center_id": cc.id, "category_id": cat.id, "subcategory_id": None,
             "description": "Company B asset", "purchase_date": date(2025, 1, 1),
-            "serial_number": "SN-SCOPE1-B", "initial_holder_id": stock_b.id,
+            "serial_number": "SN-SCOPE1-B", "initial_asset_user_id": stock_b.id,
         }, quantity=1, actor=admin_b)
         await session.commit()
         asset_b_code = asset_b.asset_code

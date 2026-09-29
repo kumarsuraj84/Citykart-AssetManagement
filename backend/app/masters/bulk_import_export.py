@@ -1,7 +1,7 @@
 """AM-25: a generic, config-driven bulk Import/Export engine, reused by
 every master (Companies/Locations/Departments/Cost Centres/Categories/
 Sub-Categories/Vendors -- wired in via `build_master_router` in
-app.masters.router) and by Holders (app.holders.router, which imports this
+app.masters.router) and by AssetUsers (app.asset_users.router, which imports this
 module directly). One engine instead of nine bespoke ones, matching this
 codebase's existing "generalize the CRUD router, don't repeat it" pattern
 (see `build_master_router` itself).

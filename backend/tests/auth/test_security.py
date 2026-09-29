@@ -9,7 +9,7 @@ def test_hash_and_verify_roundtrip():
 
 
 def test_token_roundtrip():
-    token = create_access_token(holder_id=42, role="ADMIN", company_scope=None)
+    token = create_access_token(asset_user_id=42, role="ADMIN", company_scope=None)
     payload = decode_token(token)
     assert payload["sub"] == "42"
     assert payload["role"] == "ADMIN"

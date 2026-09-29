@@ -18,7 +18,7 @@ from sqlalchemy import select
 from app.assets.models import Asset
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, CustomField, Department, Location, Vendor
 from app.numbering.models import CodeRule
 
@@ -30,7 +30,7 @@ HEADER = [
     "Vendor Code", "PO Number", "PO Date", "Invoice Number", "Invoice Date", "Invoice Amount",
     "PI Number", "PI Date", "Purchase Cost", "Tax %",
     "Brand Code", "Model", "Serial Number", "Warranty Years",
-    "Initial Holder Code", "Quantity",
+    "Initial AssetUser Code", "Quantity",
 ]
 
 
@@ -63,11 +63,11 @@ async def _setup(code="AM06IMP"):
         dept = Department(name=f"IT-{code}")
         session.add_all([sub, other_cat, cc, loc, loc_b, dept])
         await session.flush()
-        stock = Holder(company_id=co.id, emp_code=f"STK-{code}", name="IT Stock-HO", holder_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="HOLDER")
-        stock_b = Holder(company_id=co_b.id, emp_code=f"STKB-{code}", name="IT Stock B", holder_type="IT_STOCK",
-                          location_id=loc_b.id, department_id=dept.id, role="HOLDER")
-        admin = Holder(company_id=co.id, emp_code=f"ADM-{code}", name="Admin", holder_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, emp_code=f"STK-{code}", name="IT Stock-HO", asset_user_type="IT_STOCK",
+                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+        stock_b = AssetUser(company_id=co_b.id, emp_code=f"STKB-{code}", name="IT Stock B", asset_user_type="IT_STOCK",
+                          location_id=loc_b.id, department_id=dept.id, role="ASSET_USER")
+        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{code}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template=f"FA/{code}/", suffix_template="",
@@ -100,7 +100,7 @@ def _base_row(ids, **overrides):
         # Quantity>1 row too -- a real Serial Number can't repeat across
         # several units of the same row.
         "Serial Number": "N/A",
-        "Initial Holder Code": ids["stock"],
+        "Initial AssetUser Code": ids["stock"],
     }
     row.update(overrides)
     return row
@@ -306,16 +306,16 @@ class TestCustomFieldImport:
 
 
 class TestMasterLookupIntegrity:
-    async def test_cross_company_holder_code_is_rejected(self, client):
+    async def test_cross_company_asset_user_code_is_rejected(self, client):
         ids = await _setup("XCO1")
         headers = await _headers(client, ids["admin"])
         # stock_b belongs to company B, but the row targets company A.
-        row = _base_row(ids, **{"Legacy Asset Code": "OLD-XCO1", "Initial Holder Code": ids["stock_b"]})
+        row = _base_row(ids, **{"Legacy Asset Code": "OLD-XCO1", "Initial AssetUser Code": ids["stock_b"]})
         resp = await _post(client, "/api/imports/assets/commit", _xlsx([row]), headers)
         assert resp.status_code == 200
         body = resp.json()
         assert body["imported"] == 0
-        assert "unknown Initial Holder Code" in body["errors"][0]["message"]
+        assert "unknown Initial AssetUser Code" in body["errors"][0]["message"]
 
     async def test_subcategory_belonging_to_a_different_category_is_rejected(self, client):
         ids = await _setup("XCO2")

@@ -70,7 +70,7 @@ async def _truncate_tables():
     """
     # Base.metadata.tables (not sorted_tables) since CASCADE handles FK
     # ordering for us and this app has mutually-dependent FKs (AuditMixin's
-    # created_by/updated_by -> holder.id) that sorted_tables can't order.
+    # created_by/updated_by -> asset_user.id) that sorted_tables can't order.
     table_names = [name for name in Base.metadata.tables if name != "alembic_version"]
     if table_names:
         quoted = ", ".join(f'"{name}"' for name in table_names)

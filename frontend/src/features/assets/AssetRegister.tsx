@@ -61,7 +61,7 @@ interface AssetRow {
   // company" without a click into every row. Extended to Category/
   // Sub-Category/Vendor/Cost Centre so every FK column on the register can
   // show a name instead of a bare id.
-  current_holder_name: string | null;
+  current_asset_user_name: string | null;
   company_name: string | null;
   category_name: string | null;
   subcategory_name: string | null;
@@ -84,7 +84,7 @@ const ASSET_STATUSES = ["IN_STOCK", "ALLOTTED", "INSTALLED", "UNDER_REPAIR", "DI
 const ALL = "ALL";
 
 // A shared mock (as AssetRegister.test.tsx's first test uses) resolves every apiClient.get
-// call the same way, including these masters/holders lookups -- guard against that shape
+// call the same way, including these masters/asset-users lookups -- guard against that shape
 // mismatch (and against any other unexpected response) rather than letting `.map` throw.
 function asOptionArray(data: unknown): Option[] {
   return Array.isArray(data) ? (data as Option[]) : [];
@@ -123,7 +123,7 @@ const ASSET_OPTIONAL_COLUMNS: AssetColumnDef[] = [
   { key: "model", label: "Model", defaultVisible: true, cell: (a) => dash(a.model) },
   { key: "serial_number", label: "Serial Number", defaultVisible: true, cell: (a) => dash(a.serial_number) },
   { key: "status", label: "Status", defaultVisible: true, cell: (a) => <StatusBadge status={a.status} compact /> },
-  { key: "holder", label: "Holder", defaultVisible: true, cell: (a) => dash(a.current_holder_name) },
+  { key: "asset_user", label: "Asset User", defaultVisible: true, cell: (a) => dash(a.current_asset_user_name) },
   { key: "company", label: "Company", defaultVisible: true, cell: (a) => dash(a.company_name) },
   { key: "legacy_asset_code", label: "Legacy Asset Code", defaultVisible: false, cell: (a) => dash(a.legacy_asset_code) },
   { key: "barcode", label: "Barcode", defaultVisible: false, cell: (a) => dash(a.barcode) },
@@ -162,7 +162,7 @@ const ASSET_OPTIONAL_COLUMNS: AssetColumnDef[] = [
 
 // AM-21: mirrors backend/app/assets/search_service.py::SORTABLE_COLUMNS --
 // real Asset columns only. The register's own *_name columns (category/
-// subcategory/holder/company/vendor/cost_center) are page-scoped label
+// subcategory/asset_user/company/vendor/cost_center) are page-scoped label
 // lookups, not sortable database columns, so they're deliberately left out.
 const SORTABLE_COLUMN_KEYS = new Set([
   "description", "model", "serial_number", "status", "legacy_asset_code", "barcode",
@@ -206,7 +206,7 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
   const [q, setQRaw] = useState("");
   const [status, setStatusRaw] = useState(initialStatus ?? "");
   const [categoryId, setCategoryIdRaw] = useState("");
-  const [holderId, setHolderIdRaw] = useState("");
+  const [assetUserId, setAssetUserIdRaw] = useState("");
   const [companyId, setCompanyIdRaw] = useState("");
   const [page, setPageRaw] = useState(0);
   const [sortBy, setSortByRaw] = useState<string | null>(null);
@@ -243,7 +243,7 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
   const setQ = resettingPage(setQRaw);
   const setStatus = resettingPage(setStatusRaw);
   const setCategoryId = resettingPage(setCategoryIdRaw);
-  const setHolderId = resettingPage(setHolderIdRaw);
+  const setAssetUserId = resettingPage(setAssetUserIdRaw);
   const setCompanyId = resettingPage(setCompanyIdRaw);
   // Server-side sort (search_assets.SORTABLE_COLUMNS) -- click cycle matches
   // useTableSort's own client-side one (unsorted -> asc -> desc -> unsorted)
@@ -262,7 +262,7 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
     setPage(0);
   }
   const [moveOpen, setMoveOpen] = useState(false);
-  const [moveHolderId, setMoveHolderId] = useState("");
+  const [moveAssetUserId, setMoveAssetUserId] = useState("");
   // A snapshot of the selected rows taken when the Move dialog opens, so that if the
   // register's own list changes shape after a partial move (an asset that moved may drop
   // out of the current filter/status view on refetch) the dialog can still show which
@@ -273,7 +273,7 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
     ...(q ? { q } : {}),
     ...(status ? { status } : {}),
     ...(categoryId ? { category_id: categoryId } : {}),
-    ...(holderId ? { holder_id: holderId } : {}),
+    ...(assetUserId ? { asset_user_id: assetUserId } : {}),
     ...(companyId ? { company_id: companyId } : {}),
     ...(sortBy ? { sort_by: sortBy, sort_dir: sortDir } : {}),
     limit: String(PAGE_SIZE),
@@ -281,7 +281,7 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
   }).toString();
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["assets", "register", q, status, categoryId, holderId, companyId, sortBy, sortDir, page],
+    queryKey: ["assets", "register", q, status, categoryId, assetUserId, companyId, sortBy, sortDir, page],
     queryFn: () => apiClient.get<{ items: AssetRow[]; total: number }>(`/assets?${queryString}`),
   });
   const items = data?.items ?? [];
@@ -302,14 +302,14 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
   });
   const companies = asOptionArray(companiesData);
 
-  // Every holder, for both the filter bar's "Holder" dimension and the bulk-move "Move to"
+  // Every asset user, for both the filter bar's "Asset User" dimension and the bulk-move "Move to"
   // picker -- the register spans companies for an ADMIN, so unlike AssetDetail.tsx's
   // single-asset action dialog there's no one company to scope this list to.
-  const { data: holdersData } = useQuery({
-    queryKey: ["holders"],
-    queryFn: () => apiClient.get<Option[]>("/holders"),
+  const { data: asset_usersData } = useQuery({
+    queryKey: ["asset_users"],
+    queryFn: () => apiClient.get<Option[]>("/asset-users"),
   });
-  const holders = asOptionArray(holdersData);
+  const asset_users = asOptionArray(asset_usersData);
 
   const allSelected = items.length > 0 && items.every((a) => selected.includes(a.id));
 
@@ -324,7 +324,7 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
   function openMove() {
     bulkMoveMutation.reset();
     setMoveTargets(items.filter((a) => selected.includes(a.id)));
-    setMoveHolderId("");
+    setMoveAssetUserId("");
     setMoveOpen(true);
   }
 
@@ -337,7 +337,7 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
     mutationFn: () =>
       apiClient.post<{ moved: number; failed: { asset_id: number; reason: string }[] }>("/assets/bulk-move", {
         asset_ids: selected,
-        to_holder_id: Number(moveHolderId),
+        to_asset_user_id: Number(moveAssetUserId),
       }),
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ["assets", "register"] });
@@ -345,7 +345,7 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
         // Full success -- nothing left needing the user's attention, so close up.
         setSelected([]);
         setMoveOpen(false);
-        setMoveHolderId("");
+        setMoveAssetUserId("");
       } else {
         // Partial failure: keep the dialog open with the failure detail visible, and
         // narrow the selection down to just the assets that still need attention (the
@@ -439,14 +439,14 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="filter-holder">Holder</Label>
-            <Select value={holderId || ALL} onValueChange={(v) => setHolderId(v === ALL ? "" : v)}>
-              <SelectTrigger id="filter-holder" aria-label="Holder" className="w-40">
+            <Label htmlFor="filter-asset-user">Asset User</Label>
+            <Select value={assetUserId || ALL} onValueChange={(v) => setAssetUserId(v === ALL ? "" : v)}>
+              <SelectTrigger id="filter-asset-user" aria-label="Asset User" className="w-40">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={ALL}>All holders</SelectItem>
-                {holders.map((h) => (
+                <SelectItem value={ALL}>All asset_users</SelectItem>
+                {asset_users.map((h) => (
                   <SelectItem key={h.id} value={String(h.id)}>
                     {h.name}
                   </SelectItem>
@@ -525,7 +525,7 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
         emptyState={
           <EmptyState
             title="No assets found."
-            description={q || status || categoryId || holderId || companyId ? "Try a different search or filter." : undefined}
+            description={q || status || categoryId || assetUserId || companyId ? "Try a different search or filter." : undefined}
           />
         }
         selection={{
@@ -560,13 +560,13 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
           </DialogHeader>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="move-holder">Move to</Label>
-            <Select value={moveHolderId || undefined} onValueChange={setMoveHolderId}>
-              <SelectTrigger id="move-holder" aria-label="Move to">
+            <Label htmlFor="move-asset-user">Move to</Label>
+            <Select value={moveAssetUserId || undefined} onValueChange={setMoveAssetUserId}>
+              <SelectTrigger id="move-asset-user" aria-label="Move to">
                 <SelectValue placeholder="Select…" />
               </SelectTrigger>
               <SelectContent>
-                {holders.map((h) => (
+                {asset_users.map((h) => (
                   <SelectItem key={h.id} value={String(h.id)}>
                     {h.name}
                   </SelectItem>
@@ -604,7 +604,7 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
             </Button>
             <AsyncButton
               onClick={() => bulkMoveMutation.mutate()}
-              disabled={!moveHolderId}
+              disabled={!moveAssetUserId}
               pending={bulkMoveMutation.isPending}
               pendingLabel="Moving…"
             >

@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.core.config import DEFAULT_DEV_JWT_SECRET, settings
 from app.auth.router import router as auth_router
-from app.holders.router import router as holders_router
+from app.asset_users.router import router as asset_users_router
 from app.masters.router import router as masters_router
 from app.numbering.router import router as numbering_router
 from app.assets.router import router as assets_router
@@ -71,7 +71,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="CityKart Asset Manager API", lifespan=lifespan)
 app.include_router(auth_router)
-app.include_router(holders_router)
+app.include_router(asset_users_router)
 app.include_router(masters_router)
 app.include_router(numbering_router)
 app.include_router(assets_router)

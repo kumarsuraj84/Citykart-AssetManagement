@@ -1,7 +1,7 @@
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.masters.models import Company, Location, Department
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 
 
 async def test_create_code_rule(client):
@@ -13,10 +13,10 @@ async def test_create_code_rule(client):
         dept = Department(name="IT-CKS7")
         session.add_all([loc, dept])
         await session.flush()
-        holder = Holder(company_id=co.id, emp_code="NADMIN", name="N Admin", holder_type="EMPLOYEE",
+        asset_user = AssetUser(company_id=co.id, emp_code="NADMIN", name="N Admin", asset_user_type="EMPLOYEE",
                          location_id=loc.id, department_id=dept.id, role="ADMIN",
                          password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        session.add(holder)
+        session.add(asset_user)
         await session.commit()
 
     resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": "NADMIN", "password": "Passw0rd!"})
@@ -39,10 +39,10 @@ async def test_write_access_is_admin_only(client):
         dept = Department(name="IT-CKS8")
         session.add_all([loc, dept])
         await session.flush()
-        holder = Holder(company_id=co.id, emp_code="NVIEWER", name="N Viewer", holder_type="EMPLOYEE",
+        asset_user = AssetUser(company_id=co.id, emp_code="NVIEWER", name="N Viewer", asset_user_type="EMPLOYEE",
                          location_id=loc.id, department_id=dept.id, role="VIEWER",
                          password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        session.add(holder)
+        session.add(asset_user)
         await session.commit()
 
     resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": "NVIEWER", "password": "Passw0rd!"})

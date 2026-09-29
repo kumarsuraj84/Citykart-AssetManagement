@@ -2,7 +2,7 @@ from datetime import date, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.assets.models import Asset
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.lifecycle.models import AssetEvent
 from app.lifecycle.service import with_labels
 from app.masters.models import Location
@@ -31,7 +31,7 @@ OPEN_PURCHASE_ORDERS_LIMIT = 5
 
 async def dashboard_data(session: AsyncSession, allowed_company_ids: list[int] | None, include_purchase_orders: bool) -> dict:
     """Scoped exactly like `search_assets`/`_get_scoped_asset`: `allowed_company_ids` is
-    `scoped_company_ids(holder)` -- None means unrestricted (ADMIN sees every company's
+    `scoped_company_ids(asset_user)` -- None means unrestricted (ADMIN sees every company's
     data combined), a list means the caller only ever sees rows for their own company/ies.
     Soft-deleted assets (data-entry mistakes, Task 16) are excluded from every figure here,
     same as the asset register."""
@@ -43,9 +43,9 @@ async def dashboard_data(session: AsyncSession, allowed_company_ids: list[int] |
     status_counts = {row[0]: row[1] for row in (await session.execute(count_stmt)).all()}
 
     stock_stmt = (
-        base.join(Holder, Asset.current_holder_id == Holder.id)
-        .join(Location, Holder.location_id == Location.id)
-        .where(Holder.holder_type == "IT_STOCK")
+        base.join(AssetUser, Asset.current_asset_user_id == AssetUser.id)
+        .join(Location, AssetUser.location_id == Location.id)
+        .where(AssetUser.asset_user_type == "IT_STOCK")
         .with_only_columns(Location.name, func.count())
         .group_by(Location.name)
     )
@@ -106,12 +106,12 @@ async def dashboard_data(session: AsyncSession, allowed_company_ids: list[int] |
     asset_codes_by_event_id = {row[0].id: row[1] for row in recent_rows}
 
     # Reuses the exact same snapshot-correct labeling the asset History tab uses (AM-01
-    # point-in-time holder-name snapshots) -- never a fresh client-side reconstruction.
+    # point-in-time asset_user-name snapshots) -- never a fresh client-side reconstruction.
     labelled_events = await with_labels(session, recent_events)
     recorded_by_ids = {e.recorded_by for e in recent_events}
     recorder_names: dict[int, str] = {}
     if recorded_by_ids:
-        rows = (await session.execute(select(Holder.id, Holder.name).where(Holder.id.in_(recorded_by_ids)))).all()
+        rows = (await session.execute(select(AssetUser.id, AssetUser.name).where(AssetUser.id.in_(recorded_by_ids)))).all()
         recorder_names = {row[0]: row[1] for row in rows}
     recent_activity = [
         {

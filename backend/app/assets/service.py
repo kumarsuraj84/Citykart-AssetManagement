@@ -4,14 +4,14 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.assets.custom_field_values import validate_custom_field_values
 from app.assets.models import Asset
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.lifecycle.service import apply_event
 from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Location
 from app.numbering.service import build_code_tokens, generate_code, get_active_rule
 
 # The one reserved placeholder value exempt from Serial Number's global
 # uniqueness rule below -- see check_serial_number_unique's own docstring.
-NO_SERIAL_PLACEHOLDER = "N/A"
+NO_SERIAL_PLACEASSET_USER = "N/A"
 
 
 async def check_serial_number_unique(
@@ -40,7 +40,7 @@ async def check_serial_number_unique(
     if serial_number is None:
         return
     normalized = serial_number.strip()
-    if not normalized or normalized.upper() == NO_SERIAL_PLACEHOLDER:
+    if not normalized or normalized.upper() == NO_SERIAL_PLACEASSET_USER:
         return
     stmt = select(Asset).where(
         func.lower(Asset.serial_number) == normalized.lower(),
@@ -92,31 +92,31 @@ def compute_tax(purchase_cost, tax_percent) -> tuple[Decimal, Decimal]:
     return tax_amount, cost + tax_amount
 
 
-async def _get_initial_holder(session: AsyncSession, company_id: int, initial_holder_id: int | None) -> Holder:
-    """Resolve the holder newly procured assets land in.
+async def _get_initial_asset_user(session: AsyncSession, company_id: int, initial_asset_user_id: int | None) -> AssetUser:
+    """Resolve the asset_user newly procured assets land in.
 
-    `initial_holder_id` is required, not defaulted: a company can have multiple IT_STOCK
-    holders (one per location, e.g. "IT Stock-HO", "IT Stock-WH-F", "IT Stock-WH-K" per
+    `initial_asset_user_id` is required, not defaulted: a company can have multiple IT_STOCK
+    asset_users (one per location, e.g. "IT Stock-HO", "IT Stock-WH-F", "IT Stock-WH-K" per
     the design spec's seed data), so there is no safe way to pick one automatically —
     guessing risks silently misfiling a purchase into the wrong location's stock with no
     error and no warning. The real caller (the Add Asset screen) always has the admin
     explicitly pick a stock location from a dropdown, so this is never actually optional
     in practice.
     """
-    if initial_holder_id is None:
-        raise ValueError("initial_holder_id is required")
-    holder = await session.get(Holder, initial_holder_id)
-    if holder is None:
-        raise ValueError(f"initial holder {initial_holder_id} not found")
-    if holder.company_id != company_id:
-        raise ValueError("initial holder must belong to the same company as the asset")
-    return holder
+    if initial_asset_user_id is None:
+        raise ValueError("initial_asset_user_id is required")
+    asset_user = await session.get(AssetUser, initial_asset_user_id)
+    if asset_user is None:
+        raise ValueError(f"initial asset user {initial_asset_user_id} not found")
+    if asset_user.company_id != company_id:
+        raise ValueError("initial asset user must belong to the same company as the asset")
+    return asset_user
 
 
-async def procure_assets(session: AsyncSession, data: dict, quantity: int, actor: Holder) -> list[Asset]:
+async def procure_assets(session: AsyncSession, data: dict, quantity: int, actor: AssetUser) -> list[Asset]:
     """Behind "Add Asset": creates `quantity` identical assets (the "buying 20 mice" case),
     each with its own generated asset_code and its own PROCURED ledger entry recorded
-    through apply_event — the only function allowed to write status/current_holder_id.
+    through apply_event — the only function allowed to write status/current_asset_user_id.
 
     Raises ValueError (bad/missing master data, no code rule, unresolvable code-rule
     token) or LifecycleError (e.g. a future purchase date); POST /api/assets turns
@@ -140,8 +140,8 @@ async def procure_assets(session: AsyncSession, data: dict, quantity: int, actor
     if subcategory is not None and subcategory.category_id != category.id:
         raise ValueError("sub-category does not belong to the selected category")
 
-    holder = await _get_initial_holder(session, company_id, data.get("initial_holder_id"))
-    location = await session.get(Location, holder.location_id)
+    asset_user = await _get_initial_asset_user(session, company_id, data.get("initial_asset_user_id"))
+    location = await session.get(Location, asset_user.location_id)
 
     # AM-02: validated once here, then reused verbatim for every asset this call
     # creates (the "buying 20 mice" quantity case) -- the same custom_fields dict
@@ -218,11 +218,11 @@ async def procure_assets(session: AsyncSession, data: dict, quantity: int, actor
             warranty_upto=warranty_upto,
             # Initial status set directly here, not through apply_event — this is the one
             # documented exception (see apply_event's docstring): a freshly-inserted row
-            # needs a non-null status/holder before the state machine has anything to
+            # needs a non-null status/asset_user before the state machine has anything to
             # transition from. apply_event is called immediately below to record the
             # PROCURED event and is the sole writer for every transition after this one.
             status="IN_STOCK",
-            current_holder_id=holder.id,
+            current_asset_user_id=asset_user.id,
             status_since=data["purchase_date"],
             custom_fields=data.get("custom_fields") or {},
             created_by=actor.id,
@@ -235,7 +235,7 @@ async def procure_assets(session: AsyncSession, data: dict, quantity: int, actor
             session,
             asset,
             "PROCURED",
-            to_holder_id=holder.id,
+            to_asset_user_id=asset_user.id,
             actor=actor,
             event_date=event_date,
         )

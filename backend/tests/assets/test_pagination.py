@@ -8,7 +8,7 @@ import openpyxl
 from app.assets.service import procure_assets
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location
 from app.numbering.models import CodeRule
 from app.reports import router as reports_router
@@ -26,12 +26,12 @@ async def _setup(n_assets=5, other_company_assets=2):
         ccs = [CostCenter(company_id=c.id, code="HO01", name="HO") for c in cos]
         session.add_all([sub, *locs, dept, *ccs])
         await session.flush()
-        stocks = [Holder(company_id=c.id, emp_code=f"STK-{c.code}", name="Stock", holder_type="IT_STOCK",
-                         location_id=locs[i].id, department_id=dept.id, role="HOLDER") for i, c in enumerate(cos)]
-        it_a = Holder(company_id=cos[0].id, emp_code="ITA", name="IT A", holder_type="EMPLOYEE",
+        stocks = [AssetUser(company_id=c.id, emp_code=f"STK-{c.code}", name="Stock", asset_user_type="IT_STOCK",
+                         location_id=locs[i].id, department_id=dept.id, role="ASSET_USER") for i, c in enumerate(cos)]
+        it_a = AssetUser(company_id=cos[0].id, emp_code="ITA", name="IT A", asset_user_type="EMPLOYEE",
                       location_id=locs[0].id, department_id=dept.id, role="IT_TEAM",
                       password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        admin = Holder(company_id=cos[1].id, emp_code="ADM", name="Admin", holder_type="EMPLOYEE",
+        admin = AssetUser(company_id=cos[1].id, emp_code="ADM", name="Admin", asset_user_type="EMPLOYEE",
                        location_id=locs[1].id, department_id=dept.id, role="ADMIN",
                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
         session.add_all([*stocks, it_a, admin,
@@ -42,7 +42,7 @@ async def _setup(n_assets=5, other_company_assets=2):
             await procure_assets(session, {
                 "company_id": cos[idx].id, "cost_center_id": ccs[idx].id, "category_id": cat.id,
                 "subcategory_id": sub.id, "description": "Laptop", "purchase_date": date(2025, 1, 1),
-                "initial_holder_id": stocks[idx].id,
+                "initial_asset_user_id": stocks[idx].id,
             }, quantity=count, actor=admin)
         await session.commit()
         return cos[0].id

@@ -7,7 +7,7 @@ async function loginAs(page: Page, empCode: string, password: string) {
 }
 
 // Fills and submits the login form already on screen (keeps any ?next= in the URL).
-// The login screen no longer asks for a company -- login_id alone resolves the holder.
+// The login screen no longer asks for a company -- login_id alone resolves the asset_user.
 async function fillLogin(page: Page, empCode: string, password: string) {
   await page.getByLabel("User ID", { exact: true }).fill(empCode);
   await page.getByLabel("Password", { exact: true }).fill(password);
@@ -87,21 +87,21 @@ test("full custody journey: procure, allot, return, allot again", async ({ page,
   await expect(page).toHaveURL(/\/assets\/\d+$/);
   await expect(page.getByRole("heading", { name: assetCode })).toBeVisible();
 
-  // ---- Allot to the test EMPLOYEE holder ----
+  // ---- Allot to the test EMPLOYEE asset_user ----
   await page.getByRole("button", { name: "Move / Allot", exact: true }).click();
-  await selectRadix(page, "Holder", ctx.employee.name);
+  await selectRadix(page, "AssetUser", ctx.employee.name);
   await page.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(page.getByText("ALLOTTED", { exact: true })).toBeVisible();
 
   // ---- Return to IT Stock ----
   await page.getByRole("button", { name: "Move / Transfer", exact: true }).click();
-  await selectRadix(page, "Holder", ctx.stock.name);
+  await selectRadix(page, "AssetUser", ctx.stock.name);
   await page.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(page.getByText("IN STOCK", { exact: true })).toBeVisible();
 
-  // ---- Allot to the test STORE holder ----
+  // ---- Allot to the test STORE asset_user ----
   await page.getByRole("button", { name: "Move / Allot", exact: true }).click();
-  await selectRadix(page, "Holder", ctx.store.name);
+  await selectRadix(page, "AssetUser", ctx.store.name);
   await page.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(page.getByText("ALLOTTED", { exact: true })).toBeVisible();
 
@@ -109,7 +109,7 @@ test("full custody journey: procure, allot, return, allot again", async ({ page,
   await page.getByRole("tab", { name: "History", exact: true }).click();
   const timelineItems = page.locator("ol > li");
   await expect(timelineItems).toHaveCount(4);
-  // Human-readable custody labels built server-side with the real holder names.
+  // Human-readable custody labels built server-side with the real asset_user names.
   await expect(timelineItems.nth(0)).toContainText(`Procured into ${ctx.stock.name}`);
   await expect(timelineItems.nth(1)).toContainText(`Allotted to ${ctx.employee.name}`);
   await expect(timelineItems.nth(2)).toContainText(`Returned to ${ctx.stock.name}`);
@@ -126,10 +126,10 @@ test("full custody journey: procure, allot, return, allot again", async ({ page,
   await expect(page).toHaveURL(new RegExp(`${assetPath}$`));
   await expect(page.getByRole("heading", { name: assetCode })).toBeVisible();
 
-  // ---- Log out, log in as the EMPLOYEE holder: no currently-held assets ----
-  // (the asset's custody ended at the STORE holder, not the employee, so the
+  // ---- Log out, log in as the EMPLOYEE asset_user: no currently-held assets ----
+  // (the asset's custody ended at the STORE asset_user, not the employee, so the
   // employee's read-only "My Assets" view -- scoped server-side to
-  // current_holder_id == their own id -- must be empty of it)
+  // current_asset_user_id == their own id -- must be empty of it)
   await page.getByRole("button", { name: "Log out", exact: true }).click();
   await expect(page).toHaveURL(/\/login$/);
   await loginAs(page, ctx.employee.emp_code, ctx.employeePassword);

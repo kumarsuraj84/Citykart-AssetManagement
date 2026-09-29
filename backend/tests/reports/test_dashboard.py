@@ -3,7 +3,7 @@ from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.assets.service import procure_assets
 from app.masters.models import Company, CostCenter, AssetCategory, AssetSubcategory, Location, Department
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.numbering.models import CodeRule
 
 
@@ -19,9 +19,9 @@ async def test_dashboard_counts_and_warranty_alert(client):
         dept = Department(name="IT-DB1")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = Holder(company_id=co.id, emp_code="ITSTOCK-DB1", name="IT Stock-HO", holder_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="HOLDER")
-        it_admin = Holder(company_id=co.id, emp_code="ITA-DB1", name="IT Admin", holder_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, emp_code="ITSTOCK-DB1", name="IT Stock-HO", asset_user_type="IT_STOCK",
+                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+        it_admin = AssetUser(company_id=co.id, emp_code="ITA-DB1", name="IT Admin", asset_user_type="EMPLOYEE",
                            location_id=loc.id, department_id=dept.id, role="ADMIN",
                            password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/CK_",
@@ -31,7 +31,7 @@ async def test_dashboard_counts_and_warranty_alert(client):
         await procure_assets(session, {
             "company_id": co.id, "cost_center_id": cc.id, "category_id": cat.id, "subcategory_id": sub.id,
             "description": "Dashboard Laptop", "purchase_date": date(2025, 12, 10),
-            "warranty_upto": date.today() + timedelta(days=10), "initial_holder_id": stock.id,
+            "warranty_upto": date.today() + timedelta(days=10), "initial_asset_user_id": stock.id,
         }, quantity=1, actor=it_admin)
         await session.commit()
 
@@ -68,34 +68,34 @@ async def test_dashboard_scopes_by_company_and_long_allocation_alert():
         session.add_all([sub, cc_a, cc_b, loc_a, loc_b, dept])
         await session.flush()
 
-        stock_a = Holder(company_id=co_a.id, emp_code="ITSTOCK-DB2A", name="IT Stock A", holder_type="IT_STOCK",
-                          location_id=loc_a.id, department_id=dept.id, role="HOLDER")
-        # role=IT_TEAM (not ADMIN) so this holder is genuinely scoped to its own company --
-        # scoped_company_ids(holder) returns None (unrestricted, sees everything) for
+        stock_a = AssetUser(company_id=co_a.id, emp_code="ITSTOCK-DB2A", name="IT Stock A", asset_user_type="IT_STOCK",
+                          location_id=loc_a.id, department_id=dept.id, role="ASSET_USER")
+        # role=IT_TEAM (not ADMIN) so this asset_user is genuinely scoped to its own company --
+        # scoped_company_ids(asset_user) returns None (unrestricted, sees everything) for
         # ADMIN by design, so proving per-company scoping requires a non-ADMIN caller.
-        admin_a = Holder(company_id=co_a.id, emp_code="ITA-DB2A", name="IT Team A", holder_type="EMPLOYEE",
+        admin_a = AssetUser(company_id=co_a.id, emp_code="ITA-DB2A", name="IT Team A", asset_user_type="EMPLOYEE",
                           location_id=loc_a.id, department_id=dept.id, role="IT_TEAM",
                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        holder_a = Holder(company_id=co_a.id, emp_code="EMP-DB2A", name="Employee A", holder_type="EMPLOYEE",
-                           location_id=loc_a.id, department_id=dept.id, role="HOLDER",
+        asset_user_a = AssetUser(company_id=co_a.id, emp_code="EMP-DB2A", name="Employee A", asset_user_type="EMPLOYEE",
+                           location_id=loc_a.id, department_id=dept.id, role="ASSET_USER",
                            password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        stock_b = Holder(company_id=co_b.id, emp_code="ITSTOCK-DB2B", name="IT Stock B", holder_type="IT_STOCK",
-                          location_id=loc_b.id, department_id=dept.id, role="HOLDER")
-        admin_b = Holder(company_id=co_b.id, emp_code="ITA-DB2B", name="IT Admin B", holder_type="EMPLOYEE",
+        stock_b = AssetUser(company_id=co_b.id, emp_code="ITSTOCK-DB2B", name="IT Stock B", asset_user_type="IT_STOCK",
+                          location_id=loc_b.id, department_id=dept.id, role="ASSET_USER")
+        admin_b = AssetUser(company_id=co_b.id, emp_code="ITA-DB2B", name="IT Admin B", asset_user_type="EMPLOYEE",
                           location_id=loc_b.id, department_id=dept.id, role="ADMIN",
                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/CK_",
                          suffix_template="", start_number=1, pad_width=0)
-        session.add_all([stock_a, admin_a, holder_a, stock_b, admin_b, rule])
+        session.add_all([stock_a, admin_a, asset_user_a, stock_b, admin_b, rule])
         await session.commit()
 
         # Company A: one asset allotted 200 days ago (over the 180-day threshold) and one
         # allotted just now (must not alert).
         [old_asset] = await procure_assets(session, {
             "company_id": co_a.id, "cost_center_id": cc_a.id, "category_id": cat.id, "subcategory_id": sub.id,
-            "description": "Old allotment", "purchase_date": date(2024, 1, 1), "initial_holder_id": stock_a.id,
+            "description": "Old allotment", "purchase_date": date(2024, 1, 1), "initial_asset_user_id": stock_a.id,
         }, quantity=1, actor=admin_a)
-        await apply_event(session, old_asset, "MOVED", to_holder_id=holder_a.id, actor=admin_a)
+        await apply_event(session, old_asset, "MOVED", to_asset_user_id=asset_user_a.id, actor=admin_a)
         # apply_event stamps status_since with "now" (and rejects a backdated event_date
         # here since it would precede the PROCURED event) -- backdate it directly to
         # simulate an asset that has genuinely sat ALLOTTED for 200 days.
@@ -103,14 +103,14 @@ async def test_dashboard_scopes_by_company_and_long_allocation_alert():
 
         [recent_asset] = await procure_assets(session, {
             "company_id": co_a.id, "cost_center_id": cc_a.id, "category_id": cat.id, "subcategory_id": sub.id,
-            "description": "Recent allotment", "purchase_date": date(2024, 1, 1), "initial_holder_id": stock_a.id,
+            "description": "Recent allotment", "purchase_date": date(2024, 1, 1), "initial_asset_user_id": stock_a.id,
         }, quantity=1, actor=admin_a)
-        await apply_event(session, recent_asset, "MOVED", to_holder_id=holder_a.id, actor=admin_a)
+        await apply_event(session, recent_asset, "MOVED", to_asset_user_id=asset_user_a.id, actor=admin_a)
 
         # Company B: an unrelated asset that Company A's IT_TEAM caller must never see.
         await procure_assets(session, {
             "company_id": co_b.id, "cost_center_id": cc_b.id, "category_id": cat.id, "subcategory_id": sub.id,
-            "description": "Company B asset", "purchase_date": date(2024, 1, 1), "initial_holder_id": stock_b.id,
+            "description": "Company B asset", "purchase_date": date(2024, 1, 1), "initial_asset_user_id": stock_b.id,
         }, quantity=1, actor=admin_b)
         await session.commit()
 

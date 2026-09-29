@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
-from app.core.deps import ensure_company_in_scope, get_current_holder, require_role, scoped_company_ids
+from app.core.deps import ensure_company_in_scope, get_current_asset_user, require_role, scoped_company_ids
 from app.assets.audit_service import AUDITED_SCALAR_FIELDS, record_field_changes
 from app.assets.correction_service import correct_asset, UNSET as CORRECTION_UNSET
 from app.assets.custom_field_values import validate_custom_field_values
@@ -13,7 +13,7 @@ from app.assets.models import Asset, AssetFieldChange
 from app.assets.schemas import AssetCorrectionIn, AssetCreateIn, AssetDetailOut, AssetFieldChangeOut, AssetOut, AssetUpdateIn
 from app.assets.search_service import search_assets
 from app.assets.service import check_serial_number_unique, compute_tax, compute_warranty_upto, procure_assets
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.lifecycle.service import apply_event
 from app.lifecycle.state_machine import LifecycleError
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Department, Location, Vendor
@@ -29,7 +29,7 @@ class AssetListOut(BaseModel):
 
 class BulkMoveIn(BaseModel):
     asset_ids: list[int]
-    to_holder_id: int
+    to_asset_user_id: int
 
 
 class BulkMoveOut(BaseModel):
@@ -40,7 +40,7 @@ class BulkMoveOut(BaseModel):
 class BulkActionIn(BaseModel):
     """AM-20: the Asset Movement console -- scan a batch of assets by Serial
     Number/Asset Code, pick ONE action and (for the actions that need one) ONE
-    destination Holder for the whole batch, apply to all of them at once.
+    destination AssetUser for the whole batch, apply to all of them at once.
     `event_type` is any of actionRules.ts's own set (MOVED/SENT_FOR_REPAIR/
     LOST/DISPOSED/SOLD/SCRAPPED/RECEIVED_FROM_REPAIR/FOUND) -- the backend
     state machine (app.lifecycle.state_machine.transition) remains the real
@@ -48,7 +48,7 @@ class BulkActionIn(BaseModel):
     exactly as it already is for the single-asset action buttons."""
     asset_ids: list[int]
     event_type: str
-    to_holder_id: int | None = None
+    to_asset_user_id: int | None = None
     remarks: str | None = None
 
 
@@ -60,21 +60,21 @@ class BulkActionOut(BaseModel):
 async def _page_label_maps(session: AsyncSession, items: list[Asset]) -> tuple[dict, dict, dict, dict, dict, dict, dict, dict, dict]:
     """AM-11: page-scoped id->name lookups for the register's columns -- only
     the distinct ids actually present on this one page (at most `limit`,
-    currently capped at 200), never every holder/company/category/etc in the
+    currently capped at 200), never every asset_user/company/category/etc in the
     system (that's `app.reports.router._export_label_maps`'s job, which is
     fine for a bounded export but would be wasteful on every register page
-    view/filter keystroke). Extended beyond the original Holder/Company pair
+    view/filter keystroke). Extended beyond the original AssetUser/Company pair
     to Category/Sub-Category/Vendor/Cost Centre so the "show every field"
     register pass can label those FK columns too instead of showing bare ids.
 
-    Also returns a holder_id -> current holder's Location name map (a second
-    hop off Holder.location_id), and a holder_id -> Holder.holder_type map --
-    Asset Movement needs "where is this asset right now" (which holder, that
-    holder's location, and whether that holder is IT_STOCK vs an actual
+    Also returns a asset_user_id -> current asset_user's Location name map (a second
+    hop off AssetUser.location_id), and a asset_user_id -> AssetUser.asset_user_type map --
+    Asset Movement needs "where is this asset right now" (which asset_user, that
+    asset_user's location, and whether that asset_user is IT_STOCK vs an actual
     person/store/install so an operator can see at a glance they're about to
     move something out of someone's hands, not out of a warehouse), same
     page-scoped batch-lookup pattern, never a per-row join."""
-    holder_ids = {a.current_holder_id for a in items}
+    asset_user_ids = {a.current_asset_user_id for a in items}
     company_ids = {a.company_id for a in items}
     category_ids = {a.category_id for a in items}
     subcategory_ids = {a.subcategory_id for a in items if a.subcategory_id is not None}
@@ -88,7 +88,7 @@ async def _page_label_maps(session: AsyncSession, items: list[Asset]) -> tuple[d
         rows = (await session.execute(select(model.id, model.name).where(model.id.in_(ids)))).all()
         return {row[0]: row[1] for row in rows}
 
-    holders = await _labels(Holder, holder_ids)
+    asset_users = await _labels(AssetUser, asset_user_ids)
     companies = await _labels(Company, company_ids)
     categories = await _labels(AssetCategory, category_ids)
     subcategories = await _labels(AssetSubcategory, subcategory_ids)
@@ -96,17 +96,17 @@ async def _page_label_maps(session: AsyncSession, items: list[Asset]) -> tuple[d
     cost_centers = await _labels(CostCenter, cost_center_ids)
     brands = await _labels(Brand, brand_ids)
 
-    holder_detail_rows = []
-    if holder_ids:
-        holder_detail_rows = (await session.execute(
-            select(Holder.id, Holder.location_id, Holder.holder_type).where(Holder.id.in_(holder_ids)),
+    asset_user_detail_rows = []
+    if asset_user_ids:
+        asset_user_detail_rows = (await session.execute(
+            select(AssetUser.id, AssetUser.location_id, AssetUser.asset_user_type).where(AssetUser.id.in_(asset_user_ids)),
         )).all()
-    location_ids = {loc_id for _, loc_id, _ in holder_detail_rows if loc_id is not None}
+    location_ids = {loc_id for _, loc_id, _ in asset_user_detail_rows if loc_id is not None}
     location_names = await _labels(Location, location_ids)
-    holder_locations = {hid: location_names.get(loc_id) for hid, loc_id, _ in holder_detail_rows}
-    holder_types = {hid: holder_type for hid, _, holder_type in holder_detail_rows}
+    asset_user_locations = {hid: location_names.get(loc_id) for hid, loc_id, _ in asset_user_detail_rows}
+    asset_user_types = {hid: asset_user_type for hid, _, asset_user_type in asset_user_detail_rows}
 
-    return holders, companies, categories, subcategories, vendors, cost_centers, holder_locations, holder_types, brands
+    return asset_users, companies, categories, subcategories, vendors, cost_centers, asset_user_locations, asset_user_types, brands
 
 
 @router.post("", response_model=list[AssetOut], status_code=201)
@@ -131,7 +131,7 @@ async def create_asset(
         # AM-19: quantity is gone -- every call creates exactly one asset.
         assets = await procure_assets(session, data, quantity=1, actor=actor)
     except (ValueError, LifecycleError) as exc:
-        # e.g. no active code rule, an unresolvable code-rule token, initial holder /
+        # e.g. no active code rule, an unresolvable code-rule token, initial asset_user /
         # cost center from another company, a future purchase date -- all problems
         # with the request, not server faults, so a clean 422 instead of a raw 500.
         await session.rollback()
@@ -146,7 +146,7 @@ async def create_asset(
 async def list_assets(
     status: str | None = Query(None),
     category_id: int | None = Query(None),
-    holder_id: int | None = Query(None),
+    asset_user_id: int | None = Query(None),
     company_id: int | None = Query(None),
     q: str | None = Query(None),
     sort_by: str | None = Query(None),
@@ -154,34 +154,34 @@ async def list_assets(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     session: AsyncSession = Depends(get_session),
-    holder=Depends(get_current_holder),
+    asset_user=Depends(get_current_asset_user),
 ):
-    """Scoped exactly like `_get_scoped_asset`: a HOLDER only ever sees assets they
-    currently hold (so `holder_id` is pinned to their own id, ignoring any value the
-    caller passed, and the company filter is left unrestricted since holder_id already
+    """Scoped exactly like `_get_scoped_asset`: a ASSET_USER only ever sees assets they
+    currently hold (so `asset_user_id` is pinned to their own id, ignoring any value the
+    caller passed, and the company filter is left unrestricted since asset_user_id already
     narrows it); everyone else is scoped to `scoped_company_ids` (None = ADMIN,
     unrestricted). AM-21: `sort_by` must be one of search_assets.SORTABLE_COLUMNS --
     an unrecognized value is silently ignored (falls back to the existing
     newest-first order) rather than a 422, so an old cached frontend bundle
     or a stale saved link never breaks."""
-    if holder.role == "HOLDER":
-        holder_id = holder.id
+    if asset_user.role == "ASSET_USER":
+        asset_user_id = asset_user.id
         allowed = None
     else:
-        allowed = await scoped_company_ids(session, holder)
+        allowed = await scoped_company_ids(session, asset_user)
     items, total = await search_assets(
-        session, allowed, status, category_id, holder_id, company_id, q, sort_by, sort_dir, limit, offset,
+        session, allowed, status, category_id, asset_user_id, company_id, q, sort_by, sort_dir, limit, offset,
     )
     (
-        holder_labels, company_labels, category_labels, subcategory_labels, vendor_labels, cost_center_labels,
-        holder_locations, holder_types, brand_labels,
+        asset_user_labels, company_labels, category_labels, subcategory_labels, vendor_labels, cost_center_labels,
+        asset_user_locations, asset_user_types, brand_labels,
     ) = await _page_label_maps(session, items)
     out_items = []
     for a in items:
         out = AssetOut.model_validate(a)
-        out.current_holder_name = holder_labels.get(a.current_holder_id)
-        out.current_holder_location_name = holder_locations.get(a.current_holder_id)
-        out.current_holder_type = holder_types.get(a.current_holder_id)
+        out.current_asset_user_name = asset_user_labels.get(a.current_asset_user_id)
+        out.current_asset_user_location_name = asset_user_locations.get(a.current_asset_user_id)
+        out.current_asset_user_type = asset_user_types.get(a.current_asset_user_id)
         out.company_name = company_labels.get(a.company_id)
         out.category_name = category_labels.get(a.category_id)
         out.subcategory_name = subcategory_labels.get(a.subcategory_id) if a.subcategory_id else None
@@ -193,7 +193,7 @@ async def list_assets(
 
 
 async def _bulk_apply_event(
-    asset_ids: list[int], event_type: str, to_holder_id: int | None, remarks: str | None,
+    asset_ids: list[int], event_type: str, to_asset_user_id: int | None, remarks: str | None,
     session: AsyncSession, actor,
 ) -> tuple[int, list[dict]]:
     """Shared by /bulk-move (MOVED only, kept for backward compatibility with
@@ -215,7 +215,7 @@ async def _bulk_apply_event(
             failed.append({"asset_id": asset_id, "reason": "not found"})
             continue
         try:
-            await apply_event(session, asset, event_type, to_holder_id=to_holder_id, actor=actor, remarks=remarks)
+            await apply_event(session, asset, event_type, to_asset_user_id=to_asset_user_id, actor=actor, remarks=remarks)
             done += 1
         except LifecycleError as exc:
             failed.append({"asset_id": asset_id, "reason": str(exc)})
@@ -228,7 +228,7 @@ async def bulk_move(
     session: AsyncSession = Depends(get_session),
     actor=Depends(require_role("ADMIN", "IT_TEAM")),
 ):
-    moved, failed = await _bulk_apply_event(body.asset_ids, "MOVED", body.to_holder_id, None, session, actor)
+    moved, failed = await _bulk_apply_event(body.asset_ids, "MOVED", body.to_asset_user_id, None, session, actor)
     await session.commit()
     return BulkMoveOut(moved=moved, failed=failed)
 
@@ -240,23 +240,23 @@ async def bulk_action(
     actor=Depends(require_role("ADMIN", "IT_TEAM")),
 ):
     done, failed = await _bulk_apply_event(
-        body.asset_ids, body.event_type, body.to_holder_id, body.remarks, session, actor,
+        body.asset_ids, body.event_type, body.to_asset_user_id, body.remarks, session, actor,
     )
     await session.commit()
     return BulkActionOut(done=done, failed=failed)
 
 
-async def _get_scoped_asset(asset_id: int, session: AsyncSession, holder) -> Asset:
+async def _get_scoped_asset(asset_id: int, session: AsyncSession, asset_user) -> Asset:
     asset = await session.get(Asset, asset_id)
     if asset is None or asset.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
 
-    if holder.role == "HOLDER":
-        if asset.current_holder_id != holder.id:
+    if asset_user.role == "ASSET_USER":
+        if asset.current_asset_user_id != asset_user.id:
             raise HTTPException(status.HTTP_404_NOT_FOUND)
         return asset
 
-    allowed_companies = await scoped_company_ids(session, holder)
+    allowed_companies = await scoped_company_ids(session, asset_user)
     if allowed_companies is not None and asset.company_id not in allowed_companies:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     return asset
@@ -272,34 +272,34 @@ async def _to_detail_out(session: AsyncSession, asset: Asset) -> AssetDetailOut:
     cost_center = await session.get(CostCenter, asset.cost_center_id)
     vendor = await session.get(Vendor, asset.vendor_id) if asset.vendor_id else None
     brand = await session.get(Brand, asset.brand_id) if asset.brand_id else None
-    current_holder = await session.get(Holder, asset.current_holder_id)
+    current_asset_user = await session.get(AssetUser, asset.current_asset_user_id)
     company = await session.get(Company, asset.company_id)
-    location = await session.get(Location, current_holder.location_id) if current_holder else None
+    location = await session.get(Location, current_asset_user.location_id) if current_asset_user else None
     department = (
-        await session.get(Department, current_holder.department_id)
-        if current_holder and current_holder.department_id else None
+        await session.get(Department, current_asset_user.department_id)
+        if current_asset_user and current_asset_user.department_id else None
     )
-    # current_holder_name/company_name/category_name/subcategory_name/cost_center_name/
+    # current_asset_user_name/company_name/category_name/subcategory_name/cost_center_name/
     # vendor_name already live on AssetOut itself (AM-11's original pair, plus the
     # register's later "show every field" additions) -- exclude them all from the base
     # dump here so this endpoint's own, already-fetched rows are the ones that win,
     # not a duplicate keyword argument.
     base = AssetOut.model_validate(asset).model_dump(
         exclude={
-            "current_holder_name", "current_holder_location_name", "current_holder_type",
+            "current_asset_user_name", "current_asset_user_location_name", "current_asset_user_type",
             "company_name", "category_name", "subcategory_name", "cost_center_name", "vendor_name", "brand_name",
         }
     )
     return AssetDetailOut(
         **base,
-        current_holder_name=current_holder.name if current_holder else None,
+        current_asset_user_name=current_asset_user.name if current_asset_user else None,
         company_name=company.name if company else None,
         category_name=category.name if category else None,
         subcategory_name=subcategory.name if subcategory else None,
         cost_center_name=cost_center.name if cost_center else None,
         vendor_name=vendor.name if vendor else None,
         brand_name=brand.name if brand else None,
-        current_holder_type=current_holder.holder_type if current_holder else None,
+        current_asset_user_type=current_asset_user.asset_user_type if current_asset_user else None,
         location_name=location.name if location else None,
         department_name=department.name if department else None,
     )
@@ -309,9 +309,9 @@ async def _to_detail_out(session: AsyncSession, asset: Asset) -> AssetDetailOut:
 async def get_asset(
     asset_id: int,
     session: AsyncSession = Depends(get_session),
-    holder=Depends(get_current_holder),
+    asset_user=Depends(get_current_asset_user),
 ):
-    asset = await _get_scoped_asset(asset_id, session, holder)
+    asset = await _get_scoped_asset(asset_id, session, asset_user)
     return await _to_detail_out(session, asset)
 
 
@@ -319,13 +319,13 @@ async def get_asset(
 async def list_asset_changes(
     asset_id: int,
     session: AsyncSession = Depends(get_session),
-    holder=Depends(get_current_holder),
+    asset_user=Depends(get_current_asset_user),
 ):
     """AM-04 §23: read surface for the field-change audit -- scoped exactly
-    like viewing the asset itself (same _get_scoped_asset), so a HOLDER sees
+    like viewing the asset itself (same _get_scoped_asset), so a ASSET_USER sees
     only their own asset's history and no cross-company leakage is possible.
     Chronological, oldest first, matching the lifecycle Timeline's ordering."""
-    asset = await _get_scoped_asset(asset_id, session, holder)
+    asset = await _get_scoped_asset(asset_id, session, asset_user)
     stmt = (
         select(AssetFieldChange)
         .where(AssetFieldChange.asset_id == asset.id)
@@ -335,7 +335,7 @@ async def list_asset_changes(
     actor_ids = {r.actor_id for r in rows}
     actors: dict[int, str] = {}
     if actor_ids:
-        actor_rows = (await session.execute(select(Holder).where(Holder.id.in_(actor_ids)))).scalars().all()
+        actor_rows = (await session.execute(select(AssetUser).where(AssetUser.id.in_(actor_ids)))).scalars().all()
         actors = {h.id: h.name for h in actor_rows}
     return [
         AssetFieldChangeOut.model_validate(r).model_copy(update={"actor_name": actors.get(r.actor_id)})
@@ -355,7 +355,7 @@ async def update_asset(
     -- previously there was no way to correct e.g. a mistyped serial number or
     add a PI Number after the fact without going through a lifecycle event,
     which this deliberately is not: no asset_event row is written, no status/
-    holder change happens, nothing here touches the ledger. Identity fields
+    asset_user change happens, nothing here touches the ledger. Identity fields
     (asset_code/company_id/cost_center_id) aren't in AssetUpdateIn at all --
     trg_asset_no_identity_change would reject them at the database level even
     if they were.
@@ -428,7 +428,7 @@ async def correct_asset_classification(
     Purchase Date -- the three fields `AssetUpdateIn` has excluded since
     AM-02 precisely because they're controlled master/date references, not
     ordinary descriptive data. Same scoping as every other asset-mutation
-    endpoint (`_get_scoped_asset`): a HOLDER never reaches this route at all
+    endpoint (`_get_scoped_asset`): a ASSET_USER never reaches this route at all
     (`require_role` gate), and IT_TEAM can only correct an asset already
     inside their own company scope. `body.model_fields_set` is what tells
     "this field wasn't part of the request" apart from "explicitly set to
@@ -483,13 +483,13 @@ async def delete_asset_entry_mistake(
 async def asset_qr(
     asset_id: int,
     session: AsyncSession = Depends(get_session),
-    holder=Depends(get_current_holder),
+    asset_user=Depends(get_current_asset_user),
 ):
     """Goes through the same `_get_scoped_asset` every other `/api/assets/{id}/...`
-    route uses (Task 16), so a HOLDER who doesn't currently hold this asset gets 404
+    route uses (Task 16), so a ASSET_USER who doesn't currently hold this asset gets 404
     here exactly like they would from GET /api/assets/{id} -- a QR code is not a
     backdoor around asset scoping."""
-    await _get_scoped_asset(asset_id, session, holder)
+    await _get_scoped_asset(asset_id, session, asset_user)
     return Response(content=asset_qr_png(asset_id), media_type="image/png")
 
 
@@ -498,7 +498,7 @@ async def asset_label(
     asset_id: int,
     symbol: str = Query("barcode", pattern="^(barcode|qr)$"),
     session: AsyncSession = Depends(get_session),
-    holder=Depends(get_current_holder),
+    asset_user=Depends(get_current_asset_user),
 ):
     """Print Labels (bulk physical tagging): a linear Code128 barcode
     (default) or a QR code, either way encoding this asset's bare
@@ -507,5 +507,5 @@ async def asset_label(
     untouched. Same `_get_scoped_asset` scoping as every other
     `/api/assets/{id}/...` route -- a label image is not a backdoor around
     asset scoping either."""
-    asset = await _get_scoped_asset(asset_id, session, holder)
+    asset = await _get_scoped_asset(asset_id, session, asset_user)
     return Response(content=asset_label_png(asset.asset_code, symbol), media_type="image/png")

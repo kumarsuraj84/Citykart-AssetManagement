@@ -29,10 +29,10 @@ const FULL_ASSET = {
   pi_number: "PI-3001", pi_date: "2025-05-22",
   purchase_cost: 60000, tax_percent: 18, tax_amount: 10800, total_cost: 70800,
   purchase_date: "2025-06-01", warranty_years: 3, warranty_upto: "2027-06-01",
-  current_holder_id: 5, status_since: "2025-06-01",
+  current_asset_user_id: 5, status_since: "2025-06-01",
   custom_fields: { asset_tag: "TAG-1", retired_field: "kept for history" },
   category_name: "IT Equipment", subcategory_name: "Laptop", cost_center_name: "Head Office",
-  vendor_name: "Acme Traders", brand_name: "Dell", current_holder_name: "IT Stock-HO", current_holder_type: "IT_STOCK",
+  vendor_name: "Acme Traders", brand_name: "Dell", current_asset_user_name: "IT Stock-HO", current_asset_user_type: "IT_STOCK",
   location_name: "Head Office", department_name: "IT",
 };
 
@@ -55,7 +55,7 @@ function mockGets(overrides: Record<string, unknown> = {}) {
     if (path === "/assets/1") return Promise.resolve(overrides.asset ?? FULL_ASSET);
     if (path === "/assets/1/events") return Promise.resolve(overrides.events ?? []);
     if (path === "/assets/1/changes") return Promise.resolve(overrides.changes ?? []);
-    if (path.startsWith("/holders")) return Promise.resolve(overrides.holders ?? [{ id: 5, name: "Ankur" }]);
+    if (path.startsWith("/asset-users")) return Promise.resolve(overrides.asset_users ?? [{ id: 5, name: "Ankur" }]);
     if (path.startsWith("/masters/vendors")) return Promise.resolve(overrides.vendors ?? [{ id: 7, name: "Acme Traders" }]);
     if (path.startsWith("/masters/brands")) return Promise.resolve(overrides.brands ?? [{ id: 9, name: "Dell" }, { id: 10, name: "HP" }]);
     if (path.startsWith("/masters/custom-fields")) return Promise.resolve(overrides.customFieldDefs ?? CUSTOM_FIELD_DEFS);
@@ -229,7 +229,7 @@ describe("AssetDetail (Asset 360)", () => {
     expect(await screen.findByText(/no documents uploaded/i)).toBeInTheDocument();
   });
 
-  it("shows the Edit action for ADMIN/IT_TEAM but not for VIEWER or HOLDER", async () => {
+  it("shows the Edit action for ADMIN/IT_TEAM but not for VIEWER or ASSET_USER", async () => {
     mockGets();
     const { unmount } = renderWithClient(<AssetDetail assetId={1} />);
     await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
@@ -320,20 +320,20 @@ describe("AssetDetail (Asset 360)", () => {
     expect(screen.getByRole("button", { name: /move \/ allot/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /receive from repair/i })).not.toBeInTheDocument();
 
-    // Holders are scoped to the asset's own company, not fetched unscoped.
-    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/holders?company_id=1"));
+    // AssetUsers are scoped to the asset's own company, not fetched unscoped.
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/asset-users?company_id=1"));
 
     fireEvent.click(screen.getByRole("button", { name: /move \/ allot/i }));
-    await pickSelectOption(/holder/i, "Ankur");
+    await pickSelectOption(/asset user/i, "Ankur");
     fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
 
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/assets/1/events", expect.objectContaining({
-      event_type: "MOVED", to_holder_id: 5,
+      event_type: "MOVED", to_asset_user_id: 5,
     })));
   });
 
-  it("hides all lifecycle action buttons, and the Edit action, for HOLDER-role viewers", async () => {
-    mockAuth("HOLDER");
+  it("hides all lifecycle action buttons, and the Edit action, for ASSET_USER-role viewers", async () => {
+    mockAuth("ASSET_USER");
     mockGets();
 
     renderWithClient(<AssetDetail assetId={1} />);
@@ -368,7 +368,7 @@ describe("AssetDetail (Asset 360)", () => {
 });
 
 describe("AssetDetail -- AM-07 asset correction", () => {
-  it("shows the Correct Classification action only for ADMIN/IT_TEAM, never VIEWER/HOLDER", async () => {
+  it("shows the Correct Classification action only for ADMIN/IT_TEAM, never VIEWER/ASSET_USER", async () => {
     mockGets();
     renderWithClient(<AssetDetail assetId={1} />);
     await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });

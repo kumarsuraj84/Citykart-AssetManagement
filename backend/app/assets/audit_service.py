@@ -40,7 +40,7 @@ def _serialize(value) -> str | None:
 async def _describe_vendor(session: AsyncSession, vendor_id) -> str | None:
     """A stable ID alone becomes meaningless once the vendor is renamed years
     later -- snapshot the name alongside it, the same reasoning AM-01 already
-    applied to asset_event's holder names."""
+    applied to asset_event's asset_user names."""
     if vendor_id is None:
         return None
     vendor = await session.get(Vendor, vendor_id)

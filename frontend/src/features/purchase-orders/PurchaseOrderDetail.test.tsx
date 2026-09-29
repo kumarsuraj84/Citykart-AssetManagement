@@ -42,7 +42,7 @@ function mockGets(lines: unknown[]) {
     if (path.startsWith("/masters/subcategories")) return Promise.resolve([{ id: 2, name: "Laptop", category_id: 1 }]);
     if (path.startsWith("/masters/cost-centers")) return Promise.resolve([{ id: 3, name: "Head Office" }]);
     if (path.startsWith("/masters/brands")) return Promise.resolve([{ id: 9, name: "Dell" }]);
-    if (path.startsWith("/holders")) return Promise.resolve([{ id: 5, name: "IT Stock-HO" }]);
+    if (path.startsWith("/asset-users")) return Promise.resolve([{ id: 5, name: "IT Stock-HO" }]);
     return Promise.resolve([]);
   });
 }
@@ -198,8 +198,8 @@ describe("PurchaseOrderDetail", () => {
     fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "1180" } });
     fireEvent.change(within(dialog).getByLabelText(/^serial number\*?$/i), { target: { value: "SN-001" } });
 
-    // Radix Select isn't a native <select>; pick the holder option via its trigger.
-    fireEvent.click(within(dialog).getByLabelText(/initial holder/i));
+    // Radix Select isn't a native <select>; pick the asset_user option via its trigger.
+    fireEvent.click(within(dialog).getByLabelText(/initial asset user/i));
     fireEvent.click(await screen.findByText("IT Stock-HO"));
 
     await waitFor(() => expect(within(dialog).getByRole("button", { name: /confirm/i })).not.toBeDisabled());
@@ -211,7 +211,7 @@ describe("PurchaseOrderDetail", () => {
         expect.objectContaining({
           invoice_number: "INV-1",
           invoice_amount: 1180,
-          lines: [{ pending_asset_id: 10, serial_number: "SN-001", initial_holder_id: 5 }],
+          lines: [{ pending_asset_id: 10, serial_number: "SN-001", initial_asset_user_id: 5 }],
         }),
       ),
     );
@@ -245,7 +245,7 @@ describe("PurchaseOrderDetail", () => {
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-1" } });
     fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "1180" } });
-    fireEvent.click(within(dialog).getByLabelText(/initial holder/i));
+    fireEvent.click(within(dialog).getByLabelText(/initial asset user/i));
     fireEvent.click(await screen.findByText("IT Stock-HO"));
 
     const serialInput = within(dialog).getByLabelText(/^serial number\*?$/i);
@@ -262,7 +262,7 @@ describe("PurchaseOrderDetail", () => {
       expect(apiClient.post).toHaveBeenCalledWith(
         "/purchase-orders/1/deliver",
         expect.objectContaining({
-          lines: [{ pending_asset_id: 10, serial_number: "N/A", initial_holder_id: 5 }],
+          lines: [{ pending_asset_id: 10, serial_number: "N/A", initial_asset_user_id: 5 }],
         }),
       ),
     );
@@ -327,7 +327,7 @@ describe("PurchaseOrderDetail", () => {
     fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-1" } });
     fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "1180" } });
     fireEvent.change(within(dialog).getByLabelText(/^serial number\*?$/i), { target: { value: "SN-001" } });
-    fireEvent.click(within(dialog).getByLabelText(/initial holder/i));
+    fireEvent.click(within(dialog).getByLabelText(/initial asset user/i));
     fireEvent.click(await screen.findByText("IT Stock-HO"));
     fireEvent.click(within(dialog).getByRole("button", { name: /confirm/i }));
 

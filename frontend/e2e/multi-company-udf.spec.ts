@@ -37,7 +37,7 @@ async function loginAdmin(baseURL: string, reg: SeedRegistry): Promise<string> {
 
 let registryA: SeedRegistry | null = null;
 // Only company A gets a full seedTestCompany (its own SEEDADMIN, masters,
-// holders) -- company B is a bare row created through company A's own
+// asset_users) -- company B is a bare row created through company A's own
 // (globally-unrestricted, per app/core/deps.py::scoped_company_ids) ADMIN
 // token, existing only to give the custom field somewhere else to be scoped
 // to. A second seedTestCompany would mint a second concurrently-active
@@ -80,7 +80,7 @@ test.afterEach(async ({ baseURL }) => {
 
 // AM-05's core new guarantee: a required Custom Field scoped to one company
 // must never block asset creation for a DIFFERENT company. Company B here
-// is a bare row (no holders/masters of its own) -- everything the test
+// is a bare row (no asset_users/masters of its own) -- everything the test
 // exercises through the browser happens as company A.
 test("a required custom field scoped to company B never blocks asset creation for company A", async ({ page, baseURL }) => {
   test.setTimeout(120_000);

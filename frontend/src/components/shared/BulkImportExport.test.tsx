@@ -37,15 +37,15 @@ describe("BulkImportExport", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/masters/vendors/export", expect.anything()));
   });
 
-  it("uses an explicit basePath instead of /masters/{resource} when given (Holders)", async () => {
+  it("uses an explicit basePath instead of /masters/{resource} when given (AssetUsers)", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, blob: () => Promise.resolve(new Blob(["x"])) });
     window.fetch = fetchMock as any;
 
-    render(<BulkImportExport resource="holders" label="Holders" basePath="/holders" />);
+    render(<BulkImportExport resource="asset_users" label="AssetUsers" basePath="/asset-users" />);
     fireEvent.click(screen.getByRole("button", { name: /import \/ export/i }));
     fireEvent.click(screen.getByRole("button", { name: /^export$/i }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/holders/export", expect.anything()));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/asset-users/export", expect.anything()));
   });
 
   it("previews a file and shows dynamic columns built from the response, then commits", async () => {

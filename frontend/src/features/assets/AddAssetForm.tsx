@@ -64,7 +64,7 @@ interface FormState {
   piDate: string;
   purchaseCost: string;
   taxPercent: string;
-  initialHolderId: string;
+  initialAssetUserId: string;
 }
 
 const emptyForm: FormState = {
@@ -88,7 +88,7 @@ const emptyForm: FormState = {
   piDate: "",
   purchaseCost: "0",
   taxPercent: "0",
-  initialHolderId: "",
+  initialAssetUserId: "",
 };
 
 // Empty-string sentinel for a Radix Select with no selection yet -- it can't take
@@ -113,10 +113,10 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
   // caller's own home company (companyId), but a caller granted access to
   // more than one company (ADMIN, or IT_TEAM with company-access grants)
   // can pick a different one. Selecting a different company resets every
-  // company-scoped choice below it (Cost Centre, Initial Holder), the same
+  // company-scoped choice below it (Cost Centre, Initial AssetUser), the same
   // way changing Category already resets Sub-Category.
   const [selectedCompanyId, setSelectedCompanyId] = useState(companyId);
-  const myCompaniesQ = useQuery({ queryKey: ["holders", "me", "companies"], queryFn: () => apiClient.get<Option[]>("/holders/me/companies") });
+  const myCompaniesQ = useQuery({ queryKey: ["asset_users", "me", "companies"], queryFn: () => apiClient.get<Option[]>("/asset-users/me/companies") });
   const myCompanies = myCompaniesQ.data ?? [];
 
   // AM-08: Category and Vendor are genuinely global masters (no company_id
@@ -124,7 +124,7 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
   // the AM-07 UAT observation that first flagged this), so they correctly
   // list every row for every company; only Cost Centre is company-owned and
   // is now filtered to this asset's own company via the same opt-in
-  // `company_id` query param the Initial Holder lookup below already uses.
+  // `company_id` query param the Initial AssetUser lookup below already uses.
   const categoriesQ = useQuery({ queryKey: ["masters", "categories"], queryFn: () => apiClient.get<Option[]>("/masters/categories") });
   const subcategoriesQ = useQuery({
     queryKey: ["masters", "subcategories"],
@@ -140,15 +140,15 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
     queryKey: ["masters", "custom-fields"],
     queryFn: () => apiClient.get<CustomFieldDef[]>("/masters/custom-fields"),
   });
-  // Scoped to this company's IT_STOCK holders only -- a company can have more than
+  // Scoped to this company's IT_STOCK asset_users only -- a company can have more than
   // one (one per location), so the backend deliberately has no server-side default
-  // and requires an explicit initial_holder_id. The admin must explicitly choose
+  // and requires an explicit initial_asset_user_id. The admin must explicitly choose
   // one; canSave below blocks submission until they do (never auto-picked, since
-  // HolderService.list has no stable ordering and guessing risks silently misfiling
+  // AssetUserService.list has no stable ordering and guessing risks silently misfiling
   // a purchase into the wrong location's stock).
-  const stockHoldersQ = useQuery({
-    queryKey: ["holders", "IT_STOCK", selectedCompanyId],
-    queryFn: () => apiClient.get<Option[]>(`/holders?holder_type=IT_STOCK&company_id=${selectedCompanyId}`),
+  const stockAssetUsersQ = useQuery({
+    queryKey: ["asset_users", "IT_STOCK", selectedCompanyId],
+    queryFn: () => apiClient.get<Option[]>(`/asset-users?asset_user_type=IT_STOCK&company_id=${selectedCompanyId}`),
   });
 
   const categories = categoriesQ.data ?? [];
@@ -156,7 +156,7 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
   const costCenters = costCentersQ.data ?? [];
   const vendors = vendorsQ.data ?? [];
   const brands = brandsQ.data ?? [];
-  const stockHolders = stockHoldersQ.data ?? [];
+  const stockAssetUsers = stockAssetUsersQ.data ?? [];
   // AM-05: only fields applicable to THIS asset's company -- Global
   // (company_id null) plus this company's own -- ever render, are
   // validated, or count toward requiredness here. A field scoped to a
@@ -173,7 +173,7 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
     ? subcategories.filter((s) => s.category_id === Number(form.categoryId))
     : subcategories;
 
-  const mastersQueries = [categoriesQ, subcategoriesQ, costCentersQ, vendorsQ, brandsQ, customFieldsQ, stockHoldersQ];
+  const mastersQueries = [categoriesQ, subcategoriesQ, costCentersQ, vendorsQ, brandsQ, customFieldsQ, stockAssetUsersQ];
   const mastersError = mastersQueries.some((q) => q.isError);
   const mastersLoading = mastersQueries.some((q) => q.isLoading);
 
@@ -203,7 +203,7 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
     return v === undefined || v === "";
   }
 
-  const hasHolderOption = stockHolders.length > 0;
+  const hasAssetUserOption = stockAssetUsers.length > 0;
   const hasCostCenterOption = costCenters.length > 0;
   // AM-19: PO/Invoice/PI No+Date are no longer required here -- ground
   // reality is that paperwork routinely arrives after the physical asset
@@ -216,7 +216,7 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
     form.costCenterId !== "" &&
     form.vendorId !== "" &&
     (form.noSerialNumber || form.serialNumber.trim() !== "") &&
-    form.initialHolderId !== "" &&
+    form.initialAssetUserId !== "" &&
     !customFields.some(requiredCustomFieldMissing);
 
   function buildCustomFieldsPayload(): Record<string, CustomFieldValue> {
@@ -260,7 +260,7 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
         // given (docs/ai/DECISIONS.md), or today when Invoice Date isn't
         // known yet; the backend derives it either way, so this key is
         // simply omitted from the payload.
-        initial_holder_id: Number(form.initialHolderId),
+        initial_asset_user_id: Number(form.initialAssetUserId),
         custom_fields: buildCustomFieldsPayload(),
       }),
     onSuccess: (created) => {
@@ -332,7 +332,7 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
                 onValueChange={(v) => {
                   setSelectedCompanyId(Number(v));
                   setField("costCenterId", "");
-                  setField("initialHolderId", "");
+                  setField("initialAssetUserId", "");
                 }}
               >
                 <SelectTrigger id="company" aria-label="Company">
@@ -545,19 +545,19 @@ export function AddAssetForm({ companyId }: { companyId: number }) {
       <section className="flex flex-col gap-4">
         <SectionHeading>Initial Custody</SectionHeading>
         <div className="grid gap-4 sm:grid-cols-2">
-          <FormField htmlFor="initial-holder" label="Goes Into" required>
-            <Select value={selectValue(form.initialHolderId)} onValueChange={(v) => setField("initialHolderId", v)} disabled={mastersLoading}>
-              <SelectTrigger id="initial-holder" aria-label="Goes Into">
+          <FormField htmlFor="initial-asset-user" label="Goes Into" required>
+            <Select value={selectValue(form.initialAssetUserId)} onValueChange={(v) => setField("initialAssetUserId", v)} disabled={mastersLoading}>
+              <SelectTrigger id="initial-asset-user" aria-label="Goes Into">
                 <SelectValue placeholder="Select…" />
               </SelectTrigger>
               <SelectContent>
-                {stockHolders.map((h) => (
+                {stockAssetUsers.map((h) => (
                   <SelectItem key={h.id} value={String(h.id)}>{h.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            {!mastersLoading && !hasHolderOption && (
-              <p className="text-sm text-destructive">No IT Stock holder found for this company. Add one under Setup &gt; Users first.</p>
+            {!mastersLoading && !hasAssetUserOption && (
+              <p className="text-sm text-destructive">No IT Stock asset user found for this company. Add one under Setup &gt; Users first.</p>
             )}
           </FormField>
         </div>

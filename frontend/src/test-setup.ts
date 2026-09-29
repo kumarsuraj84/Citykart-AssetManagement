@@ -9,7 +9,7 @@ import { cleanup } from "@testing-library/react";
 afterEach(() => cleanup());
 
 // jsdom doesn't implement these, but Radix UI's Select (used e.g. by
-// HoldersScreen and MasterCrudScreen) calls them when opening/scrolling its
+// AssetUsersScreen and MasterCrudScreen) calls them when opening/scrolling its
 // popover-positioned listbox. Without these no-op polyfills, interacting
 // with a Select in tests throws "not a function" errors.
 if (typeof Element.prototype.hasPointerCapture !== "function") {

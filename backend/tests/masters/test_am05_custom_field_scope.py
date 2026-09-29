@@ -5,7 +5,7 @@ editing an asset) is covered separately in
 tests/assets/test_am05_udf_applicability.py."""
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Location, Department, Vendor
 from app.numbering.models import CodeRule
 
@@ -21,20 +21,20 @@ async def _setup(code="AM05CF"):
         dept = Department(name=f"IT-{code}")
         session.add_all([loc, loc_b, dept])
         await session.flush()
-        admin = Holder(company_id=a.id, emp_code=f"ADM-{code}", name="Admin", holder_type="EMPLOYEE",
+        admin = AssetUser(company_id=a.id, emp_code=f"ADM-{code}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        it_a = Holder(company_id=a.id, emp_code=f"ITA-{code}", name="IT A", holder_type="EMPLOYEE",
+        it_a = AssetUser(company_id=a.id, emp_code=f"ITA-{code}", name="IT A", asset_user_type="EMPLOYEE",
                        location_id=loc.id, department_id=dept.id, role="IT_TEAM",
                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        it_b = Holder(company_id=b.id, emp_code=f"ITB-{code}", name="IT B", holder_type="EMPLOYEE",
+        it_b = AssetUser(company_id=b.id, emp_code=f"ITB-{code}", name="IT B", asset_user_type="EMPLOYEE",
                        location_id=loc_b.id, department_id=dept.id, role="IT_TEAM",
                        password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        viewer_a = Holder(company_id=a.id, emp_code=f"VWA-{code}", name="Viewer A", holder_type="EMPLOYEE",
+        viewer_a = AssetUser(company_id=a.id, emp_code=f"VWA-{code}", name="Viewer A", asset_user_type="EMPLOYEE",
                            location_id=loc.id, department_id=dept.id, role="VIEWER",
                            password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        stock_a = Holder(company_id=a.id, emp_code=f"STK-{code}", name="IT Stock", holder_type="IT_STOCK",
-                          location_id=loc.id, department_id=dept.id, role="HOLDER")
+        stock_a = AssetUser(company_id=a.id, emp_code=f"STK-{code}", name="IT Stock", asset_user_type="IT_STOCK",
+                          location_id=loc.id, department_id=dept.id, role="ASSET_USER")
         cc = CostCenter(company_id=a.id, code=f"CC-{code}", name="Cost Centre")
         cat = AssetCategory(code=f"CAT-{code}", name="Category")
         vendor = Vendor(code=f"VND-{code}", name="Test Vendor")
@@ -190,7 +190,7 @@ class TestScopeMutationRules:
             "company_id": ids["a"], "cost_center_id": ids["cc"], "category_id": ids["cat"],
             "subcategory_id": ids["sub"], "description": "Scoped UDF Test Laptop",
             "invoice_date": "2025-06-01",
-            "initial_holder_id": ids["stock_a"], "custom_fields": {"scm2_notes": "has a value"},
+            "initial_asset_user_id": ids["stock_a"], "custom_fields": {"scm2_notes": "has a value"},
             "vendor_id": ids["vendor"], "po_number": "PO-1", "po_date": "2025-05-20",
             "invoice_number": "INV-1", "pi_number": "PI-1", "pi_date": "2025-05-22",
             "serial_number": "SN-SCM2",

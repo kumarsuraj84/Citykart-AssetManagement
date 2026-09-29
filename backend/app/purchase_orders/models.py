@@ -55,8 +55,8 @@ class PendingAsset(Base, AuditMixin):
     invoice_number: Mapped[str | None] = mapped_column(String(100))
     invoice_date: Mapped[date | None] = mapped_column(Date)
     invoice_amount: Mapped[float | None] = mapped_column(Numeric(14, 2))
-    initial_holder_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("holder.id"))
+    initial_asset_user_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("asset_user.id"))
 
     delivered_asset_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("asset.id"))
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    delivered_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("holder.id"))
+    delivered_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("asset_user.id"))

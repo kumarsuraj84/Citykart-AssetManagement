@@ -63,11 +63,11 @@ describe("AssetRegister", () => {
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("sort_dir=desc")));
   });
 
-  it("shows the current holder and company the backend resolved for each row (AM-11)", async () => {
+  it("shows the current asset_user and company the backend resolved for each row (AM-11)", async () => {
     (apiClient.get as any).mockResolvedValue({
       items: [
-        { id: 1, asset_code: "FA/HO01/IT/LAP/CK_1", description: "Laptop", status: "ALLOTTED", current_holder_name: "Jane Doe", company_name: "Citykart Stores" },
-        { id: 2, asset_code: "FA/HO01/IT/LAP/CK_2", description: "Printer", status: "IN_STOCK", current_holder_name: null, company_name: null },
+        { id: 1, asset_code: "FA/HO01/IT/LAP/CK_1", description: "Laptop", status: "ALLOTTED", current_asset_user_name: "Jane Doe", company_name: "Citykart Stores" },
+        { id: 2, asset_code: "FA/HO01/IT/LAP/CK_2", description: "Printer", status: "IN_STOCK", current_asset_user_name: null, company_name: null },
       ],
       total: 2,
     });
@@ -87,7 +87,7 @@ describe("AssetRegister", () => {
           total: 1,
         });
       }
-      // /masters/categories, /masters/companies, /holders
+      // /masters/categories, /masters/companies, /asset-users
       return Promise.resolve([]);
     });
 
@@ -152,7 +152,7 @@ describe("AssetRegister", () => {
           total: 2,
         });
       }
-      if (path.startsWith("/holders")) {
+      if (path.startsWith("/asset-users")) {
         return Promise.resolve([{ id: 5, name: "Warehouse" }]);
       }
       return Promise.resolve([]); // /masters/categories, /masters/companies

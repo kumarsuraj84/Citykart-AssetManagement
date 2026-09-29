@@ -8,7 +8,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 
 // IMPORTANT -- where this runs: seedTestCompany writes real rows (a company, an
-// ADMIN login, holders, masters, and -- via the spec -- an asset with ledger
+// ADMIN login, asset_users, masters, and -- via the spec -- an asset with ledger
 // events) into whatever database the `api` service of the *current* compose
 // project uses. Run Playwright against a dedicated E2E/staging stack, never a
 // stack whose database might later be backed up into production. See
@@ -17,7 +17,7 @@ const REPO_ROOT = path.resolve(__dirname, "..", "..");
 // fixture created, but the asset ledger is append-only by design, so the test
 // asset and its events can never be removed.
 
-export interface SeedHolder {
+export interface SeedAssetUser {
   id: number;
   emp_code: string;
   name: string;
@@ -32,13 +32,13 @@ export interface SeedContext {
    * Category -- AM-08). Mandatory on Add Asset now (docs/ai/DECISIONS.md),
    * so every spec driving that form needs one. */
   vendor: { id: number; name: string };
-  stock: SeedHolder;
-  /** A test-only EMPLOYEE holder. Deliberately NOT named/coded like the real
+  stock: SeedAssetUser;
+  /** A test-only EMPLOYEE asset_user. Deliberately NOT named/coded like the real
    * Ankur Pahwa (CS6872) account in this environment -- see fixtures' emp_code
    * below, which is a distinct, timestamp-suffixed code. */
-  employee: SeedHolder;
+  employee: SeedAssetUser;
   employeePassword: string;
-  store: SeedHolder;
+  store: SeedAssetUser;
   admin: { companyId: number; empCode: string; password: string };
 }
 
@@ -48,10 +48,10 @@ export interface SeedContext {
  */
 export interface SeedRegistry {
   companyId?: number;
-  adminHolderId?: number;
+  adminAssetUserId?: number;
   adminEmpCode: string;
   adminPassword: string;
-  holderIds: number[];
+  asset_userIds: number[];
   /** [masters resource, id], e.g. ["cost-centers", 12]; deactivated in reverse order. */
   masters: [string, number][];
 }
@@ -62,23 +62,23 @@ export function newSeedRegistry(): SeedRegistry {
     // Throwaway, per-run password: a SEEDADMIN left behind by a crashed run is
     // no longer guessable from this file (it used to be a fixed, committed value).
     adminPassword: `E2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}!`,
-    holderIds: [],
+    asset_userIds: [],
     masters: [],
   };
 }
 
-interface HolderOut extends SeedHolder {
+interface AssetUserOut extends SeedAssetUser {
   company_id: number;
   location_id: number;
   department_id: number | null;
   role: string;
 }
 
-function runSeedAdmin(companyCode: string, password: string): { companyId: number; holderId: number } {
+function runSeedAdmin(companyCode: string, password: string): { companyId: number; asset_userId: number } {
   // backend/scripts/seed_admin.py (Task 25) is idempotent and scopes its SEEDADMIN
   // lookup by company_id, not just emp_code -- see its own comment. Passing a fresh,
   // timestamp-suffixed --company-code here means this always creates a brand-new
-  // company (+ location + department + SEEDADMIN holder) rather than reusing the
+  // company (+ location + department + SEEDADMIN asset_user) rather than reusing the
   // real "Citykart Stores" company or any previous E2E run's company.
   // `docker compose` honours COMPOSE_PROJECT_NAME from the environment, so a
   // dedicated E2E stack (see e2e/README.md) is targeted by exporting it.
@@ -92,11 +92,11 @@ function runSeedAdmin(companyCode: string, password: string): { companyId: numbe
     ],
     { cwd: REPO_ROOT, encoding: "utf-8" },
   );
-  const match = output.match(/company_id=(\d+)\s+holder_id=(\d+)/);
+  const match = output.match(/company_id=(\d+)\s+asset_user_id=(\d+)/);
   if (!match) {
     throw new Error(`Could not parse seed_admin.py output:\n${output}`);
   }
-  return { companyId: Number(match[1]), holderId: Number(match[2]) };
+  return { companyId: Number(match[1]), asset_userId: Number(match[2]) };
 }
 
 async function api<T>(
@@ -132,7 +132,7 @@ async function loginAdmin(baseURL: string, reg: SeedRegistry): Promise<string> {
 }
 
 /**
- * Seeds one fresh, uniquely-named company + masters + holders directly through the
+ * Seeds one fresh, uniquely-named company + masters + asset_users directly through the
  * real backend API (never hardcoding any id -- every id used below is one the API
  * itself just returned), authenticated as a bootstrap ADMIN created by
  * `backend/scripts/seed_admin.py`. Every run gets its own company (timestamp-suffixed
@@ -150,21 +150,21 @@ export async function seedTestCompany(baseURL: string, reg: SeedRegistry): Promi
   const codeTs = ts.toString(36);
   const companyCode = `E2E-${codeTs}`;
 
-  const { companyId, holderId } = runSeedAdmin(companyCode, reg.adminPassword);
+  const { companyId, asset_userId } = runSeedAdmin(companyCode, reg.adminPassword);
   reg.companyId = companyId;
-  reg.adminHolderId = holderId;
+  reg.adminAssetUserId = asset_userId;
 
   const token = await loginAdmin(baseURL, reg);
 
   // Reuse the location/department seed_admin.py already created for this company
   // (read back from the API, not re-derived/guessed) rather than creating a second,
   // redundant location.
-  const companyHolders = await api<HolderOut[]>(baseURL, "GET", `/api/holders?company_id=${companyId}`, token);
-  const seedAdminHolder = companyHolders.find((h) => h.id === holderId);
-  if (!seedAdminHolder) {
-    throw new Error(`SEEDADMIN holder ${holderId} not found in company ${companyId}`);
+  const companyAssetUsers = await api<AssetUserOut[]>(baseURL, "GET", `/api/asset-users?company_id=${companyId}`, token);
+  const seedAdminAssetUser = companyAssetUsers.find((h) => h.id === asset_userId);
+  if (!seedAdminAssetUser) {
+    throw new Error(`SEEDADMIN asset_user ${asset_userId} not found in company ${companyId}`);
   }
-  const { location_id: locationId, department_id: departmentId } = seedAdminHolder;
+  const { location_id: locationId, department_id: departmentId } = seedAdminAssetUser;
   reg.masters.push(["locations", locationId]);
   if (departmentId !== null) reg.masters.push(["departments", departmentId]);
 
@@ -214,38 +214,38 @@ export async function seedTestCompany(baseURL: string, reg: SeedRegistry): Promi
     pad_width: 0,
   });
 
-  const mkHolder = async (body: object) => {
-    const holder = await api<HolderOut>(baseURL, "POST", "/api/holders", token, {
+  const mkAssetUser = async (body: object) => {
+    const asset_user = await api<AssetUserOut>(baseURL, "POST", "/api/asset-users", token, {
       company_id: companyId,
       location_id: locationId,
       department_id: departmentId,
       ...body,
     });
-    reg.holderIds.push(holder.id);
-    return holder;
+    reg.asset_userIds.push(asset_user.id);
+    return asset_user;
   };
 
-  const stock = await mkHolder({
+  const stock = await mkAssetUser({
     emp_code: `STK${ts}`,
     name: `E2E IT Stock ${ts}`,
-    holder_type: "IT_STOCK",
-    role: "HOLDER",
+    asset_user_type: "IT_STOCK",
+    role: "ASSET_USER",
   });
-  const employee = await mkHolder({
+  const employee = await mkAssetUser({
     emp_code: `EMP${ts}`,
     name: `E2E Test Employee ${ts}`,
-    holder_type: "EMPLOYEE",
-    role: "HOLDER",
+    asset_user_type: "EMPLOYEE",
+    role: "ASSET_USER",
   });
-  const store = await mkHolder({
+  const store = await mkAssetUser({
     emp_code: `STR${ts}`,
     name: `E2E Test Store ${ts}`,
-    holder_type: "STORE",
-    role: "HOLDER",
+    asset_user_type: "STORE",
+    role: "ASSET_USER",
   });
 
   const employeeReset = await api<{ temp_password: string }>(
-    baseURL, "POST", `/api/holders/${employee.id}/reset-password`, token,
+    baseURL, "POST", `/api/asset-users/${employee.id}/reset-password`, token,
   );
 
   return {
@@ -265,13 +265,13 @@ export async function seedTestCompany(baseURL: string, reg: SeedRegistry): Promi
 /**
  * Deactivates (is_active = false -- this app never hard-deletes) everything
  * seedTestCompany recorded in `reg`, through the app's own ADMIN endpoints:
- * the test holders, the masters, the company, and finally the SEEDADMIN login
+ * the test asset_users, the masters, the company, and finally the SEEDADMIN login
  * itself (last, since its token performs every step before it). Best-effort:
  * every step is attempted even if an earlier one fails, then any failures are
  * thrown together so a broken teardown is loud, not silent.
  */
 export async function teardownTestCompany(baseURL: string, reg: SeedRegistry): Promise<void> {
-  if (reg.companyId === undefined || reg.adminHolderId === undefined) return; // nothing was created
+  if (reg.companyId === undefined || reg.adminAssetUserId === undefined) return; // nothing was created
 
   const token = await loginAdmin(baseURL, reg);
   const failures: string[] = [];
@@ -283,12 +283,12 @@ export async function teardownTestCompany(baseURL: string, reg: SeedRegistry): P
     }
   };
 
-  for (const id of reg.holderIds) await attempt(`holder ${id}`, `/api/holders/${id}`);
+  for (const id of reg.asset_userIds) await attempt(`asset_user ${id}`, `/api/asset-users/${id}`);
   for (const [resource, id] of [...reg.masters].reverse()) {
     await attempt(`${resource} ${id}`, `/api/masters/${resource}/${id}`);
   }
   await attempt(`company ${reg.companyId}`, `/api/masters/companies/${reg.companyId}`);
-  await attempt(`SEEDADMIN holder ${reg.adminHolderId}`, `/api/holders/${reg.adminHolderId}`);
+  await attempt(`SEEDADMIN asset_user ${reg.adminAssetUserId}`, `/api/asset-users/${reg.adminAssetUserId}`);
 
   if (failures.length > 0) {
     throw new Error(`E2E teardown could not deactivate everything it created:\n  ${failures.join("\n  ")}`);
@@ -306,7 +306,7 @@ export async function teardownTestCompany(baseURL: string, reg: SeedRegistry): P
  *
  * Serial Number is now globally unique across every asset ever created in
  * whatever database this suite runs against (docs/ai/DECISIONS.md) -- teardown
- * deactivates the company/masters/holders a spec creates but never the asset
+ * deactivates the company/masters/asset-users a spec creates but never the asset
  * itself (assets are never deleted, by design), so a literal serial would
  * collide with a previous run's leftover asset. Timestamp-suffixed, same
  * collision-avoidance convention this file already uses for company/category

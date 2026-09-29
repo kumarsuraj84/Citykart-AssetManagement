@@ -11,33 +11,33 @@
 export interface ActionDef {
   label: string;
   eventType: string;
-  needsHolder: boolean;
+  needsAssetUser: boolean;
 }
 
 const RULES: Record<string, ActionDef[]> = {
   IN_STOCK: [
-    { label: "Move / Allot", eventType: "MOVED", needsHolder: true },
-    { label: "Send for Repair", eventType: "SENT_FOR_REPAIR", needsHolder: false },
-    { label: "Dispose", eventType: "DISPOSED", needsHolder: false },
-    { label: "Sell", eventType: "SOLD", needsHolder: false },
-    { label: "Scrap", eventType: "SCRAPPED", needsHolder: false },
-    { label: "Report Lost", eventType: "LOST", needsHolder: false },
+    { label: "Move / Allot", eventType: "MOVED", needsAssetUser: true },
+    { label: "Send for Repair", eventType: "SENT_FOR_REPAIR", needsAssetUser: false },
+    { label: "Dispose", eventType: "DISPOSED", needsAssetUser: false },
+    { label: "Sell", eventType: "SOLD", needsAssetUser: false },
+    { label: "Scrap", eventType: "SCRAPPED", needsAssetUser: false },
+    { label: "Report Lost", eventType: "LOST", needsAssetUser: false },
   ],
   ALLOTTED: [
-    { label: "Move / Transfer", eventType: "MOVED", needsHolder: true },
-    { label: "Send for Repair", eventType: "SENT_FOR_REPAIR", needsHolder: false },
-    { label: "Report Lost", eventType: "LOST", needsHolder: false },
+    { label: "Move / Transfer", eventType: "MOVED", needsAssetUser: true },
+    { label: "Send for Repair", eventType: "SENT_FOR_REPAIR", needsAssetUser: false },
+    { label: "Report Lost", eventType: "LOST", needsAssetUser: false },
   ],
   INSTALLED: [
-    { label: "Move", eventType: "MOVED", needsHolder: true },
-    { label: "Send for Repair", eventType: "SENT_FOR_REPAIR", needsHolder: false },
-    { label: "Report Lost", eventType: "LOST", needsHolder: false },
+    { label: "Move", eventType: "MOVED", needsAssetUser: true },
+    { label: "Send for Repair", eventType: "SENT_FOR_REPAIR", needsAssetUser: false },
+    { label: "Report Lost", eventType: "LOST", needsAssetUser: false },
   ],
   UNDER_REPAIR: [
-    { label: "Receive from Repair", eventType: "RECEIVED_FROM_REPAIR", needsHolder: true },
-    { label: "Scrap", eventType: "SCRAPPED", needsHolder: false },
+    { label: "Receive from Repair", eventType: "RECEIVED_FROM_REPAIR", needsAssetUser: true },
+    { label: "Scrap", eventType: "SCRAPPED", needsAssetUser: false },
   ],
-  LOST: [{ label: "Mark Found", eventType: "FOUND", needsHolder: true }],
+  LOST: [{ label: "Mark Found", eventType: "FOUND", needsAssetUser: true }],
   DISPOSED: [],
   SOLD: [],
   SCRAPPED: [],

@@ -2,42 +2,42 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.assets.models import Asset
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.lifecycle.models import AssetEvent
 from app.lifecycle.schemas import AssetEventOut
 from app.lifecycle.state_machine import LifecycleError, label_for_event, transition
 
-UNKNOWN_HOLDER_NAME = "unknown holder"
+UNKNOWN_ASSET_USER_NAME = "unknown asset user"
 
 
 async def with_labels(session: AsyncSession, events: list[AssetEvent]) -> list[AssetEventOut]:
     """Attaches the human-readable custody label (spec §5: "Allotted to {name}",
     "Returned to {name}", "Transferred from {a} to {b}", ...) to each event.
-    label_for_event picks the wording from the from/to holders' *types*; the names
+    label_for_event picks the wording from the from/to asset_users' *types*; the names
     are then substituted in here, so the timeline reads like a custody story instead
-    of raw event_type/status codes. One query loads every referenced holder.
+    of raw event_type/status codes. One query loads every referenced asset_user.
 
     AM-12: moved here from app.lifecycle.router (its original, single caller) so
     the Dashboard's Recent Activity feed (app.reports.dashboard_service) can reuse
     the exact same snapshot-correct labeling instead of duplicating it."""
-    holder_ids = {hid for e in events for hid in (e.from_holder_id, e.to_holder_id) if hid is not None}
-    holders: dict[int, Holder] = {}
-    if holder_ids:
-        rows = (await session.execute(select(Holder).where(Holder.id.in_(holder_ids)))).scalars().all()
-        holders = {h.id: h for h in rows}
+    asset_user_ids = {hid for e in events for hid in (e.from_asset_user_id, e.to_asset_user_id) if hid is not None}
+    asset_users: dict[int, AssetUser] = {}
+    if asset_user_ids:
+        rows = (await session.execute(select(AssetUser).where(AssetUser.id.in_(asset_user_ids)))).scalars().all()
+        asset_users = {h.id: h for h in rows}
 
     out: list[AssetEventOut] = []
     for e in events:
-        from_h = holders.get(e.from_holder_id) if e.from_holder_id is not None else None
-        to_h = holders.get(e.to_holder_id) if e.to_holder_id is not None else None
+        from_h = asset_users.get(e.from_asset_user_id) if e.from_asset_user_id is not None else None
+        to_h = asset_users.get(e.to_asset_user_id) if e.to_asset_user_id is not None else None
         # Prefer the point-in-time snapshot taken when the event was recorded (AM-01) so a
-        # later holder rename doesn't retroactively rewrite this label; only rows written
-        # before the snapshot column existed fall back to today's live holder name.
-        from_name = e.from_holder_name_snapshot or (from_h.name if from_h else None) or UNKNOWN_HOLDER_NAME
-        to_name = e.to_holder_name_snapshot or (to_h.name if to_h else None) or UNKNOWN_HOLDER_NAME
+        # later asset_user rename doesn't retroactively rewrite this label; only rows written
+        # before the snapshot column existed fall back to today's live asset_user name.
+        from_name = e.from_asset_user_name_snapshot or (from_h.name if from_h else None) or UNKNOWN_ASSET_USER_NAME
+        to_name = e.to_asset_user_name_snapshot or (to_h.name if to_h else None) or UNKNOWN_ASSET_USER_NAME
         try:
             template = label_for_event(
-                e.event_type, from_h.holder_type if from_h else None, to_h.holder_type if to_h else None,
+                e.event_type, from_h.asset_user_type if from_h else None, to_h.asset_user_type if to_h else None,
             )
             label = template.format(**{"from": from_name, "to": to_name})
         except LifecycleError:
@@ -50,13 +50,13 @@ async def apply_event(
     session: AsyncSession,
     asset: Asset,
     event_type: str,
-    to_holder_id: int | None,
-    actor: Holder,
+    to_asset_user_id: int | None,
+    actor: AssetUser,
     event_date: datetime | None = None,
     remarks: str | None = None,
     reference_no: str | None = None,
 ) -> AssetEvent:
-    """The only function allowed to write asset.status/current_holder_id/status_since and
+    """The only function allowed to write asset.status/current_asset_user_id/status_since and
     insert into asset_event (see backend/app/lifecycle/service.py module docstring in the
     task brief / spec §5). Every lifecycle transition — including the initial PROCURED/
     IMPORTED event created by app.assets.service.procure_assets — must go through here so
@@ -89,34 +89,34 @@ async def apply_event(
     if last_event and event_date < last_event.event_date:
         raise LifecycleError("event date cannot be before the asset's last recorded event")
 
-    to_holder_type = None
-    to_holder = None
-    if to_holder_id is not None:
-        to_holder = await session.get(Holder, to_holder_id)
-        if to_holder is None:
-            raise LifecycleError("target holder not found")
-        if to_holder.company_id != asset.company_id:
+    to_asset_user_type = None
+    to_asset_user = None
+    if to_asset_user_id is not None:
+        to_asset_user = await session.get(AssetUser, to_asset_user_id)
+        if to_asset_user is None:
+            raise LifecycleError("target asset user not found")
+        if to_asset_user.company_id != asset.company_id:
             raise LifecycleError("assets can only move within their own company")
-        to_holder_type = to_holder.holder_type
+        to_asset_user_type = to_asset_user.asset_user_type
 
-    # Loaded purely for the display-snapshot below (see AssetEvent.from_holder_name_snapshot's
-    # docstring) -- asset.current_holder_id itself is already known and is what gets written
-    # as from_holder_id; this fetch only resolves its *name at this point in time*.
-    from_holder = (
-        await session.get(Holder, asset.current_holder_id)
-        if asset.current_holder_id is not None else None
+    # Loaded purely for the display-snapshot below (see AssetEvent.from_asset_user_name_snapshot's
+    # docstring) -- asset.current_asset_user_id itself is already known and is what gets written
+    # as from_asset_user_id; this fetch only resolves its *name at this point in time*.
+    from_asset_user = (
+        await session.get(AssetUser, asset.current_asset_user_id)
+        if asset.current_asset_user_id is not None else None
     )
 
-    new_status = transition(asset.status, event_type, to_holder_type, actor.role)
+    new_status = transition(asset.status, event_type, to_asset_user_type, actor.role)
 
     event = AssetEvent(
         asset_id=asset.id,
         event_type=event_type,
         event_date=event_date,
-        from_holder_id=asset.current_holder_id,
-        to_holder_id=to_holder_id,
-        from_holder_name_snapshot=from_holder.name if from_holder else None,
-        to_holder_name_snapshot=to_holder.name if to_holder else None,
+        from_asset_user_id=asset.current_asset_user_id,
+        to_asset_user_id=to_asset_user_id,
+        from_asset_user_name_snapshot=from_asset_user.name if from_asset_user else None,
+        to_asset_user_name_snapshot=to_asset_user.name if to_asset_user else None,
         status_after=new_status,
         remarks=remarks,
         reference_no=reference_no,
@@ -126,8 +126,8 @@ async def apply_event(
     session.add(event)
 
     asset.status = new_status
-    if to_holder_id is not None:
-        asset.current_holder_id = to_holder_id
+    if to_asset_user_id is not None:
+        asset.current_asset_user_id = to_asset_user_id
     # asset.status_since is a Date column (the custody/status change is dated, not
     # timestamped) while event_date is a timezone-aware datetime; store just the date
     # part so the assigned value's type actually matches the column.

@@ -41,7 +41,7 @@ def _main():
     parser.add_argument("--pi-number", default=None)
     parser.add_argument("--vendor-code", required=True)
     parser.add_argument("--serial-number", default="N/A")
-    parser.add_argument("--initial-holder-code", required=True)
+    parser.add_argument("--initial-asset_user-code", required=True)
     parser.add_argument("--custom-field-key", default=None)
     parser.add_argument("--custom-field-value", default=None)
     args = parser.parse_args()
@@ -52,7 +52,7 @@ def _main():
         "Description": args.description, "Legacy Asset Code": args.legacy_asset_code,
         "Invoice Date": args.invoice_date, "PI Number": args.pi_number,
         "Vendor Code": args.vendor_code, "Serial Number": args.serial_number,
-        "Initial Holder Code": args.initial_holder_code,
+        "Initial AssetUser Code": args.initial_asset_user_code,
     }
     if args.custom_field_key:
         row[f"Custom:{args.custom_field_key}"] = args.custom_field_value

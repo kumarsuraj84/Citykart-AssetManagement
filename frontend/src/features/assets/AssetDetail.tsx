@@ -65,7 +65,7 @@ interface Asset {
   warranty_years: number | null;
   warranty_upto: string | null;
   status: string;
-  current_holder_id: number;
+  current_asset_user_id: number;
   status_since: string;
   custom_fields: Record<string, unknown>;
   category_name: string | null;
@@ -73,8 +73,8 @@ interface Asset {
   cost_center_name: string | null;
   vendor_name: string | null;
   brand_name: string | null;
-  current_holder_name: string | null;
-  current_holder_type: string | null;
+  current_asset_user_name: string | null;
+  current_asset_user_type: string | null;
   location_name: string | null;
   department_name: string | null;
 }
@@ -107,7 +107,7 @@ interface FieldChange {
   reason: string | null;
 }
 
-interface HolderOption {
+interface AssetUserOption {
   id: number;
   name: string;
 }
@@ -118,14 +118,14 @@ interface MasterOption {
 }
 
 interface ActionFormState {
-  holderId: string;
+  assetUserId: string;
   eventDate: string;
   referenceNo: string;
   remarks: string;
 }
 
 const emptyActionForm: ActionFormState = {
-  holderId: "",
+  assetUserId: "",
   eventDate: new Date().toISOString().slice(0, 10),
   referenceNo: "",
   remarks: "",
@@ -265,14 +265,14 @@ export function AssetDetail({ assetId }: { assetId: number }) {
     queryFn: () => apiClient.get<FieldChange[]>(`/assets/${assetId}/changes`),
     enabled: !!asset,
   });
-  const { data: holders = [] } = useQuery({
-    queryKey: ["holders", asset?.company_id],
-    queryFn: () => apiClient.get<HolderOption[]>(`/holders?company_id=${asset!.company_id}`),
-    enabled: asset?.company_id != null && role !== "HOLDER",
+  const { data: asset_users = [] } = useQuery({
+    queryKey: ["asset_users", asset?.company_id],
+    queryFn: () => apiClient.get<AssetUserOption[]>(`/asset-users?company_id=${asset!.company_id}`),
+    enabled: asset?.company_id != null && role !== "ASSET_USER",
   });
   const { data: vendors = [] } = useQuery({
     queryKey: ["masters", "vendors"],
-    queryFn: () => apiClient.get<HolderOption[]>("/masters/vendors"),
+    queryFn: () => apiClient.get<AssetUserOption[]>("/masters/vendors"),
     enabled: editing,
   });
   const { data: brands = [] } = useQuery({
@@ -321,7 +321,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
     mutationFn: () =>
       apiClient.post(`/assets/${assetId}/events`, {
         event_type: activeAction!.eventType,
-        to_holder_id: activeAction!.needsHolder && form.holderId ? Number(form.holderId) : null,
+        to_asset_user_id: activeAction!.needsAssetUser && form.assetUserId ? Number(form.assetUserId) : null,
         event_date: form.eventDate ? new Date(form.eventDate).toISOString() : undefined,
         reference_no: form.referenceNo || null,
         remarks: form.remarks || null,
@@ -333,7 +333,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
     },
   });
 
-  const canConfirm = !activeAction?.needsHolder || form.holderId !== "";
+  const canConfirm = !activeAction?.needsAssetUser || form.assetUserId !== "";
 
   function startEdit() {
     if (!asset) return;
@@ -546,11 +546,11 @@ export function AssetDetail({ assetId }: { assetId: number }) {
         }
       >
         <p className="text-sm text-muted-foreground">
-          Held by <span className="font-medium text-foreground">{asset.current_holder_name ?? "—"}</span>
-          {asset.current_holder_type && ` (${asset.current_holder_type.replace(/_/g, " ").toLowerCase()})`}
+          Held by <span className="font-medium text-foreground">{asset.current_asset_user_name ?? "—"}</span>
+          {asset.current_asset_user_type && ` (${asset.current_asset_user_type.replace(/_/g, " ").toLowerCase()})`}
           {asset.location_name && <> · {asset.location_name}</>}
         </p>
-        {!editing && role !== "HOLDER" && actions.length > 0 && (
+        {!editing && role !== "ASSET_USER" && actions.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {actions.map((a) => (
               <Button key={a.eventType + a.label} variant="secondary" size="sm" onClick={() => openAction(a)}>
@@ -763,8 +763,8 @@ export function AssetDetail({ assetId }: { assetId: number }) {
 
           <TabsContent value="custody" className="pt-4">
             <dl className="grid gap-4 lg:grid-cols-2">
-              <ReadField label="Current Holder" value={asset.current_holder_name} />
-              <ReadField label="Holder Type" value={asset.current_holder_type?.replace(/_/g, " ")} />
+              <ReadField label="Current Asset User" value={asset.current_asset_user_name} />
+              <ReadField label="Asset User Type" value={asset.current_asset_user_type?.replace(/_/g, " ")} />
               <ReadField label="Location" value={asset.location_name} />
               <ReadField label="Department" value={asset.department_name} />
               <ReadField label="Cost Centre" value={asset.cost_center_name} />
@@ -814,15 +814,15 @@ export function AssetDetail({ assetId }: { assetId: number }) {
           </DialogHeader>
 
           <div className="flex flex-col gap-4">
-            {activeAction?.needsHolder && (
+            {activeAction?.needsAssetUser && (
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="holder-select">Holder</Label>
-                <Select value={form.holderId || undefined} onValueChange={(v) => setField("holderId", v)}>
-                  <SelectTrigger id="holder-select" aria-label="Holder">
+                <Label htmlFor="asset-user-select">Asset User</Label>
+                <Select value={form.assetUserId || undefined} onValueChange={(v) => setField("assetUserId", v)}>
+                  <SelectTrigger id="asset-user-select" aria-label="Asset User">
                     <SelectValue placeholder="Select…" />
                   </SelectTrigger>
                   <SelectContent>
-                    {holders.map((h) => (
+                    {asset_users.map((h) => (
                       <SelectItem key={h.id} value={String(h.id)}>
                         {h.name}
                       </SelectItem>

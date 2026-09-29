@@ -3,7 +3,7 @@ Subcategory, and/or Purchase Date -- the three fields deliberately kept out
 of `AssetUpdateIn`/`PUT /api/assets/{id}` since AM-02 (see the Asset Field
 Policy Matrix). This is NOT a normal edit: it requires a mandatory reason,
 never regenerates `asset_code` (the numbering service is never called
-here), never touches lifecycle state (`status`/`current_holder_id`/
+here), never touches lifecycle state (`status`/`current_asset_user_id`/
 `status_since` -- `apply_event` is never called here either), and every
 change it makes is written to `asset_field_change` with `reason` populated
 (see `app.assets.audit_service.record_correction_changes`).
@@ -12,7 +12,7 @@ Invariants this enforces, each backed by an actual code path elsewhere in
 this codebase (see `docs/ai/AM-07_ASSET_CORRECTION_WORKFLOW_REPORT.md` §6
 for the full audit):
 
-- Asset Code, Company, Cost Centre, Status, current Holder are never
+- Asset Code, Company, Cost Centre, Status, current AssetUser are never
   touched -- this module has no write path to any of them.
 - A new Category/Subcategory must exist and be active.
 - A Subcategory must belong to the *resulting* Category (new if provided,
@@ -32,7 +32,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.assets.audit_service import record_correction_changes
 from app.assets.models import Asset
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.lifecycle.models import AssetEvent
 from app.masters.models import AssetCategory, AssetSubcategory
 
@@ -47,7 +47,7 @@ REASON_MAX_LENGTH = 500
 async def correct_asset(
     session: AsyncSession,
     asset: Asset,
-    actor: Holder,
+    actor: AssetUser,
     *,
     category_id=UNSET,
     subcategory_id=UNSET,
@@ -137,7 +137,7 @@ async def correct_asset(
     }
 
     # Never asset_code/company_id/cost_center_id (trg_asset_no_identity_change
-    # would reject those anyway), never status/current_holder_id/status_since
+    # would reject those anyway), never status/current_asset_user_id/status_since
     # (apply_event's exclusive domain), never the numbering service.
     asset.category_id = effective_category_id
     asset.subcategory_id = effective_subcategory_id

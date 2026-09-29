@@ -114,9 +114,9 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     queryFn: () => apiClient.get<Option[]>(`/masters/cost-centers?company_id=${poQ.data!.company_id}`),
     enabled: !!poQ.data,
   });
-  const holdersQ = useQuery({
-    queryKey: ["holders", poQ.data?.company_id],
-    queryFn: () => apiClient.get<Option[]>(`/holders?company_id=${poQ.data!.company_id}`),
+  const asset_usersQ = useQuery({
+    queryKey: ["asset_users", poQ.data?.company_id],
+    queryFn: () => apiClient.get<Option[]>(`/asset-users?company_id=${poQ.data!.company_id}`),
     enabled: !!poQ.data,
   });
   // AM-14: the header previously named PO Date/Cost Centre but never Vendor --
@@ -127,7 +127,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const categories = categoriesQ.data ?? [];
   const subcategories = subcategoriesQ.data ?? [];
   const costCenters = costCentersQ.data ?? [];
-  const holders = holdersQ.data ?? [];
+  const asset_users = asset_usersQ.data ?? [];
   const vendors = vendorsQ.data ?? [];
   const brands = brandsQ.data ?? [];
   const lines = linesQ.data ?? [];
@@ -326,28 +326,28 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().slice(0, 10));
   const [invoiceAmount, setInvoiceAmount] = useState("");
-  const [perLine, setPerLine] = useState<Record<number, { serial: string; holderId: string; noSerial: boolean }>>({});
+  const [perLine, setPerLine] = useState<Record<number, { serial: string; assetUserId: string; noSerial: boolean }>>({});
 
   function openDeliver() {
     deliverMutation.reset();
     setInvoiceNumber("");
     setInvoiceDate(new Date().toISOString().slice(0, 10));
     setInvoiceAmount("");
-    setPerLine(Object.fromEntries(selected.map((id) => [id, { serial: "", holderId: "", noSerial: false }])));
+    setPerLine(Object.fromEntries(selected.map((id) => [id, { serial: "", assetUserId: "", noSerial: false }])));
     setDeliverOpen(true);
   }
 
   const selectedLines = useMemo(() => lines.filter((l) => selected.includes(l.id)), [lines, selected]);
   const canDeliver =
     invoiceNumber.trim() !== "" && invoiceDate !== "" && invoiceAmount !== "" &&
-    selectedLines.every((l) => perLine[l.id]?.serial.trim() && perLine[l.id]?.holderId);
+    selectedLines.every((l) => perLine[l.id]?.serial.trim() && perLine[l.id]?.assetUserId);
 
   const deliverMutation = useMutation({
     mutationFn: () =>
       apiClient.post(`/purchase-orders/${poId}/deliver`, {
         invoice_number: invoiceNumber, invoice_date: invoiceDate, invoice_amount: Number(invoiceAmount) || 0,
         lines: selectedLines.map((l) => ({
-          pending_asset_id: l.id, serial_number: perLine[l.id].serial, initial_holder_id: Number(perLine[l.id].holderId),
+          pending_asset_id: l.id, serial_number: perLine[l.id].serial, initial_asset_user_id: Number(perLine[l.id].assetUserId),
         })),
       }),
     onSuccess: () => {
@@ -817,18 +817,18 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
                   </label>
                 </div>
                 <div className="col-span-2 flex flex-col gap-1">
-                  <Label htmlFor={`holder-${l.id}`} className="text-xs">
-                    Initial Holder<span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
+                  <Label htmlFor={`asset-user-${l.id}`} className="text-xs">
+                    Initial Asset User<span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
                   </Label>
                   <Select
-                    value={selectValue(perLine[l.id]?.holderId ?? "")}
-                    onValueChange={(v) => setPerLine((p) => ({ ...p, [l.id]: { ...p[l.id], holderId: v } }))}
+                    value={selectValue(perLine[l.id]?.assetUserId ?? "")}
+                    onValueChange={(v) => setPerLine((p) => ({ ...p, [l.id]: { ...p[l.id], assetUserId: v } }))}
                   >
-                    <SelectTrigger id={`holder-${l.id}`}>
+                    <SelectTrigger id={`asset-user-${l.id}`}>
                       <SelectValue placeholder="Select…" />
                     </SelectTrigger>
                     <SelectContent>
-                      {holders.map((h) => (
+                      {asset_users.map((h) => (
                         <SelectItem key={h.id} value={String(h.id)}>
                           {h.name}
                         </SelectItem>

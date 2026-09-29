@@ -3,7 +3,7 @@ from datetime import date
 from sqlalchemy.exc import DBAPIError
 from app.core.db import SessionLocal
 from app.masters.models import Company, CostCenter, AssetCategory, AssetSubcategory, Location, Department
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.assets.models import Asset
 
 
@@ -18,20 +18,20 @@ async def _base_fixtures(session, suffix="AM1"):
     dept = Department(name=f"IT-Dept-{suffix}")
     session.add_all([sub, cc, loc, dept])
     await session.flush()
-    stock_holder = Holder(company_id=co.id, emp_code=f"ITSTOCK-{suffix}", name="IT Stock-HO",
-                           holder_type="IT_STOCK", location_id=loc.id, department_id=dept.id, role="HOLDER")
-    session.add(stock_holder)
+    stock_asset_user = AssetUser(company_id=co.id, emp_code=f"ITSTOCK-{suffix}", name="IT Stock-HO",
+                           asset_user_type="IT_STOCK", location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+    session.add(stock_asset_user)
     await session.flush()
-    return co, cat, sub, cc, stock_holder
+    return co, cat, sub, cc, stock_asset_user
 
 
 async def test_asset_code_is_immutable_after_insert():
     async with SessionLocal() as session:
-        co, cat, sub, cc, holder = await _base_fixtures(session)
+        co, cat, sub, cc, asset_user = await _base_fixtures(session)
         asset = Asset(
             asset_code="FA/HO01/IT/LAP/CK_1", company_id=co.id, cost_center_id=cc.id,
             category_id=cat.id, subcategory_id=sub.id, description="Test Laptop",
-            purchase_date=date(2025, 12, 10), status="IN_STOCK", current_holder_id=holder.id,
+            purchase_date=date(2025, 12, 10), status="IN_STOCK", current_asset_user_id=asset_user.id,
             status_since=date(2025, 12, 10),
         )
         session.add(asset)

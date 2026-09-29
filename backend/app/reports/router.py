@@ -9,8 +9,8 @@ from app.assets.custom_field_values import applicable_custom_fields
 from app.assets.models import Asset, AssetFieldChange
 from app.assets.search_service import search_assets
 from app.core.db import get_session
-from app.core.deps import STAFF_ROLES, get_current_holder, require_role, scoped_company_ids
-from app.holders.models import Holder
+from app.core.deps import STAFF_ROLES, get_current_asset_user, require_role, scoped_company_ids
+from app.asset_users.models import AssetUser
 from app.lifecycle.models import AssetEvent
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Location, Vendor
 from app.reports.dashboard_service import dashboard_data
@@ -42,12 +42,12 @@ async def _export_label_maps(session: AsyncSession) -> dict:
     vendors = {v.id: v.name for v in (await session.execute(select(Vendor))).scalars().all()}
     brands = {b.id: b.name for b in (await session.execute(select(Brand))).scalars().all()}
     locations = {loc.id: loc.name for loc in (await session.execute(select(Location))).scalars().all()}
-    holders: dict[int, dict] = {}
-    for h in (await session.execute(select(Holder))).scalars().all():
-        holders[h.id] = {"name": h.name, "holder_type": h.holder_type, "location_name": locations.get(h.location_id)}
+    asset_users: dict[int, dict] = {}
+    for h in (await session.execute(select(AssetUser))).scalars().all():
+        asset_users[h.id] = {"name": h.name, "asset_user_type": h.asset_user_type, "location_name": locations.get(h.location_id)}
     return {
         "company": companies, "cost_center": cost_centers, "category": categories,
-        "subcategory": subcategories, "vendor": vendors, "holder": holders, "brand": brands,
+        "subcategory": subcategories, "vendor": vendors, "asset_user": asset_users, "brand": brands,
     }
 
 
@@ -72,15 +72,15 @@ async def _export_custom_field_keys(session: AsyncSession, items: list[Asset]) -
 @router.get("/dashboard", response_model=DashboardOut)
 async def dashboard(
     session: AsyncSession = Depends(get_session),
-    holder=Depends(require_role(*STAFF_ROLES)),
+    asset_user=Depends(require_role(*STAFF_ROLES)),
 ):
-    """Staff only: a HOLDER sees only the assets they hold (spec §6), never
+    """Staff only: a ASSET_USER sees only the assets they hold (spec §6), never
     company-wide KPIs/alerts, so they get 403 here. Scoped exactly like the asset
     register (Task 19): `scoped_company_ids` returns None for ADMIN (unrestricted,
     sees every company combined) and the caller's own company id otherwise, so a
     non-ADMIN never sees another company's KPI numbers."""
-    allowed = await scoped_company_ids(session, holder)
-    include_purchase_orders = holder.role in ("ADMIN", "IT_TEAM")
+    allowed = await scoped_company_ids(session, asset_user)
+    include_purchase_orders = asset_user.role in ("ADMIN", "IT_TEAM")
     return await dashboard_data(session, allowed, include_purchase_orders)
 
 
@@ -88,32 +88,32 @@ async def dashboard(
 async def export_assets(
     status: str | None = Query(None),
     category_id: int | None = Query(None),
-    holder_id: int | None = Query(None),
+    asset_user_id: int | None = Query(None),
     company_id: int | None = Query(None),
     q: str | None = Query(None),
     session: AsyncSession = Depends(get_session),
-    holder=Depends(get_current_holder),
+    asset_user=Depends(get_current_asset_user),
 ):
     """Same filters and the exact same scoping branch as `GET /api/assets`
-    (`list_assets` in app.assets.router, Task 19): a HOLDER's `holder_id` is pinned to
+    (`list_assets` in app.assets.router, Task 19): a ASSET_USER's `asset_user_id` is pinned to
     their own id (so they only ever export the assets they currently hold, regardless
-    of any `holder_id`/`company_id` they pass in) and every other role is scoped by
+    of any `asset_user_id`/`company_id` they pass in) and every other role is scoped by
     `scoped_company_ids` (None = ADMIN, unrestricted; otherwise just their own
     company) -- a non-ADMIN caller can never export another company's rows."""
-    if holder.role == "HOLDER":
-        holder_id = holder.id
+    if asset_user.role == "ASSET_USER":
+        asset_user_id = asset_user.id
         allowed = None
     else:
-        allowed = await scoped_company_ids(session, holder)
+        allowed = await scoped_company_ids(session, asset_user)
     items, total = await search_assets(
-        session, allowed, status, category_id, holder_id, company_id, q, limit=EXPORT_MAX_ROWS, offset=0,
+        session, allowed, status, category_id, asset_user_id, company_id, q, limit=EXPORT_MAX_ROWS, offset=0,
     )
     if total > EXPORT_MAX_ROWS:
         # Refuse loudly rather than hand back a silently truncated register.
         raise HTTPException(
             http_status.HTTP_422_UNPROCESSABLE_ENTITY,
             f"This export would contain {total} assets, more than the {EXPORT_MAX_ROWS}-row limit; "
-            "narrow it with filters (status, category, holder, company, search).",
+            "narrow it with filters (status, category, asset user, company, search).",
         )
     labels = await _export_label_maps(session)
     custom_field_keys = await _export_custom_field_keys(session, items)
@@ -129,30 +129,30 @@ async def export_movements(
     from_date: date = Query(...),
     to_date: date = Query(...),
     session: AsyncSession = Depends(get_session),
-    holder=Depends(require_role(*STAFF_ROLES)),
+    asset_user=Depends(require_role(*STAFF_ROLES)),
 ):
-    """Staff only (403 for a HOLDER): the log names every holder in the company, and a
-    HOLDER may only see their own currently-held assets (spec §6). Company-scoped the
+    """Staff only (403 for a ASSET_USER): the log names every asset_user in the company, and a
+    ASSET_USER may only see their own currently-held assets (spec §6). Company-scoped the
     same way as the dashboard (`scoped_company_ids`): a non-ADMIN role only ever gets
     movement rows for assets in their own company, ADMIN is unrestricted. Joins in the
-    asset code and the from/to holder names so the exported "Asset Code"/"From Holder"/
-    "To Holder" columns hold what they say, not raw internal ids."""
-    from_holder = aliased(Holder)
-    to_holder = aliased(Holder)
+    asset code and the from/to asset_user names so the exported "Asset Code"/"From AssetUser"/
+    "To AssetUser" columns hold what they say, not raw internal ids."""
+    from_asset_user = aliased(AssetUser)
+    to_asset_user = aliased(AssetUser)
     # COALESCE to the point-in-time snapshot first (AM-01) -- falls back to today's live
-    # holder name only for rows recorded before the snapshot column existed, same rule
+    # asset_user name only for rows recorded before the snapshot column existed, same rule
     # as lifecycle/router.py::_with_labels applies to the in-app timeline.
-    from_name = func.coalesce(AssetEvent.from_holder_name_snapshot, from_holder.name)
-    to_name = func.coalesce(AssetEvent.to_holder_name_snapshot, to_holder.name)
+    from_name = func.coalesce(AssetEvent.from_asset_user_name_snapshot, from_asset_user.name)
+    to_name = func.coalesce(AssetEvent.to_asset_user_name_snapshot, to_asset_user.name)
     stmt = (
         select(AssetEvent, Asset.asset_code, from_name, to_name)
         .join(Asset, Asset.id == AssetEvent.asset_id)
-        .outerjoin(from_holder, from_holder.id == AssetEvent.from_holder_id)
-        .outerjoin(to_holder, to_holder.id == AssetEvent.to_holder_id)
+        .outerjoin(from_asset_user, from_asset_user.id == AssetEvent.from_asset_user_id)
+        .outerjoin(to_asset_user, to_asset_user.id == AssetEvent.to_asset_user_id)
         .where(AssetEvent.event_date >= from_date, AssetEvent.event_date < to_date + timedelta(days=1))
         .order_by(AssetEvent.event_date, AssetEvent.id)
     )
-    allowed = await scoped_company_ids(session, holder)
+    allowed = await scoped_company_ids(session, asset_user)
     if allowed is not None:
         stmt = stmt.where(Asset.company_id.in_(allowed))
     rows = (await session.execute(stmt)).all()
@@ -168,24 +168,24 @@ async def export_field_changes(
     from_date: date | None = Query(None),
     to_date: date | None = Query(None),
     session: AsyncSession = Depends(get_session),
-    holder=Depends(require_role(*STAFF_ROLES)),
+    asset_user=Depends(require_role(*STAFF_ROLES)),
 ):
     """AM-06 §22/§25: the field-change audit (`asset_field_change`, AM-04's
     append-only edit trail) gets its own export -- a separate canonical
     dataset from both the asset register (current snapshot) and the
     movement log (`asset_event`), never flattened into either (see
-    docs/ai/DECISIONS.md). Staff only (HOLDER gets 403, same as the
+    docs/ai/DECISIONS.md). Staff only (ASSET_USER gets 403, same as the
     movement log -- the audit names every actor in the company, and a
-    HOLDER may only see their own currently-held assets per spec §6),
+    ASSET_USER may only see their own currently-held assets per spec §6),
     company-scoped the same way as every other report here."""
-    actor = aliased(Holder)
+    actor = aliased(AssetUser)
     stmt = (
         select(AssetFieldChange, Asset.asset_code, actor.name)
         .join(Asset, Asset.id == AssetFieldChange.asset_id)
         .outerjoin(actor, actor.id == AssetFieldChange.actor_id)
         .order_by(AssetFieldChange.created_at, AssetFieldChange.id)
     )
-    allowed = await scoped_company_ids(session, holder)
+    allowed = await scoped_company_ids(session, asset_user)
     if allowed is not None:
         stmt = stmt.where(Asset.company_id.in_(allowed))
     if from_date is not None:

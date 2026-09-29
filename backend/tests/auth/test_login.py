@@ -1,7 +1,7 @@
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.masters.models import Company, Location, Department
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 
 
 async def _make_admin(session, company_code="CKS3", emp_code="ADMIN1", email=None):
@@ -12,15 +12,15 @@ async def _make_admin(session, company_code="CKS3", emp_code="ADMIN1", email=Non
     dept = Department(name=f"IT-{company_code}")
     session.add_all([loc, dept])
     await session.flush()
-    holder = Holder(
+    asset_user = AssetUser(
         company_id=co.id, emp_code=emp_code, name="Admin",
-        holder_type="EMPLOYEE", location_id=loc.id, department_id=dept.id,
+        asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id,
         role="ADMIN", password_hash=hash_password("Passw0rd!"), must_change_password=False,
         email=email,
     )
-    session.add(holder)
+    session.add(asset_user)
     await session.commit()
-    return co, holder
+    return co, asset_user
 
 
 async def test_list_login_companies_is_public_and_excludes_inactive(client):
@@ -51,10 +51,10 @@ async def test_list_login_companies_is_public_and_excludes_inactive(client):
 
 async def test_login_success(client):
     async with SessionLocal() as session:
-        co, holder = await _make_admin(session)
+        co, asset_user = await _make_admin(session)
 
     resp = await client.post("/api/auth/login", json={
-        "login_id": holder.emp_code, "password": "Passw0rd!",
+        "login_id": asset_user.emp_code, "password": "Passw0rd!",
     })
     assert resp.status_code == 200
     body = resp.json()
@@ -66,17 +66,17 @@ async def test_login_success(client):
 
 
 async def test_login_success_via_email(client):
-    """A real person (a Holder with an email) must be able to log in using their
-    EMAIL address instead of their Employee Code -- many other holders (stores,
+    """A real person (a AssetUser with an email) must be able to log in using their
+    EMAIL address instead of their Employee Code -- many other asset_users (stores,
     stock locations, installed-equipment locations) have no email at all, so
     email can never *replace* emp_code login; it can only be an alternative."""
     async with SessionLocal() as session:
-        co, holder = await _make_admin(
+        co, asset_user = await _make_admin(
             session, company_code="CKS3E", emp_code="ADMIN1E", email="ankur.pahwa@citykartstores.com",
         )
 
     resp = await client.post("/api/auth/login", json={
-        "login_id": holder.email, "password": "Passw0rd!",
+        "login_id": asset_user.email, "password": "Passw0rd!",
     })
     assert resp.status_code == 200
     body = resp.json()
@@ -87,7 +87,7 @@ async def test_login_success_via_email(client):
 
 async def test_login_via_email_is_case_insensitive(client):
     async with SessionLocal() as session:
-        co, holder = await _make_admin(
+        co, asset_user = await _make_admin(
             session, company_code="CKS3F", emp_code="ADMIN1F", email="ankur.pahwa@citykartstores.com",
         )
 
@@ -101,13 +101,13 @@ async def test_login_via_email_is_case_insensitive(client):
 
 
 async def test_login_via_emp_code_unaffected_when_no_email(client):
-    """A store/stock/installed holder typically has NO email at all -- must keep
+    """A store/stock/installed asset_user typically has NO email at all -- must keep
     logging in via emp_code exactly as before."""
     async with SessionLocal() as session:
-        co, holder = await _make_admin(session, company_code="CKS3G", emp_code="ADMIN1G", email=None)
+        co, asset_user = await _make_admin(session, company_code="CKS3G", emp_code="ADMIN1G", email=None)
 
     resp = await client.post("/api/auth/login", json={
-        "login_id": holder.emp_code, "password": "Passw0rd!",
+        "login_id": asset_user.emp_code, "password": "Passw0rd!",
     })
     assert resp.status_code == 200
     body = resp.json()
@@ -118,29 +118,29 @@ async def test_login_no_longer_needs_a_company_id(client):
     """The login screen doesn't ask which company anymore -- login_id alone
     must be enough, with no company_id in the request at all."""
     async with SessionLocal() as session:
-        _co, holder = await _make_admin(session, company_code="CKS3H", emp_code="ADMIN1H")
+        _co, asset_user = await _make_admin(session, company_code="CKS3H", emp_code="ADMIN1H")
 
     resp = await client.post("/api/auth/login", json={
-        "login_id": holder.emp_code, "password": "Passw0rd!",
+        "login_id": asset_user.emp_code, "password": "Passw0rd!",
     })
     assert resp.status_code == 200
-    assert resp.json()["company_id"] == holder.company_id
+    assert resp.json()["company_id"] == asset_user.company_id
 
 
 async def test_login_rejects_ambiguous_login_id_across_companies(client, caplog):
-    """Two different (both real) companies each having a holder with the same
+    """Two different (both real) companies each having a asset_user with the same
     emp_code is a legal DB state -- emp_code is only unique *within* a company
     (UniqueConstraint(company_id, emp_code)). Login must never guess which one
     the caller meant; it must fail the same way a genuinely unknown id does."""
     import logging
 
     async with SessionLocal() as session:
-        _co1, holder1 = await _make_admin(session, company_code="CKS3I", emp_code="SHARED1")
-        _co2, _holder2 = await _make_admin(session, company_code="CKS3J", emp_code="SHARED1")
+        _co1, asset_user1 = await _make_admin(session, company_code="CKS3I", emp_code="SHARED1")
+        _co2, _asset_user2 = await _make_admin(session, company_code="CKS3J", emp_code="SHARED1")
 
     with caplog.at_level(logging.WARNING, logger="ckam.security"):
         resp = await client.post("/api/auth/login", json={
-            "login_id": holder1.emp_code, "password": "Passw0rd!",
+            "login_id": asset_user1.emp_code, "password": "Passw0rd!",
         })
     assert resp.status_code == 401
     assert resp.json()["detail"] == "Invalid credentials"  # same message as "no such account" -- no leak
@@ -149,68 +149,68 @@ async def test_login_rejects_ambiguous_login_id_across_companies(client, caplog)
 
 async def test_login_rejects_ambiguous_email_across_companies(client):
     """Same as the emp_code case, but for the email alternative -- the unique
-    index on Holder.email is also company-scoped (migration
-    0005_holder_email_unique.py), so this is likewise a legal DB state."""
+    index on AssetUser.email is also company-scoped (migration
+    0005_asset_user_email_unique.py), so this is likewise a legal DB state."""
     shared_email = "shared.person@example.com"
     async with SessionLocal() as session:
-        _co1, holder1 = await _make_admin(
+        _co1, asset_user1 = await _make_admin(
             session, company_code="CKS3K", emp_code="ADMIN1K", email=shared_email,
         )
-        _co2, _holder2 = await _make_admin(
+        _co2, _asset_user2 = await _make_admin(
             session, company_code="CKS3L", emp_code="ADMIN1L", email=shared_email,
         )
 
     resp = await client.post("/api/auth/login", json={
-        "login_id": holder1.email, "password": "Passw0rd!",
+        "login_id": asset_user1.email, "password": "Passw0rd!",
     })
     assert resp.status_code == 401
 
 
-async def test_login_ignores_a_deactivated_companys_holder(client):
-    """A holder in a deactivated company must never authenticate, even with the
+async def test_login_ignores_a_deactivated_companys_asset_user(client):
+    """A asset_user in a deactivated company must never authenticate, even with the
     right emp_code and password -- this is the same defense-in-depth already
     relied on when the E2E leftover companies were deactivated post-incident."""
     async with SessionLocal() as session:
-        co, holder = await _make_admin(session, company_code="CKS3M", emp_code="ADMIN1M")
+        co, asset_user = await _make_admin(session, company_code="CKS3M", emp_code="ADMIN1M")
         co.is_active = False
         await session.commit()
 
     resp = await client.post("/api/auth/login", json={
-        "login_id": holder.emp_code, "password": "Passw0rd!",
+        "login_id": asset_user.emp_code, "password": "Passw0rd!",
     })
     assert resp.status_code == 401
 
 
 async def test_login_wrong_password_locks_after_five_attempts(client):
     async with SessionLocal() as session:
-        co, holder = await _make_admin(session, company_code="CKS4", emp_code="ADMIN2")
+        co, asset_user = await _make_admin(session, company_code="CKS4", emp_code="ADMIN2")
 
     for _ in range(5):
         resp = await client.post("/api/auth/login", json={
-            "login_id": holder.emp_code, "password": "wrong",
+            "login_id": asset_user.emp_code, "password": "wrong",
         })
         assert resp.status_code == 401
 
     resp = await client.post("/api/auth/login", json={
-        "login_id": holder.emp_code, "password": "Passw0rd!",
+        "login_id": asset_user.emp_code, "password": "Passw0rd!",
     })
     assert resp.status_code == 423  # locked
 
 
 async def test_login_failed_attempts_reset_after_success(client):
     async with SessionLocal() as session:
-        co, holder = await _make_admin(session, company_code="CKS5", emp_code="ADMIN3")
+        co, asset_user = await _make_admin(session, company_code="CKS5", emp_code="ADMIN3")
 
     # Fail twice - not enough to lock.
     for _ in range(2):
         resp = await client.post("/api/auth/login", json={
-            "login_id": holder.emp_code, "password": "wrong",
+            "login_id": asset_user.emp_code, "password": "wrong",
         })
         assert resp.status_code == 401
 
     # A successful login must reset failed_login_count back to 0.
     resp = await client.post("/api/auth/login", json={
-        "login_id": holder.emp_code, "password": "Passw0rd!",
+        "login_id": asset_user.emp_code, "password": "Passw0rd!",
     })
     assert resp.status_code == 200
 
@@ -219,12 +219,12 @@ async def test_login_failed_attempts_reset_after_success(client):
     # the lockout just being coded to allow up to 5 failures in total.
     for _ in range(3):
         resp = await client.post("/api/auth/login", json={
-            "login_id": holder.emp_code, "password": "wrong",
+            "login_id": asset_user.emp_code, "password": "wrong",
         })
         assert resp.status_code == 401
 
     resp = await client.post("/api/auth/login", json={
-        "login_id": holder.emp_code, "password": "Passw0rd!",
+        "login_id": asset_user.emp_code, "password": "Passw0rd!",
     })
     assert resp.status_code == 200  # still not locked
 
@@ -238,19 +238,19 @@ async def test_change_password_rejects_invalid_token(client):
     assert resp.status_code == 401
 
 
-async def test_change_password_rejects_inactive_holder(client):
+async def test_change_password_rejects_inactive_asset_user(client):
     async with SessionLocal() as session:
-        co, holder = await _make_admin(session, company_code="CKS6", emp_code="ADMIN4")
+        co, asset_user = await _make_admin(session, company_code="CKS6", emp_code="ADMIN4")
 
     resp = await client.post("/api/auth/login", json={
-        "login_id": holder.emp_code, "password": "Passw0rd!",
+        "login_id": asset_user.emp_code, "password": "Passw0rd!",
     })
     assert resp.status_code == 200
     access_token = resp.json()["access_token"]
 
     async with SessionLocal() as session:
-        db_holder = await session.get(Holder, holder.id)
-        db_holder.is_active = False
+        db_asset_user = await session.get(AssetUser, asset_user.id)
+        db_asset_user.is_active = False
         await session.commit()
 
     resp = await client.post(

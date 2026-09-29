@@ -47,7 +47,7 @@ class AssetCreateIn(BaseModel):
     # equals Purchase Date); Warranty Upto itself is never accepted here,
     # it's always server-computed. See app.assets.service.compute_warranty_upto.
     warranty_years: int = 0
-    initial_holder_id: int
+    initial_asset_user_id: int
     legacy_asset_code: str | None = None
     custom_fields: dict | None = None
 
@@ -90,22 +90,22 @@ class AssetOut(BaseModel):
     warranty_years: int | None
     warranty_upto: date | None
     status: str
-    current_holder_id: int
+    current_asset_user_id: int
     status_since: date
     custom_fields: dict
     # AM-11: the register must be able to answer "who holds it" without a
     # click into every row -- CKAM's own stated core guarantee
     # (docs/ai/PRODUCT_CONTEXT.md). Populated by `list_assets` via a
     # page-scoped batch id->name lookup (only the distinct ids actually
-    # present on the current page, not every holder/company in the
-    # system), never a per-row join. `None` only if the referenced holder/
+    # present on the current page, not every asset_user/company in the
+    # system), never a per-row join. `None` only if the referenced asset_user/
     # company row is somehow missing -- should not happen in practice.
-    current_holder_name: str | None = None
-    current_holder_location_name: str | None = None
-    current_holder_type: str | None = None
+    current_asset_user_name: str | None = None
+    current_asset_user_location_name: str | None = None
+    current_asset_user_type: str | None = None
     company_name: str | None = None
     # Asset Register "show every field" pass: the register needs human-readable
-    # labels for these FK columns too, not just holder/company (AM-11's original
+    # labels for these FK columns too, not just asset_user/company (AM-11's original
     # pair) -- same page-scoped batch-lookup pattern, populated by list_assets.
     category_name: str | None = None
     subcategory_name: str | None = None
@@ -120,7 +120,7 @@ class AssetDetailOut(AssetOut):
     Nullable everywhere a referenced master row could theoretically be
     missing (defensive; scoping/FKs should prevent this in practice). Adds
     every remaining label the list endpoint's own page-scoped batch lookup
-    (AM-11, current_holder_name/company_name on AssetOut itself) does not
+    (AM-11, current_asset_user_name/company_name on AssetOut itself) does not
     already cover, since a single-asset page can afford a few more small
     lookups that a paginated list of up to 200 rows should not repeat."""
     category_name: str | None
@@ -128,8 +128,8 @@ class AssetDetailOut(AssetOut):
     cost_center_name: str | None
     vendor_name: str | None
     brand_name: str | None
-    current_holder_name: str | None
-    current_holder_type: str | None
+    current_asset_user_name: str | None
+    current_asset_user_type: str | None
     location_name: str | None
     department_name: str | None
 
@@ -171,12 +171,12 @@ class AssetUpdateIn(BaseModel):
     """The EDITABLE DESCRIPTIVE DATA subset only -- see the Asset Field Policy
     Matrix in docs/ai/AM-02_ASSET_DATA_MODEL_REPORT.md. Deliberately excludes:
     asset_code/company_id/cost_center_id (DB-trigger immutable), status/
-    current_holder_id/status_since (lifecycle-controlled, apply_event only),
+    current_asset_user_id/status_since (lifecycle-controlled, apply_event only),
     category_id/subcategory_id/purchase_date (controlled master/date
     references -- not yet exposed via generic edit, see the report), and
-    initial_holder_id (create-only, meaningless on an existing row).
+    initial_asset_user_id (create-only, meaningless on an existing row).
     A PUT replaces this whole editable subset in one call, matching this
-    codebase's existing convention (e.g. HolderIn on `PUT /api/holders/{id}`)
+    codebase's existing convention (e.g. AssetUserIn on `PUT /api/asset-users/{id}`)
     rather than a partial-PATCH merge."""
     legacy_asset_code: str | None = None
     brand_id: int | None = None

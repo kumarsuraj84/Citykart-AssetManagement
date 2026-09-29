@@ -86,7 +86,7 @@ class DepartmentIn(BaseModel):
 class DepartmentEditIn(BaseModel):
     """Department has no separate business code -- `name` itself is the
     unique identifier, but nothing else in the system keys off its exact
-    string value (Holder.department_id is a stable FK), so renaming it is a
+    string value (AssetUser.department_id is a stable FK), so renaming it is a
     safe descriptive edit, not an identity change."""
     name: str
 

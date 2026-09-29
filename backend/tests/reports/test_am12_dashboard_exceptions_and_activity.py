@@ -5,11 +5,11 @@ from httpx import AsyncClient, ASGITransport
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.assets.service import procure_assets
-from app.holders.service import HolderService
+from app.asset_users.service import AssetUserService
 from app.lifecycle.service import apply_event
 from app.main import app
 from app.masters.models import Company, CostCenter, AssetCategory, AssetSubcategory, Location, Department
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.numbering.models import CodeRule
 
 
@@ -25,9 +25,9 @@ async def _setup(code_suffix: str):
         dept = Department(name=f"IT-{code_suffix}")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = Holder(company_id=co.id, emp_code=f"STK-{code_suffix}", name="IT Stock-HO", holder_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="HOLDER")
-        admin = Holder(company_id=co.id, emp_code=f"ADM-{code_suffix}", name="Admin", holder_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, emp_code=f"STK-{code_suffix}", name="IT Stock-HO", asset_user_type="IT_STOCK",
+                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{code_suffix}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template=f"FA/{{cost_center.code}}/{{category.code}}/{{subcategory.code}}/{code_suffix}_",
@@ -45,27 +45,27 @@ async def _login(client, company_id, login_id):
 async def test_am12_exception_counts_cover_repair_lost_and_every_closed_state(client):
     ids = await _setup("EX1")
     async with SessionLocal() as session:
-        admin = await session.get(Holder, ids["admin"].id)
+        admin = await session.get(AssetUser, ids["admin"].id)
         make = lambda desc: procure_assets(session, {
             "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
             "subcategory_id": ids["sub"].id, "description": desc, "purchase_date": date(2025, 1, 1),
-            "initial_holder_id": ids["stock"].id,
+            "initial_asset_user_id": ids["stock"].id,
         }, quantity=1, actor=admin)
 
         [repair_asset] = await make("Repair Asset")
-        await apply_event(session, repair_asset, "SENT_FOR_REPAIR", to_holder_id=None, actor=admin)
+        await apply_event(session, repair_asset, "SENT_FOR_REPAIR", to_asset_user_id=None, actor=admin)
 
         [lost_asset] = await make("Lost Asset")
-        await apply_event(session, lost_asset, "LOST", to_holder_id=None, actor=admin)
+        await apply_event(session, lost_asset, "LOST", to_asset_user_id=None, actor=admin)
 
         [disposed_asset] = await make("Disposed Asset")
-        await apply_event(session, disposed_asset, "DISPOSED", to_holder_id=None, actor=admin)
+        await apply_event(session, disposed_asset, "DISPOSED", to_asset_user_id=None, actor=admin)
 
         [sold_asset] = await make("Sold Asset")
-        await apply_event(session, sold_asset, "SOLD", to_holder_id=None, actor=admin)
+        await apply_event(session, sold_asset, "SOLD", to_asset_user_id=None, actor=admin)
 
         [scrapped_asset] = await make("Scrapped Asset")
-        await apply_event(session, scrapped_asset, "SCRAPPED", to_holder_id=None, actor=admin)
+        await apply_event(session, scrapped_asset, "SCRAPPED", to_asset_user_id=None, actor=admin)
 
         await make("Healthy In-Stock Asset")  # never touched -- stays IN_STOCK
         await session.commit()
@@ -104,20 +104,20 @@ async def test_am12_exception_counts_are_company_scoped():
         dept = Department(name="IT-EX3")
         session.add_all([sub, cc_a, cc_b, loc_a, loc_b, dept])
         await session.flush()
-        stock_a = Holder(company_id=co_a.id, emp_code="STK-EX3A", name="Stock A", holder_type="IT_STOCK",
-                          location_id=loc_a.id, department_id=dept.id, role="HOLDER")
-        it_team_a = Holder(company_id=co_a.id, emp_code="ITT-EX3A", name="IT Team A", holder_type="EMPLOYEE",
+        stock_a = AssetUser(company_id=co_a.id, emp_code="STK-EX3A", name="Stock A", asset_user_type="IT_STOCK",
+                          location_id=loc_a.id, department_id=dept.id, role="ASSET_USER")
+        it_team_a = AssetUser(company_id=co_a.id, emp_code="ITT-EX3A", name="IT Team A", asset_user_type="EMPLOYEE",
                             location_id=loc_a.id, department_id=dept.id, role="IT_TEAM",
                             password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        viewer_a = Holder(company_id=co_a.id, emp_code="VWR-EX3A", name="Viewer A", holder_type="EMPLOYEE",
+        viewer_a = AssetUser(company_id=co_a.id, emp_code="VWR-EX3A", name="Viewer A", asset_user_type="EMPLOYEE",
                            location_id=loc_a.id, department_id=dept.id, role="VIEWER",
                            password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        stock_b = Holder(company_id=co_b.id, emp_code="STK-EX3B", name="Stock B", holder_type="IT_STOCK",
-                          location_id=loc_b.id, department_id=dept.id, role="HOLDER")
-        admin_b = Holder(company_id=co_b.id, emp_code="ADM-EX3B", name="Admin B", holder_type="EMPLOYEE",
+        stock_b = AssetUser(company_id=co_b.id, emp_code="STK-EX3B", name="Stock B", asset_user_type="IT_STOCK",
+                          location_id=loc_b.id, department_id=dept.id, role="ASSET_USER")
+        admin_b = AssetUser(company_id=co_b.id, emp_code="ADM-EX3B", name="Admin B", asset_user_type="EMPLOYEE",
                           location_id=loc_b.id, department_id=dept.id, role="ADMIN",
                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        admin_global = Holder(company_id=co_a.id, emp_code="SUPERADM-EX3", name="Super Admin", holder_type="EMPLOYEE",
+        admin_global = AssetUser(company_id=co_a.id, emp_code="SUPERADM-EX3", name="Super Admin", asset_user_type="EMPLOYEE",
                                location_id=loc_a.id, department_id=dept.id, role="ADMIN",
                                password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/EX3_",
@@ -127,15 +127,15 @@ async def test_am12_exception_counts_are_company_scoped():
 
         [asset_a] = await procure_assets(session, {
             "company_id": co_a.id, "cost_center_id": cc_a.id, "category_id": cat.id, "subcategory_id": sub.id,
-            "description": "Company A Repair Asset", "purchase_date": date(2025, 1, 1), "initial_holder_id": stock_a.id,
+            "description": "Company A Repair Asset", "purchase_date": date(2025, 1, 1), "initial_asset_user_id": stock_a.id,
         }, quantity=1, actor=it_team_a)
-        await apply_event(session, asset_a, "SENT_FOR_REPAIR", to_holder_id=None, actor=it_team_a)
+        await apply_event(session, asset_a, "SENT_FOR_REPAIR", to_asset_user_id=None, actor=it_team_a)
 
         [asset_b] = await procure_assets(session, {
             "company_id": co_b.id, "cost_center_id": cc_b.id, "category_id": cat.id, "subcategory_id": sub.id,
-            "description": "Company B Lost Asset", "purchase_date": date(2025, 1, 1), "initial_holder_id": stock_b.id,
+            "description": "Company B Lost Asset", "purchase_date": date(2025, 1, 1), "initial_asset_user_id": stock_b.id,
         }, quantity=1, actor=admin_b)
-        await apply_event(session, asset_b, "LOST", to_holder_id=None, actor=admin_b)
+        await apply_event(session, asset_b, "LOST", to_asset_user_id=None, actor=admin_b)
         await session.commit()
 
     transport = ASGITransport(app=app)
@@ -175,17 +175,17 @@ async def test_am12_recent_activity_ordering_limit_and_scoping():
         dept = Department(name="IT-RA1")
         session.add_all([sub, cc_a, cc_b, loc_a, loc_b, dept])
         await session.flush()
-        stock_a = Holder(company_id=co_a.id, emp_code="STK-RA1A", name="Stock A", holder_type="IT_STOCK",
-                          location_id=loc_a.id, department_id=dept.id, role="HOLDER")
-        admin_a = Holder(company_id=co_a.id, emp_code="ADM-RA1A", name="Admin A", holder_type="EMPLOYEE",
+        stock_a = AssetUser(company_id=co_a.id, emp_code="STK-RA1A", name="Stock A", asset_user_type="IT_STOCK",
+                          location_id=loc_a.id, department_id=dept.id, role="ASSET_USER")
+        admin_a = AssetUser(company_id=co_a.id, emp_code="ADM-RA1A", name="Admin A", asset_user_type="EMPLOYEE",
                           location_id=loc_a.id, department_id=dept.id, role="IT_TEAM",
                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        emp_a = Holder(company_id=co_a.id, emp_code="EMP-RA1A", name="Employee A", holder_type="EMPLOYEE",
-                        location_id=loc_a.id, department_id=dept.id, role="HOLDER",
+        emp_a = AssetUser(company_id=co_a.id, emp_code="EMP-RA1A", name="Employee A", asset_user_type="EMPLOYEE",
+                        location_id=loc_a.id, department_id=dept.id, role="ASSET_USER",
                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        stock_b = Holder(company_id=co_b.id, emp_code="STK-RA1B", name="Stock B", holder_type="IT_STOCK",
-                          location_id=loc_b.id, department_id=dept.id, role="HOLDER")
-        admin_b = Holder(company_id=co_b.id, emp_code="ADM-RA1B", name="Admin B", holder_type="EMPLOYEE",
+        stock_b = AssetUser(company_id=co_b.id, emp_code="STK-RA1B", name="Stock B", asset_user_type="IT_STOCK",
+                          location_id=loc_b.id, department_id=dept.id, role="ASSET_USER")
+        admin_b = AssetUser(company_id=co_b.id, emp_code="ADM-RA1B", name="Admin B", asset_user_type="EMPLOYEE",
                           location_id=loc_b.id, department_id=dept.id, role="ADMIN",
                           password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/RA1_",
@@ -199,11 +199,11 @@ async def test_am12_recent_activity_ordering_limit_and_scoping():
         for i in range(6):
             [asset] = await procure_assets(session, {
                 "company_id": co_a.id, "cost_center_id": cc_a.id, "category_id": cat.id, "subcategory_id": sub.id,
-                "description": f"Activity Asset {i}", "purchase_date": date(2025, 1, 1), "initial_holder_id": stock_a.id,
+                "description": f"Activity Asset {i}", "purchase_date": date(2025, 1, 1), "initial_asset_user_id": stock_a.id,
             }, quantity=1, actor=admin_a)
             from datetime import datetime, timezone
             ev = await apply_event(
-                session, asset, "MOVED", to_holder_id=emp_a.id, actor=admin_a,
+                session, asset, "MOVED", to_asset_user_id=emp_a.id, actor=admin_a,
                 event_date=datetime(2025, 6, 1, 12, i, 0, tzinfo=timezone.utc),
             )
             events_a.append((asset, ev))
@@ -211,7 +211,7 @@ async def test_am12_recent_activity_ordering_limit_and_scoping():
         # One event in Company B, after every Company A event -- must never appear for A's caller.
         [asset_b] = await procure_assets(session, {
             "company_id": co_b.id, "cost_center_id": cc_b.id, "category_id": cat.id, "subcategory_id": sub.id,
-            "description": "Company B Activity Asset", "purchase_date": date(2025, 1, 1), "initial_holder_id": stock_b.id,
+            "description": "Company B Activity Asset", "purchase_date": date(2025, 1, 1), "initial_asset_user_id": stock_b.id,
         }, quantity=1, actor=admin_b)
         await session.commit()
 
@@ -241,29 +241,29 @@ async def test_am12_recent_activity_ordering_limit_and_scoping():
             assert row["recorded_by_name"] == "Admin A"
 
 
-async def test_am12_recent_activity_uses_point_in_time_holder_name_snapshots(client):
-    """A holder rename after an event was recorded must not retroactively change how
+async def test_am12_recent_activity_uses_point_in_time_asset_user_name_snapshots(client):
+    """A asset_user rename after an event was recorded must not retroactively change how
     that event reads in Recent Activity -- same AM-01 guarantee the History tab has."""
     ids = await _setup("RA2")
     async with SessionLocal() as session:
-        admin = await session.get(Holder, ids["admin"].id)
-        emp = Holder(company_id=ids["co"].id, emp_code="EMP-RA2", name="Original Name", holder_type="EMPLOYEE",
-                     location_id=ids["stock"].location_id, department_id=ids["stock"].department_id, role="HOLDER")
+        admin = await session.get(AssetUser, ids["admin"].id)
+        emp = AssetUser(company_id=ids["co"].id, emp_code="EMP-RA2", name="Original Name", asset_user_type="EMPLOYEE",
+                     location_id=ids["stock"].location_id, department_id=ids["stock"].department_id, role="ASSET_USER")
         session.add(emp)
         await session.flush()
         [asset] = await procure_assets(session, {
             "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
             "subcategory_id": ids["sub"].id, "description": "Snapshot Asset", "purchase_date": date(2025, 1, 1),
-            "initial_holder_id": ids["stock"].id,
+            "initial_asset_user_id": ids["stock"].id,
         }, quantity=1, actor=admin)
-        await apply_event(session, asset, "MOVED", to_holder_id=emp.id, actor=admin)
+        await apply_event(session, asset, "MOVED", to_asset_user_id=emp.id, actor=admin)
         await session.commit()
 
-        # Rename the holder *after* the event was recorded.
-        await HolderService(session).update(emp.id, {
+        # Rename the asset_user *after* the event was recorded.
+        await AssetUserService(session).update(emp.id, {
             "company_id": ids["co"].id, "emp_code": "EMP-RA2", "name": "Renamed After The Fact",
-            "holder_type": "EMPLOYEE", "location_id": ids["stock"].location_id,
-            "department_id": ids["stock"].department_id, "role": "HOLDER",
+            "asset_user_type": "EMPLOYEE", "location_id": ids["stock"].location_id,
+            "department_id": ids["stock"].department_id, "role": "ASSET_USER",
         }, actor_id=admin.id)
         await session.commit()
 

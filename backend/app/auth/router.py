@@ -5,11 +5,11 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.db import get_session
-from app.core.deps import get_current_holder
+from app.core.deps import get_current_asset_user
 from app.core.security import (
     create_access_token, create_refresh_token, decode_token, hash_password, verify_password,
 )
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.masters.models import Company
 from app.auth.schemas import ChangePasswordRequest, CompanyOption, LoginRequest, LoginResponse
 
@@ -29,10 +29,10 @@ REFRESH_COOKIE_NAME = "refresh_token"
 REFRESH_COOKIE_PATH = "/api/auth"
 
 
-def _set_refresh_cookie(response: Response, holder_id: int) -> None:
+def _set_refresh_cookie(response: Response, asset_user_id: int) -> None:
     response.set_cookie(
         REFRESH_COOKIE_NAME,
-        create_refresh_token(holder_id),
+        create_refresh_token(asset_user_id),
         httponly=True,
         # See Settings.cookie_secure: off by default for this app's plain-HTTP LAN
         # deployment (a Secure cookie is never sent over HTTP, which would break
@@ -44,13 +44,13 @@ def _set_refresh_cookie(response: Response, holder_id: int) -> None:
     )
 
 
-def _session_response(holder: Holder) -> LoginResponse:
-    company_scope = None if holder.role == "ADMIN" else holder.company_id
+def _session_response(asset_user: AssetUser) -> LoginResponse:
+    company_scope = None if asset_user.role == "ADMIN" else asset_user.company_id
     return LoginResponse(
-        access_token=create_access_token(holder.id, holder.role, company_scope),
-        must_change_password=holder.must_change_password,
-        role=holder.role,
-        company_id=holder.company_id,
+        access_token=create_access_token(asset_user.id, asset_user.role, company_scope),
+        must_change_password=asset_user.must_change_password,
+        role=asset_user.role,
+        company_id=asset_user.company_id,
     )
 
 
@@ -69,54 +69,54 @@ async def list_login_companies(session: AsyncSession = Depends(get_session)):
 async def login(body: LoginRequest, response: Response, session: AsyncSession = Depends(get_session)):
     # The login screen no longer asks which company to sign into -- login_id
     # (Employee Code OR email address, case-insensitively) must resolve to
-    # exactly one holder across every ACTIVE company. emp_code and email are
-    # only unique *per company* (see migration 0005_holder_email_unique.py
-    # and Holder's own UniqueConstraint), so with more than one company it is
-    # possible, though unlikely, for the same login_id to match holders in
+    # exactly one asset_user across every ACTIVE company. emp_code and email are
+    # only unique *per company* (see migration 0005_asset_user_email_unique.py
+    # and AssetUser's own UniqueConstraint), so with more than one company it is
+    # possible, though unlikely, for the same login_id to match asset_users in
     # two different companies -- e.g. two independently-run stores both using
     # emp_code "EMP1". That is treated the same as "no match": a generic 401,
     # never a hint that the id exists, plus a server-side warning so an admin
     # can rename one of the colliding accounts. Silently picking one company
     # would be a real account-takeover risk; refusing to guess is not.
     stmt = (
-        select(Holder)
-        .join(Company, Holder.company_id == Company.id)
+        select(AssetUser)
+        .join(Company, AssetUser.company_id == Company.id)
         .where(
             Company.is_active.is_(True),
-            Holder.is_active.is_(True),
-            Holder.password_hash.is_not(None),
-            or_(Holder.emp_code == body.login_id, func.lower(Holder.email) == func.lower(body.login_id)),
+            AssetUser.is_active.is_(True),
+            AssetUser.password_hash.is_not(None),
+            or_(AssetUser.emp_code == body.login_id, func.lower(AssetUser.email) == func.lower(body.login_id)),
         )
-        .order_by(Holder.id)
+        .order_by(AssetUser.id)
     )
     matches = (await session.execute(stmt)).scalars().all()
     if len(matches) != 1:
         if len(matches) > 1:
             logger.warning(
-                "Login id %r matched holders in %d different companies (holder ids: %s) -- "
+                "Login id %r matched asset users in %d different companies (asset user ids: %s) -- "
                 "refusing to guess which one; rename one of the colliding emp_code/email values.",
                 body.login_id, len(matches), [h.id for h in matches],
             )
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
-    holder = matches[0]
+    asset_user = matches[0]
 
     now = datetime.now(timezone.utc)
-    if holder.locked_until and holder.locked_until > now:
+    if asset_user.locked_until and asset_user.locked_until > now:
         raise HTTPException(status.HTTP_423_LOCKED, "Account locked, try again later")
 
-    if not verify_password(body.password, holder.password_hash):
-        holder.failed_login_count += 1
-        if holder.failed_login_count >= MAX_FAILED_ATTEMPTS:
-            holder.locked_until = now + timedelta(minutes=LOCKOUT_MINUTES)
+    if not verify_password(body.password, asset_user.password_hash):
+        asset_user.failed_login_count += 1
+        if asset_user.failed_login_count >= MAX_FAILED_ATTEMPTS:
+            asset_user.locked_until = now + timedelta(minutes=LOCKOUT_MINUTES)
         await session.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
 
-    holder.failed_login_count = 0
-    holder.locked_until = None
+    asset_user.failed_login_count = 0
+    asset_user.locked_until = None
     await session.commit()
 
-    _set_refresh_cookie(response, holder.id)
-    return _session_response(holder)
+    _set_refresh_cookie(response, asset_user.id)
+    return _session_response(asset_user)
 
 
 @router.post("/refresh", response_model=LoginResponse)
@@ -133,8 +133,8 @@ async def refresh(
 
     Only a genuine `type: "refresh"` token is accepted here -- an access token can
     never be replayed through this endpoint to mint new tokens (just as
-    get_current_holder refuses a refresh token used as an access token).
-    Role/company are re-read from the holder row, so a role change or
+    get_current_asset_user refuses a refresh token used as an access token).
+    Role/company are re-read from the asset_user row, so a role change or
     deactivation takes effect on the next refresh rather than living on in a
     stale token."""
     invalid = HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired refresh token")
@@ -146,14 +146,14 @@ async def refresh(
         raise invalid
     if payload.get("type") != "refresh":
         raise invalid
-    holder = await session.get(Holder, int(payload["sub"]))
-    if holder is None or not holder.is_active or holder.password_hash is None:
+    asset_user = await session.get(AssetUser, int(payload["sub"]))
+    if asset_user is None or not asset_user.is_active or asset_user.password_hash is None:
         raise invalid
-    if holder.locked_until and holder.locked_until > datetime.now(timezone.utc):
+    if asset_user.locked_until and asset_user.locked_until > datetime.now(timezone.utc):
         raise invalid
 
-    _set_refresh_cookie(response, holder.id)
-    return _session_response(holder)
+    _set_refresh_cookie(response, asset_user.id)
+    return _session_response(asset_user)
 
 
 @router.post("/logout", status_code=204)
@@ -171,13 +171,13 @@ async def logout(response: Response):
 async def change_password(
     body: ChangePasswordRequest,
     session: AsyncSession = Depends(get_session),
-    holder: Holder = Depends(get_current_holder),
+    asset_user: AssetUser = Depends(get_current_asset_user),
 ):
-    if not verify_password(body.old_password, holder.password_hash or ""):
+    if not verify_password(body.old_password, asset_user.password_hash or ""):
         # 400, not 401: the session is valid, the *input* is wrong. The frontend
         # treats any 401 as "session expired" (refresh, then log out), which would
         # wrongly bounce a user who merely mistyped their current password.
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Old password is incorrect")
-    holder.password_hash = hash_password(body.new_password)
-    holder.must_change_password = False
+    asset_user.password_hash = hash_password(body.new_password)
+    asset_user.must_change_password = False
     await session.commit()

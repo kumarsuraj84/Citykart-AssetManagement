@@ -3,7 +3,7 @@ from datetime import date, datetime, timezone
 from sqlalchemy.exc import DBAPIError
 from app.core.db import SessionLocal
 from app.masters.models import Company, CostCenter, AssetCategory, AssetSubcategory, Location, Department
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.assets.models import Asset
 from app.lifecycle.models import AssetEvent
 
@@ -20,18 +20,18 @@ async def test_asset_event_cannot_be_updated_or_deleted():
         dept = Department(name="IT-LG1")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        holder = Holder(company_id=co.id, emp_code="ITSTOCK-LG1", name="IT Stock-HO",
-                         holder_type="IT_STOCK", location_id=loc.id, department_id=dept.id, role="HOLDER")
-        session.add(holder)
+        asset_user = AssetUser(company_id=co.id, emp_code="ITSTOCK-LG1", name="IT Stock-HO",
+                         asset_user_type="IT_STOCK", location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+        session.add(asset_user)
         await session.flush()
         asset = Asset(asset_code="FA/HO01/IT/LAP/CK_99", company_id=co.id, cost_center_id=cc.id,
                        category_id=cat.id, subcategory_id=sub.id, description="Ledger Laptop",
-                       purchase_date=date(2025, 12, 10), status="IN_STOCK", current_holder_id=holder.id,
+                       purchase_date=date(2025, 12, 10), status="IN_STOCK", current_asset_user_id=asset_user.id,
                        status_since=date(2025, 12, 10))
         session.add(asset)
         await session.flush()
         event = AssetEvent(asset_id=asset.id, event_type="PROCURED", event_date=datetime.now(timezone.utc),
-                            to_holder_id=holder.id, status_after="IN_STOCK", recorded_by=holder.id)
+                            to_asset_user_id=asset_user.id, status_after="IN_STOCK", recorded_by=asset_user.id)
         session.add(event)
         await session.commit()
         await session.refresh(event)

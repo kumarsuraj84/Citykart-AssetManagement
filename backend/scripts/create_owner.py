@@ -3,14 +3,14 @@
 Unlike scripts/seed_admin.py (a generic, throwaway bootstrap admin used for
 dev/E2E testing), this script creates one specific, real person's account:
 Ankur Pahwa, the actual owner/manager of this deployed instance. The
-company/location/department/holder values below are intentionally
+company/location/department/asset_user values below are intentionally
 hardcoded (not CLI args) because this script exists for exactly one
 real-world deployment, not as a reusable dev fixture.
 
 Idempotent: safe to re-run. Re-running never creates duplicate
-Company/Location/Department/Holder rows, and never touches the existing
-holder's password — the temporary password is generated and printed to
-stdout ONLY the first time the holder is created. It is never hardcoded,
+Company/Location/Department/AssetUser rows, and never touches the existing
+asset_user's password — the temporary password is generated and printed to
+stdout ONLY the first time the asset_user is created. It is never hardcoded,
 logged persistently, or written to a file; the operator must relay it to
 Ankur out-of-band and it is discarded once the terminal scrolls past it.
 """
@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.masters.models import Company, Department, Location
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 
 COMPANY_CODE = "CKS"
 COMPANY_NAME = "Citykart Stores"
@@ -29,8 +29,8 @@ LOCATION_CODE = "HO"
 LOCATION_NAME = "Head Office"
 DEPARTMENT_NAME = "IT"
 EMP_CODE = "CS6872"
-HOLDER_NAME = "Ankur Pahwa"
-HOLDER_EMAIL = "ankur.pahwa@citykartstores.com"
+ASSET_USER_NAME = "Ankur Pahwa"
+ASSET_USER_EMAIL = "ankur.pahwa@citykartstores.com"
 
 
 async def ensure_owner(session: AsyncSession) -> dict:
@@ -65,37 +65,37 @@ async def ensure_owner(session: AsyncSession) -> dict:
         session.add(department)
         await session.flush()
 
-    # Scoped by company_id too: Holder's real uniqueness constraint is
-    # (company_id, emp_code), not emp_code alone (see app/holders/models.py),
-    # so a global lookup here would silently reuse a same-emp_code holder
+    # Scoped by company_id too: AssetUser's real uniqueness constraint is
+    # (company_id, emp_code), not emp_code alone (see app/asset-users/models.py),
+    # so a global lookup here would silently reuse a same-emp_code asset_user
     # belonging to a different company instead of this one.
-    holder = (
-        await session.execute(select(Holder).where(and_(Holder.company_id == company.id, Holder.emp_code == EMP_CODE)))
+    asset_user = (
+        await session.execute(select(AssetUser).where(and_(AssetUser.company_id == company.id, AssetUser.emp_code == EMP_CODE)))
     ).scalars().first()
 
     temp_password: str | None = None
     created = False
-    if holder is None:
+    if asset_user is None:
         # secrets.token_urlsafe(9): same pattern as
-        # HolderService.reset_password (app/holders/service.py) for
+        # AssetUserService.reset_password (app/asset-users/service.py) for
         # generating a secure random temporary password. Never hardcoded,
         # never persisted in plaintext anywhere - only its Argon2 hash is
         # stored, and the raw value is returned once for the caller to
         # print and hand off out-of-band.
         temp_password = secrets.token_urlsafe(9)
-        holder = Holder(
+        asset_user = AssetUser(
             company_id=company.id,
             emp_code=EMP_CODE,
-            name=HOLDER_NAME,
-            holder_type="EMPLOYEE",
+            name=ASSET_USER_NAME,
+            asset_user_type="EMPLOYEE",
             location_id=location.id,
             department_id=department.id,
-            email=HOLDER_EMAIL,
+            email=ASSET_USER_EMAIL,
             role="ADMIN",
             password_hash=hash_password(temp_password),
             must_change_password=True,
         )
-        session.add(holder)
+        session.add(asset_user)
         await session.flush()
         created = True
 
@@ -103,7 +103,7 @@ async def ensure_owner(session: AsyncSession) -> dict:
         "company_id": company.id,
         "location_id": location.id,
         "department_id": department.id,
-        "holder_id": holder.id,
+        "asset_user_id": asset_user.id,
         "created": created,
         "temp_password": temp_password,
     }
@@ -117,14 +117,14 @@ async def _main():
     if result["created"]:
         print(
             f"Owner admin created: company_id={result['company_id']} "
-            f"holder_id={result['holder_id']} emp_code={EMP_CODE} name={HOLDER_NAME!r}"
+            f"asset_user_id={result['asset_user_id']} emp_code={EMP_CODE} name={ASSET_USER_NAME!r}"
         )
-        print(f"One-time temporary password (relay to {HOLDER_NAME} out-of-band, then discard): {result['temp_password']}")
+        print(f"One-time temporary password (relay to {ASSET_USER_NAME} out-of-band, then discard): {result['temp_password']}")
         print("must_change_password is set, so this password must be changed at first login.")
     else:
         print(
             f"Owner admin already exists: company_id={result['company_id']} "
-            f"holder_id={result['holder_id']} emp_code={EMP_CODE} - password left untouched."
+            f"asset_user_id={result['asset_user_id']} emp_code={EMP_CODE} - password left untouched."
         )
 
 

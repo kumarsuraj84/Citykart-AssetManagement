@@ -1,13 +1,13 @@
 import pytest
 from fastapi import HTTPException
 from app.core.db import SessionLocal
-from app.core.deps import get_current_holder, require_role, scoped_company_ids
+from app.core.deps import get_current_asset_user, require_role, scoped_company_ids
 from app.core.security import create_refresh_token, hash_password
-from app.holders.models import Holder, HolderCompanyAccess
+from app.asset_users.models import AssetUser, AssetUserCompanyAccess
 from app.masters.models import Company, Department, Location
 
 
-class _FakeHolder:
+class _FakeAssetUser:
     def __init__(self, role, company_id, id=0):  # noqa: A002 - matches the ORM attribute name
         self.role = role
         self.company_id = company_id
@@ -16,19 +16,19 @@ class _FakeHolder:
 
 async def test_scoped_company_ids_admin_sees_all():
     # ADMIN short-circuits before ever touching the session -- None is safe here.
-    assert await scoped_company_ids(None, _FakeHolder("ADMIN", 1)) is None
+    assert await scoped_company_ids(None, _FakeAssetUser("ADMIN", 1)) is None
 
 
-async def test_scoped_company_ids_holder_sees_own_company_only():
+async def test_scoped_company_ids_asset_user_sees_own_company_only():
     async with SessionLocal() as session:
-        assert await scoped_company_ids(session, _FakeHolder("HOLDER", 7, id=0)) == [7]
+        assert await scoped_company_ids(session, _FakeAssetUser("ASSET_USER", 7, id=0)) == [7]
 
 
-async def test_scoped_company_ids_honors_holder_company_access_grants(client):
-    """AM-24: the actual bug -- holder_company_access rows were stored but
+async def test_scoped_company_ids_honors_asset_user_company_access_grants(client):
+    """AM-24: the actual bug -- asset_user_company_access rows were stored but
     never queried, so a granted second company had zero effect anywhere a
-    scope check ran. Confirms the real fix with a real Holder + a real
-    HolderCompanyAccess row, not just a FakeHolder unit check."""
+    scope check ran. Confirms the real fix with a real AssetUser + a real
+    AssetUserCompanyAccess row, not just a FakeAssetUser unit check."""
     async with SessionLocal() as session:
         co_a = Company(code="DEPS-A", name="Deps Co A")
         co_b = Company(code="DEPS-B", name="Deps Co B")
@@ -38,14 +38,14 @@ async def test_scoped_company_ids_honors_holder_company_access_grants(client):
         dept = Department(name="DEPS-DEPT")
         session.add_all([loc, dept])
         await session.flush()
-        staff = Holder(
-            company_id=co_a.id, emp_code="DEPS-ITT", name="Deps IT Team", holder_type="EMPLOYEE",
+        staff = AssetUser(
+            company_id=co_a.id, emp_code="DEPS-ITT", name="Deps IT Team", asset_user_type="EMPLOYEE",
             location_id=loc.id, department_id=dept.id, role="IT_TEAM",
             password_hash=hash_password("Passw0rd!"), must_change_password=False,
         )
         session.add(staff)
         await session.flush()
-        session.add(HolderCompanyAccess(holder_id=staff.id, company_id=co_b.id))
+        session.add(AssetUserCompanyAccess(asset_user_id=staff.id, company_id=co_b.id))
         await session.commit()
 
         allowed = await scoped_company_ids(session, staff)
@@ -55,22 +55,22 @@ async def test_scoped_company_ids_honors_holder_company_access_grants(client):
 def test_require_role_rejects_wrong_role():
     checker = require_role("ADMIN", "IT_TEAM")
     with pytest.raises(HTTPException) as exc:
-        checker(_FakeHolder("VIEWER", 1))
+        checker(_FakeAssetUser("VIEWER", 1))
     assert exc.value.status_code == 403
 
 
 def test_require_role_allows_matching_role():
     checker = require_role("ADMIN", "IT_TEAM")
-    result = checker(_FakeHolder("IT_TEAM", 1))
+    result = checker(_FakeAssetUser("IT_TEAM", 1))
     assert result.role == "IT_TEAM"
 
 
-async def test_get_current_holder_rejects_refresh_token():
+async def test_get_current_asset_user_rejects_refresh_token():
     # A refresh token is a real, validly-signed JWT but must never authenticate
-    # like an access token — get_current_holder must reject it on the "type"
+    # like an access token — get_current_asset_user must reject it on the "type"
     # claim before it ever reaches the DB lookup (session=None proves this:
     # the call would blow up on session.get if the type check were skipped).
-    token = create_refresh_token(holder_id=1)
+    token = create_refresh_token(asset_user_id=1)
     with pytest.raises(HTTPException) as exc:
-        await get_current_holder(request=None, token=token, session=None)
+        await get_current_asset_user(request=None, token=token, session=None)
     assert exc.value.status_code == 401

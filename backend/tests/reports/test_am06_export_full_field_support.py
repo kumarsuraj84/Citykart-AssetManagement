@@ -10,7 +10,7 @@ import openpyxl
 from app.assets.service import procure_assets
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, CustomField, Department, Location, Vendor
 from app.numbering.models import CodeRule
 
@@ -31,9 +31,9 @@ async def _setup(code="EXP06"):
         dept = Department(name=f"IT-{code}")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = Holder(company_id=co.id, emp_code=f"STK-{code}", name="IT Stock-HO", holder_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="HOLDER")
-        admin = Holder(company_id=co.id, emp_code=f"ADM-{code}", name="Admin", holder_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, emp_code=f"STK-{code}", name="IT Stock-HO", asset_user_type="IT_STOCK",
+                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{code}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
         # Company-scoped (never company_id=None/Global): a Global rule from one
@@ -68,7 +68,7 @@ class TestAssetRegisterExportColumns:
             [asset] = await procure_assets(session, {
                 "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
                 "subcategory_id": ids["sub"].id, "description": "Export Full Field Laptop",
-                "purchase_date": date(2025, 6, 1), "initial_holder_id": ids["stock"].id,
+                "purchase_date": date(2025, 6, 1), "initial_asset_user_id": ids["stock"].id,
                 "vendor_id": ids["vendor"].id, "po_number": "PO-COL1", "po_date": date(2025, 5, 1),
                 "invoice_number": "INV-COL1", "invoice_date": date(2025, 5, 2),
                 "pi_number": "PI-COL1", "pi_date": date(2025, 5, 3),
@@ -94,8 +94,8 @@ class TestAssetRegisterExportColumns:
         assert row_by_header["PI Number"] == "PI-COL1"
         assert row_by_header["Company"] == ids["co"].name  # human-readable, not a raw id
         assert row_by_header["Vendor"] == "Acme Traders"
-        assert row_by_header["Current Holder"] == "IT Stock-HO"
-        assert row_by_header["Holder Type"] == "IT_STOCK"
+        assert row_by_header["Current AssetUser"] == "IT Stock-HO"
+        assert row_by_header["AssetUser Type"] == "IT_STOCK"
 
     async def test_export_includes_custom_field_columns_keyed_by_field_key(self, client):
         ids = await _setup("COL2")
@@ -106,7 +106,7 @@ class TestAssetRegisterExportColumns:
             [asset] = await procure_assets(session, {
                 "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
                 "description": "Export UDF Laptop", "purchase_date": date(2025, 6, 1),
-                "initial_holder_id": ids["stock"].id, "custom_fields": {"col2_notes": "hello export"},
+                "initial_asset_user_id": ids["stock"].id, "custom_fields": {"col2_notes": "hello export"},
             }, quantity=1, actor=ids["admin"])
             await session.commit()
             asset_code = asset.asset_code
@@ -135,7 +135,7 @@ class TestAssetRegisterExportColumns:
             [asset] = await procure_assets(session, {
                 "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
                 "description": "Retired UDF Laptop", "purchase_date": date(2025, 6, 1),
-                "initial_holder_id": ids["stock"].id, "custom_fields": {"col3_tag": "kept for export"},
+                "initial_asset_user_id": ids["stock"].id, "custom_fields": {"col3_tag": "kept for export"},
             }, quantity=1, actor=ids["admin"])
             await session.commit()
             asset_code = asset.asset_code
@@ -157,7 +157,7 @@ class TestAssetRegisterExportColumns:
         ids = await _setup("COL4")
         async with SessionLocal() as session:
             session.add(CustomField(field_key="col4_other", label="Other", field_type="text", company_id=ids["co_b_id"]))
-            it_team = Holder(company_id=ids["co"].id, emp_code="ITT-COL4", name="IT Team", holder_type="EMPLOYEE",
+            it_team = AssetUser(company_id=ids["co"].id, emp_code="ITT-COL4", name="IT Team", asset_user_type="EMPLOYEE",
                               location_id=ids["stock"].location_id, department_id=ids["stock"].department_id,
                               role="IT_TEAM", password_hash=hash_password("Passw0rd!"), must_change_password=False)
             session.add(it_team)
@@ -166,7 +166,7 @@ class TestAssetRegisterExportColumns:
             [asset] = await procure_assets(session, {
                 "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
                 "description": "Company A Only Laptop", "purchase_date": date(2025, 6, 1),
-                "initial_holder_id": ids["stock"].id,
+                "initial_asset_user_id": ids["stock"].id,
             }, quantity=1, actor=ids["admin"])
             await session.commit()
 
@@ -184,7 +184,7 @@ class TestFieldChangeAuditExport:
             [asset] = await procure_assets(session, {
                 "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
                 "description": "Audit Export Laptop", "purchase_date": date(2025, 6, 1),
-                "initial_holder_id": ids["stock"].id, "brand_id": ids["brand"],
+                "initial_asset_user_id": ids["stock"].id, "brand_id": ids["brand"],
             }, quantity=1, actor=ids["admin"])
             await session.commit()
             asset_id, asset_code = asset.id, asset.asset_code
@@ -231,7 +231,7 @@ class TestFieldChangeAuditExport:
             [asset] = await procure_assets(session, {
                 "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
                 "description": "Reason Export Laptop", "purchase_date": date(2025, 6, 1),
-                "initial_holder_id": ids["stock"].id,
+                "initial_asset_user_id": ids["stock"].id,
             }, quantity=1, actor=ids["admin"])
             await session.commit()
             asset_id, asset_code = asset.id, asset.asset_code
@@ -260,8 +260,8 @@ class TestFieldChangeAuditExport:
         ids_a = await _setup("AUD2A")
         ids_b = await _setup("AUD2B")
         async with SessionLocal() as session:
-            it_team_b = Holder(company_id=ids_b["co"].id, emp_code="ITT-AUD2B", name="IT Team B",
-                                holder_type="EMPLOYEE", location_id=ids_b["stock"].location_id,
+            it_team_b = AssetUser(company_id=ids_b["co"].id, emp_code="ITT-AUD2B", name="IT Team B",
+                                asset_user_type="EMPLOYEE", location_id=ids_b["stock"].location_id,
                                 department_id=ids_b["stock"].department_id, role="IT_TEAM",
                                 password_hash=hash_password("Passw0rd!"), must_change_password=False)
             session.add(it_team_b)
@@ -270,7 +270,7 @@ class TestFieldChangeAuditExport:
             [asset_a] = await procure_assets(session, {
                 "company_id": ids_a["co"].id, "cost_center_id": ids_a["cc"].id, "category_id": ids_a["cat"].id,
                 "description": "A's Laptop", "purchase_date": date(2025, 6, 1),
-                "initial_holder_id": ids_a["stock"].id,
+                "initial_asset_user_id": ids_a["stock"].id,
             }, quantity=1, actor=ids_a["admin"])
             await session.commit()
             asset_a_id, asset_a_code = asset_a.id, asset_a.asset_code
@@ -284,14 +284,14 @@ class TestFieldChangeAuditExport:
         codes = [r[0] for r in wb.active.iter_rows(min_row=2, values_only=True)]
         assert asset_a_code not in codes
 
-    async def test_holder_role_cannot_export_field_changes(self, client):
+    async def test_asset_user_role_cannot_export_field_changes(self, client):
         ids = await _setup("AUD3")
         async with SessionLocal() as session:
-            holder_role = Holder(company_id=ids["co"].id, emp_code="HLD-AUD3", name="Just A Holder",
-                                  holder_type="EMPLOYEE", location_id=ids["stock"].location_id,
-                                  department_id=ids["stock"].department_id, role="HOLDER",
+            asset_user_role = AssetUser(company_id=ids["co"].id, emp_code="HLD-AUD3", name="Just A AssetUser",
+                                  asset_user_type="EMPLOYEE", location_id=ids["stock"].location_id,
+                                  department_id=ids["stock"].department_id, role="ASSET_USER",
                                   password_hash=hash_password("Passw0rd!"), must_change_password=False)
-            session.add(holder_role)
+            session.add(asset_user_role)
             await session.commit()
         headers = await _headers(client, "HLD-AUD3")
         resp = await client.get("/api/reports/export/field-changes", headers=headers)
@@ -299,7 +299,7 @@ class TestFieldChangeAuditExport:
 
 
 class TestMovementExportUnchanged:
-    async def test_movement_export_still_uses_point_in_time_holder_snapshots(self, client):
+    async def test_movement_export_still_uses_point_in_time_asset_user_snapshots(self, client):
         """AM-06 makes no change to the movement log -- reconfirms the AM-01
         snapshot behavior the export already relied on still holds."""
         from datetime import timedelta
@@ -307,25 +307,25 @@ class TestMovementExportUnchanged:
 
         ids = await _setup("MOV1")
         async with SessionLocal() as session:
-            employee = Holder(company_id=ids["co"].id, emp_code="EMP-MOV1", name="Original Name",
-                               holder_type="EMPLOYEE", location_id=ids["stock"].location_id,
-                               department_id=ids["stock"].department_id, role="HOLDER")
+            employee = AssetUser(company_id=ids["co"].id, emp_code="EMP-MOV1", name="Original Name",
+                               asset_user_type="EMPLOYEE", location_id=ids["stock"].location_id,
+                               department_id=ids["stock"].department_id, role="ASSET_USER")
             session.add(employee)
             await session.commit()
         async with SessionLocal() as session:
             [asset] = await procure_assets(session, {
                 "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
                 "description": "Movement Snapshot Laptop", "purchase_date": date(2025, 6, 1),
-                "initial_holder_id": ids["stock"].id,
+                "initial_asset_user_id": ids["stock"].id,
             }, quantity=1, actor=ids["admin"])
-            await apply_event(session, asset, "MOVED", to_holder_id=employee.id, actor=ids["admin"])
+            await apply_event(session, asset, "MOVED", to_asset_user_id=employee.id, actor=ids["admin"])
             await session.commit()
             asset_code = asset.asset_code
 
-        # Renaming the holder AFTER the move must not retroactively change the
-        # exported "To Holder" value (the AM-01 point-in-time snapshot rule).
+        # Renaming the asset_user AFTER the move must not retroactively change the
+        # exported "To AssetUser" value (the AM-01 point-in-time snapshot rule).
         async with SessionLocal() as session:
-            db_employee = await session.get(Holder, employee.id)
+            db_employee = await session.get(AssetUser, employee.id)
             db_employee.name = "Renamed Later"
             await session.commit()
 

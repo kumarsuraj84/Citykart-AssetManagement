@@ -7,7 +7,7 @@ import openpyxl
 from app.assets.models import Asset
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location, Vendor
 from app.numbering.models import CodeRule
 from sqlalchemy import func, select
@@ -21,7 +21,7 @@ def _xlsx(rows):
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.append(["Legacy Asset Code", "Company Code", "Cost Centre Code", "Category Code", "Subcategory Code",
-               "Description", "Invoice Date", "Initial Holder Code", "Vendor Code", "Serial Number"])
+               "Description", "Invoice Date", "Initial AssetUser Code", "Vendor Code", "Serial Number"])
     for row in rows:
         ws.append(row)
     buf = io.BytesIO()
@@ -37,8 +37,8 @@ async def _company(session, code):
     dept = Department(name=f"IT-{code}")
     session.add_all([loc, dept, CostCenter(company_id=co.id, code="HO01", name="HO")])
     await session.flush()
-    session.add(Holder(company_id=co.id, emp_code=f"STOCK-{code}", name=f"IT Stock {code}", holder_type="IT_STOCK",
-                       location_id=loc.id, department_id=dept.id, role="HOLDER"))
+    session.add(AssetUser(company_id=co.id, emp_code=f"STOCK-{code}", name=f"IT Stock {code}", asset_user_type="IT_STOCK",
+                       location_id=loc.id, department_id=dept.id, role="ASSET_USER"))
     await session.flush()
     return co, loc, dept
 
@@ -54,7 +54,7 @@ async def _setup(rules):
         await session.flush()
         session.add(AssetSubcategory(category_id=cat.id, code="LAP", name="Laptop"))
         for emp_code, role in (("ADM", "ADMIN"), ("ITA", "IT_TEAM")):
-            session.add(Holder(company_id=co_a.id, emp_code=emp_code, name=emp_code, holder_type="EMPLOYEE",
+            session.add(AssetUser(company_id=co_a.id, emp_code=emp_code, name=emp_code, asset_user_type="EMPLOYEE",
                                location_id=loc_a.id, department_id=dept_a.id, role=role,
                                password_hash=hash_password("Passw0rd!"), must_change_password=False))
         ids = {"A": co_a.id, "B": co_b.id, None: None}
@@ -90,7 +90,7 @@ async def test_import_fills_company_location_and_date_tokens(client):
     resp = await _post(client, "/api/imports/assets/commit", _xlsx([_row()]), headers)
     assert resp.status_code == 200, resp.text
     assert resp.json() == {"imported": 1, "updated": None, "errors": []}
-    # location.code comes from the row's resolved holder's location.
+    # location.code comes from the row's resolved asset_user's location.
     assert await _asset_codes() == ["IMA/IMA-LOC/2020/2001/1"]
 
 

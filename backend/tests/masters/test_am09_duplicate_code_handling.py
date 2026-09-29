@@ -9,7 +9,7 @@ genuinely-different code still works normally afterward (the failed attempt
 does not corrupt the session for the rest of the request/connection)."""
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.masters.models import Company, Department, Location
 
 
@@ -22,12 +22,12 @@ async def _seed_company_admin(company_code="DUPC"):
         dept = Department(name=f"IT-{company_code}")
         session.add_all([loc, dept])
         await session.flush()
-        holder = Holder(
-            company_id=co.id, emp_code="DUPADM", name="Dup Admin", holder_type="EMPLOYEE",
+        asset_user = AssetUser(
+            company_id=co.id, emp_code="DUPADM", name="Dup Admin", asset_user_type="EMPLOYEE",
             location_id=loc.id, department_id=dept.id, role="ADMIN",
             password_hash=hash_password("Passw0rd!"), must_change_password=False,
         )
-        session.add(holder)
+        session.add(asset_user)
         await session.commit()
         return co.id
 

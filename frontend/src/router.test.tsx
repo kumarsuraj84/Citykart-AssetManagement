@@ -18,9 +18,9 @@ const ASSET = {
   invoice_number: null, invoice_date: null, invoice_amount: null, pi_number: null, pi_date: null, purchase_cost: null,
   tax_percent: null, tax_amount: null, total_cost: null, purchase_date: "2025-01-01",
   warranty_years: null, warranty_upto: null,
-  current_holder_id: 1, status_since: "2025-01-01", custom_fields: {},
+  current_asset_user_id: 1, status_since: "2025-01-01", custom_fields: {},
   category_name: null, subcategory_name: null, cost_center_name: null, vendor_name: null, brand_name: null,
-  current_holder_name: "IT Stock-HO", current_holder_type: "IT_STOCK", location_name: null, department_name: null,
+  current_asset_user_name: "IT Stock-HO", current_asset_user_type: "IT_STOCK", location_name: null, department_name: null,
 };
 
 function mockApi() {
@@ -74,7 +74,7 @@ describe("route guards", () => {
     expect(router.state.location.search).toEqual({ next: "/assets/123" });
   });
 
-  it("forces a holder with must_change_password onto the change-password screen", async () => {
+  it("forces a asset_user with must_change_password onto the change-password screen", async () => {
     loginAs("ADMIN", true);
     const router = renderAt("/dashboard");
     await waitFor(() => expect(router.state.location.pathname).toBe("/change-password"));
@@ -85,7 +85,7 @@ describe("route guards", () => {
 
   it("keeps bouncing to change-password whatever page is requested", async () => {
     loginAs("IT_TEAM", true);
-    for (const url of ["/assets", "/setup/holders", "/my-assets", "/"]) {
+    for (const url of ["/assets", "/setup/asset-users", "/my-assets", "/"]) {
       const router = renderAt(url);
       await waitFor(() => expect(router.state.location.pathname).toBe("/change-password"));
     }
@@ -104,7 +104,7 @@ describe("login flow", () => {
   });
 
   it("lands on the role's home page when there is no next", async () => {
-    (apiClient.post as any).mockResolvedValue({ access_token: "tok", must_change_password: false, role: "HOLDER", company_id: 1 });
+    (apiClient.post as any).mockResolvedValue({ access_token: "tok", must_change_password: false, role: "ASSET_USER", company_id: 1 });
     const router = renderAt("/login");
     await submitLogin();
     await waitFor(() => expect(router.state.location.pathname).toBe("/my-assets"));
@@ -156,20 +156,20 @@ describe("AppShell navigation", () => {
     for (const name of [
       "Dashboard", "My Assets", "Asset Register", "Add Asset", "Import", "Reports",
       "Companies", "Locations", "Departments", "Cost Centers", "Categories", "Sub-Categories",
-      "Vendors", "Custom Fields", "Holders & Users", "Code Rule",
+      "Vendors", "Custom Fields", "Asset Users", "Code Rule",
     ]) {
       expect(within(nav).getByRole("link", { name })).toBeInTheDocument();
     }
     expect(within(nav).getByRole("link", { name: "Code Rule" })).toHaveAttribute("href", "/setup/code-rule");
   });
 
-  it("gives IT_TEAM the masters but not holders/users or the code rule", async () => {
+  it("gives IT_TEAM the masters but not asset_users/users or the code rule", async () => {
     loginAs("IT_TEAM");
     renderAt("/dashboard");
     const nav = await screen.findByRole("navigation", { name: "Main" });
     expect(within(nav).getByRole("link", { name: "Cost Centers" })).toBeInTheDocument();
     expect(within(nav).queryByRole("link", { name: "Code Rule" })).not.toBeInTheDocument();
-    expect(within(nav).queryByRole("link", { name: "Holders & Users" })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Asset Users" })).not.toBeInTheDocument();
   });
 
   it("gives a VIEWER read-only screens only", async () => {
@@ -182,8 +182,8 @@ describe("AppShell navigation", () => {
     expect(within(nav).queryByRole("link", { name: "Companies" })).not.toBeInTheDocument();
   });
 
-  it("gives a HOLDER only My Assets", async () => {
-    loginAs("HOLDER");
+  it("gives a ASSET_USER only My Assets", async () => {
+    loginAs("ASSET_USER");
     renderAt("/my-assets");
     const nav = await screen.findByRole("navigation", { name: "Main" });
     expect(within(nav).getAllByRole("link").map((l) => l.textContent)).toEqual(["My Assets"]);

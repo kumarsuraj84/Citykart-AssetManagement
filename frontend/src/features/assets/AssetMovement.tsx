@@ -25,9 +25,9 @@ interface AssetSearchResult {
   serial_number: string | null;
   description: string;
   status: string;
-  current_holder_name: string | null;
-  current_holder_location_name: string | null;
-  current_holder_type: string | null;
+  current_asset_user_name: string | null;
+  current_asset_user_location_name: string | null;
+  current_asset_user_type: string | null;
 }
 
 interface QueuedAsset extends AssetSearchResult {
@@ -44,15 +44,15 @@ interface BulkActionResult {
 // status-scoped like that one (a batch can mix assets starting in several
 // different statuses), so eligibility is checked per scanned asset instead
 // (via the same actionsFor() rule, not a duplicated one).
-const BULK_ACTIONS: { eventType: string; label: string; needsHolder: boolean }[] = [
-  { eventType: "MOVED", label: "Move / Allot / Transfer", needsHolder: true },
-  { eventType: "SENT_FOR_REPAIR", label: "Send for Repair", needsHolder: false },
-  { eventType: "RECEIVED_FROM_REPAIR", label: "Receive from Repair", needsHolder: true },
-  { eventType: "LOST", label: "Report Lost", needsHolder: false },
-  { eventType: "FOUND", label: "Mark Found", needsHolder: true },
-  { eventType: "DISPOSED", label: "Dispose", needsHolder: false },
-  { eventType: "SOLD", label: "Sell", needsHolder: false },
-  { eventType: "SCRAPPED", label: "Scrap", needsHolder: false },
+const BULK_ACTIONS: { eventType: string; label: string; needsAssetUser: boolean }[] = [
+  { eventType: "MOVED", label: "Move / Allot / Transfer", needsAssetUser: true },
+  { eventType: "SENT_FOR_REPAIR", label: "Send for Repair", needsAssetUser: false },
+  { eventType: "RECEIVED_FROM_REPAIR", label: "Receive from Repair", needsAssetUser: true },
+  { eventType: "LOST", label: "Report Lost", needsAssetUser: false },
+  { eventType: "FOUND", label: "Mark Found", needsAssetUser: true },
+  { eventType: "DISPOSED", label: "Dispose", needsAssetUser: false },
+  { eventType: "SOLD", label: "Sell", needsAssetUser: false },
+  { eventType: "SCRAPPED", label: "Scrap", needsAssetUser: false },
 ];
 
 function isEligible(status: string, eventType: string): boolean {
@@ -63,8 +63,8 @@ function isEligible(status: string, eventType: string): boolean {
 // asset is currently with a real person/store/install, not sitting in an
 // IT_STOCK warehouse bin -- moving it means pulling it out of someone's
 // hands, worth a second look before it's bundled into a bulk action.
-function isNotInItStock(holderType: string | null): boolean {
-  return holderType !== null && holderType !== "IT_STOCK";
+function isNotInItStock(assetUserType: string | null): boolean {
+  return assetUserType !== null && assetUserType !== "IT_STOCK";
 }
 
 function selectValue(v: string): string | undefined {
@@ -73,7 +73,7 @@ function selectValue(v: string): string | undefined {
 
 export function AssetMovement() {
   const [eventType, setEventType] = useState(BULK_ACTIONS[0].eventType);
-  const [toHolderId, setToHolderId] = useState("");
+  const [toAssetUserId, setToAssetUserId] = useState("");
   const [remarks, setRemarks] = useState("");
   const [scanValue, setScanValue] = useState("");
   const [scanError, setScanError] = useState<string | null>(null);
@@ -83,8 +83,8 @@ export function AssetMovement() {
 
   const action = BULK_ACTIONS.find((a) => a.eventType === eventType)!;
 
-  const holdersQ = useQuery({ queryKey: ["holders"], queryFn: () => apiClient.get<Option[]>("/holders") });
-  const holders = holdersQ.data ?? [];
+  const asset_usersQ = useQuery({ queryKey: ["asset_users"], queryFn: () => apiClient.get<Option[]>("/asset-users") });
+  const asset_users = asset_usersQ.data ?? [];
 
   function addToQueue(asset: AssetSearchResult) {
     setQueue((q) => {
@@ -144,14 +144,14 @@ export function AssetMovement() {
   const queueSearchLower = queueSearch.trim().toLowerCase();
   const filteredQueue = queueSearchLower
     ? queue.filter((a) =>
-        [a.asset_code, a.description, a.current_holder_name, a.status]
+        [a.asset_code, a.description, a.current_asset_user_name, a.status]
           .some((v) => (v ?? "").toLowerCase().includes(queueSearchLower)),
       )
     : queue;
   const { sortedRows: sortedQueue, sort: queueSort, toggleSort: toggleQueueSort } = useTableSort<QueuedAsset>(filteredQueue, {
     asset_code: (a) => a.asset_code,
     description: (a) => a.description,
-    holder: (a) => a.current_holder_name,
+    asset_user: (a) => a.current_asset_user_name,
     status: (a) => a.status,
   });
 
@@ -171,14 +171,14 @@ export function AssetMovement() {
   }
   const canApply =
     eligibleQueue.length > 0 &&
-    (!action.needsHolder || toHolderId !== "");
+    (!action.needsAssetUser || toAssetUserId !== "");
 
   const applyMutation = useMutation({
     mutationFn: () =>
       apiClient.post<BulkActionResult>("/assets/bulk-action", {
         asset_ids: eligibleQueue.map((a) => a.id),
         event_type: eventType,
-        to_holder_id: action.needsHolder ? Number(toHolderId) : null,
+        to_asset_user_id: action.needsAssetUser ? Number(toAssetUserId) : null,
         remarks: remarks || null,
       }),
     onSuccess: (result) => {
@@ -193,7 +193,7 @@ export function AssetMovement() {
     applyMutation.reset();
     setQueue([]);
     setRemarks("");
-    setToHolderId("");
+    setToAssetUserId("");
   }
 
   return (
@@ -217,14 +217,14 @@ export function AssetMovement() {
           </Select>
         </FormField>
 
-        {action.needsHolder && (
-          <FormField htmlFor="movement-holder" label="Destination Holder" required>
-            <Select value={selectValue(toHolderId)} onValueChange={setToHolderId}>
-              <SelectTrigger id="movement-holder" aria-label="Destination Holder">
+        {action.needsAssetUser && (
+          <FormField htmlFor="movement-asset-user" label="Destination Asset User" required>
+            <Select value={selectValue(toAssetUserId)} onValueChange={setToAssetUserId}>
+              <SelectTrigger id="movement-asset-user" aria-label="Destination Asset User">
                 <SelectValue placeholder="Select…" />
               </SelectTrigger>
               <SelectContent>
-                {holders.map((h) => (
+                {asset_users.map((h) => (
                   <SelectItem key={h.id} value={String(h.id)}>{h.name}</SelectItem>
                 ))}
               </SelectContent>
@@ -270,14 +270,14 @@ export function AssetMovement() {
                 <Button type="button" variant="ghost" size="sm" className="w-full flex-col items-start" onClick={() => addToQueue(a)}>
                   <span className="flex items-center gap-1.5">
                     {a.asset_code} — {a.description} ({a.serial_number ?? "no serial"})
-                    {isNotInItStock(a.current_holder_type) && (
+                    {isNotInItStock(a.current_asset_user_type) && (
                       <Badge variant="outline" className="border-transparent bg-warning-soft text-on-warning-soft px-1.5 py-0 text-[10px] font-medium">
                         Not in IT Stock
                       </Badge>
                     )}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    Holder: {a.current_holder_name ?? "—"} ({a.current_holder_location_name ?? "—"}) · Status: {a.status}
+                    AssetUser: {a.current_asset_user_name ?? "—"} ({a.current_asset_user_location_name ?? "—"}) · Status: {a.status}
                   </span>
                 </Button>
               </li>
@@ -296,7 +296,7 @@ export function AssetMovement() {
               <span className="text-xs text-muted-foreground">Sort:</span>
               <QueueSortButton label="Code" sortKey="asset_code" />
               <QueueSortButton label="Description" sortKey="description" />
-              <QueueSortButton label="Holder" sortKey="holder" />
+              <QueueSortButton label="Asset User" sortKey="asset_user" />
               <QueueSortButton label="Status" sortKey="status" />
             </div>
           )}
@@ -317,7 +317,7 @@ export function AssetMovement() {
         ) : (
           <ul className="flex flex-col gap-1.5">
             {sortedQueue.map((a) => {
-              const notInStock = isNotInItStock(a.current_holder_type);
+              const notInStock = isNotInItStock(a.current_asset_user_type);
               return (
               <li
                 key={a.id}
@@ -339,7 +339,7 @@ export function AssetMovement() {
                     )}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    Holder: {a.current_holder_name ?? "—"} ({a.current_holder_location_name ?? "—"}) · Status: {a.status}
+                    AssetUser: {a.current_asset_user_name ?? "—"} ({a.current_asset_user_location_name ?? "—"}) · Status: {a.status}
                     {!a.eligible && ` · not eligible for "${action.label}" from this status`}
                   </span>
                 </div>

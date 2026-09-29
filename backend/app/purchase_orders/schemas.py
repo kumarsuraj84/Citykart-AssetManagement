@@ -84,14 +84,14 @@ class PendingAssetOut(BaseModel):
     invoice_number: str | None
     invoice_date: date | None
     invoice_amount: float | None
-    initial_holder_id: int | None
+    initial_asset_user_id: int | None
     delivered_asset_id: int | None
 
 
 class DeliveryLineIn(BaseModel):
     pending_asset_id: int
     serial_number: str
-    initial_holder_id: int
+    initial_asset_user_id: int
 
 
 class DeliveryDoneIn(BaseModel):

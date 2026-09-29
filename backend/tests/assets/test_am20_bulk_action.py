@@ -9,7 +9,7 @@ from datetime import date
 from app.assets.service import procure_assets
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.lifecycle.service import apply_event
 from app.masters.models import AssetCategory, Company, CostCenter, Department, Location
 from app.numbering.models import CodeRule
@@ -26,14 +26,14 @@ async def _setup(suffix: str):
         dept = Department(name=f"AM20-{suffix}")
         session.add_all([cc, loc, dept])
         await session.flush()
-        stock = Holder(company_id=co.id, emp_code=f"STK-{suffix}", name="IT Stock", holder_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="HOLDER")
-        store = Holder(company_id=co.id, emp_code=f"STR-{suffix}", name="Store", holder_type="STORE",
-                        location_id=loc.id, department_id=dept.id, role="HOLDER")
-        admin = Holder(company_id=co.id, emp_code=f"ADM-{suffix}", name="Admin", holder_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, emp_code=f"STK-{suffix}", name="IT Stock", asset_user_type="IT_STOCK",
+                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+        store = AssetUser(company_id=co.id, emp_code=f"STR-{suffix}", name="Store", asset_user_type="STORE",
+                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        viewer = Holder(company_id=co.id, emp_code=f"VWR-{suffix}", name="Viewer", holder_type="EMPLOYEE",
+        viewer = AssetUser(company_id=co.id, emp_code=f"VWR-{suffix}", name="Viewer", asset_user_type="EMPLOYEE",
                          location_id=loc.id, department_id=dept.id, role="VIEWER",
                          password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=co.id, prefix_template=f"AM20/{suffix}/", suffix_template="",
@@ -52,12 +52,12 @@ async def _make_assets(ids, n, serial_prefix, status_setup=None):
     starting status before the bulk action under test."""
     asset_ids = []
     async with SessionLocal() as session:
-        admin = await session.get(Holder, ids["admin"].id)
+        admin = await session.get(AssetUser, ids["admin"].id)
         for i in range(n):
             [asset] = await procure_assets(session, {
                 "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
                 "description": "Bulk Action Laptop", "purchase_date": date(2026, 1, 1),
-                "serial_number": f"{serial_prefix}-{i}", "initial_holder_id": ids["stock"].id,
+                "serial_number": f"{serial_prefix}-{i}", "initial_asset_user_id": ids["stock"].id,
             }, quantity=1, actor=admin)
             await session.commit()
             if status_setup:
@@ -73,24 +73,24 @@ async def _login(client, login_id):
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 
-async def test_bulk_action_moves_several_assets_to_one_holder(client):
+async def test_bulk_action_moves_several_assets_to_one_asset_user(client):
     ids = await _setup("BA1")
     headers = await _login(client, ids["admin_emp"])
     asset_ids = await _make_assets(ids, 3, "SN-BA1")
 
     resp = await client.post("/api/assets/bulk-action", json={
-        "asset_ids": asset_ids, "event_type": "MOVED", "to_holder_id": ids["store"].id,
+        "asset_ids": asset_ids, "event_type": "MOVED", "to_asset_user_id": ids["store"].id,
     }, headers=headers)
     assert resp.status_code == 200, resp.text
     assert resp.json() == {"done": 3, "failed": []}
 
     for asset_id in asset_ids:
         got = (await client.get(f"/api/assets/{asset_id}", headers=headers)).json()
-        assert got["current_holder_id"] == ids["store"].id
+        assert got["current_asset_user_id"] == ids["store"].id
         assert got["status"] == "ALLOTTED"
 
 
-async def test_bulk_action_sends_several_assets_for_repair_no_holder_needed(client):
+async def test_bulk_action_sends_several_assets_for_repair_no_asset_user_needed(client):
     ids = await _setup("BA2")
     headers = await _login(client, ids["admin_emp"])
     asset_ids = await _make_assets(ids, 2, "SN-BA2")
@@ -132,7 +132,7 @@ async def test_bulk_action_partial_failure_reports_the_ineligible_asset_and_stil
     eligible_ids = await _make_assets(ids, 2, "SN-BA4-OK")
 
     async def _scrap(session, asset, admin):
-        await apply_event(session, asset, "SCRAPPED", to_holder_id=None, actor=admin)
+        await apply_event(session, asset, "SCRAPPED", to_asset_user_id=None, actor=admin)
 
     [scrapped_id] = await _make_assets(ids, 1, "SN-BA4-SCRAPPED", status_setup=_scrap)
 
@@ -174,7 +174,7 @@ async def test_bulk_move_endpoint_still_works_unchanged_after_the_am20_refactor(
     asset_ids = await _make_assets(ids, 2, "SN-BA6")
 
     resp = await client.post("/api/assets/bulk-move", json={
-        "asset_ids": asset_ids, "to_holder_id": ids["store"].id,
+        "asset_ids": asset_ids, "to_asset_user_id": ids["store"].id,
     }, headers=headers)
     assert resp.status_code == 200, resp.text
     assert resp.json() == {"moved": 2, "failed": []}

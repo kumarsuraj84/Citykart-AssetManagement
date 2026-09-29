@@ -6,7 +6,7 @@ from app.assets.models import Asset
 # directly as a SQLAlchemy column reference -- prevents both SQL injection
 # and sorting by a column that isn't meant to be exposed (e.g. deleted_at).
 # Deliberately real Asset columns only; the register's *_name columns
-# (holder/company/category/...) are page-scoped label lookups, not sortable
+# (asset_user/company/category/...) are page-scoped label lookups, not sortable
 # database columns, so they're left out of this pass.
 SORTABLE_COLUMNS: dict[str, object] = {
     "asset_code": Asset.asset_code,
@@ -39,7 +39,7 @@ async def search_assets(
     allowed_company_ids: list[int] | None,
     status: str | None = None,
     category_id: int | None = None,
-    holder_id: int | None = None,
+    asset_user_id: int | None = None,
     company_id: int | None = None,
     q: str | None = None,
     sort_by: str | None = None,
@@ -56,8 +56,8 @@ async def search_assets(
         stmt = stmt.where(Asset.status == status)
     if category_id is not None:
         stmt = stmt.where(Asset.category_id == category_id)
-    if holder_id is not None:
-        stmt = stmt.where(Asset.current_holder_id == holder_id)
+    if asset_user_id is not None:
+        stmt = stmt.where(Asset.current_asset_user_id == asset_user_id)
     if q:
         pattern = f"%{q}%"
         stmt = stmt.where(or_(

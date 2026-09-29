@@ -2,7 +2,7 @@ import pytest
 from datetime import date
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Department, Location
 from app.purchase_orders.models import PurchaseOrder
 from app.purchase_orders.service import (
@@ -24,7 +24,7 @@ async def _setup(suffix: str):
         dept = Department(name=f"PO-SVC-{suffix}")
         session.add_all([sub, cc, cc_other, loc, dept])
         await session.flush()
-        admin = Holder(company_id=co.id, emp_code=f"ADM-{suffix}", name="Admin", holder_type="EMPLOYEE",
+        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
         session.add(admin)
@@ -42,7 +42,7 @@ async def test_add_pending_asset_line_with_quantity_creates_that_many_rows():
     ctx = await _setup("Q1")
     async with SessionLocal() as session:
         po = await session.get(PurchaseOrder, ctx["po"].id)
-        admin = await session.get(Holder, ctx["admin"].id)
+        admin = await session.get(AssetUser, ctx["admin"].id)
         lines = await add_pending_asset_line(session, po, {
             "description": "Laptop", "category_id": ctx["cat"].id, "subcategory_id": ctx["sub"].id,
             "purchase_cost": 1000, "tax_percent": 18, "quantity": 3,
@@ -65,7 +65,7 @@ async def test_barcode_is_shared_across_every_unit_a_quantity_line_creates():
     ctx = await _setup("Q1B")
     async with SessionLocal() as session:
         po = await session.get(PurchaseOrder, ctx["po"].id)
-        admin = await session.get(Holder, ctx["admin"].id)
+        admin = await session.get(AssetUser, ctx["admin"].id)
         lines = await add_pending_asset_line(session, po, {
             "description": "Speaker", "category_id": ctx["cat"].id, "barcode": "BC-SPEAKER-BATCH", "quantity": 5,
         }, admin)
@@ -79,7 +79,7 @@ async def test_add_pending_asset_line_without_barcode_leaves_it_null():
     ctx = await _setup("Q1C")
     async with SessionLocal() as session:
         po = await session.get(PurchaseOrder, ctx["po"].id)
-        admin = await session.get(Holder, ctx["admin"].id)
+        admin = await session.get(AssetUser, ctx["admin"].id)
         [line] = await add_pending_asset_line(session, po, {
             "description": "Laptop", "category_id": ctx["cat"].id, "quantity": 1,
         }, admin)
@@ -91,7 +91,7 @@ async def test_brand_model_warranty_years_are_shared_across_every_unit_a_quantit
     ctx = await _setup("Q1D")
     async with SessionLocal() as session:
         po = await session.get(PurchaseOrder, ctx["po"].id)
-        admin = await session.get(Holder, ctx["admin"].id)
+        admin = await session.get(AssetUser, ctx["admin"].id)
         brand = Brand(code="Q1D-DELL", name="Dell")
         session.add(brand)
         await session.flush()
@@ -109,7 +109,7 @@ async def test_add_pending_asset_line_defaults_warranty_years_to_zero():
     ctx = await _setup("Q1E")
     async with SessionLocal() as session:
         po = await session.get(PurchaseOrder, ctx["po"].id)
-        admin = await session.get(Holder, ctx["admin"].id)
+        admin = await session.get(AssetUser, ctx["admin"].id)
         [line] = await add_pending_asset_line(session, po, {
             "description": "Laptop", "category_id": ctx["cat"].id, "warranty_years": 0, "quantity": 1,
         }, admin)
@@ -122,7 +122,7 @@ async def test_update_pending_asset_line_can_change_brand_model_warranty_years()
     ctx = await _setup("Q1F")
     async with SessionLocal() as session:
         po = await session.get(PurchaseOrder, ctx["po"].id)
-        admin = await session.get(Holder, ctx["admin"].id)
+        admin = await session.get(AssetUser, ctx["admin"].id)
         brand = Brand(code="Q1F-HP", name="HP")
         session.add(brand)
         await session.flush()
@@ -143,7 +143,7 @@ async def test_update_pending_asset_line_can_change_brand_model_warranty_years()
 async def test_create_purchase_order_rejects_cost_centre_from_another_company():
     ctx = await _setup("Q2")
     async with SessionLocal() as session:
-        admin = await session.get(Holder, ctx["admin"].id)
+        admin = await session.get(AssetUser, ctx["admin"].id)
         with pytest.raises(ValueError, match="same company"):
             await create_purchase_order(session, {
                 "company_id": ctx["co"].id, "po_number": "PO-2", "po_date": date(2026, 1, 1),
@@ -154,7 +154,7 @@ async def test_create_purchase_order_rejects_cost_centre_from_another_company():
 async def test_add_pending_asset_line_rejects_a_po_with_no_cost_centre():
     ctx = await _setup("Q2B")
     async with SessionLocal() as session:
-        admin = await session.get(Holder, ctx["admin"].id)
+        admin = await session.get(AssetUser, ctx["admin"].id)
         po = PurchaseOrder(company_id=ctx["co"].id, po_number="PO-NOCC", po_date=date(2026, 1, 1),
                             created_by=admin.id, updated_by=admin.id)
         session.add(po)
@@ -170,7 +170,7 @@ async def test_update_pending_asset_line_recomputes_tax():
     ctx = await _setup("Q3")
     async with SessionLocal() as session:
         po = await session.get(PurchaseOrder, ctx["po"].id)
-        admin = await session.get(Holder, ctx["admin"].id)
+        admin = await session.get(AssetUser, ctx["admin"].id)
         [line] = await add_pending_asset_line(session, po, {
             "description": "Laptop", "category_id": ctx["cat"].id,
             "purchase_cost": 1000, "tax_percent": 18, "quantity": 1,
@@ -193,7 +193,7 @@ async def test_update_pending_asset_line_rejects_a_non_pending_line():
     ctx = await _setup("Q4")
     async with SessionLocal() as session:
         po = await session.get(PurchaseOrder, ctx["po"].id)
-        admin = await session.get(Holder, ctx["admin"].id)
+        admin = await session.get(AssetUser, ctx["admin"].id)
         [line] = await add_pending_asset_line(session, po, {
             "description": "Laptop", "category_id": ctx["cat"].id, "quantity": 1,
         }, admin)
@@ -210,7 +210,7 @@ async def test_cancel_pending_asset_line_sets_cancelled_and_is_terminal():
     ctx = await _setup("Q5")
     async with SessionLocal() as session:
         po = await session.get(PurchaseOrder, ctx["po"].id)
-        admin = await session.get(Holder, ctx["admin"].id)
+        admin = await session.get(AssetUser, ctx["admin"].id)
         [line] = await add_pending_asset_line(session, po, {
             "description": "Laptop", "category_id": ctx["cat"].id, "quantity": 1,
         }, admin)

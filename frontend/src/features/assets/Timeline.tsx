@@ -7,7 +7,7 @@ export interface AssetEvent {
   status_after: string;
   remarks: string | null;
   reference_no: string | null;
-  /** Human-readable custody wording built server-side with real holder names,
+  /** Human-readable custody wording built server-side with real asset_user names,
    * e.g. "Allotted to Ankur Pahwa" (see backend app.lifecycle.router._with_labels). */
   label: string;
 }

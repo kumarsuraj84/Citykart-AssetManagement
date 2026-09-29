@@ -16,11 +16,11 @@ from app.purchase_orders.service import (
 router = APIRouter(prefix="/api/purchase-orders", tags=["purchase-orders"])
 
 
-async def _get_scoped_po(po_id: int, session: AsyncSession, holder) -> PurchaseOrder:
+async def _get_scoped_po(po_id: int, session: AsyncSession, asset_user) -> PurchaseOrder:
     po = await session.get(PurchaseOrder, po_id)
     if po is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "purchase order not found")
-    allowed = await scoped_company_ids(session, holder)
+    allowed = await scoped_company_ids(session, asset_user)
     if allowed is not None and po.company_id not in allowed:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "purchase order not found")
     return po
@@ -43,8 +43,8 @@ async def create_po(
 
 
 @router.get("", response_model=list[PurchaseOrderOut])
-async def list_pos(session: AsyncSession = Depends(get_session), holder=Depends(require_role("ADMIN", "IT_TEAM"))):
-    allowed = await scoped_company_ids(session, holder)
+async def list_pos(session: AsyncSession = Depends(get_session), asset_user=Depends(require_role("ADMIN", "IT_TEAM"))):
+    allowed = await scoped_company_ids(session, asset_user)
     stmt = select(PurchaseOrder).where(PurchaseOrder.is_active.is_(True))
     if allowed is not None:
         stmt = stmt.where(PurchaseOrder.company_id.in_(allowed))
@@ -57,15 +57,15 @@ async def list_pos(session: AsyncSession = Depends(get_session), holder=Depends(
 
 
 @router.get("/{po_id}", response_model=PurchaseOrderOut)
-async def get_po(po_id: int, session: AsyncSession = Depends(get_session), holder=Depends(require_role("ADMIN", "IT_TEAM"))):
-    po = await _get_scoped_po(po_id, session, holder)
+async def get_po(po_id: int, session: AsyncSession = Depends(get_session), asset_user=Depends(require_role("ADMIN", "IT_TEAM"))):
+    po = await _get_scoped_po(po_id, session, asset_user)
     pi_by_po = await compute_pi_status(session, [po.id])
     return PurchaseOrderOut.model_validate(po).model_copy(update=pi_by_po.get(po.id, {}))
 
 
 @router.get("/{po_id}/lines", response_model=list[PendingAssetOut])
-async def list_lines(po_id: int, session: AsyncSession = Depends(get_session), holder=Depends(require_role("ADMIN", "IT_TEAM"))):
-    await _get_scoped_po(po_id, session, holder)
+async def list_lines(po_id: int, session: AsyncSession = Depends(get_session), asset_user=Depends(require_role("ADMIN", "IT_TEAM"))):
+    await _get_scoped_po(po_id, session, asset_user)
     stmt = select(PendingAsset).where(PendingAsset.purchase_order_id == po_id).order_by(PendingAsset.id)
     return (await session.execute(stmt)).scalars().all()
 
@@ -136,7 +136,7 @@ async def deliver(
     lines = (await session.execute(stmt)).scalars().all()
     if len(lines) != len(line_ids):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "one or more selected lines do not belong to this purchase order")
-    deliveries = {d.pending_asset_id: {"serial_number": d.serial_number, "initial_holder_id": d.initial_holder_id} for d in body.lines}
+    deliveries = {d.pending_asset_id: {"serial_number": d.serial_number, "initial_asset_user_id": d.initial_asset_user_id} for d in body.lines}
     try:
         delivered = await deliver_pending_assets(
             session, lines, deliveries, po.po_number, po.po_date, po.vendor_id,

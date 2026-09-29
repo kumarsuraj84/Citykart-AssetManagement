@@ -2,7 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from app.core.db import SessionLocal
 from app.masters.models import Company, Location, Department
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 
 
 async def test_emp_code_unique_within_company():
@@ -16,17 +16,17 @@ async def test_emp_code_unique_within_company():
         await session.flush()
         company_id = co.id  # captured before the rollback below expires `co`
 
-        session.add(Holder(
+        session.add(AssetUser(
             company_id=co.id, emp_code="CS6872", name="Ankur",
-            holder_type="EMPLOYEE", location_id=loc.id, department_id=dept.id,
-            role="HOLDER",
+            asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id,
+            role="ASSET_USER",
         ))
         await session.commit()
 
-        dup = Holder(
+        dup = AssetUser(
             company_id=co.id, emp_code="CS6872", name="Duplicate",
-            holder_type="EMPLOYEE", location_id=loc.id, department_id=dept.id,
-            role="HOLDER",
+            asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id,
+            role="ASSET_USER",
         )
         session.add(dup)
         raised = False
@@ -37,14 +37,14 @@ async def test_emp_code_unique_within_company():
             raised = True
         assert raised
 
-        rows = (await session.execute(select(Holder).where(Holder.company_id == company_id))).scalars().all()
+        rows = (await session.execute(select(AssetUser).where(AssetUser.company_id == company_id))).scalars().all()
         assert len(rows) == 1
 
 
 async def test_email_unique_within_company_case_insensitive():
     """POST /api/auth/login accepts email as an alternative login_id (matched
     case-insensitively), so a duplicate email within one company would make
-    that lookup non-deterministic -- migration 0005_holder_email_unique.py's
+    that lookup non-deterministic -- migration 0005_asset_user_email_unique.py's
     partial unique index on (company_id, lower(email)) WHERE email IS NOT
     NULL must make that structurally impossible, including across case."""
     async with SessionLocal() as session:
@@ -56,20 +56,20 @@ async def test_email_unique_within_company_case_insensitive():
         session.add_all([loc, dept])
         await session.flush()
 
-        session.add(Holder(
+        session.add(AssetUser(
             company_id=co.id, emp_code="EM1-A", name="Ankur",
-            holder_type="EMPLOYEE", location_id=loc.id, department_id=dept.id,
-            role="HOLDER", email="ankur.pahwa@citykartstores.com",
+            asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id,
+            role="ASSET_USER", email="ankur.pahwa@citykartstores.com",
         ))
         await session.commit()
 
         # Different emp_code (so this doesn't just re-trip the emp_code
         # constraint), same email but different case -- must still collide
         # because the index is on lower(email).
-        dup = Holder(
+        dup = AssetUser(
             company_id=co.id, emp_code="EM1-B", name="Duplicate",
-            holder_type="EMPLOYEE", location_id=loc.id, department_id=dept.id,
-            role="HOLDER", email="ANKUR.PAHWA@CITYKARTSTORES.COM",
+            asset_user_type="EMPLOYEE", location_id=loc.id, department_id=dept.id,
+            role="ASSET_USER", email="ANKUR.PAHWA@CITYKARTSTORES.COM",
         )
         session.add(dup)
         raised = False
@@ -96,20 +96,20 @@ async def test_email_can_repeat_across_different_companies():
         session.add_all([loc_a, loc_b, dept])
         await session.flush()
 
-        session.add(Holder(
+        session.add(AssetUser(
             company_id=co_a.id, emp_code="EM2-A", name="Ankur A",
-            holder_type="EMPLOYEE", location_id=loc_a.id, department_id=dept.id,
-            role="HOLDER", email="shared@example.com",
+            asset_user_type="EMPLOYEE", location_id=loc_a.id, department_id=dept.id,
+            role="ASSET_USER", email="shared@example.com",
         ))
-        session.add(Holder(
+        session.add(AssetUser(
             company_id=co_b.id, emp_code="EM2-B", name="Ankur B",
-            holder_type="EMPLOYEE", location_id=loc_b.id, department_id=dept.id,
-            role="HOLDER", email="shared@example.com",
+            asset_user_type="EMPLOYEE", location_id=loc_b.id, department_id=dept.id,
+            role="ASSET_USER", email="shared@example.com",
         ))
         # Must NOT raise -- same email, two different companies.
         await session.commit()
 
         rows = (await session.execute(
-            select(Holder).where(Holder.email == "shared@example.com")
+            select(AssetUser).where(AssetUser.email == "shared@example.com")
         )).scalars().all()
         assert len(rows) == 2

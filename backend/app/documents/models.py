@@ -15,5 +15,5 @@ class AssetDocument(Base):
     stored_path: Mapped[str] = mapped_column(String(500))
     mime_type: Mapped[str] = mapped_column(String(100))
     size_bytes: Mapped[int] = mapped_column(Integer)
-    uploaded_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("holder.id"))
+    uploaded_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("asset_user.id"))
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

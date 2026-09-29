@@ -6,7 +6,7 @@ import { useAuthStore } from "../../lib/auth-store";
 
 vi.mock("../../lib/api-client");
 
-const VALID_ROW = { row: 2, legacy_asset_code: "OLD-1", company: "CityKart HQ", category: "IT Equipment", subcategory: "Laptop", description: "Laptop", holder: "IT Stock-HO", quantity: 1 };
+const VALID_ROW = { row: 2, legacy_asset_code: "OLD-1", company: "CityKart HQ", category: "IT Equipment", subcategory: "Laptop", description: "Laptop", asset_user: "IT Stock-HO", quantity: 1 };
 const ROW_ERROR = { row: 3, field: "Subcategory Code", message: "unknown Subcategory Code 'BAD'" };
 
 // This Tabs usage is CONTROLLED (value/onValueChange), unlike

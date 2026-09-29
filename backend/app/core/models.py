@@ -5,11 +5,11 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 class AuditMixin:
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    created_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("holder.id"))
+    created_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("asset_user.id"))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
-    updated_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("holder.id"))
+    updated_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("asset_user.id"))
 
 
 class SoftDeleteMixin:

@@ -5,7 +5,7 @@ from datetime import date
 from app.assets.service import compute_warranty_upto, procure_assets
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location, Vendor
 from app.numbering.models import CodeRule
 
@@ -42,9 +42,9 @@ async def _setup(suffix: str):
         dept = Department(name=f"AM18-{suffix}")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = Holder(company_id=co.id, emp_code=f"STK-{suffix}", name="IT Stock", holder_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="HOLDER")
-        admin = Holder(company_id=co.id, emp_code=f"ADM-{suffix}", name="Admin", holder_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, emp_code=f"STK-{suffix}", name="IT Stock", asset_user_type="IT_STOCK",
+                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=co.id, prefix_template=f"AM18/{suffix}/", suffix_template="",
@@ -66,7 +66,7 @@ class TestProcureAssetsWarrantyComputation:
             [asset] = await procure_assets(session, {
                 "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
                 "description": "Warranty Test Asset", "purchase_date": date(2026, 4, 10),
-                "initial_holder_id": ids["stock"].id, "warranty_years": 3,
+                "initial_asset_user_id": ids["stock"].id, "warranty_years": 3,
             }, quantity=1, actor=ids["admin"])
             await session.commit()
             assert asset.warranty_years == 3
@@ -78,7 +78,7 @@ class TestProcureAssetsWarrantyComputation:
             [asset] = await procure_assets(session, {
                 "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
                 "description": "No Warranty Asset", "purchase_date": date(2026, 1, 1),
-                "initial_holder_id": ids["stock"].id, "warranty_years": 0,
+                "initial_asset_user_id": ids["stock"].id, "warranty_years": 0,
             }, quantity=1, actor=ids["admin"])
             await session.commit()
             assert asset.warranty_years == 0
@@ -92,7 +92,7 @@ class TestProcureAssetsWarrantyComputation:
             [asset] = await procure_assets(session, {
                 "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
                 "description": "Legacy-Style Call", "purchase_date": date(2026, 1, 1),
-                "initial_holder_id": ids["stock"].id, "warranty_upto": date(2030, 6, 1),
+                "initial_asset_user_id": ids["stock"].id, "warranty_upto": date(2030, 6, 1),
             }, quantity=1, actor=ids["admin"])
             await session.commit()
             assert asset.warranty_years is None
@@ -110,7 +110,7 @@ class TestAddAssetApiWarrantyYears:
             "po_number": "PO-1", "po_date": "2026-01-01",
             "invoice_number": "INV-1", "invoice_date": "2026-01-05",
             "pi_number": "PI-1", "pi_date": "2026-01-02",
-            "initial_holder_id": ids["stock"].id,
+            "initial_asset_user_id": ids["stock"].id,
         }, headers=headers)
         assert resp.status_code == 201, resp.text
         [created] = resp.json()
@@ -127,7 +127,7 @@ class TestAddAssetApiWarrantyYears:
             "po_number": "PO-1", "po_date": "2026-01-01",
             "invoice_number": "INV-1", "invoice_date": "2026-04-10",
             "pi_number": "PI-1", "pi_date": "2026-01-02",
-            "initial_holder_id": ids["stock"].id, "warranty_years": 2,
+            "initial_asset_user_id": ids["stock"].id, "warranty_years": 2,
         }, headers=headers)
         assert resp.status_code == 201, resp.text
         [created] = resp.json()
@@ -146,7 +146,7 @@ class TestOrdinaryEditWarrantyYears:
             [asset] = await procure_assets(session, {
                 "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
                 "description": "Pre-AM18 Asset", "purchase_date": date(2020, 1, 1),
-                "initial_holder_id": ids["stock"].id, "warranty_upto": date(2025, 12, 31),
+                "initial_asset_user_id": ids["stock"].id, "warranty_upto": date(2025, 12, 31),
             }, quantity=1, actor=ids["admin"])
             await session.commit()
             asset_id = asset.id
@@ -168,7 +168,7 @@ class TestOrdinaryEditWarrantyYears:
             [asset] = await procure_assets(session, {
                 "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
                 "description": "To Be Warrantied", "purchase_date": date(2026, 4, 10),
-                "initial_holder_id": ids["stock"].id,
+                "initial_asset_user_id": ids["stock"].id,
             }, quantity=1, actor=ids["admin"])
             await session.commit()
             asset_id = asset.id
@@ -188,7 +188,7 @@ class TestOrdinaryEditWarrantyYears:
             [asset] = await procure_assets(session, {
                 "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
                 "description": "Same Warranty Twice", "purchase_date": date(2026, 4, 10),
-                "initial_holder_id": ids["stock"].id, "warranty_years": 2,
+                "initial_asset_user_id": ids["stock"].id, "warranty_years": 2,
             }, quantity=1, actor=ids["admin"])
             await session.commit()
             asset_id = asset.id

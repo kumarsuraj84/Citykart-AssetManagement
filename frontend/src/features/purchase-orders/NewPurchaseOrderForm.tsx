@@ -31,7 +31,7 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number }) {
   // home company, selectable when they have access to more than one (see
   // AddAssetForm's identical pattern).
   const [selectedCompanyId, setSelectedCompanyId] = useState(companyId);
-  const myCompaniesQ = useQuery({ queryKey: ["holders", "me", "companies"], queryFn: () => apiClient.get<Option[]>("/holders/me/companies") });
+  const myCompaniesQ = useQuery({ queryKey: ["asset_users", "me", "companies"], queryFn: () => apiClient.get<Option[]>("/asset-users/me/companies") });
   const myCompanies = myCompaniesQ.data ?? [];
 
   const vendorsQ = useQuery({ queryKey: ["masters", "vendors"], queryFn: () => apiClient.get<Option[]>("/masters/vendors") });

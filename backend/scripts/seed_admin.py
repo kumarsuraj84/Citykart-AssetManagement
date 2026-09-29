@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.masters.models import Company, Department, Location
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 
 
 async def ensure_seed_admin(session: AsyncSession, company_code: str = "E2E", password: str = "Passw0rd!") -> dict:
@@ -29,23 +29,23 @@ async def ensure_seed_admin(session: AsyncSession, company_code: str = "E2E", pa
         session.add(department)
         await session.flush()
 
-    # Scoped by company_id too: Holder's real uniqueness constraint is
+    # Scoped by company_id too: AssetUser's real uniqueness constraint is
     # (company_id, emp_code), not emp_code alone, so a global lookup here
-    # would silently reuse another company's SEEDADMIN holder instead of
+    # would silently reuse another company's SEEDADMIN asset_user instead of
     # creating one scoped to this company_code.
-    holder = (
-        await session.execute(select(Holder).where(and_(Holder.company_id == company.id, Holder.emp_code == "SEEDADMIN")))
+    asset_user = (
+        await session.execute(select(AssetUser).where(and_(AssetUser.company_id == company.id, AssetUser.emp_code == "SEEDADMIN")))
     ).scalars().first()
-    if holder is None:
-        holder = Holder(
-            company_id=company.id, emp_code="SEEDADMIN", name="Seed Admin", holder_type="EMPLOYEE",
+    if asset_user is None:
+        asset_user = AssetUser(
+            company_id=company.id, emp_code="SEEDADMIN", name="Seed Admin", asset_user_type="EMPLOYEE",
             location_id=location.id, department_id=department.id, role="ADMIN",
             password_hash=hash_password(password), must_change_password=False,
         )
-        session.add(holder)
+        session.add(asset_user)
         await session.flush()
 
-    return {"company_id": company.id, "holder_id": holder.id}
+    return {"company_id": company.id, "asset_user_id": asset_user.id}
 
 
 async def _main():
@@ -57,7 +57,7 @@ async def _main():
     async with SessionLocal() as session:
         result = await ensure_seed_admin(session, args.company_code, args.password)
         await session.commit()
-    print(f"Seed admin ready: company_id={result['company_id']} holder_id={result['holder_id']} emp_code=SEEDADMIN")
+    print(f"Seed admin ready: company_id={result['company_id']} asset_user_id={result['asset_user_id']} emp_code=SEEDADMIN")
 
 
 if __name__ == "__main__":

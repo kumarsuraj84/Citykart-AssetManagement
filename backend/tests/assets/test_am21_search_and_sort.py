@@ -5,7 +5,7 @@ from datetime import date
 from app.assets.service import procure_assets
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.masters.models import AssetCategory, Company, CostCenter, Department, Location
 from app.numbering.models import CodeRule
 
@@ -21,9 +21,9 @@ async def _setup(suffix: str):
         dept = Department(name=f"AM21-{suffix}")
         session.add_all([cc, loc, dept])
         await session.flush()
-        stock = Holder(company_id=co.id, emp_code=f"STK-{suffix}", name="IT Stock", holder_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="HOLDER")
-        admin = Holder(company_id=co.id, emp_code=f"ADM-{suffix}", name="Admin", holder_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, emp_code=f"STK-{suffix}", name="IT Stock", asset_user_type="IT_STOCK",
+                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=co.id, prefix_template=f"AM21/{suffix}/", suffix_template="",
@@ -41,11 +41,11 @@ async def _login(client, login_id):
 
 async def _make_asset(ids, description, serial, model=None, barcode=None):
     async with SessionLocal() as session:
-        admin = await session.get(Holder, ids["admin"].id)
+        admin = await session.get(AssetUser, ids["admin"].id)
         [asset] = await procure_assets(session, {
             "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
             "description": description, "purchase_date": date(2026, 1, 1),
-            "serial_number": serial, "initial_holder_id": ids["stock"].id,
+            "serial_number": serial, "initial_asset_user_id": ids["stock"].id,
             "model": model, "barcode": barcode,
         }, quantity=1, actor=admin)
         await session.commit()
@@ -73,12 +73,12 @@ async def test_sort_by_purchase_cost_numeric_not_lexicographic(client):
     ids = await _setup("SRT2")
     headers = await _login(client, ids["admin_emp"])
     async with SessionLocal() as session:
-        admin = await session.get(Holder, ids["admin"].id)
+        admin = await session.get(AssetUser, ids["admin"].id)
         for cost, serial in ((9, "SN-SRT2-LOW"), (10, "SN-SRT2-HIGH")):
             await procure_assets(session, {
                 "company_id": ids["co"].id, "cost_center_id": ids["cc"].id, "category_id": ids["cat"].id,
                 "description": "Cost Sort Item", "purchase_date": date(2026, 1, 1),
-                "serial_number": serial, "initial_holder_id": ids["stock"].id, "purchase_cost": cost,
+                "serial_number": serial, "initial_asset_user_id": ids["stock"].id, "purchase_cost": cost,
             }, quantity=1, actor=admin)
             await session.commit()
 

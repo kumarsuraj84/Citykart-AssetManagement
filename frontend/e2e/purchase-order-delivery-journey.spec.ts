@@ -5,7 +5,7 @@ import { newSeedRegistry, seedTestCompany, teardownTestCompany, type SeedRegistr
 // before this spec (5 existing specs never touch Purchase Orders at all).
 // This closes that gap end to end: raise a PO, add a quantity-3 line (three
 // individual PENDING units), deliver exactly 2 of them with distinct serials
-// and distinct initial holders, and verify both the PO detail screen and the
+// and distinct initial asset_users, and verify both the PO detail screen and the
 // two new assets' own Asset 360 pages reflect that correctly -- plus (AM-17
 // Part B) one thin full-stack proof that Serial Number's global uniqueness
 // rule (already covered thoroughly at the backend unit/integration level --
@@ -115,24 +115,24 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   await deliverDialog.locator("#invoice-date").fill(invoiceDate);
   await deliverDialog.locator("#invoice-amount").fill("2100");
 
-  // ---- Distinct Serial Number + Initial Holder per selected unit ----
+  // ---- Distinct Serial Number + Initial AssetUser per selected unit ----
   // (ids are per-PendingAsset, unknown ahead of time -- select by the
   // id-prefix pattern PurchaseOrderDetail.tsx renders, not by label text,
-  // since both units share the identical "Serial Number"/"Initial Holder"
+  // since both units share the identical "Serial Number"/"Initial AssetUser"
   // label text.)
   const serialInputs = deliverDialog.locator('input[id^="serial-"]');
-  const holderTriggers = deliverDialog.locator('[id^="holder-"]');
+  const asset_userTriggers = deliverDialog.locator('[id^="asset_user-"]');
   await expect(serialInputs).toHaveCount(2);
-  await expect(holderTriggers).toHaveCount(2);
+  await expect(asset_userTriggers).toHaveCount(2);
 
   const serialA = `E2E-SN-${ts}-A`;
   const serialB = `E2E-SN-${ts}-B`;
   await serialInputs.nth(0).fill(serialA);
-  await holderTriggers.nth(0).click();
+  await asset_userTriggers.nth(0).click();
   await page.getByRole("option", { name: ctx.stock.name, exact: true }).click();
 
   await serialInputs.nth(1).fill(serialB);
-  await holderTriggers.nth(1).click();
+  await asset_userTriggers.nth(1).click();
   await page.getByRole("option", { name: ctx.employee.name, exact: true }).click();
 
   // ---- Confirm the delivery ----
@@ -156,7 +156,7 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   const assetCodeA = (await page.getByRole("heading", { level: 1 }).textContent())!.trim();
   expect(assetCodeA.length).toBeGreaterThan(0);
 
-  // ---- Asset 360 for unit A: PO/Invoice/Purchase Date/Barcode/Serial/Holder ----
+  // ---- Asset 360 for unit A: PO/Invoice/Purchase Date/Barcode/Serial/AssetUser ----
   const overview = page.getByRole("tabpanel", { name: "Overview" });
   await expect(overview.getByText(serialA, { exact: true })).toBeVisible();
   await expect(overview.getByText(barcode, { exact: true })).toBeVisible();
@@ -174,7 +174,7 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   await expect(custody.getByText(ctx.stock.name, { exact: true })).toBeVisible();
 
   // ---- Unit B: same checks, via its own unique Serial Number, with the
-  // OTHER initial holder -- proves the two units were not accidentally
+  // OTHER initial asset_user -- proves the two units were not accidentally
   // swapped/merged during delivery. ----
   await page.goto("/assets");
   await page.getByLabel("Search", { exact: true }).fill(serialB);
@@ -212,7 +212,7 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   await dupDialog.locator("#invoice-date").fill("2026-01-16");
   await dupDialog.locator("#invoice-amount").fill("1050");
   await dupDialog.locator('input[id^="serial-"]').fill(serialA); // duplicate, real value -- not "N/A"
-  await dupDialog.locator('[id^="holder-"]').click();
+  await dupDialog.locator('[id^="asset_user-"]').click();
   await page.getByRole("option", { name: ctx.store.name, exact: true }).click();
   await dupDialog.getByRole("button", { name: "Confirm", exact: true }).click();
 

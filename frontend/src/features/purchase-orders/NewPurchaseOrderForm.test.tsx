@@ -76,7 +76,7 @@ describe("NewPurchaseOrderForm", () => {
 
   it("AM-24: shows a Company picker when the caller has access to more than one, and submits the chosen company", async () => {
     (apiClient.get as any).mockImplementation((path: string) => {
-      if (path === "/holders/me/companies") return Promise.resolve([{ id: 1, name: "Company A" }, { id: 2, name: "Company B" }]);
+      if (path === "/asset-users/me/companies") return Promise.resolve([{ id: 1, name: "Company A" }, { id: 2, name: "Company B" }]);
       if (path === "/masters/cost-centers?company_id=1") return Promise.resolve([{ id: 3, name: "A Cost Centre" }]);
       if (path === "/masters/cost-centers?company_id=2") return Promise.resolve([{ id: 30, name: "B Cost Centre" }]);
       return Promise.resolve([{ id: 9, name: "Acme Traders" }]);

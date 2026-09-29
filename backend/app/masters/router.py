@@ -4,7 +4,7 @@ from fastapi.responses import Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
-from app.core.deps import ensure_company_in_scope, get_current_holder, require_role, scoped_company_ids
+from app.core.deps import ensure_company_in_scope, get_current_asset_user, require_role, scoped_company_ids
 from app.masters.bulk_import_export import (
     FieldSpec, ImportScopeError, ImportTemplateError,
     build_template as build_import_template, commit_import, export_rows, preview_import,
@@ -40,32 +40,32 @@ def build_master_router(
     `schema_edit` (AM-05): the body schema for PUT, if narrower than `schema_in` --
     every master's immutable identifier (`code`) and controlled parent relationship
     (e.g. `company_id`) should never be freely editable after creation (see the
-    Master Field Policy Matrix in docs/ai/AM-05_MASTERS_HOLDERS_REPORT.md). Falls
+    Master Field Policy Matrix in docs/ai/AM-05_MASTERS_ASSET_USERS_REPORT.md). Falls
     back to `schema_in` when not given, so a master not yet given a narrower schema
     keeps its prior (full-`schema_in`) PUT behavior rather than breaking."""
     sub = APIRouter(prefix=prefix)
     edit_schema = schema_edit or schema_in
 
-    async def check_existing(session: AsyncSession, holder, obj) -> None:
+    async def check_existing(session: AsyncSession, asset_user, obj) -> None:
         if company_scope == SCOPE_COMPANY_ID:
-            await ensure_company_in_scope(session, holder, obj.company_id)
+            await ensure_company_in_scope(session, asset_user, obj.company_id)
         elif company_scope == SCOPE_SELF:
-            await ensure_company_in_scope(session, holder, obj.id)
+            await ensure_company_in_scope(session, asset_user, obj.id)
 
-    async def check_incoming(session: AsyncSession, holder, data: dict) -> None:
+    async def check_incoming(session: AsyncSession, asset_user, data: dict) -> None:
         # AM-05: "company_id" in data -- when the PUT body uses a narrower
         # edit_schema that doesn't declare company_id at all (the normal
         # case now that it's immutable after creation), this check simply
         # doesn't apply: there's no incoming company_id to validate, because
         # the field can't be changed via this path regardless of role.
         if company_scope == SCOPE_COMPANY_ID and "company_id" in data:
-            await ensure_company_in_scope(session, holder, data.get("company_id"))
+            await ensure_company_in_scope(session, asset_user, data.get("company_id"))
 
     @sub.get("", response_model=list[schema_out])
     async def list_items(
         company_id: int | None = Query(None),
         session: AsyncSession = Depends(get_session),
-        holder=Depends(get_current_holder),
+        asset_user=Depends(get_current_asset_user),
     ):
         # AM-08: an optional, opt-in filter for a company-owned master (Cost
         # Centres) -- a data-entry screen like Add Asset passes its own
@@ -77,7 +77,7 @@ def build_master_router(
         # company-owned (company_scope is None) is harmless and ignored, since
         # that master has no such column to filter on.
         #
-        # AM-17 DEF-03: a non-ADMIN staff member (IT_TEAM/VIEWER/HOLDER) could
+        # AM-17 DEF-03: a non-ADMIN staff member (IT_TEAM/VIEWER/ASSET_USER) could
         # previously omit company_id, or pass a different company's id, and
         # still see every company's Cost Centres -- the only enforcement was
         # on writes. Reads of a company-owned master are now always pinned to
@@ -87,7 +87,7 @@ def build_master_router(
         # not honored. ADMIN (scoped_company_ids() is None) is unaffected.
         filters = {}
         if company_scope == SCOPE_COMPANY_ID:
-            allowed = await scoped_company_ids(session, holder)
+            allowed = await scoped_company_ids(session, asset_user)
             if allowed is None:
                 if company_id is not None:
                     filters["company_id"] = company_id
@@ -99,20 +99,20 @@ def build_master_router(
     async def create_item(
         body: schema_in,
         session: AsyncSession = Depends(get_session),
-        holder=Depends(require_role("ADMIN", "IT_TEAM")),
+        asset_user=Depends(require_role("ADMIN", "IT_TEAM")),
     ):
         data = body.model_dump()
         if company_scope == SCOPE_SELF:
             # A brand-new company is by definition outside any non-ADMIN's scope.
-            await ensure_company_in_scope(session, holder, None)
-        await check_incoming(session, holder, data)
+            await ensure_company_in_scope(session, asset_user, None)
+        await check_incoming(session, asset_user, data)
         if validate_incoming is not None:
             try:
                 validate_incoming(data)
             except ValueError as exc:
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
         try:
-            return await MasterCRUDService(model, session).create(data, holder.id)
+            return await MasterCRUDService(model, session).create(data, asset_user.id)
         except IntegrityError:
             # AM-09: every master has a unique `code` (some scoped, e.g. CostCenter's
             # (company_id, code)) -- a caller reusing an existing code is a completely
@@ -128,22 +128,22 @@ def build_master_router(
         item_id: int,
         body: edit_schema,
         session: AsyncSession = Depends(get_session),
-        holder=Depends(require_role("ADMIN", "IT_TEAM")),
+        asset_user=Depends(require_role("ADMIN", "IT_TEAM")),
     ):
         service = MasterCRUDService(model, session)
         existing = await service.get(item_id)
         if existing is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND)
         data = body.model_dump()
-        await check_existing(session, holder, existing)  # may not edit another company's row...
-        await check_incoming(session, holder, data)      # ...nor move an own row into another company
+        await check_existing(session, asset_user, existing)  # may not edit another company's row...
+        await check_incoming(session, asset_user, data)      # ...nor move an own row into another company
         if validate_incoming is not None:
             try:
                 validate_incoming(data)
             except ValueError as exc:
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
         try:
-            return await service.update(item_id, data, holder.id)
+            return await service.update(item_id, data, asset_user.id)
         except IntegrityError:
             await session.rollback()
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "a record with this code already exists")
@@ -152,14 +152,14 @@ def build_master_router(
     async def deactivate_item(
         item_id: int,
         session: AsyncSession = Depends(get_session),
-        holder=Depends(require_role("ADMIN", "IT_TEAM")),
+        asset_user=Depends(require_role("ADMIN", "IT_TEAM")),
     ):
         service = MasterCRUDService(model, session)
         existing = await service.get(item_id)
         if existing is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND)
-        await check_existing(session, holder, existing)
-        await service.deactivate(item_id, holder.id)
+        await check_existing(session, asset_user, existing)
+        await service.deactivate(item_id, asset_user.id)
 
     # AM-25: bulk Import/Export -- only mounted when this master opted in
     # with `import_fields`. company_field mirrors this router's own
@@ -173,9 +173,9 @@ def build_master_router(
         @sub.get("/export")
         async def export_items(
             session: AsyncSession = Depends(get_session),
-            holder=Depends(require_role("ADMIN", "IT_TEAM")),
+            asset_user=Depends(require_role("ADMIN", "IT_TEAM")),
         ):
-            allowed = await scoped_company_ids(session, holder)
+            allowed = await scoped_company_ids(session, asset_user)
             content = await export_rows(session, model, import_fields, allowed, company_field)
             return Response(
                 content=content,
@@ -194,10 +194,10 @@ def build_master_router(
         @sub.post("/import/preview")
         async def import_preview(
             file: UploadFile = File(...), session: AsyncSession = Depends(get_session),
-            holder=Depends(require_role("ADMIN", "IT_TEAM")),
+            asset_user=Depends(require_role("ADMIN", "IT_TEAM")),
         ):
             content = await file.read()
-            allowed = await scoped_company_ids(session, holder)
+            allowed = await scoped_company_ids(session, asset_user)
             try:
                 return await preview_import(session, import_fields, content, allowed, company_field)
             except ImportTemplateError as exc:
@@ -206,12 +206,12 @@ def build_master_router(
         @sub.post("/import/commit")
         async def import_commit(
             file: UploadFile = File(...), session: AsyncSession = Depends(get_session),
-            holder=Depends(require_role("ADMIN", "IT_TEAM")),
+            asset_user=Depends(require_role("ADMIN", "IT_TEAM")),
         ):
             content = await file.read()
-            allowed = await scoped_company_ids(session, holder)
+            allowed = await scoped_company_ids(session, asset_user)
             try:
-                result = await commit_import(session, model, import_fields, content, holder, allowed, company_field)
+                result = await commit_import(session, model, import_fields, content, asset_user, allowed, company_field)
             except ImportScopeError as exc:
                 raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc))
             except ImportTemplateError as exc:

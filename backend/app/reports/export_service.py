@@ -42,7 +42,7 @@ def _sanitize_row(row: list) -> list:
 # a given asset's company is simply blank for that row, never fabricated.
 ASSET_EXPORT_COLUMNS = [
     "Asset Code", "Company", "Cost Centre", "Category", "Subcategory", "Description", "Status",
-    "Current Holder", "Holder Type", "Location", "Vendor", "PO Number", "PO Date",
+    "Current AssetUser", "AssetUser Type", "Location", "Vendor", "PO Number", "PO Date",
     "Invoice Number", "Invoice Date", "PI Number", "PI Date", "Purchase Date",
     "Purchase Cost", "Tax %", "Tax Amount", "Total Cost", "Brand", "Model",
     "Serial Number", "Warranty Upto", "Legacy Asset Code",
@@ -54,7 +54,7 @@ def assets_to_xlsx(assets: list[Asset], labels: dict, custom_field_keys: list[st
     ws = wb.active
     ws.append(ASSET_EXPORT_COLUMNS + [f"Custom:{k}" for k in custom_field_keys])
     for a in assets:
-        holder = labels["holder"].get(a.current_holder_id, {})
+        asset_user = labels["asset_user"].get(a.current_asset_user_id, {})
         ws.append(_sanitize_row([
             a.asset_code,
             labels["company"].get(a.company_id),
@@ -63,9 +63,9 @@ def assets_to_xlsx(assets: list[Asset], labels: dict, custom_field_keys: list[st
             labels["subcategory"].get(a.subcategory_id) if a.subcategory_id else None,
             a.description,
             a.status,
-            holder.get("name"),
-            holder.get("holder_type"),
-            holder.get("location_name"),
+            asset_user.get("name"),
+            asset_user.get("asset_user_type"),
+            asset_user.get("location_name"),
             labels["vendor"].get(a.vendor_id) if a.vendor_id else None,
             a.po_number,
             a.po_date.isoformat() if a.po_date else None,
@@ -113,17 +113,17 @@ def field_changes_to_xlsx(rows: list[tuple]) -> bytes:
 
 
 def movements_to_xlsx(rows: list[tuple]) -> bytes:
-    """`rows` are (AssetEvent, asset_code, from_holder_name, to_holder_name) tuples --
-    a raw internal `asset_id`/`holder_id` in a column literally headed "Asset Code"/
-    "From Holder"/"To Holder" would make this export useless to the auditors and store
+    """`rows` are (AssetEvent, asset_code, from_asset_user_name, to_asset_user_name) tuples --
+    a raw internal `asset_id`/`asset_user_id` in a column literally headed "Asset Code"/
+    "From AssetUser"/"To AssetUser" would make this export useless to the auditors and store
     staff it's actually for, so the router joins in the human-readable values before
     calling this."""
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.append(["Asset Code", "Event", "Date", "From Holder", "To Holder", "Remarks"])
-    for event, asset_code, from_holder_name, to_holder_name in rows:
+    ws.append(["Asset Code", "Event", "Date", "From AssetUser", "To AssetUser", "Remarks"])
+    for event, asset_code, from_asset_user_name, to_asset_user_name in rows:
         ws.append(_sanitize_row([asset_code, event.event_type, event.event_date.isoformat(),
-                   from_holder_name, to_holder_name, event.remarks]))
+                   from_asset_user_name, to_asset_user_name, event.remarks]))
     buf = BytesIO()
     wb.save(buf)
     return buf.getvalue()

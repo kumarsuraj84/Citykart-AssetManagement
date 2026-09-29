@@ -4,7 +4,7 @@ import openpyxl
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.masters.models import Company, CostCenter, AssetCategory, AssetSubcategory, Location, Department, Vendor
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.numbering.models import CodeRule
 
 
@@ -14,7 +14,7 @@ def _build_workbook(rows: list[list]) -> bytes:
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.append(["Legacy Asset Code", "Company Code", "Cost Centre Code", "Category Code", "Subcategory Code",
-               "Description", "Invoice Date", "Initial Holder Code", "Vendor Code", "Serial Number"])
+               "Description", "Invoice Date", "Initial AssetUser Code", "Vendor Code", "Serial Number"])
     for row in rows:
         ws.append(row)
     buf = io.BytesIO()
@@ -35,9 +35,9 @@ async def test_preview_and_commit_import(client):
         dept = Department(name="IT-IMP1")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = Holder(company_id=co.id, emp_code="ITSTOCK-IMP1", name="IT Stock-HO", holder_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="HOLDER")
-        it_admin = Holder(company_id=co.id, emp_code="ITA-IMP1", name="IT Admin", holder_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, emp_code="ITSTOCK-IMP1", name="IT Stock-HO", asset_user_type="IT_STOCK",
+                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+        it_admin = AssetUser(company_id=co.id, emp_code="ITA-IMP1", name="IT Admin", asset_user_type="EMPLOYEE",
                            location_id=loc.id, department_id=dept.id, role="ADMIN",
                            password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=None, prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/CK_",

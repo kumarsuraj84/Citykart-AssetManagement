@@ -98,7 +98,7 @@ export function PurchaseOrdersList() {
   const vendorNames = Object.fromEntries((vendorsQ.data ?? []).map((v) => [v.id, v.name]));
   // Every company's cost centres -- an ADMIN's PO list spans companies, so
   // (unlike a single-company screen) there's no one company id to scope this
-  // lookup to, same reasoning Asset Register's own Holder filter already uses.
+  // lookup to, same reasoning Asset Register's own AssetUser filter already uses.
   const costCentersQ = useQuery({
     queryKey: ["masters", "cost-centers", "all"],
     queryFn: () => apiClient.get<Option[]>("/masters/cost-centers"),

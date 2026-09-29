@@ -2,7 +2,7 @@ class LifecycleError(Exception):
     pass
 
 
-_STOCK_LIKE_STATUS_BY_HOLDER_TYPE = {
+_STOCK_LIKE_STATUS_BY_ASSET_USER_TYPE = {
     "EMPLOYEE": "ALLOTTED",
     "STORE": "ALLOTTED",
     "INSTALLED": "INSTALLED",
@@ -24,7 +24,7 @@ _ALLOWED_EVENTS = {
 }
 
 
-def transition(current_status: str, event_type: str, to_holder_type: str | None, actor_role: str) -> str:
+def transition(current_status: str, event_type: str, to_asset_user_type: str | None, actor_role: str) -> str:
     if event_type == "CORRECTION":
         # A correction note never changes status and is allowed from any status, including
         # a terminal one — it only annotates history (spec §5: "Only Admin can ... add a
@@ -44,24 +44,24 @@ def transition(current_status: str, event_type: str, to_holder_type: str | None,
         raise LifecycleError("only ADMIN may mark a LOST asset as FOUND")
 
     if event_type in ("PROCURED", "IMPORTED", "MOVED"):
-        if to_holder_type not in _STOCK_LIKE_STATUS_BY_HOLDER_TYPE:
-            raise LifecycleError(f"unknown holder type '{to_holder_type}'")
-        return _STOCK_LIKE_STATUS_BY_HOLDER_TYPE[to_holder_type]
+        if to_asset_user_type not in _STOCK_LIKE_STATUS_BY_ASSET_USER_TYPE:
+            raise LifecycleError(f"unknown asset user type '{to_asset_user_type}'")
+        return _STOCK_LIKE_STATUS_BY_ASSET_USER_TYPE[to_asset_user_type]
 
     if event_type == "SENT_FOR_REPAIR":
         return "UNDER_REPAIR"
 
     if event_type == "RECEIVED_FROM_REPAIR":
-        if to_holder_type not in _STOCK_LIKE_STATUS_BY_HOLDER_TYPE:
-            raise LifecycleError(f"unknown holder type '{to_holder_type}'")
-        return _STOCK_LIKE_STATUS_BY_HOLDER_TYPE[to_holder_type]
+        if to_asset_user_type not in _STOCK_LIKE_STATUS_BY_ASSET_USER_TYPE:
+            raise LifecycleError(f"unknown asset user type '{to_asset_user_type}'")
+        return _STOCK_LIKE_STATUS_BY_ASSET_USER_TYPE[to_asset_user_type]
 
     if event_type == "FOUND":
-        if to_holder_type not in _STOCK_LIKE_STATUS_BY_HOLDER_TYPE:
-            raise LifecycleError(f"unknown holder type '{to_holder_type}'")
-        result_status = _STOCK_LIKE_STATUS_BY_HOLDER_TYPE[to_holder_type]
+        if to_asset_user_type not in _STOCK_LIKE_STATUS_BY_ASSET_USER_TYPE:
+            raise LifecycleError(f"unknown asset user type '{to_asset_user_type}'")
+        result_status = _STOCK_LIKE_STATUS_BY_ASSET_USER_TYPE[to_asset_user_type]
         if result_status != "IN_STOCK":
-            raise LifecycleError("FOUND asset must be returned to IT_STOCK, not another holder type")
+            raise LifecycleError("FOUND asset must be returned to IT_STOCK, not another asset user type")
         return "IN_STOCK"
 
     if event_type in ("DISPOSED", "SOLD", "SCRAPPED"):
@@ -73,7 +73,7 @@ def transition(current_status: str, event_type: str, to_holder_type: str | None,
     raise LifecycleError(f"unhandled event '{event_type}'")
 
 
-def label_for_event(event_type: str, from_holder_type: str | None, to_holder_type: str | None) -> str:
+def label_for_event(event_type: str, from_asset_user_type: str | None, to_asset_user_type: str | None) -> str:
     if event_type == "PROCURED":
         return "Procured into {to}"
     if event_type == "IMPORTED":
@@ -96,8 +96,8 @@ def label_for_event(event_type: str, from_holder_type: str | None, to_holder_typ
         return "Correction note"
 
     if event_type == "MOVED":
-        to_status = _STOCK_LIKE_STATUS_BY_HOLDER_TYPE.get(to_holder_type)
-        from_status = _STOCK_LIKE_STATUS_BY_HOLDER_TYPE.get(from_holder_type)
+        to_status = _STOCK_LIKE_STATUS_BY_ASSET_USER_TYPE.get(to_asset_user_type)
+        from_status = _STOCK_LIKE_STATUS_BY_ASSET_USER_TYPE.get(from_asset_user_type)
         if to_status == "IN_STOCK":
             return "Returned to {to}"
         if to_status == "INSTALLED":

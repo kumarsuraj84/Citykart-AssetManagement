@@ -7,7 +7,7 @@ from datetime import date
 from app.assets.service import procure_assets
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.holders.models import Holder
+from app.asset_users.models import AssetUser
 from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location
 from app.numbering.models import CodeRule
 
@@ -24,13 +24,13 @@ async def _setup(suffix: str):
         dept = Department(name=f"AM23-{suffix}")
         session.add_all([sub, cc, loc, dept])
         await session.flush()
-        stock = Holder(company_id=co.id, emp_code=f"STK-{suffix}", name="IT Stock", holder_type="IT_STOCK",
-                        location_id=loc.id, department_id=dept.id, role="HOLDER")
-        admin = Holder(company_id=co.id, emp_code=f"ADM-{suffix}", name="Admin", holder_type="EMPLOYEE",
+        stock = AssetUser(company_id=co.id, emp_code=f"STK-{suffix}", name="IT Stock", asset_user_type="IT_STOCK",
+                        location_id=loc.id, department_id=dept.id, role="ASSET_USER")
+        admin = AssetUser(company_id=co.id, emp_code=f"ADM-{suffix}", name="Admin", asset_user_type="EMPLOYEE",
                         location_id=loc.id, department_id=dept.id, role="ADMIN",
                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
-        other = Holder(company_id=co.id, emp_code=f"OTH-{suffix}", name="Someone Else", holder_type="EMPLOYEE",
-                        location_id=loc.id, department_id=dept.id, role="HOLDER",
+        other = AssetUser(company_id=co.id, emp_code=f"OTH-{suffix}", name="Someone Else", asset_user_type="EMPLOYEE",
+                        location_id=loc.id, department_id=dept.id, role="ASSET_USER",
                         password_hash=hash_password("Passw0rd!"), must_change_password=False)
         rule = CodeRule(company_id=co.id, prefix_template=f"AM23/{suffix}/", suffix_template="",
                          start_number=1, pad_width=0)
@@ -38,7 +38,7 @@ async def _setup(suffix: str):
         await session.commit()
         [asset] = await procure_assets(session, {
             "company_id": co.id, "cost_center_id": cc.id, "category_id": cat.id, "subcategory_id": sub.id,
-            "description": "Label Test Laptop", "purchase_date": date(2026, 1, 1), "initial_holder_id": stock.id,
+            "description": "Label Test Laptop", "purchase_date": date(2026, 1, 1), "initial_asset_user_id": stock.id,
         }, quantity=1, actor=admin)
         await session.commit()
         return {"co": co, "asset_id": asset.id, "asset_code": asset.asset_code, "admin_emp": f"ADM-{suffix}", "other_emp": f"OTH-{suffix}"}
@@ -78,7 +78,7 @@ async def test_label_png_rejects_an_unrecognized_symbol(client):
     assert resp.status_code == 422
 
 
-async def test_label_png_404_for_holder_who_does_not_hold_the_asset():
+async def test_label_png_404_for_asset_user_who_does_not_hold_the_asset():
     """Same fail-closed scoping as /qr.png -- a label image is not a
     backdoor around _get_scoped_asset."""
     from httpx import AsyncClient, ASGITransport
