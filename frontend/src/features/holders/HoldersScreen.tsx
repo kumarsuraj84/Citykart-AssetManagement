@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Users, Pencil, Trash2, KeyRound, Building2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Users, Pencil, Trash2, KeyRound, Building2, Check, X } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,29 @@ import { BulkImportExport } from "@/components/shared/BulkImportExport";
 const HOLDER_TYPES = ["EMPLOYEE", "STORE", "INSTALLED", "IT_STOCK"] as const;
 const ROLES = ["ADMIN", "IT_TEAM", "VIEWER", "HOLDER"] as const;
 
+// IT_STOCK/INSTALLED holders aren't people -- they're a location's own
+// stock/install bucket (one per physical location a company has), which
+// made the ordinary "Emp Code"/Name fields confusing to fill in (there's
+// no employee). This config drives dynamic labels, an auto-suggested
+// code/name derived from the chosen Location so nobody has to invent one,
+// and the coverage checklist below ("which locations still need a stock
+// point") -- see the product discussion that prompted this.
+const TYPE_POINT_CONFIG: Partial<Record<(typeof HOLDER_TYPES)[number], { prefix: string; noun: string }>> = {
+  IT_STOCK: { prefix: "STK", noun: "Stock Point" },
+  INSTALLED: { prefix: "INS", noun: "Install Point" },
+};
+
+function pointConfigFor(holderType: string) {
+  return TYPE_POINT_CONFIG[holderType as (typeof HOLDER_TYPES)[number]];
+}
+
+// Alphanumeric-only, uppercased -- matches how every master's own Code
+// column is conventionally written; a location code/name can contain
+// spaces or punctuation a holder's emp_code shouldn't carry verbatim.
+function slug(value: string): string {
+  return value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
 interface HolderRow {
   id: number;
   company_id: number;
@@ -60,6 +83,7 @@ interface Company {
 
 interface Location {
   id: number;
+  code: string;
   name: string;
 }
 
@@ -216,6 +240,26 @@ export function HoldersScreen() {
     setDraft((d) => ({ ...d, [key]: value }));
   }
 
+  // A blank Code/Name is auto-suggested from the chosen Location once both
+  // Type (IT_STOCK/INSTALLED) and Location are known -- never overwrites
+  // something already typed (a manual edit always wins), so this only ever
+  // fires on a fresh Add before the admin has touched either field.
+  function suggestPointFields(d: HolderDraft, holderType: string, locationId: string): Partial<HolderDraft> {
+    const config = pointConfigFor(holderType);
+    if (!config || d.emp_code.trim() !== "" || d.name.trim() !== "") return {};
+    const location = locations.find((l) => l.id === Number(locationId));
+    if (!location) return {};
+    return { emp_code: `${config.prefix}-${slug(location.code)}`, name: `${config.noun} - ${location.name}` };
+  }
+
+  function handleTypeChange(value: string) {
+    setDraft((d) => ({ ...d, holder_type: value, ...suggestPointFields(d, value, d.location_id) }));
+  }
+
+  function handleLocationChange(value: string) {
+    setDraft((d) => ({ ...d, location_id: value, ...suggestPointFields(d, d.holder_type, value) }));
+  }
+
   function openAdd() {
     setEditingId(null);
     setOriginalRole(null);
@@ -271,6 +315,25 @@ export function HoldersScreen() {
     draft.name.trim().length > 0 &&
     draft.holder_type !== "" &&
     draft.location_id !== "";
+
+  const activePointConfig = pointConfigFor(draft.holder_type);
+  const codeLabel = activePointConfig ? `${activePointConfig.noun} Code` : "Emp Code";
+  const nameLabel = activePointConfig ? `${activePointConfig.noun} Name` : "Name";
+
+  // "Which of this company's locations already have an IT_STOCK/INSTALLED
+  // point, and which still need one" -- the confusion this whole feature
+  // addresses (see TYPE_POINT_CONFIG's own comment). Only shown once both
+  // Type and Company are picked, since coverage is scoped per company.
+  const pointCoverage = useMemo(() => {
+    if (!activePointConfig || draft.company_id === "") return null;
+    const companyId = Number(draft.company_id);
+    const coveredIds = new Set(
+      holders
+        .filter((h) => h.company_id === companyId && h.holder_type === draft.holder_type && h.is_active)
+        .map((h) => h.location_id),
+    );
+    return locations.map((l) => ({ location: l, covered: coveredIds.has(l.id) }));
+  }, [activePointConfig, draft.holder_type, draft.company_id, holders, locations]);
 
   const columns: DataTableColumn<HolderRow>[] = [
     { key: "emp_code", header: "Emp Code", cell: (h) => h.emp_code },
@@ -369,26 +432,8 @@ export function HoldersScreen() {
               </Select>
             </FormField>
 
-            <FormField htmlFor="emp_code" label="Emp Code" required>
-              <Input
-                id="emp_code"
-                aria-label="Emp Code"
-                value={draft.emp_code}
-                onChange={(e) => setField("emp_code", e.target.value)}
-              />
-            </FormField>
-
-            <FormField htmlFor="name" label="Name" required>
-              <Input
-                id="name"
-                aria-label="Name"
-                value={draft.name}
-                onChange={(e) => setField("name", e.target.value)}
-              />
-            </FormField>
-
             <FormField htmlFor="holder_type" label="Type" required>
-              <Select value={draft.holder_type || undefined} onValueChange={(v) => setField("holder_type", v)}>
+              <Select value={draft.holder_type || undefined} onValueChange={handleTypeChange}>
                 <SelectTrigger id="holder_type" aria-label="Type">
                   <SelectValue placeholder="Select…" />
                 </SelectTrigger>
@@ -400,10 +445,38 @@ export function HoldersScreen() {
                   ))}
                 </SelectContent>
               </Select>
+              {activePointConfig && (
+                <p className="text-xs text-muted-foreground">
+                  {activePointConfig.noun} isn't a person -- it's the place assets sit at one Location. Pick a
+                  Location below and its Code/Name will be filled in for you.
+                </p>
+              )}
             </FormField>
 
+            {pointCoverage && pointCoverage.length > 0 && (
+              <div className="flex flex-col gap-1.5 rounded-md border bg-muted/40 p-3">
+                <p className="text-xs font-medium text-muted-foreground">
+                  {activePointConfig?.noun} coverage for this company
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {pointCoverage.map(({ location, covered }) => (
+                    <span
+                      key={location.id}
+                      className={
+                        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium " +
+                        (covered ? "bg-success-soft text-on-success-soft" : "bg-muted text-muted-foreground")
+                      }
+                    >
+                      {covered ? <Check className="h-3 w-3" aria-hidden="true" /> : <X className="h-3 w-3" aria-hidden="true" />}
+                      {location.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <FormField htmlFor="location_id" label="Location" required>
-              <Select value={draft.location_id || undefined} onValueChange={(v) => setField("location_id", v)}>
+              <Select value={draft.location_id || undefined} onValueChange={handleLocationChange}>
                 <SelectTrigger id="location_id" aria-label="Location">
                   <SelectValue placeholder="Select…" />
                 </SelectTrigger>
@@ -415,6 +488,24 @@ export function HoldersScreen() {
                   ))}
                 </SelectContent>
               </Select>
+            </FormField>
+
+            <FormField htmlFor="emp_code" label={codeLabel} required>
+              <Input
+                id="emp_code"
+                aria-label={codeLabel}
+                value={draft.emp_code}
+                onChange={(e) => setField("emp_code", e.target.value)}
+              />
+            </FormField>
+
+            <FormField htmlFor="name" label={nameLabel} required>
+              <Input
+                id="name"
+                aria-label={nameLabel}
+                value={draft.name}
+                onChange={(e) => setField("name", e.target.value)}
+              />
             </FormField>
 
             <FormField htmlFor="department_id" label="Department">

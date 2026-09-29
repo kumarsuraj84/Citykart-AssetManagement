@@ -27,13 +27,14 @@ const HOLDER: Record<string, unknown> = {
 
 const COMPANY = { id: 1, name: "CityKart HQ" };
 const COMPANY_B = { id: 2, name: "CityKart Ventures" };
-const LOCATION = { id: 1, name: "Head Office" };
+const LOCATION = { id: 1, code: "HO", name: "Head Office" };
+const LOCATION_WH1 = { id: 2, code: "WH1", name: "Warehouse 1" };
 
-function mockGets(holders: unknown[] = [HOLDER], companies: unknown[] = [COMPANY]) {
+function mockGets(holders: unknown[] = [HOLDER], companies: unknown[] = [COMPANY], locations: unknown[] = [LOCATION]) {
   (apiClient.get as any).mockImplementation((path: string) => {
     if (path === "/holders") return Promise.resolve(holders);
     if (path === "/masters/companies") return Promise.resolve(companies);
-    if (path === "/masters/locations") return Promise.resolve([LOCATION]);
+    if (path === "/masters/locations") return Promise.resolve(locations);
     if (path === "/masters/departments") return Promise.resolve([]);
     if (path === "/holders/1/company-access") return Promise.resolve({ company_ids: [] });
     return Promise.resolve([]);
@@ -255,5 +256,63 @@ describe("HoldersScreen", () => {
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith("/holders/1/company-access", { company_ids: [2] }),
     );
+  });
+
+  it("IT_STOCK/INSTALLED: picking a Location auto-fills Code/Name and relabels the fields", async () => {
+    mockGets([], [COMPANY], [LOCATION, LOCATION_WH1]);
+    (apiClient.post as any).mockResolvedValue({ ...HOLDER, id: 3, emp_code: "STK-WH1" });
+
+    renderWithClient(<HoldersScreen />);
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/masters/companies"));
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+
+    await pickSelectOption("Company", "CityKart HQ");
+    await pickSelectOption("Type", "IT_STOCK");
+    // Labels relabel away from the "Emp Code"/"Name" wording once a non-person type is picked.
+    expect(screen.getByText("Stock Point Code")).toBeInTheDocument();
+    expect(screen.getByText("Stock Point Name")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Emp Code")).not.toBeInTheDocument();
+
+    await pickSelectOption("Location", "Warehouse 1");
+    expect(screen.getByLabelText("Stock Point Code")).toHaveValue("STK-WH1");
+    expect(screen.getByLabelText("Stock Point Name")).toHaveValue("Stock Point - Warehouse 1");
+
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith(
+        "/holders",
+        expect.objectContaining({ emp_code: "STK-WH1", name: "Stock Point - Warehouse 1", holder_type: "IT_STOCK" }),
+      ),
+    );
+  });
+
+  it("IT_STOCK: a manually-typed Code/Name is never overwritten by picking a Location afterward", async () => {
+    mockGets([], [COMPANY], [LOCATION, LOCATION_WH1]);
+    renderWithClient(<HoldersScreen />);
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/masters/companies"));
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+
+    await pickSelectOption("Type", "IT_STOCK");
+    fireEvent.change(screen.getByLabelText("Stock Point Code"), { target: { value: "MY-OWN-CODE" } });
+    fireEvent.change(screen.getByLabelText("Stock Point Name"), { target: { value: "My Own Name" } });
+
+    await pickSelectOption("Location", "Warehouse 1");
+    expect(screen.getByLabelText("Stock Point Code")).toHaveValue("MY-OWN-CODE");
+    expect(screen.getByLabelText("Stock Point Name")).toHaveValue("My Own Name");
+  });
+
+  it("shows a coverage checklist of which locations already have an IT_STOCK point for the chosen company", async () => {
+    const stockAtHo = { ...HOLDER, id: 5, emp_code: "STK-HO", name: "Stock Point - Head Office", holder_type: "IT_STOCK", location_id: 1 };
+    mockGets([HOLDER, stockAtHo], [COMPANY], [LOCATION, LOCATION_WH1]);
+    renderWithClient(<HoldersScreen />);
+    await waitFor(() => expect(screen.getByText("Ankur")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+
+    await pickSelectOption("Company", "CityKart HQ");
+    await pickSelectOption("Type", "IT_STOCK");
+
+    expect(await screen.findByText(/coverage for this company/i)).toBeInTheDocument();
+    expect(screen.getByText("Head Office")).toBeInTheDocument();
+    expect(screen.getByText("Warehouse 1")).toBeInTheDocument();
   });
 });
