@@ -99,6 +99,45 @@ describe("AssetRegister", () => {
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("status=IN_STOCK")));
   });
 
+  it("a Custom Field gets its own Columns entry and shows its stored value once toggled on", async () => {
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (path.startsWith("/assets")) {
+        return Promise.resolve({
+          items: [
+            {
+              id: 1, asset_code: "FA/HO01/IT/LAP/CK_1", description: "Laptop", status: "IN_STOCK",
+              custom_fields: { helpdesk_ticket_no: "HD-4821" },
+            },
+          ],
+          total: 1,
+        });
+      }
+      if (path === "/masters/custom-fields") {
+        return Promise.resolve([
+          { id: 1, field_key: "helpdesk_ticket_no", label: "Helpdesk Ticket No", field_type: "text", sort_order: 1, company_id: null },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    renderRegisterAt();
+    await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK_1")).toBeInTheDocument());
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: /^columns$/i }));
+    await waitFor(() => expect(screen.getByText(/show columns/i)).toBeInTheDocument());
+    const item = await screen.findByRole("menuitemcheckbox", { name: "Helpdesk Ticket No" });
+    expect(item).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(item);
+    // The menu stays open across multiple toggles (so picking several
+    // columns doesn't mean reopening it each time) -- while it's open,
+    // Radix marks the rest of the page aria-hidden, so close it first
+    // before querying the underlying table's own accessible roles.
+    fireEvent.keyDown(item, { key: "Escape" });
+
+    await waitFor(() => expect(screen.getByRole("columnheader", { name: "Helpdesk Ticket No" })).toBeInTheDocument());
+    expect(screen.getByText("HD-4821")).toBeInTheDocument();
+  });
+
   it("pages through the register with limit/offset and shows the total", async () => {
     const rows = (start: number, n: number) =>
       Array.from({ length: n }, (_, i) => ({

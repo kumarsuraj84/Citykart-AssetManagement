@@ -17,7 +17,16 @@ import { ScanBarcode, ArrowUp, ArrowDown, ChevronsUpDown } from "lucide-react";
 
 interface Option {
   id: number;
+  code?: string;
+  email?: string;
   name: string;
+}
+
+// Lets someone find an Asset User by typing their code or email, not just
+// their name -- the same fields AssetUsersScreen's own Code/Email columns
+// show, so the search matches what's actually on their record.
+function assetUserKeywords(h: Option): string[] {
+  return [h.code, h.email].filter((v): v is string => Boolean(v));
 }
 
 interface AssetSearchResult {
@@ -225,7 +234,7 @@ export function AssetMovement() {
               aria-label="Destination Asset User"
               value={selectValue(toAssetUserId)}
               onValueChange={setToAssetUserId}
-              options={asset_users.map((h) => ({ value: String(h.id), label: h.name }))}
+              options={asset_users.map((h) => ({ value: String(h.id), label: h.name, keywords: assetUserKeywords(h) }))}
             />
           </FormField>
         )}

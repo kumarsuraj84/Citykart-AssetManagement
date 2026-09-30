@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { apiClient } from "../../lib/api-client";
@@ -28,6 +28,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -70,11 +71,31 @@ interface AssetRow {
   cost_center_name: string | null;
   vendor_name: string | null;
   brand_name: string | null;
+  // Keyed by field_key -- see CustomFieldDef below. Always present (never
+  // undefined) on a real AssetOut row, though possibly `{}`.
+  custom_fields: Record<string, unknown>;
+}
+
+interface CustomFieldDef {
+  id: number;
+  field_key: string;
+  label: string;
+  field_type: "text" | "number" | "date" | "dropdown" | "checkbox";
+  sort_order: number;
 }
 
 interface Option {
   id: number;
+  code?: string;
+  email?: string;
   name: string;
+}
+
+// Lets someone find an Asset User by typing their code or email, not just
+// their name -- the same fields AssetUsersScreen's own Code/Email columns
+// show, so the search matches what's actually on their record.
+function assetUserKeywords(h: Option): string[] {
+  return [h.code, h.email].filter((v): v is string => Boolean(v));
 }
 
 // Fixed list, matches backend/app/assets/models.py ASSET_STATUSES -- this is a closed set
@@ -102,6 +123,15 @@ const domainLabel = (v: string) => (v === "NON_IT" ? "Admin / Non-IT" : v);
 // money fields (toFixed(2), no currency symbol) -- one number convention
 // across the register and Asset 360, not two.
 const money = (v: number | null | undefined) => (v === null || v === undefined ? "—" : v.toFixed(2));
+
+// A custom field's stored value is whatever shape its field_type implies
+// (see app/assets/custom_field_values.py) -- checkbox is a real boolean,
+// everything else is already a plain string/number fit to display as-is.
+function formatCustomFieldValue(raw: unknown, fieldType: CustomFieldDef["field_type"]): string {
+  if (raw === undefined || raw === null || raw === "") return "—";
+  if (fieldType === "checkbox") return raw ? "Yes" : "No";
+  return String(raw);
+}
 
 interface AssetColumnDef {
   key: string;
@@ -174,23 +204,27 @@ const SORTABLE_COLUMN_KEYS = new Set([
   "purchase_cost", "tax_percent", "tax_amount", "total_cost", "purchase_date", "warranty_upto", "status_since",
 ]);
 
-const ASSET_OPTIONAL_COLUMN_KEYS = ASSET_OPTIONAL_COLUMNS.map((c) => c.key);
 const DEFAULT_VISIBLE_COLUMN_KEYS = ASSET_OPTIONAL_COLUMNS.filter((c) => c.defaultVisible).map((c) => c.key);
 const COLUMN_VISIBILITY_STORAGE_KEY = "ckam.assetRegister.visibleColumns";
 
 // Per-browser only (localStorage), not synced anywhere -- a display
 // preference, not business state. Falls back to the defaults whenever
 // nothing is stored yet, storage is unavailable (private browsing), or the
-// stored list turns out empty after dropping keys that no longer exist
-// (e.g. a renamed column from an older version of this page).
+// stored value is malformed. Deliberately does NOT validate stored keys
+// against the known column keys here: Custom Field columns are only
+// known once their own query resolves (after this runs, at mount), so
+// dropping "unknown" keys this early would silently un-show a Custom Field
+// column the user had previously turned on. An actually-stale key (e.g. a
+// removed/renamed column) simply never matches any column at render time
+// and is harmlessly ignored there instead.
 function loadVisibleColumnKeys(): string[] {
   try {
     const raw = window.localStorage.getItem(COLUMN_VISIBILITY_STORAGE_KEY);
     if (!raw) return DEFAULT_VISIBLE_COLUMN_KEYS;
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return DEFAULT_VISIBLE_COLUMN_KEYS;
-    const known = parsed.filter((k): k is string => typeof k === "string" && ASSET_OPTIONAL_COLUMN_KEYS.includes(k));
-    return known.length > 0 ? known : DEFAULT_VISIBLE_COLUMN_KEYS;
+    const strings = parsed.filter((k): k is string => typeof k === "string");
+    return strings.length > 0 ? strings : DEFAULT_VISIBLE_COLUMN_KEYS;
   } catch {
     return DEFAULT_VISIBLE_COLUMN_KEYS;
   }
@@ -303,6 +337,39 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
   });
   const categories = asOptionArray(categoriesData);
 
+  // Every active Custom Field definition (Global + every company's -- the
+  // register spans companies, unlike Add Asset's single-company scoping),
+  // so a field created after this page last loaded still gets its own
+  // Column/Sort entry without a code change (same "no new field added
+  // should come outside" rule ASSET_OPTIONAL_COLUMNS's own comment
+  // describes for built-in Asset fields).
+  const { data: customFieldDefsData } = useQuery({
+    queryKey: ["masters", "custom-fields"],
+    queryFn: () => apiClient.get<CustomFieldDef[]>("/masters/custom-fields"),
+  });
+  const customFieldColumns: AssetColumnDef[] = useMemo(
+    () =>
+      (Array.isArray(customFieldDefsData) ? customFieldDefsData : [])
+        .slice()
+        .sort((a, b) => a.sort_order - b.sort_order)
+        .map((f) => ({
+          key: `custom:${f.field_key}`,
+          label: f.label,
+          defaultVisible: false,
+          // Not a real Asset table column -- the backend's sort_by
+          // whitelist (search_service.py::SORTABLE_COLUMNS) has no way to
+          // order by a JSONB custom_fields entry, so this is deliberately
+          // left out of SORTABLE_COLUMN_KEYS (sortable: false below) rather
+          // than silently no-op'ing a "sort by" click.
+          cell: (a: AssetRow) => formatCustomFieldValue(a.custom_fields?.[f.field_key], f.field_type),
+        })),
+    [customFieldDefsData],
+  );
+  const allOptionalColumns = useMemo(
+    () => [...ASSET_OPTIONAL_COLUMNS, ...customFieldColumns],
+    [customFieldColumns],
+  );
+
   const { data: companiesData } = useQuery({
     queryKey: ["masters", "companies"],
     queryFn: () => apiClient.get<Option[]>("/masters/companies"),
@@ -380,7 +447,7 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
         </Link>
       ),
     },
-    ...ASSET_OPTIONAL_COLUMNS.filter((c) => visibleColumnKeys.includes(c.key)).map((c) => ({
+    ...allOptionalColumns.filter((c) => visibleColumnKeys.includes(c.key)).map((c) => ({
       key: c.key,
       header: c.label,
       headerClassName: c.headerClassName,
@@ -461,19 +528,17 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="filter-asset-user">Asset User</Label>
-            <Select value={assetUserId || ALL} onValueChange={(v) => setAssetUserId(v === ALL ? "" : v)}>
-              <SelectTrigger id="filter-asset-user" aria-label="Asset User" className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All asset_users</SelectItem>
-                {asset_users.map((h) => (
-                  <SelectItem key={h.id} value={String(h.id)}>
-                    {h.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              id="filter-asset-user"
+              aria-label="Asset User"
+              className="w-40"
+              value={assetUserId || ALL}
+              onValueChange={(v) => setAssetUserId(v === ALL ? "" : v)}
+              options={[
+                { value: ALL, label: "All asset_users" },
+                ...asset_users.map((h) => ({ value: String(h.id), label: h.name, keywords: assetUserKeywords(h) })),
+              ]}
+            />
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -503,7 +568,7 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
           <DropdownMenuContent align="end" className="max-h-80 overflow-y-auto">
             <DropdownMenuLabel>Show columns</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {ASSET_OPTIONAL_COLUMNS.map((c) => (
+            {allOptionalColumns.map((c) => (
               <DropdownMenuCheckboxItem
                 key={c.key}
                 checked={visibleColumnKeys.includes(c.key)}
@@ -582,18 +647,13 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="move-asset-user">Move to</Label>
-            <Select value={moveAssetUserId || undefined} onValueChange={setMoveAssetUserId}>
-              <SelectTrigger id="move-asset-user" aria-label="Move to">
-                <SelectValue placeholder="Select…" />
-              </SelectTrigger>
-              <SelectContent>
-                {asset_users.map((h) => (
-                  <SelectItem key={h.id} value={String(h.id)}>
-                    {h.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              id="move-asset-user"
+              aria-label="Move to"
+              value={moveAssetUserId || undefined}
+              onValueChange={setMoveAssetUserId}
+              options={asset_users.map((h) => ({ value: String(h.id), label: h.name, keywords: assetUserKeywords(h) }))}
+            />
           </div>
 
           {bulkMoveMutation.isError && (

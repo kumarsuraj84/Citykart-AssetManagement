@@ -15,6 +15,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 export interface SearchableSelectOption {
   value: string;
   label: string;
+  /** Extra terms matched when searching (e.g. an Asset User's code/email) --
+   * never displayed, only `label` is shown. Lets someone find "Ankur Pahwa"
+   * by typing his code (CS6872) or email, not just his name. */
+  keywords?: string[];
 }
 
 interface SearchableSelectProps {
@@ -96,6 +100,7 @@ export function SearchableSelect({
                 <CommandItem
                   key={option.value}
                   value={option.label}
+                  keywords={option.keywords}
                   onSelect={() => {
                     onValueChange(option.value);
                     setOpen(false);

@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
@@ -111,7 +112,16 @@ interface FieldChange {
 
 interface AssetUserOption {
   id: number;
+  code?: string;
+  email?: string;
   name: string;
+}
+
+// Lets someone find an Asset User by typing their code or email, not just
+// their name -- the same fields AssetUsersScreen's own Code/Email columns
+// show, so the search matches what's actually on their record.
+function assetUserKeywords(h: AssetUserOption): string[] {
+  return [h.code, h.email].filter((v): v is string => Boolean(v));
 }
 
 interface MasterOption {
@@ -820,18 +830,13 @@ export function AssetDetail({ assetId }: { assetId: number }) {
             {activeAction?.needsAssetUser && (
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="asset-user-select">Asset User</Label>
-                <Select value={form.assetUserId || undefined} onValueChange={(v) => setField("assetUserId", v)}>
-                  <SelectTrigger id="asset-user-select" aria-label="Asset User">
-                    <SelectValue placeholder="Select…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {asset_users.map((h) => (
-                      <SelectItem key={h.id} value={String(h.id)}>
-                        {h.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  id="asset-user-select"
+                  aria-label="Asset User"
+                  value={form.assetUserId || undefined}
+                  onValueChange={(v) => setField("assetUserId", v)}
+                  options={asset_users.map((h) => ({ value: String(h.id), label: h.name, keywords: assetUserKeywords(h) }))}
+                />
               </div>
             )}
 

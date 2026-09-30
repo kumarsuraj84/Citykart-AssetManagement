@@ -55,4 +55,22 @@ describe("SearchableSelect", () => {
 
     expect(await screen.findByText("No results found.")).toBeInTheDocument();
   });
+
+  it("also matches an option's keywords (e.g. Asset User code/email), not just its displayed label", async () => {
+    const USER_OPTIONS = [
+      { value: "1", label: "Ankur Pahwa", keywords: ["CS6872", "ankur.pahwa@citykartstores.com"] },
+      { value: "2", label: "Priya Sharma", keywords: ["CS9001", "priya.sharma@citykartstores.com"] },
+    ];
+    render(<SearchableSelect value={undefined} onValueChange={vi.fn()} options={USER_OPTIONS} searchPlaceholder="Search…" />);
+    fireEvent.click(screen.getByRole("combobox"));
+    const search = await screen.findByPlaceholderText("Search…");
+
+    fireEvent.change(search, { target: { value: "CS6872" } });
+    await waitFor(() => expect(screen.queryByText("Priya Sharma")).not.toBeInTheDocument());
+    expect(screen.getByText("Ankur Pahwa")).toBeInTheDocument();
+
+    fireEvent.change(search, { target: { value: "priya.sharma@citykartstores.com" } });
+    await waitFor(() => expect(screen.queryByText("Ankur Pahwa")).not.toBeInTheDocument());
+    expect(screen.getByText("Priya Sharma")).toBeInTheDocument();
+  });
 });

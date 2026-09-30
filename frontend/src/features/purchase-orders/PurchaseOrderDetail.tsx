@@ -65,7 +65,16 @@ interface RecordPiResult {
 
 interface Option {
   id: number;
+  code?: string;
+  email?: string;
   name: string;
+}
+
+// Lets someone find an Asset User by typing their code or email, not just
+// their name -- the same fields AssetUsersScreen's own Code/Email columns
+// show, so the search matches what's actually on their record.
+function assetUserKeywords(h: Option): string[] {
+  return [h.code, h.email].filter((v): v is string => Boolean(v));
 }
 
 interface CategoryOption extends Option {
@@ -821,7 +830,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
                     id={`asset-user-${l.id}`}
                     value={selectValue(perLine[l.id]?.assetUserId ?? "")}
                     onValueChange={(v) => setPerLine((p) => ({ ...p, [l.id]: { ...p[l.id], assetUserId: v } }))}
-                    options={asset_users.map((h) => ({ value: String(h.id), label: h.name }))}
+                    options={asset_users.map((h) => ({ value: String(h.id), label: h.name, keywords: assetUserKeywords(h) }))}
                   />
                 </div>
               </div>
