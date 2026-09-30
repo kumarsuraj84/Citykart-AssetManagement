@@ -221,4 +221,83 @@ describe("MasterCrudScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: /^deactivate$/i }));
     await waitFor(() => expect(apiClient.delete).toHaveBeenCalledWith("/masters/vendors/1"));
   });
+
+  it("selecting rows shows a bulk action bar, hidden again once nothing is selected", async () => {
+    (apiClient.get as any).mockResolvedValue([
+      { id: 1, code: "V1", name: "Vendor One" },
+      { id: 2, code: "V2", name: "Vendor Two" },
+    ]);
+    renderWithClient(<MasterCrudScreen config={VENDOR_CONFIG} />);
+    await waitFor(() => expect(screen.getByText("Vendor One")).toBeInTheDocument());
+
+    expect(screen.queryByText(/selected/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /select vendor one/i }));
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /select vendor one/i }));
+    expect(screen.queryByText(/selected/i)).not.toBeInTheDocument();
+  });
+
+  it("bulk-deactivates every selected row after one confirmation, then clears the selection", async () => {
+    (apiClient.get as any).mockResolvedValue([
+      { id: 1, code: "V1", name: "Vendor One" },
+      { id: 2, code: "V2", name: "Vendor Two" },
+    ]);
+    (apiClient.delete as any).mockResolvedValue(undefined);
+    renderWithClient(<MasterCrudScreen config={VENDOR_CONFIG} />);
+    await waitFor(() => expect(screen.getByText("Vendor One")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /select vendor one/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /select vendor two/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^deactivate 2 selected$/i }));
+
+    const dialog = await screen.findByRole("alertdialog");
+    expect(apiClient.delete).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: /^deactivate$/i }));
+
+    await waitFor(() => {
+      expect(apiClient.delete).toHaveBeenCalledWith("/masters/vendors/1");
+      expect(apiClient.delete).toHaveBeenCalledWith("/masters/vendors/2");
+    });
+    await waitFor(() => expect(screen.queryByText(/selected/i)).not.toBeInTheDocument());
+  });
+
+  it("reports a partial bulk-deactivate failure and keeps the failed row selected for retry", async () => {
+    (apiClient.get as any).mockResolvedValue([
+      { id: 1, code: "V1", name: "Vendor One" },
+      { id: 2, code: "V2", name: "Vendor Two" },
+    ]);
+    (apiClient.delete as any).mockImplementation((path: string) =>
+      path.endsWith("/2") ? Promise.reject(new ApiError("a record with this code already exists", 422)) : Promise.resolve(undefined),
+    );
+    renderWithClient(<MasterCrudScreen config={VENDOR_CONFIG} />);
+    await waitFor(() => expect(screen.getByText("Vendor One")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /select vendor one/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /select vendor two/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^deactivate 2 selected$/i }));
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: /^deactivate$/i }));
+
+    const summary = await screen.findByRole("alert", { name: /could not deactivate/i });
+    expect(summary).toHaveTextContent("Vendor Two");
+    expect(summary).toHaveTextContent("a record with this code already exists");
+    // The one that succeeded is no longer selected; the failed one still is, for an easy retry.
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+  });
+
+  it("clears the selection when the search filter changes, so a bulk action can't hit a hidden row", async () => {
+    (apiClient.get as any).mockResolvedValue([
+      { id: 1, code: "V1", name: "Vendor One" },
+      { id: 2, code: "V2", name: "Acme Traders" },
+    ]);
+    renderWithClient(<MasterCrudScreen config={VENDOR_CONFIG} />);
+    await waitFor(() => expect(screen.getByText("Vendor One")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /select vendor one/i }));
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/^search vendors$/i), { target: { value: "acme" } });
+    expect(screen.queryByText(/selected/i)).not.toBeInTheDocument();
+  });
 });

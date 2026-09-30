@@ -37,6 +37,7 @@ import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField as FormFieldShell } from "@/components/shared/FormField";
 import { useTableSort } from "@/components/shared/useTableSort";
 import { BulkImportExport } from "@/components/shared/BulkImportExport";
+import { bulkDeactivate, type BulkDeactivateFailure } from "../../lib/bulk-deactivate";
 
 function buildPayload(formFields: FormField[], draft: Record<string, unknown>) {
   const payload: Record<string, unknown> = {};
@@ -128,7 +129,18 @@ export function MasterCrudScreen<T extends object>({
   const [editRow, setEditRow] = useState<Row | null>(null);
   const [editDraft, setEditDraft] = useState<Record<string, unknown>>({});
   const [deactivateRow, setDeactivateRow] = useState<Row | null>(null);
-  const [search, setSearch] = useState("");
+  const [search, setSearchRaw] = useState("");
+  const [selected, setSelected] = useState<number[]>([]);
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [bulkFailures, setBulkFailures] = useState<{ row: Row; message: string }[] | null>(null);
+
+  // A filter change can hide a selected row -- clearing the selection here
+  // means a bulk action can never silently act on a row the user can no
+  // longer see (same rule AssetRegister's own bulk-move selection follows).
+  function setSearch(value: string) {
+    setSearchRaw(value);
+    setSelected([]);
+  }
 
   // Every master record carries an `id` even though T itself is not
   // constrained to `{ id: number }` — constraining T directly on the
@@ -176,6 +188,32 @@ export function MasterCrudScreen<T extends object>({
     },
   });
 
+  const bulkDeactivateMutation = useMutation({
+    mutationFn: (ids: number[]) => bulkDeactivate((id) => `/masters/${config.resource}/${id}`, ids),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ["masters", config.resource] });
+      setBulkConfirmOpen(false);
+      if (result.failed.length === 0) {
+        setSelected([]);
+        setBulkFailures(null);
+        return;
+      }
+      // The rows that succeeded drop out of the selection; the ones that
+      // failed stay selected, so retrying is one more click on the same
+      // bulk action rather than re-picking them from scratch.
+      const byId = new Map(items.map((row) => [row.id, row] as const));
+      setBulkFailures(
+        result.failed
+          .map((f: BulkDeactivateFailure) => {
+            const row = byId.get(f.id);
+            return row ? { row, message: f.message } : null;
+          })
+          .filter((f): f is { row: Row; message: string } => f !== null),
+      );
+      setSelected(result.failed.map((f: BulkDeactivateFailure) => f.id));
+    },
+  });
+
   function openCreate() {
     setCreateDraft({});
     setCreateOpen(true);
@@ -216,6 +254,16 @@ export function MasterCrudScreen<T extends object>({
     config.columns.map((c) => [String(c.key), (row: Row) => displayValue(row, c)]),
   );
   const { sortedRows, sort, toggleSort } = useTableSort(filteredItems, sortAccessors);
+
+  function toggleOne(id: number, checked: boolean) {
+    setSelected((s) => (checked ? [...s, id] : s.filter((existing) => existing !== id)));
+  }
+
+  function toggleAll(checked: boolean) {
+    setSelected(checked ? sortedRows.map((row) => row.id) : []);
+  }
+
+  const selectedRows = items.filter((row) => selected.includes(row.id));
 
   const columns: DataTableColumn<Row>[] = [
     ...config.columns.map((c) => ({
@@ -271,6 +319,38 @@ export function MasterCrudScreen<T extends object>({
         className="max-w-sm"
       />
 
+      {selected.length > 0 && (
+        <div className="flex items-center gap-3 rounded-md border bg-muted/40 px-3 py-2 text-sm">
+          <span>{selected.length} selected</span>
+          <Button variant="destructive" size="sm" onClick={() => setBulkConfirmOpen(true)}>
+            Deactivate {selected.length} selected
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setSelected([])}>
+            Clear
+          </Button>
+        </div>
+      )}
+
+      {bulkFailures && bulkFailures.length > 0 && (
+        <div role="alert" aria-label="Could not deactivate every selected row" className="flex flex-col gap-1 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-medium text-destructive">
+              Could not deactivate {bulkFailures.length}:
+            </span>
+            <Button variant="ghost" size="sm" onClick={() => setBulkFailures(null)}>
+              Dismiss
+            </Button>
+          </div>
+          <ul className="list-disc pl-5">
+            {bulkFailures.map(({ row, message }) => (
+              <li key={row.id}>
+                <span className="font-medium">{rowLabel(row as Record<string, unknown>)}</span>: {message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <DataTable<Row>
         columns={columns}
         rows={sortedRows}
@@ -281,6 +361,13 @@ export function MasterCrudScreen<T extends object>({
         onRetry={() => refetch()}
         sort={sort}
         onSortToggle={toggleSort}
+        selection={{
+          isSelected: (row) => selected.includes(row.id),
+          onToggle: (row, checked) => toggleOne(row.id, checked),
+          isAllSelected: sortedRows.length > 0 && sortedRows.every((row) => selected.includes(row.id)),
+          onToggleAll: toggleAll,
+          rowAriaLabel: (row) => `Select ${rowLabel(row as Record<string, unknown>)}`,
+        }}
         emptyState={
           search.trim() ? (
             <EmptyState icon={Inbox} title="No matches" description="Try a different search." />
@@ -395,6 +482,31 @@ export function MasterCrudScreen<T extends object>({
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               disabled={deactivateMutation.isPending}
               onClick={() => deactivateRow && deactivateMutation.mutate(deactivateRow.id)}
+            >
+              Deactivate
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={bulkConfirmOpen} onOpenChange={(open) => !open && setBulkConfirmOpen(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Deactivate {selected.length} {selected.length === 1 ? singular.toLowerCase() : config.title.toLowerCase()}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {selectedRows.map((row) => rowLabel(row as Record<string, unknown>)).join(", ")} will no longer appear in
+              lists or be available for new records. Each can be restored individually later by an administrator;
+              nothing that already references any of them is affected.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={bulkDeactivateMutation.isPending}
+              onClick={() => bulkDeactivateMutation.mutate(selected)}
             >
               Deactivate
             </AlertDialogAction>

@@ -35,6 +35,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField } from "@/components/shared/FormField";
 import { BulkImportExport } from "@/components/shared/BulkImportExport";
+import { bulkDeactivate, type BulkDeactivateFailure } from "../../lib/bulk-deactivate";
 
 const ASSET_USER_TYPES = ["EMPLOYEE", "STORE", "INSTALLED", "STOCK_POINT"] as const;
 // The Primary Owner is deliberately excluded -- it's fixed, not selectable
@@ -150,6 +151,9 @@ export function AssetUsersScreen() {
   const [draft, setDraft] = useState<AssetUserDraft>(emptyDraft);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [deactivateRow, setDeactivateRow] = useState<AssetUserRow | null>(null);
+  const [selected, setSelected] = useState<number[]>([]);
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [bulkFailures, setBulkFailures] = useState<{ row: AssetUserRow; message: string }[] | null>(null);
   // AM-24: which OTHER companies (beyond this asset_user's own home company)
   // they're granted access to -- e.g. the one PO/PI person, the one
   // labeling person, the one movement person who all need to work across
@@ -226,6 +230,32 @@ export function AssetUsersScreen() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["asset_users"] });
       setDeactivateRow(null);
+    },
+  });
+
+  const bulkDeactivateMutation = useMutation({
+    mutationFn: (ids: number[]) => bulkDeactivate((id) => `/asset-users/${id}`, ids),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ["asset_users"] });
+      setBulkConfirmOpen(false);
+      if (result.failed.length === 0) {
+        setSelected([]);
+        setBulkFailures(null);
+        return;
+      }
+      // The rows that succeeded drop out of the selection; the ones that
+      // failed (e.g. the last-Primary-Owner guard) stay selected, so
+      // retrying is one more click rather than re-picking them from scratch.
+      const byId = new Map(visibleAssetUsers.map((row) => [row.id, row] as const));
+      setBulkFailures(
+        result.failed
+          .map((f: BulkDeactivateFailure) => {
+            const row = byId.get(f.id);
+            return row ? { row, message: f.message } : null;
+          })
+          .filter((f): f is { row: AssetUserRow; message: string } => f !== null),
+      );
+      setSelected(result.failed.map((f: BulkDeactivateFailure) => f.id));
     },
   });
 
@@ -367,6 +397,16 @@ export function AssetUsersScreen() {
     return locations.map((l) => ({ location: l, covered: coveredIds.has(l.id) }));
   }, [activePointConfig, draft.asset_user_type, draft.company_id, asset_users, locations]);
 
+  function toggleOne(id: number, checked: boolean) {
+    setSelected((s) => (checked ? [...s, id] : s.filter((existing) => existing !== id)));
+  }
+
+  function toggleAll(checked: boolean) {
+    setSelected(checked ? visibleAssetUsers.map((h) => h.id) : []);
+  }
+
+  const selectedRows = visibleAssetUsers.filter((h) => selected.includes(h.id));
+
   const columns: DataTableColumn<AssetUserRow>[] = [
     { key: "code", header: "Code", cell: (h) => h.code },
     { key: "name", header: "Name", cell: (h) => h.name },
@@ -426,6 +466,40 @@ export function AssetUsersScreen() {
         }
       />
 
+      {selected.length > 0 && (
+        <div className="flex items-center gap-3 rounded-md border bg-muted/40 px-3 py-2 text-sm">
+          <span>{selected.length} selected</span>
+          <Button variant="destructive" size="sm" onClick={() => setBulkConfirmOpen(true)}>
+            Deactivate {selected.length} selected
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setSelected([])}>
+            Clear
+          </Button>
+        </div>
+      )}
+
+      {bulkFailures && bulkFailures.length > 0 && (
+        <div
+          role="alert"
+          aria-label="Could not deactivate every selected row"
+          className="flex flex-col gap-1 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-medium text-destructive">Could not deactivate {bulkFailures.length}:</span>
+            <Button variant="ghost" size="sm" onClick={() => setBulkFailures(null)}>
+              Dismiss
+            </Button>
+          </div>
+          <ul className="list-disc pl-5">
+            {bulkFailures.map(({ row, message }) => (
+              <li key={row.id}>
+                <span className="font-medium">{row.name}</span>: {message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <DataTable<AssetUserRow>
         columns={columns}
         rows={visibleAssetUsers}
@@ -434,6 +508,13 @@ export function AssetUsersScreen() {
         isError={isError}
         errorMessage={error instanceof Error ? error.message : undefined}
         onRetry={() => refetch()}
+        selection={{
+          isSelected: (h) => selected.includes(h.id),
+          onToggle: (h, checked) => toggleOne(h.id, checked),
+          isAllSelected: visibleAssetUsers.length > 0 && visibleAssetUsers.every((h) => selected.includes(h.id)),
+          onToggleAll: toggleAll,
+          rowAriaLabel: (h) => `Select ${h.name}`,
+        }}
         emptyState={
           <EmptyState
             icon={Users}
@@ -725,6 +806,29 @@ export function AssetUsersScreen() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               disabled={deactivateMutation.isPending}
               onClick={() => deactivateRow && deactivateMutation.mutate(deactivateRow.id)}
+            >
+              Deactivate
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={bulkConfirmOpen} onOpenChange={(open) => !open && setBulkConfirmOpen(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Deactivate {selected.length} asset user{selected.length === 1 ? "" : "s"}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {selectedRows.map((h) => h.name).join(", ")} will no longer be able to sign in or be assigned assets.
+              Assets already in their custody and their history are not affected. Each can be reversed individually
+              later by an administrator.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={bulkDeactivateMutation.isPending}
+              onClick={() => bulkDeactivateMutation.mutate(selected)}
             >
               Deactivate
             </AlertDialogAction>

@@ -2,9 +2,15 @@
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AssetUsersScreen } from "./AssetUsersScreen";
-import { apiClient } from "../../lib/api-client";
+import { apiClient, ApiError } from "../../lib/api-client";
 
-vi.mock("../../lib/api-client");
+// Keeps the real ApiError class (so `instanceof ApiError` checks inside the
+// bulk-deactivate helper work against the same class this test constructs)
+// while still mocking apiClient's own methods -- see MasterCrudScreen.test.tsx.
+vi.mock("../../lib/api-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/api-client")>();
+  return { ...actual, apiClient: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() } };
+});
 
 function renderWithClient(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -16,6 +22,22 @@ const ASSET_USER: Record<string, unknown> = {
   company_id: 1,
   code: "CS6872",
   name: "Ankur",
+  asset_user_type: "EMPLOYEE",
+  location_id: 1,
+  department_id: 1,
+  email: null,
+  phone: null,
+  role: "SELF_SERVICE",
+  login_enabled: true,
+  is_primary_owner: false,
+  is_active: true,
+};
+
+const ASSET_USER_2: Record<string, unknown> = {
+  id: 2,
+  company_id: 1,
+  code: "CS9001",
+  name: "Priya",
   asset_user_type: "EMPLOYEE",
   location_id: 1,
   department_id: 1,
@@ -183,6 +205,48 @@ describe("AssetUsersScreen", () => {
 
     fireEvent.click(within(dialog).getByRole("button", { name: /^deactivate$/i }));
     await waitFor(() => expect(apiClient.delete).toHaveBeenCalledWith("/asset-users/1"));
+  });
+
+  it("bulk-deactivates every selected asset user after one confirmation, then clears the selection", async () => {
+    mockGets([ASSET_USER, ASSET_USER_2]);
+    (apiClient.delete as any).mockResolvedValue(undefined);
+
+    renderWithClient(<AssetUsersScreen />);
+    await waitFor(() => expect(screen.getByText("Ankur")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /select ankur/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /select priya/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^deactivate 2 selected$/i }));
+
+    const dialog = await screen.findByRole("alertdialog");
+    expect(apiClient.delete).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: /^deactivate$/i }));
+
+    await waitFor(() => {
+      expect(apiClient.delete).toHaveBeenCalledWith("/asset-users/1");
+      expect(apiClient.delete).toHaveBeenCalledWith("/asset-users/2");
+    });
+    await waitFor(() => expect(screen.queryByText(/selected/i)).not.toBeInTheDocument());
+  });
+
+  it("reports a partial bulk-deactivate failure (e.g. the last Primary Owner guard) and keeps the failed row selected", async () => {
+    mockGets([ASSET_USER, ASSET_USER_2]);
+    (apiClient.delete as any).mockImplementation((path: string) =>
+      path.endsWith("/2") ? Promise.reject(new ApiError("cannot remove the last Primary Owner", 422)) : Promise.resolve(undefined),
+    );
+
+    renderWithClient(<AssetUsersScreen />);
+    await waitFor(() => expect(screen.getByText("Ankur")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /select ankur/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /select priya/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^deactivate 2 selected$/i }));
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: /^deactivate$/i }));
+
+    const summary = await screen.findByRole("alert", { name: /could not deactivate/i });
+    expect(summary).toHaveTextContent("Priya");
+    expect(summary).toHaveTextContent("cannot remove the last Primary Owner");
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
   });
 
   it("AM-08: blocks Save with Location left blank -- never submits the old 0 sentinel", async () => {
