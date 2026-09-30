@@ -325,4 +325,5 @@ export async function fillAddAssetProcurementFields(page: Page, vendorName: stri
   await page.getByLabel("PI Number", { exact: true }).fill("E2E-PI-1");
   await page.getByLabel("PI Date", { exact: true }).fill("2025-06-03");
   await page.getByLabel("Serial Number", { exact: true }).fill(`E2E-SN-${ts}`);
+  await page.getByLabel("Barcode", { exact: true }).fill(`E2E-BC-${ts}`);
 }
