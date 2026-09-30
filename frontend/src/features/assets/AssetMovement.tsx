@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import { actionsFor } from "./actionRules";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -86,7 +87,10 @@ export function AssetMovement() {
   const [toAssetUserId, setToAssetUserId] = useState("");
   const [remarks, setRemarks] = useState("");
   const [scanValue, setScanValue] = useState("");
+  const [qty, setQty] = useState("1");
+  const [onlyInStock, setOnlyInStock] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [bulkSummary, setBulkSummary] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<AssetSearchResult[] | null>(null);
   const [queue, setQueue] = useState<QueuedAsset[]>([]);
   const [queueSearch, setQueueSearch] = useState("");
@@ -110,12 +114,55 @@ export function AssetMovement() {
     setQueue((q) => q.filter((a) => a.id !== id));
   }
 
+  interface SearchVars {
+    value: string;
+    requestedQty: number;
+    status?: string;
+  }
+
   const searchMutation = useMutation({
-    mutationFn: (value: string) =>
-      apiClient.get<{ items: AssetSearchResult[]; total: number }>(`/assets?q=${encodeURIComponent(value)}&limit=5`),
-    onSuccess: (result, value) => {
+    mutationFn: (vars: SearchVars) => {
+      // A requested Qty > 1 means "find me up to that many matches" (e.g.
+      // typing a shared description/barcode for a batch of identical,
+      // serial-less items) -- the ordinary single-scan case still only
+      // ever needs enough to detect "more than one match", hence 5.
+      const fetchLimit = vars.requestedQty > 1 ? Math.min(Math.max(vars.requestedQty, 5), 500) : 5;
+      const statusParam = vars.status ? `&status=${vars.status}` : "";
+      return apiClient.get<{ items: AssetSearchResult[]; total: number }>(
+        `/assets?q=${encodeURIComponent(vars.value)}&limit=${fetchLimit}${statusParam}`,
+      );
+    },
+    onSuccess: (result, vars) => {
+      if (vars.requestedQty > 1) {
+        if (result.items.length === 0) {
+          setScanError(`No asset found matching "${vars.value}".`);
+          setBulkSummary(null);
+          return;
+        }
+        // Never re-add something already queued from an earlier scan --
+        // dedup BEFORE capping to the requested Qty, so a partial overlap
+        // with the existing queue never silently shrinks how many genuinely
+        // new assets get added.
+        const queuedIds = new Set(queue.map((a) => a.id));
+        const eligibleNew = result.items.filter((a) => isEligible(a.status, eventType) && !queuedIds.has(a.id));
+        const toAdd = eligibleNew.slice(0, vars.requestedQty);
+        if (toAdd.length > 0) {
+          setQueue((q) => [...q, ...toAdd.map((a) => ({ ...a, eligible: true }))]);
+        }
+        setBulkSummary(
+          toAdd.length < vars.requestedQty
+            ? `Added ${toAdd.length} of ${vars.requestedQty} requested -- only ${toAdd.length} eligible match${toAdd.length === 1 ? "" : "es"} found for "${vars.value}".`
+            : `Added ${toAdd.length} of ${vars.requestedQty} requested.`,
+        );
+        setScanValue("");
+        setScanError(null);
+        setCandidates(null);
+        return;
+      }
+
+      setBulkSummary(null);
       if (result.items.length === 0) {
-        setScanError(`No asset found matching "${value}".`);
+        setScanError(`No asset found matching "${vars.value}".`);
         setCandidates(null);
         return;
       }
@@ -135,7 +182,12 @@ export function AssetMovement() {
     const value = scanValue.trim();
     if (!value) return;
     setCandidates(null);
-    searchMutation.mutate(value);
+    setBulkSummary(null);
+    searchMutation.mutate({
+      value,
+      requestedQty: Math.max(1, Number(qty) || 1),
+      status: onlyInStock ? "IN_STOCK" : undefined,
+    });
   }
 
   // Re-checks every already-queued asset's eligibility whenever the chosen
@@ -244,30 +296,53 @@ export function AssetMovement() {
         <Textarea id="movement-remarks" aria-label="Remarks" value={remarks} onChange={(e) => setRemarks(e.target.value)} rows={2} />
       </FormField>
 
-      <FormField
-        htmlFor="movement-scan"
-        label="Scan or type Serial Number / Asset Code"
-        helperText="Press Enter after each one -- a barcode scanner does this automatically."
-      >
-        <div className="flex gap-2">
+      <label className="flex items-center gap-2 text-sm">
+        <Checkbox
+          aria-label="Only assets currently in stock"
+          checked={onlyInStock}
+          onCheckedChange={(checked) => setOnlyInStock(checked === true)}
+        />
+        Only assets currently in stock
+      </label>
+
+      <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+        <FormField
+          htmlFor="movement-scan"
+          label="Scan or type Serial Number, Asset Code, or Description"
+          helperText="Press Enter after each one -- a barcode scanner does this automatically."
+        >
+          <div className="flex gap-2">
+            <Input
+              id="movement-scan" aria-label="Scan or type Serial Number, Asset Code, or Description" value={scanValue}
+              onChange={(e) => setScanValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleScanSubmit();
+                }
+              }}
+              autoFocus
+            />
+            <Button type="button" variant="outline" onClick={handleScanSubmit} disabled={searchMutation.isPending}>
+              <ScanBarcode className="h-4 w-4" aria-hidden="true" />
+              Add
+            </Button>
+          </div>
+        </FormField>
+        <FormField
+          htmlFor="movement-qty"
+          label="Qty"
+          helperText="For a batch of identical, serial-less items (keyboards, cables…): search by description/barcode above, and this many eligible matches get queued in one go."
+        >
           <Input
-            id="movement-scan" aria-label="Scan or type Serial Number / Asset Code" value={scanValue}
-            onChange={(e) => setScanValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                handleScanSubmit();
-              }
-            }}
-            autoFocus
+            id="movement-qty" aria-label="Qty" type="number" min={1} step={1} value={qty}
+            onChange={(e) => setQty(e.target.value)}
+            className="w-20"
           />
-          <Button type="button" variant="outline" onClick={handleScanSubmit} disabled={searchMutation.isPending}>
-            <ScanBarcode className="h-4 w-4" aria-hidden="true" />
-            Add
-          </Button>
-        </div>
-      </FormField>
+        </FormField>
+      </div>
       {scanError && <p className="text-sm text-destructive" role="alert">{scanError}</p>}
+      {bulkSummary && <p className="text-sm text-muted-foreground" role="status">{bulkSummary}</p>}
       {candidates && (
         <div className="rounded-md border p-2">
           <p className="mb-1 text-xs text-muted-foreground">More than one match -- pick the right one:</p>

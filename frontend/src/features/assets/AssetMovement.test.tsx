@@ -138,4 +138,76 @@ describe("AssetMovement", () => {
     );
     expect(await screen.findByTestId("bulk-action-done-count")).toHaveTextContent("1");
   });
+
+  it("Qty > 1 queues that many eligible matches in one go, without a pick-one-at-a-time list", async () => {
+    const keyboards = Array.from({ length: 5 }, (_, i) => ({
+      id: 100 + i, asset_code: `FA/HO01/IT/KBD/CK_${i}`, serial_number: "N/A",
+      description: "Generic Keyboard", status: "IN_STOCK", current_asset_user_name: "IT Stock-HO",
+    }));
+    mockGets({ searchResults: { keyboard: keyboards } });
+    renderMovement();
+
+    fireEvent.change(screen.getByLabelText(/^qty$/i), { target: { value: "3" } });
+    fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "keyboard" } });
+    fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
+
+    await waitFor(() => expect(screen.getByText(/Queued \(3\)/)).toBeInTheDocument());
+    expect(screen.getByText(/added 3 of 3 requested/i)).toBeInTheDocument();
+    expect(screen.queryByText(/more than one match/i)).not.toBeInTheDocument();
+  });
+
+  it("Qty > 1 reports a shortfall when fewer eligible matches exist than requested", async () => {
+    const keyboards = Array.from({ length: 2 }, (_, i) => ({
+      id: 200 + i, asset_code: `FA/HO01/IT/KBD/CK_${i}`, serial_number: "N/A",
+      description: "Generic Keyboard", status: "IN_STOCK", current_asset_user_name: "IT Stock-HO",
+    }));
+    mockGets({ searchResults: { keyboard: keyboards } });
+    renderMovement();
+
+    fireEvent.change(screen.getByLabelText(/^qty$/i), { target: { value: "10" } });
+    fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "keyboard" } });
+    fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
+
+    await waitFor(() => expect(screen.getByText(/Queued \(2\)/)).toBeInTheDocument());
+    expect(screen.getByText(/added 2 of 10 requested/i)).toBeInTheDocument();
+  });
+
+  it("Qty > 1 never re-queues an asset already added from an earlier scan", async () => {
+    const keyboards = Array.from({ length: 3 }, (_, i) => ({
+      id: 300 + i, asset_code: `FA/HO01/IT/KBD/CK_${i}`, serial_number: "N/A",
+      description: "Generic Keyboard", status: "IN_STOCK", current_asset_user_name: "IT Stock-HO",
+    }));
+    mockGets({ searchResults: { keyboard: keyboards } });
+    renderMovement();
+
+    fireEvent.change(screen.getByLabelText(/^qty$/i), { target: { value: "3" } });
+    fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "keyboard" } });
+    fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
+    await waitFor(() => expect(screen.getByText(/Queued \(3\)/)).toBeInTheDocument());
+
+    // Same 3 already queued -- searching again for the same 3 finds nothing new.
+    fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "keyboard" } });
+    fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
+
+    await waitFor(() => expect(screen.getByText(/added 0 of 3 requested/i)).toBeInTheDocument());
+    expect(screen.getByText(/Queued \(3\)/)).toBeInTheDocument();
+  });
+
+  it("checking \"Only assets currently in stock\" adds status=IN_STOCK to the search", async () => {
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (path.startsWith("/asset-users")) return Promise.resolve([{ id: 9, name: "IT Stock-HO" }]);
+      if (path.startsWith("/assets?q=")) {
+        expect(path).toContain("status=IN_STOCK");
+        return Promise.resolve({ items: [LAPTOP], total: 1 });
+      }
+      return Promise.resolve([]);
+    });
+    renderMovement();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /only assets currently in stock/i }));
+    fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "SN-001" } });
+    fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
+
+    await waitFor(() => expect(screen.getByText(/Queued \(1\)/)).toBeInTheDocument());
+  });
 });
