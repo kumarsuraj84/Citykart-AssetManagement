@@ -1,8 +1,10 @@
 import logging
 import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse
 from app.core.config import DEFAULT_DEV_JWT_SECRET, settings
 from app.auth.router import router as auth_router
 from app.asset_users.router import router as asset_users_router
@@ -87,3 +89,61 @@ app.include_router(purchase_orders_router)
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+# Single-port production hosting (no separate nginx container): serve the
+# built frontend from this same FastAPI process, replicating frontend/nginx.conf's
+# behavior (AM-10 security headers on every response, `Cache-Control: no-store`
+# on API responses so they're never cached, `no-cache` on the SPA shell so a
+# stale index.html never references deleted hashed asset filenames, and a
+# `try_files $uri /index.html`-style fallback for client-side routes) instead
+# of reimplementing it as a separate nginx config. Dev/Docker leaves
+# frontend_dist_dir unset, so `_frontend_dist_dir()` always returns None there
+# and every request below 404s exactly as if these routes didn't exist.
+_FRONTEND_ROOT_FILES = {"favicon.svg", "favicon.webp", "icons.svg", "logo.png"}
+
+
+def _frontend_dist_dir() -> Path | None:
+    if not settings.frontend_dist_dir:
+        return None
+    candidate = Path(settings.frontend_dist_dir)
+    return candidate if candidate.is_dir() else None
+
+
+@app.middleware("http")
+async def _security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.get("/assets/{file_path:path}")
+async def _serve_frontend_asset(file_path: str):
+    # Deliberately 404s instead of falling back to index.html like nginx's
+    # single `try_files $uri /index.html` catch-all technically would for an
+    # unmatched /assets/ path -- a missing hashed JS/CSS file should surface
+    # as a clear 404, not silently return HTML that breaks the importing
+    # module with a confusing "Unexpected token '<'".
+    dist_dir = _frontend_dist_dir()
+    if dist_dir is None:
+        raise HTTPException(status_code=404)
+    candidate = dist_dir / "assets" / file_path
+    if not candidate.is_file():
+        raise HTTPException(status_code=404)
+    return FileResponse(candidate)
+
+
+@app.get("/{full_path:path}")
+async def _serve_frontend_shell(full_path: str):
+    dist_dir = _frontend_dist_dir()
+    if dist_dir is None:
+        raise HTTPException(status_code=404)
+    if full_path in _FRONTEND_ROOT_FILES:
+        candidate = dist_dir / full_path
+        if candidate.is_file():
+            return FileResponse(candidate)
+    return FileResponse(dist_dir / "index.html", headers={"Cache-Control": "no-cache"})

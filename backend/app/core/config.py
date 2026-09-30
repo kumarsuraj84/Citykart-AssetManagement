@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     # which would silently break /api/auth/refresh. A real HTTPS deployment
     # should set COOKIE_SECURE=true.
     cookie_secure: bool = False
+    # Set only in the single-port production deployment (no separate nginx):
+    # the built frontend's `dist/` directory. When unset (dev/Docker, where
+    # nginx serves the frontend on its own container), main.py's frontend
+    # routes stay registered but every request falls through to a 404,
+    # exactly as if they didn't exist.
+    frontend_dist_dir: str | None = None
     model_config = SettingsConfigDict(env_file=".env")
 
 
