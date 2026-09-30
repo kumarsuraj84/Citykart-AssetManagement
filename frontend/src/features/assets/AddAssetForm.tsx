@@ -68,6 +68,7 @@ interface FormState {
   subcategoryId: string;
   costCenterId: string;
   description: string;
+  barcode: string;
   legacyAssetCode: string;
   brandId: string;
   model: string;
@@ -92,6 +93,7 @@ const emptyForm: FormState = {
   subcategoryId: "",
   costCenterId: "",
   description: "",
+  barcode: "",
   legacyAssetCode: "",
   brandId: "",
   model: "",
@@ -252,6 +254,7 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
   const canSave =
     selectedCompanyId != null &&
     form.description.trim().length > 0 &&
+    form.barcode.trim().length > 0 &&
     form.categoryId !== "" &&
     form.subcategoryId !== "" &&
     form.costCenterId !== "" &&
@@ -282,6 +285,7 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
         category_id: Number(form.categoryId),
         subcategory_id: Number(form.subcategoryId),
         description: form.description,
+        barcode: form.barcode || null,
         legacy_asset_code: form.legacyAssetCode || null,
         brand_id: form.brandId ? Number(form.brandId) : null,
         model: form.model || null,
@@ -435,6 +439,10 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
 
           <FormField htmlFor="description" label="Description" required className="sm:col-span-2">
             <Input id="description" aria-label="Description" value={form.description} onChange={(e) => setField("description", e.target.value)} />
+          </FormField>
+
+          <FormField htmlFor="barcode" label="Barcode" required helperText="CityKart's own internal tag — may repeat across assets.">
+            <Input id="barcode" aria-label="Barcode" value={form.barcode} onChange={(e) => setField("barcode", e.target.value)} />
           </FormField>
 
           <FormField htmlFor="brand" label="Brand" helperText="Optional.">

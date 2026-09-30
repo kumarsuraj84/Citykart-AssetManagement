@@ -33,6 +33,10 @@ class AssetCreateIn(BaseModel):
     # app.assets.service.check_serial_number_unique and DECISIONS.md.
     serial_number: str
     description: str
+    # CityKart's own internal inventory tag -- not the manufacturer serial,
+    # and may legitimately repeat across assets (see Asset.barcode's own
+    # docstring); same field the PO "Add Line" flow already collects.
+    barcode: str | None = None
     vendor_id: int
     po_number: str | None = None
     po_date: date | None = None

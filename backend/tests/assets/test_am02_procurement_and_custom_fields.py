@@ -71,6 +71,7 @@ def _asset_body(ids, **overrides):
         "invoice_number": "INV-2001", "invoice_date": "2025-05-25",
         "pi_number": "PI-3001", "pi_date": "2025-05-22",
         "brand_id": ids["brand"], "model": "Latitude 5440", "serial_number": "SN-ABC123",
+        "barcode": "BC-9001",
         "purchase_cost": 60000, "tax_percent": 18, "warranty_years": 3,
     }
     body.update(overrides)
@@ -96,6 +97,7 @@ class TestProcurementFieldsRoundTrip:
         assert got["brand_name"] == "Dell"
         assert got["model"] == "Latitude 5440"
         assert got["serial_number"] == "SN-ABC123"
+        assert got["barcode"] == "BC-9001"
         assert got["warranty_years"] == 3
         # AM-18: warranty_upto is now derived from purchase_date (which
         # equals invoice_date, 2025-05-25) + warranty_years - 1 day.
@@ -112,6 +114,7 @@ class TestProcurementFieldsRoundTrip:
         # Also present on the register listing, not just single-asset GET.
         listed = (await client.get("/api/assets", headers=headers)).json()
         assert listed["items"][0]["pi_number"] == "PI-3001"
+        assert listed["items"][0]["barcode"] == "BC-9001"
 
     async def test_descriptive_fields_are_optional_the_procurement_identity_fields_are_not(self, client):
         """Category/Sub-Category/Vendor/Serial Number are mandatory on direct

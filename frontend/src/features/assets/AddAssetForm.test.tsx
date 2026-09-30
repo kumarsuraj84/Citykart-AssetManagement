@@ -68,6 +68,7 @@ async function fillMandatoryProcurementFields() {
   fireEvent.change(screen.getByLabelText(/pi number/i), { target: { value: "PI-1" } });
   fireEvent.change(screen.getByLabelText(/pi date/i), { target: { value: "2025-06-03" } });
   fireEvent.change(screen.getByLabelText(/^serial number\*?$/i), { target: { value: "SN-1" } });
+  fireEvent.change(screen.getByLabelText(/^barcode$/i), { target: { value: "BC-1" } });
 }
 
 beforeEach(() => {
@@ -105,6 +106,7 @@ describe("AddAssetForm", () => {
     fireEvent.change(screen.getByLabelText(/pi date/i), { target: { value: "2025-06-03" } });
     fireEvent.change(screen.getByLabelText(/warranty years/i), { target: { value: "3" } });
     fireEvent.change(screen.getByLabelText(/^serial number\*?$/i), { target: { value: "SN-1" } });
+    fireEvent.change(screen.getByLabelText(/^barcode$/i), { target: { value: "BC-1" } });
 
     await waitFor(() => expect(screen.getByRole("button", { name: /save/i })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
@@ -116,7 +118,7 @@ describe("AddAssetForm", () => {
           vendor_id: 7, brand_id: 9, po_number: "PO-1", po_date: "2025-06-01",
           invoice_number: "INV-1", invoice_date: "2025-06-02",
           pi_number: "PI-1", pi_date: "2025-06-03", warranty_years: 3,
-          serial_number: "SN-1",
+          serial_number: "SN-1", barcode: "BC-1",
         }),
       ),
     );
@@ -338,6 +340,7 @@ describe("AddAssetForm", () => {
 
     fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "No Paperwork Yet" } });
     fireEvent.change(screen.getByLabelText(/^serial number\*?$/i), { target: { value: "SN-1" } });
+    fireEvent.change(screen.getByLabelText(/^barcode$/i), { target: { value: "BC-1" } });
     await pickSelectOption(/^category$/i, "IT Equipment");
     await pickSelectOption(/sub-category/i, "Laptop");
     await pickSelectOption(/^vendor$/i, "Acme Traders");
