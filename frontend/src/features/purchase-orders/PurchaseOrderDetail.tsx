@@ -1,7 +1,8 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { apiClient } from "../../lib/api-client";
+import { useAuthStore } from "../../lib/auth-store";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -115,6 +116,9 @@ function ColumnSearchHeader({ label, value, onChange, scope }: { label: string; 
 
 export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
+  const isPrimaryOwner = useAuthStore((s) => s.isPrimaryOwner);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const poQ = useQuery({
     queryKey: ["purchase-order", poId],
@@ -160,6 +164,10 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   // cancelled line's own total_cost (matches the table's own "PO Value" column).
   const pendingCount = lines.filter((l) => l.status === "PENDING").length;
   const deliveredCount = lines.filter((l) => l.status === "DELIVERED").length;
+  // Unfiltered (unlike deliveredLines below, which only reflects whatever
+  // the column search boxes currently narrow to) -- deleting the PO removes
+  // every one of these, so the confirmation must name every one of them.
+  const allDeliveredLines = useMemo(() => lines.filter((l) => l.status === "DELIVERED"), [lines]);
   const totalValue = lines
     .filter((l) => l.status !== "CANCELLED")
     .reduce((sum, l) => sum + (l.total_cost ?? 0), 0);
@@ -284,6 +292,14 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const cancelMutation = useMutation({
     mutationFn: (lineId: number) => apiClient.post(`/purchase-orders/lines/${lineId}/cancel`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["purchase-order", poId, "lines"] }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => apiClient.delete<{ cancelled_lines: number; deleted_assets: number }>(`/purchase-orders/${poId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["purchase-orders"] });
+      navigate({ to: "/purchase-orders" });
+    },
   });
 
   // --- Lines tables: Pending/Delivered/Cancelled are shown as three
@@ -489,6 +505,9 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
           <>
             <Button asChild variant="outline">
               <Link to="/purchase-orders">Close</Link>
+            </Button>
+            <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+              Delete PO
             </Button>
             <Button onClick={openDeliver} disabled={selected.length === 0}>
               Mark {selected.length > 0 ? selected.length : ""} Delivery Done
@@ -851,6 +870,76 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
               Confirm
             </AsyncButton>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteOpen} onOpenChange={(open) => { setDeleteOpen(open); if (!open) deleteMutation.reset(); }}>
+        <DialogContent>
+          {allDeliveredLines.length > 0 && !isPrimaryOwner ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>This purchase order already has delivered items</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground">
+                {allDeliveredLines.length} item{allDeliveredLines.length === 1 ? "" : "s"} under this PO
+                {allDeliveredLines.length === 1 ? " has" : " have"} already been delivered into the Fixed Asset
+                Register. Only the Primary Owner can delete a purchase order once items have been delivered.
+              </p>
+              <DialogFooter>
+                <Button onClick={() => setDeleteOpen(false)}>Close</Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>Delete Purchase Order {poQ.data?.po_number}?</DialogTitle>
+              </DialogHeader>
+              <div className="flex flex-col gap-2 text-sm">
+                {pendingCount > 0 && (
+                  <p>{pendingCount} pending line{pendingCount === 1 ? "" : "s"} will be cancelled.</p>
+                )}
+                {allDeliveredLines.length > 0 ? (
+                  <>
+                    <p className="font-medium text-destructive">
+                      This will also permanently remove {allDeliveredLines.length} asset
+                      {allDeliveredLines.length === 1 ? "" : "s"} already in the Fixed Asset Register:
+                    </p>
+                    <ul className="list-disc pl-5">
+                      {allDeliveredLines.map((l) => (
+                        <li key={l.id}>
+                          {l.description} (Barcode: {l.barcode ?? "—"}, Serial: {l.serial_number ?? "—"})
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-muted-foreground">
+                      This is refused if any of these assets have already moved or been processed beyond their
+                      original delivery -- they would need to be handled individually first.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-muted-foreground">Nothing has been delivered under this PO yet -- no assets are affected.</p>
+                )}
+              </div>
+              {deleteMutation.isError && (
+                <p className="text-sm text-destructive" role="alert">
+                  {deleteMutation.error instanceof Error ? deleteMutation.error.message : "Failed to delete this purchase order."}
+                </p>
+              )}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDeleteOpen(false)}>
+                  Cancel
+                </Button>
+                <AsyncButton
+                  onClick={() => deleteMutation.mutate()}
+                  pending={deleteMutation.isPending}
+                  pendingLabel="Deleting…"
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Delete
+                </AsyncButton>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>

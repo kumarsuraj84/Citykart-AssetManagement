@@ -1,10 +1,11 @@
 from datetime import date, datetime, timezone
 from uuid import uuid4
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.assets.models import Asset, AssetFieldChange
 from app.assets.service import compute_tax, procure_assets
 from app.asset_users.models import AssetUser
+from app.lifecycle.models import AssetEvent
 from app.masters.models import AssetCategory, AssetSubcategory, CostCenter
 from app.purchase_orders.models import PendingAsset, PurchaseOrder
 
@@ -150,6 +151,59 @@ async def cancel_pending_asset_line(session: AsyncSession, line: PendingAsset, a
     line.updated_by = actor.id
     await session.flush()
     return line
+
+
+async def delete_purchase_order(
+    session: AsyncSession, po: PurchaseOrder, lines: list[PendingAsset], actor: AssetUser,
+) -> dict:
+    """Soft-deletes a wrongly-created PO: every still-PENDING line is
+    cancelled, and the PO itself is deactivated. A DELIVERED line's own row
+    is never touched -- PendingAsset is "frozen and kept as the
+    traceability record" once delivered (see the model's own docstring) --
+    but the real Asset it produced is soft-deleted too, using the exact
+    same rule app.assets.router.delete_asset_entry_mistake already enforces
+    for a single asset: only while that asset still has just its original
+    PROCURED event. If ANY delivered asset has since moved/been repaired/
+    disposed, that history is real, so the WHOLE deletion is refused (never
+    a partial one) and the blocking asset(s) are named in the error, so the
+    caller can go handle them individually first. The router is
+    responsible for the actual authorization split (an ordinary
+    WRITE_ROLES actor may only reach here when no line has been delivered
+    yet; once one has, only the Primary Owner may)."""
+    asset_ids = [line.delivered_asset_id for line in lines if line.delivered_asset_id is not None]
+    assets: list[Asset] = []
+    if asset_ids:
+        assets = (await session.execute(select(Asset).where(Asset.id.in_(asset_ids)))).scalars().all()
+        event_counts = dict((await session.execute(
+            select(AssetEvent.asset_id, func.count())
+            .where(AssetEvent.asset_id.in_(asset_ids))
+            .group_by(AssetEvent.asset_id)
+        )).all())
+        moved = [a for a in assets if event_counts.get(a.id, 0) > 1]
+        if moved:
+            codes = ", ".join(a.asset_code for a in moved)
+            raise ValueError(
+                f"cannot delete: {len(moved)} delivered asset(s) have already moved beyond their original "
+                f"delivery and must be handled individually first ({codes})"
+            )
+
+    cancelled = 0
+    for line in lines:
+        if line.status == "PENDING":
+            line.status = "CANCELLED"
+            line.updated_by = actor.id
+            cancelled += 1
+
+    now = datetime.now(timezone.utc)
+    for asset in assets:
+        asset.deleted_at = now
+        asset.updated_by = actor.id
+
+    po.is_active = False
+    po.deleted_at = now
+    po.updated_by = actor.id
+    await session.flush()
+    return {"cancelled_lines": cancelled, "deleted_assets": len(assets)}
 
 
 async def deliver_pending_assets(

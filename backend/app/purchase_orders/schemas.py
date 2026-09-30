@@ -119,3 +119,8 @@ class RecordPiOut(BaseModel):
     invoice_number: str
     updated: list[str]
     skipped: list[str]
+
+
+class PurchaseOrderDeleteOut(BaseModel):
+    cancelled_lines: int
+    deleted_assets: int

@@ -6,11 +6,11 @@ from app.core.deps import WRITE_ROLES, ensure_company_in_scope, require_role, sc
 from app.purchase_orders.models import PurchaseOrder, PendingAsset
 from app.purchase_orders.schemas import (
     DeliveryDoneIn, PendingAssetLineIn, PendingAssetLineUpdateIn, PendingAssetOut,
-    PurchaseOrderCreateIn, PurchaseOrderOut, RecordPiIn, RecordPiOut,
+    PurchaseOrderCreateIn, PurchaseOrderDeleteOut, PurchaseOrderOut, RecordPiIn, RecordPiOut,
 )
 from app.purchase_orders.service import (
     add_pending_asset_line, cancel_pending_asset_line, compute_pi_status, create_purchase_order,
-    deliver_pending_assets, record_pi_for_invoice, update_pending_asset_line,
+    delete_purchase_order, deliver_pending_assets, record_pi_for_invoice, update_pending_asset_line,
 )
 
 router = APIRouter(prefix="/api/purchase-orders", tags=["purchase-orders"])
@@ -162,5 +162,35 @@ async def record_pi(
     )
     if not result["updated"] and not result["skipped"]:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"no delivered assets found for invoice {body.invoice_number!r} on this purchase order")
+    await session.commit()
+    return result
+
+
+@router.delete("/{po_id}", response_model=PurchaseOrderDeleteOut)
+async def delete_po(
+    po_id: int, session: AsyncSession = Depends(get_session),
+    actor=Depends(require_role(*WRITE_ROLES)),
+):
+    """Deletes a wrongly-created PO -- an ordinary WRITE_ROLES actor may do
+    this only while every line is still PENDING/CANCELLED; the moment even
+    one line has been delivered (a real Asset now exists in the Fixed
+    Asset Register), only the Primary Owner may delete it, since doing so
+    also removes those delivered assets (see delete_purchase_order)."""
+    po = await _get_scoped_po(po_id, session, actor)
+    if not po.is_active:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "purchase order not found")
+    lines = (await session.execute(
+        select(PendingAsset).where(PendingAsset.purchase_order_id == po_id)
+    )).scalars().all()
+    if any(line.status == "DELIVERED" for line in lines) and not actor.is_primary_owner:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Only the Primary Owner may delete a purchase order that already has delivered items",
+        )
+    try:
+        result = await delete_purchase_order(session, po, lines, actor)
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc))
     await session.commit()
     return result
