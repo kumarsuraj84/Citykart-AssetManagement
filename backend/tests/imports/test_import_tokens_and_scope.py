@@ -93,7 +93,9 @@ async def test_import_fills_company_location_and_date_tokens(client):
 
     resp = await _post(client, "/api/imports/assets/commit", _xlsx([_row()]), headers)
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"imported": 1, "updated": None, "errors": []}
+    assert resp.json() == {
+        "imported": 1, "updated": None, "pos_created": None, "lines_created": None, "moved": None, "errors": [],
+    }
     # location.code comes from the row's resolved asset_user's location.
     assert await _asset_codes() == ["IMA/IMA-LOC/2020/2001/1"]
 

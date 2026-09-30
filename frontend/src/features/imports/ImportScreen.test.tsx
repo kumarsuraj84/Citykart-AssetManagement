@@ -29,7 +29,7 @@ function selectFile() {
 describe("ImportScreen", () => {
   it("renders the page header and the three-step layout", () => {
     render(<ImportScreen />);
-    expect(screen.getByRole("heading", { name: /import assets/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^import$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /download template/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/file/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^preview$/i })).toBeInTheDocument();
@@ -173,6 +173,64 @@ describe("ImportScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: /^commit/i }));
     await waitFor(() => expect(screen.getByText(/updated 1 asset\./i)).toBeInTheDocument());
     useAuthStore.getState().logout();
+  });
+
+  it("switching to Purchase Orders mode downloads its own template and previews/commits against its own endpoints", async () => {
+    useAuthStore.getState().setAuth({ accessToken: "test-token", role: "ADMIN", companyId: 1, isPrimaryOwner: true, mustChangePassword: false });
+    window.URL.createObjectURL = vi.fn().mockReturnValue("blob:template");
+    window.URL.revokeObjectURL = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, blob: () => Promise.resolve(new Blob(["x"])) });
+    window.fetch = fetchMock as any;
+    const PO_ROW = {
+      row: 2, po_number: "PO-1", po_date: "2026-02-01", company: "CityKart HQ", cost_center: "HO",
+      description: "Laptop", barcode: "BC-1", category: "IT Equipment", quantity: 1,
+    };
+    (apiClient.post as any).mockImplementation((path: string) => {
+      if (path === "/imports/purchase-orders/preview") return Promise.resolve({ valid_rows: [PO_ROW], errors: [] });
+      if (path === "/imports/purchase-orders/commit") return Promise.resolve({ pos_created: 1, lines_created: 1, errors: [] });
+      return Promise.reject(new Error("unexpected path"));
+    });
+
+    render(<ImportScreen />);
+    clickTab(/purchase orders/i);
+
+    fireEvent.click(screen.getByRole("button", { name: /download template/i }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/imports/purchase-orders/template",
+        expect.objectContaining({ headers: { Authorization: "Bearer test-token" } }),
+      ),
+    );
+
+    selectFile();
+    fireEvent.click(screen.getByRole("button", { name: /^preview$/i }));
+    await waitFor(() => expect(screen.getByText(/1 row ready to import/i)).toBeInTheDocument());
+    expect(screen.getByText("PO-1")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^commit/i }));
+    await waitFor(() => expect(screen.getByText(/created 1 purchase order with 1 line\./i)).toBeInTheDocument());
+    useAuthStore.getState().logout();
+  });
+
+  it("switching to Asset Movements mode previews/commits against its own endpoints", async () => {
+    const MOVEMENT_ROW = { row: 2, asset_code: "FA/HO/IT/LAP/CK_1", description: "Laptop", action: "MOVED", destination: "Ankur" };
+    (apiClient.post as any).mockImplementation((path: string) => {
+      if (path === "/imports/movements/preview") return Promise.resolve({ valid_rows: [MOVEMENT_ROW], errors: [] });
+      if (path === "/imports/movements/commit") return Promise.resolve({ moved: 1, errors: [] });
+      return Promise.reject(new Error("unexpected path"));
+    });
+
+    render(<ImportScreen />);
+    clickTab(/asset movements/i);
+
+    selectFile();
+    fireEvent.click(screen.getByRole("button", { name: /^preview$/i }));
+    await waitFor(() => expect(screen.getByText(/1 row ready to apply/i)).toBeInTheDocument());
+    expect(screen.getByText("MOVED")).toBeInTheDocument();
+    expect(screen.getByText("Ankur")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^commit/i }));
+    await waitFor(() => expect(screen.getByText(/applied 1 movement\./i)).toBeInTheDocument());
   });
 
   it("switching modes clears any in-progress file/preview/result", async () => {
