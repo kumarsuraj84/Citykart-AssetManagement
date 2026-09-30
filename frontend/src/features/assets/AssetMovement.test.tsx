@@ -193,6 +193,49 @@ describe("AssetMovement", () => {
     expect(screen.getByText(/Queued \(3\)/)).toBeInTheDocument();
   });
 
+  it("\"Currently With\" browses everything a chosen asset_user holds, showing code/serial/status", async () => {
+    const ankurLaptop = {
+      id: 50, asset_code: "FA/HO01/IT/LAP/CK_50", serial_number: "SN-ANK-1", description: "Ankur's Laptop",
+      status: "ALLOTTED", current_asset_user_name: "Ankur",
+    };
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (path.startsWith("/asset-users")) return Promise.resolve([{ id: 9, name: "IT Stock-HO" }, { id: 11, name: "Ankur" }, { id: 12, name: "Arvind" }]);
+      if (path.startsWith("/assets?asset_user_id=11")) return Promise.resolve({ items: [ankurLaptop], total: 1 });
+      return Promise.resolve([]);
+    });
+    renderMovement();
+
+    fireEvent.click(screen.getByRole("combobox", { name: /currently with/i }));
+    fireEvent.click(await screen.findByRole("option", { name: "Ankur" }));
+
+    await waitFor(() => expect(screen.getByText(/FA\/HO01\/IT\/LAP\/CK_50/)).toBeInTheDocument());
+    expect(screen.getByText(/assets with ankur \(1\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/SN-ANK-1/)).toBeInTheDocument();
+  });
+
+  it("selecting assets under \"Currently With\" and clicking Add Selected queues them", async () => {
+    const ankurLaptop = {
+      id: 51, asset_code: "FA/HO01/IT/LAP/CK_51", serial_number: "SN-ANK-2", description: "Ankur's Monitor",
+      status: "ALLOTTED", current_asset_user_name: "Ankur",
+    };
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (path.startsWith("/asset-users")) return Promise.resolve([{ id: 9, name: "IT Stock-HO" }, { id: 11, name: "Ankur" }]);
+      if (path.startsWith("/assets?asset_user_id=11")) return Promise.resolve({ items: [ankurLaptop], total: 1 });
+      return Promise.resolve([]);
+    });
+    renderMovement();
+
+    fireEvent.click(screen.getByRole("combobox", { name: /currently with/i }));
+    fireEvent.click(await screen.findByRole("option", { name: "Ankur" }));
+    await waitFor(() => expect(screen.getByText(/FA\/HO01\/IT\/LAP\/CK_51/)).toBeInTheDocument());
+
+    expect(screen.getByRole("button", { name: /add selected to queue/i })).toBeDisabled();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select FA/HO01/IT/LAP/CK_51" }));
+    fireEvent.click(screen.getByRole("button", { name: /add 1 selected to queue/i }));
+
+    await waitFor(() => expect(screen.getByText(/Queued \(1\)/)).toBeInTheDocument());
+  });
+
   it("checking \"Only assets currently in stock\" adds status=IN_STOCK to the search", async () => {
     (apiClient.get as any).mockImplementation((path: string) => {
       if (path.startsWith("/asset-users")) return Promise.resolve([{ id: 9, name: "IT Stock-HO" }]);

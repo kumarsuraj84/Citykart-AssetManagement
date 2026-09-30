@@ -94,11 +94,50 @@ export function AssetMovement() {
   const [candidates, setCandidates] = useState<AssetSearchResult[] | null>(null);
   const [queue, setQueue] = useState<QueuedAsset[]>([]);
   const [queueSearch, setQueueSearch] = useState("");
+  const [currentlyWithId, setCurrentlyWithId] = useState("");
+  const [browseSelected, setBrowseSelected] = useState<number[]>([]);
 
   const action = BULK_ACTIONS.find((a) => a.eventType === eventType)!;
 
   const asset_usersQ = useQuery({ queryKey: ["asset_users"], queryFn: () => apiClient.get<Option[]>("/asset-users") });
   const asset_users = asset_usersQ.data ?? [];
+
+  // "Currently With" browse: everything a specific person/store/point holds
+  // right now, so an operator who knows WHO has something (but not its
+  // serial/code) can find and select it instead of needing to already know
+  // a search term -- the same /api/assets list the Asset Register's own
+  // Asset User filter already uses, just capped at the endpoint's own
+  // max limit (200) since this is a browse-and-pick list, not a register.
+  const browseQ = useQuery({
+    queryKey: ["assets", "movement-browse", currentlyWithId],
+    queryFn: () => apiClient.get<{ items: AssetSearchResult[]; total: number }>(`/assets?asset_user_id=${currentlyWithId}&limit=200`),
+    enabled: currentlyWithId !== "",
+  });
+  const browseItems = browseQ.data?.items ?? [];
+  const browseTotal = browseQ.data?.total ?? 0;
+
+  function handleCurrentlyWithChange(v: string) {
+    setCurrentlyWithId(v);
+    setBrowseSelected([]);
+  }
+
+  function toggleBrowseOne(id: number, checked: boolean) {
+    setBrowseSelected((s) => (checked ? [...s, id] : s.filter((x) => x !== id)));
+  }
+
+  function toggleBrowseAll(checked: boolean) {
+    setBrowseSelected(checked ? browseItems.map((a) => a.id) : []);
+  }
+
+  function addSelectedToQueue() {
+    const toAdd = browseItems.filter((a) => browseSelected.includes(a.id));
+    setQueue((q) => {
+      const queuedIds = new Set(q.map((a) => a.id));
+      const newOnes = toAdd.filter((a) => !queuedIds.has(a.id));
+      return [...q, ...newOnes.map((a) => ({ ...a, eligible: isEligible(a.status, eventType) }))];
+    });
+    setBrowseSelected([]);
+  }
 
   function addToQueue(asset: AssetSearchResult) {
     setQueue((q) => {
@@ -256,6 +295,8 @@ export function AssetMovement() {
     setQueue([]);
     setRemarks("");
     setToAssetUserId("");
+    setCurrentlyWithId("");
+    setBrowseSelected([]);
   }
 
   return (
@@ -365,6 +406,69 @@ export function AssetMovement() {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      <FormField
+        htmlFor="movement-currently-with"
+        label="Currently With"
+        helperText="Browse everything a specific person, store, or stock point currently holds, then select what to move -- for when you know WHO has something but not its serial or code."
+      >
+        <SearchableSelect
+          id="movement-currently-with"
+          aria-label="Currently With"
+          value={selectValue(currentlyWithId)}
+          onValueChange={handleCurrentlyWithChange}
+          options={asset_users.map((h) => ({ value: String(h.id), label: h.name, keywords: assetUserKeywords(h) }))}
+        />
+      </FormField>
+
+      {currentlyWithId !== "" && (
+        <div className="rounded-md border p-3">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold">
+              Assets with {asset_users.find((h) => String(h.id) === currentlyWithId)?.name ?? "…"} ({browseTotal})
+            </h2>
+            <Button type="button" size="sm" onClick={addSelectedToQueue} disabled={browseSelected.length === 0}>
+              Add {browseSelected.length > 0 ? browseSelected.length : ""} Selected to Queue
+            </Button>
+          </div>
+          {browseTotal > browseItems.length && (
+            <p className="mb-2 text-xs text-muted-foreground">
+              Showing the first {browseItems.length} of {browseTotal}.
+            </p>
+          )}
+          {browseQ.isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : browseItems.length === 0 ? (
+            <EmptyState title="Nothing here." description="This person, store, or point currently holds no assets." />
+          ) : (
+            <ul className="flex max-h-80 flex-col gap-1.5 overflow-y-auto">
+              <li className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground">
+                <Checkbox
+                  aria-label="Select all"
+                  checked={browseItems.length > 0 && browseItems.every((a) => browseSelected.includes(a.id))}
+                  onCheckedChange={(checked) => toggleBrowseAll(checked === true)}
+                />
+                Select all
+              </li>
+              {browseItems.map((a) => (
+                <li key={a.id} className="flex items-center gap-2 rounded-sm border bg-muted/40 px-2 py-1.5 text-sm">
+                  <Checkbox
+                    aria-label={`Select ${a.asset_code}`}
+                    checked={browseSelected.includes(a.id)}
+                    onCheckedChange={(checked) => toggleBrowseOne(a.id, checked === true)}
+                  />
+                  <div className="flex flex-col">
+                    <span className="font-medium">{a.asset_code} — {a.description}</span>
+                    <span className="text-xs text-muted-foreground">
+                      Serial: {a.serial_number ?? "—"} · Status: {a.status}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 
