@@ -22,7 +22,15 @@ import { ErrorState } from "@/components/shared/ErrorState";
 interface Option {
   id: number;
   code?: string;
+  email?: string;
   name: string;
+}
+
+// Lets someone find an Asset User by typing their code or email, not just
+// their name -- the same fields AssetUsersScreen's own Code/Email columns
+// show, so the search matches what's actually on their record.
+function assetUserKeywords(h: Option): string[] {
+  return [h.code, h.email].filter((v): v is string => Boolean(v));
 }
 
 interface CategoryOption extends Option {
@@ -392,7 +400,7 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
       </section>
 
       <section className="flex flex-col gap-4">
-        <SectionHeading>Asset Classification</SectionHeading>
+        <SectionHeading>Asset Details / Asset Classification</SectionHeading>
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField htmlFor="category" label="Category" required>
             <SearchableSelect
@@ -428,59 +436,7 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
           <FormField htmlFor="description" label="Description" required className="sm:col-span-2">
             <Input id="description" aria-label="Description" value={form.description} onChange={(e) => setField("description", e.target.value)} />
           </FormField>
-        </div>
-      </section>
 
-      <section className="flex flex-col gap-4">
-        <SectionHeading>Purchase / Procurement</SectionHeading>
-        <div className="grid gap-4 sm:grid-cols-2">
-          {/* Full-width and alone -- Vendor has no PO/Invoice/PI-style date partner of its
-              own, so giving it its own row keeps the three Number/Date pairs below aligned
-              as actual pairs instead of drifting by one slot (AM-13 density pass). */}
-          <FormField htmlFor="vendor" label="Vendor" required className="sm:col-span-2">
-            <SearchableSelect
-              id="vendor"
-              aria-label="Vendor"
-              value={selectValue(form.vendorId)}
-              onValueChange={(v) => setField("vendorId", v)}
-              disabled={mastersLoading}
-              options={vendors.map((v) => ({ value: String(v.id), label: v.name }))}
-            />
-          </FormField>
-
-          <FormField htmlFor="po-number" label="PO Number" helperText="Optional -- add it once you have it.">
-            <Input id="po-number" aria-label="PO Number" value={form.poNumber} onChange={(e) => setField("poNumber", e.target.value)} />
-          </FormField>
-          <FormField htmlFor="po-date" label="PO Date" helperText="Optional.">
-            <Input id="po-date" aria-label="PO Date" type="date" value={form.poDate} onChange={(e) => setField("poDate", e.target.value)} />
-          </FormField>
-
-          <FormField htmlFor="invoice-number" label="Invoice Number" helperText="Optional -- add it once you have it.">
-            <Input id="invoice-number" aria-label="Invoice Number" value={form.invoiceNumber} onChange={(e) => setField("invoiceNumber", e.target.value)} />
-          </FormField>
-          <FormField
-            htmlFor="invoice-date"
-            label="Invoice Date"
-            helperText="Optional. When given, Purchase Date is set to this date; when left blank, Purchase Date defaults to today instead."
-          >
-            <Input id="invoice-date" aria-label="Invoice Date" type="date" value={form.invoiceDate} onChange={(e) => setField("invoiceDate", e.target.value)} />
-          </FormField>
-          <FormField htmlFor="invoice-amount" label="Invoice Amount" helperText="Optional.">
-            <Input id="invoice-amount" aria-label="Invoice Amount" type="number" min={0} step="0.01" value={form.invoiceAmount} onChange={(e) => setField("invoiceAmount", e.target.value)} />
-          </FormField>
-
-          <FormField htmlFor="pi-number" label="PI Number" helperText="CityKart's internal reference for the payment made to the vendor. Usually arrives from Finance after delivery -- leave blank and add it later.">
-            <Input id="pi-number" aria-label="PI Number" value={form.piNumber} onChange={(e) => setField("piNumber", e.target.value)} />
-          </FormField>
-          <FormField htmlFor="pi-date" label="PI Date" helperText="Optional.">
-            <Input id="pi-date" aria-label="PI Date" type="date" value={form.piDate} onChange={(e) => setField("piDate", e.target.value)} />
-          </FormField>
-        </div>
-      </section>
-
-      <section className="flex flex-col gap-4">
-        <SectionHeading>Asset Details</SectionHeading>
-        <div className="grid gap-4 sm:grid-cols-2">
           <FormField htmlFor="brand" label="Brand" helperText="Optional.">
             <SearchableSelect
               id="brand"
@@ -544,7 +500,58 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
       </section>
 
       <section className="flex flex-col gap-4">
-        <SectionHeading>Commercial</SectionHeading>
+        <SectionHeading>Purchase / Procurement / Commercial</SectionHeading>
+
+        {/* Vendor has no PO/Invoice/PI-style partner of its own, so it gets its own
+            full-width row rather than drifting the pairs/triples below by one slot
+            (AM-13 density pass). */}
+        <FormField htmlFor="vendor" label="Vendor" required>
+          <SearchableSelect
+            id="vendor"
+            aria-label="Vendor"
+            value={selectValue(form.vendorId)}
+            onValueChange={(v) => setField("vendorId", v)}
+            disabled={mastersLoading}
+            options={vendors.map((v) => ({ value: String(v.id), label: v.name }))}
+          />
+        </FormField>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField htmlFor="po-number" label="PO Number" helperText="Optional -- add it once you have it.">
+            <Input id="po-number" aria-label="PO Number" value={form.poNumber} onChange={(e) => setField("poNumber", e.target.value)} />
+          </FormField>
+          <FormField htmlFor="po-date" label="PO Date" helperText="Optional.">
+            <Input id="po-date" aria-label="PO Date" type="date" value={form.poDate} onChange={(e) => setField("poDate", e.target.value)} />
+          </FormField>
+        </div>
+
+        {/* Invoice Number/Date/Amount belong together as one group -- a single
+            three-column row, not split across two rows of a 2-column grid. */}
+        <div className="grid gap-4 sm:grid-cols-3">
+          <FormField htmlFor="invoice-number" label="Invoice Number" helperText="Optional -- add it once you have it.">
+            <Input id="invoice-number" aria-label="Invoice Number" value={form.invoiceNumber} onChange={(e) => setField("invoiceNumber", e.target.value)} />
+          </FormField>
+          <FormField
+            htmlFor="invoice-date"
+            label="Invoice Date"
+            helperText="Optional. When given, Purchase Date is set to this date; when left blank, Purchase Date defaults to today instead."
+          >
+            <Input id="invoice-date" aria-label="Invoice Date" type="date" value={form.invoiceDate} onChange={(e) => setField("invoiceDate", e.target.value)} />
+          </FormField>
+          <FormField htmlFor="invoice-amount" label="Invoice Amount" helperText="Optional.">
+            <Input id="invoice-amount" aria-label="Invoice Amount" type="number" min={0} step="0.01" value={form.invoiceAmount} onChange={(e) => setField("invoiceAmount", e.target.value)} />
+          </FormField>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField htmlFor="pi-number" label="PI Number" helperText="CityKart's internal reference for the payment made to the vendor. Usually arrives from Finance after delivery -- leave blank and add it later.">
+            <Input id="pi-number" aria-label="PI Number" value={form.piNumber} onChange={(e) => setField("piNumber", e.target.value)} />
+          </FormField>
+          <FormField htmlFor="pi-date" label="PI Date" helperText="Optional.">
+            <Input id="pi-date" aria-label="PI Date" type="date" value={form.piDate} onChange={(e) => setField("piDate", e.target.value)} />
+          </FormField>
+        </div>
+
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField htmlFor="purchase-cost" label="Purchase Cost" helperText="Optional.">
             <Input id="purchase-cost" aria-label="Purchase Cost" type="number" value={form.purchaseCost} onChange={(e) => setField("purchaseCost", e.target.value)} />
@@ -571,7 +578,7 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
               value={selectValue(form.initialAssetUserId)}
               onValueChange={(v) => setField("initialAssetUserId", v)}
               disabled={mastersLoading}
-              options={stockAssetUsers.map((h) => ({ value: String(h.id), label: h.name }))}
+              options={stockAssetUsers.map((h) => ({ value: String(h.id), label: h.name, keywords: assetUserKeywords(h) }))}
             />
             {!mastersLoading && !hasAssetUserOption && (
               <p className="text-sm text-destructive">No IT Stock asset user found for this company. Add one under Setup &gt; Users first.</p>
