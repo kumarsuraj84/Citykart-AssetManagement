@@ -1,5 +1,7 @@
 # CKAM Initial Production Deployment Report
 
+> **SUPERSEDED 2026-10-07.** This describes the first install on 10.0.1.12, which is now retired and must stay stopped. Production is 10.0.1.98 + 10.0.0.205 + NAS; see `PRODUCTION_INFRASTRUCTURE.md`. Kept as history only.
+
 Date: 2026-09-30
 Deployed by: Claude (Claude Code), authorized by Suraj (suraj@citykart.org)
 

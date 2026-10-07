@@ -1,9 +1,23 @@
 # CKAM — CityKart Asset Manager
 
 Internal asset-lifecycle tracking app for CityKart. FastAPI + SQLAlchemy 2.0
-async + PostgreSQL 17 backend; React 19 + Vite + TanStack Query/Router +
-Tailwind + shadcn/ui frontend. Deployed via Docker Compose on a company LAN
-server (web on port 3211).
+async + PostgreSQL backend (PostgreSQL 17 in the dev Docker stack, 18 in
+production); React 19 + Vite + TanStack Query/Router + Tailwind + shadcn/ui
+frontend. Dev runs via Docker Compose (web on port 3211); production runs as a
+single uvicorn process on port 3211 (no Docker, no nginx).
+
+## Environments (fixed as of 2026-10-07; details in `docs/ai/PRODUCTION_INFRASTRUCTURE.md`)
+
+| Role | Machine |
+|---|---|
+| Development | this machine, **10.0.0.47**. All development and testing happens here, never on production |
+| Production app | **10.0.1.98**, `D:\Citykart_Applications\Citykart_AssetManagement_App`, task `CKAM-Web`, `http://10.0.1.98:3211` (SSH key `~/.ssh/citykart_newservers`) |
+| Production database | **10.0.0.205**, PostgreSQL 18, database `ckassetmanagement` |
+| Production files | NAS **10.0.0.25**, `\\10.0.0.25\ckapplications_data\CKASSETMANAGEMENT_DATA` |
+
+- **10.0.1.12 is RETIRED for CKAM and must stay dead.** Its `CKAM-Web` task is disabled, its launcher/config are renamed `*.RETIRED-2026-10-07`, and its `ckam_app` database role cannot log in. Never work on, deploy to, start, or re-enable anything there. Running it alongside the new system would split the data.
+- 10.0.1.98, 10.0.0.205 and the NAS are **shared** with other apps (Spinwheel, Citykart Desk). Touch only CKAM's own folder, task, firewall rule, database, role, backup task and NAS folder. Never read or change another app's database, files or config unless the user explicitly asks.
+- "Commit and push to git and main" means: commit, then push to origin. `main` is the repo's default branch, which is named `claude/brave-euler-07879a` (no branch is literally called `main`). It does **not** mean deploy. Deploying to production is a separate step that needs its own explicit request, and the user types any superuser database password and NAS password on the servers themselves.
 
 Full context lives in `docs/ai/`:
 - `PRODUCT_CONTEXT.md` — what CKAM does, personas, module map
@@ -36,10 +50,11 @@ Spec/plan history (superseded where `docs/ai/DECISIONS.md` overrides it):
    Frontend: `npx tsc -b && npx vitest run` in `frontend/`. Rebuild the
    relevant container (`docker compose up -d --build api|web`) before any
    browser-based check — the containers do not live-mount source.
-5. **Commit locally with Conventional Commits; do not push.** This
+5. **Commit locally with Conventional Commits; push only when told.** This
    repository's remote push discipline is owned by the user, not this
    session. Commit clean, reviewable, logically-scoped changes and stop
-   there unless explicitly asked to push.
+   there until the user says to push (for example "commit and push to git
+   and main"). Each push approval covers that change only.
 
 ## Known environment quirks (don't rediscover these)
 

@@ -26,7 +26,7 @@ No passwords, keys or tokens are written here, only where they live.
 
 ## Retired
 
-Old server `10.0.1.12` (`E:\CK Projects\Citykart_Asset_Management`, database `ckam_prod`): task `CKAM-Web` stopped and disabled on 2026-10-07; files and database kept untouched as a rollback archive. It held only bootstrap accounts, no user data. Never run both at once.
+Old server `10.0.1.12` (`E:\CK Projects\Citykart_Asset_Management`, database `ckam_prod`) is permanently out of service as of 2026-10-07: task `CKAM-Web` stopped and disabled, `shared\.env` and `shared\run_ckam_web.ps1` renamed `*.RETIRED-2026-10-07`, database role `ckam_app` set to NOLOGIN, port 3211 closed. Files and database kept only as an archive (it held just bootstrap accounts, no user data). Do not work on it, and never run both systems at once.
 
 ## Deploying a new version
 
