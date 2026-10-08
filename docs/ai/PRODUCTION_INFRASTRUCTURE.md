@@ -16,11 +16,11 @@ No passwords, keys or tokens are written here, only where they live.
 | Files | NAS `\\10.0.0.25\ckapplications_data\CKASSETMANAGEMENT_DATA` as NAS user `ckappuser`. Password is in `shared\nas.pw` (Administrators/SYSTEM only) |
 | Backups | Task `CK_Backup_CKASSETMANAGEMENT` on 10.0.0.205, daily 03:00, shared script `C:\ProgramData\CKBackup\backup-db.ps1`, output `E:\DB BACKUP\CK_CKASSETMANAGEMENT_DBBACKUP`, 30 days kept, see `backup.log` there. Not yet copied off the DB server |
 | Firewall | Rule `CKAM-Web`, inbound TCP 3211 on 10.0.1.98 (same scope as the other apps' rules). Port registered in `D:\Citykart_Applications\PORTS.md` |
-| URL | Public address users are given: **`http://ckam.citykartstores.com:3211/`** (DNS A record `ckam` in citykartstores.com -> `182.72.84.10`; router forwards TCP 3211 -> `10.0.1.98:3211`). LAN address `http://10.0.1.98:3211` also works. `BASE_URL` in `shared\.env` is set to the public address (used only inside printed QR labels) |
+| URL | Public address users are given: **`http://ckam.citykartstores.com:3211/`** (DNS A record `ckam` in citykartstores.com -> `182.72.84.10`; router forwards TCP 3211 -> `10.0.1.98:3211`). LAN address `http://10.0.1.98:3211` also works. `BASE_URL` in `shared\.env` is set to the public address (used only for the "open this asset" link inside the small QR on the Asset Detail page, `/api/assets/{id}/qr.png`; the labels made on the Print Labels screen contain just the asset code and no URL) |
 
 ## What is NOT done / open
 
-- Public access: the DNS A record and the router forward 3211 -> 10.0.1.98 are the user's steps (confirm they exist before sharing the link). The site is plain HTTP, so logins cross the internet unencrypted; HTTPS in front of it is a recommended later step. If the address changes, update `BASE_URL` in `shared\.env` and restart `CKAM-Web`, and note that already-printed QR labels keep the old address.
+- Public access: the DNS A record and the router forward 3211 -> 10.0.1.98 are the user's steps (confirm they exist before sharing the link). The site is plain HTTP, so logins cross the internet unencrypted; HTTPS in front of it is a recommended later step. If the address changes, update `BASE_URL` in `shared\.env` and restart `CKAM-Web`, and note that any Asset Detail QR already printed or saved keeps the old address.
 - Off-server copy of the nightly dumps.
 - Reboot test of 10.0.1.98 (confirm `CKAM-Web` returns and uploads still reach the NAS).
 
