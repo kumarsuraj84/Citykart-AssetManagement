@@ -5,6 +5,7 @@ import { apiClient } from "../../lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -242,6 +243,7 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [q, setQRaw] = useState("");
+  const [exact, setExactRaw] = useState(false);
   const [status, setStatusRaw] = useState(initialStatus ?? "");
   const [domain, setDomainRaw] = useState("");
   const [categoryId, setCategoryIdRaw] = useState("");
@@ -280,6 +282,7 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
     };
   }
   const setQ = resettingPage(setQRaw);
+  const setExact = resettingPage(setExactRaw);
   const setStatus = resettingPage(setStatusRaw);
   const setDomain = resettingPage(setDomainRaw);
   const setCategoryId = resettingPage(setCategoryIdRaw);
@@ -311,6 +314,7 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
 
   const queryString = new URLSearchParams({
     ...(q ? { q } : {}),
+    ...(q && exact ? { exact: "true" } : {}),
     ...(status ? { status } : {}),
     ...(domain ? { domain } : {}),
     ...(categoryId ? { category_id: categoryId } : {}),
@@ -322,7 +326,7 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
   }).toString();
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["assets", "register", q, status, domain, categoryId, assetUserId, companyId, sortBy, sortDir, page],
+    queryKey: ["assets", "register", q, exact, status, domain, categoryId, assetUserId, companyId, sortBy, sortDir, page],
     queryFn: () => apiClient.get<{ items: AssetRow[]; total: number }>(`/assets?${queryString}`),
   });
   const items = data?.items ?? [];
@@ -476,6 +480,17 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
               onChange={(e) => setQ(e.target.value)}
               className="w-64"
             />
+            <label
+              className="flex items-center gap-1.5 text-xs text-muted-foreground"
+              title="Match the whole asset code (or its last part, e.g. CK1), serial, barcode or PO/invoice/PI number, instead of any text that contains it"
+            >
+              <Checkbox
+                aria-label="Exact match"
+                checked={exact}
+                onCheckedChange={(checked) => setExact(checked === true)}
+              />
+              Exact match
+            </label>
           </div>
 
           <div className="flex flex-col gap-1.5">

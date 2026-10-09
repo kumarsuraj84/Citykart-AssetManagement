@@ -84,6 +84,39 @@ async def test_total_respects_filters(client):
     assert [a["asset_code"] for a in body["items"]] == ["PGA/1"]
 
 
+async def test_search_ranks_exact_code_above_codes_that_merely_contain_it(client):
+    co_a = await _setup(n_assets=12, other_company_assets=0)
+    headers = await _headers(client, co_a)
+    body = (await client.get("/api/assets?q=pga/1", headers=headers)).json()
+    # Substring search still finds PGA/1, /10, /11, /12 -- but the exact code is first,
+    # the rest newest-first.
+    assert body["total"] == 4
+    assert [a["asset_code"] for a in body["items"]] == ["PGA/1", "PGA/12", "PGA/11", "PGA/10"]
+
+
+async def test_exact_search_matches_whole_code_or_its_last_segment_only(client):
+    co_a = await _setup(n_assets=12, other_company_assets=0)
+    headers = await _headers(client, co_a)
+
+    full = (await client.get("/api/assets?q=PGA/1&exact=true", headers=headers)).json()
+    assert [a["asset_code"] for a in full["items"]] == ["PGA/1"] and full["total"] == 1
+
+    # The counter part alone ("1") finds code ".../1" and not ".../10", ".../11", ".../12".
+    tail = (await client.get("/api/assets?q=1&exact=true", headers=headers)).json()
+    assert [a["asset_code"] for a in tail["items"]] == ["PGA/1"] and tail["total"] == 1
+
+    # "%" and "_" are literal in exact mode, never wildcards.
+    wild = (await client.get("/api/assets?q=PGA/1%25&exact=true", headers=headers)).json()
+    assert wild["total"] == 0
+
+
+async def test_an_explicit_sort_column_overrides_the_exact_first_ranking(client):
+    co_a = await _setup(n_assets=12, other_company_assets=0)
+    headers = await _headers(client, co_a)
+    body = (await client.get("/api/assets?q=pga/1&sort_by=asset_code&sort_dir=desc", headers=headers)).json()
+    assert [a["asset_code"] for a in body["items"]] == ["PGA/12", "PGA/11", "PGA/10", "PGA/1"]
+
+
 async def test_invalid_paging_params_are_422(client):
     co_a = await _setup(n_assets=1, other_company_assets=0)
     headers = await _headers(client, co_a)

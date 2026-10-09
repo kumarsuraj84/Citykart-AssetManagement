@@ -153,6 +153,7 @@ async def list_assets(
     company_id: int | None = Query(None),
     domain: str | None = Query(None),
     q: str | None = Query(None),
+    exact: bool = Query(False),
     sort_by: str | None = Query(None),
     sort_dir: str = Query("asc"),
     limit: int = Query(50, ge=1, le=200),
@@ -160,7 +161,10 @@ async def list_assets(
     session: AsyncSession = Depends(get_session),
     asset_user=Depends(get_current_asset_user),
 ):
-    """Scoped exactly like `_get_scoped_asset`: a SELF_SERVICE asset_user only ever sees
+    """`exact=true` makes `q` match whole identifiers (code or its last segment,
+    serial, barcode, PO/invoice/PI no) instead of any text containing it; without
+    it, exact matches are still ranked first when no sort column is chosen.
+    Scoped exactly like `_get_scoped_asset`: a SELF_SERVICE asset_user only ever sees
     assets they currently hold (so `asset_user_id` is pinned to their own id, ignoring
     any value the caller passed, and the company filter is left unrestricted since
     asset_user_id already narrows it); everyone else is scoped to `scoped_company_ids`
@@ -178,7 +182,7 @@ async def list_assets(
     domains = await allowed_asset_domains(session, asset_user)
     items, total = await search_assets(
         session, allowed, status, category_id, asset_user_id, company_id, q, sort_by, sort_dir, limit, offset,
-        allowed_domains=domains, domain=domain,
+        allowed_domains=domains, domain=domain, exact=exact,
     )
     (
         asset_user_labels, company_labels, category_labels, subcategory_labels, vendor_labels, cost_center_labels,

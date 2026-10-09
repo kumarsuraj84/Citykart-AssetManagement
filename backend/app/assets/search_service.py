@@ -1,4 +1,4 @@
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.assets.models import Asset
 
@@ -34,6 +34,32 @@ SORTABLE_COLUMNS: dict[str, object] = {
 }
 
 
+def _escape_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _exact_match_clause(q: str):
+    """True for an asset whose identifier EQUALS the typed text (case-insensitive),
+    rather than merely containing it. Asset codes restart their counter per
+    category/sub-category (".../CK1", ".../CK10", ".../CK11"), so a code also
+    matches when its last segment after "/" equals the text: typing "ck1" finds
+    every ".../CK1" and none of ".../CK10". Only identifier columns take part
+    (code, legacy code, serial, barcode, PO/invoice/PI number); free text such
+    as description and model is never "exact"."""
+    ql = q.strip().lower()
+    code = func.lower(Asset.asset_code)
+    return or_(
+        code == ql,
+        code.like(f"%/{_escape_like(ql)}", escape="\\"),
+        func.lower(Asset.legacy_asset_code) == ql,
+        func.lower(Asset.serial_number) == ql,
+        func.lower(Asset.barcode) == ql,
+        func.lower(Asset.po_number) == ql,
+        func.lower(Asset.invoice_number) == ql,
+        func.lower(Asset.pi_number) == ql,
+    )
+
+
 async def search_assets(
     session: AsyncSession,
     allowed_company_ids: list[int] | None,
@@ -48,6 +74,7 @@ async def search_assets(
     offset: int = 0,
     allowed_domains: tuple[str, ...] | None = None,
     domain: str | None = None,
+    exact: bool = False,
 ) -> tuple[list[Asset], int]:
     """`allowed_domains` (from app.core.deps.allowed_asset_domains) is the
     caller's server-side scope -- None means unrestricted (ADMIN/SELF_SERVICE),
@@ -71,7 +98,9 @@ async def search_assets(
         stmt = stmt.where(Asset.category_id == category_id)
     if asset_user_id is not None:
         stmt = stmt.where(Asset.current_asset_user_id == asset_user_id)
-    if q:
+    if q and exact:
+        stmt = stmt.where(_exact_match_clause(q))
+    elif q:
         pattern = f"%{q}%"
         stmt = stmt.where(or_(
             Asset.asset_code.ilike(pattern), Asset.legacy_asset_code.ilike(pattern),
@@ -103,6 +132,11 @@ async def search_assets(
         # the sorted column's value (e.g. sorting by Status), instead of
         # page 2 silently re-showing/skipping rows page 1 already had.
         order = (order_column.desc(), Asset.id.desc()) if sort_dir == "desc" else (order_column.asc(), Asset.id.desc())
+    elif q and q.strip():
+        # No column sort chosen: float exact identifier matches above the
+        # merely-containing ones ("CK1" before "CK10", "CK11"...), newest first
+        # within each group. An explicit column sort always wins over this.
+        order = (case((_exact_match_clause(q), 0), else_=1), Asset.id.desc())
     else:
         order = (Asset.id.desc(),)
     page_stmt = stmt.order_by(*order).limit(limit).offset(offset)

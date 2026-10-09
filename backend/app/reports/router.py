@@ -98,6 +98,7 @@ async def export_assets(
     asset_user_id: int | None = Query(None),
     company_id: int | None = Query(None),
     q: str | None = Query(None),
+    exact: bool = Query(False),
     domain: str | None = Query(None),
     session: AsyncSession = Depends(get_session),
     asset_user=Depends(get_current_asset_user),
@@ -119,7 +120,7 @@ async def export_assets(
     domains = await allowed_asset_domains(session, asset_user)
     items, total = await search_assets(
         session, allowed, status, category_id, asset_user_id, company_id, q, limit=EXPORT_MAX_ROWS, offset=0,
-        allowed_domains=domains, domain=domain,
+        allowed_domains=domains, domain=domain, exact=exact,
     )
     if total > EXPORT_MAX_ROWS:
         # Refuse loudly rather than hand back a silently truncated register.

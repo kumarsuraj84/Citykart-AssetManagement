@@ -48,6 +48,24 @@ describe("AssetRegister", () => {
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("q=CK_1")));
   });
 
+  it("the Exact match checkbox adds exact=true to the search request, only while there is search text", async () => {
+    (apiClient.get as any).mockResolvedValue({ items: [{ id: 1, asset_code: "FA/HO01/IT/LAP/CK1", description: "Laptop", status: "IN_STOCK" }], total: 1 });
+
+    renderRegisterAt();
+    await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK1")).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText(/search/i), { target: { value: "ck1" } });
+    await waitFor(() => expect(apiClient.get).toHaveBeenLastCalledWith(expect.stringMatching(/q=ck1/)));
+    expect(apiClient.get).toHaveBeenLastCalledWith(expect.not.stringContaining("exact="));
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /exact match/i }));
+    await waitFor(() => expect(apiClient.get).toHaveBeenLastCalledWith(expect.stringContaining("exact=true")));
+    expect(apiClient.get).toHaveBeenLastCalledWith(expect.stringContaining("q=ck1"));
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /exact match/i }));
+    await waitFor(() => expect(apiClient.get).toHaveBeenLastCalledWith(expect.not.stringContaining("exact=")));
+  });
+
   it("AM-21: clicking the Code column header requests a server-side sort, and clicking again reverses it", async () => {
     (apiClient.get as any).mockResolvedValue({ items: [{ id: 1, asset_code: "FA/HO01/IT/LAP/CK_1", description: "Laptop", status: "IN_STOCK" }], total: 1 });
     renderRegisterAt();
