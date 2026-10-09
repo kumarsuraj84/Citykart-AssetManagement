@@ -17,6 +17,8 @@ import { ErrorState } from "@/components/shared/ErrorState";
 import { FormField } from "@/components/shared/FormField";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { AddBundleDialog } from "./AddBundleDialog";
+import { DeliveryReminderBanner } from "../erp/DeliveryReminders";
+import { ErpPiDialog } from "../erp/ErpPiDialog";
 
 interface PurchaseOrderOut {
   id: number;
@@ -27,6 +29,7 @@ interface PurchaseOrderOut {
   cost_center_id: number | null;
   delivery_asset_user_id?: number | null;
   warehouse_code?: string | null;
+  erp_po_code?: number | null;
 }
 
 /** AM-14: a compact KPI tile for the PO detail summary row -- a smaller,
@@ -683,6 +686,8 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
         }
       />
 
+      {poQ.data?.erp_po_code != null && <DeliveryReminderBanner poId={poId} fromErp />}
+
       {/* AM-14: a KPI summary row, derived from the already-fetched `lines` --
           the page previously had no at-a-glance sense of this PO's overall
           size/progress/value without reading every table row. */}
@@ -695,7 +700,10 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
 
       {deliveredInvoiceNumbers.length > 0 && (
         <div className="rounded-md border p-3">
-          <h2 className="mb-2 text-sm font-semibold">Invoices delivered under this PO</h2>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold">Invoices delivered under this PO</h2>
+            {poQ.data?.erp_po_code != null && <ErpPiDialog poId={poId} />}
+          </div>
           <p className="mb-2 text-xs text-muted-foreground">
             PI Number/Date arrive from Finance per invoice, not per PO -- a partial delivery on a
             different invoice gets its own PI, recorded separately.

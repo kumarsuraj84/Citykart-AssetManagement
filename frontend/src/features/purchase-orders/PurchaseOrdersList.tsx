@@ -9,6 +9,7 @@ import { ErrorState } from "@/components/shared/ErrorState";
 import { useTableSort } from "@/components/shared/useTableSort";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DeliveryRemindersCard } from "../erp/DeliveryReminders";
 
 interface PurchaseOrderRow {
   id: number;
@@ -143,6 +144,8 @@ export function PurchaseOrdersList() {
           </div>
         }
       />
+
+      <DeliveryRemindersCard />
 
       <Input
         aria-label="Search Purchase Orders"

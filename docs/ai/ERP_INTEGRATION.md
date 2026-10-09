@@ -18,8 +18,9 @@ POs from an uploaded PDF (that code was dropped, never released).
 | View | Used for | Status |
 |---|---|---|
 | `po_line` | One row per PO line: PO number, date, status, company, delivery location, vendor, item, description, group, HSN, unit, qty, rate, tax %, received/cancelled qty, header totals | exists and readable (grant fixed 2026-10-10; CKAM's own `PgErpSource` was run against it read-only and works). If the load job rebuilds the table the grant can be lost again: the symptom is "CKAM is not allowed to read the ERP view" |
-| `vendor` | `supplier_code, supplier_name, gstin, contact_name, phone, email, is_active` | requested, not created yet |
-| `po_receipt_line`, `po_invoice` | delivery reminders and PI sync | requested, not built yet |
+| `vendor` | `supplier_code, supplier_name, gstin, contact_name, phone, email, is_active` | requested, **not created yet** (Vendors > Add from ERP says "view does not exist yet" until it is) |
+| `po_receipt_line` | `po_code, icode, grc_no, grc_date, received_qty` (one row per GRC line) | requested, **not created yet**; code and tests are done |
+| `po_invoice` | `po_code, vendor_invoice_no, vendor_invoice_date, pi_number, pi_date, pi_amount` (rows without a `pi_number` = not booked yet) | requested, **not created yet**; code and tests are done |
 
 View names are constants at the top of `source.py`.
 
@@ -35,8 +36,11 @@ View names are constants at the top of `source.py`.
 
 Open POs (539): series `GPO` 316 (store fixed assets: sensormatic/AC/lights/shelving, delivered to stores), `SPO` 175 (IT and head-office/warehouse items, e.g. Vansh Dell desktops to `CKSPL-WH-FARUKHNAGAR`), and 48 whose number does not start with a series (`Automatic ...`). 231 open POs have blank line tax, including 110 of the 175 SPO; a PO has either all lines taxed or none. Only POs of vendors linked in CKAM are ever offered, so the GPO series stays out unless those vendors are linked.
 
-## Not built yet
+## Delivery reminders and PI (built, waiting for their ERP views)
 
-1. Delivery reminders: ERP shows more received than CKAM has delivered -> badge/reminder on the PO ("mark delivery"); never delivers by itself because serial numbers are needed. Needs `po_receipt_line`.
-2. PI from the ERP: "Fetch PI" per PO, preview, confirm, then `record_pi_for_invoice` (PI is stored per PO + vendor invoice number, so the ERP view must carry the vendor invoice number). Needs `po_invoice`.
-3. Open decisions: blank-tax policy (derive vs default 18), CKVPL POs (none in the view), whether store deliveries should be offered.
+- **Delivery reminders** (`app/erp/reminders.py`, `GET /api/erp/reminders`): for POs created from the ERP, the ERP's received quantity per item code (summed over GRC lines) is compared with the units delivered here (barcode = item code; a bundle counts as its most-delivered part). If the ERP shows more received than delivered, a card on Purchase Orders and a banner on the PO say "N to deliver", with GRC numbers and dates. It only ever reminds: delivery needs serial numbers. If the ERP is off or unreachable the card is simply hidden.
+- **PI from the ERP** (`app/erp/invoices.py`, `GET/POST /api/erp/purchase-orders/{id}/pi[/apply]`): "Fetch PI from ERP" on a PO's delivered-invoices section previews the ERP PIs matched to the invoices delivered here by vendor invoice number (ignoring case/punctuation; if a PO has exactly one delivered invoice and the ERP has exactly one PI they are paired even if the numbers differ, and it says so). Rows are Ready / Already recorded / Different PI already recorded / No matching invoice. Only ticked rows are recorded, through `record_pi_for_invoice` (same audit trail); the server re-checks every requested PI against the ERP, so a PI the ERP does not hold for the PO can never be recorded; an existing different PI is kept unless "replace" is ticked.
+
+## Open decisions
+
+CKVPL POs (none in the view), whether store deliveries should be offered, and the 48 open POs whose number has no series prefix.

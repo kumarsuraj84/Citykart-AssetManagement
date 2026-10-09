@@ -9,8 +9,9 @@ from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.erp.models import ItemCatalog
 from app.erp.service import derive_tax, split_location
-from app.erp.source import ErpPo, ErpPoLine, ErpUnavailable, ErpVendor, get_erp_source
+from app.erp.source import ErpInvoice, ErpPo, ErpPoLine, ErpReceipt, ErpUnavailable, ErpVendor, get_erp_source
 from app.main import app
+from app.numbering.models import CodeRule
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Department, Location, Vendor
 from app.purchase_orders.models import PendingAsset, PurchaseOrder
 
@@ -37,7 +38,19 @@ class FakeErp:
             ErpVendor("555", "Harshit Infosolution"),
         ]
         self.pos = {1133610106: desktop_po()}
+        self.receipt_list: list[ErpReceipt] = []
+        self.invoice_list: list[ErpInvoice] = []
         self.down: str | None = None
+
+    async def receipts(self, po_codes):
+        if self.down:
+            raise ErpUnavailable(self.down)
+        return [r for r in self.receipt_list if r.po_code in po_codes]
+
+    async def invoices(self, po_codes):
+        if self.down:
+            raise ErpUnavailable(self.down)
+        return [i for i in self.invoice_list if i.po_code in po_codes]
 
     async def vendors(self):
         if self.down:
@@ -88,6 +101,7 @@ async def _setup():
             Vendor(code="VANSH", name="Vansh Enterprises", erp_vendor_code="11338"),     # linked
             Vendor(code="HARSHIT_INF", name="Harshit Infosolution"),                       # same name as ERP 555, not linked
             Vendor(code="OLDCO", name="Old Company"),
+            CodeRule(company_id=None, prefix_template="FA/{company.code}/", suffix_template="", start_number=1, pad_width=4),
         ])
         await session.flush()
 

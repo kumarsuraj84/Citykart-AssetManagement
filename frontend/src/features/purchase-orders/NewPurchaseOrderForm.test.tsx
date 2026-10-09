@@ -61,6 +61,49 @@ describe("NewPurchaseOrderForm", () => {
     );
   });
 
+  it("an optional delivery location (a stock point of the company) is sent with the PO", async () => {
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (path.startsWith("/masters/cost-centers")) return Promise.resolve([{ id: 3, name: "Head Office" }]);
+      if (path.startsWith("/asset-users?company_id=")) {
+        return Promise.resolve([
+          { id: 7, name: "WH Tajnagar Stores", asset_user_type: "STOCK_POINT" },
+          { id: 8, name: "A Person", asset_user_type: "EMPLOYEE" },
+        ]);
+      }
+      return Promise.resolve([{ id: 9, name: "Acme Traders" }]);
+    });
+    (apiClient.post as any).mockResolvedValue({ id: 42 });
+    renderFormAt();
+    await waitFor(() => expect(screen.getByLabelText(/po no/i)).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText(/po no/i), { target: { value: "PO-2" } });
+    fireEvent.click(screen.getByLabelText(/cost centre/i));
+    fireEvent.click(await screen.findByText("Head Office"));
+    fireEvent.click(screen.getByLabelText(/delivery location/i));
+    expect(screen.queryByText("A Person")).not.toBeInTheDocument();          // only stock points are offered
+    fireEvent.click(await screen.findByText("WH Tajnagar Stores"));
+    fireEvent.click(screen.getByRole("button", { name: /create purchase order/i }));
+
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith(
+        "/purchase-orders",
+        expect.objectContaining({ po_number: "PO-2", cost_center_id: 3, delivery_asset_user_id: 7 }),
+      ),
+    );
+  });
+
+  it("without a delivery location nothing about it is sent", async () => {
+    (apiClient.post as any).mockResolvedValue({ id: 42 });
+    renderFormAt();
+    await waitFor(() => expect(screen.getByLabelText(/po no/i)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/po no/i), { target: { value: "PO-3" } });
+    fireEvent.click(screen.getByLabelText(/cost centre/i));
+    fireEvent.click(await screen.findByText("Head Office"));
+    fireEvent.click(screen.getByRole("button", { name: /create purchase order/i }));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalled());
+    expect((apiClient.post as any).mock.calls[0][1]).not.toHaveProperty("delivery_asset_user_id");
+  });
+
   it("shows a server-side error inline", async () => {
     (apiClient.post as any).mockRejectedValue(new Error("PO number already used"));
     renderFormAt();

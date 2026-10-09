@@ -2,12 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
-from app.core.deps import WRITE_ROLES, require_primary_owner, require_role
+from app.core.deps import WRITE_ROLES, require_primary_owner, require_role, scoped_company_ids
 from app.erp import vendors as erp_vendors
-from app.erp.schemas import DraftCreateIn, ErpVendorCodeIn
+from app.erp.invoices import apply_pi, pi_preview
+from app.erp.reminders import delivery_reminders
+from app.erp.schemas import DraftCreateIn, ErpVendorCodeIn, PiApplyIn
 from app.erp.service import build_draft, create_from_draft, list_available_pos
 from app.erp.source import ErpSource, ErpUnavailable, get_erp_source, is_configured
 from app.masters.schemas import VendorOut
+from app.purchase_orders.models import PurchaseOrder
 
 router = APIRouter(prefix="/api/erp", tags=["erp"])
 
@@ -85,6 +88,63 @@ async def unlink_vendor(
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
     await session.refresh(vendor)
     return vendor
+
+
+# ---- delivery reminders and PI (for POs created from the ERP) ----------
+
+async def _scoped_erp_po(session: AsyncSession, actor, po_id: int) -> PurchaseOrder:
+    po = await session.get(PurchaseOrder, po_id)
+    allowed = await scoped_company_ids(session, actor)
+    if po is None or not po.is_active or (allowed is not None and po.company_id not in allowed):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "purchase order not found")
+    return po
+
+
+@router.get("/reminders")
+async def reminders(
+    po_id: int | None = None, session: AsyncSession = Depends(get_session),
+    source: ErpSource = Depends(get_erp_source), actor=Depends(require_role(*WRITE_ROLES)),
+):
+    """POs created from the ERP where the ERP shows goods received that CKAM has
+    not marked delivered yet. A reminder only: delivery needs serial numbers."""
+    try:
+        return await delivery_reminders(session, actor, source, po_id)
+    except ErpUnavailable as exc:
+        raise _unavailable(exc)
+
+
+@router.get("/purchase-orders/{po_id}/pi")
+async def pi_lookup(
+    po_id: int, session: AsyncSession = Depends(get_session), source: ErpSource = Depends(get_erp_source),
+    actor=Depends(require_role(*WRITE_ROLES)),
+):
+    """The PIs the ERP holds for this PO, matched to the invoices delivered here.
+    Preview only: nothing is recorded."""
+    po = await _scoped_erp_po(session, actor, po_id)
+    try:
+        return await pi_preview(session, source, po)
+    except ErpUnavailable as exc:
+        raise _unavailable(exc)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+
+
+@router.post("/purchase-orders/{po_id}/pi/apply")
+async def pi_apply(
+    po_id: int, body: PiApplyIn, session: AsyncSession = Depends(get_session),
+    source: ErpSource = Depends(get_erp_source), actor=Depends(require_role(*WRITE_ROLES)),
+):
+    """Records the PIs the user confirmed, through the same function as Record PI."""
+    po = await _scoped_erp_po(session, actor, po_id)
+    try:
+        results = await apply_pi(session, actor, source, po, [i.model_dump() for i in body.items])
+        await session.commit()
+    except ErpUnavailable as exc:
+        raise _unavailable(exc)
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    return results
 
 
 # ---- purchase orders ---------------------------------------------------

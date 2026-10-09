@@ -34,9 +34,9 @@ const PENDING_LINE_2 = {
   ...PENDING_LINE, id: 12, description: "Logitech Mouse", barcode: "CT123",
 };
 
-function mockGets(lines: unknown[]) {
+function mockGets(lines: unknown[], po: unknown = PO) {
   (apiClient.get as any).mockImplementation((path: string) => {
-    if (path === "/purchase-orders/1") return Promise.resolve(PO);
+    if (path === "/purchase-orders/1") return Promise.resolve(po);
     if (path === "/purchase-orders/1/lines") return Promise.resolve(lines);
     if (path.startsWith("/masters/categories")) return Promise.resolve([{ id: 1, name: "IT Equipment" }]);
     if (path.startsWith("/masters/subcategories")) return Promise.resolve([{ id: 2, name: "Laptop", category_id: 1 }]);
@@ -257,6 +257,45 @@ describe("PurchaseOrderDetail", () => {
         }),
       ),
     );
+  });
+
+  it("a PO with a delivery location shows it in the header and starts Mark Delivery with it as the Initial Asset User", async () => {
+    mockGets([PENDING_LINE], { ...PO, delivery_asset_user_id: 5, warehouse_code: "CKSPL-WH-TAJNAGAR" });
+    (apiClient.post as any).mockResolvedValue([]);
+    renderDetailAt();
+    await waitFor(() => expect(screen.getByText("Dell Laptop")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Delivery: IT Stock-HO/)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /select all pending lines/i }));
+    fireEvent.click(screen.getByRole("button", { name: /mark 1 delivery done/i }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByLabelText(/initial asset user/i)).toHaveTextContent("IT Stock-HO");
+
+    // Nothing else to pick: invoice + serial are enough, and the delivery location is sent.
+    fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-3" } });
+    fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "500" } });
+    fireEvent.change(within(dialog).getByLabelText(/^serial number\*?$/i), { target: { value: "SN-Z" } });
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: /confirm/i })).not.toBeDisabled());
+    fireEvent.click(within(dialog).getByRole("button", { name: /confirm/i }));
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith(
+        "/purchase-orders/1/deliver",
+        expect.objectContaining({ lines: [{ pending_asset_id: 10, serial_number: "SN-Z", initial_asset_user_id: 5 }] }),
+      ),
+    );
+  });
+
+  it("a PO created from the ERP offers Fetch PI from ERP next to its delivered invoices", async () => {
+    mockGets([DELIVERED_LINE], { ...PO, erp_po_code: 1133610106 });
+    renderDetailAt();
+    expect(await screen.findByRole("button", { name: "Fetch PI from ERP" })).toBeInTheDocument();
+  });
+
+  it("a PO made by hand does not offer Fetch PI from ERP", async () => {
+    mockGets([DELIVERED_LINE]);
+    renderDetailAt();
+    await screen.findByText("INV-777");
+    expect(screen.queryByRole("button", { name: "Fetch PI from ERP" })).not.toBeInTheDocument();
   });
 
   // --- Bulk serial entry: identical units of one line item are grouped ---

@@ -17,6 +17,8 @@ from app.core.config import settings
 # The views this module reads. Names live here so they are changed in one place.
 VIEW_PO_LINE = "gold_ckam.po_line"
 VIEW_VENDOR = "gold_ckam.vendor"
+VIEW_RECEIPT = "gold_ckam.po_receipt_line"
+VIEW_INVOICE = "gold_ckam.po_invoice"
 
 CONNECT_TIMEOUT_SECONDS = 10
 CACHE_SECONDS = 60
@@ -71,7 +73,31 @@ class ErpPo:
     lines: list[ErpPoLine] = field(default_factory=list)
 
 
+@dataclass
+class ErpReceipt:
+    """Goods received (a GRC line) against a PO item."""
+    po_code: int
+    item_code: str
+    grc_no: str | None
+    grc_date: date | None
+    received_qty: float
+
+
+@dataclass
+class ErpInvoice:
+    """A purchase invoice (PI) booked against a PO, with the vendor's own
+    invoice number it was booked from."""
+    po_code: int
+    vendor_invoice_no: str | None
+    vendor_invoice_date: date | None
+    pi_number: str | None
+    pi_date: date | None
+    pi_amount: float | None
+
+
 class ErpSource(Protocol):
+    async def receipts(self, po_codes: list[int]) -> list[ErpReceipt]: ...
+    async def invoices(self, po_codes: list[int]) -> list[ErpInvoice]: ...
     async def vendors(self) -> list[ErpVendor]: ...
     async def open_pos(self, supplier_codes: list[str]) -> list[ErpPo]:
         """Headers only (no lines) of the OPEN POs of these suppliers, newest first."""
@@ -134,6 +160,40 @@ class PgErpSource:
             ErpVendor(code=str(r["supplier_code"]), name=(r["supplier_name"] or "").strip(), gstin=r["gstin"],
                       contact_name=r["contact_name"], phone=r["phone"], email=r["email"],
                       is_active=True if r["is_active"] is None else bool(r["is_active"]))
+            for r in rows
+        ])
+
+    async def receipts(self, po_codes: list[int]) -> list[ErpReceipt]:
+        if not po_codes:
+            return []
+        key = f"receipts:{sorted(po_codes)}"
+        cached = self._cached(key)
+        if cached is not None:
+            return cached
+        rows = await self._fetch(
+            f"select po_code, icode, grc_no, grc_date, received_qty from {VIEW_RECEIPT} where po_code = any($1::bigint[])",
+            po_codes)
+        return self._remember(key, [
+            ErpReceipt(po_code=r["po_code"], item_code=r["icode"], grc_no=None if r["grc_no"] is None else str(r["grc_no"]),
+                       grc_date=r["grc_date"], received_qty=float(r["received_qty"] or 0))
+            for r in rows
+        ])
+
+    async def invoices(self, po_codes: list[int]) -> list[ErpInvoice]:
+        if not po_codes:
+            return []
+        key = f"invoices:{sorted(po_codes)}"
+        cached = self._cached(key)
+        if cached is not None:
+            return cached
+        rows = await self._fetch(
+            f"""select po_code, vendor_invoice_no, vendor_invoice_date, pi_number, pi_date, pi_amount
+                from {VIEW_INVOICE} where po_code = any($1::bigint[])""", po_codes)
+        return self._remember(key, [
+            ErpInvoice(po_code=r["po_code"], vendor_invoice_no=None if r["vendor_invoice_no"] is None else str(r["vendor_invoice_no"]).strip(),
+                       vendor_invoice_date=r["vendor_invoice_date"],
+                       pi_number=None if r["pi_number"] is None else str(r["pi_number"]).strip(),
+                       pi_date=r["pi_date"], pi_amount=_f(r["pi_amount"]))
             for r in rows
         ])
 

@@ -11,6 +11,7 @@ import { AsyncButton } from "@/components/shared/AsyncButton";
 interface Option {
   id: number;
   name: string;
+  asset_user_type?: string;
 }
 
 interface CreatedPurchaseOrder {
@@ -48,6 +49,15 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
     enabled: selectedCompanyId != null,
   });
   const costCenters = costCentersQ.data ?? [];
+  // Where the goods arrive (a stock point of this company). Optional: Mark
+  // Delivery Done then starts with it as the Initial Asset User.
+  const [deliveryId, setDeliveryId] = useState("");
+  const usersQ = useQuery({
+    queryKey: ["asset_users", selectedCompanyId],
+    queryFn: () => apiClient.get<Option[]>(`/asset-users?company_id=${selectedCompanyId}`),
+    enabled: selectedCompanyId != null,
+  });
+  const stockPoints = (usersQ.data ?? []).filter((u) => !u.asset_user_type || u.asset_user_type === "STOCK_POINT");
 
   const canSave = selectedCompanyId != null && poNumber.trim() !== "" && poDate !== "" && costCenterId !== "";
 
@@ -59,6 +69,7 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
         po_date: poDate,
         vendor_id: vendorId ? Number(vendorId) : null,
         cost_center_id: Number(costCenterId),
+        ...(deliveryId ? { delivery_asset_user_id: Number(deliveryId) } : {}),
       }),
     onSuccess: (created) => {
       navigate({ to: "/purchase-orders/$id", params: { id: String(created.id) } });
@@ -78,6 +89,7 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
               onValueChange={(v) => {
                 setSelectedCompanyId(Number(v));
                 setCostCenterId("");
+                setDeliveryId("");
               }}
               options={myCompanies.map((c) => ({ value: String(c.id), label: c.name }))}
             />
@@ -103,6 +115,17 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
             value={selectValue(costCenterId)}
             onValueChange={setCostCenterId}
             options={costCenters.map((c) => ({ value: String(c.id), label: c.name }))}
+          />
+        </FormField>
+        <FormField
+          htmlFor="delivery-location" label="Delivery location" className="col-span-2"
+          helperText="Optional. Where the goods arrive; Mark Delivery Done starts with it as the Initial Asset User."
+        >
+          <SearchableSelect
+            id="delivery-location"
+            value={selectValue(deliveryId)}
+            onValueChange={setDeliveryId}
+            options={stockPoints.map((u) => ({ value: String(u.id), label: u.name }))}
           />
         </FormField>
       </div>

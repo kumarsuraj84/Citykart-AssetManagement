@@ -35,5 +35,15 @@ class DraftCreateIn(BaseModel):
     lines: list[DraftLineIn] = Field(min_length=1)
 
 
+class PiApplyItemIn(BaseModel):
+    pi_number: str
+    ckam_invoice_number: str
+    overwrite: bool = False
+
+
+class PiApplyIn(BaseModel):
+    items: list[PiApplyItemIn] = Field(min_length=1)
+
+
 class ErpVendorCodeIn(BaseModel):
     erp_vendor_code: str = Field(min_length=1, max_length=50)
