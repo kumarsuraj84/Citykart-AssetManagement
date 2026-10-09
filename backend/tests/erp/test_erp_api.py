@@ -135,11 +135,15 @@ def test_the_company_prefix_is_split_off_the_delivery_location():
 
 
 def test_blank_tax_is_worked_out_from_the_po_tax_total_and_snapped_to_a_slab():
-    po = desktop_po()                       # 25,200 charges on 140,000 = 18%
+    po = desktop_po()                       # net 165,200 on 140,000 of lines = 18%
     assert derive_tax(po)[0] == 18.0
-    odd = desktop_po(header_charges=19000)  # 13.57% is no slab: kept as is
+    odd = desktop_po(header_net=159000)     # 13.57% is no slab: kept as is
     assert derive_tax(odd)[0] == 13.57
-    assert derive_tax(desktop_po(header_charges=0))[0] is None
+    assert derive_tax(desktop_po(header_net=140000))[0] is None       # no tax on top of the lines
+    assert derive_tax(desktop_po(header_net=0))[0] is None
+    # Real POs exist whose net is more than the lines by far more than any GST
+    # slab (a bad figure, not tax): never offered as a tax %.
+    assert derive_tax(desktop_po(header_net=400000))[0] is None
 
 
 # ---------- vendors ----------
@@ -237,7 +241,7 @@ async def test_blank_tax_odd_units_and_received_quantities_are_flagged_on_the_li
         line(2, "CT2", "Cable roll", 305, 30, unit="MTR", tax=18.0),
         line(3, "CT3", "Partly in", 4, 500, received=2),
         line(4, "CT4", "Cancelled out", 5, 500, cancelled=5),
-    ], header_charges=2520, header_net=0)     # 2,520 over 23,650 of lines = 10.66%: no GST slab, shown as worked out
+    ], header_net=26170)     # 26,170 over 23,650 of lines = 10.66%: no GST slab, shown as worked out
     d = (await client.get("/api/erp/pos/1133610106/draft", headers=await _headers(client, "OPR"))).json()
     assert [l["item_code"] for l in d["lines"]] == ["CT1", "CT2", "CT3"]          # the fully cancelled line is dropped
     a, b, c = d["lines"]

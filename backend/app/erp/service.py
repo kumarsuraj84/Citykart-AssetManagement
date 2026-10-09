@@ -15,6 +15,7 @@ from app.purchase_orders.models import PurchaseOrder
 from app.purchase_orders.service import add_pending_asset_line, create_purchase_order
 
 STANDARD_TAX_SLABS = (0, 5, 12, 18, 28)
+MAX_PLAUSIBLE_TAX_PERCENT = 35
 COUNTABLE_UNITS = {"pcs", "pc", "nos", "no", "unit", "units", "set", "sets", "box", "roll", "ea", "each"}
 
 
@@ -41,9 +42,14 @@ def derive_tax(po: ErpPo) -> tuple[float | None, float]:
     against the sum of its line amounts, snapped to the nearest GST slab when
     close. Returns (percent | None when it cannot be worked out, raw percent)."""
     base = sum(l.line_net for l in po.lines)
-    if base <= 0 or po.header_charges <= 0:
+    if base <= 0 or po.header_net <= base:
         return None, 0.0
-    raw = po.header_charges / base * 100
+    # The PO's net total is the lines plus tax (checked on the real data: 1.18 x
+    # the lines on every blank-tax PO). The ERP's own "charges" figure is not
+    # used: on those POs it simply repeats the line total.
+    raw = (po.header_net - base) / base * 100
+    if raw > MAX_PLAUSIBLE_TAX_PERCENT:
+        return None, raw
     slab = min(STANDARD_TAX_SLABS, key=lambda s: abs(s - raw))
     return (float(slab) if abs(slab - raw) <= 0.6 else round(raw, 2)), raw
 
