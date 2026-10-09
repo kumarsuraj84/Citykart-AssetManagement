@@ -73,6 +73,39 @@ describe("PurchaseOrdersList", () => {
     expect(screen.getByText("2026-02-10")).toBeInTheDocument();
   });
 
+  it("search matches PO No, Vendor and PI Status, and the hint names exactly those fields plus PI No", async () => {
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (path.startsWith("/purchase-orders")) return Promise.resolve([PO_A, PO_B, { ...PO_A, id: 3, po_number: "PO-2026-003", vendor_id: 10 }]);
+      if (path.startsWith("/masters/vendors")) return Promise.resolve([{ id: 9, name: "Acme Traders" }, { id: 10, name: "Zenith Supplies" }]);
+      return Promise.resolve([]);
+    });
+    renderListAt();
+    await waitFor(() => expect(screen.getByText("PO-2026-001")).toBeInTheDocument());
+    const box = screen.getByLabelText(/search purchase orders/i);
+    expect(box).toHaveAttribute("placeholder", "Search PO No, PI No, Vendor, PI Status…");
+
+    fireEvent.change(box, { target: { value: "PO-2026-003" } });
+    await waitFor(() => expect(screen.queryByText("PO-2026-001")).not.toBeInTheDocument());
+    expect(screen.getByText("PO-2026-003")).toBeInTheDocument();
+
+    fireEvent.change(box, { target: { value: "zenith" } });
+    await waitFor(() => expect(screen.queryByText("PO-2026-002")).not.toBeInTheDocument());
+    expect(screen.getByText("PO-2026-003")).toBeInTheDocument();
+
+    fireEvent.change(box, { target: { value: "recorded" } });
+    await waitFor(() => expect(screen.queryByText("PO-2026-003")).not.toBeInTheDocument());
+    expect(screen.getByText("PO-2026-002")).toBeInTheDocument();
+  });
+
+  it("search does not match PO dates (only PO No, PI No, Vendor and PI Status are searched)", async () => {
+    mockGets([PO_A, PO_B]);
+    renderListAt();
+    await waitFor(() => expect(screen.getByText("PO-2026-001")).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText(/search purchase orders/i), { target: { value: "2026-02-10" } });
+    await waitFor(() => expect(screen.getByText("No matches")).toBeInTheDocument());
+  });
+
   it("AM-21: search filters by PI Number, so a Pending PI is easy to find from home", async () => {
     mockGets([PO_A, PO_B]);
     renderListAt();

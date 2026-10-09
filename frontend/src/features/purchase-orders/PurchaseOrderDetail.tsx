@@ -362,28 +362,32 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().slice(0, 10));
   const [invoiceAmount, setInvoiceAmount] = useState("");
-  const [perLine, setPerLine] = useState<Record<number, { serial: string; assetUserId: string; noSerial: boolean }>>({});
+  // A PO is delivered to one location only, so the Initial Asset User is
+  // chosen once for the whole delivery; only the serial number is per line.
+  const [initialAssetUserId, setInitialAssetUserId] = useState("");
+  const [perLine, setPerLine] = useState<Record<number, { serial: string; noSerial: boolean }>>({});
 
   function openDeliver() {
     deliverMutation.reset();
     setInvoiceNumber("");
     setInvoiceDate(new Date().toISOString().slice(0, 10));
     setInvoiceAmount("");
-    setPerLine(Object.fromEntries(selected.map((id) => [id, { serial: "", assetUserId: "", noSerial: false }])));
+    setInitialAssetUserId("");
+    setPerLine(Object.fromEntries(selected.map((id) => [id, { serial: "", noSerial: false }])));
     setDeliverOpen(true);
   }
 
   const selectedLines = useMemo(() => lines.filter((l) => selected.includes(l.id)), [lines, selected]);
   const canDeliver =
-    invoiceNumber.trim() !== "" && invoiceDate !== "" && invoiceAmount !== "" &&
-    selectedLines.every((l) => perLine[l.id]?.serial.trim() && perLine[l.id]?.assetUserId);
+    initialAssetUserId !== "" && invoiceNumber.trim() !== "" && invoiceDate !== "" && invoiceAmount !== "" &&
+    selectedLines.every((l) => perLine[l.id]?.serial.trim());
 
   const deliverMutation = useMutation({
     mutationFn: () =>
       apiClient.post(`/purchase-orders/${poId}/deliver`, {
         invoice_number: invoiceNumber, invoice_date: invoiceDate, invoice_amount: Number(invoiceAmount) || 0,
         lines: selectedLines.map((l) => ({
-          pending_asset_id: l.id, serial_number: perLine[l.id].serial, initial_asset_user_id: Number(perLine[l.id].assetUserId),
+          pending_asset_id: l.id, serial_number: perLine[l.id].serial, initial_asset_user_id: Number(initialAssetUserId),
         })),
       }),
     onSuccess: () => {
@@ -794,6 +798,19 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
             </DialogTitle>
           </DialogHeader>
 
+          <div className="flex shrink-0 flex-col gap-1">
+            <Label htmlFor="initial-asset-user" className="text-xs">
+              Initial Asset User<span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
+            </Label>
+            <SearchableSelect
+              id="initial-asset-user"
+              value={selectValue(initialAssetUserId)}
+              onValueChange={setInitialAssetUserId}
+              options={asset_users.map((h) => ({ value: String(h.id), label: h.name, keywords: assetUserKeywords(h) }))}
+            />
+            <p className="text-xs text-muted-foreground">Where this delivery goes. Applies to every asset below.</p>
+          </div>
+
           <div className="grid shrink-0 grid-cols-3 gap-2">
             <div className="flex flex-col gap-1">
               <Label htmlFor="invoice-number" className="text-xs">
@@ -819,7 +836,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
             {selectedLines.map((l) => (
               <div key={l.id} className="grid grid-cols-3 items-end gap-2 rounded-md border p-2">
                 <div className="col-span-3 truncate text-xs font-medium">{l.description}</div>
-                <div className="flex flex-col gap-1">
+                <div className="col-span-2 flex flex-col gap-1">
                   <Label htmlFor={`serial-${l.id}`} className="text-xs">
                     Serial Number<span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
                   </Label>
@@ -829,29 +846,18 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
                     disabled={perLine[l.id]?.noSerial}
                     onChange={(e) => setPerLine((p) => ({ ...p, [l.id]: { ...p[l.id], serial: e.target.value } }))}
                   />
-                  <label className="flex items-center gap-1.5 text-xs">
-                    <Checkbox
-                      aria-label={`No serial number for ${l.description}`}
-                      checked={perLine[l.id]?.noSerial ?? false}
-                      onCheckedChange={(checked) => {
-                        const noSerial = checked === true;
-                        setPerLine((p) => ({ ...p, [l.id]: { ...p[l.id], noSerial, serial: noSerial ? "N/A" : "" } }));
-                      }}
-                    />
-                    No serial number
-                  </label>
                 </div>
-                <div className="col-span-2 flex flex-col gap-1">
-                  <Label htmlFor={`asset-user-${l.id}`} className="text-xs">
-                    Initial Asset User<span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
-                  </Label>
-                  <SearchableSelect
-                    id={`asset-user-${l.id}`}
-                    value={selectValue(perLine[l.id]?.assetUserId ?? "")}
-                    onValueChange={(v) => setPerLine((p) => ({ ...p, [l.id]: { ...p[l.id], assetUserId: v } }))}
-                    options={asset_users.map((h) => ({ value: String(h.id), label: h.name, keywords: assetUserKeywords(h) }))}
+                <label className="flex items-center gap-1.5 pb-2 text-xs">
+                  <Checkbox
+                    aria-label={`No serial number for ${l.description}`}
+                    checked={perLine[l.id]?.noSerial ?? false}
+                    onCheckedChange={(checked) => {
+                      const noSerial = checked === true;
+                      setPerLine((p) => ({ ...p, [l.id]: { ...p[l.id], noSerial, serial: noSerial ? "N/A" : "" } }));
+                    }}
                   />
-                </div>
+                  No serial number
+                </label>
               </div>
             ))}
           </div>

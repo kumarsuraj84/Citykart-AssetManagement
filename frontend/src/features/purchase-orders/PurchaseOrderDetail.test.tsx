@@ -217,6 +217,48 @@ describe("PurchaseOrderDetail", () => {
     );
   });
 
+  it("the Delivery Done dialog asks for Initial Asset User once, above the invoice fields, and sends it with every selected line", async () => {
+    mockGets([PENDING_LINE, PENDING_LINE_2]);
+    (apiClient.post as any).mockResolvedValue([]);
+    renderDetailAt();
+    await waitFor(() => expect(screen.getByText("Dell Laptop")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /select all pending lines/i }));
+    fireEvent.click(screen.getByRole("button", { name: /mark 2 delivery done/i }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getAllByLabelText(/initial asset user/i)).toHaveLength(1);
+    const assetUserLabel = dialog.querySelector('label[for="initial-asset-user"]')!;
+    const invoiceLabel = dialog.querySelector('label[for="invoice-number"]')!;
+    expect(assetUserLabel.compareDocumentPosition(invoiceLabel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-2" } });
+    fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "500" } });
+    const serials = within(dialog).getAllByLabelText(/^serial number\*?$/i);
+    fireEvent.change(serials[0], { target: { value: "SN-A" } });
+    fireEvent.change(serials[1], { target: { value: "SN-B" } });
+
+    // Every serial and invoice field is filled, but no asset user yet: still blocked.
+    expect(within(dialog).getByRole("button", { name: /confirm/i })).toBeDisabled();
+
+    fireEvent.click(within(dialog).getByLabelText(/initial asset user/i));
+    fireEvent.click(await screen.findByText("IT Stock-HO"));
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: /confirm/i })).not.toBeDisabled());
+    fireEvent.click(within(dialog).getByRole("button", { name: /confirm/i }));
+
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith(
+        "/purchase-orders/1/deliver",
+        expect.objectContaining({
+          lines: [
+            { pending_asset_id: 10, serial_number: "SN-A", initial_asset_user_id: 5 },
+            { pending_asset_id: 12, serial_number: "SN-B", initial_asset_user_id: 5 },
+          ],
+        }),
+      ),
+    );
+  });
+
   it("AM-22 UAT: Invoice No/Date/Amount are visibly marked required in the Delivery Done dialog (backend rejects a delivery missing any of them, so Confirm silently staying disabled with no required-marker was a real trap)", async () => {
     mockGets([PENDING_LINE]);
     renderDetailAt();

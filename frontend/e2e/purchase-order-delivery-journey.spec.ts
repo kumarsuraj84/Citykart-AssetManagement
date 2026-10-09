@@ -108,7 +108,9 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
 
   // ---- Trigger Delivery Done ----
   await page.getByRole("button", { name: "Mark 2 Delivery Done", exact: true }).click();
-  const deliverDialog = page.getByRole("dialog");
+  // Named, not a bare "dialog": the Initial Asset User dropdown's popup also
+  // has role=dialog and can still be in the DOM while this dialog closes.
+  const deliverDialog = page.getByRole("dialog", { name: /assets? delivered/ });
   await expect(deliverDialog.getByRole("heading", { name: "Mark 2 assets delivered" })).toBeVisible();
 
   // ---- Shared Invoice fields, filled once ----
@@ -118,25 +120,23 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   await deliverDialog.locator("#invoice-date").fill(invoiceDate);
   await deliverDialog.locator("#invoice-amount").fill("2100");
 
-  // ---- Distinct Serial Number + Initial AssetUser per selected unit ----
+  // ---- Initial AssetUser: chosen once for the whole delivery (a PO goes to
+  // one location only), not per unit ----
+  await expect(deliverDialog.locator('[id^="asset-user-"]')).toHaveCount(0);
+  await deliverDialog.locator("#initial-asset-user").click();
+  await page.getByRole("option", { name: ctx.stock.name, exact: true }).click();
+
+  // ---- Distinct Serial Number per selected unit ----
   // (ids are per-PendingAsset, unknown ahead of time -- select by the
   // id-prefix pattern PurchaseOrderDetail.tsx renders, not by label text,
-  // since both units share the identical "Serial Number"/"Initial AssetUser"
-  // label text.)
+  // since both units share the identical "Serial Number" label text.)
   const serialInputs = deliverDialog.locator('input[id^="serial-"]');
-  const asset_userTriggers = deliverDialog.locator('[id^="asset-user-"]');
   await expect(serialInputs).toHaveCount(2);
-  await expect(asset_userTriggers).toHaveCount(2);
 
   const serialA = `E2E-SN-${ts}-A`;
   const serialB = `E2E-SN-${ts}-B`;
   await serialInputs.nth(0).fill(serialA);
-  await asset_userTriggers.nth(0).click();
-  await page.getByRole("option", { name: ctx.stock.name, exact: true }).click();
-
   await serialInputs.nth(1).fill(serialB);
-  await asset_userTriggers.nth(1).click();
-  await page.getByRole("option", { name: ctx.employee.name, exact: true }).click();
 
   // ---- Confirm the delivery ----
   await deliverDialog.getByRole("button", { name: "Confirm", exact: true }).click();
@@ -177,9 +177,9 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   const custody = page.getByRole("tabpanel", { name: "Custody" });
   await expect(custody.getByText(ctx.stock.name, { exact: true })).toBeVisible();
 
-  // ---- Unit B: same checks, via its own unique Serial Number, with the
-  // OTHER initial asset_user -- proves the two units were not accidentally
-  // swapped/merged during delivery. ----
+  // ---- Unit B: same checks, via its own unique Serial Number -- proves the
+  // two units were not accidentally merged during delivery, and that the one
+  // shared initial asset_user was applied to it too. ----
   await page.goto("/assets");
   await page.getByLabel("Search", { exact: true }).fill(serialB);
   await expect(page.getByText("Showing 1–1 of 1 asset", { exact: true })).toBeVisible();
@@ -195,7 +195,7 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
 
   await page.getByRole("tab", { name: "Custody", exact: true }).click();
   const custodyB = page.getByRole("tabpanel", { name: "Custody" });
-  await expect(custodyB.getByText(ctx.employee.name, { exact: true })).toBeVisible();
+  await expect(custodyB.getByText(ctx.stock.name, { exact: true })).toBeVisible();
 
   // ---- Revisit the PO detail: the 3rd, undelivered unit is still PENDING --
   // and (AM-17 Part B) attempting to deliver it with a REAL duplicate Serial
@@ -210,13 +210,13 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   await lastCheckbox.click();
   await page.getByRole("button", { name: "Mark 1 Delivery Done", exact: true }).click();
 
-  const dupDialog = page.getByRole("dialog");
+  const dupDialog = page.getByRole("dialog", { name: /assets? delivered/ });
   await expect(dupDialog.getByRole("heading", { name: "Mark 1 asset delivered" })).toBeVisible();
   await dupDialog.locator("#invoice-number").fill(`E2E-INV-DUP-${ts}`);
   await dupDialog.locator("#invoice-date").fill("2026-01-16");
   await dupDialog.locator("#invoice-amount").fill("1050");
   await dupDialog.locator('input[id^="serial-"]').fill(serialA); // duplicate, real value -- not "N/A"
-  await dupDialog.locator('[id^="asset-user-"]').click();
+  await dupDialog.locator("#initial-asset-user").click();
   await page.getByRole("option", { name: ctx.store.name, exact: true }).click();
   await dupDialog.getByRole("button", { name: "Confirm", exact: true }).click();
 

@@ -110,8 +110,9 @@ export function PurchaseOrdersList() {
   const filteredRows = searchLower
     ? rows.filter((po) => {
         const vendor = po.vendor_id ? (vendorNames[po.vendor_id] ?? "") : "";
-        const costCenter = po.cost_center_id ? (costCenterNames[po.cost_center_id] ?? "") : "";
-        return [po.po_number, po.po_date, vendor, costCenter, PI_STATUS_LABEL[po.pi_status], po.pi_number, po.pi_date]
+        // Deliberately only these four fields (what the placeholder says);
+        // dates and Cost Centre are not searched.
+        return [po.po_number, po.pi_number, vendor, PI_STATUS_LABEL[po.pi_status]]
           .some((v) => (v ?? "").toLowerCase().includes(searchLower));
       })
     : rows;
@@ -140,7 +141,7 @@ export function PurchaseOrdersList() {
 
       <Input
         aria-label="Search Purchase Orders"
-        placeholder="Search PO No, Vendor, Cost Centre, PI No…"
+        placeholder="Search PO No, PI No, Vendor, PI Status…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         className="max-w-sm"
