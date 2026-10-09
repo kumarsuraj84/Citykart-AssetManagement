@@ -416,6 +416,48 @@ describe("PurchaseOrderDetail", () => {
     await waitFor(() => expect(confirmBtn(dialog)).not.toBeDisabled());
   });
 
+  it("bundle lines show their bundle tag, and a part that never carries a serial starts with 'No serial number' ticked", async () => {
+    const cpu = (id: number) => ({ ...PENDING_LINE, id, description: "Dell Desktop - CPU", bundle_label: "Desktop", serial_required: true });
+    const mouse = (id: number) => ({ ...PENDING_LINE, id, description: "Dell Desktop - Mouse", bundle_label: "Desktop", serial_required: false });
+    mockGets([cpu(20), cpu(21), mouse(22), mouse(23)]);
+    (apiClient.post as any).mockResolvedValue([]);
+    renderDetailAt();
+    await waitFor(() => expect(screen.getAllByText("Dell Desktop - CPU")).toHaveLength(2));
+    expect(screen.getAllByText("Desktop")).toHaveLength(4); // the tag on each line
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /select all pending lines/i }));
+    fireEvent.click(screen.getByRole("button", { name: /mark 4 delivery done/i }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-D" } });
+    fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "5000" } });
+    fireEvent.click(within(dialog).getByLabelText(/initial asset user/i));
+    fireEvent.click(await screen.findByText("IT Stock-HO"));
+
+    expect(within(dialog).getByRole("checkbox", { name: /no serial number for dell desktop - mouse/i })).toBeChecked();
+    expect(within(dialog).getByRole("checkbox", { name: /no serial number for dell desktop - cpu/i })).not.toBeChecked();
+    // Only the CPUs still need serials, so Confirm waits for exactly those.
+    expect(confirmBtn(dialog)).toBeDisabled();
+    const [cpuBox, mouseBox] = within(dialog).getAllByLabelText(/^serial numbers\*?$/i);
+    expect(mouseBox).toBeDisabled();
+    fireEvent.change(cpuBox, { target: { value: "CPU-1\nCPU-2" } });
+    await waitFor(() => expect(confirmBtn(dialog)).not.toBeDisabled());
+    fireEvent.click(confirmBtn(dialog));
+
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith(
+        "/purchase-orders/1/deliver",
+        expect.objectContaining({
+          lines: [
+            { pending_asset_id: 20, serial_number: "CPU-1", initial_asset_user_id: 5 },
+            { pending_asset_id: 21, serial_number: "CPU-2", initial_asset_user_id: 5 },
+            { pending_asset_id: 22, serial_number: "N/A", initial_asset_user_id: 5 },
+            { pending_asset_id: 23, serial_number: "N/A", initial_asset_user_id: 5 },
+          ],
+        }),
+      ),
+    );
+  });
+
   it("AM-22 UAT: Invoice No/Date/Amount are visibly marked required in the Delivery Done dialog (backend rejects a delivery missing any of them, so Confirm silently staying disabled with no required-marker was a real trap)", async () => {
     mockGets([PENDING_LINE]);
     renderDetailAt();

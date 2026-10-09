@@ -28,6 +28,7 @@ import {
   Tags,
   Truck,
   Award,
+  Layers,
   SlidersHorizontal,
   UserCog,
   Hash,
@@ -73,6 +74,7 @@ import CategoriesSetup from "./routes/setup/categories";
 import SubcategoriesSetup from "./routes/setup/subcategories";
 import VendorsSetup from "./routes/setup/vendors";
 import BrandsSetup from "./routes/setup/brands";
+import BundlesSetup from "./routes/setup/bundles";
 import CustomFieldsSetup from "./routes/setup/custom-fields";
 import AssetUsersSetup from "./routes/setup/asset-users";
 import CodeRuleSetup from "./routes/setup/code-rule";
@@ -112,6 +114,7 @@ const MASTER_SETUP_LINKS: { to: string; label: string; icon: LucideIcon }[] = [
   { to: "/setup/subcategories", label: "Sub-Categories", icon: Tags },
   { to: "/setup/vendors", label: "Vendors", icon: Truck },
   { to: "/setup/brands", label: "Brands", icon: Award },
+  { to: "/setup/bundles", label: "Bundles", icon: Layers },
   { to: "/setup/custom-fields", label: "Custom Fields", icon: SlidersHorizontal },
 ];
 const ADMIN_SETUP_LINKS: { to: string; label: string; icon: LucideIcon }[] = [
@@ -527,6 +530,12 @@ export const setupBrandsRoute = createRoute({
   component: BrandsSetup,
 });
 
+export const setupBundlesRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/setup/bundles",
+  component: BundlesSetup,
+});
+
 export const setupCustomFieldsRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/custom-fields",
@@ -570,6 +579,7 @@ const routeTree = rootRoute.addChildren([
     setupSubcategoriesRoute,
     setupVendorsRoute,
     setupBrandsRoute,
+    setupBundlesRoute,
     setupCustomFieldsRoute,
     setupAssetUsersRoute,
     setupCodeRuleRoute,

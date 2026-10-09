@@ -10,6 +10,8 @@ from app.purchase_orders.schemas import (
     SerialCheckIn, SerialCheckOut, SerialConflictOut,
 )
 from app.assets.service import find_serials_in_use
+from app.bundles.schemas import BundleLinesIn
+from app.bundles.service import add_bundle_lines
 from app.purchase_orders.service import (
     add_pending_asset_line, cancel_pending_asset_line, compute_pi_status, create_purchase_order,
     delete_purchase_order, deliver_pending_assets, record_pi_for_invoice, update_pending_asset_line,
@@ -94,6 +96,25 @@ async def add_line(
     po = await _get_scoped_po(po_id, session, actor)
     try:
         lines = await add_pending_asset_line(session, po, body.model_dump(), actor)
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    await session.commit()
+    for line in lines:
+        await session.refresh(line)
+    return lines
+
+
+@router.post("/{po_id}/bundle-lines", response_model=list[PendingAssetOut], status_code=201)
+async def add_bundle(
+    po_id: int, body: BundleLinesIn, session: AsyncSession = Depends(get_session),
+    actor=Depends(require_role(*WRITE_ROLES)),
+):
+    """Adds `quantity` bundles (for example 4 Desktops) as ordinary lines, one
+    per part, all or nothing -- see app.bundles.service.add_bundle_lines."""
+    po = await _get_scoped_po(po_id, session, actor)
+    try:
+        lines = await add_bundle_lines(session, po, body.model_dump(), actor)
     except ValueError as exc:
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))

@@ -114,6 +114,7 @@ async def add_pending_asset_line(
             # Spec §19: derived server-side from the selected Category at
             # line-creation time, same discipline as Asset.asset_domain.
             asset_domain=category.asset_domain,
+            serial_required=data.get("serial_required", True), bundle_label=data.get("bundle_label"),
             created_by=actor.id, updated_by=actor.id,
         )
         session.add(line)

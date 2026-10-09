@@ -16,6 +16,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { FormField } from "@/components/shared/FormField";
 import { AsyncButton } from "@/components/shared/AsyncButton";
+import { AddBundleDialog } from "./AddBundleDialog";
 
 interface PurchaseOrderOut {
   id: number;
@@ -54,9 +55,25 @@ interface PendingAssetRow {
   tax_percent: number | null;
   total_cost: number | null;
   status: "PENDING" | "DELIVERED" | "CANCELLED";
+  // False for a part that never carries a serial (mouse, keyboard); the
+  // delivery dialog then starts with "No serial number" ticked for it.
+  serial_required?: boolean;
+  bundle_label?: string | null;
   serial_number: string | null;
   invoice_number: string | null;
   delivered_asset_id: number | null;
+}
+
+// A line made from a bundle carries a small tag naming it ("Desktop"), so it's
+// clear where the CPU/TFT/Keyboard/Mouse lines of one order came from.
+function descriptionCell(l: PendingAssetRow): ReactNode {
+  if (!l.bundle_label) return l.description;
+  return (
+    <>
+      <span>{l.description}</span>
+      <span className="ml-1.5 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{l.bundle_label}</span>
+    </>
+  );
 }
 
 interface DeliveryGroup {
@@ -238,6 +255,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   // expanded, always paying its vertical space even when nobody was adding a
   // line. Same fields/mutation/validation, purely a visibility toggle.
   const [showAddLine, setShowAddLine] = useState(false);
+  const [bundleOpen, setBundleOpen] = useState(false);
   const [lineForm, setLineForm] = useState({
     description: "", barcode: "", categoryId: "", subcategoryId: "",
     brandId: "", model: "", warrantyYears: "0",
@@ -410,7 +428,15 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     setInvoiceDate(new Date().toISOString().slice(0, 10));
     setInvoiceAmount("");
     setInitialAssetUserId("");
-    setGroupInput({});
+    // Parts that never carry a serial (a bundle's mouse/keyboard) start with
+    // "No serial number" already ticked; it can still be unticked.
+    setGroupInput(
+      Object.fromEntries(
+        groupUnits(lines.filter((l) => selected.includes(l.id))).map((g) => [
+          g.key, { text: "", noSerial: g.lines[0].serial_required === false },
+        ]),
+      ),
+    );
     setLeavePending(false);
     setExistingSerials({});
     setDeliverOpen(true);
@@ -548,7 +574,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     {
       key: "description",
       header: <ColumnSearchHeader label="Description" value={pendingFilters.description} onChange={(v) => setPendingFilter("description", v)} scope="Pending" />,
-      cell: (l) => l.description,
+      cell: (l) => descriptionCell(l),
     },
     {
       key: "barcode",
@@ -586,7 +612,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     {
       key: "description",
       header: <ColumnSearchHeader label="Description" value={deliveredFilters.description} onChange={(v) => setDeliveredFilter("description", v)} scope="Delivered" />,
-      cell: (l) => l.description,
+      cell: (l) => descriptionCell(l),
     },
     {
       key: "barcode",
@@ -683,11 +709,16 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
       <div className="rounded-md border p-3">
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-semibold">Add Line</h2>
-          {!showAddLine && (
-            <Button size="sm" variant="outline" onClick={() => setShowAddLine(true)}>
-              + Add Line
+          <div className="flex gap-2">
+            {!showAddLine && (
+              <Button size="sm" variant="outline" onClick={() => setShowAddLine(true)}>
+                + Add Line
+              </Button>
+            )}
+            <Button size="sm" variant="outline" onClick={() => setBundleOpen(true)}>
+              + Add Bundle
             </Button>
-          )}
+          </div>
         </div>
         {showAddLine && (
         <>
@@ -914,6 +945,8 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AddBundleDialog poId={poId} open={bundleOpen} onOpenChange={setBundleOpen} />
 
       <Dialog open={deliverOpen} onOpenChange={(open) => !open && setDeliverOpen(false)}>
         {/* flex flex-col + max-h + overflow-hidden caps the dialog to the

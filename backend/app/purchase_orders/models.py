@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Integer, Numeric, String
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.db import Base
 from app.core.models import AuditMixin, SoftDeleteMixin
@@ -50,6 +50,13 @@ class PendingAsset(Base, AuditMixin):
     total_cost: Mapped[float | None] = mapped_column(Numeric(14, 2))
 
     status: Mapped[str] = mapped_column(String(20), default="PENDING")
+
+    # False for a part that never carries a serial (a mouse, a keyboard): the
+    # delivery dialog then starts with "No serial number" ticked. Ordinary
+    # lines are True. bundle_label names the bundle ("Desktop") a line came
+    # from, shown as a tag; null for ordinary lines.
+    serial_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    bundle_label: Mapped[str | None] = mapped_column(String(100))
 
     # IT / NON_IT, derived server-side from Category.asset_domain when the
     # line is created (spec §19) -- copied onto Asset.asset_domain unchanged

@@ -80,6 +80,8 @@ class PendingAssetOut(BaseModel):
     tax_amount: float | None
     total_cost: float | None
     status: str
+    serial_required: bool = True
+    bundle_label: str | None = None
     serial_number: str | None
     invoice_number: str | None
     invoice_date: date | None
