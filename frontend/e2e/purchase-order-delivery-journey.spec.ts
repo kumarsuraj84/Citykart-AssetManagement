@@ -220,11 +220,13 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   await dupDialog.locator('input[id^="serial-"]').fill(serialA); // duplicate, real value -- not "N/A"
   await dupDialog.locator("#initial-asset-user").click();
   await page.getByRole("option", { name: ctx.store.name, exact: true }).click();
-  await dupDialog.getByRole("button", { name: "Confirm", exact: true }).click();
 
-  // Rejected with a visible, specific error -- dialog stays open, no 3rd
-  // asset gets created, and the line remains PENDING.
-  await expect(dupDialog.getByRole("alert").or(dupDialog.getByText(/already used/i))).toBeVisible();
+  // The dialog now asks the server while the serial is being typed, so the
+  // clash is shown right away -- naming the asset that already has it -- and
+  // Confirm is disabled, instead of failing only after Confirm. (The server's
+  // own rejection of a duplicate on delivery is covered by the backend tests.)
+  await expect(dupDialog.getByText(/is already used by asset/i)).toBeVisible();
+  await expect(dupDialog.getByRole("button", { name: "Confirm", exact: true })).toBeDisabled();
   await expect(dupDialog).toBeVisible();
   await dupDialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(dupDialog).not.toBeVisible();

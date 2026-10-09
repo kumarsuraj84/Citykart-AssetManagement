@@ -7,7 +7,9 @@ from app.purchase_orders.models import PurchaseOrder, PendingAsset
 from app.purchase_orders.schemas import (
     DeliveryDoneIn, PendingAssetLineIn, PendingAssetLineUpdateIn, PendingAssetOut,
     PurchaseOrderCreateIn, PurchaseOrderDeleteOut, PurchaseOrderOut, RecordPiIn, RecordPiOut,
+    SerialCheckIn, SerialCheckOut, SerialConflictOut,
 )
+from app.assets.service import find_serials_in_use
 from app.purchase_orders.service import (
     add_pending_asset_line, cancel_pending_asset_line, compute_pi_status, create_purchase_order,
     delete_purchase_order, deliver_pending_assets, record_pi_for_invoice, update_pending_asset_line,
@@ -40,6 +42,20 @@ async def create_po(
     await session.commit()
     await session.refresh(po)
     return po
+
+
+@router.post("/check-serials", response_model=SerialCheckOut)
+async def check_serials(
+    body: SerialCheckIn, session: AsyncSession = Depends(get_session),
+    actor=Depends(require_role(*WRITE_ROLES)),
+):
+    """Advisory pre-check for the Mark Delivery dialog: which of these serials
+    are already used by an asset anywhere in CKAM. Only roles that can deliver
+    may ask, and only the serial and the holding asset's code come back (the
+    same thing the real delivery error already reveals). The delivery still
+    re-checks everything server-side."""
+    found = await find_serials_in_use(session, body.serials)
+    return SerialCheckOut(conflicts=[SerialConflictOut(serial=s, asset_code=c) for s, c in found])
 
 
 @router.get("", response_model=list[PurchaseOrderOut])

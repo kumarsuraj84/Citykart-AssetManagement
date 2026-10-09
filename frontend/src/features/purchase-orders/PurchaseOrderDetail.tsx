@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { apiClient } from "../../lib/api-client";
@@ -397,6 +397,12 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   // order, or "No serial number" sets N/A for the whole product.
   const [initialAssetUserId, setInitialAssetUserId] = useState("");
   const [groupInput, setGroupInput] = useState<Record<string, { text: string; noSerial: boolean }>>({});
+  // Deliberate opt-in to deliver only the units that have a serial and leave
+  // the rest in Pending Delivery (instead of cancelling and re-selecting).
+  const [leavePending, setLeavePending] = useState(false);
+  // lower-cased serial -> asset code of the asset in CKAM that already has it,
+  // from the advisory check-serials call below.
+  const [existingSerials, setExistingSerials] = useState<Record<string, string>>({});
 
   function openDeliver() {
     deliverMutation.reset();
@@ -405,6 +411,8 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     setInvoiceAmount("");
     setInitialAssetUserId("");
     setGroupInput({});
+    setLeavePending(false);
+    setExistingSerials({});
     setDeliverOpen(true);
   }
 
@@ -439,26 +447,77 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     const tokens = parseSerials(inp?.text ?? "");
     return g.lines.map((_, i) => tokens[i] ?? "");
   }
-  function groupComplete(g: DeliveryGroup): boolean {
+  // A block is broken (not merely unfinished) if it has more serials than
+  // units, a serial repeated in this delivery, or one CKAM already has.
+  function groupHasProblem(g: DeliveryGroup): boolean {
     const inp = groupInput[g.key];
-    if (inp?.noSerial) return true;
+    if (inp?.noSerial) return false;
     const tokens = parseSerials(inp?.text ?? "");
-    return tokens.length === g.lines.length && !tokens.some((s) => duplicateSerials.has(s.toLowerCase()));
+    return tokens.length > g.lines.length ||
+      tokens.some((s) => duplicateSerials.has(s.toLowerCase()) || existingSerials[s.toLowerCase()] !== undefined);
   }
+  // Units of a group that would be delivered: all if "No serial number", else
+  // as many as there are serials (never more than the units).
+  function deliverCountForGroup(g: DeliveryGroup): number {
+    if (groupInput[g.key]?.noSerial) return g.lines.length;
+    return Math.min(parseSerials(groupInput[g.key]?.text ?? "").length, g.lines.length);
+  }
+  const deliverUnits = deliveryGroups.reduce((sum, g) => sum + deliverCountForGroup(g), 0);
+  const unitsWithoutSerial = selectedLines.length - deliverUnits;
+  const anyProblem = deliveryGroups.some(groupHasProblem);
 
   const canDeliver =
     initialAssetUserId !== "" && invoiceNumber.trim() !== "" && invoiceDate !== "" && invoiceAmount !== "" &&
-    deliveryGroups.every(groupComplete);
+    !anyProblem && deliverUnits > 0 && (unitsWithoutSerial === 0 || leavePending);
+
+  // Advisory, debounced: ask the server which of the serials typed so far
+  // CKAM already has, so the user finds out now rather than after Confirm.
+  // The delivery itself re-checks everything, so a failed lookup is ignored.
+  const typedSerials = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const g of deliveryGroups) {
+      if (groupInput[g.key]?.noSerial) continue;
+      for (const s of parseSerials(groupInput[g.key]?.text ?? "")) {
+        if (s.toLowerCase() !== "n/a" && !seen.has(s.toLowerCase())) seen.set(s.toLowerCase(), s);
+      }
+    }
+    return [...seen.values()];
+  }, [deliveryGroups, groupInput]);
+  const typedSerialsKey = typedSerials.join("\n");
+  useEffect(() => {
+    if (!deliverOpen || typedSerials.length === 0) {
+      setExistingSerials((prev) => (Object.keys(prev).length ? {} : prev));
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      apiClient
+        .post<{ conflicts: { serial: string; asset_code: string }[] }>("/purchase-orders/check-serials", { serials: typedSerials })
+        .then((r) => {
+          if (!cancelled) setExistingSerials(Object.fromEntries((r?.conflicts ?? []).map((c) => [c.serial.toLowerCase(), c.asset_code])));
+        })
+        .catch(() => {
+          if (!cancelled) setExistingSerials({});
+        });
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deliverOpen, typedSerialsKey]);
 
   const deliverMutation = useMutation({
     mutationFn: () =>
       apiClient.post(`/purchase-orders/${poId}/deliver`, {
         invoice_number: invoiceNumber, invoice_date: invoiceDate, invoice_amount: Number(invoiceAmount) || 0,
+        // Only units that have a serial; the rest (if the user chose to leave
+        // them pending) are simply not sent and stay in Pending Delivery.
         lines: deliveryGroups.flatMap((g) => {
           const serials = serialsForGroup(g);
-          return g.lines.map((l, i) => ({
-            pending_asset_id: l.id, serial_number: serials[i], initial_asset_user_id: Number(initialAssetUserId),
-          }));
+          return g.lines
+            .map((l, i) => ({ pending_asset_id: l.id, serial_number: serials[i], initial_asset_user_id: Number(initialAssetUserId) }))
+            .filter((line) => line.serial_number !== "");
         }),
       }),
     onSuccess: () => {
@@ -911,7 +970,8 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
               const tokens = parseSerials(inp.text);
               const extra = Math.max(0, tokens.length - n);
               const dups = [...new Set(tokens.filter((s) => duplicateSerials.has(s.toLowerCase())))];
-              const problem = !inp.noSerial && (extra > 0 || dups.length > 0);
+              const taken = [...new Set(tokens.filter((s) => existingSerials[s.toLowerCase()] !== undefined))];
+              const problem = !inp.noSerial && (extra > 0 || dups.length > 0 || taken.length > 0);
               return (
                 <div key={g.key} className="flex flex-col gap-2 rounded-md border p-2">
                   <div className="flex items-center justify-between gap-2">
@@ -947,11 +1007,17 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
                         {tokens.length} of {n} entered
                         {extra > 0 && ` -- ${extra} too many, remove ${extra === 1 ? "it" : "them"}`}
                         {dups.length > 0 && ` -- duplicate: ${dups.join(", ")}`}
+                        {tokens.length < n && leavePending && ` -- ${n - tokens.length} will stay pending`}
                       </p>
                     )}
                     {n === 1 && dups.length > 0 && !inp.noSerial && (
                       <p className="text-xs text-destructive">Duplicate serial: {dups.join(", ")}</p>
                     )}
+                    {!inp.noSerial && taken.map((s) => (
+                      <p key={s} className="text-xs text-destructive" role="alert">
+                        Serial "{s}" is already used by asset {existingSerials[s.toLowerCase()]}
+                      </p>
+                    ))}
                   </div>
                   <label className="flex items-center gap-1.5 text-xs">
                     <Checkbox
@@ -965,6 +1031,20 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
               );
             })}
           </div>
+
+          {unitsWithoutSerial > 0 && !anyProblem && (
+            <label className="flex shrink-0 items-start gap-2 rounded-md border border-warning/50 bg-warning/10 p-2 text-xs">
+              <Checkbox
+                aria-label="Leave the remaining units pending"
+                checked={leavePending}
+                onCheckedChange={(checked) => setLeavePending(checked === true)}
+              />
+              <span>
+                {unitsWithoutSerial} unit{unitsWithoutSerial === 1 ? " has" : "s have"} no serial yet. Tick to deliver only the{" "}
+                {deliverUnits} with serials and leave {unitsWithoutSerial === 1 ? "it" : "them"} in Pending Delivery.
+              </span>
+            </label>
+          )}
 
           {deliverMutation.isError && (
             <p className="shrink-0 text-sm text-destructive" role="alert">

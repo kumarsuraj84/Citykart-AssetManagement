@@ -53,6 +53,31 @@ async def check_serial_number_unique(
         raise ValueError(f'serial number "{serial_number}" is already used by asset {existing.asset_code}')
 
 
+async def find_serials_in_use(session: AsyncSession, serials: list[str]) -> list[tuple[str, str]]:
+    """The advisory twin of `check_serial_number_unique` for a whole list at
+    once (the Mark Delivery dialog asks while the user is still typing):
+    returns (serial as typed, asset_code holding it) for every serial that is
+    already used by a live asset anywhere in the system. Same rules as the
+    real check -- trimmed, case-insensitive, blank and "N/A" never conflict.
+    Only advisory: the delivery itself still goes through
+    `check_serial_number_unique` and the DB unique index."""
+    typed: dict[str, str] = {}
+    for s in serials:
+        normalized = (s or "").strip()
+        if not normalized or normalized.upper() == NO_SERIAL_PLACEASSET_USER:
+            continue
+        typed.setdefault(normalized.lower(), normalized)
+    if not typed:
+        return []
+    stmt = select(Asset.serial_number, Asset.asset_code).where(
+        func.lower(Asset.serial_number).in_(list(typed)), Asset.deleted_at.is_(None),
+    )
+    found: dict[str, str] = {}
+    for serial_number, asset_code in (await session.execute(stmt)).all():
+        found.setdefault(serial_number.strip().lower(), asset_code)
+    return [(typed[k], found[k]) for k in typed if k in found]
+
+
 def _add_years(d: date, years: int) -> date:
     """`date.replace(year=...)` raises ValueError for Feb 29 landing on a
     target year that isn't a leap year -- fall back to Feb 28, the same

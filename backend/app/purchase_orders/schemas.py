@@ -1,5 +1,5 @@
 from datetime import date
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class PurchaseOrderCreateIn(BaseModel):
@@ -99,6 +99,19 @@ class DeliveryDoneIn(BaseModel):
     invoice_date: date
     invoice_amount: float
     lines: list[DeliveryLineIn]
+
+
+class SerialCheckIn(BaseModel):
+    serials: list[str] = Field(max_length=2000)
+
+
+class SerialConflictOut(BaseModel):
+    serial: str
+    asset_code: str
+
+
+class SerialCheckOut(BaseModel):
+    conflicts: list[SerialConflictOut]
 
 
 class RecordPiIn(BaseModel):

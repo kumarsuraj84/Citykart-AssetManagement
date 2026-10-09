@@ -356,6 +356,66 @@ describe("PurchaseOrderDetail", () => {
     await waitFor(() => expect(confirmBtn(dialog)).not.toBeDisabled());
   });
 
+  it("fewer serials than units: Confirm stays blocked until the user ticks 'leave the rest pending', then only the units with serials are sent", async () => {
+    const units = [PENDING_LINE, LAPTOP_2, LAPTOP_3, { ...PENDING_LINE, id: 15 }, { ...PENDING_LINE, id: 16 }];
+    const dialog = await openDeliveryFor(units);
+    const box = within(dialog).getByLabelText(/^serial numbers\*?$/i);
+
+    fireEvent.change(box, { target: { value: "S1\nS2\nS3\nS4" } });
+    expect(within(dialog).getByText(/4 of 5 entered/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/1 unit has no serial yet/)).toBeInTheDocument();
+    expect(confirmBtn(dialog)).toBeDisabled();
+
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /leave the remaining units pending/i }));
+    expect(within(dialog).getByText(/1 will stay pending/)).toBeInTheDocument();
+    await waitFor(() => expect(confirmBtn(dialog)).not.toBeDisabled());
+    fireEvent.click(confirmBtn(dialog));
+
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith(
+        "/purchase-orders/1/deliver",
+        expect.objectContaining({
+          lines: [
+            { pending_asset_id: 10, serial_number: "S1", initial_asset_user_id: 5 },
+            { pending_asset_id: 13, serial_number: "S2", initial_asset_user_id: 5 },
+            { pending_asset_id: 14, serial_number: "S3", initial_asset_user_id: 5 },
+            { pending_asset_id: 15, serial_number: "S4", initial_asset_user_id: 5 },
+          ],
+        }),
+      ),
+    );
+  });
+
+  it("the 'leave pending' option never appears for a complete list, and an empty dialog cannot be confirmed even with it ticked", async () => {
+    const dialog = await openDeliveryFor([PENDING_LINE, LAPTOP_2]);
+    // Nothing entered yet: the notice offers the tick, but delivering zero units is not allowed.
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /leave the remaining units pending/i }));
+    expect(confirmBtn(dialog)).toBeDisabled();
+
+    fireEvent.change(within(dialog).getByLabelText(/^serial numbers\*?$/i), { target: { value: "X1\nX2" } });
+    expect(within(dialog).queryByRole("checkbox", { name: /leave the remaining units pending/i })).not.toBeInTheDocument();
+    await waitFor(() => expect(confirmBtn(dialog)).not.toBeDisabled());
+  });
+
+  it("serials CKAM already has are flagged as you type, naming the asset, and block Confirm until removed", async () => {
+    const dialog = await openDeliveryFor([PENDING_LINE, LAPTOP_2]);
+    (apiClient.post as any).mockImplementation((path: string, body: { serials?: string[] }) =>
+      path === "/purchase-orders/check-serials"
+        ? Promise.resolve({ conflicts: (body.serials ?? []).filter((s) => s === "111").map((s) => ({ serial: s, asset_code: "FA/CKSPL/ITSW/MSWINDOWS/CKAM1" })) })
+        : Promise.resolve([]),
+    );
+    const box = within(dialog).getByLabelText(/^serial numbers\*?$/i);
+
+    fireEvent.change(box, { target: { value: "111\n222" } });
+    expect(await within(dialog).findByText(/Serial "111" is already used by asset FA\/CKSPL\/ITSW\/MSWINDOWS\/CKAM1/)).toBeInTheDocument();
+    expect(confirmBtn(dialog)).toBeDisabled();
+    expect(apiClient.post).toHaveBeenCalledWith("/purchase-orders/check-serials", { serials: ["111", "222"] });
+
+    fireEvent.change(box, { target: { value: "333\n222" } });
+    await waitFor(() => expect(within(dialog).queryByText(/is already used by asset/)).not.toBeInTheDocument());
+    await waitFor(() => expect(confirmBtn(dialog)).not.toBeDisabled());
+  });
+
   it("AM-22 UAT: Invoice No/Date/Amount are visibly marked required in the Delivery Done dialog (backend rejects a delivery missing any of them, so Confirm silently staying disabled with no required-marker was a real trap)", async () => {
     mockGets([PENDING_LINE]);
     renderDetailAt();
