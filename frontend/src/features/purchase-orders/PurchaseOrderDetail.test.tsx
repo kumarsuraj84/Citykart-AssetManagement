@@ -259,6 +259,103 @@ describe("PurchaseOrderDetail", () => {
     );
   });
 
+  // --- Bulk serial entry: identical units of one line item are grouped ---
+  const LAPTOP_2 = { ...PENDING_LINE, id: 13 };
+  const LAPTOP_3 = { ...PENDING_LINE, id: 14 };
+
+  async function openDeliveryFor(pending: unknown[]) {
+    mockGets(pending);
+    (apiClient.post as any).mockResolvedValue([]);
+    renderDetailAt();
+    await waitFor(() => expect(screen.getAllByText("Dell Laptop").length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole("checkbox", { name: /select all pending lines/i }));
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(`mark ${pending.length} delivery done`, "i") }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-9" } });
+    fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "900" } });
+    fireEvent.click(within(dialog).getByLabelText(/initial asset user/i));
+    fireEvent.click(await screen.findByText("IT Stock-HO"));
+    return dialog;
+  }
+  const confirmBtn = (d: HTMLElement) => within(d).getByRole("button", { name: /confirm/i });
+
+  it("units of the same line item share one block with one list box, and a pasted list is handed out in order", async () => {
+    const dialog = await openDeliveryFor([PENDING_LINE, LAPTOP_2, LAPTOP_3]);
+
+    expect(within(dialog).getByText("3 units")).toBeInTheDocument();
+    const box = within(dialog).getByLabelText(/^serial numbers\*?$/i);
+    expect(within(dialog).getAllByRole("textbox").filter((el) => el.tagName === "TEXTAREA")).toHaveLength(1);
+
+    fireEvent.change(box, { target: { value: "SN-1\nSN-2\n" } });
+    expect(within(dialog).getByText(/2 of 3 entered/)).toBeInTheDocument();
+    expect(confirmBtn(dialog)).toBeDisabled();
+
+    fireEvent.change(box, { target: { value: "SN-1\r\nSN-2\r\n SN-3 \r\n\r\n" } });
+    expect(within(dialog).getByText(/3 of 3 entered/)).toBeInTheDocument();
+    await waitFor(() => expect(confirmBtn(dialog)).not.toBeDisabled());
+    fireEvent.click(confirmBtn(dialog));
+
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith(
+        "/purchase-orders/1/deliver",
+        expect.objectContaining({
+          lines: [
+            { pending_asset_id: 10, serial_number: "SN-1", initial_asset_user_id: 5 },
+            { pending_asset_id: 13, serial_number: "SN-2", initial_asset_user_id: 5 },
+            { pending_asset_id: 14, serial_number: "SN-3", initial_asset_user_id: 5 },
+          ],
+        }),
+      ),
+    );
+  });
+
+  it("No serial number on a multi-unit block sets N/A for every unit in it, while another block takes a list", async () => {
+    const dialog = await openDeliveryFor([PENDING_LINE, LAPTOP_2, PENDING_LINE_2]);
+
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /no serial number for dell laptop/i }));
+    expect(within(dialog).getByLabelText(/^serial numbers\*?$/i)).toBeDisabled();
+    expect(confirmBtn(dialog)).toBeDisabled(); // the Logitech Mouse block still needs its serial
+    fireEvent.change(within(dialog).getByLabelText(/^serial number\*?$/i), { target: { value: "MS-1" } });
+
+    await waitFor(() => expect(confirmBtn(dialog)).not.toBeDisabled());
+    fireEvent.click(confirmBtn(dialog));
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith(
+        "/purchase-orders/1/deliver",
+        expect.objectContaining({
+          lines: [
+            { pending_asset_id: 10, serial_number: "N/A", initial_asset_user_id: 5 },
+            { pending_asset_id: 13, serial_number: "N/A", initial_asset_user_id: 5 },
+            { pending_asset_id: 12, serial_number: "MS-1", initial_asset_user_id: 5 },
+          ],
+        }),
+      ),
+    );
+  });
+
+  it("too many serials or a duplicate (even across blocks, ignoring case) keeps Confirm disabled and says why", async () => {
+    const dialog = await openDeliveryFor([PENDING_LINE, LAPTOP_2, PENDING_LINE_2]);
+    const box = within(dialog).getByLabelText(/^serial numbers\*?$/i);
+    const mouse = within(dialog).getByLabelText(/^serial number\*?$/i);
+
+    fireEvent.change(box, { target: { value: "A1\nA2\nA3" } });
+    expect(within(dialog).getByText(/3 of 2 entered -- 1 too many/)).toBeInTheDocument();
+    fireEvent.change(mouse, { target: { value: "M1" } });
+    expect(confirmBtn(dialog)).toBeDisabled();
+
+    fireEvent.change(box, { target: { value: "A1\na1" } });
+    expect(within(dialog).getByText(/duplicate: A1, a1|duplicate: A1/)).toBeInTheDocument();
+    expect(confirmBtn(dialog)).toBeDisabled();
+
+    fireEvent.change(box, { target: { value: "A1\nA2" } });
+    fireEvent.change(mouse, { target: { value: "a2" } });
+    expect(within(dialog).getByText(/Duplicate serial: a2/)).toBeInTheDocument();
+    expect(confirmBtn(dialog)).toBeDisabled();
+
+    fireEvent.change(mouse, { target: { value: "M1" } });
+    await waitFor(() => expect(confirmBtn(dialog)).not.toBeDisabled());
+  });
+
   it("AM-22 UAT: Invoice No/Date/Amount are visibly marked required in the Delivery Done dialog (backend rejects a delivery missing any of them, so Confirm silently staying disabled with no required-marker was a real trap)", async () => {
     mockGets([PENDING_LINE]);
     renderDetailAt();

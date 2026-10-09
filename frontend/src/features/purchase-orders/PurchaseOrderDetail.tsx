@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -56,6 +57,33 @@ interface PendingAssetRow {
   serial_number: string | null;
   invoice_number: string | null;
   delivered_asset_id: number | null;
+}
+
+interface DeliveryGroup {
+  key: string;
+  lines: PendingAssetRow[];
+}
+
+// Units created from one PO line item (qty N) are identical, so they're
+// grouped back together for delivery; any difference (description, barcode,
+// category, brand, model, cost...) keeps two items in separate groups.
+function groupUnits(units: PendingAssetRow[]): DeliveryGroup[] {
+  const byKey = new Map<string, PendingAssetRow[]>();
+  for (const u of units) {
+    const key = [
+      u.description, u.barcode ?? "", u.category_id, u.subcategory_id ?? "", u.brand_id ?? "", u.model ?? "",
+      u.purchase_cost ?? "",
+    ].join("|");
+    const list = byKey.get(key);
+    if (list) list.push(u);
+    else byKey.set(key, [u]);
+  }
+  return [...byKey].map(([key, lines]) => ({ key, lines }));
+}
+
+// One serial per line of pasted/scanned text; blank lines are ignored.
+function parseSerials(text: string): string[] {
+  return text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
 }
 
 interface RecordPiResult {
@@ -363,9 +391,12 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().slice(0, 10));
   const [invoiceAmount, setInvoiceAmount] = useState("");
   // A PO is delivered to one location only, so the Initial Asset User is
-  // chosen once for the whole delivery; only the serial number is per line.
+  // chosen once for the whole delivery. Serial numbers are entered per
+  // product (all identical units of one line item together), not per unit:
+  // a pasted/scanned list, one serial per line, is handed to the units in
+  // order, or "No serial number" sets N/A for the whole product.
   const [initialAssetUserId, setInitialAssetUserId] = useState("");
-  const [perLine, setPerLine] = useState<Record<number, { serial: string; noSerial: boolean }>>({});
+  const [groupInput, setGroupInput] = useState<Record<string, { text: string; noSerial: boolean }>>({});
 
   function openDeliver() {
     deliverMutation.reset();
@@ -373,22 +404,62 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     setInvoiceDate(new Date().toISOString().slice(0, 10));
     setInvoiceAmount("");
     setInitialAssetUserId("");
-    setPerLine(Object.fromEntries(selected.map((id) => [id, { serial: "", noSerial: false }])));
+    setGroupInput({});
     setDeliverOpen(true);
   }
 
+  function setGroupField(key: string, patch: Partial<{ text: string; noSerial: boolean }>) {
+    setGroupInput((p) => ({ ...p, [key]: { ...(p[key] ?? { text: "", noSerial: false }), ...patch } }));
+  }
+
   const selectedLines = useMemo(() => lines.filter((l) => selected.includes(l.id)), [lines, selected]);
+  const deliveryGroups = useMemo(() => groupUnits(selectedLines), [selectedLines]);
+
+  // Serials typed (not "N/A") that appear more than once in THIS delivery,
+  // compared case-insensitively like the server does. Lower-cased keys. The
+  // server separately checks every serial against the whole system.
+  const duplicateSerials = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const g of deliveryGroups) {
+      if (groupInput[g.key]?.noSerial) continue;
+      for (const s of parseSerials(groupInput[g.key]?.text ?? "")) {
+        const k = s.toLowerCase();
+        if (k === "n/a") continue;
+        counts.set(k, (counts.get(k) ?? 0) + 1);
+      }
+    }
+    return new Set([...counts].filter(([, n]) => n > 1).map(([s]) => s));
+  }, [deliveryGroups, groupInput]);
+
+  // One serial per unit of a group: N/A for all, or the pasted list in order
+  // ("" where the list is shorter than the group).
+  function serialsForGroup(g: DeliveryGroup): string[] {
+    const inp = groupInput[g.key];
+    if (inp?.noSerial) return g.lines.map(() => "N/A");
+    const tokens = parseSerials(inp?.text ?? "");
+    return g.lines.map((_, i) => tokens[i] ?? "");
+  }
+  function groupComplete(g: DeliveryGroup): boolean {
+    const inp = groupInput[g.key];
+    if (inp?.noSerial) return true;
+    const tokens = parseSerials(inp?.text ?? "");
+    return tokens.length === g.lines.length && !tokens.some((s) => duplicateSerials.has(s.toLowerCase()));
+  }
+
   const canDeliver =
     initialAssetUserId !== "" && invoiceNumber.trim() !== "" && invoiceDate !== "" && invoiceAmount !== "" &&
-    selectedLines.every((l) => perLine[l.id]?.serial.trim());
+    deliveryGroups.every(groupComplete);
 
   const deliverMutation = useMutation({
     mutationFn: () =>
       apiClient.post(`/purchase-orders/${poId}/deliver`, {
         invoice_number: invoiceNumber, invoice_date: invoiceDate, invoice_amount: Number(invoiceAmount) || 0,
-        lines: selectedLines.map((l) => ({
-          pending_asset_id: l.id, serial_number: perLine[l.id].serial, initial_asset_user_id: Number(initialAssetUserId),
-        })),
+        lines: deliveryGroups.flatMap((g) => {
+          const serials = serialsForGroup(g);
+          return g.lines.map((l, i) => ({
+            pending_asset_id: l.id, serial_number: serials[i], initial_asset_user_id: Number(initialAssetUserId),
+          }));
+        }),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["purchase-order", poId, "lines"] });
@@ -833,33 +904,66 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
-            {selectedLines.map((l) => (
-              <div key={l.id} className="grid grid-cols-3 items-end gap-2 rounded-md border p-2">
-                <div className="col-span-3 truncate text-xs font-medium">{l.description}</div>
-                <div className="col-span-2 flex flex-col gap-1">
-                  <Label htmlFor={`serial-${l.id}`} className="text-xs">
-                    Serial Number<span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
-                  </Label>
-                  <Input
-                    id={`serial-${l.id}`}
-                    value={perLine[l.id]?.serial ?? ""}
-                    disabled={perLine[l.id]?.noSerial}
-                    onChange={(e) => setPerLine((p) => ({ ...p, [l.id]: { ...p[l.id], serial: e.target.value } }))}
-                  />
+            {deliveryGroups.map((g) => {
+              const n = g.lines.length;
+              const first = g.lines[0];
+              const inp = groupInput[g.key] ?? { text: "", noSerial: false };
+              const tokens = parseSerials(inp.text);
+              const extra = Math.max(0, tokens.length - n);
+              const dups = [...new Set(tokens.filter((s) => duplicateSerials.has(s.toLowerCase())))];
+              const problem = !inp.noSerial && (extra > 0 || dups.length > 0);
+              return (
+                <div key={g.key} className="flex flex-col gap-2 rounded-md border p-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0 truncate text-xs font-medium">{first.description}</div>
+                    <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs tabular-nums text-muted-foreground">
+                      {n} unit{n === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor={n === 1 ? `serial-${first.id}` : `serials-${first.id}`} className="text-xs">
+                      {n === 1 ? "Serial Number" : "Serial Numbers"}
+                      <span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
+                    </Label>
+                    {n === 1 ? (
+                      <Input
+                        id={`serial-${first.id}`}
+                        value={inp.noSerial ? "N/A" : inp.text}
+                        disabled={inp.noSerial}
+                        onChange={(e) => setGroupField(g.key, { text: e.target.value })}
+                      />
+                    ) : (
+                      <Textarea
+                        id={`serials-${first.id}`}
+                        rows={Math.min(Math.max(n, 2), 6)}
+                        value={inp.noSerial ? `N/A for all ${n} units` : inp.text}
+                        disabled={inp.noSerial}
+                        placeholder="One serial per line. Paste a list or scan; each scan goes on a new line."
+                        onChange={(e) => setGroupField(g.key, { text: e.target.value })}
+                      />
+                    )}
+                    {n > 1 && !inp.noSerial && (
+                      <p className={`text-xs ${problem ? "text-destructive" : "text-muted-foreground"}`}>
+                        {tokens.length} of {n} entered
+                        {extra > 0 && ` -- ${extra} too many, remove ${extra === 1 ? "it" : "them"}`}
+                        {dups.length > 0 && ` -- duplicate: ${dups.join(", ")}`}
+                      </p>
+                    )}
+                    {n === 1 && dups.length > 0 && !inp.noSerial && (
+                      <p className="text-xs text-destructive">Duplicate serial: {dups.join(", ")}</p>
+                    )}
+                  </div>
+                  <label className="flex items-center gap-1.5 text-xs">
+                    <Checkbox
+                      aria-label={`No serial number for ${first.description}`}
+                      checked={inp.noSerial}
+                      onCheckedChange={(checked) => setGroupField(g.key, { noSerial: checked === true })}
+                    />
+                    No serial number{n > 1 ? " (sets N/A for all units)" : ""}
+                  </label>
                 </div>
-                <label className="flex items-center gap-1.5 pb-2 text-xs">
-                  <Checkbox
-                    aria-label={`No serial number for ${l.description}`}
-                    checked={perLine[l.id]?.noSerial ?? false}
-                    onCheckedChange={(checked) => {
-                      const noSerial = checked === true;
-                      setPerLine((p) => ({ ...p, [l.id]: { ...p[l.id], noSerial, serial: noSerial ? "N/A" : "" } }));
-                    }}
-                  />
-                  No serial number
-                </label>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {deliverMutation.isError && (

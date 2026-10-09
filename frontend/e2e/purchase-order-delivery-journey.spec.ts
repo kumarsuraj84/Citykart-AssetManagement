@@ -127,16 +127,18 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   await page.getByRole("option", { name: ctx.stock.name, exact: true }).click();
 
   // ---- Distinct Serial Number per selected unit ----
-  // (ids are per-PendingAsset, unknown ahead of time -- select by the
-  // id-prefix pattern PurchaseOrderDetail.tsx renders, not by label text,
-  // since both units share the identical "Serial Number" label text.)
-  const serialInputs = deliverDialog.locator('input[id^="serial-"]');
-  await expect(serialInputs).toHaveCount(2);
+  // The 2 selected units are identical units of one line item, so the dialog
+  // groups them into ONE block with a single list box (one serial per line).
+  // (id is "serials-<first pending id>", unknown ahead of time -- select by
+  // the id prefix.)
+  await expect(deliverDialog.getByText("2 units", { exact: true })).toBeVisible();
+  const serialsBox = deliverDialog.locator('textarea[id^="serials-"]');
+  await expect(serialsBox).toHaveCount(1);
 
   const serialA = `E2E-SN-${ts}-A`;
   const serialB = `E2E-SN-${ts}-B`;
-  await serialInputs.nth(0).fill(serialA);
-  await serialInputs.nth(1).fill(serialB);
+  await serialsBox.fill(`${serialA}\n${serialB}`);
+  await expect(deliverDialog.getByText("2 of 2 entered")).toBeVisible();
 
   // ---- Confirm the delivery ----
   await deliverDialog.getByRole("button", { name: "Confirm", exact: true }).click();
