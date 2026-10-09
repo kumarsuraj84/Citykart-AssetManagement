@@ -30,6 +30,14 @@ class Settings(BaseSettings):
     # routes stay registered but every request falls through to a 404,
     # exactly as if they didn't exist.
     frontend_dist_dir: str | None = None
+    # Read-only connection to the ERP data warehouse (PostgreSQL) that CKAM reads
+    # purchase orders, vendors, receipts and PIs from. Never written to. All
+    # empty = the ERP link is switched off and the ERP screens say so.
+    po_source_host: str | None = None
+    po_source_port: int = 5432
+    po_source_db: str | None = None
+    po_source_user: str | None = None
+    po_source_password: str | None = None
     model_config = SettingsConfigDict(env_file=".env")
 
 

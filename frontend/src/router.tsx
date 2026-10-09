@@ -63,6 +63,7 @@ import AssetMovementRoute from "./routes/asset-movement";
 import PrintLabelsRoute from "./routes/print-labels";
 import PurchaseOrdersIndexRoute from "./routes/purchase-orders/index";
 import NewPurchaseOrderRoute from "./routes/purchase-orders/new";
+import PoFromErpRoute from "./routes/purchase-orders/from-erp";
 import PurchaseOrderDetailRoute from "./routes/purchase-orders/$id";
 import ImportRoute from "./routes/import";
 import ReportsRoute from "./routes/reports";
@@ -455,6 +456,12 @@ export const purchaseOrdersNewRoute = createRoute({
   component: NewPurchaseOrderRoute,
 });
 
+export const purchaseOrdersFromErpRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/purchase-orders/from-erp",
+  component: PoFromErpRoute,
+});
+
 export const purchaseOrderDetailRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/purchase-orders/$id",
@@ -567,6 +574,7 @@ const routeTree = rootRoute.addChildren([
     printLabelsRoute,
     purchaseOrdersIndexRoute,
     purchaseOrdersNewRoute,
+    purchaseOrdersFromErpRoute,
     purchaseOrderDetailRoute,
     myAssetsRoute,
     importRoute,

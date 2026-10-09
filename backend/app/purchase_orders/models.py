@@ -16,6 +16,13 @@ class PurchaseOrder(Base, AuditMixin, SoftDeleteMixin):
     po_date: Mapped[date] = mapped_column(Date)
     vendor_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("vendor.id"))
     cost_center_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("cost_center.id"))
+    # Where the goods arrive: Mark Delivery Done pre-selects this stock point as
+    # the Initial Asset User. warehouse_code is the text it was derived from
+    # (e.g. CKSPL-WH-TAJNAGAR), kept so the choice is remembered per warehouse.
+    delivery_asset_user_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("asset_user.id"))
+    warehouse_code: Mapped[str | None] = mapped_column(String(100))
+    # The ERP purchase order this was created from (unique when set).
+    erp_po_code: Mapped[int | None] = mapped_column(BigInteger)
 
 
 class PendingAsset(Base, AuditMixin):

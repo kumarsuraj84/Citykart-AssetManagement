@@ -31,6 +31,13 @@ services:
       # Secure attribute on the refresh-token cookie. Keep false for plain-HTTP LAN
       # use (browsers never send Secure cookies over HTTP); true behind HTTPS.
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # Read-only link to the ERP data warehouse (POs, vendors). Leave empty to
+      # switch the ERP screens off. The password is typed into .env, never here.
+      PO_SOURCE_HOST: ${PO_SOURCE_HOST:-}
+      PO_SOURCE_PORT: ${PO_SOURCE_PORT:-5432}
+      PO_SOURCE_DB: ${PO_SOURCE_DB:-}
+      PO_SOURCE_USER: ${PO_SOURCE_USER:-}
+      PO_SOURCE_PASSWORD: ${PO_SOURCE_PASSWORD:-}
     depends_on:
       db:
         condition: service_healthy

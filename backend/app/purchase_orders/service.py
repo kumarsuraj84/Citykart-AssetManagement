@@ -55,10 +55,19 @@ async def create_purchase_order(session: AsyncSession, data: dict, actor: AssetU
         raise ValueError(f"cost center {data['cost_center_id']} not found")
     if cost_center.company_id != data["company_id"]:
         raise ValueError("cost center must belong to the same company as the purchase order")
+    delivery_id = data.get("delivery_asset_user_id")
+    if delivery_id is not None:
+        delivery = await session.get(AssetUser, delivery_id)
+        if delivery is None or not delivery.is_active:
+            raise ValueError(f"delivery location {delivery_id} not found")
+        if delivery.company_id != data["company_id"]:
+            raise ValueError("the delivery location must belong to the same company as the purchase order")
     po = PurchaseOrder(
         company_id=data["company_id"], po_number=data["po_number"],
         po_date=data["po_date"], vendor_id=data.get("vendor_id"),
         cost_center_id=data["cost_center_id"],
+        delivery_asset_user_id=delivery_id, warehouse_code=(data.get("warehouse_code") or None),
+        erp_po_code=data.get("erp_po_code"),
         created_by=actor.id, updated_by=actor.id,
     )
     session.add(po)

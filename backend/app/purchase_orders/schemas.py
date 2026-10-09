@@ -8,6 +8,8 @@ class PurchaseOrderCreateIn(BaseModel):
     po_date: date
     vendor_id: int | None = None
     cost_center_id: int
+    delivery_asset_user_id: int | None = None
+    warehouse_code: str | None = None
 
 
 class PurchaseOrderOut(BaseModel):
@@ -18,6 +20,9 @@ class PurchaseOrderOut(BaseModel):
     po_date: date
     vendor_id: int | None
     cost_center_id: int | None
+    delivery_asset_user_id: int | None = None
+    warehouse_code: str | None = None
+    erp_po_code: int | None = None
     is_active: bool
     # AM-19: PI is recorded per Invoice, not per PO (see RecordPiIn's own
     # docstring) -- so a PO with more than one delivery/invoice can have a

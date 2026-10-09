@@ -86,6 +86,9 @@ class Vendor(Base, AuditMixin, SoftDeleteMixin):
     contact_name: Mapped[str | None] = mapped_column(String(200))
     contact_phone: Mapped[str | None] = mapped_column(String(30))
     contact_email: Mapped[str | None] = mapped_column(String(200))
+    # The ERP supplier code this vendor is the same as (set by "Add from ERP" /
+    # "Link to ERP"); POs are matched to vendors through it, not through names.
+    erp_vendor_code: Mapped[str | None] = mapped_column(String(50))
 
 
 FIELD_TYPES = ("text", "number", "date", "dropdown", "checkbox")

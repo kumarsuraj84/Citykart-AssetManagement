@@ -41,6 +41,8 @@ class VendorOut(VendorIn):
     model_config = ConfigDict(from_attributes=True)
     id: int
     is_active: bool
+    # Read-only here; set only through the ERP link endpoints (/api/erp/vendors).
+    erp_vendor_code: str | None = None
 
 
 class CompanyIn(BaseModel):

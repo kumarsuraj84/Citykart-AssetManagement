@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Inbox, Pencil, Trash2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient, ApiError } from "../../lib/api-client";
@@ -119,8 +119,11 @@ function MasterFormField({
 
 export function MasterCrudScreen<T extends object>({
   config,
+  extraActions,
 }: {
   config: MasterConfig<T>;
+  /** Extra buttons in the page header, before "Add <singular>" (e.g. Vendors' "Add from ERP"). */
+  extraActions?: ReactNode;
 }) {
   const qc = useQueryClient();
   const singular = config.singular ?? config.title;
@@ -306,6 +309,7 @@ export function MasterCrudScreen<T extends object>({
               label={config.title}
               onImported={() => qc.invalidateQueries({ queryKey: ["masters", config.resource] })}
             />
+            {extraActions}
             <Button onClick={openCreate}>Add {singular}</Button>
           </>
         }

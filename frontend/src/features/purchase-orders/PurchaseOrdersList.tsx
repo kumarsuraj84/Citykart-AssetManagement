@@ -133,9 +133,14 @@ export function PurchaseOrdersList() {
         title="Purchase Orders"
         description="Track assets on order until they're delivered and invoiced."
         actions={
-          <Button asChild>
-            <Link to="/purchase-orders/new">New Purchase Order</Link>
-          </Button>
+          <div className="flex gap-2">
+            <Button asChild variant="outline">
+              <Link to="/purchase-orders/from-erp">Pick from ERP</Link>
+            </Button>
+            <Button asChild>
+              <Link to="/purchase-orders/new">New Purchase Order</Link>
+            </Button>
+          </div>
         }
       />
 

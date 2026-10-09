@@ -25,6 +25,8 @@ interface PurchaseOrderOut {
   po_date: string;
   vendor_id: number | null;
   cost_center_id: number | null;
+  delivery_asset_user_id?: number | null;
+  warehouse_code?: string | null;
 }
 
 /** AM-14: a compact KPI tile for the PO detail summary row -- a smaller,
@@ -427,7 +429,9 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     setInvoiceNumber("");
     setInvoiceDate(new Date().toISOString().slice(0, 10));
     setInvoiceAmount("");
-    setInitialAssetUserId("");
+    // The PO's delivery location (a stock point read from the PO, or chosen
+    // when it was created) is the natural Initial Asset User; still changeable.
+    setInitialAssetUserId(poQ.data?.delivery_asset_user_id ? String(poQ.data.delivery_asset_user_id) : "");
     // Parts that never carry a serial (a bundle's mouse/keyboard) start with
     // "No serial number" already ticked; it can still be unticked.
     setGroupInput(
@@ -658,7 +662,10 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
         title={poQ.data ? `Purchase Order ${poQ.data.po_number}` : "Purchase Order"}
         description={
           poQ.data
-            ? `Vendor: ${vendorName(poQ.data.vendor_id)} · PO Date: ${poQ.data.po_date} · Cost Centre: ${costCenterName(poQ.data.cost_center_id)}`
+            ? `Vendor: ${vendorName(poQ.data.vendor_id)} · PO Date: ${poQ.data.po_date} · Cost Centre: ${costCenterName(poQ.data.cost_center_id)}` +
+              (poQ.data.delivery_asset_user_id
+                ? ` · Delivery: ${asset_users.find((u) => u.id === poQ.data!.delivery_asset_user_id)?.name ?? poQ.data.warehouse_code ?? ""}`
+                : "")
             : undefined
         }
         actions={
