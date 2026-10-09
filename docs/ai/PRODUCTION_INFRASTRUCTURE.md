@@ -9,7 +9,7 @@ No passwords, keys or tokens are written here, only where they live.
 | App server | `10.0.1.98`, folder `D:\Citykart_Applications\Citykart_AssetManagement_App` (shared server: Spinwheel and Citykart Desk also run there; never touch them) |
 | Process | Scheduled Task `CKAM-Web` (SYSTEM, at startup, restart every minute up to 999 times, no time limit). One uvicorn process serves the API and the built frontend on **port 3211** |
 | Runtime | Python 3.13.15 at `C:\Program Files\Python313` (not on PATH); venv at `shared\venv` on D: |
-| Releases | `releases\<sha>\{backend,frontend-dist}`; live release `7d38523` |
+| Releases | `releases\<sha>\{backend,frontend-dist}`; live release **`e8f85a0`** (deployed 2026-10-09; `7d38523` kept beside it for rollback) |
 | Config | `shared\.env` (Administrators/SYSTEM only). Holds DB URL, JWT secret, `BASE_URL`, `UPLOAD_DIR`, `FRONTEND_DIST_DIR` |
 | Launcher | `shared\run_ckam_web.ps1`: loads `.env`, logs in to the NAS (retries up to 3 minutes at boot), starts uvicorn. Logs in `logs\` |
 | Database | `10.0.0.205` PostgreSQL 18, data on `D:\POSTGRESQL DB`, database `ckassetmanagement`, app role `ckassetapp` (not superuser). `pg_hba.conf` allows only `10.0.1.98/32` for it |
@@ -33,9 +33,10 @@ Old server `10.0.1.12` (`E:\CK Projects\Citykart_Asset_Management`, database `ck
 
 1. Develop and test on the dev PC only. Get the user's explicit OK before any `git push` and before any deploy.
 2. Build `frontend` (`npm run build`), package `backend/{app,alembic.ini,pyproject.toml,scripts/create_owner.py}` and `frontend/dist` into `releases\<sha>\`.
-3. On 10.0.1.98: back up first (run `CK_Backup_CKASSETMANAGEMENT` on the DB server), `pip install -e` the new backend into `shared\venv`, update `FRONTEND_DIST_DIR` in `.env`, run `alembic upgrade head` (it needs the `.env` values in the process environment), then `Stop-ScheduledTask` / `Start-ScheduledTask CKAM-Web`.
-4. Check `http://localhost:3211/api/health` on the server and from another PC.
-5. Rollback: point `FRONTEND_DIST_DIR` and the editable install back at the previous release folder and restart the task. Database changes are never auto-reversed.
+3. On 10.0.1.98: back up first (run `CK_Backup_CKASSETMANAGEMENT` on the DB server and confirm `backup.log` says OK), stop `CKAM-Web`, `pip install -e` the new backend into `shared\venv`, set `FRONTEND_DIST_DIR` in `.env` to `<new release>\frontend-dist`, run `alembic upgrade head` (it needs the `.env` values in the process environment), then start `CKAM-Web`.
+   **`FRONTEND_DIST_DIR` is the single switch for the release:** the launcher (`shared\run_ckam_web.ps1`) runs the backend from the `backend` folder next to it. (Until 2026-10-09 the launcher had the old release folder hard-coded, so the frontend updated but the API did not. Always verify below.)
+4. Verify the NEW code is really running, not just that the site answers: `GET /openapi.json` lists the new routes/parameters, the served `index.html` references the new bundle name, the launcher log says `serving release: <new>`, `/api/health` is ok, and the NAS login line in the launcher log succeeded.
+5. Rollback: set `FRONTEND_DIST_DIR` and the editable install back to the previous release folder and restart the task. Database changes are never auto-reversed (restore from a verified backup only if truly needed).
 
 ## Rules
 
