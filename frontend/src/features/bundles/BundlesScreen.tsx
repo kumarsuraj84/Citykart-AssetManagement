@@ -3,7 +3,7 @@ import { Pencil, Trash2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { effectiveSerialRequired, yesNo, type SerialRuled } from "../../lib/serial-rule";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -30,7 +30,7 @@ export interface Bundle {
   parts: BundlePart[];
 }
 
-interface Option {
+interface Option extends SerialRuled {
   id: number;
   name: string;
 }
@@ -40,18 +40,17 @@ interface DraftPart {
   name: string;
   categoryId: string;
   subcategoryId: string;
-  serialRequired: boolean;
   share: string;
 }
 
-const blankPart = (): DraftPart => ({ id: null, name: "", categoryId: "", subcategoryId: "", serialRequired: true, share: "" });
+const blankPart = (): DraftPart => ({ id: null, name: "", categoryId: "", subcategoryId: "", share: "" });
 
 // The Desktop split the business uses; the categories still have to be picked.
 const DESKTOP_EXAMPLE: DraftPart[] = [
-  { id: null, name: "CPU", categoryId: "", subcategoryId: "", serialRequired: true, share: "70" },
-  { id: null, name: "TFT", categoryId: "", subcategoryId: "", serialRequired: true, share: "26" },
-  { id: null, name: "Keyboard", categoryId: "", subcategoryId: "", serialRequired: false, share: "2" },
-  { id: null, name: "Mouse", categoryId: "", subcategoryId: "", serialRequired: false, share: "2" },
+  { id: null, name: "CPU", categoryId: "", subcategoryId: "", share: "70" },
+  { id: null, name: "TFT", categoryId: "", subcategoryId: "", share: "26" },
+  { id: null, name: "Keyboard", categoryId: "", subcategoryId: "", share: "2" },
+  { id: null, name: "Mouse", categoryId: "", subcategoryId: "", share: "2" },
 ];
 
 function partsSummary(parts: BundlePart[]): string {
@@ -88,7 +87,7 @@ export function BundlesScreen() {
     setParts(
       b.parts.map((p) => ({
         id: p.id, name: p.name, categoryId: String(p.category_id),
-        subcategoryId: p.subcategory_id ? String(p.subcategory_id) : "", serialRequired: p.serial_required,
+        subcategoryId: p.subcategory_id ? String(p.subcategory_id) : "",
         share: String(p.share_percent),
       })),
     );
@@ -111,7 +110,7 @@ export function BundlesScreen() {
         parts: parts.map((p) => ({
           id: p.id, name: p.name.trim(), category_id: Number(p.categoryId),
           subcategory_id: p.subcategoryId ? Number(p.subcategoryId) : null,
-          serial_required: p.serialRequired, share_percent: Number(p.share),
+          share_percent: Number(p.share),
         })),
       };
       return editing === "new" || editing === null
@@ -217,14 +216,13 @@ export function BundlesScreen() {
                   <Label htmlFor={`part-share-${i}`} className="text-xs">Share %</Label>
                   <Input id={`part-share-${i}`} type="number" min={0} step="0.01" value={p.share} onChange={(e) => setPart(i, { share: e.target.value })} />
                 </div>
-                <label className="col-span-1 flex items-center gap-1.5 pb-2 text-xs">
-                  <Checkbox
-                    aria-label={`Needs serial number: ${p.name || `part ${i + 1}`}`}
-                    checked={p.serialRequired}
-                    onCheckedChange={(checked) => setPart(i, { serialRequired: checked === true })}
-                  />
-                  Serial
-                </label>
+                {/* Not chosen here: it follows the part's sub-category / category (Setup > Categories). */}
+                <p className="col-span-1 pb-2 text-xs text-muted-foreground" title="Set on the category or sub-category, not on the bundle">
+                  Serial: {p.categoryId ? yesNo(effectiveSerialRequired(
+                    categories.find((c) => c.id === Number(p.categoryId)),
+                    subcategories.find((s) => s.id === Number(p.subcategoryId)),
+                  )) : "—"}
+                </p>
                 <Button
                   size="icon" variant="ghost" className="col-span-1" aria-label={`Remove ${p.name || `part ${i + 1}`}`}
                   disabled={parts.length === 1} onClick={() => setParts((ps) => ps.filter((_, idx) => idx !== i))}

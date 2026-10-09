@@ -7,6 +7,7 @@ from app.assets.service import compute_tax, procure_assets
 from app.asset_users.models import AssetUser
 from app.lifecycle.models import AssetEvent
 from app.masters.models import AssetCategory, AssetSubcategory, CostCenter
+from app.masters.serial_rule import effective_serial_required
 from app.purchase_orders.models import PendingAsset, PurchaseOrder
 
 
@@ -75,26 +76,28 @@ async def create_purchase_order(session: AsyncSession, data: dict, actor: AssetU
     return po
 
 
-async def _validate_line_masters(session: AsyncSession, data: dict) -> AssetCategory:
+async def _validate_line_masters(session: AsyncSession, data: dict) -> tuple[AssetCategory, AssetSubcategory | None]:
     """Same referential checks procure_assets already does for category/
     subcategory -- duplicated narrowly here (not imported) because
     procure_assets validates a *complete* asset-creation payload (also
     requiring purchase_date/initial_asset_user_id/cost_center_id, none of which
     are picked at line-entry time -- cost centre lives on the parent PO,
     see create_purchase_order); this is the PO-entry-time subset only.
-    Returns the resolved Category so callers can derive asset_domain from it
-    (spec §19) without a second lookup."""
+    Returns the resolved Category (asset_domain, spec §19) and Sub-Category
+    (None when not chosen) so callers can derive from them without a second
+    lookup -- asset_domain and the serial-number default."""
     category = await session.get(AssetCategory, data["category_id"])
     if category is None:
         raise ValueError(f"category {data['category_id']} not found")
     subcategory_id = data.get("subcategory_id")
+    subcategory = None
     if subcategory_id is not None:
         subcategory = await session.get(AssetSubcategory, subcategory_id)
         if subcategory is None:
             raise ValueError(f"subcategory {subcategory_id} not found")
         if subcategory.category_id != category.id:
             raise ValueError("sub-category does not belong to the selected category")
-    return category
+    return category, subcategory
 
 
 async def add_pending_asset_line(
@@ -105,10 +108,16 @@ async def add_pending_asset_line(
     procure_assets' own quantity handling, never one row with a count."""
     if purchase_order.cost_center_id is None:
         raise ValueError("purchase order has no cost centre set")
-    category = await _validate_line_masters(session, data)
+    category, subcategory = await _validate_line_masters(session, data)
     purchase_cost = data.get("purchase_cost")
     tax_percent = data.get("tax_percent")
     tax_amount, total_cost = compute_tax(purchase_cost, tax_percent)
+    # The delivery dialog starts with "No serial number" ticked for lines whose
+    # category/sub-category carries none (a mouse). Only a default, snapshotted
+    # here; an explicit value from the caller wins.
+    serial_required = data.get("serial_required")
+    if serial_required is None:
+        serial_required = effective_serial_required(category, subcategory)
 
     quantity = data.get("quantity", 1)
     created: list[PendingAsset] = []
@@ -123,7 +132,7 @@ async def add_pending_asset_line(
             # Spec §19: derived server-side from the selected Category at
             # line-creation time, same discipline as Asset.asset_domain.
             asset_domain=category.asset_domain,
-            serial_required=data.get("serial_required", True), bundle_label=data.get("bundle_label"),
+            serial_required=serial_required, bundle_label=data.get("bundle_label"),
             created_by=actor.id, updated_by=actor.id,
         )
         session.add(line)
@@ -135,8 +144,9 @@ async def add_pending_asset_line(
 async def update_pending_asset_line(session: AsyncSession, line: PendingAsset, data: dict, actor: AssetUser) -> PendingAsset:
     if line.status != "PENDING":
         raise ValueError(f"cannot edit a {line.status.lower()} line")
-    category = await _validate_line_masters(session, data)
+    category, subcategory = await _validate_line_masters(session, data)
     tax_amount, total_cost = compute_tax(data.get("purchase_cost"), data.get("tax_percent"))
+    line.serial_required = effective_serial_required(category, subcategory)
     line.description = data["description"]
     line.barcode = data.get("barcode")
     line.category_id = data["category_id"]

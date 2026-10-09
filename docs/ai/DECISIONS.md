@@ -2,6 +2,21 @@
 
 Newest first. These override older spec/plan text where they conflict.
 
+## 2026-10-10 — Serial numbers are decided by Category / Sub-Category, not by Bundle
+
+Whether an item carries a serial number is a setting on Setup > Asset
+Categories (Yes/No, default Yes) and Setup > Asset Subcategories (Same as the
+category / Yes / No). A sub-category's own answer wins, otherwise its
+category's (`app.masters.serial_rule`, mirrored in `frontend/src/lib/serial-rule.ts`).
+It is only a default: PO lines snapshot it into `pending_asset.serial_required`
+(so Mark Delivery starts with "No serial number" ticked for a mouse), Add Asset
+starts its "No serial number" box from it, and a serial can still be typed, or a
+missing one saved as `N/A` (exempt from the unique-serial rule), whatever the
+setting says. Bundle parts no longer carry their own flag (column dropped before
+release): each part takes the rule from its own category/sub-category. Existing
+categories are all Yes, so behaviour only changes once someone sets, for example,
+Mouse and Keyboard to No. Only the Primary Owner edits it, like every master.
+
 ## 2026-09-25 — Serial Number: mandatory, globally unique, "N/A" exempt
 
 Direct user request, working through a real ground-level problem: some

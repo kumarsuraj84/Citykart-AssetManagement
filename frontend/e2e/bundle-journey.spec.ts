@@ -3,7 +3,8 @@ import { newSeedRegistry, seedTestCompany, teardownTestCompany, type SeedRegistr
 
 // Desktop bundles end to end: define the bundle in Masters, add 2 Desktops to a
 // PO (16000 each, 18% tax), see them become 8 ordinary lines, then deliver them
-// -- the mouse and keyboard parts must start with "No serial number" ticked,
+// -- the mouse and keyboard parts (their sub-category is set to "No serial
+// number" in Setup) must start with "No serial number" ticked,
 // CPU and TFT take pasted serial lists -- and finally deactivate the bundle.
 
 async function loginAs(page: Page, empCode: string, password: string) {
@@ -47,10 +48,15 @@ test("Desktop bundle journey: define it, add 2 to a PO, deliver with no-serial d
   await editor.locator("#bundle-name").fill(bundleName);
   await editor.getByRole("button", { name: "Use the Desktop example" }).click();
   await expect(editor.getByRole("status")).toContainText("Total 100%");
+  // CPU and TFT use the ordinary sub-category (a serial is expected); Keyboard
+  // and Mouse the one set to "No serial number" -- the rule lives on the
+  // sub-category, not on the bundle.
   for (let i = 0; i < 4; i++) {
     await selectRadixById(page, `part-category-${i}`, ctx.category.name);
-    await selectRadixById(page, `part-subcategory-${i}`, ctx.subcategory.name);
+    await selectRadixById(page, `part-subcategory-${i}`, i < 2 ? ctx.subcategory.name : ctx.noSerialSubcategory.name);
   }
+  await expect(editor.getByText("Serial: Yes")).toHaveCount(2);
+  await expect(editor.getByText("Serial: No")).toHaveCount(2);
   await editor.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText(bundleName, { exact: true })).toBeVisible();
   await expect(page.getByText("CPU 70%, TFT 26%, Keyboard 2%, Mouse 2%")).toBeVisible();

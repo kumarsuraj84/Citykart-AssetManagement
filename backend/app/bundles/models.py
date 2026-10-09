@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, ForeignKey, Integer, Numeric, String
+from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, Integer, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.db import Base
 from app.core.models import AuditMixin, SoftDeleteMixin
@@ -24,7 +24,8 @@ class BundlePart(Base, AuditMixin, SoftDeleteMixin):
     name: Mapped[str] = mapped_column(String(100))
     category_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("asset_category.id"))
     subcategory_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("asset_subcategory.id"))
-    serial_required: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    # Whether a part needs a serial (a mouse does not) is not stored here: it
+    # comes from the part's own category/sub-category (app.masters.serial_rule).
     # This part's share of the bundle price before tax; the active parts of a
     # bundle always add up to exactly 100.
     share_percent: Mapped[float] = mapped_column(Numeric(5, 2))

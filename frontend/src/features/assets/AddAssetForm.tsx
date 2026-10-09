@@ -18,6 +18,7 @@ import { FormField } from "@/components/shared/FormField";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { ErrorState } from "@/components/shared/ErrorState";
+import { effectiveSerialRequired, type SerialRuled } from "../../lib/serial-rule";
 
 interface Option {
   id: number;
@@ -33,7 +34,7 @@ function assetUserKeywords(h: Option): string[] {
   return [h.code, h.email].filter((v): v is string => Boolean(v));
 }
 
-interface CategoryOption extends Option {
+interface CategoryOption extends Option, SerialRuled {
   // IT / NON_IT (spec §17/§18) -- drives the read-only Responsibility
   // preview below; the backend independently re-derives the same value
   // from this Category at save time, never trusting this display value.
@@ -162,7 +163,7 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
   const categoriesQ = useQuery({ queryKey: ["masters", "categories"], queryFn: () => apiClient.get<CategoryOption[]>("/masters/categories") });
   const subcategoriesQ = useQuery({
     queryKey: ["masters", "subcategories"],
-    queryFn: () => apiClient.get<(Option & { category_id: number })[]>("/masters/subcategories"),
+    queryFn: () => apiClient.get<(Option & SerialRuled & { category_id: number })[]>("/masters/subcategories"),
   });
   const costCentersQ = useQuery({
     queryKey: ["masters", "cost-centers", selectedCompanyId],
@@ -221,6 +222,17 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
 
   function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  // Picking a category / sub-category sets the serial box to what the Setup
+  // rule says (a mouse: "No serial number" ticked). Only a starting point --
+  // the box can still be changed either way.
+  function applySerialRule(categoryId: string, subcategoryId: string) {
+    const required = effectiveSerialRequired(
+      categories.find((c) => c.id === Number(categoryId)),
+      subcategories.find((s) => s.id === Number(subcategoryId)),
+    );
+    setForm((f) => ({ ...f, noSerialNumber: !required, serialNumber: required ? f.serialNumber : "" }));
   }
 
   function setCustomValue(key: string, value: CustomFieldValue) {
@@ -414,6 +426,7 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
               onValueChange={(v) => {
                 setField("categoryId", v);
                 setField("subcategoryId", "");
+                applySerialRule(v, "");
               }}
               disabled={mastersLoading}
               options={categories.map((c) => ({ value: String(c.id), label: c.name }))}
@@ -425,7 +438,10 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
               id="subcategory"
               aria-label="Sub-Category"
               value={selectValue(form.subcategoryId)}
-              onValueChange={(v) => setField("subcategoryId", v)}
+              onValueChange={(v) => {
+                setField("subcategoryId", v);
+                applySerialRule(form.categoryId, v);
+              }}
               disabled={mastersLoading}
               options={visibleSubcategories.map((c) => ({ value: String(c.id), label: c.name }))}
             />
@@ -462,7 +478,7 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
             htmlFor="serial-number"
             label="Serial Number"
             required
-            helperText="Unique across every asset in CKAM. If this category genuinely has no serial (a mouse, a cable, an IT rack…), check “No serial number” instead of guessing one."
+            helperText="Unique across every asset in CKAM. The category sets whether a serial is expected (a mouse, a cable, an IT rack… start with “No serial number” ticked). Either way you can change it: tick it if a serial is missing, or untick it to type one."
           >
             <div className="flex flex-col gap-2">
               <Input

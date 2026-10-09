@@ -8,7 +8,6 @@ class BundlePartIn(BaseModel):
     name: str
     category_id: int
     subcategory_id: int | None = None
-    serial_required: bool = True
     share_percent: float
 
 
@@ -23,7 +22,8 @@ class BundlePartOut(BaseModel):
     name: str
     category_id: int
     subcategory_id: int | None
-    serial_required: bool
+    # Derived from the part's category/sub-category, shown for information.
+    serial_required: bool = True
     share_percent: float
     sort_order: int
 

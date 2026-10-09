@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.asset_users.models import AssetUser
 from app.bundles.models import Bundle, BundlePart
 from app.masters.models import AssetCategory, AssetSubcategory
+from app.masters.serial_rule import effective_serial_required
 from app.purchase_orders.models import PendingAsset, PurchaseOrder
 from app.purchase_orders.service import add_pending_asset_line
 
@@ -70,9 +71,15 @@ async def list_bundles(session: AsyncSession) -> list[dict]:
         .where(BundlePart.bundle_id.in_([b.id for b in bundles]), BundlePart.is_active.is_(True))
         .order_by(BundlePart.sort_order, BundlePart.id)
     )).scalars().all()
-    by_bundle: dict[int, list[BundlePart]] = {}
+    categories = {c.id: c for c in (await session.execute(select(AssetCategory))).scalars().all()}
+    subcategories = {s.id: s for s in (await session.execute(select(AssetSubcategory))).scalars().all()}
+    by_bundle: dict[int, list[dict]] = {}
     for p in parts:
-        by_bundle.setdefault(p.bundle_id, []).append(p)
+        by_bundle.setdefault(p.bundle_id, []).append({
+            "id": p.id, "name": p.name, "category_id": p.category_id, "subcategory_id": p.subcategory_id,
+            "serial_required": effective_serial_required(categories[p.category_id], subcategories.get(p.subcategory_id)),
+            "share_percent": p.share_percent, "sort_order": p.sort_order,
+        })
     return [{"id": b.id, "name": b.name, "is_active": b.is_active, "parts": by_bundle.get(b.id, [])} for b in bundles]
 
 
@@ -80,7 +87,6 @@ def _apply_part(part: BundlePart, p: dict, order: int, actor: AssetUser) -> None
     part.name = p["name"].strip()
     part.category_id = p["category_id"]
     part.subcategory_id = p.get("subcategory_id")
-    part.serial_required = p.get("serial_required", True)
     part.share_percent = Decimal(str(p["share_percent"])).quantize(CENT)
     part.sort_order = order
     part.updated_by = actor.id
@@ -147,7 +153,8 @@ async def add_bundle_lines(
     `quantity` units, under that part's own category/sub-category), all or
     nothing. Nothing about a bundle survives into the Asset Register: the
     parts become normal assets at Delivery Done; the PendingAsset only keeps a
-    `bundle_label` tag and the part's `serial_required` default."""
+    `bundle_label` tag and the serial default its category/sub-category gives
+    (derived by add_pending_asset_line)."""
     bundle = await session.get(Bundle, data["bundle_id"])
     if bundle is None or not bundle.is_active:
         raise ValueError("bundle not found")
@@ -190,7 +197,6 @@ async def add_bundle_lines(
             "purchase_cost": float(amount),
             "tax_percent": data.get("tax_percent", 0),
             "quantity": data["quantity"],
-            "serial_required": part.serial_required,
             "bundle_label": bundle.name,
         }, actor))
     return created

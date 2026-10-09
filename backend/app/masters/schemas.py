@@ -126,6 +126,9 @@ class AssetCategoryIn(BaseModel):
     # domain for assets created under this category (spec §17/§41). Required:
     # every category must be explicitly classified, never guessed.
     asset_domain: str
+    # Do items of this category carry a serial number? A default only (see
+    # app.masters.serial_rule); every existing category is "yes".
+    serial_required: bool = True
 
 
 class AssetCategoryEditIn(BaseModel):
@@ -133,6 +136,8 @@ class AssetCategoryEditIn(BaseModel):
     # Spec §43: changing this affects FUTURE assets only -- an existing
     # Asset's own asset_domain snapshot is never rewritten by this edit.
     asset_domain: str
+    # Like every field of an edit body, leaving it out resets it (to yes).
+    serial_required: bool = True
 
 
 class AssetCategoryOut(AssetCategoryIn):
@@ -145,6 +150,8 @@ class AssetSubcategoryIn(BaseModel):
     category_id: int
     code: str
     name: str
+    # null = same as the category; true/false overrides it.
+    serial_required: bool | None = None
 
 
 class AssetSubcategoryEditIn(BaseModel):
@@ -152,6 +159,7 @@ class AssetSubcategoryEditIn(BaseModel):
     creation (AM-05): re-parenting a subcategory to a different category
     wasn't proven safe against existing asset code_rule tokens/history."""
     name: str
+    serial_required: bool | None = None
 
 
 class AssetSubcategoryOut(AssetSubcategoryIn):

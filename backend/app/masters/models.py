@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, ForeignKey, JSON, String, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, ForeignKey, JSON, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.db import Base
 from app.core.models import AuditMixin, SoftDeleteMixin
@@ -56,6 +56,10 @@ class AssetCategory(Base, AuditMixin, SoftDeleteMixin):
     # for assets created under this category -- changing it never rewrites an
     # existing Asset's own asset_domain snapshot (see Asset.asset_domain).
     asset_domain: Mapped[str] = mapped_column(String(10))
+    # Whether items of this category carry a serial number. Only a default: Add
+    # Asset and PO delivery start with "No serial number" ticked when false, and
+    # a serial can still be typed (or a missing one saved as N/A) either way.
+    serial_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
 
 
 class AssetSubcategory(Base, AuditMixin, SoftDeleteMixin):
@@ -65,6 +69,9 @@ class AssetSubcategory(Base, AuditMixin, SoftDeleteMixin):
     category_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("asset_category.id"))
     code: Mapped[str] = mapped_column(String(20))
     name: Mapped[str] = mapped_column(String(200))
+    # None = same as the category; True/False overrides it (a Mouse under
+    # Accessories is False while Accessories itself stays True).
+    serial_required: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
 
 class Brand(Base, AuditMixin, SoftDeleteMixin):

@@ -31,10 +31,14 @@ const CUSTOM_FIELDS = [
   { id: 5, field_key: "refurbished", label: "Refurbished?", field_type: "checkbox", options: null, is_required: false, sort_order: 5, company_id: null },
 ];
 
-function mockGets({ asset_users = [{ id: 4, name: "IT Stock-HO" }], customFields = [] as unknown[] } = {}) {
+function mockGets({
+  asset_users = [{ id: 4, name: "IT Stock-HO" }], customFields = [] as unknown[],
+  categories = [{ id: 1, code: "IT", name: "IT Equipment" }] as unknown[],
+  subcategories = [{ id: 2, code: "LAP", name: "Laptop", category_id: 1 }] as unknown[],
+} = {}) {
   (apiClient.get as any).mockImplementation((path: string) => {
-    if (path.startsWith("/masters/categories")) return Promise.resolve([{ id: 1, code: "IT", name: "IT Equipment" }]);
-    if (path.startsWith("/masters/subcategories")) return Promise.resolve([{ id: 2, code: "LAP", name: "Laptop", category_id: 1 }]);
+    if (path.startsWith("/masters/categories")) return Promise.resolve(categories);
+    if (path.startsWith("/masters/subcategories")) return Promise.resolve(subcategories);
     if (path.startsWith("/masters/cost-centers")) return Promise.resolve([{ id: 3, code: "HO01", name: "Head Office" }]);
     if (path.startsWith("/masters/vendors")) return Promise.resolve([{ id: 7, code: "VND1", name: "Acme Traders" }]);
     if (path.startsWith("/masters/brands")) return Promise.resolve([{ id: 9, code: "DELL", name: "Dell" }]);
@@ -154,6 +158,44 @@ describe("AddAssetForm", () => {
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith("/assets", expect.objectContaining({ serial_number: "N/A" })),
     );
+  });
+
+  it("the Setup serial rule sets the \"No serial number\" box when a category / sub-category is picked, and it can still be changed", async () => {
+    mockGets({
+      categories: [
+        { id: 1, code: "COMP", name: "Computers", serial_required: true },
+        { id: 5, code: "CAB", name: "Cables", serial_required: false },
+      ],
+      subcategories: [
+        { id: 2, code: "LAP", name: "Laptop", category_id: 1, serial_required: null },
+        { id: 3, code: "MS", name: "Mouse", category_id: 1, serial_required: false },   // overrides the category
+        { id: 6, code: "SW", name: "Switch", category_id: 5, serial_required: true },    // overrides the category
+        { id: 7, code: "PCH", name: "Patch cord", category_id: 5, serial_required: null },
+      ],
+    });
+    renderFormAt();
+    const noSerial = () => screen.getByRole("checkbox", { name: /no serial number/i });
+    await screen.findByLabelText(/description/i);
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /^category$/i })).toBeEnabled());
+
+    await pickSelectOption(/^category$/i, "Computers");
+    expect(noSerial()).not.toBeChecked();                          // a serial is expected
+    await pickSelectOption(/sub-category/i, "Mouse");
+    expect(noSerial()).toBeChecked();                              // the Mouse sub-category says no
+    expect(screen.getByLabelText(/^serial number\*?$/i)).toBeDisabled();
+    await pickSelectOption(/sub-category/i, "Laptop");
+    expect(noSerial()).not.toBeChecked();                          // follows Computers again
+
+    await pickSelectOption(/^category$/i, "Cables");
+    expect(noSerial()).toBeChecked();                              // a no-serial category
+    await pickSelectOption(/sub-category/i, "Switch");
+    expect(noSerial()).not.toBeChecked();                          // but this sub-category has serials
+    await pickSelectOption(/sub-category/i, "Patch cord");
+    expect(noSerial()).toBeChecked();
+
+    fireEvent.click(noSerial());                                   // still the user's call
+    expect(noSerial()).not.toBeChecked();
+    expect(screen.getByLabelText(/^serial number\*?$/i)).toBeEnabled();
   });
 
   it("renders dynamic custom fields in sort order, one control per type, and submits their values", async () => {

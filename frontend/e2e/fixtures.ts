@@ -28,6 +28,8 @@ export interface SeedContext {
   costCenter: { id: number; name: string };
   category: { id: number; name: string };
   subcategory: { id: number; name: string };
+  /** A second sub-category of the same category whose Serial number setting is "No". */
+  noSerialSubcategory: { id: number; name: string };
   /** Vendor is a genuinely global master (no company_id column, like
    * Category -- AM-08). Mandatory on Add Asset now (docs/ai/DECISIONS.md),
    * so every spec driving that form needs one. */
@@ -198,7 +200,15 @@ export async function seedTestCompany(baseURL: string, reg: SeedRegistry): Promi
     name: `E2E Laptop ${ts}`,
   });
   reg.masters.push(["subcategories", subcategory.id]);
-  const vendor = await api<{ id: number; name: string }>(baseURL, "POST", "/api/masters/vendors", token, {
+  // Same category, but its items carry no serial number (a mouse / keyboard).
+  const noSerialSubcategory = await api<{ id: number; name: string }>(baseURL, "POST", "/api/masters/subcategories", token, {
+    category_id: category.id,
+    code: "MSE",
+    name: `E2E Mouse ${ts}`,
+    serial_required: false,
+  });
+  reg.masters.push(["subcategories", noSerialSubcategory.id]);
+  const vendor =await api<{ id: number; name: string }>(baseURL, "POST", "/api/masters/vendors", token, {
     code: `E2EV${codeTs}`,
     name: `E2E Vendor ${ts}`,
   });
@@ -255,6 +265,7 @@ export async function seedTestCompany(baseURL: string, reg: SeedRegistry): Promi
     costCenter,
     category,
     subcategory,
+    noSerialSubcategory,
     vendor,
     stock,
     employee,

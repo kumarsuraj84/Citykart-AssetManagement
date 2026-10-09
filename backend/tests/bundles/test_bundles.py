@@ -42,8 +42,9 @@ async def _setup(suffix: str):
         await session.flush()
         cpu_sub = AssetSubcategory(category_id=comp.id, code="CPU", name="CPU")
         tft_sub = AssetSubcategory(category_id=mon.id, code="TFT", name="TFT")
-        kb_sub = AssetSubcategory(category_id=acc.id, code="KB", name="Keyboard")
-        ms_sub = AssetSubcategory(category_id=acc.id, code="MS", name="Mouse")
+        # Accessories need a serial in general; keyboards and mice do not.
+        kb_sub = AssetSubcategory(category_id=acc.id, code="KB", name="Keyboard", serial_required=False)
+        ms_sub = AssetSubcategory(category_id=acc.id, code="MS", name="Mouse", serial_required=False)
         cc = CostCenter(company_id=co.id, code="HO", name="Head Office")
         loc = Location(company_id=co.id, code=f"BND{suffix}", name="HO")
         dept = Department(name=f"BND{suffix}")
@@ -75,10 +76,10 @@ async def _headers(client, code):
 
 def _desktop_body(ctx, **over):
     body = {"name": "Desktop", "parts": [
-        {"name": "CPU", "category_id": ctx["comp"], "subcategory_id": ctx["cpu_sub"], "serial_required": True, "share_percent": 70},
-        {"name": "TFT", "category_id": ctx["mon"], "subcategory_id": ctx["tft_sub"], "serial_required": True, "share_percent": 26},
-        {"name": "Keyboard", "category_id": ctx["acc"], "subcategory_id": ctx["kb_sub"], "serial_required": False, "share_percent": 2},
-        {"name": "Mouse", "category_id": ctx["acc"], "subcategory_id": ctx["ms_sub"], "serial_required": False, "share_percent": 2},
+        {"name": "CPU", "category_id": ctx["comp"], "subcategory_id": ctx["cpu_sub"], "share_percent": 70},
+        {"name": "TFT", "category_id": ctx["mon"], "subcategory_id": ctx["tft_sub"], "share_percent": 26},
+        {"name": "Keyboard", "category_id": ctx["acc"], "subcategory_id": ctx["kb_sub"], "share_percent": 2},
+        {"name": "Mouse", "category_id": ctx["acc"], "subcategory_id": ctx["ms_sub"], "share_percent": 2},
     ]}
     body.update(over)
     return body
@@ -147,7 +148,7 @@ async def test_editing_keeps_parts_by_id_and_deactivates_removed_ones(client):
         {**cpu, "share_percent": 75},
         {**tft, "share_percent": 21},
         {**mouse, "share_percent": 4},          # keyboard left out -> deactivated
-        {"name": "Speaker", "category_id": ctx["acc"], "subcategory_id": None, "serial_required": False, "share_percent": 0.5},
+        {"name": "Speaker", "category_id": ctx["acc"], "subcategory_id": None, "share_percent": 0.5},
     ]}
     body["parts"][2]["share_percent"] = 3.5
     resp = await client.put(f"/api/bundles/{bundle['id']}", headers=h, json=body)

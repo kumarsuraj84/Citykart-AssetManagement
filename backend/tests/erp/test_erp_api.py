@@ -72,8 +72,9 @@ async def _setup():
         acc = AssetCategory(code="ACC", name="Accessories", asset_domain="IT")
         session.add_all([spl, vpl, comp, mon, acc, Brand(code="DELL", name="Dell"), Department(name="IT")])
         await session.flush()
-        cpu, tft, kb, ms = (AssetSubcategory(category_id=c.id, code=code, name=name) for c, code, name in (
-            (comp, "CPU", "CPU"), (mon, "TFT", "TFT"), (acc, "KB", "Keyboard"), (acc, "MS", "Mouse")))
+        cpu, tft, kb, ms = (AssetSubcategory(category_id=c.id, code=code, name=name, serial_required=serial)
+                            for c, code, name, serial in (
+            (comp, "CPU", "CPU", None), (mon, "TFT", "TFT", None), (acc, "KB", "Keyboard", False), (acc, "MS", "Mouse", False)))
         cables = AssetSubcategory(category_id=acc.id, code="CBL", name="Cable")
         session.add_all([cpu, tft, kb, ms, cables])
         await session.flush()
@@ -107,12 +108,11 @@ async def _setup():
         desktop = Bundle(name="Desktop", created_by=owner.id, updated_by=owner.id)
         session.add(desktop)
         await session.flush()
-        for order, (name, cat, sub, serial, share) in enumerate((
-            ("CPU", comp, cpu, True, 70), ("TFT", mon, tft, True, 26),
-            ("Keyboard", acc, kb, False, 2), ("Mouse", acc, ms, False, 2),
+        for order, (name, cat, sub, share) in enumerate((
+            ("CPU", comp, cpu, 70), ("TFT", mon, tft, 26), ("Keyboard", acc, kb, 2), ("Mouse", acc, ms, 2),
         )):
             session.add(BundlePart(bundle_id=desktop.id, name=name, category_id=cat.id, subcategory_id=sub.id,
-                                   serial_required=serial, share_percent=share, sort_order=order))
+                                   share_percent=share, sort_order=order))
         await session.commit()
         return {"spl": spl.id, "vpl": vpl.id, "taj": taj.id, "faru": faru.id, "vtaj": vtaj.id,
                 "desktop": desktop.id, "acc": acc.id, "cables": cables.id,

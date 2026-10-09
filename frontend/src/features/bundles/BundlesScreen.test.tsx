@@ -17,9 +17,15 @@ const DESKTOP = {
 function mockGets(bundles: unknown[]) {
   (apiClient.get as any).mockImplementation((path: string) => {
     if (path === "/bundles") return Promise.resolve(bundles);
-    if (path === "/masters/categories") return Promise.resolve([{ id: 1, name: "Computers" }, { id: 2, name: "Monitors" }]);
+    if (path === "/masters/categories") {
+      return Promise.resolve([{ id: 1, name: "Computers", serial_required: true }, { id: 2, name: "Monitors", serial_required: true }]);
+    }
     if (path === "/masters/subcategories") {
-      return Promise.resolve([{ id: 10, category_id: 1, name: "CPU Unit" }, { id: 20, category_id: 2, name: "TFT Screen" }]);
+      return Promise.resolve([
+        { id: 10, category_id: 1, name: "CPU Unit", serial_required: null },
+        { id: 20, category_id: 2, name: "TFT Screen", serial_required: null },
+        { id: 30, category_id: 1, name: "Dongle", serial_required: false },
+      ]);
     }
     return Promise.resolve([]);
   });
@@ -65,8 +71,7 @@ describe("BundlesScreen", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: /use the desktop example/i }));
     expect(within(dialog).getByLabelText("Bundle name*")).toHaveValue("Desktop");
     expect(within(dialog).getByRole("status")).toHaveTextContent("Total 100%");
-    expect(within(dialog).getByRole("checkbox", { name: /needs serial number: keyboard/i })).not.toBeChecked();
-    expect(within(dialog).getByRole("checkbox", { name: /needs serial number: cpu/i })).toBeChecked();
+    expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument(); // the serial rule is not set on the bundle any more
     expect(save).toBeDisabled(); // categories not chosen yet
 
     fireEvent.change(within(dialog).getByLabelText("Share %", { selector: "#part-share-0" }), { target: { value: "60" } });
@@ -88,6 +93,7 @@ describe("BundlesScreen", () => {
     fireEvent.click(await screen.findByText("Computers"));
     fireEvent.click(within(dialog).getByLabelText("Sub-Category", { selector: "#part-subcategory-0" }));
     fireEvent.click(await screen.findByText("CPU Unit"));
+    expect(within(dialog).getByText("Serial: Yes")).toBeInTheDocument();     // follows the category
 
     const save = within(dialog).getByRole("button", { name: /^save$/i });
     await waitFor(() => expect(save).not.toBeDisabled());
@@ -95,7 +101,7 @@ describe("BundlesScreen", () => {
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith("/bundles", {
         name: "Combo",
-        parts: [{ id: null, name: "Base", category_id: 1, subcategory_id: 10, serial_required: true, share_percent: 100 }],
+        parts: [{ id: null, name: "Base", category_id: 1, subcategory_id: 10, share_percent: 100 }],
       }),
     );
   });
@@ -114,8 +120,8 @@ describe("BundlesScreen", () => {
       expect(apiClient.put).toHaveBeenCalledWith("/bundles/1", {
         name: "Desktop",
         parts: [
-          { id: 11, name: "CPU", category_id: 1, subcategory_id: 10, serial_required: true, share_percent: 75 },
-          { id: 12, name: "TFT", category_id: 2, subcategory_id: 20, serial_required: true, share_percent: 25 },
+          { id: 11, name: "CPU", category_id: 1, subcategory_id: 10, share_percent: 75 },
+          { id: 12, name: "TFT", category_id: 2, subcategory_id: 20, share_percent: 25 },
         ],
       }),
     );

@@ -44,7 +44,9 @@ function buildPayload(formFields: FormField[], draft: Record<string, unknown>) {
   for (const field of formFields) {
     if (!(field.key in draft)) continue;
     const raw = draft[field.key];
-    if (field.type === "number") {
+    if (field.toPayload) {
+      payload[field.key] = field.toPayload(raw);
+    } else if (field.type === "number") {
       payload[field.key] = raw === "" ? undefined : Number(raw);
     } else if (field.type === "select") {
       const opt = field.options?.find((o) => String(o.value) === String(raw));
@@ -59,7 +61,7 @@ function buildPayload(formFields: FormField[], draft: Record<string, unknown>) {
 function buildDraftFromRow(formFields: FormField[], row: Record<string, unknown>) {
   const draft: Record<string, unknown> = {};
   for (const field of formFields) {
-    draft[field.key] = row[field.key] ?? (field.type === "checkbox" ? false : "");
+    draft[field.key] = field.toDraft ? field.toDraft(row[field.key]) : (row[field.key] ?? (field.type === "checkbox" ? false : ""));
   }
   return draft;
 }
@@ -218,7 +220,9 @@ export function MasterCrudScreen<T extends object>({
   });
 
   function openCreate() {
-    setCreateDraft({});
+    setCreateDraft(
+      Object.fromEntries(config.formFields.filter((f) => f.defaultValue !== undefined).map((f) => [f.key, f.defaultValue])),
+    );
     setCreateOpen(true);
   }
 
