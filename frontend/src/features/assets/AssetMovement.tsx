@@ -1,6 +1,8 @@
-﻿import { useState } from "react";
+﻿import { useEffect, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
+import type { Item } from "../items/types";
 import { actionsFor } from "./actionRules";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -14,14 +16,17 @@ import { FormField } from "@/components/shared/FormField";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { useTableSort } from "@/components/shared/useTableSort";
-import { ScanBarcode, ArrowUp, ArrowDown, ChevronsUpDown } from "lucide-react";
+import { ScanBarcode, ArrowUp, ArrowDown, ChevronsUpDown, Printer } from "lucide-react";
 import { assetScanQuery, isAssetLink } from "../../lib/scan";
+import { LabelPrintStyle, PrintNow, useLabelSettings, type LabelAsset } from "@/components/labels/AssetLabel";
+import { LabelSettingsFields } from "@/components/labels/LabelSettingsFields";
 
 interface Option {
   id: number;
   code?: string;
   email?: string;
   name: string;
+  asset_user_type?: string;
 }
 
 // Lets someone find an Asset User by typing their code or email, not just
@@ -31,11 +36,7 @@ function assetUserKeywords(h: Option): string[] {
   return [h.code, h.email].filter((v): v is string => Boolean(v));
 }
 
-interface AssetSearchResult {
-  id: number;
-  asset_code: string;
-  serial_number: string | null;
-  description: string;
+interface AssetSearchResult extends LabelAsset {
   status: string;
   current_asset_user_name: string | null;
   current_asset_user_location_name: string | null;
@@ -44,6 +45,20 @@ interface AssetSearchResult {
 
 interface QueuedAsset extends AssetSearchResult {
   eligible: boolean;
+  /** The label has been printed (this session) / scanned back to confirm it was stuck on. */
+  printed: boolean;
+  confirmed: boolean;
+}
+
+const PREFS_KEY = "ckam.movement.prefs";
+
+function loadPrefs(): { autoPrint: boolean; verify: boolean } {
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(PREFS_KEY) ?? "null") as { autoPrint?: boolean; verify?: boolean } | null;
+    return { autoPrint: raw?.autoPrint !== false, verify: raw?.verify === true };
+  } catch {
+    return { autoPrint: true, verify: false };
+  }
 }
 
 interface BulkActionResult {
@@ -100,6 +115,49 @@ export function AssetMovement() {
 
   const action = BULK_ACTIONS.find((a) => a.eventType === eventType)!;
 
+  // Labels: print each asset's label as it is scanned (the label that comes out is for the asset
+  // in hand), optionally scan it back to confirm it was stuck on the right asset.
+  const labelSettings = useLabelSettings();
+  const [prefs, setPrefs] = useState(loadPrefs);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+    } catch {
+      // best effort
+    }
+  }, [prefs]);
+  const [printing, setPrinting] = useState<QueuedAsset[] | null>(null);
+  // Add by Item: assets with no serial to scan ("7 mouse")
+  const [itemId, setItemId] = useState("");
+  const [fromId, setFromId] = useState("");
+  const [itemQty, setItemQty] = useState("1");
+  const [itemError, setItemError] = useState<string | null>(null);
+  const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => apiClient.get<Item[]>("/items") });
+  // Moving to a store is the case that labels are for.
+  const labelsOn = eventType === "MOVED";
+
+  function printLabels(assets: QueuedAsset[]) {
+    if (assets.length > 0) setPrinting(assets);
+  }
+  function markPrinted(ids: number[]) {
+    setQueue((q) => q.map((a) => (ids.includes(a.id) ? { ...a, printed: true } : a)));
+    setPrinting(null);
+  }
+  // The one way assets get onto the queue: skips what is already there, checks eligibility,
+  // and prints the new ones' labels when that is switched on.
+  function enqueue(assets: AssetSearchResult[], onlyEligible = false): QueuedAsset[] {
+    const have = new Set(queue.map((a) => a.id));
+    const fresh = assets
+      .filter((a) => !have.has(a.id))
+      .map((a) => ({ ...a, eligible: isEligible(a.status, eventType), printed: false, confirmed: false }))
+      .filter((a) => !onlyEligible || a.eligible);
+    if (fresh.length > 0) {
+      setQueue((q) => [...q, ...fresh]);
+      if (labelsOn && prefs.autoPrint) printLabels(fresh.filter((a) => a.eligible));
+    }
+    return fresh;
+  }
+
   const asset_usersQ = useQuery({ queryKey: ["asset_users"], queryFn: () => apiClient.get<Option[]>("/asset-users") });
   const asset_users = asset_usersQ.data ?? [];
 
@@ -131,24 +189,40 @@ export function AssetMovement() {
   }
 
   function addSelectedToQueue() {
-    const toAdd = browseItems.filter((a) => browseSelected.includes(a.id));
-    setQueue((q) => {
-      const queuedIds = new Set(q.map((a) => a.id));
-      const newOnes = toAdd.filter((a) => !queuedIds.has(a.id));
-      return [...q, ...newOnes.map((a) => ({ ...a, eligible: isEligible(a.status, eventType) }))];
-    });
+    enqueue(browseItems.filter((a) => browseSelected.includes(a.id)));
     setBrowseSelected([]);
   }
 
   function addToQueue(asset: AssetSearchResult) {
-    setQueue((q) => {
-      if (q.some((existing) => existing.id === asset.id)) return q; // already scanned, ignore a repeat scan
-      return [...q, { ...asset, eligible: isEligible(asset.status, eventType) }];
-    });
+    if (queue.some((existing) => existing.id === asset.id)) {
+      setScanError(`${asset.asset_code} is already in this batch.`);       // a repeat scan is ignored, and said so
+      setScanValue("");
+      setCandidates(null);
+      return;
+    }
+    enqueue([asset]);
     setScanValue("");
     setScanError(null);
     setCandidates(null);
   }
+
+  // Add by Item: the sender's own stock of that Item, one label each.
+  const byItemMutation = useMutation({
+    mutationFn: (v: { itemId: string; fromId: string; count: number }) =>
+      apiClient.get<{ items: AssetSearchResult[]; total: number }>(`/assets?item_id=${v.itemId}&asset_user_id=${v.fromId}&status=IN_STOCK&limit=200`),
+    onSuccess: (result, v) => {
+      const have = new Set(queue.map((a) => a.id));
+      const free = result.items.filter((a) => !have.has(a.id));
+      if (free.length < v.count) {
+        setItemError(`Only ${free.length} of that Item ${free.length === 1 ? "is" : "are"} in stock there${have.size ? " (not counting the ones already in this batch)" : ""}.`);
+        return;
+      }
+      setItemError(null);
+      setBulkSummary(null);
+      enqueue(free.slice(0, v.count));
+    },
+    onError: () => setItemError("Search failed -- try again."),
+  });
 
   function removeFromQueue(id: number) {
     setQueue((q) => q.filter((a) => a.id !== id));
@@ -168,13 +242,20 @@ export function AssetMovement() {
       // ever needs enough to detect "more than one match", hence 5.
       const fetchLimit = vars.requestedQty > 1 ? Math.min(Math.max(vars.requestedQty, 5), 500) : 5;
       const statusParam = vars.status ? `&status=${vars.status}` : "";
+      type Found = { items: AssetSearchResult[]; total: number };
       // The QR on an asset label is a link to the asset: look that one asset up directly.
       if (isAssetLink(vars.value)) {
-        return apiClient.get<{ items: AssetSearchResult[]; total: number }>(`/assets?${assetScanQuery(vars.value)}`);
+        return apiClient.get<Found>(`/assets?${assetScanQuery(vars.value)}`);
       }
-      return apiClient.get<{ items: AssetSearchResult[]; total: number }>(
-        `/assets?q=${encodeURIComponent(vars.value)}&limit=${fetchLimit}${statusParam}`,
-      );
+      const search = async (): Promise<Found> => {
+        // A single scan lands on exactly one asset when it is a whole serial / asset code / barcode
+        if (vars.requestedQty <= 1) {
+          const exact = await apiClient.get<Found>(`/assets?q=${encodeURIComponent(vars.value)}&exact=true&limit=5${statusParam}`);
+          if (exact.items.length > 0) return exact;
+        }
+        return apiClient.get<Found>(`/assets?q=${encodeURIComponent(vars.value)}&limit=${fetchLimit}${statusParam}`);
+      };
+      return search();
     },
     onSuccess: (result, vars) => {
       if (vars.requestedQty > 1) {
@@ -190,9 +271,7 @@ export function AssetMovement() {
         const queuedIds = new Set(queue.map((a) => a.id));
         const eligibleNew = result.items.filter((a) => isEligible(a.status, eventType) && !queuedIds.has(a.id));
         const toAdd = eligibleNew.slice(0, vars.requestedQty);
-        if (toAdd.length > 0) {
-          setQueue((q) => [...q, ...toAdd.map((a) => ({ ...a, eligible: true }))]);
-        }
+        enqueue(toAdd);
         setBulkSummary(
           toAdd.length < vars.requestedQty
             ? `Added ${toAdd.length} of ${vars.requestedQty} requested -- only ${toAdd.length} eligible match${toAdd.length === 1 ? "" : "es"} found for "${vars.value}".`
@@ -225,6 +304,16 @@ export function AssetMovement() {
   function handleScanSubmit() {
     const value = scanValue.trim();
     if (!value) return;
+    // Confirming a label that was stuck on: scanning the label itself ticks it off.
+    if (prefs.verify) {
+      const match = queue.find((a) => a.printed && !a.confirmed && a.asset_code.toLowerCase() === value.toLowerCase());
+      if (match) {
+        setQueue((q) => q.map((a) => (a.id === match.id ? { ...a, confirmed: true } : a)));
+        setScanValue("");
+        setScanError(null);
+        return;
+      }
+    }
     setCandidates(null);
     setBulkSummary(null);
     searchMutation.mutate({
@@ -275,9 +364,12 @@ export function AssetMovement() {
       </button>
     );
   }
+  const unprinted = eligibleQueue.filter((a) => !a.printed);
+  const unconfirmed = prefs.verify && labelsOn ? eligibleQueue.filter((a) => !a.confirmed).length : 0;
   const canApply =
     eligibleQueue.length > 0 &&
-    (!action.needsAssetUser || toAssetUserId !== "");
+    (!action.needsAssetUser || toAssetUserId !== "") &&
+    unconfirmed === 0;
 
   const applyMutation = useMutation({
     mutationFn: () =>
@@ -306,9 +398,18 @@ export function AssetMovement() {
 
   return (
     <div className="flex flex-col gap-4">
+      <LabelPrintStyle widthMm={labelSettings.widthMm} heightMm={labelSettings.heightMm} />
+      {printing && (
+        <PrintNow
+          assets={printing} symbol={labelSettings.symbol} widthMm={labelSettings.widthMm} heightMm={labelSettings.heightMm}
+          onPrinted={() => markPrinted(printing.map((a) => a.id))}
+        />
+      )}
+
       <PageHeader
-        title="Asset Movement"
-        description="Scan or type a Serial Number/Asset Code to queue assets, then apply one action to the whole batch."
+        title="Move / Dispatch"
+        description="Scan or type a Serial Number/Asset Code to queue assets, then apply one action to the whole batch. For a move to a store, each asset's label prints as you scan it, so the label is for the asset in your hand."
+        actions={<Button asChild variant="outline"><Link to="/print-labels">Print Labels</Link></Button>}
       />
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -350,6 +451,29 @@ export function AssetMovement() {
         />
         Only assets currently in stock
       </label>
+
+      {labelsOn && (
+        <div className="flex flex-col gap-3 rounded-md border p-3">
+          <h2 className="text-sm font-semibold">Labels</h2>
+          <div className="flex flex-col gap-2 text-sm sm:flex-row sm:gap-6">
+            <label className="flex items-center gap-2">
+              <Checkbox
+                aria-label="Print the label as I scan"
+                checked={prefs.autoPrint} onCheckedChange={(c) => setPrefs((p) => ({ ...p, autoPrint: c === true }))}
+              />
+              Print the label as I scan
+            </label>
+            <label className="flex items-center gap-2">
+              <Checkbox
+                aria-label="Confirm each label by scanning it"
+                checked={prefs.verify} onCheckedChange={(c) => setPrefs((p) => ({ ...p, verify: c === true }))}
+              />
+              Confirm each label by scanning it after sticking it on
+            </label>
+          </div>
+          <LabelSettingsFields settings={labelSettings} />
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
         <FormField
@@ -413,6 +537,42 @@ export function AssetMovement() {
           </ul>
         </div>
       )}
+
+      <div className="rounded-md border p-3">
+        <h2 className="mb-1 text-sm font-semibold">No serial to scan? Add by Item</h2>
+        <p className="mb-2 text-xs text-muted-foreground">
+          For things such as mice and keyboards with no serial: choose the Item, where it is now and how many, and CKAM picks that many
+          from that stock{labelsOn ? ", with one label each" : ""}.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <FormField htmlFor="movement-item" label="Item">
+            <SearchableSelect
+              id="movement-item" aria-label="Item" value={selectValue(itemId)} onValueChange={setItemId}
+              options={(itemsQ.data ?? []).map((i) => ({ value: String(i.id), label: i.name }))} placeholder="Choose the Item"
+            />
+          </FormField>
+          <FormField htmlFor="movement-from" label="Currently in stock at">
+            <SearchableSelect
+              id="movement-from" aria-label="Currently in stock at" value={selectValue(fromId)} onValueChange={setFromId}
+              options={asset_users.filter((u) => u.asset_user_type === "STOCK_POINT").map((u) => ({ value: String(u.id), label: u.name, keywords: assetUserKeywords(u) }))}
+              placeholder="Choose the stock point"
+            />
+          </FormField>
+          <FormField htmlFor="movement-item-qty" label="How many">
+            <Input id="movement-item-qty" aria-label="How many" type="number" min={1} max={200} value={itemQty} onChange={(e) => setItemQty(e.target.value)} />
+          </FormField>
+          <div className="flex items-end">
+            <Button
+              type="button" variant="outline"
+              disabled={!itemId || !fromId || !(Number(itemQty) >= 1) || byItemMutation.isPending}
+              onClick={() => byItemMutation.mutate({ itemId, fromId, count: Math.floor(Number(itemQty)) })}
+            >
+              Add {Number(itemQty) >= 1 ? Math.floor(Number(itemQty)) : ""} to this batch
+            </Button>
+          </div>
+        </div>
+        {itemError && <p className="mt-2 text-sm text-destructive" role="alert">{itemError}</p>}
+      </div>
 
       <FormField
         htmlFor="movement-currently-with"
@@ -482,6 +642,12 @@ export function AssetMovement() {
           <h2 className="text-sm font-semibold">
             Queued ({queue.length}){eligibleQueue.length !== queue.length && ` — ${eligibleQueue.length} eligible`}
           </h2>
+          {labelsOn && unprinted.length > 0 && (
+            <Button type="button" variant="outline" size="sm" onClick={() => printLabels(unprinted)}>
+              <Printer className="h-4 w-4" aria-hidden="true" />
+              Print {unprinted.length} label{unprinted.length === 1 ? "" : "s"} not printed yet
+            </Button>
+          )}
           {queue.length > 1 && (
             <div className="flex items-center gap-3">
               <span className="text-xs text-muted-foreground">Sort:</span>
@@ -522,7 +688,7 @@ export function AssetMovement() {
               >
                 <div className="flex flex-col">
                   <span className="flex items-center gap-1.5 font-medium">
-                    {a.asset_code} — {a.description} ({a.serial_number ?? "no serial"})
+                    {a.asset_code} — {a.item_name ?? a.description} ({a.serial_pending ? "serial to be added" : a.serial_number ?? "no serial"})
                     {notInStock && (
                       <Badge variant="outline" className="border-transparent bg-warning-soft text-on-warning-soft px-1.5 py-0 text-[10px] font-medium">
                         Not in IT Stock
@@ -534,9 +700,21 @@ export function AssetMovement() {
                     {!a.eligible && ` · not eligible for "${action.label}" from this status`}
                   </span>
                 </div>
-                <Button type="button" variant="ghost" size="sm" onClick={() => removeFromQueue(a.id)}>
-                  Remove
-                </Button>
+                <div className="flex items-center gap-2">
+                  {labelsOn && a.eligible && (
+                    <>
+                      <span className="text-xs text-muted-foreground">
+                        {a.confirmed ? "Confirmed" : a.printed ? (prefs.verify ? "Printed: scan the label" : "Printed") : "Label not printed"}
+                      </span>
+                      <Button type="button" variant="ghost" size="sm" aria-label={`Print label for ${a.asset_code}`} onClick={() => printLabels([a])}>
+                        {a.printed ? "Reprint" : "Print"}
+                      </Button>
+                    </>
+                  )}
+                  <Button type="button" variant="ghost" size="sm" aria-label={`Remove ${a.asset_code}`} onClick={() => removeFromQueue(a.id)}>
+                    Remove
+                  </Button>
+                </div>
               </li>
               );
             })}
@@ -544,6 +722,7 @@ export function AssetMovement() {
         )}
       </div>
 
+      {unconfirmed > 0 && <p className="text-xs text-muted-foreground">{unconfirmed} label{unconfirmed === 1 ? " is" : "s are"} not confirmed yet.</p>}
       {applyMutation.isSuccess && (
         <div className="rounded-md border bg-muted/40 p-3 text-sm">
           <p>

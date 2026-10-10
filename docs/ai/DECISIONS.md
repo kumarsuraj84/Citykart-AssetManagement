@@ -2,6 +2,16 @@
 
 Newest first. These override older spec/plan text where they conflict.
 
+## 2026-10-11 — Dispatch is part of Asset Movement: one screen, "Move / Dispatch"
+
+The separate Dispatch screen (below) was merged into Asset Movement at the user's request (two screens for nearly
+the same job): `/asset-movement` is now **Move / Dispatch** (`/dispatch` redirects to it; one menu entry). It keeps
+every action (move/allot, repair, lost, dispose, sell, scrap), "Currently With" browse and quantity-by-description, and
+gains, for the Move action: print each asset's label as it is scanned, per-row print/reprint, "print the labels not
+printed yet", optional scan-back confirmation (the move waits until every label is confirmed), and "Add by Item"
+(Item + stock point + quantity). Single scans now look for a whole serial / code first. ERP packet reference
+(what the ERP says about the packet being sent) is planned; it needs an ERP view, see `ERP_FA_TRANSFER_REQUEST.md`.
+
 ## 2026-10-11 — Dispatch and labels: every unit is its own asset and gets its own 70 x 20 mm label
 
 CKAM tracks every item individually (no packs, no counted lots): 7 mice with no serial are 7 assets, each with its own

@@ -1,18 +1,23 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { AssetMovement } from "./AssetMovement";
+import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
+import { createAppRouter } from "../../router";
 import { apiClient } from "../../lib/api-client";
+import { useAuthStore } from "../../lib/auth-store";
 
 vi.mock("../../lib/api-client");
 
-function renderMovement() {
+// Rendered through the real route tree (the page links to Print Labels, so it needs a router).
+async function renderMovement() {
+  const router = createAppRouter(createMemoryHistory({ initialEntries: ["/asset-movement"] }));
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
-      <AssetMovement />
+      <RouterProvider router={router} />
     </QueryClientProvider>,
   );
+  await screen.findByLabelText(/scan or type/i);
 }
 
 const LAPTOP = {
@@ -36,12 +41,22 @@ function mockGets({ searchResults = {} as Record<string, typeof LAPTOP[]> } = {}
   });
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  try { window.localStorage.clear(); } catch { /* no storage here */ }
+  useAuthStore.getState().setAuth({ accessToken: "tok", role: "OPERATOR", companyId: 1, isPrimaryOwner: false, mustChangePassword: false });
+  // Labels print as assets are scanned for a Move; the label pictures themselves are not what these tests are about.
+  window.fetch = vi.fn().mockResolvedValue({ ok: false, status: 404 }) as any;
+  window.URL.createObjectURL = vi.fn().mockReturnValue("blob:x");
+  window.URL.revokeObjectURL = vi.fn();
+  window.print = vi.fn();
+});
+afterEach(() => useAuthStore.getState().logout());
 
 describe("AssetMovement", () => {
   it("scans an exact match straight into the queue", async () => {
     mockGets({ searchResults: { "SN-001": [LAPTOP] } });
-    renderMovement();
+    await renderMovement();
 
     fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "SN-001" } });
     fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
@@ -53,7 +68,7 @@ describe("AssetMovement", () => {
 
   it("shows an error when nothing matches", async () => {
     mockGets({ searchResults: {} });
-    renderMovement();
+    await renderMovement();
 
     fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "NOPE" } });
     fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
@@ -64,7 +79,7 @@ describe("AssetMovement", () => {
 
   it("shows a pick list when the scan matches more than one asset, and adds the chosen one", async () => {
     mockGets({ searchResults: { "SN-00": [LAPTOP, SCRAPPED_MOUSE] } });
-    renderMovement();
+    await renderMovement();
 
     fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "SN-00" } });
     fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
@@ -78,7 +93,7 @@ describe("AssetMovement", () => {
 
   it("does not add the same asset twice on a repeat scan", async () => {
     mockGets({ searchResults: { "SN-001": [LAPTOP] } });
-    renderMovement();
+    await renderMovement();
 
     fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "SN-001" } });
     fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
@@ -91,7 +106,7 @@ describe("AssetMovement", () => {
 
   it("flags a scanned asset as not eligible for the chosen action, and excludes it from Apply's count", async () => {
     mockGets({ searchResults: { "SN-002": [SCRAPPED_MOUSE] } });
-    renderMovement();
+    await renderMovement();
 
     // Default action is Move, which SCRAPPED (terminal) can never do.
     fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "SN-002" } });
@@ -103,7 +118,7 @@ describe("AssetMovement", () => {
 
   it("Move requires a destination asset_user before Apply is enabled", async () => {
     mockGets({ searchResults: { "SN-001": [LAPTOP] } });
-    renderMovement();
+    await renderMovement();
 
     fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "SN-001" } });
     fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
@@ -120,7 +135,7 @@ describe("AssetMovement", () => {
   it("applies the action to every eligible asset in the queue and reports the result", async () => {
     mockGets({ searchResults: { "SN-001": [LAPTOP] } });
     (apiClient.post as any).mockResolvedValue({ done: 1, failed: [] });
-    renderMovement();
+    await renderMovement();
 
     fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "SN-001" } });
     fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
@@ -145,7 +160,7 @@ describe("AssetMovement", () => {
       description: "Generic Keyboard", status: "IN_STOCK", current_asset_user_name: "IT Stock-HO",
     }));
     mockGets({ searchResults: { keyboard: keyboards } });
-    renderMovement();
+    await renderMovement();
 
     fireEvent.change(screen.getByLabelText(/^qty$/i), { target: { value: "3" } });
     fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "keyboard" } });
@@ -162,7 +177,7 @@ describe("AssetMovement", () => {
       description: "Generic Keyboard", status: "IN_STOCK", current_asset_user_name: "IT Stock-HO",
     }));
     mockGets({ searchResults: { keyboard: keyboards } });
-    renderMovement();
+    await renderMovement();
 
     fireEvent.change(screen.getByLabelText(/^qty$/i), { target: { value: "10" } });
     fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "keyboard" } });
@@ -178,7 +193,7 @@ describe("AssetMovement", () => {
       description: "Generic Keyboard", status: "IN_STOCK", current_asset_user_name: "IT Stock-HO",
     }));
     mockGets({ searchResults: { keyboard: keyboards } });
-    renderMovement();
+    await renderMovement();
 
     fireEvent.change(screen.getByLabelText(/^qty$/i), { target: { value: "3" } });
     fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "keyboard" } });
@@ -203,7 +218,7 @@ describe("AssetMovement", () => {
       if (path.startsWith("/assets?asset_user_id=11")) return Promise.resolve({ items: [ankurLaptop], total: 1 });
       return Promise.resolve([]);
     });
-    renderMovement();
+    await renderMovement();
 
     fireEvent.click(screen.getByRole("combobox", { name: /currently with/i }));
     fireEvent.click(await screen.findByRole("option", { name: "Ankur" }));
@@ -223,7 +238,7 @@ describe("AssetMovement", () => {
       if (path.startsWith("/assets?asset_user_id=11")) return Promise.resolve({ items: [ankurLaptop], total: 1 });
       return Promise.resolve([]);
     });
-    renderMovement();
+    await renderMovement();
 
     fireEvent.click(screen.getByRole("combobox", { name: /currently with/i }));
     fireEvent.click(await screen.findByRole("option", { name: "Ankur" }));
@@ -245,7 +260,7 @@ describe("AssetMovement", () => {
       }
       return Promise.resolve([]);
     });
-    renderMovement();
+    await renderMovement();
 
     fireEvent.click(screen.getByRole("checkbox", { name: /only assets currently in stock/i }));
     fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "SN-001" } });

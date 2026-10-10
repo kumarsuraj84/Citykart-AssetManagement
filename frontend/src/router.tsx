@@ -61,7 +61,6 @@ import MyAssetsRoute from "./routes/my-assets";
 import AssetsIndexRoute from "./routes/assets/index";
 import NewAssetRoute from "./routes/assets/new";
 import SerialPendingRoute from "./routes/assets/serial-pending";
-import DispatchRoute from "./routes/dispatch";
 import AssetDetailRoute from "./routes/assets/$id";
 import AssetMovementRoute from "./routes/asset-movement";
 import PrintLabelsRoute from "./routes/print-labels";
@@ -290,8 +289,7 @@ function AppShell() {
                       <SidebarNavItem to="/assets" label="Asset Register" icon={ListChecks} />
                       {canWrite && <SidebarNavItem to="/assets/new" label="Add Asset" icon={PackagePlus} />}
                       {canWrite && <SidebarNavItem to="/serial-pending" label="Serial Pending" icon={Hash} />}
-                      {canWrite && <SidebarNavItem to="/asset-movement" label="Asset Movement" icon={ScanBarcode} />}
-                      {canWrite && <SidebarNavItem to="/dispatch" label="Dispatch" icon={Truck} />}
+                      {canWrite && <SidebarNavItem to="/asset-movement" label="Move / Dispatch" icon={ScanBarcode} />}
                       {canWrite && <SidebarNavItem to="/print-labels" label="Print Labels" icon={Printer} />}
                       {canWrite && <SidebarNavItem to="/purchase-orders" label="Purchase Orders" icon={ClipboardList} />}
                       {/* Bulk asset Import is Primary-Owner-only, not part of
@@ -467,10 +465,13 @@ export const printLabelsRoute = createRoute({
   },
 });
 
+// Dispatch is now part of Move / Dispatch (one screen); the old address keeps working.
 export const dispatchRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/dispatch",
-  component: DispatchRoute,
+  beforeLoad: () => {
+    throw redirect({ to: "/asset-movement" });
+  },
 });
 
 export const purchaseOrdersIndexRoute = createRoute({
