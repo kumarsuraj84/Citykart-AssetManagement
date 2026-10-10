@@ -3,8 +3,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.asset_users.models import AssetUser
 from app.bundles.models import Bundle, BundlePart
-from app.masters.models import AssetCategory, AssetSubcategory
-from app.masters.serial_rule import effective_serial_required
+from app.items.models import Item
+from app.masters.serial_rule import serial_default
 from app.purchase_orders.models import PendingAsset, PurchaseOrder
 from app.purchase_orders.service import add_pending_asset_line
 
@@ -25,7 +25,9 @@ def split_amounts(price: Decimal, shares: list[Decimal]) -> list[Decimal]:
     return amounts
 
 
-async def _validate_bundle_input(session: AsyncSession, data: dict) -> None:
+async def _validate_bundle_input(session: AsyncSession, data: dict, kept_item_ids: frozenset[int] = frozenset()) -> dict[int, Item]:
+    """Checks the bundle and returns its parts' Items by id. `kept_item_ids` are
+    Items the bundle already uses: they stay valid even if deactivated since."""
     if not data["name"].strip():
         raise ValueError("bundle name is required")
     parts = data["parts"]
@@ -37,22 +39,23 @@ async def _validate_bundle_input(session: AsyncSession, data: dict) -> None:
     if len(set(names)) != len(names):
         raise ValueError("part names must be different from each other")
     total = Decimal(0)
+    items: dict[int, Item] = {}
     for p in parts:
         share = Decimal(str(p["share_percent"]))
         if share <= 0 or share > 100:
             raise ValueError(f"share for {p['name']!r} must be more than 0 and at most 100")
         total += share
-        category = await session.get(AssetCategory, p["category_id"])
-        if category is None:
-            raise ValueError(f"category {p['category_id']} not found")
-        if p.get("subcategory_id") is not None:
-            sub = await session.get(AssetSubcategory, p["subcategory_id"])
-            if sub is None:
-                raise ValueError(f"sub-category {p['subcategory_id']} not found")
-            if sub.category_id != category.id:
-                raise ValueError(f"sub-category does not belong to the category chosen for {p['name']!r}")
+        item = await session.get(Item, p["item_id"])
+        if item is None or (not item.is_active and item.id not in kept_item_ids):
+            raise ValueError(f"the Item for {p['name']!r} was not found")
+        if item.bundle_id is not None:
+            raise ValueError(f"{item.name!r} is itself a bundle; a part must be a single thing such as CPU or Mouse")
+        if item.subcategory_id is None:
+            raise ValueError(f"{item.name!r} has no sub-category; set one on the Item first")
+        items[item.id] = item
     if abs(total - Decimal(100)) > TOLERANCE:
         raise ValueError(f"the shares add up to {total}%, they must add up to exactly 100%")
+    return items
 
 
 async def _name_in_use(session: AsyncSession, name: str, exclude_id: int | None) -> bool:
@@ -71,29 +74,32 @@ async def list_bundles(session: AsyncSession) -> list[dict]:
         .where(BundlePart.bundle_id.in_([b.id for b in bundles]), BundlePart.is_active.is_(True))
         .order_by(BundlePart.sort_order, BundlePart.id)
     )).scalars().all()
-    categories = {c.id: c for c in (await session.execute(select(AssetCategory))).scalars().all()}
-    subcategories = {s.id: s for s in (await session.execute(select(AssetSubcategory))).scalars().all()}
+    item_ids = {p.item_id for p in parts if p.item_id is not None}
+    items = {i.id: i for i in (await session.execute(select(Item).where(Item.id.in_(item_ids)))).scalars().all()} if item_ids else {}
     by_bundle: dict[int, list[dict]] = {}
     for p in parts:
+        item = items.get(p.item_id)
         by_bundle.setdefault(p.bundle_id, []).append({
-            "id": p.id, "name": p.name, "category_id": p.category_id, "subcategory_id": p.subcategory_id,
-            "serial_required": effective_serial_required(categories[p.category_id], subcategories.get(p.subcategory_id)),
+            "id": p.id, "name": p.name, "item_id": p.item_id, "item_name": item.name if item else None,
+            "category_id": p.category_id, "subcategory_id": p.subcategory_id,
+            "serial_required": serial_default(item),
             "share_percent": p.share_percent, "sort_order": p.sort_order,
         })
     return [{"id": b.id, "name": b.name, "is_active": b.is_active, "parts": by_bundle.get(b.id, [])} for b in bundles]
 
 
-def _apply_part(part: BundlePart, p: dict, order: int, actor: AssetUser) -> None:
+def _apply_part(part: BundlePart, p: dict, item: Item, order: int, actor: AssetUser) -> None:
     part.name = p["name"].strip()
-    part.category_id = p["category_id"]
-    part.subcategory_id = p.get("subcategory_id")
+    part.item_id = item.id
+    part.category_id = item.category_id
+    part.subcategory_id = item.subcategory_id
     part.share_percent = Decimal(str(p["share_percent"])).quantize(CENT)
     part.sort_order = order
     part.updated_by = actor.id
 
 
 async def create_bundle(session: AsyncSession, data: dict, actor: AssetUser) -> Bundle:
-    await _validate_bundle_input(session, data)
+    items = await _validate_bundle_input(session, data)
     if await _name_in_use(session, data["name"], None):
         raise ValueError(f"a bundle named {data['name'].strip()!r} already exists")
     bundle = Bundle(name=data["name"].strip(), created_by=actor.id, updated_by=actor.id)
@@ -101,7 +107,7 @@ async def create_bundle(session: AsyncSession, data: dict, actor: AssetUser) -> 
     await session.flush()
     for order, p in enumerate(data["parts"]):
         part = BundlePart(bundle_id=bundle.id, created_by=actor.id)
-        _apply_part(part, p, order, actor)
+        _apply_part(part, p, items[p["item_id"]], order, actor)
         session.add(part)
     await session.flush()
     return bundle
@@ -111,14 +117,14 @@ async def update_bundle(session: AsyncSession, bundle: Bundle, data: dict, actor
     """Parts are matched by id: listed parts are updated (or added when they
     have no id), parts left out are deactivated, never deleted -- lines
     already made from them keep pointing at real, readable history."""
-    await _validate_bundle_input(session, data)
-    if await _name_in_use(session, data["name"], bundle.id):
-        raise ValueError(f"a bundle named {data['name'].strip()!r} already exists")
     existing = {
         p.id: p for p in (await session.execute(
             select(BundlePart).where(BundlePart.bundle_id == bundle.id, BundlePart.is_active.is_(True))
         )).scalars().all()
     }
+    items = await _validate_bundle_input(session, data, frozenset(p.item_id for p in existing.values() if p.item_id))
+    if await _name_in_use(session, data["name"], bundle.id):
+        raise ValueError(f"a bundle named {data['name'].strip()!r} already exists")
     keep: set[int] = set()
     for order, p in enumerate(data["parts"]):
         if p.get("id") is not None:
@@ -129,7 +135,7 @@ async def update_bundle(session: AsyncSession, bundle: Bundle, data: dict, actor
         else:
             part = BundlePart(bundle_id=bundle.id, created_by=actor.id)
             session.add(part)
-        _apply_part(part, p, order, actor)
+        _apply_part(part, p, items[p["item_id"]], order, actor)
     for pid, part in existing.items():
         if pid not in keep:
             part.is_active = False
@@ -191,6 +197,9 @@ async def add_bundle_lines(
         created.extend(await add_pending_asset_line(session, po, {
             "description": f"{description} - {part.name}",
             "barcode": base_barcode,  # the same item barcode on every part of the bundle
+            # The part's Item (CPU, TFT...) decides category and serial default; a
+            # part that predates Items falls back on its own category/sub-category.
+            "item_id": part.item_id,
             "category_id": part.category_id,
             "subcategory_id": part.subcategory_id,
             "warranty_years": data.get("warranty_years", 0),

@@ -35,6 +35,8 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField } from "@/components/shared/FormField";
 import { BulkImportExport } from "@/components/shared/BulkImportExport";
+import { SearchableSelect } from "@/components/shared/SearchableSelect";
+import { NewDepartmentDialog, NewLocationDialog, useCanCreateMasters } from "@/components/quick-create/masters";
 import { bulkDeactivate, type BulkDeactivateFailure } from "../../lib/bulk-deactivate";
 
 const ASSET_USER_TYPES = ["EMPLOYEE", "STORE", "INSTALLED", "STOCK_POINT"] as const;
@@ -190,6 +192,11 @@ export function AssetUsersScreen() {
     queryKey: ["masters", "departments"],
     queryFn: () => apiClient.get<Department[]>("/masters/departments"),
   });
+
+  // A missing Location (of the chosen company) or Department is created right here.
+  const canCreateMasters = useCanCreateMasters();
+  const [newLocation, setNewLocation] = useState(false);
+  const [newDepartment, setNewDepartment] = useState(false);
 
   const companyName = (id: number | null) => (id === null ? "—" : companies.find((c) => c.id === id)?.name ?? String(id));
 
@@ -591,18 +598,15 @@ export function AssetUsersScreen() {
             )}
 
             <FormField htmlFor="location_id" label="Location" required>
-              <Select value={draft.location_id || undefined} onValueChange={handleLocationChange}>
-                <SelectTrigger id="location_id" aria-label="Location">
-                  <SelectValue placeholder="Select…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {locations.map((l) => (
-                    <SelectItem key={l.id} value={String(l.id)}>
-                      {l.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                id="location_id"
+                aria-label="Location"
+                value={draft.location_id || undefined}
+                onValueChange={handleLocationChange}
+                options={locations.map((l) => ({ value: String(l.id), label: l.name }))}
+                onCreateNew={canCreateMasters && draft.company_id ? () => setNewLocation(true) : undefined}
+                createLabel="New Location…"
+              />
             </FormField>
 
             <FormField htmlFor="code" label={codeLabel} required>
@@ -624,18 +628,15 @@ export function AssetUsersScreen() {
             </FormField>
 
             <FormField htmlFor="department_id" label="Department">
-              <Select value={draft.department_id || undefined} onValueChange={(v) => setField("department_id", v)}>
-                <SelectTrigger id="department_id" aria-label="Department">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {departments.map((d) => (
-                    <SelectItem key={d.id} value={String(d.id)}>
-                      {d.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                id="department_id"
+                aria-label="Department"
+                value={draft.department_id || undefined}
+                onValueChange={(v) => setField("department_id", v)}
+                options={departments.map((d) => ({ value: String(d.id), label: d.name }))}
+                onCreateNew={canCreateMasters ? () => setNewDepartment(true) : undefined}
+                createLabel="New Department…"
+              />
             </FormField>
 
             <FormField htmlFor="phone" label="Phone">
@@ -769,6 +770,14 @@ export function AssetUsersScreen() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {draft.company_id !== "" && (
+        <NewLocationDialog
+          companyId={Number(draft.company_id)} open={newLocation} onOpenChange={setNewLocation}
+          onCreated={(row) => handleLocationChange(String(row.id))}
+        />
+      )}
+      <NewDepartmentDialog open={newDepartment} onOpenChange={setNewDepartment} onCreated={(row) => setField("department_id", String(row.id))} />
 
       {/*
         One-time temp-password reveal. `tempPassword` is held only in this

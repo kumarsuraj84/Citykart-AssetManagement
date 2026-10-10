@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField } from "@/components/shared/FormField";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
+import { ItemFormDialog } from "../items/ItemFormDialog";
+import { NewBrandDialog, NewCostCenterDialog, NewVendorDialog, useCanCreateMasters } from "@/components/quick-create/masters";
 
 export type MapScope = "NONE" | "ARTICLE" | "NAME" | "CODE";
 
@@ -142,6 +144,12 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
     enabled: companyId !== "",
   });
   const companies = companiesQ.data ?? [];
+  // A missing Item, Brand, Vendor or Cost Centre is created right here, then picked.
+  const canCreateMasters = useCanCreateMasters();
+  const [newItemFor, setNewItemFor] = useState<number | null>(null);
+  const [newBrandFor, setNewBrandFor] = useState<number | null>(null);
+  const [newVendor, setNewVendor] = useState(false);
+  const [newCostCenter, setNewCostCenter] = useState(false);
   const deliveryOptions = (usersQ.data ?? []).filter((u) => !u.asset_user_type || u.asset_user_type === "STOCK_POINT");
 
   function setLine(i: number, patch: Partial<LineForm>) {
@@ -250,12 +258,14 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
             <SearchableSelect
               id={`${poNumber}-vendor`} value={opt(vendorId)} onValueChange={setVendorId}
               options={(vendorsQ.data ?? []).map((v) => ({ value: String(v.id), label: v.name }))}
+              onCreateNew={canCreateMasters ? () => setNewVendor(true) : undefined} createLabel="New Vendor…"
             />
           </FormField>
           <FormField htmlFor={`${poNumber}-cost-center`} label="Cost Centre" required>
             <SearchableSelect
               id={`${poNumber}-cost-center`} value={opt(costCenterId)} onValueChange={setCostCenterId}
               options={(costCentersQ.data ?? []).map((c) => ({ value: String(c.id), label: c.name }))}
+              onCreateNew={canCreateMasters && companyId !== "" ? () => setNewCostCenter(true) : undefined} createLabel="New Cost Centre…"
             />
           </FormField>
           <FormField
@@ -302,6 +312,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
                     <SearchableSelect
                       id={`${id}-item`} value={opt(l.itemId)} onValueChange={(v) => changeItem(i, v)}
                       options={items.map((it) => ({ value: String(it.id), label: it.name }))} placeholder="Choose the Item"
+                      onCreateNew={canCreateMasters ? () => setNewItemFor(i) : undefined} createLabel="New Item…"
                     />
                   </FormField>
                   <FormField htmlFor={`${id}-scope`} label="Remember" className="col-span-3">
@@ -357,6 +368,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
                         <SearchableSelect
                           id={`${id}-brand`} value={opt(l.brandId)} onValueChange={(v) => setLine(i, { brandId: v })}
                           options={(brandsQ.data ?? []).map((b) => ({ value: String(b.id), label: b.name }))}
+                          onCreateNew={canCreateMasters ? () => setNewBrandFor(i) : undefined} createLabel="New Brand…"
                         />
                       </FormField>
                       <FormField htmlFor={`${id}-model`} label="Model" className="col-span-2">
@@ -376,6 +388,26 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
         <p className="text-sm text-destructive" role="alert">
           {createMutation.error instanceof Error ? createMutation.error.message : "Failed to create the purchase order."}
         </p>
+      )}
+
+      <ItemFormDialog
+        open={newItemFor !== null}
+        onOpenChange={(open) => !open && setNewItemFor(null)}
+        // Start from the ERP's own words for this product.
+        initialName={newItemFor !== null ? (lines[newItemFor]?.src.erp_name || lines[newItemFor]?.src.article_name || undefined) ?? undefined : undefined}
+        onSaved={(saved) => newItemFor !== null && changeItem(newItemFor, String(saved.id))}
+      />
+      <NewBrandDialog
+        open={newBrandFor !== null}
+        onOpenChange={(open) => !open && setNewBrandFor(null)}
+        onCreated={(row) => newBrandFor !== null && setLine(newBrandFor, { brandId: String(row.id) })}
+      />
+      <NewVendorDialog open={newVendor} onOpenChange={setNewVendor} onCreated={(row) => setVendorId(String(row.id))} />
+      {companyId !== "" && (
+        <NewCostCenterDialog
+          companyId={Number(companyId)} open={newCostCenter} onOpenChange={setNewCostCenter}
+          onCreated={(row) => setCostCenterId(String(row.id))}
+        />
       )}
       {!locked && (
         <div>

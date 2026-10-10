@@ -44,8 +44,7 @@ test("full custody journey: procure, allot, return, allot again", async ({ page,
   await expect(page).toHaveURL(/\/dashboard$/);
 
   await page.goto("/assets/new");
-  await selectRadix(page, "Category", ctx.category.name);
-  await selectRadix(page, "Sub-Category", ctx.subcategory.name);
+  await selectRadix(page, "Item", ctx.item.name);
   await page.getByLabel("Description", { exact: true }).fill("E2E Test Laptop");
   await selectRadix(page, "Cost Centre", ctx.costCenter.name);
   await selectRadix(page, "Goes Into", ctx.stock.name);

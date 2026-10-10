@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 
 class AssetCreateIn(BaseModel):
@@ -24,8 +24,11 @@ class AssetCreateIn(BaseModel):
     correct tool for a genuine multi-unit bulk add)."""
     company_id: int
     cost_center_id: int
-    category_id: int
-    subcategory_id: int
+    # The Item decides the Category and Sub-Category (the server fills them in,
+    # overriding anything sent); both are only needed when no Item is given.
+    item_id: int | None = None
+    category_id: int | None = None
+    subcategory_id: int | None = None
     brand_id: int | None = None
     model: str | None = None
     # Mandatory -- "N/A" (case-insensitive) is the reserved placeholder for
@@ -54,6 +57,12 @@ class AssetCreateIn(BaseModel):
     initial_asset_user_id: int
     legacy_asset_code: str | None = None
     custom_fields: dict | None = None
+
+    @model_validator(mode="after")
+    def _item_or_classification(self):
+        if self.item_id is None and (self.category_id is None or self.subcategory_id is None):
+            raise ValueError("choose an Item (or a category and sub-category)")
+        return self
 
 
 class AssetOut(BaseModel):

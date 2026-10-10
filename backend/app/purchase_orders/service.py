@@ -7,8 +7,8 @@ from app.assets.service import compute_tax, procure_assets
 from app.asset_users.models import AssetUser
 from app.lifecycle.models import AssetEvent
 from app.masters.models import AssetCategory, AssetSubcategory, CostCenter
-from app.items.models import Item
-from app.masters.serial_rule import effective_serial_required
+from app.items.lookup import fill_from_item
+from app.masters.serial_rule import serial_default
 from app.purchase_orders.models import PendingAsset, PurchaseOrder
 
 
@@ -86,7 +86,10 @@ async def _validate_line_masters(session: AsyncSession, data: dict) -> tuple[Ass
     see create_purchase_order); this is the PO-entry-time subset only.
     Returns the resolved Category (asset_domain, spec §19) and Sub-Category
     (None when not chosen) so callers can derive from them without a second
-    lookup -- asset_domain and the serial-number default."""
+    lookup. A line that names an Item takes its Category / Sub-Category from
+    that Item (done by the caller through `fill_from_item`)."""
+    if data.get("category_id") is None:
+        raise ValueError("choose an Item (or a category) for the line")
     category = await session.get(AssetCategory, data["category_id"])
     if category is None:
         raise ValueError(f"category {data['category_id']} not found")
@@ -109,17 +112,17 @@ async def add_pending_asset_line(
     procure_assets' own quantity handling, never one row with a count."""
     if purchase_order.cost_center_id is None:
         raise ValueError("purchase order has no cost centre set")
+    item = await fill_from_item(session, data)
     category, subcategory = await _validate_line_masters(session, data)
     purchase_cost = data.get("purchase_cost")
     tax_percent = data.get("tax_percent")
     tax_amount, total_cost = compute_tax(purchase_cost, tax_percent)
     # The delivery dialog starts with "No serial number" ticked for lines whose
-    # category/sub-category carries none (a mouse). Only a default, snapshotted
-    # here; an explicit value from the caller wins.
-    item = await session.get(Item, data["item_id"]) if data.get("item_id") else None
+    # Item carries none (a mouse). Only a default, snapshotted here; an explicit
+    # value from the caller wins.
     serial_required = data.get("serial_required")
     if serial_required is None:
-        serial_required = effective_serial_required(category, subcategory, item)
+        serial_required = serial_default(item)
 
     quantity = data.get("quantity", 1)
     created: list[PendingAsset] = []
@@ -147,10 +150,17 @@ async def add_pending_asset_line(
 async def update_pending_asset_line(session: AsyncSession, line: PendingAsset, data: dict, actor: AssetUser) -> PendingAsset:
     if line.status != "PENDING":
         raise ValueError(f"cannot edit a {line.status.lower()} line")
+    # Picking another Item changes the line's kind; otherwise it keeps its own.
+    changed_item = data.get("item_id") is not None and data["item_id"] != line.item_id
+    if data.get("item_id") is None and line.item_id is not None:
+        data = {**data, "item_id": line.item_id}
+    item = await fill_from_item(session, data, keep_inactive_id=line.item_id)
     category, subcategory = await _validate_line_masters(session, data)
     tax_amount, total_cost = compute_tax(data.get("purchase_cost"), data.get("tax_percent"))
-    line.serial_required = effective_serial_required(
-        category, subcategory, await session.get(Item, line.item_id) if line.item_id else None)
+    if changed_item:
+        line.serial_required = serial_default(item)
+    if item is not None:
+        line.item_id = item.id
     line.description = data["description"]
     line.barcode = data.get("barcode")
     line.category_id = data["category_id"]

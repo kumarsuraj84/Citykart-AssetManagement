@@ -6,8 +6,9 @@ class BundlePartIn(BaseModel):
     # already made from it) as the same part. Absent = a new part.
     id: int | None = None
     name: str
-    category_id: int
-    subcategory_id: int | None = None
+    # The Item this part is (CPU, TFT, Keyboard, Mouse). Its Category and
+    # Sub-Category are copied onto the part by the server.
+    item_id: int
     share_percent: float
 
 
@@ -20,9 +21,11 @@ class BundlePartOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     name: str
+    item_id: int | None = None
+    item_name: str | None = None
     category_id: int
     subcategory_id: int | None
-    # Derived from the part's category/sub-category, shown for information.
+    # The Item's serial setting, shown for information.
     serial_required: bool = True
     share_percent: float
     sort_order: int

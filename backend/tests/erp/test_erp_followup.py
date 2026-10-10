@@ -72,7 +72,9 @@ async def test_the_parts_of_a_bundle_keep_the_erp_code_but_are_not_themselves_th
     h = await _headers(client, "OPR")
     po_id = await _create_desktop_po(client, ids, h)
     lines = (await client.get(f"/api/purchase-orders/{po_id}/lines", headers=h)).json()
-    assert {l["erp_item_code"] for l in lines} == {"CT324973"} and {l["item_id"] for l in lines} == {None}
+    assert {l["erp_item_code"] for l in lines} == {"CT324973"}
+    # each part is its own Item (CPU, TFT, Keyboard, Mouse); none of them is the "Desktop" Item
+    assert len({l["item_id"] for l in lines}) == 4 and ids["item_desktop"] not in {l["item_id"] for l in lines}
 
 
 # ---------- delivery reminders ----------

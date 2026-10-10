@@ -5,11 +5,10 @@ from dataclasses import dataclass
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.asset_users.models import AssetUser
-from app.bundles.models import Bundle
+from app.bundles.models import Bundle, BundlePart
 from app.erp.source import ErpItem, ErpSource
 from app.items.models import Item, ItemMap, MATCH_TYPES
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company
-from app.masters.serial_rule import effective_serial_required
 
 
 def norm(text: str | None) -> str:
@@ -43,14 +42,19 @@ async def _validate_item(session: AsyncSession, data: dict, item_id: int | None)
     category = await session.get(AssetCategory, data["category_id"])
     if category is None:
         raise ValueError("category not found")
-    if data.get("subcategory_id") is not None:
-        sub = await session.get(AssetSubcategory, data["subcategory_id"])
-        if sub is None or sub.category_id != category.id:
-            raise ValueError("the sub-category does not belong to the chosen category")
+    if data.get("subcategory_id") is None:
+        raise ValueError("an Item needs a sub-category")
+    sub = await session.get(AssetSubcategory, data["subcategory_id"])
+    if sub is None or sub.category_id != category.id:
+        raise ValueError("the sub-category does not belong to the chosen category")
     if data.get("bundle_id") is not None:
         bundle = await session.get(Bundle, data["bundle_id"])
         if bundle is None or not bundle.is_active:
             raise ValueError("bundle not found")
+        if item_id is not None and (await session.execute(
+            select(BundlePart.id).where(BundlePart.item_id == item_id, BundlePart.is_active.is_(True)).limit(1)
+        )).first() is not None:
+            raise ValueError("this Item is a part of a bundle, so it cannot be a bundle itself")
     if data.get("default_brand_id") is not None and await session.get(Brand, data["default_brand_id"]) is None:
         raise ValueError("brand not found")
 
@@ -59,7 +63,7 @@ def _apply(item: Item, data: dict, actor: AssetUser) -> None:
     item.name = data["name"].strip()
     item.category_id = data["category_id"]
     item.subcategory_id = data.get("subcategory_id")
-    item.serial_required = data.get("serial_required")
+    item.serial_required = True if data.get("serial_required") is None else bool(data["serial_required"])
     item.bundle_id = data.get("bundle_id")
     item.default_brand_id = data.get("default_brand_id")
     item.default_warranty_years = data.get("default_warranty_years")
@@ -92,8 +96,6 @@ async def deactivate_item(session: AsyncSession, item: Item, actor: AssetUser) -
 
 async def list_items(session: AsyncSession) -> list[dict]:
     items = (await session.execute(select(Item).where(Item.is_active.is_(True)).order_by(Item.name))).scalars().all()
-    categories = {c.id: c for c in (await session.execute(select(AssetCategory))).scalars().all()}
-    subs = {s.id: s for s in (await session.execute(select(AssetSubcategory))).scalars().all()}
     counts = dict((await session.execute(
         select(ItemMap.item_id, func.count()).where(ItemMap.is_active.is_(True)).group_by(ItemMap.item_id)
     )).all())
@@ -102,7 +104,6 @@ async def list_items(session: AsyncSession) -> list[dict]:
             "id": i.id, "name": i.name, "category_id": i.category_id, "subcategory_id": i.subcategory_id,
             "serial_required": i.serial_required, "bundle_id": i.bundle_id, "default_brand_id": i.default_brand_id,
             "default_warranty_years": i.default_warranty_years, "is_active": i.is_active,
-            "effective_serial_required": effective_serial_required(categories[i.category_id], subs.get(i.subcategory_id), i),
             "map_count": counts.get(i.id, 0),
         }
         for i in items

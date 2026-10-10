@@ -6,13 +6,12 @@ export interface Item {
   name: string;
   category_id: number;
   subcategory_id: number | null;
-  /** null = follow the sub-category / category. */
-  serial_required: boolean | null;
+  /** Whether it carries a serial number (the only place this rule lives). */
+  serial_required: boolean;
   bundle_id: number | null;
   default_brand_id: number | null;
   default_warranty_years: number | null;
   is_active: boolean;
-  effective_serial_required: boolean;
   map_count: number;
 }
 

@@ -28,8 +28,11 @@ export interface SeedContext {
   costCenter: { id: number; name: string };
   category: { id: number; name: string };
   subcategory: { id: number; name: string };
-  /** A second sub-category of the same category whose Serial number setting is "No". */
   noSerialSubcategory: { id: number; name: string };
+  /** The Item Add Asset / PO lines / Bundle parts pick: it decides Category and Sub-Category. */
+  item: { id: number; name: string };
+  /** An Item (same Category) that carries no serial number -- a mouse / keyboard. The serial rule lives on the Item. */
+  noSerialItem: { id: number; name: string };
   /** Vendor is a genuinely global master (no company_id column, like
    * Category -- AM-08). Mandatory on Add Asset now (docs/ai/DECISIONS.md),
    * so every spec driving that form needs one. */
@@ -56,6 +59,8 @@ export interface SeedRegistry {
   asset_userIds: number[];
   /** [masters resource, id], e.g. ["cost-centers", 12]; deactivated in reverse order. */
   masters: [string, number][];
+  /** Item ids (/api/items), deactivated before the masters they sit under. */
+  items: number[];
 }
 
 export function newSeedRegistry(): SeedRegistry {
@@ -66,6 +71,7 @@ export function newSeedRegistry(): SeedRegistry {
     adminPassword: `E2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}!`,
     asset_userIds: [],
     masters: [],
+    items: [],
   };
 }
 
@@ -101,7 +107,7 @@ function runSeedAdmin(companyCode: string, password: string): { companyId: numbe
   return { companyId: Number(match[1]), asset_userId: Number(match[2]) };
 }
 
-async function api<T>(
+export async function api<T>(
   baseURL: string,
   method: string,
   urlPath: string,
@@ -124,7 +130,7 @@ async function api<T>(
   return (await res.json()) as T;
 }
 
-async function loginAdmin(baseURL: string, reg: SeedRegistry): Promise<string> {
+export async function loginAdmin(baseURL: string, reg: SeedRegistry): Promise<string> {
   const login = await api<{ access_token: string }>(baseURL, "POST", "/api/auth/login", undefined, {
     company_id: reg.companyId,
     login_id: reg.adminEmpCode,
@@ -200,14 +206,21 @@ export async function seedTestCompany(baseURL: string, reg: SeedRegistry): Promi
     name: `E2E Laptop ${ts}`,
   });
   reg.masters.push(["subcategories", subcategory.id]);
-  // Same category, but its items carry no serial number (a mouse / keyboard).
   const noSerialSubcategory = await api<{ id: number; name: string }>(baseURL, "POST", "/api/masters/subcategories", token, {
     category_id: category.id,
     code: "MSE",
     name: `E2E Mouse ${ts}`,
-    serial_required: false,
   });
   reg.masters.push(["subcategories", noSerialSubcategory.id]);
+  // Items: what people actually pick. The serial rule lives here, not on the sub-category.
+  const item = await api<{ id: number; name: string }>(baseURL, "POST", "/api/items", token, {
+    name: `E2E Laptop Item ${ts}`, category_id: category.id, subcategory_id: subcategory.id, serial_required: true,
+  });
+  reg.items.push(item.id);
+  const noSerialItem = await api<{ id: number; name: string }>(baseURL, "POST", "/api/items", token, {
+    name: `E2E Mouse Item ${ts}`, category_id: category.id, subcategory_id: noSerialSubcategory.id, serial_required: false,
+  });
+  reg.items.push(noSerialItem.id);
   const vendor =await api<{ id: number; name: string }>(baseURL, "POST", "/api/masters/vendors", token, {
     code: `E2EV${codeTs}`,
     name: `E2E Vendor ${ts}`,
@@ -266,6 +279,8 @@ export async function seedTestCompany(baseURL: string, reg: SeedRegistry): Promi
     category,
     subcategory,
     noSerialSubcategory,
+    item,
+    noSerialItem,
     vendor,
     stock,
     employee,
@@ -297,6 +312,7 @@ export async function teardownTestCompany(baseURL: string, reg: SeedRegistry): P
   };
 
   for (const id of reg.asset_userIds) await attempt(`asset_user ${id}`, `/api/asset-users/${id}`);
+  for (const id of [...reg.items].reverse()) await attempt(`item ${id}`, `/api/items/${id}`);
   for (const [resource, id] of [...reg.masters].reverse()) {
     await attempt(`${resource} ${id}`, `/api/masters/${resource}/${id}`);
   }
@@ -310,7 +326,7 @@ export async function teardownTestCompany(baseURL: string, reg: SeedRegistry): P
 
 /**
  * Fills the Add Asset form's mandatory procurement fields other than
- * Category/Sub-Category/Cost Centre/Description/Goes Into, which each spec
+ * Item/Cost Centre/Description/Goes Into, which each spec
  * already picks in its own way (docs/ai/DECISIONS.md -- Vendor/PO No+Date/
  * Invoice No+Date/PI No+Date/Serial Number are all mandatory now, and
  * Purchase Date is no longer a field at all, since it's auto-derived from

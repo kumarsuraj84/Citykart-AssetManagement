@@ -8,6 +8,7 @@ from app.bundles.service import split_amounts
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.asset_users.models import AssetUser
+from app.items.models import Item
 from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location
 from app.purchase_orders.models import PendingAsset, PurchaseOrder
 
@@ -42,13 +43,22 @@ async def _setup(suffix: str):
         await session.flush()
         cpu_sub = AssetSubcategory(category_id=comp.id, code="CPU", name="CPU")
         tft_sub = AssetSubcategory(category_id=mon.id, code="TFT", name="TFT")
-        # Accessories need a serial in general; keyboards and mice do not.
-        kb_sub = AssetSubcategory(category_id=acc.id, code="KB", name="Keyboard", serial_required=False)
-        ms_sub = AssetSubcategory(category_id=acc.id, code="MS", name="Mouse", serial_required=False)
+        kb_sub = AssetSubcategory(category_id=acc.id, code="KB", name="Keyboard")
+        ms_sub = AssetSubcategory(category_id=acc.id, code="MS", name="Mouse")
+        spk_sub = AssetSubcategory(category_id=acc.id, code="SPK", name="Speaker")
         cc = CostCenter(company_id=co.id, code="HO", name="Head Office")
         loc = Location(company_id=co.id, code=f"BND{suffix}", name="HO")
         dept = Department(name=f"BND{suffix}")
-        session.add_all([cpu_sub, tft_sub, kb_sub, ms_sub, cc, loc, dept])
+        session.add_all([cpu_sub, tft_sub, kb_sub, ms_sub, spk_sub, cc, loc, dept])
+        await session.flush()
+        # The Items the Desktop is made of. The serial rule lives on the Item:
+        # keyboards and mice carry none.
+        cpu_item = Item(name=f"CPU {suffix}", category_id=comp.id, subcategory_id=cpu_sub.id, serial_required=True)
+        tft_item = Item(name=f"TFT {suffix}", category_id=mon.id, subcategory_id=tft_sub.id, serial_required=True)
+        kb_item = Item(name=f"Keyboard {suffix}", category_id=acc.id, subcategory_id=kb_sub.id, serial_required=False)
+        ms_item = Item(name=f"Mouse {suffix}", category_id=acc.id, subcategory_id=ms_sub.id, serial_required=False)
+        spk_item = Item(name=f"Speaker {suffix}", category_id=acc.id, subcategory_id=spk_sub.id, serial_required=True)
+        session.add_all([cpu_item, tft_item, kb_item, ms_item, spk_item])
         await session.flush()
 
         def user(code, name, role, owner=False):
@@ -66,6 +76,8 @@ async def _setup(suffix: str):
             "po": po.id, "owner": f"OWN{suffix}", "operator": f"OPR{suffix}", "viewer": f"VWR{suffix}",
             "comp": comp.id, "mon": mon.id, "acc": acc.id,
             "cpu_sub": cpu_sub.id, "tft_sub": tft_sub.id, "kb_sub": kb_sub.id, "ms_sub": ms_sub.id,
+            "cpu_item": cpu_item.id, "tft_item": tft_item.id, "kb_item": kb_item.id, "ms_item": ms_item.id,
+            "spk_item": spk_item.id,
         }
 
 
@@ -76,10 +88,10 @@ async def _headers(client, code):
 
 def _desktop_body(ctx, **over):
     body = {"name": "Desktop", "parts": [
-        {"name": "CPU", "category_id": ctx["comp"], "subcategory_id": ctx["cpu_sub"], "share_percent": 70},
-        {"name": "TFT", "category_id": ctx["mon"], "subcategory_id": ctx["tft_sub"], "share_percent": 26},
-        {"name": "Keyboard", "category_id": ctx["acc"], "subcategory_id": ctx["kb_sub"], "share_percent": 2},
-        {"name": "Mouse", "category_id": ctx["acc"], "subcategory_id": ctx["ms_sub"], "share_percent": 2},
+        {"name": "CPU", "item_id": ctx["cpu_item"], "share_percent": 70},
+        {"name": "TFT", "item_id": ctx["tft_item"], "share_percent": 26},
+        {"name": "Keyboard", "item_id": ctx["kb_item"], "share_percent": 2},
+        {"name": "Mouse", "item_id": ctx["ms_item"], "share_percent": 2},
     ]}
     body.update(over)
     return body
@@ -127,15 +139,32 @@ async def test_bundle_rules_are_enforced(client):
     dup_part["parts"][3]["name"] = "keyboard"
     assert (await client.post("/api/bundles", headers=h, json=dup_part)).status_code == 422
 
-    wrong_sub = _desktop_body(ctx)
-    wrong_sub["parts"][0]["subcategory_id"] = ctx["tft_sub"]  # a Monitors sub-category under Computers
-    assert (await client.post("/api/bundles", headers=h, json=wrong_sub)).status_code == 422
+    no_item = _desktop_body(ctx)
+    no_item["parts"][0]["item_id"] = 999999
+    assert (await client.post("/api/bundles", headers=h, json=no_item)).status_code == 422
+    missing_item = _desktop_body(ctx)
+    del missing_item["parts"][0]["item_id"]            # a part must be an Item
+    assert (await client.post("/api/bundles", headers=h, json=missing_item)).status_code == 422
 
     assert (await client.post("/api/bundles", headers=h, json=_desktop_body(ctx, parts=[]))).status_code == 422
 
     await _make_desktop(client, ctx)
     again = await client.post("/api/bundles", headers=h, json=_desktop_body(ctx, name="  DESKTOP "))
     assert again.status_code == 422 and "already exists" in again.json()["detail"]
+
+
+async def test_a_part_must_be_a_single_thing_not_a_bundle_itself(client):
+    ctx = await _setup("A3B")
+    h = await _headers(client, ctx["owner"])
+    bundle = await _make_desktop(client, ctx)
+    async with SessionLocal() as session:
+        spk = await session.get(Item, ctx["spk_item"])
+        spk.bundle_id = bundle["id"]                  # "Speaker" now stands for a whole bundle
+        await session.commit()
+    body = _desktop_body(ctx, name="Another")
+    body["parts"][3]["item_id"] = ctx["spk_item"]
+    r = await client.post("/api/bundles", headers=h, json=body)
+    assert r.status_code == 422 and "itself a bundle" in r.json()["detail"]
 
 
 async def test_editing_keeps_parts_by_id_and_deactivates_removed_ones(client):
@@ -148,7 +177,7 @@ async def test_editing_keeps_parts_by_id_and_deactivates_removed_ones(client):
         {**cpu, "share_percent": 75},
         {**tft, "share_percent": 21},
         {**mouse, "share_percent": 4},          # keyboard left out -> deactivated
-        {"name": "Speaker", "category_id": ctx["acc"], "subcategory_id": None, "share_percent": 0.5},
+        {"name": "Speaker", "item_id": ctx["spk_item"], "share_percent": 0.5},
     ]}
     body["parts"][2]["share_percent"] = 3.5
     resp = await client.put(f"/api/bundles/{bundle['id']}", headers=h, json=body)
@@ -207,6 +236,7 @@ async def test_four_desktops_become_sixteen_ordinary_lines(client):
     cpu = by_desc["Dell Desktop i3 - CPU"][0]
     assert (float(cpu.purchase_cost), float(cpu.tax_amount), float(cpu.total_cost)) == (14000.0, 2520.0, 16520.0)
     assert cpu.category_id == ctx["comp"] and cpu.subcategory_id == ctx["cpu_sub"]
+    assert cpu.item_id == ctx["cpu_item"]                             # each part is its own Item (CPU, TFT...), not "Desktop"
     assert all(l.barcode == "CT324973" for l in lines)               # same barcode on every part
     assert all(l.tax_percent == 18 and l.warranty_years == 1 and l.status == "PENDING" for l in lines)
     assert all(l.bundle_label == "Desktop" for l in lines)

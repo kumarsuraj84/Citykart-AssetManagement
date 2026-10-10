@@ -81,6 +81,10 @@ test("Asset User RBAC / Responsibility rebuild: IT vs NON_IT domain scoping end 
     name: `E2E Chair ${ts}`,
   })) as { id: number; name: string };
   registry.masters.push(["subcategories", nonItSubcategory.id]);
+  const nonItItem = (await api<{ id: number; name: string }>(baseURL!, "POST", "/api/items", ownerToken, {
+    name: `E2E Chair Item ${ts}`, category_id: nonItCategory.id, subcategory_id: nonItSubcategory.id,
+  })) as { id: number; name: string };
+  registry.items.push(nonItItem.id);
 
   // ---- A genuinely ordinary ADMIN (no is_primary_owner) -- provisioned the same
   // way a real company admin is, via the ordinary Asset User create+reset-password
@@ -147,9 +151,8 @@ test("Asset User RBAC / Responsibility rebuild: IT vs NON_IT domain scoping end 
   await expect(page).toHaveURL(/\/dashboard$/);
 
   await page.goto("/assets/new");
-  await selectRadix(page, "Category", ctx.category.name);
+  await selectRadix(page, "Item", ctx.item.name);
   await expect(page.getByLabel("Responsibility", { exact: true })).toHaveValue("IT");
-  await selectRadix(page, "Sub-Category", ctx.subcategory.name);
   await page.getByLabel("Description", { exact: true }).fill(`E2E RBAC IT Asset ${ts}`);
   await selectRadix(page, "Cost Centre", ctx.costCenter.name);
   await selectRadix(page, "Goes Into", ctx.stock.name);
@@ -161,9 +164,8 @@ test("Asset User RBAC / Responsibility rebuild: IT vs NON_IT domain scoping end 
   const itAssetCode = (await itHeading.textContent())!.trim();
 
   await page.goto("/assets/new");
-  await selectRadix(page, "Category", nonItCategory.name);
+  await selectRadix(page, "Item", nonItItem.name);
   await expect(page.getByLabel("Responsibility", { exact: true })).toHaveValue("Admin / Non-IT");
-  await selectRadix(page, "Sub-Category", nonItSubcategory.name);
   await page.getByLabel("Description", { exact: true }).fill(`E2E RBAC Non-IT Asset ${ts}`);
   await selectRadix(page, "Cost Centre", ctx.costCenter.name);
   await selectRadix(page, "Goes Into", ctx.stock.name);

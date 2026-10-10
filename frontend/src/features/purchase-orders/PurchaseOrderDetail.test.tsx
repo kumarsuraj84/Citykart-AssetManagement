@@ -38,7 +38,13 @@ function mockGets(lines: unknown[], po: unknown = PO) {
   (apiClient.get as any).mockImplementation((path: string) => {
     if (path === "/purchase-orders/1") return Promise.resolve(po);
     if (path === "/purchase-orders/1/lines") return Promise.resolve(lines);
-    if (path.startsWith("/masters/categories")) return Promise.resolve([{ id: 1, name: "IT Equipment" }]);
+    if (path === "/items") {
+      return Promise.resolve([{
+        id: 21, name: "Laptop", category_id: 1, subcategory_id: 2, serial_required: true, bundle_id: null,
+        default_brand_id: null, default_warranty_years: null, is_active: true, map_count: 0,
+      }]);
+    }
+    if (path.startsWith("/masters/categories")) return Promise.resolve([{ id: 1, name: "IT Equipment", asset_domain: "IT" }]);
     if (path.startsWith("/masters/subcategories")) return Promise.resolve([{ id: 2, name: "Laptop", category_id: 1 }]);
     if (path.startsWith("/masters/cost-centers")) return Promise.resolve([{ id: 3, name: "Head Office" }]);
     if (path.startsWith("/masters/brands")) return Promise.resolve([{ id: 9, name: "Dell" }]);
@@ -76,15 +82,13 @@ describe("PurchaseOrderDetail", () => {
     fireEvent.change(screen.getByLabelText(/^description\*?$/i), { target: { value: "Dell Laptop" } });
     fireEvent.change(screen.getByLabelText(/^barcode\*?$/i), { target: { value: "BC-BATCH-9" } });
 
-    fireEvent.click(screen.getByLabelText(/^category\*?$/i));
-    fireEvent.click(await screen.findByText("IT Equipment"));
-
-    // Category alone isn't enough now -- Sub-Category/Cost/Quantity are
-    // also mandatory, so the button must still be disabled until they're set.
+    // The Item alone isn't enough -- Cost/Quantity are also mandatory, so the
+    // button must still be disabled until they're set.
     expect(screen.getByRole("button", { name: /add line/i })).toBeDisabled();
 
-    fireEvent.click(screen.getByLabelText(/^sub-category\*?$/i));
-    fireEvent.click(await screen.findByText("Laptop"));
+    fireEvent.click(screen.getByLabelText(/^item\*?$/i));
+    fireEvent.click(await screen.findByRole("option", { name: "Laptop" }));
+    expect(screen.getByText(/IT Equipment › Laptop/)).toBeInTheDocument();      // the Item decides the Category and Sub-Category
     fireEvent.change(screen.getByLabelText(/^cost\*?$/i), { target: { value: "1000" } });
 
     await waitFor(() => expect(screen.getByRole("button", { name: /add line/i })).not.toBeDisabled());
@@ -93,7 +97,7 @@ describe("PurchaseOrderDetail", () => {
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith(
         "/purchase-orders/1/lines",
-        expect.objectContaining({ description: "Dell Laptop", barcode: "BC-BATCH-9", subcategory_id: 2, purchase_cost: 1000 }),
+        expect.objectContaining({ description: "Dell Laptop", barcode: "BC-BATCH-9", item_id: 21, purchase_cost: 1000 }),
       ),
     );
   });
@@ -109,10 +113,8 @@ describe("PurchaseOrderDetail", () => {
     fireEvent.change(screen.getByLabelText(/^description\*?$/i), { target: { value: "Dell Laptop" } });
     fireEvent.change(screen.getByLabelText(/^barcode\*?$/i), { target: { value: "BC-BATCH-9" } });
 
-    fireEvent.click(screen.getByLabelText(/^category\*?$/i));
-    fireEvent.click(await screen.findByText("IT Equipment"));
-    fireEvent.click(screen.getByLabelText(/^sub-category\*?$/i));
-    fireEvent.click(await screen.findByText("Laptop"));
+    fireEvent.click(screen.getByLabelText(/^item\*?$/i));
+    fireEvent.click(await screen.findByRole("option", { name: "Laptop" }));
     fireEvent.change(screen.getByLabelText(/^cost\*?$/i), { target: { value: "1000" } });
 
     fireEvent.click(screen.getByLabelText(/^brand$/i));

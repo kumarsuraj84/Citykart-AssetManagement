@@ -9,13 +9,13 @@ import { useAuthStore } from "../../lib/auth-store";
 vi.mock("../../lib/api-client");
 
 const item = (id: number, name: string, over: Record<string, unknown> = {}) => ({
-  id, name, category_id: 1, subcategory_id: 10, serial_required: null, bundle_id: null, default_brand_id: null,
-  default_warranty_years: null, is_active: true, effective_serial_required: true, map_count: 0, ...over,
+  id, name, category_id: 1, subcategory_id: 10, serial_required: true, bundle_id: null, default_brand_id: null,
+  default_warranty_years: null, is_active: true, map_count: 0, ...over,
 });
 const ITEMS = [
   item(1, "Desktop", { bundle_id: 1, map_count: 2 }),
-  item(2, "Mouse", { category_id: 3, subcategory_id: 31, serial_required: false, effective_serial_required: false }),
-  item(3, "UPS", { category_id: 3, subcategory_id: null }),
+  item(2, "Mouse", { category_id: 3, subcategory_id: 31, serial_required: false }),
+  item(3, "UPS", { category_id: 3, subcategory_id: 32 }),
 ];
 const ARTICLES = [
   { article_key: "FA_CE_UPS", article_name: "FA_CE_UPS", section: "COMPUTER EQUIPMENT", department: "FA_CE_UPS", codes: 2, units: 900, lines: 114,
@@ -37,7 +37,7 @@ function mockApi(articlesError: Error | null = null) {
     if (path === "/items/articles") return articlesError ? Promise.reject(articlesError) : Promise.resolve(ARTICLES);
     if (path.startsWith("/items/articles/codes")) return Promise.resolve(CODES);
     if (path === "/masters/categories") return Promise.resolve([{ id: 1, name: "Computers" }, { id: 3, name: "Accessories" }]);
-    if (path === "/masters/subcategories") return Promise.resolve([{ id: 10, category_id: 1, name: "CPU" }, { id: 31, category_id: 3, name: "Mouse Unit" }]);
+    if (path === "/masters/subcategories") return Promise.resolve([{ id: 10, category_id: 1, name: "CPU" }, { id: 31, category_id: 3, name: "Mouse Unit" }, { id: 32, category_id: 3, name: "UPS Unit" }]);
     if (path === "/bundles") return Promise.resolve([{ id: 1, name: "Desktop Set", is_active: true, parts: [] }]);
     if (path === "/masters/brands") return Promise.resolve([{ id: 4, name: "Dell" }]);
     return Promise.resolve([]);
@@ -65,7 +65,7 @@ describe("Items screen", () => {
     renderAt("/setup/items");
     const desktop = (await screen.findByText("Desktop")).closest("tr")!;
     await waitFor(() => expect(within(desktop).getByText("Computers › CPU")).toBeInTheDocument());
-    expect(within(desktop).getByText("Same as above (Yes)")).toBeInTheDocument();
+    expect(within(desktop).getByText("Yes")).toBeInTheDocument();
     expect(within(desktop).getByText("Desktop Set")).toBeInTheDocument();
     expect(within(desktop).getByText("2")).toBeInTheDocument();
     const mouse = screen.getByText("Mouse").closest("tr")!;
@@ -93,6 +93,82 @@ describe("Items screen", () => {
         name: "Cassette AC", category_id: 1, subcategory_id: 10, serial_required: false, bundle_id: null, default_brand_id: null,
         default_warranty_years: 2,
       }),
+    );
+  });
+
+  it("an Item needs a sub-category: Save stays off without one", async () => {
+    mockApi();
+    renderAt("/setup/items");
+    fireEvent.click(await screen.findByRole("button", { name: "New Item" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText(/^item name/i), { target: { value: "Ceiling Fan" } });
+    fireEvent.click(within(dialog).getByLabelText(/^category/i));
+    fireEvent.click(await screen.findByRole("option", { name: "Computers" }));
+    expect(within(dialog).getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("a missing Sub-Category is created from the Item form itself and picked", async () => {
+    mockApi();
+    (apiClient.post as any).mockImplementation((path: string, body: any) =>
+      Promise.resolve(path === "/masters/subcategories" ? { id: 40, ...body } : {}));
+    renderAt("/setup/items");
+    fireEvent.click(await screen.findByRole("button", { name: "New Item" }));
+    const itemDialog = screen.getByRole("dialog");
+    fireEvent.change(within(itemDialog).getByLabelText(/^item name/i), { target: { value: "PoE Switch" } });
+    fireEvent.click(within(itemDialog).getByLabelText(/^category/i));
+    fireEvent.click(await screen.findByRole("option", { name: "Computers" }));
+    fireEvent.click(within(itemDialog).getByLabelText(/^sub-category/i));
+    fireEvent.click(await screen.findByRole("option", { name: /new sub-category/i }));
+
+    const subDialog = await screen.findByRole("dialog", { name: /new sub-category/i });
+    expect(within(subDialog).getByLabelText(/^category/i)).toHaveTextContent("Computers");        // the Category already chosen carries over
+    fireEvent.change(within(subDialog).getByLabelText(/^name/i), { target: { value: "Network Switch" } });
+    fireEvent.change(within(subDialog).getByLabelText(/^code/i), { target: { value: "SWT" } });
+    fireEvent.click(within(subDialog).getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith("/masters/subcategories", { category_id: 1, name: "Network Switch", code: "SWT" }),
+    );
+
+    // back on the Item form with the new Sub-Category chosen: it can be saved straight away
+    const back = await screen.findByRole("dialog", { name: /new item/i });
+    await waitFor(() => expect(within(back).getByRole("button", { name: "Save" })).toBeEnabled());
+    fireEvent.click(within(back).getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith("/items", expect.objectContaining({ name: "PoE Switch", category_id: 1, subcategory_id: 40 })),
+    );
+  });
+
+  it("a missing Category is created from the Sub-Category form, which is itself opened from the Item form", async () => {
+    mockApi();
+    (apiClient.post as any).mockImplementation((path: string, body: any) =>
+      Promise.resolve(path === "/masters/categories" ? { id: 50, ...body } : path === "/masters/subcategories" ? { id: 41, ...body } : {}));
+    renderAt("/setup/items");
+    fireEvent.click(await screen.findByRole("button", { name: "New Item" }));
+    const itemDialog = screen.getByRole("dialog");
+    fireEvent.change(within(itemDialog).getByLabelText(/^item name/i), { target: { value: "Ceiling Fan" } });
+    fireEvent.click(within(itemDialog).getByLabelText(/^category/i));
+    fireEvent.click(await screen.findByRole("option", { name: /new category/i }));
+
+    const catDialog = await screen.findByRole("dialog", { name: /new category/i });
+    fireEvent.change(within(catDialog).getByLabelText(/^name/i), { target: { value: "Admin Fixed Assets" } });
+    fireEvent.change(within(catDialog).getByLabelText(/^code/i), { target: { value: "ADMFA" } });
+    fireEvent.click(within(catDialog).getByLabelText(/^responsibility/i));
+    fireEvent.click(await screen.findByRole("option", { name: "Admin / Non-IT" }));
+    fireEvent.click(within(catDialog).getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith("/masters/categories", { name: "Admin Fixed Assets", code: "ADMFA", asset_domain: "NON_IT" }),
+    );
+
+    // The new Category is chosen on the Item form; now its Sub-Category, also created on the spot.
+    const back = await screen.findByRole("dialog", { name: /new item/i });
+    fireEvent.click(within(back).getByLabelText(/^sub-category/i));
+    fireEvent.click(await screen.findByRole("option", { name: /new sub-category/i }));
+    const subDialog = await screen.findByRole("dialog", { name: /new sub-category/i });
+    fireEvent.change(within(subDialog).getByLabelText(/^name/i), { target: { value: "Fan" } });
+    fireEvent.change(within(subDialog).getByLabelText(/^code/i), { target: { value: "FAN" } });
+    fireEvent.click(within(subDialog).getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith("/masters/subcategories", { category_id: 50, name: "Fan", code: "FAN" }),
     );
   });
 

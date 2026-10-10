@@ -11,6 +11,8 @@ import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
+import { ItemFormDialog } from "./ItemFormDialog";
+import { useCanCreateMasters } from "@/components/quick-create/masters";
 
 const units = (n: number) => Math.round(n).toLocaleString("en-IN");
 
@@ -28,6 +30,9 @@ export function ArticleMapScreen() {
   const [search, setSearch] = useState("");
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [detail, setDetail] = useState<ArticleRow | null>(null);
+  // An Article whose Item does not exist yet gets it created right here, then linked to it.
+  const canCreate = useCanCreateMasters();
+  const [newItemFor, setNewItemFor] = useState<ArticleRow | null>(null);
 
   // Each company has its own ERP master (same product, different codes and
   // Articles), so Articles are linked per company.
@@ -98,6 +103,7 @@ export function ArticleMapScreen() {
             <SearchableSelect
               id={`article-item-${a.article_key}`} aria-label={`Item for ${a.article_name}`} value={value || undefined}
               onValueChange={(v) => setPicked((p) => ({ ...p, [a.article_key]: v }))} options={itemOptions} placeholder="Choose the Item"
+              onCreateNew={canCreate ? () => setNewItemFor(a) : undefined} createLabel="New Item…"
             />
             {a.item_id === null && a.suggested_item_name && picked[a.article_key] === undefined && (
               <span className="text-xs text-muted-foreground">Suggested: {a.suggested_item_name}</span>
@@ -180,6 +186,13 @@ export function ArticleMapScreen() {
       )}
 
       {detail && <ArticleCodesDialog article={detail} items={items} companyId={companyId} onClose={() => setDetail(null)} />}
+
+      <ItemFormDialog
+        open={newItemFor !== null}
+        onOpenChange={(open) => !open && setNewItemFor(null)}
+        initialName={newItemFor?.article_name}
+        onSaved={(saved) => newItemFor && setPicked((p) => ({ ...p, [newItemFor.article_key]: String(saved.id) }))}
+      />
     </div>
   );
 }
@@ -187,6 +200,8 @@ export function ArticleMapScreen() {
 function ArticleCodesDialog({ article, items, companyId, onClose }: { article: ArticleRow; items: Item[]; companyId?: string; onClose: () => void }) {
   const qc = useQueryClient();
   const [picked, setPicked] = useState<Record<string, string>>({});
+  const canCreate = useCanCreateMasters();
+  const [newItemFor, setNewItemFor] = useState<ArticleCodeRow | null>(null);
   const codesQ = useQuery({
     queryKey: ["items", "articles", "codes", companyId, article.article_key],
     queryFn: () =>
@@ -249,6 +264,7 @@ function ArticleCodesDialog({ article, items, companyId, onClose }: { article: A
                   <SearchableSelect
                     id={`code-item-${c.icode}`} aria-label={`Item for ${c.icode}`} value={value || undefined}
                     onValueChange={(v) => setPicked((p) => ({ ...p, [c.icode]: v }))} options={options} placeholder="Item"
+                    onCreateNew={canCreate ? () => setNewItemFor(c) : undefined} createLabel="New Item…"
                   />
                   <Button size="sm" variant="outline" disabled={!value || saveMutation.isPending} aria-label={`Link code ${c.icode}`}
                     onClick={() => saveMutation.mutate({ row: c, itemId: Number(value), type: "CODE" })}>This code</Button>
@@ -260,6 +276,12 @@ function ArticleCodesDialog({ article, items, companyId, onClose }: { article: A
           })}
         </ul>
         <div className="flex justify-end"><Button variant="outline" onClick={onClose}>Close</Button></div>
+        <ItemFormDialog
+          open={newItemFor !== null}
+          onOpenChange={(open) => !open && setNewItemFor(null)}
+          initialName={newItemFor?.name || undefined}
+          onSaved={(saved) => newItemFor && setPicked((p) => ({ ...p, [newItemFor.icode]: String(saved.id) }))}
+        />
       </DialogContent>
     </Dialog>
   );

@@ -158,6 +158,8 @@ async def procure_assets(session: AsyncSession, data: dict, quantity: int, actor
         raise ValueError(f"cost center {data['cost_center_id']} not found")
     if cost_center.company_id != company_id:
         raise ValueError("cost center must belong to the same company as the asset")
+    if data.get("category_id") is None:
+        raise ValueError("choose an Item (or a category) for the asset")
     category = await session.get(AssetCategory, data["category_id"])
     if category is None:
         raise ValueError(f"category {data['category_id']} not found")

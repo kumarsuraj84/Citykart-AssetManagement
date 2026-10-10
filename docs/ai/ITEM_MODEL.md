@@ -22,12 +22,45 @@ name.
 2. **Item (CityKart's own, `item`)**: what the asset is ("Cassette AC",
    "Floor Gondola", "UPS"). Points at the Category / Sub-Category that already
    drive asset codes, reports and Responsibility (these stay underneath), and
-   carries: serial default (Item > Sub-Category > Category), optional bundle (a
-   Desktop becomes one asset per part), default brand and warranty.
+   carries: **the serial yes/no (the only place that rule lives)**, optional
+   bundle (a Desktop becomes one asset per part), default brand and warranty.
 3. **The asset (`asset`)**: its own brand, model, serial, vendor, price; plus
    `item_id` and `erp_item_code`. The ERP code is only a link back to the PO /
    receipt / PI, never the identity. Bundle parts keep the ERP code but have no
    `item_id` (a CPU is not the "Desktop" Item).
+
+## Category > Sub-Category > Item (decided 2026-10-11)
+
+| Level | Means | Example |
+|---|---|---|
+| Category | which group of fixed assets it belongs to, and **Responsibility** (IT / Non-IT); its code is in the asset code | IT Fixed Assets, Admin Fixed Assets |
+| Sub-Category | the kind of thing, narrow enough to count in reports | Fan, Network Switch |
+| Item | what people pick; many ERP item codes point to one Item | Ceiling Fan, Exhaust Fan, Wall Fan, Normal Switch, PoE Switch |
+
+- **The serial yes/no lives on the Item only.** Category and Sub-Category have no serial setting any more
+  (migration `f8b1d3e5a7c9` first copied each Item's effective answer, then dropped the two columns).
+  `item.serial_required` is a plain yes/no, default yes. Still only a default: a serial can be typed on a
+  "no" Item and N/A saved on a "yes" Item. Anything without an Item (old assets, Excel import) counts as yes.
+- **An Item must have a Sub-Category.** The Item decides the asset's Category and Sub-Category on the
+  server (`items/lookup.py::fill_from_item`): Add Asset, PO lines and bundle lines send `item_id`, and
+  whatever Category the client sends is overridden. The category/sub-category path is kept only for the
+  Excel import and old callers.
+- **Prefer a narrow Sub-Category** ("Network Switch" with Items Normal Switch / PoE Switch) over a wide
+  one ("IT H/W"): that is what the Category is for. Whether Categories follow the owning department or
+  the ERP's own groups is a naming choice; the app works the same.
+- **Bundle parts are Items.** The Desktop *Item* exists only to link the ERP code and carry the bundle;
+  its parts (CPU, TFT, Keyboard, Mouse) are Items of their own (`bundle_part.item_id`; category and
+  sub-category are copied from the part's Item). Delivered part assets carry `item_id` = CPU / TFT / ...
+  and never "Desktop". A bundle Item cannot be a part, and a part Item cannot become a bundle.
+
+## Create it where you need it
+
+A missing linked record is created from the screen that needs it, not in another screen and back
+(`components/quick-create/`, `SearchableSelect`'s "+ New ..." entry, only shown to the Primary Owner because
+only they may create masters): Category (from Sub-Category and Item forms), Sub-Category (from Item form),
+Item (Add Asset, PO lines, ERP review, bundle parts, ERP Articles), Brand, Vendor, Cost Centre (company
+known), Location and Department (Users). Nested: Item form > New Sub-Category > New Category. Not inline:
+Company (changes asset codes), Bundle, Stock-point delivery location (an Asset User).
 
 ## Mapping an ERP code to an Item (`item_map`)
 
@@ -90,7 +123,7 @@ export proves they exist in the raw master.
 
 ## Not built yet (planned, in this order)
 
-1. Add Asset (manual) and PO "Add Line" pick an Item instead of Category/Sub-Category.
+1. ~~Add Asset (manual) and PO "Add Line" pick an Item~~ (done 2026-10-11).
 2. Stores from the ERP site master as delivery locations; recently CLOSED POs in the
    picker (the ERP closes a PO when it is received).
 3. Tracking mode per Item (individual / lot with quantity / not tracked): needs a

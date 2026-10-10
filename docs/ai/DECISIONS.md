@@ -2,6 +2,22 @@
 
 Newest first. These override older spec/plan text where they conflict.
 
+## 2026-10-11 — The serial rule lives on the Item only; bundle parts are Items; missing links are created in place
+
+(1) Whether a thing carries a serial number is decided by its **Item** alone (`item.serial_required`, a plain
+yes/no, default yes). Category and Sub-Category no longer have the setting (columns dropped by migration
+`f8b1d3e5a7c9`, which first copied each Item's effective answer). This **supersedes the previous entry's
+"decided by Category / Sub-Category"** and the Item > Sub-Category > Category chain. (2) Add Asset, PO lines
+and bundle lines pick an **Item**; the server fills Category and Sub-Category from it (a client cannot file an
+Item under another Category). An Item must have a Sub-Category. (3) A bundle's parts are **Items** (CPU, TFT,
+Keyboard, Mouse); the "Desktop" Item only links the ERP code and carries the bundle, and is never an asset.
+(4) Suggested structure: Category = which group of fixed assets and IT/Non-IT Responsibility (IT Fixed Assets,
+Admin Fixed Assets), Sub-Category = the kind of thing (Fan, Network Switch), Item = what is picked (Ceiling Fan,
+PoE Switch). (5) Whenever a screen needs a linked record that does not exist (Category, Sub-Category, Item, Brand,
+Vendor, Cost Centre, Location, Department) it can be created right there, nested if need be, instead of leaving
+the screen; only the Primary Owner is offered it because only they may create masters. Production had no
+categories or assets when this shipped, so no existing data was reclassified.
+
 ## 2026-10-10 — An asset's identity is a CityKart Item, never an ERP item code
 
 The ERP issues a new item code per vendor/spec (48% of codes have a sibling for the

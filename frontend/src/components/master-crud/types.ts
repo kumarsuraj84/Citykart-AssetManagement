@@ -26,6 +26,11 @@ export interface FormField {
   toDraft?: (stored: unknown) => unknown;
   /** The form field's value -> what is sent to the server. */
   toPayload?: (raw: unknown) => unknown;
+  /** A select that can create the thing it lists right there ("+ New Category…"):
+   * called when that entry is picked, with a function that puts the new record's id
+   * into this field once it exists. Leave it out when the user may not create it. */
+  onCreateNew?: (select: (value: string) => void) => void;
+  createLabel?: string;
 }
 
 export interface MasterConfig<T> {

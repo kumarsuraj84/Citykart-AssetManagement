@@ -42,7 +42,10 @@ class PurchaseOrderOut(BaseModel):
 class PendingAssetLineIn(BaseModel):
     description: str
     barcode: str | None = None
-    category_id: int
+    # The Item decides the Category and Sub-Category (the server fills them in
+    # and overrides anything sent); category_id is only needed without an Item.
+    item_id: int | None = None
+    category_id: int | None = None
     subcategory_id: int | None = None
     brand_id: int | None = None
     model: str | None = None
@@ -58,7 +61,8 @@ class PendingAssetLineIn(BaseModel):
 class PendingAssetLineUpdateIn(BaseModel):
     description: str
     barcode: str | None = None
-    category_id: int
+    item_id: int | None = None
+    category_id: int | None = None
     subcategory_id: int | None = None
     brand_id: int | None = None
     model: str | None = None

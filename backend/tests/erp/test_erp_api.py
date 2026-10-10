@@ -124,9 +124,9 @@ async def _setup():
         acc = AssetCategory(code="ACC", name="Accessories", asset_domain="IT")
         session.add_all([spl, vpl, comp, mon, acc, Brand(code="DELL", name="Dell"), Department(name="IT")])
         await session.flush()
-        cpu, tft, kb, ms = (AssetSubcategory(category_id=c.id, code=code, name=name, serial_required=serial)
-                            for c, code, name, serial in (
-            (comp, "CPU", "CPU", None), (mon, "TFT", "TFT", None), (acc, "KB", "Keyboard", False), (acc, "MS", "Mouse", False)))
+        cpu, tft, kb, ms = (AssetSubcategory(category_id=c.id, code=code, name=name)
+                            for c, code, name in (
+            (comp, "CPU", "CPU"), (mon, "TFT", "TFT"), (acc, "KB", "Keyboard"), (acc, "MS", "Mouse")))
         cables = AssetSubcategory(category_id=acc.id, code="CBL", name="Cable")
         session.add_all([cpu, tft, kb, ms, cables])
         await session.flush()
@@ -161,11 +161,16 @@ async def _setup():
         desktop = Bundle(name="Desktop", created_by=owner.id, updated_by=owner.id)
         session.add(desktop)
         await session.flush()
-        for order, (name, cat, sub, share) in enumerate((
-            ("CPU", comp, cpu, 70), ("TFT", mon, tft, 26), ("Keyboard", acc, kb, 2), ("Mouse", acc, ms, 2),
+        # The parts are Items of their own (the serial rule lives on the Item: keyboard and mouse carry none).
+        for order, (name, cat, sub, share, serial) in enumerate((
+            ("CPU", comp, cpu, 70, True), ("TFT", mon, tft, 26, True), ("Keyboard", acc, kb, 2, False), ("Mouse", acc, ms, 2, False),
         )):
-            session.add(BundlePart(bundle_id=desktop.id, name=name, category_id=cat.id, subcategory_id=sub.id,
-                                   share_percent=share, sort_order=order))
+            part_item = Item(name=name, category_id=cat.id, subcategory_id=sub.id, serial_required=serial,
+                             created_by=owner.id, updated_by=owner.id)
+            session.add(part_item)
+            await session.flush()
+            session.add(BundlePart(bundle_id=desktop.id, name=name, item_id=part_item.id, category_id=cat.id,
+                                   subcategory_id=sub.id, share_percent=share, sort_order=order))
         # Items: "Desktop" is a bundle and owns the Dell Desktop's whole Article; "Cable" is a plain item.
         item_desktop = Item(name="Desktop", category_id=comp.id, subcategory_id=cpu.id, bundle_id=desktop.id,
                             default_warranty_years=1, created_by=owner.id, updated_by=owner.id)
@@ -361,6 +366,10 @@ async def test_creating_from_the_draft_makes_ordinary_lines_and_remembers_the_er
         assert len(pending) == 28
         # Every part keeps the ERP code it was ordered under, as a link back to the PO / receipt / PI.
         assert {p.erp_item_code for p in pending} == {"CT324973"} and {p.bundle_label for p in pending} == {"Desktop"}
+        # Each part is an asset of its own Item (CPU, TFT, Keyboard, Mouse), never of "Desktop".
+        part_items = {r[0]: r[1] for r in (await session.execute(select(Item.id, Item.name).where(Item.name.in_(["CPU", "TFT", "Keyboard", "Mouse"])))).all()}
+        assert {part_items[p.item_id] for p in pending} == {"CPU", "TFT", "Keyboard", "Mouse"}
+        assert {part_items[p.item_id]: p.serial_required for p in pending} == {"CPU": True, "TFT": True, "Keyboard": False, "Mouse": False}
 
 
 async def test_a_plain_line_gets_its_category_and_item_from_the_item_and_the_whole_po_is_all_or_nothing(client, erp):

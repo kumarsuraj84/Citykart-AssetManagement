@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { FormField } from "@/components/shared/FormField";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { AsyncButton } from "@/components/shared/AsyncButton";
+import { NewCostCenterDialog, NewVendorDialog, useCanCreateMasters } from "@/components/quick-create/masters";
 
 interface Option {
   id: number;
@@ -59,6 +60,10 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
   });
   const stockPoints = (usersQ.data ?? []).filter((u) => !u.asset_user_type || u.asset_user_type === "STOCK_POINT");
 
+  const canCreate = useCanCreateMasters();
+  const [newVendor, setNewVendor] = useState(false);
+  const [newCostCenter, setNewCostCenter] = useState(false);
+
   const canSave = selectedCompanyId != null && poNumber.trim() !== "" && poDate !== "" && costCenterId !== "";
 
   const saveMutation = useMutation({
@@ -107,6 +112,8 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
             value={selectValue(vendorId)}
             onValueChange={setVendorId}
             options={vendors.map((v) => ({ value: String(v.id), label: v.name }))}
+            onCreateNew={canCreate ? () => setNewVendor(true) : undefined}
+            createLabel="New Vendor…"
           />
         </FormField>
         <FormField htmlFor="cost-center" label="Cost Centre" required>
@@ -115,6 +122,8 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
             value={selectValue(costCenterId)}
             onValueChange={setCostCenterId}
             options={costCenters.map((c) => ({ value: String(c.id), label: c.name }))}
+            onCreateNew={canCreate && selectedCompanyId != null ? () => setNewCostCenter(true) : undefined}
+            createLabel="New Cost Centre…"
           />
         </FormField>
         <FormField
@@ -141,6 +150,14 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
           Create Purchase Order
         </AsyncButton>
       </div>
+
+      <NewVendorDialog open={newVendor} onOpenChange={setNewVendor} onCreated={(row) => setVendorId(String(row.id))} />
+      {selectedCompanyId != null && (
+        <NewCostCenterDialog
+          companyId={selectedCompanyId} open={newCostCenter} onOpenChange={setNewCostCenter}
+          onCreated={(row) => setCostCenterId(String(row.id))}
+        />
+      )}
     </div>
   );
 }

@@ -18,7 +18,11 @@ import { FormField } from "@/components/shared/FormField";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { ErrorState } from "@/components/shared/ErrorState";
-import { effectiveSerialRequired, type SerialRuled } from "../../lib/serial-rule";
+import type { Item } from "../items/types";
+import { ItemFormDialog } from "../items/ItemFormDialog";
+import {
+  NewBrandDialog, NewCostCenterDialog, NewVendorDialog, useCanCreateMasters,
+} from "@/components/quick-create/masters";
 
 interface Option {
   id: number;
@@ -34,7 +38,7 @@ function assetUserKeywords(h: Option): string[] {
   return [h.code, h.email].filter((v): v is string => Boolean(v));
 }
 
-interface CategoryOption extends Option, SerialRuled {
+interface CategoryOption extends Option {
   // IT / NON_IT (spec §17/§18) -- drives the read-only Responsibility
   // preview below; the backend independently re-derives the same value
   // from this Category at save time, never trusting this display value.
@@ -65,8 +69,8 @@ interface CreatedAsset {
 }
 
 interface FormState {
-  categoryId: string;
-  subcategoryId: string;
+  /** The Item decides Category and Sub-Category (and the serial default). */
+  itemId: string;
   costCenterId: string;
   description: string;
   barcode: string;
@@ -90,8 +94,7 @@ interface FormState {
 }
 
 const emptyForm: FormState = {
-  categoryId: "",
-  subcategoryId: "",
+  itemId: "",
   costCenterId: "",
   description: "",
   barcode: "",
@@ -163,8 +166,14 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
   const categoriesQ = useQuery({ queryKey: ["masters", "categories"], queryFn: () => apiClient.get<CategoryOption[]>("/masters/categories") });
   const subcategoriesQ = useQuery({
     queryKey: ["masters", "subcategories"],
-    queryFn: () => apiClient.get<(Option & SerialRuled & { category_id: number })[]>("/masters/subcategories"),
+    queryFn: () => apiClient.get<(Option & { category_id: number })[]>("/masters/subcategories"),
   });
+  const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => apiClient.get<Item[]>("/items") });
+  const canCreate = useCanCreateMasters();
+  const [newItem, setNewItem] = useState(false);
+  const [newBrand, setNewBrand] = useState(false);
+  const [newVendor, setNewVendor] = useState(false);
+  const [newCostCenter, setNewCostCenter] = useState(false);
   const costCentersQ = useQuery({
     queryKey: ["masters", "cost-centers", selectedCompanyId],
     queryFn: () => apiClient.get<Option[]>(`/masters/cost-centers?company_id=${selectedCompanyId}`),
@@ -190,6 +199,7 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
 
   const categories = categoriesQ.data ?? [];
   const subcategories = subcategoriesQ.data ?? [];
+  const items = itemsQ.data ?? [];
   const costCenters = costCentersQ.data ?? [];
   const vendors = vendorsQ.data ?? [];
   const brands = brandsQ.data ?? [];
@@ -206,17 +216,15 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
         .sort((a, b) => a.sort_order - b.sort_order),
     [customFieldsQ.data, selectedCompanyId],
   );
-  const visibleSubcategories = form.categoryId
-    ? subcategories.filter((s) => s.category_id === Number(form.categoryId))
-    : subcategories;
+  const selectedItem = items.find((i) => i.id === Number(form.itemId));
+  const selectedCategory = selectedItem ? categories.find((c) => c.id === selectedItem.category_id) : undefined;
+  const selectedSubcategory = selectedItem ? subcategories.find((s) => s.id === selectedItem.subcategory_id) : undefined;
   // Spec §21: a read-only preview only -- the backend independently
-  // re-derives asset_domain from category_id at save time (procure_assets),
+  // re-derives asset_domain from the Item's category at save time (procure_assets),
   // never trusting anything the client sends.
-  const selectedCategoryDomain = form.categoryId
-    ? categories.find((c) => c.id === Number(form.categoryId))?.asset_domain
-    : undefined;
+  const selectedCategoryDomain = selectedCategory?.asset_domain;
 
-  const mastersQueries = [categoriesQ, subcategoriesQ, costCentersQ, vendorsQ, brandsQ, customFieldsQ, stockAssetUsersQ];
+  const mastersQueries = [categoriesQ, subcategoriesQ, itemsQ, costCentersQ, vendorsQ, brandsQ, customFieldsQ, stockAssetUsersQ];
   const mastersError = mastersQueries.some((q) => q.isError);
   const mastersLoading = mastersQueries.some((q) => q.isLoading);
 
@@ -224,15 +232,20 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
     setForm((f) => ({ ...f, [key]: value }));
   }
 
-  // Picking a category / sub-category sets the serial box to what the Setup
-  // rule says (a mouse: "No serial number" ticked). Only a starting point --
-  // the box can still be changed either way.
-  function applySerialRule(categoryId: string, subcategoryId: string) {
-    const required = effectiveSerialRequired(
-      categories.find((c) => c.id === Number(categoryId)),
-      subcategories.find((s) => s.id === Number(subcategoryId)),
-    );
-    setForm((f) => ({ ...f, noSerialNumber: !required, serialNumber: required ? f.serialNumber : "" }));
+  // Picking an Item sets the serial box to what the Item says (a mouse: "No
+  // serial number" ticked), and starts the brand and warranty from the Item's
+  // defaults. Only starting points -- every box can still be changed.
+  function applyItem(item: Item | undefined) {
+    if (!item) return;
+    const required = item.serial_required !== false;
+    setForm((f) => ({
+      ...f,
+      itemId: String(item.id),
+      noSerialNumber: !required,
+      serialNumber: required ? f.serialNumber : "",
+      brandId: f.brandId || (item.default_brand_id ? String(item.default_brand_id) : ""),
+      warrantyYears: f.warrantyYears === "0" && item.default_warranty_years != null ? String(item.default_warranty_years) : f.warrantyYears,
+    }));
   }
 
   function setCustomValue(key: string, value: CustomFieldValue) {
@@ -267,8 +280,7 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
     selectedCompanyId != null &&
     form.description.trim().length > 0 &&
     form.barcode.trim().length > 0 &&
-    form.categoryId !== "" &&
-    form.subcategoryId !== "" &&
+    form.itemId !== "" &&
     form.costCenterId !== "" &&
     form.vendorId !== "" &&
     (form.noSerialNumber || form.serialNumber.trim() !== "") &&
@@ -294,8 +306,8 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
       apiClient.post<CreatedAsset[]>("/assets", {
         company_id: selectedCompanyId,
         cost_center_id: Number(form.costCenterId),
-        category_id: Number(form.categoryId),
-        subcategory_id: Number(form.subcategoryId),
+        // The Item decides Category and Sub-Category on the server.
+        item_id: Number(form.itemId),
         description: form.description,
         barcode: form.barcode || null,
         legacy_asset_code: form.legacyAssetCode || null,
@@ -405,6 +417,8 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
               onValueChange={(v) => setField("costCenterId", v)}
               disabled={mastersLoading}
               options={costCenters.map((c) => ({ value: String(c.id), label: c.name }))}
+              onCreateNew={canCreate && selectedCompanyId != null ? () => setNewCostCenter(true) : undefined}
+              createLabel="New Cost Centre…"
             />
             {!mastersLoading && !hasCostCenterOption && (
               <p className="text-sm text-destructive">
@@ -418,37 +432,26 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
       <section className="flex flex-col gap-4">
         <SectionHeading>Asset Details / Asset Classification</SectionHeading>
         <div className="grid gap-4 sm:grid-cols-2">
-          <FormField htmlFor="category" label="Category" required>
+          <FormField
+            htmlFor="item"
+            label="Item"
+            required
+            helperText={selectedItem ? `Category › Sub-Category: ${[selectedCategory?.name, selectedSubcategory?.name].filter(Boolean).join(" › ")}` : "What this asset is. Its Category and Sub-Category follow from it."}
+          >
             <SearchableSelect
-              id="category"
-              aria-label="Category"
-              value={selectValue(form.categoryId)}
-              onValueChange={(v) => {
-                setField("categoryId", v);
-                setField("subcategoryId", "");
-                applySerialRule(v, "");
-              }}
+              id="item"
+              aria-label="Item"
+              value={selectValue(form.itemId)}
+              onValueChange={(v) => applyItem(items.find((i) => i.id === Number(v)))}
               disabled={mastersLoading}
-              options={categories.map((c) => ({ value: String(c.id), label: c.name }))}
-            />
-          </FormField>
-
-          <FormField htmlFor="subcategory" label="Sub-Category" required>
-            <SearchableSelect
-              id="subcategory"
-              aria-label="Sub-Category"
-              value={selectValue(form.subcategoryId)}
-              onValueChange={(v) => {
-                setField("subcategoryId", v);
-                applySerialRule(form.categoryId, v);
-              }}
-              disabled={mastersLoading}
-              options={visibleSubcategories.map((c) => ({ value: String(c.id), label: c.name }))}
+              options={items.map((i) => ({ value: String(i.id), label: i.name }))}
+              onCreateNew={canCreate ? () => setNewItem(true) : undefined}
+              createLabel="New Item…"
             />
           </FormField>
 
           {selectedCategoryDomain && (
-            <FormField htmlFor="responsibility" label="Responsibility" helperText="Derived from Category -- not editable here.">
+            <FormField htmlFor="responsibility" label="Responsibility" helperText="Derived from the Item's Category -- not editable here.">
               <Input id="responsibility" aria-label="Responsibility" value={domainLabel(selectedCategoryDomain)} disabled readOnly />
             </FormField>
           )}
@@ -469,6 +472,8 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
               onValueChange={(v) => setField("brandId", v)}
               disabled={mastersLoading}
               options={brands.map((b) => ({ value: String(b.id), label: b.name }))}
+              onCreateNew={canCreate ? () => setNewBrand(true) : undefined}
+              createLabel="New Brand…"
             />
           </FormField>
           <FormField htmlFor="model" label="Model" helperText="Optional.">
@@ -478,7 +483,7 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
             htmlFor="serial-number"
             label="Serial Number"
             required
-            helperText="Unique across every asset in CKAM. The category sets whether a serial is expected (a mouse, a cable, an IT rack… start with “No serial number” ticked). Either way you can change it: tick it if a serial is missing, or untick it to type one."
+            helperText="Unique across every asset in CKAM. The Item sets whether a serial is expected (a mouse, a cable, an IT rack… start with “No serial number” ticked). Either way you can change it: tick it if a serial is missing, or untick it to type one."
           >
             <div className="flex flex-col gap-2">
               <Input
@@ -537,6 +542,8 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
             onValueChange={(v) => setField("vendorId", v)}
             disabled={mastersLoading}
             options={vendors.map((v) => ({ value: String(v.id), label: v.name }))}
+            onCreateNew={canCreate ? () => setNewVendor(true) : undefined}
+            createLabel="New Vendor…"
           />
         </FormField>
 
@@ -675,6 +682,13 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
         <p className="text-sm text-destructive" role="alert">
           {saveMutation.error instanceof Error ? saveMutation.error.message : "Failed to save asset."}
         </p>
+      )}
+
+      <ItemFormDialog open={newItem} onOpenChange={setNewItem} initialName={form.description.trim() || undefined} onSaved={(saved) => applyItem(saved)} />
+      <NewBrandDialog open={newBrand} onOpenChange={setNewBrand} onCreated={(row) => setField("brandId", String(row.id))} />
+      <NewVendorDialog open={newVendor} onOpenChange={setNewVendor} onCreated={(row) => setField("vendorId", String(row.id))} />
+      {selectedCompanyId != null && (
+        <NewCostCenterDialog companyId={selectedCompanyId} open={newCostCenter} onOpenChange={setNewCostCenter} onCreated={(row) => setField("costCenterId", String(row.id))} />
       )}
 
       <div>

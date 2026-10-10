@@ -18,8 +18,10 @@ class Item(Base, AuditMixin, SoftDeleteMixin):
     name: Mapped[str] = mapped_column(String(200))
     category_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("asset_category.id"))
     subcategory_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("asset_subcategory.id"))
-    # None = follow the sub-category / category; True / False overrides them.
-    serial_required: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # Whether this kind of thing carries a serial number. The only place the rule
+    # lives (not on Category / Sub-Category). Only a default: a serial can still
+    # be typed on a "no" Item, and a missing one saved as N/A on a "yes" Item.
+    serial_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     # A Desktop-style item that becomes several assets (one per part).
     bundle_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("bundle.id"))
     default_brand_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("brand.id"))

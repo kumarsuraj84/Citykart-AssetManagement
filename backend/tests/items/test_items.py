@@ -28,8 +28,8 @@ async def test_only_the_primary_owner_changes_items_and_operators_can_read_them(
     assert made.status_code == 201, made.text
     assert (await client.post("/api/items", headers=ids["op"], json=body(ids, name="Other"))).status_code == 403
     assert (await client.get("/api/items", headers=ids["viewer"])).status_code == 403
-    names = [i["name"] for i in (await client.get("/api/items", headers=ids["op"])).json()]
-    assert names == ["Cable", "Desktop", "UPS"]
+    names = {i["name"] for i in (await client.get("/api/items", headers=ids["op"])).json()}
+    assert names == {"Cable", "Desktop", "UPS", "CPU", "TFT", "Keyboard", "Mouse"}      # the four parts of the Desktop are Items too
     assert (await client.put(f"/api/items/{made.json()['id']}", headers=ids["op"], json=body(ids))).status_code == 403
     assert (await client.delete(f"/api/items/{made.json()['id']}", headers=ids["op"])).status_code == 403
 
@@ -47,15 +47,23 @@ async def test_an_item_needs_a_unique_name_and_a_sub_category_of_its_own_categor
     assert (await client.post("/api/items", headers=h, json=body(ids, name=""))).status_code == 422
 
 
-async def test_the_serial_default_follows_item_then_sub_category_then_category(client):
+async def test_the_serial_setting_is_the_items_own_and_defaults_to_yes(client):
     ids = await _make_ids(client)
     h = ids["owner"]
     plain = await client.post("/api/items", headers=h, json=body(ids, name="Plain"))
-    assert plain.json()["serial_required"] is None and plain.json()["effective_serial_required"] is True
-    no = await client.post("/api/items", headers=h, json=body(ids, name="Mouse", serial_required=False))
-    assert no.json()["effective_serial_required"] is False
-    back = await client.put(f"/api/items/{no.json()['id']}", headers=h, json=body(ids, name="Mouse", serial_required=None))
-    assert back.json()["effective_serial_required"] is True
+    assert plain.json()["serial_required"] is True
+    no = await client.post("/api/items", headers=h, json=body(ids, name="Patch cord", serial_required=False))
+    assert no.json()["serial_required"] is False
+    listed = {i["name"]: i["serial_required"] for i in (await client.get("/api/items", headers=h)).json()}
+    assert listed["Plain"] is True and listed["Patch cord"] is False and listed["Mouse"] is False   # the Desktop's mouse needs none
+    back = await client.put(f"/api/items/{no.json()['id']}", headers=h, json=body(ids, name="Patch cord", serial_required=True))
+    assert back.json()["serial_required"] is True
+
+
+async def test_an_item_must_have_a_sub_category_and_a_bundle_part_cannot_become_a_bundle(client):
+    ids = await _make_ids(client)
+    h = ids["owner"]
+    assert (await client.post("/api/items", headers=h, json={"name": "No sub", "category_id": ids["acc"]})).status_code == 422
 
 
 async def test_a_deactivated_item_leaves_the_list_and_its_rules_stop_applying(client, erp):
@@ -67,17 +75,20 @@ async def test_a_deactivated_item_leaves_the_list_and_its_rules_stop_applying(cl
     assert (await client.delete(f"/api/items/{before['item_id']}", headers=h)).status_code == 204
     after = (await client.get("/api/erp/pos/1133610106/draft", headers=op)).json()["lines"][0]
     assert after["item_id"] is None and any("No Item is linked" in w for w in after["warnings"])
-    assert [i["name"] for i in (await client.get("/api/items", headers=op)).json()] == ["Cable"]
+    assert {i["name"] for i in (await client.get("/api/items", headers=op)).json()} == {"Cable", "CPU", "TFT", "Keyboard", "Mouse"}
 
 
 async def test_one_click_creates_an_item_for_every_sub_category_that_has_none(client):
     ids = await _make_ids(client)
     h = ids["owner"]
+    # Every sub-category in the fixture already has an Item (the Desktop's four parts, Cable); a new one has none.
+    assert (await client.post("/api/items/seed-from-subcategories", headers=h)).json() == {"created": 0}
+    fan = await client.post("/api/masters/subcategories", headers=h, json={"category_id": ids["acc"], "code": "FAN", "name": "Fan"})
+    assert fan.status_code == 201, fan.text
     first = await client.post("/api/items/seed-from-subcategories", headers=h)
-    # TFT, Keyboard and Mouse get one; CPU already has "Desktop" and Cable already has "Cable".
-    assert first.status_code == 200 and first.json() == {"created": 3}
+    assert first.status_code == 200 and first.json() == {"created": 1}
     names = {i["name"] for i in (await client.get("/api/items", headers=ids["op"])).json()}
-    assert names == {"Cable", "Desktop", "Keyboard", "Mouse", "TFT"}
+    assert names == {"Cable", "Desktop", "Keyboard", "Mouse", "TFT", "CPU", "Fan"}
     assert (await client.post("/api/items/seed-from-subcategories", headers=h)).json() == {"created": 0}    # nothing twice
     assert (await client.post("/api/items/seed-from-subcategories", headers=ids["op"])).status_code == 403
 

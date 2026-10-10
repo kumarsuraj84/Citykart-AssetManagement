@@ -79,8 +79,7 @@ test("Add Asset offers only this company's own Cost Centres, and asset creation 
   await page.getByRole("option", { name: ctx.costCenter.name, exact: true }).click();
 
   await page.getByLabel("Description", { exact: true }).fill("AM08 Company-Scoped Cost Centre Test Laptop");
-  await pickSelectOption(page, "Category", ctx.category.name);
-  await pickSelectOption(page, "Sub-Category", ctx.subcategory.name);
+  await pickSelectOption(page, "Item", ctx.item.name);
   await pickSelectOption(page, "Goes Into", ctx.stock.name);
   await fillAddAssetProcurementFields(page, ctx.vendor.name);
 

@@ -16,6 +16,7 @@ from app.assets.models import Asset, AssetFieldChange
 from app.assets.schemas import AssetCorrectionIn, AssetCreateIn, AssetDetailOut, AssetFieldChangeOut, AssetOut, AssetUpdateIn
 from app.assets.search_service import search_assets
 from app.assets.service import check_serial_number_unique, compute_tax, compute_warranty_upto, procure_assets
+from app.items.lookup import fill_from_item
 from app.asset_users.models import AssetUser
 from app.items.models import Item
 from app.lifecycle.service import apply_event
@@ -132,6 +133,8 @@ async def create_asset(
     # to today, the day the asset is actually being logged.
     data["purchase_date"] = data["invoice_date"] or date.today()
     try:
+        # The Item (when given) decides Category and Sub-Category, whatever the client sent.
+        await fill_from_item(session, data)
         # AM-19: quantity is gone -- every call creates exactly one asset.
         assets = await procure_assets(session, data, quantity=1, actor=actor)
     except (ValueError, LifecycleError) as exc:

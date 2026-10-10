@@ -22,10 +22,13 @@ class BundlePart(Base, AuditMixin, SoftDeleteMixin):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     bundle_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("bundle.id"))
     name: Mapped[str] = mapped_column(String(100))
+    # The Item this part is (CPU, TFT, Keyboard, Mouse). Category and
+    # sub-category are copied from it when the part is saved, and the serial
+    # default (a mouse needs none) comes from the Item (app.masters.serial_rule).
+    # None only for a part that predates Items and could not be given one.
+    item_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("item.id"))
     category_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("asset_category.id"))
     subcategory_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("asset_subcategory.id"))
-    # Whether a part needs a serial (a mouse does not) is not stored here: it
-    # comes from the part's own category/sub-category (app.masters.serial_rule).
     # This part's share of the bundle price before tax; the active parts of a
     # bundle always add up to exactly 100.
     share_percent: Mapped[float] = mapped_column(Numeric(5, 2))

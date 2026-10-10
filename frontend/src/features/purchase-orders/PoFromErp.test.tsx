@@ -20,8 +20,8 @@ const DESKTOP_BUNDLE = {
 };
 
 const item = (id: number, name: string, over: Record<string, unknown> = {}) => ({
-  id, name, category_id: 1, subcategory_id: 10, serial_required: null, bundle_id: null, default_brand_id: null,
-  default_warranty_years: null, is_active: true, effective_serial_required: true, map_count: 1, ...over,
+  id, name, category_id: 1, subcategory_id: 10, serial_required: true, bundle_id: null, default_brand_id: null,
+  default_warranty_years: null, is_active: true, map_count: 1, ...over,
 });
 const ITEMS = [item(1, "Desktop", { bundle_id: 1 }), item(2, "Cable"), item(3, "Network Switch")];
 

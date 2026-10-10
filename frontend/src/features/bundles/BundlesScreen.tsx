@@ -3,7 +3,10 @@ import { Pencil, Trash2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import { Button } from "@/components/ui/button";
-import { effectiveSerialRequired, yesNo, type SerialRuled } from "../../lib/serial-rule";
+import { yesNo } from "../../lib/serial-rule";
+import { useCanCreateMasters } from "@/components/quick-create/masters";
+import { ItemFormDialog } from "../items/ItemFormDialog";
+import type { Item } from "../items/types";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -16,6 +19,8 @@ import { SearchableSelect } from "@/components/shared/SearchableSelect";
 export interface BundlePart {
   id: number;
   name: string;
+  item_id: number | null;
+  item_name: string | null;
   category_id: number;
   subcategory_id: number | null;
   serial_required: boolean;
@@ -30,7 +35,7 @@ export interface Bundle {
   parts: BundlePart[];
 }
 
-interface Option extends SerialRuled {
+interface Named {
   id: number;
   name: string;
 }
@@ -38,19 +43,19 @@ interface Option extends SerialRuled {
 interface DraftPart {
   id: number | null;
   name: string;
-  categoryId: string;
-  subcategoryId: string;
+  /** The Item this part is (CPU, TFT, Keyboard, Mouse). */
+  itemId: string;
   share: string;
 }
 
-const blankPart = (): DraftPart => ({ id: null, name: "", categoryId: "", subcategoryId: "", share: "" });
+const blankPart = (): DraftPart => ({ id: null, name: "", itemId: "", share: "" });
 
-// The Desktop split the business uses; the categories still have to be picked.
+// The Desktop split the business uses; the Item of each part still has to be picked.
 const DESKTOP_EXAMPLE: DraftPart[] = [
-  { id: null, name: "CPU", categoryId: "", subcategoryId: "", share: "70" },
-  { id: null, name: "TFT", categoryId: "", subcategoryId: "", share: "26" },
-  { id: null, name: "Keyboard", categoryId: "", subcategoryId: "", share: "2" },
-  { id: null, name: "Mouse", categoryId: "", subcategoryId: "", share: "2" },
+  { id: null, name: "CPU", itemId: "", share: "70" },
+  { id: null, name: "TFT", itemId: "", share: "26" },
+  { id: null, name: "Keyboard", itemId: "", share: "2" },
+  { id: null, name: "Mouse", itemId: "", share: "2" },
 ];
 
 function partsSummary(parts: BundlePart[]): string {
@@ -60,14 +65,16 @@ function partsSummary(parts: BundlePart[]): string {
 export function BundlesScreen() {
   const qc = useQueryClient();
   const bundlesQ = useQuery({ queryKey: ["bundles"], queryFn: () => apiClient.get<Bundle[]>("/bundles") });
-  const categoriesQ = useQuery({ queryKey: ["masters", "categories"], queryFn: () => apiClient.get<Option[]>("/masters/categories") });
-  const subcategoriesQ = useQuery({
-    queryKey: ["masters", "subcategories"],
-    queryFn: () => apiClient.get<(Option & { category_id: number })[]>("/masters/subcategories"),
-  });
-  const categories = categoriesQ.data ?? [];
-  const subcategories = subcategoriesQ.data ?? [];
+  const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => apiClient.get<Item[]>("/items") });
+  const categoriesQ = useQuery({ queryKey: ["masters", "categories"], queryFn: () => apiClient.get<Named[]>("/masters/categories") });
+  const subcategoriesQ = useQuery({ queryKey: ["masters", "subcategories"], queryFn: () => apiClient.get<Named[]>("/masters/subcategories") });
+  const canCreate = useCanCreateMasters();
+  // A part is a single thing (CPU, Mouse), never an Item that is itself a bundle.
+  const partItems = (itemsQ.data ?? []).filter((i) => i.bundle_id === null);
   const bundles = bundlesQ.data ?? [];
+  const [newItemFor, setNewItemFor] = useState<number | null>(null);
+  const classOf = (i: Item | undefined) =>
+    i ? [categoriesQ.data?.find((c) => c.id === i.category_id)?.name, subcategoriesQ.data?.find((s) => s.id === i.subcategory_id)?.name].filter(Boolean).join(" › ") : "";
 
   // editing === null: dialog closed; editing === "new": creating; a Bundle: editing it.
   const [editing, setEditing] = useState<Bundle | "new" | null>(null);
@@ -86,8 +93,7 @@ export function BundlesScreen() {
     setName(b.name);
     setParts(
       b.parts.map((p) => ({
-        id: p.id, name: p.name, categoryId: String(p.category_id),
-        subcategoryId: p.subcategory_id ? String(p.subcategory_id) : "",
+        id: p.id, name: p.name, itemId: p.item_id ? String(p.item_id) : "",
         share: String(p.share_percent),
       })),
     );
@@ -101,16 +107,14 @@ export function BundlesScreen() {
   const totalOk = Math.abs(totalShare - 100) < 0.005;
   const canSave =
     name.trim() !== "" && parts.length > 0 && totalOk &&
-    parts.every((p) => p.name.trim() !== "" && p.categoryId !== "" && Number(p.share) > 0);
+    parts.every((p) => p.name.trim() !== "" && p.itemId !== "" && Number(p.share) > 0);
 
   const saveMutation = useMutation({
     mutationFn: () => {
       const body = {
         name: name.trim(),
         parts: parts.map((p) => ({
-          id: p.id, name: p.name.trim(), category_id: Number(p.categoryId),
-          subcategory_id: p.subcategoryId ? Number(p.subcategoryId) : null,
-          share_percent: Number(p.share),
+          id: p.id, name: p.name.trim(), item_id: Number(p.itemId), share_percent: Number(p.share),
         })),
       };
       return editing === "new" || editing === null
@@ -153,7 +157,7 @@ export function BundlesScreen() {
     <div className="flex flex-col gap-4">
       <PageHeader
         title="Bundles"
-        description="A bundle (for example a Desktop) is a shortcut on a Purchase Order. It becomes ordinary lines, one per part, each in its own category. It is never an asset category."
+        description="A bundle (for example a Desktop) is a shortcut on a Purchase Order. It becomes ordinary lines, one per part, and each part is an Item of its own (CPU, TFT, Keyboard, Mouse). It is never an asset itself."
         actions={<Button onClick={openNew}>New Bundle</Button>}
       />
 
@@ -192,36 +196,26 @@ export function BundlesScreen() {
                   <Label htmlFor={`part-name-${i}`} className="text-xs">Part name</Label>
                   <Input id={`part-name-${i}`} value={p.name} onChange={(e) => setPart(i, { name: e.target.value })} />
                 </div>
-                <div className="col-span-3 flex flex-col gap-1">
-                  <Label htmlFor={`part-category-${i}`} className="text-xs">Category</Label>
+                <div className="col-span-4 flex flex-col gap-1">
+                  <Label htmlFor={`part-item-${i}`} className="text-xs">Item</Label>
                   <SearchableSelect
-                    id={`part-category-${i}`}
-                    value={p.categoryId || undefined}
-                    onValueChange={(v) => setPart(i, { categoryId: v, subcategoryId: "" })}
-                    options={categories.map((c) => ({ value: String(c.id), label: c.name }))}
+                    id={`part-item-${i}`}
+                    value={p.itemId || undefined}
+                    onValueChange={(v) => setPart(i, { itemId: v })}
+                    options={partItems.map((it) => ({ value: String(it.id), label: it.name }))}
+                    placeholder="Choose the Item"
+                    onCreateNew={canCreate ? () => setNewItemFor(i) : undefined}
+                    createLabel="New Item…"
                   />
-                </div>
-                <div className="col-span-3 flex flex-col gap-1">
-                  <Label htmlFor={`part-subcategory-${i}`} className="text-xs">Sub-Category</Label>
-                  <SearchableSelect
-                    id={`part-subcategory-${i}`}
-                    value={p.subcategoryId || undefined}
-                    onValueChange={(v) => setPart(i, { subcategoryId: v })}
-                    options={subcategories
-                      .filter((s) => !p.categoryId || s.category_id === Number(p.categoryId))
-                      .map((s) => ({ value: String(s.id), label: s.name }))}
-                  />
+                  <p className="text-xs text-muted-foreground">{classOf(partItems.find((it) => it.id === Number(p.itemId)))}</p>
                 </div>
                 <div className="col-span-2 flex flex-col gap-1">
                   <Label htmlFor={`part-share-${i}`} className="text-xs">Share %</Label>
                   <Input id={`part-share-${i}`} type="number" min={0} step="0.01" value={p.share} onChange={(e) => setPart(i, { share: e.target.value })} />
                 </div>
-                {/* Not chosen here: it follows the part's sub-category / category (Setup > Categories). */}
-                <p className="col-span-1 pb-2 text-xs text-muted-foreground" title="Set on the category or sub-category, not on the bundle">
-                  Serial: {p.categoryId ? yesNo(effectiveSerialRequired(
-                    categories.find((c) => c.id === Number(p.categoryId)),
-                    subcategories.find((s) => s.id === Number(p.subcategoryId)),
-                  )) : "—"}
+                {/* Not chosen here: it is the Item's own setting (Setup > Items). */}
+                <p className="col-span-2 pb-2 text-xs text-muted-foreground" title="Set on the Item, not on the bundle">
+                  Serial: {p.itemId ? yesNo(partItems.find((it) => it.id === Number(p.itemId))?.serial_required !== false) : "—"}
                 </p>
                 <Button
                   size="icon" variant="ghost" className="col-span-1" aria-label={`Remove ${p.name || `part ${i + 1}`}`}
@@ -254,6 +248,13 @@ export function BundlesScreen() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ItemFormDialog
+        open={newItemFor !== null}
+        onOpenChange={(open) => !open && setNewItemFor(null)}
+        initialName={newItemFor !== null ? parts[newItemFor]?.name : undefined}
+        onSaved={(saved) => newItemFor !== null && setPart(newItemFor, { itemId: String(saved.id) })}
+      />
 
       <Dialog open={deleting !== null} onOpenChange={(open) => !open && setDeleting(null)}>
         <DialogContent className="max-w-md">

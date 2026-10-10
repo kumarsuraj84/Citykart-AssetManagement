@@ -82,12 +82,11 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   const lineDescription = `E2E PO Delivery Laptop ${ts}`;
   const barcode = `E2E-BC-${ts}`;
   await page.getByRole("button", { name: "+ Add Line", exact: true }).click();
-  // Description/Barcode/Category/Sub-Category/Cost/Quantity are all required
+  // Description/Barcode/Item/Cost/Quantity are all required
   // here -- id-based, same reason as the PO header fields above.
   await page.locator("#line-description").fill(lineDescription);
   await page.locator("#line-barcode").fill(barcode);
-  await selectRadixById(page, "line-category", ctx.category.name);
-  await selectRadixById(page, "line-subcategory", ctx.subcategory.name);
+  await selectRadixById(page, "line-item", ctx.item.name);
   await page.locator("#line-cost").fill("1000");
   await page.locator("#line-tax").fill("5");
   await page.locator("#line-quantity").fill("3");

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, ChevronsUpDown } from "lucide-react";
+import { Check, ChevronsUpDown, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,6 +32,11 @@ interface SearchableSelectProps {
   disabled?: boolean;
   className?: string;
   "aria-label"?: string;
+  /** When given (only pass it to someone allowed to create the record), the list
+   * ends with a "+ <createLabel>" entry that stays visible while searching, so a
+   * missing choice can be created right here instead of in another screen. */
+  onCreateNew?: () => void;
+  createLabel?: string;
 }
 
 /**
@@ -60,6 +65,8 @@ export function SearchableSelect({
   disabled,
   className,
   "aria-label": ariaLabel,
+  onCreateNew,
+  createLabel = "Create new…",
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false);
   const selected = options.find((o) => o.value === value);
@@ -114,6 +121,21 @@ export function SearchableSelect({
                 </CommandItem>
               ))}
             </CommandGroup>
+            {onCreateNew && (
+              <CommandGroup>
+                <CommandItem
+                  forceMount
+                  value={`__create__ ${createLabel}`}
+                  onSelect={() => {
+                    setOpen(false);
+                    onCreateNew();
+                  }}
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  {createLabel}
+                </CommandItem>
+              </CommandGroup>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>

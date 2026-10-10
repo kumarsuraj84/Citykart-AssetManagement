@@ -48,12 +48,10 @@ test("Desktop bundle journey: define it, add 2 to a PO, deliver with no-serial d
   await editor.locator("#bundle-name").fill(bundleName);
   await editor.getByRole("button", { name: "Use the Desktop example" }).click();
   await expect(editor.getByRole("status")).toContainText("Total 100%");
-  // CPU and TFT use the ordinary sub-category (a serial is expected); Keyboard
-  // and Mouse the one set to "No serial number" -- the rule lives on the
-  // sub-category, not on the bundle.
+  // CPU and TFT are the ordinary Item (a serial is expected); Keyboard and Mouse
+  // the one set to "No serial number" -- the rule lives on the Item, not on the bundle.
   for (let i = 0; i < 4; i++) {
-    await selectRadixById(page, `part-category-${i}`, ctx.category.name);
-    await selectRadixById(page, `part-subcategory-${i}`, i < 2 ? ctx.subcategory.name : ctx.noSerialSubcategory.name);
+    await selectRadixById(page, `part-item-${i}`, i < 2 ? ctx.item.name : ctx.noSerialItem.name);
   }
   await expect(editor.getByText("Serial: Yes")).toHaveCount(2);
   await expect(editor.getByText("Serial: No")).toHaveCount(2);

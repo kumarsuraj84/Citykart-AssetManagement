@@ -111,8 +111,7 @@ test("a required custom field scoped to company B never blocks asset creation fo
   // Company B's required field must not even render on company A's form.
   await expect(page.getByText("Company B Required Field")).not.toBeVisible();
 
-  await selectRadix(page, "Category", ctxA.category.name);
-  await selectRadix(page, "Sub-Category", ctxA.subcategory.name);
+  await selectRadix(page, "Item", ctxA.item.name);
   await page.getByLabel("Description", { exact: true }).fill("Multi-Company UDF Test Laptop");
   await selectRadix(page, "Cost Centre", ctxA.costCenter.name);
   await selectRadix(page, "Goes Into", ctxA.stock.name);

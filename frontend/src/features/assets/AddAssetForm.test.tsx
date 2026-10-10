@@ -23,6 +23,11 @@ function renderFormAt(url = "/assets/new") {
   return router;
 }
 
+const item = (id: number, name: string, over: Record<string, unknown> = {}) => ({
+  id, name, category_id: 1, subcategory_id: 2, serial_required: true, bundle_id: null,
+  default_brand_id: null, default_warranty_years: null, is_active: true, map_count: 0, ...over,
+});
+
 const CUSTOM_FIELDS = [
   { id: 1, field_key: "asset_tag", label: "Asset Tag", field_type: "text", options: null, is_required: true, sort_order: 1, company_id: null },
   { id: 2, field_key: "ram_gb", label: "RAM (GB)", field_type: "number", options: null, is_required: false, sort_order: 2, company_id: null },
@@ -33,10 +38,12 @@ const CUSTOM_FIELDS = [
 
 function mockGets({
   asset_users = [{ id: 4, name: "IT Stock-HO" }], customFields = [] as unknown[],
-  categories = [{ id: 1, code: "IT", name: "IT Equipment" }] as unknown[],
+  categories = [{ id: 1, code: "IT", name: "IT Equipment", asset_domain: "IT" }] as unknown[],
   subcategories = [{ id: 2, code: "LAP", name: "Laptop", category_id: 1 }] as unknown[],
+  items = [item(11, "Laptop")] as unknown[],
 } = {}) {
   (apiClient.get as any).mockImplementation((path: string) => {
+    if (path === "/items") return Promise.resolve(items);
     if (path.startsWith("/masters/categories")) return Promise.resolve(categories);
     if (path.startsWith("/masters/subcategories")) return Promise.resolve(subcategories);
     if (path.startsWith("/masters/cost-centers")) return Promise.resolve([{ id: 3, code: "HO01", name: "Head Office" }]);
@@ -54,7 +61,7 @@ async function pickSelectOption(label: RegExp | string, optionName: RegExp | str
   fireEvent.click(option);
 }
 
-// Sub-Category/Vendor/Serial Number are mandatory (docs/ai/DECISIONS.md);
+// Item/Vendor/Serial Number are mandatory (docs/ai/DECISIONS.md);
 // PO/Invoice/PI are optional as of AM-19 but filled in here anyway for
 // tests that want a fully-populated form, not just the minimum Save needs.
 // Every test that expects Save to become enabled needs at least the
@@ -63,7 +70,6 @@ async function pickSelectOption(label: RegExp | string, optionName: RegExp | str
 // (^...$) because an unanchored /serial number/i also matches the "No
 // serial number" checkbox's own aria-label.
 async function fillMandatoryProcurementFields() {
-  await pickSelectOption(/sub-category/i, "Laptop");
   await pickSelectOption(/^vendor$/i, "Acme Traders");
   fireEvent.change(screen.getByLabelText(/po number/i), { target: { value: "PO-1" } });
   fireEvent.change(screen.getByLabelText(/po date/i), { target: { value: "2025-06-01" } });
@@ -95,8 +101,7 @@ describe("AddAssetForm", () => {
 
     renderFormAt();
     fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Test Laptop" } });
-    await pickSelectOption(/^category$/i, "IT Equipment");
-    await pickSelectOption(/sub-category/i, "Laptop");
+    await pickSelectOption(/^item$/i, "Laptop");
     await pickSelectOption(/cost centre/i, "Head Office");
     await pickSelectOption(/goes into/i, "IT Stock-HO");
     await pickSelectOption(/^vendor$/i, "Acme Traders");
@@ -122,10 +127,12 @@ describe("AddAssetForm", () => {
           vendor_id: 7, brand_id: 9, po_number: "PO-1", po_date: "2025-06-01",
           invoice_number: "INV-1", invoice_date: "2025-06-02",
           pi_number: "PI-1", pi_date: "2025-06-03", warranty_years: 3,
-          serial_number: "SN-1", barcode: "BC-1",
+          serial_number: "SN-1", barcode: "BC-1", item_id: 11,
         }),
       ),
     );
+    // The server derives Category and Sub-Category from the Item; the form no longer sends them.
+    expect(apiClient.post).not.toHaveBeenCalledWith("/assets", expect.objectContaining({ category_id: expect.anything() }));
   });
 
   it("checking \"No serial number\" disables the input and submits \"N/A\"", async () => {
@@ -140,7 +147,7 @@ describe("AddAssetForm", () => {
 
     renderFormAt();
     fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Test Mouse" } });
-    await pickSelectOption(/^category$/i, "IT Equipment");
+    await pickSelectOption(/^item$/i, "Laptop");
     await pickSelectOption(/cost centre/i, "Head Office");
     await pickSelectOption(/goes into/i, "IT Stock-HO");
     await fillMandatoryProcurementFields();
@@ -160,42 +167,88 @@ describe("AddAssetForm", () => {
     );
   });
 
-  it("the Setup serial rule sets the \"No serial number\" box when a category / sub-category is picked, and it can still be changed", async () => {
+  it("the Item's serial setting sets the \"No serial number\" box when it is picked, and it can still be changed", async () => {
     mockGets({
-      categories: [
-        { id: 1, code: "COMP", name: "Computers", serial_required: true },
-        { id: 5, code: "CAB", name: "Cables", serial_required: false },
-      ],
-      subcategories: [
-        { id: 2, code: "LAP", name: "Laptop", category_id: 1, serial_required: null },
-        { id: 3, code: "MS", name: "Mouse", category_id: 1, serial_required: false },   // overrides the category
-        { id: 6, code: "SW", name: "Switch", category_id: 5, serial_required: true },    // overrides the category
-        { id: 7, code: "PCH", name: "Patch cord", category_id: 5, serial_required: null },
+      items: [
+        item(11, "Laptop"),                                   // has a serial
+        item(12, "Mouse", { serial_required: false }),        // none
+        item(13, "Patch cord", { serial_required: false }),
       ],
     });
     renderFormAt();
     const noSerial = () => screen.getByRole("checkbox", { name: /no serial number/i });
     await screen.findByLabelText(/description/i);
-    await waitFor(() => expect(screen.getByRole("combobox", { name: /^category$/i })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /^item$/i })).toBeEnabled());
 
-    await pickSelectOption(/^category$/i, "Computers");
+    await pickSelectOption(/^item$/i, "Laptop");
     expect(noSerial()).not.toBeChecked();                          // a serial is expected
-    await pickSelectOption(/sub-category/i, "Mouse");
-    expect(noSerial()).toBeChecked();                              // the Mouse sub-category says no
+    await pickSelectOption(/^item$/i, "Mouse");
+    expect(noSerial()).toBeChecked();                              // the Mouse Item says no
     expect(screen.getByLabelText(/^serial number\*?$/i)).toBeDisabled();
-    await pickSelectOption(/sub-category/i, "Laptop");
-    expect(noSerial()).not.toBeChecked();                          // follows Computers again
-
-    await pickSelectOption(/^category$/i, "Cables");
-    expect(noSerial()).toBeChecked();                              // a no-serial category
-    await pickSelectOption(/sub-category/i, "Switch");
-    expect(noSerial()).not.toBeChecked();                          // but this sub-category has serials
-    await pickSelectOption(/sub-category/i, "Patch cord");
-    expect(noSerial()).toBeChecked();
+    await pickSelectOption(/^item$/i, "Laptop");
+    expect(noSerial()).not.toBeChecked();                          // back to a serial
 
     fireEvent.click(noSerial());                                   // still the user's call
+    expect(noSerial()).toBeChecked();
+    fireEvent.click(noSerial());
     expect(noSerial()).not.toBeChecked();
     expect(screen.getByLabelText(/^serial number\*?$/i)).toBeEnabled();
+  });
+
+  it("an Item's default brand and warranty fill the form when it is picked", async () => {
+    mockGets({ items: [item(11, "Laptop", { default_brand_id: 9, default_warranty_years: 3 })] });
+    renderFormAt();
+    await screen.findByLabelText(/description/i);
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /^item$/i })).toBeEnabled());
+    await pickSelectOption(/^item$/i, "Laptop");
+    expect(screen.getByRole("combobox", { name: /^brand$/i })).toHaveTextContent("Dell");
+    expect(screen.getByLabelText(/warranty years/i)).toHaveValue(3);
+  });
+
+  it("shows the Item's Category and Sub-Category and the Responsibility that follows", async () => {
+    mockGets();
+    renderFormAt();
+    await screen.findByLabelText(/description/i);
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /^item$/i })).toBeEnabled());
+    await pickSelectOption(/^item$/i, "Laptop");
+    expect(screen.getByText(/IT Equipment › Laptop/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/responsibility/i)).toHaveValue("IT");
+  });
+
+  it("only the Primary Owner is offered \"New Item…\" (the server only lets them create masters)", async () => {
+    mockGets();
+    renderFormAt();
+    await screen.findByLabelText(/description/i);
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /^item$/i })).toBeEnabled());
+    fireEvent.click(screen.getByRole("combobox", { name: /^item$/i }));
+    await screen.findByRole("option", { name: "Laptop" });
+    expect(screen.queryByRole("option", { name: /new item/i })).not.toBeInTheDocument();
+  });
+
+  it("the Primary Owner can create the Item right from here and it is picked", async () => {
+    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: true, mustChangePassword: false });
+    mockGets();
+    (apiClient.post as any).mockResolvedValue(item(14, "Ceiling Fan", { serial_required: false }));
+    renderFormAt();
+    await screen.findByLabelText(/description/i);
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /^item$/i })).toBeEnabled());
+    fireEvent.click(screen.getByRole("combobox", { name: /^item$/i }));
+    fireEvent.click(await screen.findByRole("option", { name: /new item/i }));
+
+    const dialog = await screen.findByRole("dialog", { name: /new item/i });
+    expect(dialog).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: "Ceiling Fan" } });
+    fireEvent.click(screen.getByRole("combobox", { name: /^category$/i }));
+    fireEvent.click(await screen.findByRole("option", { name: "IT Equipment" }));
+    fireEvent.click(screen.getByRole("combobox", { name: /sub-category/i }));
+    fireEvent.click(await screen.findByRole("option", { name: "Laptop" }));
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith("/items", expect.objectContaining({
+        name: "Ceiling Fan", category_id: 1, subcategory_id: 2, serial_required: true,
+      })),
+    );
   });
 
   it("renders dynamic custom fields in sort order, one control per type, and submits their values", async () => {
@@ -215,7 +268,7 @@ describe("AddAssetForm", () => {
     expect(labels.map((l) => l.textContent)).toEqual(["Asset Tag*", "RAM (GB)", "Delivered On", "Color", "Refurbished?"]);
 
     fireEvent.change(screen.getByLabelText(/description/i), { target: { value: "Test Laptop" } });
-    await pickSelectOption(/^category$/i, "IT Equipment");
+    await pickSelectOption(/^item$/i, "Laptop");
     await pickSelectOption(/cost centre/i, "Head Office");
     await pickSelectOption(/goes into/i, "IT Stock-HO");
     await fillMandatoryProcurementFields();
@@ -246,7 +299,7 @@ describe("AddAssetForm", () => {
 
     renderFormAt();
     fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Test Laptop" } });
-    await pickSelectOption(/^category$/i, "IT Equipment");
+    await pickSelectOption(/^item$/i, "Laptop");
     await pickSelectOption(/cost centre/i, "Head Office");
     await pickSelectOption(/goes into/i, "IT Stock-HO");
     await fillMandatoryProcurementFields();
@@ -275,7 +328,7 @@ describe("AddAssetForm", () => {
 
     renderFormAt();
     fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Test Laptop" } });
-    await pickSelectOption(/^category$/i, "IT Equipment");
+    await pickSelectOption(/^item$/i, "Laptop");
     await pickSelectOption(/cost centre/i, "Head Office");
     await pickSelectOption(/goes into/i, "IT Stock-HO");
     await fillMandatoryProcurementFields();
@@ -313,6 +366,7 @@ describe("AddAssetForm", () => {
           current_asset_user_name: "IT Stock-HO", current_asset_user_type: "STOCK_POINT", location_name: null, department_name: null,
         });
       }
+      if (path === "/items") return Promise.resolve([item(11, "Laptop")]);
       if (path === "/assets/42/events") return Promise.resolve([]);
       if (path === "/assets/42/changes") return Promise.resolve([]);
       if (path.startsWith("/masters/categories")) return Promise.resolve([{ id: 1, code: "IT", name: "IT Equipment" }]);
@@ -327,7 +381,7 @@ describe("AddAssetForm", () => {
 
     const router = renderFormAt();
     fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Test Laptop" } });
-    await pickSelectOption(/^category$/i, "IT Equipment");
+    await pickSelectOption(/^item$/i, "Laptop");
     await pickSelectOption(/cost centre/i, "Head Office");
     await pickSelectOption(/goes into/i, "IT Stock-HO");
     await fillMandatoryProcurementFields();
@@ -345,7 +399,7 @@ describe("AddAssetForm", () => {
 
     renderFormAt();
     fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Test Laptop" } });
-    await pickSelectOption(/^category$/i, "IT Equipment");
+    await pickSelectOption(/^item$/i, "Laptop");
     await pickSelectOption(/cost centre/i, "Head Office");
     await pickSelectOption(/goes into/i, "IT Stock-HO");
     await fillMandatoryProcurementFields();
@@ -383,8 +437,7 @@ describe("AddAssetForm", () => {
     fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "No Paperwork Yet" } });
     fireEvent.change(screen.getByLabelText(/^serial number\*?$/i), { target: { value: "SN-1" } });
     fireEvent.change(screen.getByLabelText(/^barcode$/i), { target: { value: "BC-1" } });
-    await pickSelectOption(/^category$/i, "IT Equipment");
-    await pickSelectOption(/sub-category/i, "Laptop");
+    await pickSelectOption(/^item$/i, "Laptop");
     await pickSelectOption(/^vendor$/i, "Acme Traders");
     await pickSelectOption(/cost centre/i, "Head Office");
     await pickSelectOption(/goes into/i, "IT Stock-HO");
@@ -415,6 +468,7 @@ describe("AddAssetForm", () => {
 
   it("AM-08: does not submit and shows a clear message when the company has no active cost centres", async () => {
     (apiClient.get as any).mockImplementation((path: string) => {
+      if (path === "/items") return Promise.resolve([item(11, "Laptop")]);
       if (path.startsWith("/masters/categories")) return Promise.resolve([{ id: 1, code: "IT", name: "IT Equipment" }]);
       if (path.startsWith("/masters/cost-centers")) return Promise.resolve([]);
       if (path.startsWith("/asset-users")) return Promise.resolve([{ id: 4, name: "IT Stock-HO" }]);
@@ -423,7 +477,7 @@ describe("AddAssetForm", () => {
 
     renderFormAt();
     fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Test Laptop" } });
-    await pickSelectOption(/^category$/i, "IT Equipment");
+    await pickSelectOption(/^item$/i, "Laptop");
 
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("/masters/cost-centers")));
     expect(screen.getByText(/no active cost centres are configured for this company/i)).toBeInTheDocument();
@@ -436,7 +490,7 @@ describe("AddAssetForm", () => {
 
     renderFormAt();
     fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Test Laptop" } });
-    await pickSelectOption(/^category$/i, "IT Equipment");
+    await pickSelectOption(/^item$/i, "Laptop");
     await pickSelectOption(/cost centre/i, "Head Office");
 
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("/asset-users")));
@@ -457,7 +511,7 @@ describe("AddAssetForm", () => {
 
     renderFormAt();
     fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Test Laptop" } });
-    await pickSelectOption(/^category$/i, "IT Equipment");
+    await pickSelectOption(/^item$/i, "Laptop");
     await pickSelectOption(/cost centre/i, "Head Office");
 
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("/asset-users")));
@@ -484,6 +538,7 @@ describe("AddAssetForm", () => {
 
   it("AM-24: shows a Company picker when the caller has access to more than one, and re-scopes Cost Centre on switch", async () => {
     (apiClient.get as any).mockImplementation((path: string) => {
+      if (path === "/items") return Promise.resolve([item(11, "Laptop")]);
       if (path === "/asset-users/me/companies") return Promise.resolve([{ id: 1, name: "Company A" }, { id: 2, name: "Company B" }]);
       if (path.startsWith("/masters/categories")) return Promise.resolve([{ id: 1, code: "IT", name: "IT Equipment" }]);
       if (path.startsWith("/masters/subcategories")) return Promise.resolve([{ id: 2, code: "LAP", name: "Laptop", category_id: 1 }]);

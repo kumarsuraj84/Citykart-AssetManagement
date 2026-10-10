@@ -35,6 +35,7 @@ import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField as FormFieldShell } from "@/components/shared/FormField";
+import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { useTableSort } from "@/components/shared/useTableSort";
 import { BulkImportExport } from "@/components/shared/BulkImportExport";
 import { bulkDeactivate, type BulkDeactivateFailure } from "../../lib/bulk-deactivate";
@@ -82,6 +83,20 @@ function MasterFormField({
   value: unknown;
   onChange: (value: unknown) => void;
 }) {
+  if (field.type === "select" && field.onCreateNew) {
+    const create = field.onCreateNew;
+    return (
+      <SearchableSelect
+        id={field.key}
+        aria-label={field.label}
+        value={value !== undefined && value !== "" ? String(value) : undefined}
+        onValueChange={onChange}
+        options={(field.options ?? []).map((o) => ({ value: String(o.value), label: o.label }))}
+        onCreateNew={() => create((v) => onChange(v))}
+        createLabel={field.createLabel}
+      />
+    );
+  }
   if (field.type === "select") {
     return (
       <Select value={value !== undefined ? String(value) : undefined} onValueChange={onChange}>

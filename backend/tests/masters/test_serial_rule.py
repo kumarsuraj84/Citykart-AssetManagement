@@ -1,27 +1,20 @@
-"""Serial-number rule on Categories and Sub-Categories: a sub-category's own
-yes/no wins, otherwise its category's; it is only a default for PO lines."""
+"""The serial-number rule lives on the Item only (not on Category / Sub-Category).
+It is just a default for PO lines: a serial can still be typed, N/A still saved."""
 from datetime import date
 from types import SimpleNamespace
 from sqlalchemy import select
 from app.asset_users.models import AssetUser
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location
-from app.masters.serial_rule import effective_serial_required
+from app.masters.models import Company, CostCenter, Department, Location
+from app.masters.serial_rule import serial_default
 from app.purchase_orders.models import PendingAsset, PurchaseOrder
 
 
-def cat(required):
-    return SimpleNamespace(serial_required=required)
-
-
-def test_the_sub_category_setting_wins_and_null_means_same_as_the_category():
-    assert effective_serial_required(cat(True), None) is True
-    assert effective_serial_required(cat(False), None) is False
-    assert effective_serial_required(cat(True), cat(None)) is True
-    assert effective_serial_required(cat(False), cat(None)) is False
-    assert effective_serial_required(cat(True), cat(False)) is False      # Mouse under Accessories
-    assert effective_serial_required(cat(False), cat(True)) is True       # a serial-bearing item under a no-serial category
+def test_the_item_decides_and_no_item_means_yes():
+    assert serial_default(SimpleNamespace(serial_required=True)) is True
+    assert serial_default(SimpleNamespace(serial_required=False)) is False
+    assert serial_default(None) is True
 
 
 async def _setup():
@@ -54,73 +47,87 @@ async def _headers(client, code):
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 
-async def test_categories_default_to_serial_yes_and_the_setting_can_be_created_and_edited(client):
+async def _masters(client, h):
+    cat = (await client.post("/api/masters/categories", headers=h, json={"code": "ITF", "name": "IT Fixed Assets", "asset_domain": "IT"})).json()
+    other = (await client.post("/api/masters/categories", headers=h, json={"code": "ADM", "name": "Admin Fixed Assets", "asset_domain": "NON_IT"})).json()
+    sw = (await client.post("/api/masters/subcategories", headers=h, json={"category_id": cat["id"], "code": "SWT", "name": "Network Switch"})).json()
+    fan = (await client.post("/api/masters/subcategories", headers=h, json={"category_id": other["id"], "code": "FAN", "name": "Fan"})).json()
+    return cat, other, sw, fan
+
+
+async def test_categories_and_sub_categories_no_longer_carry_a_serial_setting(client):
     await _setup()
     h = await _headers(client, "OWN")
-    plain = await client.post("/api/masters/categories", headers=h, json={"code": "CPU", "name": "Computers", "asset_domain": "IT"})
+    cat, _, sw, _ = await _masters(client, h)
+    assert "serial_required" not in cat and "serial_required" not in sw
+    listed = (await client.get("/api/masters/categories", headers=h)).json()
+    assert all("serial_required" not in c for c in listed)
+    edited = await client.put(f"/api/masters/categories/{cat['id']}", headers=h, json={
+        "name": "IT Fixed Assets", "asset_domain": "IT", "serial_required": False})
+    assert edited.status_code == 200 and "serial_required" not in edited.json()          # a stray field is ignored, not stored
+
+
+async def test_an_item_says_yes_by_default_and_can_say_no(client):
+    await _setup()
+    h = await _headers(client, "OWN")
+    cat, _, sw, _ = await _masters(client, h)
+
+    def body(name, **over):
+        return {"name": name, "category_id": cat["id"], "subcategory_id": sw["id"], **over}
+
+    plain = await client.post("/api/items", headers=h, json=body("PoE Switch"))
     assert plain.status_code == 201 and plain.json()["serial_required"] is True
-    none = await client.post("/api/masters/categories", headers=h, json={
-        "code": "CAB", "name": "Cables", "asset_domain": "IT", "serial_required": False})
-    assert none.status_code == 201 and none.json()["serial_required"] is False
-
-    edited = await client.put(f"/api/masters/categories/{none.json()['id']}", headers=h, json={
-        "name": "Cables", "asset_domain": "IT", "serial_required": True})
-    assert edited.status_code == 200 and edited.json()["serial_required"] is True
-    listed = {c["code"]: c["serial_required"] for c in (await client.get("/api/masters/categories", headers=h)).json()}
-    assert listed == {"CPU": True, "CAB": True}
-
-
-async def test_a_sub_category_can_follow_its_category_or_override_it(client):
-    await _setup()
-    h = await _headers(client, "OWN")
-    category = (await client.post("/api/masters/categories", headers=h, json={"code": "ACC", "name": "Accessories", "asset_domain": "IT"})).json()
-    same = await client.post("/api/masters/subcategories", headers=h, json={"category_id": category["id"], "code": "HUB", "name": "Hub"})
-    assert same.status_code == 201 and same.json()["serial_required"] is None
-    mouse = await client.post("/api/masters/subcategories", headers=h, json={
-        "category_id": category["id"], "code": "MS", "name": "Mouse", "serial_required": False})
-    assert mouse.status_code == 201 and mouse.json()["serial_required"] is False
-    back = await client.put(f"/api/masters/subcategories/{mouse.json()['id']}", headers=h, json={"name": "Mouse", "serial_required": None})
-    assert back.status_code == 200 and back.json()["serial_required"] is None
+    no = await client.post("/api/items", headers=h, json=body("Patch Cord", serial_required=False))
+    assert no.json()["serial_required"] is False
+    back = await client.put(f"/api/items/{no.json()['id']}", headers=h, json=body("Patch Cord", serial_required=True))
+    assert back.json()["serial_required"] is True
+    assert (await client.post("/api/items", headers=h, json={"name": "No sub", "category_id": cat["id"]})).status_code == 422   # sub-category is required
 
 
 async def test_only_the_primary_owner_can_change_the_rule(client):
     await _setup()
-    op = await _headers(client, "OPR")
-    resp = await client.post("/api/masters/categories", headers=op, json={
-        "code": "X", "name": "X", "asset_domain": "IT", "serial_required": False})
+    owner, op = await _headers(client, "OWN"), await _headers(client, "OPR")
+    cat, _, sw, _ = await _masters(client, owner)
+    resp = await client.post("/api/items", headers=op, json={
+        "name": "X", "category_id": cat["id"], "subcategory_id": sw["id"], "serial_required": False})
     assert resp.status_code == 403
 
 
-async def test_a_po_line_starts_with_the_serial_default_of_its_category_or_sub_category(client):
+async def test_a_po_line_takes_its_category_and_serial_default_from_the_item(client):
     po_id = await _setup()
     owner, op = await _headers(client, "OWN"), await _headers(client, "OPR")
-    cables = (await client.post("/api/masters/categories", headers=owner, json={
-        "code": "CAB", "name": "Cables", "asset_domain": "IT", "serial_required": False})).json()
-    patch = (await client.post("/api/masters/subcategories", headers=owner, json={"category_id": cables["id"], "code": "PCH", "name": "Patch cord"})).json()
-    switch = (await client.post("/api/masters/subcategories", headers=owner, json={
-        "category_id": cables["id"], "code": "SW", "name": "Switch", "serial_required": True})).json()
-    comp = (await client.post("/api/masters/categories", headers=owner, json={"code": "CPU", "name": "Computers", "asset_domain": "IT"})).json()
-    mouse = (await client.post("/api/masters/subcategories", headers=owner, json={
-        "category_id": comp["id"], "code": "MS", "name": "Mouse", "serial_required": False})).json()
+    cat, other, sw, fan = await _masters(client, owner)
+    poe = (await client.post("/api/items", headers=owner, json={"name": "PoE Switch", "category_id": cat["id"], "subcategory_id": sw["id"]})).json()
+    ceiling = (await client.post("/api/items", headers=owner, json={
+        "name": "Ceiling Fan", "category_id": other["id"], "subcategory_id": fan["id"], "serial_required": False})).json()
 
-    async def add(description, category, sub):
-        body = {"description": description, "barcode": "B", "category_id": category["id"], "subcategory_id": sub["id"] if sub else None,
-                "purchase_cost": 100, "tax_percent": 18, "quantity": 1}
+    async def add(description, item, **over):
+        body = {"description": description, "barcode": "B", "item_id": item["id"], "purchase_cost": 100, "tax_percent": 18, "quantity": 1, **over}
         resp = await client.post(f"/api/purchase-orders/{po_id}/lines", headers=op, json=body)
         assert resp.status_code == 201, resp.text
         return resp.json()[0]
 
-    assert (await add("patch cord", cables, patch))["serial_required"] is False     # inherits the no-serial category
-    assert (await add("switch", cables, switch))["serial_required"] is True         # sub-category says yes
-    assert (await add("mouse", comp, mouse))["serial_required"] is False            # sub-category says no
-    line = await add("pc", comp, None)
-    assert line["serial_required"] is True                                          # category default yes
+    switch = await add("poe switch", poe)
+    assert switch["serial_required"] is True
+    assert (switch["category_id"], switch["subcategory_id"], switch["item_id"]) == (cat["id"], sw["id"], poe["id"])
+    fan_line = await add("fan", ceiling, category_id=cat["id"], subcategory_id=sw["id"])    # the client's category is ignored
+    assert fan_line["serial_required"] is False
+    assert (fan_line["category_id"], fan_line["subcategory_id"]) == (other["id"], fan["id"])
 
-    # Changing the category of a pending line re-derives the default.
-    resp = await client.put(f"/api/purchase-orders/lines/{line['id']}", headers=op, json={
-        "description": "pc", "barcode": "B", "category_id": cables["id"], "subcategory_id": patch["id"],
-        "purchase_cost": 100, "tax_percent": 18})
+    # Choosing another Item on a pending line re-derives category and the default.
+    resp = await client.put(f"/api/purchase-orders/lines/{switch['id']}", headers=op, json={
+        "description": "fan", "barcode": "B", "item_id": ceiling["id"], "purchase_cost": 100, "tax_percent": 18})
     assert resp.status_code == 200 and resp.json()["serial_required"] is False
+    assert resp.json()["category_id"] == other["id"] and resp.json()["item_id"] == ceiling["id"]
     async with SessionLocal() as session:
-        stored = (await session.execute(select(PendingAsset).where(PendingAsset.id == line["id"]))).scalar_one()
-        assert stored.serial_required is False
+        stored = (await session.execute(select(PendingAsset).where(PendingAsset.id == switch["id"]))).scalar_one()
+        assert stored.serial_required is False and stored.item_id == ceiling["id"]
+
+    # No Item and no category: nothing to file the line under.
+    bad = await client.post(f"/api/purchase-orders/{po_id}/lines", headers=op, json={"description": "x", "barcode": "B", "quantity": 1})
+    assert bad.status_code == 422
+    # A deactivated Item cannot be picked afresh.
+    assert (await client.delete(f"/api/items/{poe['id']}", headers=owner)).status_code == 204
+    gone = await client.post(f"/api/purchase-orders/{po_id}/lines", headers=op, json={
+        "description": "x", "barcode": "B", "item_id": poe["id"], "quantity": 1})
+    assert gone.status_code == 422
