@@ -4,6 +4,7 @@ import { DatabaseZap } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import type { Bundle } from "../bundles/BundlesScreen";
+import type { Item } from "../items/types";
 import { PoDraftCard, type Draft } from "./PoDraftCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,6 +42,7 @@ export function PoFromErp() {
     retry: false,
   });
   const bundlesQ = useQuery({ queryKey: ["bundles"], queryFn: () => apiClient.get<Bundle[]>("/bundles") });
+  const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => apiClient.get<Item[]>("/items") });
   const draftQ = useQuery({
     queryKey: ["erp", "draft", selected],
     queryFn: () => apiClient.get<Draft>(`/erp/pos/${selected}/draft`),
@@ -122,7 +124,10 @@ export function PoFromErp() {
               {draftQ.error instanceof Error ? draftQ.error.message : "Could not read this purchase order."}
             </p>
           )}
-          {draftQ.data && <PoDraftCard key={draftQ.data.erp_po_code} draft={draftQ.data} bundles={bundlesQ.data ?? []} />}
+          {draftQ.data && itemsQ.data && bundlesQ.data && (
+            <PoDraftCard key={draftQ.data.erp_po_code} draft={draftQ.data} bundles={bundlesQ.data} items={itemsQ.data} />
+          )}
+          {itemsQ.isError && <p className="text-sm text-destructive" role="alert">Could not load the Items.</p>}
         </div>
       )}
     </div>

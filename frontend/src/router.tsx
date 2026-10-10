@@ -29,6 +29,8 @@ import {
   Truck,
   Award,
   Layers,
+  Link2,
+  Package,
   SlidersHorizontal,
   UserCog,
   Hash,
@@ -76,6 +78,8 @@ import SubcategoriesSetup from "./routes/setup/subcategories";
 import VendorsSetup from "./routes/setup/vendors";
 import BrandsSetup from "./routes/setup/brands";
 import BundlesSetup from "./routes/setup/bundles";
+import ItemsSetup from "./routes/setup/items";
+import ErpArticlesSetup from "./routes/setup/erp-articles";
 import CustomFieldsSetup from "./routes/setup/custom-fields";
 import AssetUsersSetup from "./routes/setup/asset-users";
 import CodeRuleSetup from "./routes/setup/code-rule";
@@ -115,6 +119,8 @@ const MASTER_SETUP_LINKS: { to: string; label: string; icon: LucideIcon }[] = [
   { to: "/setup/subcategories", label: "Sub-Categories", icon: Tags },
   { to: "/setup/vendors", label: "Vendors", icon: Truck },
   { to: "/setup/brands", label: "Brands", icon: Award },
+  { to: "/setup/items", label: "Items", icon: Package },
+  { to: "/setup/erp-articles", label: "ERP Articles", icon: Link2 },
   { to: "/setup/bundles", label: "Bundles", icon: Layers },
   { to: "/setup/custom-fields", label: "Custom Fields", icon: SlidersHorizontal },
 ];
@@ -543,6 +549,18 @@ export const setupBundlesRoute = createRoute({
   component: BundlesSetup,
 });
 
+export const setupItemsRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/setup/items",
+  component: ItemsSetup,
+});
+
+export const setupErpArticlesRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/setup/erp-articles",
+  component: ErpArticlesSetup,
+});
+
 export const setupCustomFieldsRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/custom-fields",
@@ -588,6 +606,8 @@ const routeTree = rootRoute.addChildren([
     setupVendorsRoute,
     setupBrandsRoute,
     setupBundlesRoute,
+    setupItemsRoute,
+    setupErpArticlesRoute,
     setupCustomFieldsRoute,
     setupAssetUsersRoute,
     setupCodeRuleRoute,

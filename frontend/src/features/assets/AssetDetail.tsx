@@ -76,6 +76,10 @@ interface Asset {
   cost_center_name: string | null;
   vendor_name: string | null;
   brand_name: string | null;
+  // CityKart's own Item this asset is, and the ERP item code it was bought
+  // under (a link back to the PO / receipt / PI, not what the asset IS).
+  item_name?: string | null;
+  erp_item_code?: string | null;
   current_asset_user_name: string | null;
   current_asset_user_type: string | null;
   location_name: string | null;
@@ -744,6 +748,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
               <ReadField label="Asset Code" value={<span className="font-mono">{asset.asset_code}</span>} />
               <ReadField label="Legacy Asset Code" value={asset.legacy_asset_code} />
               <ReadField label="Description" value={asset.description} />
+              <ReadField label="Item" value={asset.item_name} />
               <ReadField label="Category" value={asset.category_name} />
               <ReadField label="Sub-Category" value={asset.subcategory_name} />
               <ReadField label="Brand" value={asset.brand_name} />
@@ -756,6 +761,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
           <TabsContent value="procurement" className="pt-4">
             <dl className="grid gap-4 lg:grid-cols-2">
               <ReadField label="Vendor" value={asset.vendor_name} />
+              <ReadField label="ERP Item Code" value={asset.erp_item_code ? <span className="font-mono">{asset.erp_item_code}</span> : null} />
               <ReadField label="PO Number" value={asset.po_number} />
               <ReadField label="PO Date" value={asset.po_date} />
               <ReadField label="Invoice Number" value={asset.invoice_number} />

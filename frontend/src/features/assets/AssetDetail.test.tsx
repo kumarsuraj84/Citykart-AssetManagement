@@ -145,6 +145,19 @@ describe("AssetDetail (Asset 360)", () => {
     expect(within(custodyPanel).getAllByText("Head Office")).toHaveLength(2);
   });
 
+  it("shows the Item the asset is and, under Procurement, the ERP item code it was bought under", async () => {
+    mockGets({ asset: { ...FULL_ASSET, item_name: "Cassette AC", erp_item_code: "CT175673" } });
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    const overview = await screen.findByRole("tabpanel", { name: "Overview" });
+    expect(within(overview).getByText("Item")).toBeInTheDocument();
+    expect(within(overview).getByText("Cassette AC")).toBeInTheDocument();
+    clickTab("Procurement");
+    const procurement = await screen.findByRole("tabpanel", { name: "Procurement" });
+    expect(within(procurement).getByText("ERP Item Code")).toBeInTheDocument();
+    expect(within(procurement).getByText("CT175673")).toBeInTheDocument();
+  });
+
   it("displays custom field values, including a value whose definition was later retired", async () => {
     mockGets();
     renderWithClient(<AssetDetail assetId={1} />);

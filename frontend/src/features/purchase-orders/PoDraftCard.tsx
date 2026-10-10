@@ -3,12 +3,14 @@ import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import type { Bundle } from "../bundles/BundlesScreen";
+import type { Item } from "../items/types";
 import { splitAmounts } from "./AddBundleDialog";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField } from "@/components/shared/FormField";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
+
+export type MapScope = "NONE" | "ARTICLE" | "NAME" | "CODE";
 
 export interface DraftLine {
   item_code: string | null;
@@ -19,15 +21,26 @@ export interface DraftLine {
   amount: number;
   tax_percent: number;
   hsn: string | null;
-  group_code: string | null;
+  unit?: string | null;
   warranty_years: number;
-  category_id: number | null;
-  subcategory_id: number | null;
   brand_id: number | null;
   model: string | null;
+  // The CityKart Item this ERP code belongs to (null = not linked yet), and why.
+  item_id: number | null;
+  item_name: string | null;
+  matched_by: "CODE" | "NAME" | "ARTICLE" | null;
+  category_name: string | null;
+  subcategory_name: string | null;
   bundle_id: number | null;
-  remembered: boolean;
-  category_from_group: boolean;
+  bundle_name: string | null;
+  // What the ERP says about this code: words to read beside the code.
+  erp_description: string | null;
+  erp_name: string | null;
+  article_key: string | null;
+  article_name: string | null;
+  section: string | null;
+  department: string | null;
+  name_key: string | null;
   warnings: string[];
 }
 
@@ -58,24 +71,18 @@ interface Option {
 }
 
 interface LineForm {
-  itemCode: string;
-  groupCode: string;
+  src: DraftLine;
   description: string;
   barcode: string;
   quantity: string;
   rate: string;
   taxPercent: string;
   warrantyYears: string;
-  categoryId: string;
-  subcategoryId: string;
   brandId: string;
   model: string;
-  bundleId: string;
+  itemId: string;
   partAmounts: Record<number, string>;
-  remember: boolean;
-  remembered: boolean;
-  categoryFromGroup: boolean;
-  warnings: string[];
+  mapScope: MapScope;
 }
 
 const str = (v: number | null | undefined) => (v == null ? "" : String(v));
@@ -89,7 +96,14 @@ function partAmountsFor(bundle: Bundle | undefined, rate: string): Record<number
   return Object.fromEntries(bundle.parts.map((p, i) => [p.id, String(split[i])]));
 }
 
-export function PoDraftCard({ draft, bundles }: { draft: Draft; bundles: Bundle[] }) {
+const SCOPE_LABEL: Record<MapScope, string> = {
+  NONE: "Do not remember this choice",
+  ARTICLE: "Remember for every code of this Article",
+  NAME: "Remember for this product name only",
+  CODE: "Remember for this ERP code only",
+};
+
+export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: Bundle[]; items: Item[] }) {
   const qc = useQueryClient();
   const [companyId, setCompanyId] = useState(str(draft.company_id));
   const [poNumber, setPoNumber] = useState(draft.po_number ?? "");
@@ -97,28 +111,26 @@ export function PoDraftCard({ draft, bundles }: { draft: Draft; bundles: Bundle[
   const [vendorId, setVendorId] = useState(str(draft.vendor_id));
   const [costCenterId, setCostCenterId] = useState(str(draft.cost_center_id));
   const [deliveryId, setDeliveryId] = useState(str(draft.delivery_asset_user_id));
+  const itemById = (id: string) => items.find((i) => String(i.id) === id);
+  const bundleOf = (itemId: string) => bundles.find((b) => b.id === itemById(itemId)?.bundle_id);
   const [lines, setLines] = useState<LineForm[]>(() =>
     draft.lines.map((l) => {
       const bundle = bundles.find((b) => b.id === l.bundle_id);
       return {
-        itemCode: l.item_code ?? "", groupCode: l.group_code ?? "", description: l.description, barcode: l.barcode,
-        quantity: String(l.quantity), rate: String(l.rate), taxPercent: String(l.tax_percent),
-        warrantyYears: String(l.warranty_years), categoryId: str(l.category_id), subcategoryId: str(l.subcategory_id),
-        brandId: str(l.brand_id), model: l.model ?? "", bundleId: str(l.bundle_id),
-        partAmounts: partAmountsFor(bundle, String(l.rate)), remember: true, remembered: l.remembered,
-        categoryFromGroup: l.category_from_group, warnings: l.warnings,
+        src: l, description: l.description, barcode: l.barcode, quantity: String(l.quantity), rate: String(l.rate),
+        taxPercent: String(l.tax_percent), warrantyYears: String(l.warranty_years), brandId: str(l.brand_id), model: l.model ?? "",
+        itemId: str(l.item_id), partAmounts: partAmountsFor(bundle, String(l.rate)),
+        // An unlinked code is remembered by default (for its whole Article when it has one).
+        mapScope: l.item_id === null ? (l.article_key ? "ARTICLE" : "CODE") : "NONE",
       };
     }),
   );
 
   const companiesQ = useQuery({ queryKey: ["asset_users", "me", "companies"], queryFn: () => apiClient.get<Option[]>("/asset-users/me/companies") });
   const vendorsQ = useQuery({ queryKey: ["masters", "vendors"], queryFn: () => apiClient.get<Option[]>("/masters/vendors") });
-  const categoriesQ = useQuery({ queryKey: ["masters", "categories"], queryFn: () => apiClient.get<Option[]>("/masters/categories") });
-  const subcategoriesQ = useQuery({
-    queryKey: ["masters", "subcategories"],
-    queryFn: () => apiClient.get<(Option & { category_id: number })[]>("/masters/subcategories"),
-  });
   const brandsQ = useQuery({ queryKey: ["masters", "brands"], queryFn: () => apiClient.get<Option[]>("/masters/brands") });
+  const categoriesQ = useQuery({ queryKey: ["masters", "categories"], queryFn: () => apiClient.get<Option[]>("/masters/categories") });
+  const subcategoriesQ = useQuery({ queryKey: ["masters", "subcategories"], queryFn: () => apiClient.get<Option[]>("/masters/subcategories") });
   const costCentersQ = useQuery({
     queryKey: ["masters", "cost-centers", companyId],
     queryFn: () => apiClient.get<Option[]>(`/masters/cost-centers?company_id=${companyId}`),
@@ -130,38 +142,37 @@ export function PoDraftCard({ draft, bundles }: { draft: Draft; bundles: Bundle[
     enabled: companyId !== "",
   });
   const companies = companiesQ.data ?? [];
-  const categories = categoriesQ.data ?? [];
-  const subcategories = subcategoriesQ.data ?? [];
   const deliveryOptions = (usersQ.data ?? []).filter((u) => !u.asset_user_type || u.asset_user_type === "STOCK_POINT");
 
   function setLine(i: number, patch: Partial<LineForm>) {
     setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
   }
-  function changeBundle(i: number, bundleId: string) {
-    const bundle = bundles.find((b) => String(b.id) === bundleId);
-    setLine(i, { bundleId, partAmounts: partAmountsFor(bundle, lines[i].rate) });
+  function changeItem(i: number, itemId: string) {
+    const before = lines[i];
+    // Re-pointing a code that was already linked fixes the rule that matched it;
+    // choosing for an unlinked one remembers it for the whole Article by default.
+    const scope: MapScope = before.src.matched_by ?? (before.src.article_key ? "ARTICLE" : "CODE");
+    const fallback: MapScope = before.src.article_key ? scope : "CODE";
+    setLine(i, { itemId, partAmounts: partAmountsFor(bundleOf(itemId), before.rate), mapScope: fallback });
   }
   function changeRate(i: number, rate: string) {
-    const bundle = bundles.find((b) => String(b.id) === lines[i].bundleId);
-    setLine(i, { rate, partAmounts: partAmountsFor(bundle, rate) });
+    setLine(i, { rate, partAmounts: partAmountsFor(bundleOf(lines[i].itemId), rate) });
   }
 
   function lineProblem(l: LineForm): string | null {
+    if (l.itemId === "") return "choose the Item";
     if (l.description.trim() === "") return "description is required";
     if (l.barcode.trim() === "") return "barcode is required";
     if (!(Number(l.quantity) >= 1) || !Number.isInteger(Number(l.quantity))) return "quantity must be a whole number, at least 1";
     if (!(Number(l.rate) > 0)) return "cost must be more than 0";
-    if (l.bundleId) {
-      const bundle = bundles.find((b) => String(b.id) === l.bundleId);
-      if (!bundle) return "bundle not found";
+    const bundle = bundleOf(l.itemId);
+    if (bundle) {
       const total = bundle.parts.reduce((s, p) => s + (Number(l.partAmounts[p.id]) || 0), 0);
       if (Math.abs(total - Number(l.rate)) >= 0.005) return `the part amounts must add up to ${money(Number(l.rate))}`;
-      return null;
     }
-    if (l.categoryId === "" || l.subcategoryId === "") return "category and sub-category are required";
     return null;
   }
-  const problems = useMemo(() => lines.map(lineProblem), [lines, bundles]); // eslint-disable-line react-hooks/exhaustive-deps
+  const problems = useMemo(() => lines.map(lineProblem), [lines, items, bundles]); // eslint-disable-line react-hooks/exhaustive-deps
   const alreadyCreated = draft.already_created_id !== null;
   const canCreate =
     companyId !== "" && poNumber.trim() !== "" && poDate !== "" && costCenterId !== "" && !alreadyCreated &&
@@ -174,36 +185,37 @@ export function PoDraftCard({ draft, bundles }: { draft: Draft; bundles: Bundle[
         vendor_id: vendorId ? Number(vendorId) : null, cost_center_id: Number(costCenterId),
         delivery_asset_user_id: deliveryId ? Number(deliveryId) : null, warehouse_code: draft.warehouse_code,
         lines: lines.map((l) => {
-          const bundle = bundles.find((b) => String(b.id) === l.bundleId);
+          const bundle = bundleOf(l.itemId);
+          const keep = l.mapScope !== "NONE";
           return {
-            item_code: l.itemCode || null, group_code: l.groupCode || null, description: l.description.trim(),
-            barcode: l.barcode.trim(), quantity: Number(l.quantity), rate: Number(l.rate),
-            tax_percent: Number(l.taxPercent) || 0, warranty_years: Number(l.warrantyYears) || 0,
-            category_id: bundle ? null : Number(l.categoryId),
-            subcategory_id: bundle ? null : Number(l.subcategoryId),
+            item_code: l.src.item_code, description: l.description.trim(), barcode: l.barcode.trim(),
+            quantity: Number(l.quantity), rate: Number(l.rate), tax_percent: Number(l.taxPercent) || 0,
+            warranty_years: Number(l.warrantyYears) || 0, item_id: Number(l.itemId),
             brand_id: !bundle && l.brandId ? Number(l.brandId) : null, model: !bundle && l.model ? l.model : null,
-            bundle_id: bundle ? bundle.id : null,
             bundle_parts: bundle ? bundle.parts.map((p) => ({ part_id: p.id, amount: Number(l.partAmounts[p.id]) })) : null,
-            remember: l.remember && !!l.itemCode,
+            map_scope: keep ? l.mapScope : null,
+            article_key: keep ? l.src.article_key : null, article_name: keep ? l.src.article_name : null,
+            section: keep ? l.src.section : null, department: keep ? l.src.department : null, name_key: keep ? l.src.name_key : null,
           };
         }),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["purchase-orders"] });
+      qc.invalidateQueries({ queryKey: ["items"] });
     },
   });
 
   const created = createMutation.data;
   const locked = !!created;
+  const categoryName = (id: number) => categoriesQ.data?.find((c) => c.id === id)?.name ?? "";
+  const subcategoryName = (id: number | null) => (id ? subcategoriesQ.data?.find((s) => s.id === id)?.name ?? "" : "");
 
   return (
     <section className="flex flex-col gap-3 rounded-md border p-4" aria-label={`Draft ${draft.po_number ?? "purchase order"}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-semibold">
           {poNumber || "Purchase order"}{" "}
-          <span className="text-xs font-normal text-muted-foreground">
-            from the ERP (PO code {draft.erp_po_code})
-          </span>
+          <span className="text-xs font-normal text-muted-foreground">from the ERP (PO code {draft.erp_po_code})</span>
         </h2>
         {created && (
           <p className="text-sm text-success" role="status">
@@ -259,31 +271,47 @@ export function PoDraftCard({ draft, bundles }: { draft: Draft; bundles: Bundle[
 
         <div className="flex flex-col gap-3">
           {lines.map((l, i) => {
-            const bundle = bundles.find((b) => String(b.id) === l.bundleId);
-            const visibleSubs = subcategories.filter((s) => !l.categoryId || s.category_id === Number(l.categoryId));
+            const item = itemById(l.itemId);
+            const bundle = bundleOf(l.itemId);
             const partTotal = bundle ? bundle.parts.reduce((s, p) => s + (Number(l.partAmounts[p.id]) || 0), 0) : 0;
             const id = `${poNumber}-line-${i}`;
+            const s = l.src;
             return (
               <div key={i} className="flex flex-col gap-2 rounded-md border bg-muted/20 p-3" aria-label={`Line ${i + 1}`}>
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
                   <span>
-                    Line {i + 1}: item code <span className="font-mono text-foreground">{l.itemCode || "—"}</span>
-                    {l.remembered && <span className="ml-2 rounded bg-success/15 px-1.5 py-0.5 text-success">remembered</span>}
+                    Line {i + 1}: ERP code <span className="font-mono text-foreground">{s.item_code || "—"}</span>
+                    {s.section && <> · {s.section} › {s.department} › {s.article_name}</>}
                   </span>
-                  <label className="flex items-center gap-1.5">
-                    <Checkbox
-                      aria-label={`Remember this item (line ${i + 1})`} checked={l.remember} disabled={!l.itemCode}
-                      onCheckedChange={(c) => setLine(i, { remember: c === true })}
-                    />
-                    Remember this item for next time
-                  </label>
+                  {s.erp_description && <span>In the ERP: <span className="text-foreground">{s.erp_description}</span></span>}
                 </div>
-                {l.warnings.length > 0 && (
+                {s.warnings.length > 0 && (
                   <ul className="list-disc rounded-md border border-warning/50 bg-warning/10 p-2 pl-6 text-xs">
-                    {l.warnings.map((w) => <li key={w}>{w}</li>)}
+                    {s.warnings.map((w) => <li key={w}>{w}</li>)}
                   </ul>
                 )}
                 <div className="grid grid-cols-6 gap-2">
+                  <FormField
+                    htmlFor={`${id}-item`} label="Item" required className="col-span-3"
+                    helperText={
+                      item
+                        ? `${[categoryName(item.category_id), subcategoryName(item.subcategory_id)].filter(Boolean).join(" › ")}${l.itemId === str(s.item_id) && s.matched_by ? ` · linked ${s.matched_by === "ARTICLE" ? "through its Article" : s.matched_by === "NAME" ? "by its product name" : "by its code"}` : ""}`
+                        : "What this asset is, in CityKart's words."
+                    }
+                  >
+                    <SearchableSelect
+                      id={`${id}-item`} value={opt(l.itemId)} onValueChange={(v) => changeItem(i, v)}
+                      options={items.map((it) => ({ value: String(it.id), label: it.name }))} placeholder="Choose the Item"
+                    />
+                  </FormField>
+                  <FormField htmlFor={`${id}-scope`} label="Remember" className="col-span-3">
+                    <SearchableSelect
+                      id={`${id}-scope`} value={l.mapScope} onValueChange={(v) => setLine(i, { mapScope: v as MapScope })}
+                      options={(["NONE", "ARTICLE", "NAME", "CODE"] as MapScope[])
+                        .filter((m) => m === "NONE" || m === "CODE" || (m === "ARTICLE" && !!s.article_key) || (m === "NAME" && !!s.article_key && !!s.name_key))
+                        .map((m) => ({ value: m, label: SCOPE_LABEL[m] }))}
+                    />
+                  </FormField>
                   <FormField htmlFor={`${id}-description`} label="Description" required className="col-span-3">
                     <Input id={`${id}-description`} value={l.description} onChange={(e) => setLine(i, { description: e.target.value })} />
                   </FormField>
@@ -302,18 +330,10 @@ export function PoDraftCard({ draft, bundles }: { draft: Draft; bundles: Bundle[
                   <FormField htmlFor={`${id}-warranty`} label="Warranty Years">
                     <Input id={`${id}-warranty`} type="number" min={0} step={1} value={l.warrantyYears} onChange={(e) => setLine(i, { warrantyYears: e.target.value })} />
                   </FormField>
-                  <FormField htmlFor={`${id}-bundle`} label="Add as a bundle" helperText={bundles.length === 0 ? "No bundles set up." : undefined} className="col-span-2">
-                    <SearchableSelect
-                      id={`${id}-bundle`} value={opt(l.bundleId)} onValueChange={(v) => changeBundle(i, v)}
-                      options={bundles.map((b) => ({ value: String(b.id), label: b.name }))}
-                      placeholder="No, a single item"
-                    />
-                  </FormField>
                   {bundle ? (
                     <div className="col-span-6 rounded-md border bg-background p-2 text-sm">
                       <p className="mb-1 text-xs text-muted-foreground">
-                        Becomes {bundle.parts.length * (Number(l.quantity) || 0)} lines: {Number(l.quantity) || 0} of each part.
-                        <button type="button" className="ml-2 underline" onClick={() => changeBundle(i, "")}>Make it a single item instead</button>
+                        {item?.name} is a bundle: becomes {bundle.parts.length * (Number(l.quantity) || 0)} lines, {Number(l.quantity) || 0} of each part.
                       </p>
                       <div className="flex flex-wrap items-end gap-3">
                         {bundle.parts.map((p) => (
@@ -333,26 +353,13 @@ export function PoDraftCard({ draft, bundles }: { draft: Draft; bundles: Bundle[
                     </div>
                   ) : (
                     <>
-                      <FormField htmlFor={`${id}-category`} label="Category" required className="col-span-2" helperText={l.categoryFromGroup ? "Suggested from the item group. Check it." : undefined}>
-                        <SearchableSelect
-                          id={`${id}-category`} value={opt(l.categoryId)}
-                          onValueChange={(v) => setLine(i, { categoryId: v, subcategoryId: "", categoryFromGroup: false })}
-                          options={categories.map((c) => ({ value: String(c.id), label: c.name }))}
-                        />
-                      </FormField>
-                      <FormField htmlFor={`${id}-subcategory`} label="Sub-Category" required className="col-span-2">
-                        <SearchableSelect
-                          id={`${id}-subcategory`} value={opt(l.subcategoryId)} onValueChange={(v) => setLine(i, { subcategoryId: v })}
-                          options={visibleSubs.map((s) => ({ value: String(s.id), label: s.name }))}
-                        />
-                      </FormField>
-                      <FormField htmlFor={`${id}-brand`} label="Brand">
+                      <FormField htmlFor={`${id}-brand`} label="Brand" className="col-span-2">
                         <SearchableSelect
                           id={`${id}-brand`} value={opt(l.brandId)} onValueChange={(v) => setLine(i, { brandId: v })}
                           options={(brandsQ.data ?? []).map((b) => ({ value: String(b.id), label: b.name }))}
                         />
                       </FormField>
-                      <FormField htmlFor={`${id}-model`} label="Model">
+                      <FormField htmlFor={`${id}-model`} label="Model" className="col-span-2">
                         <Input id={`${id}-model`} value={l.model} onChange={(e) => setLine(i, { model: e.target.value })} />
                       </FormField>
                     </>
