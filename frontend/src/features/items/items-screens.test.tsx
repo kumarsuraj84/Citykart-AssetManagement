@@ -21,7 +21,8 @@ const ARTICLES = [
   { article_key: "FA_CE_UPS", article_name: "FA_CE_UPS", section: "COMPUTER EQUIPMENT", department: "FA_CE_UPS", codes: 2, units: 900, lines: 114,
     samples: ["APC UPS"], item_id: null, item_name: null, name_rules: 0, code_rules: 0, suggested_item_id: 3, suggested_item_name: "UPS" },
   { article_key: "02-I3 CORE[IT-01]", article_name: "02-I3 CORE[IT-01]", section: "IT EQUIPMENTS", department: "FA_CE_DESKTOP", codes: 5, units: 657, lines: 60,
-    samples: ["DELL DESKTOP REFURB/I3"], item_id: 1, item_name: "Desktop", name_rules: 1, code_rules: 0, suggested_item_id: null, suggested_item_name: null },
+    samples: ["DELL DESKTOP REFURB/I3"], icodes: ["CT324973", "CT999001"], names: ["DELL DESKTOP REFURB/I3", "LENOVO DESKTOP I3"],
+    item_id: 1, item_name: "Desktop", name_rules: 1, code_rules: 0, suggested_item_id: null, suggested_item_name: null },
   { article_key: "FA_IT_OTHERS", article_name: "FA_IT_OTHERS", section: "IT EQUIPMENTS", department: "FA_IT_OTHERS", codes: 109, units: 7696955, lines: 209,
     samples: ["6U RACK", "48 PORT SWITCH"], item_id: null, item_name: null, name_rules: 0, code_rules: 0, suggested_item_id: null, suggested_item_name: null },
 ];
@@ -168,6 +169,31 @@ describe("ERP Articles screen", () => {
     fireEvent.change(screen.getByLabelText("Search ERP Articles"), { target: { value: "rack" } });
     expect(screen.getByText("FA_IT_OTHERS")).toBeInTheDocument();
     expect(screen.queryByText("FA_CE_UPS")).not.toBeInTheDocument();
+  });
+
+  it("searching an item code (the barcode) finds its Article, even one that is already linked, and says which code matched", async () => {
+    mockApi();
+    renderAt("/setup/erp-articles");
+    await screen.findByText("FA_CE_UPS");
+    expect(screen.queryByText("02-I3 CORE[IT-01]")).not.toBeInTheDocument();       // linked, so hidden by "Not linked" while nothing is typed
+
+    fireEvent.change(screen.getByLabelText("Search ERP Articles"), { target: { value: "CT324973" } });
+    const row = (await screen.findByText("02-I3 CORE[IT-01]")).closest("tr")!;
+    expect(within(row).getByText("CT324973")).toBeInTheDocument();
+    expect(within(row).getByText(/linked to Desktop/)).toBeInTheDocument();
+    expect(screen.queryByText("FA_CE_UPS")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Search ERP Articles"), { target: { value: "ct9990" } });       // partial and case-insensitive; another code of the same Article
+    expect(within((await screen.findByText("02-I3 CORE[IT-01]")).closest("tr")!).getByText("CT999001")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Search ERP Articles"), { target: { value: "lenovo" } });       // a product name beyond the sample shown
+    expect(await screen.findByText("02-I3 CORE[IT-01]")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Search ERP Articles"), { target: { value: "CT000000" } });
+    expect(await screen.findByText("No Articles match.")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Search ERP Articles"), { target: { value: "" } });
+    expect(await screen.findByText("FA_CE_UPS")).toBeInTheDocument();                                      // back to the "Not linked" view
+    expect(screen.queryByText("02-I3 CORE[IT-01]")).not.toBeInTheDocument();
   });
 
   it("a mixed Article is linked code by code or product name by product name", async () => {

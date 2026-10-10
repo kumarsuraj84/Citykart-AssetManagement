@@ -27,6 +27,9 @@ export interface ArticleRow {
   units: number;
   lines: number;
   samples: string[];
+  /** Every bought item code and product name of the Article (for searching). */
+  icodes: string[];
+  names: string[];
   item_id: number | null;
   item_name: string | null;
   name_rules: number;

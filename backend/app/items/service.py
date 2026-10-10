@@ -229,7 +229,7 @@ async def remove_map(session: AsyncSession, rule: ItemMap, actor: AssetUser) -> 
 
 async def _company_code(session: AsyncSession, company_id: int | None) -> str | None:
     company = await session.get(Company, company_id) if company_id is not None else None
-    return company.code if company else None
+    return company.erp_code if company else None
 
 
 async def article_overview(session: AsyncSession, source: ErpSource, company_id: int | None = None) -> list[dict]:
@@ -266,6 +266,7 @@ async def article_overview(session: AsyncSession, source: ErpSource, company_id:
         out.append({
             "article_key": a.article_key, "article_name": a.article_name, "section": a.section, "department": a.department,
             "codes": a.codes, "units": a.units, "lines": a.lines, "samples": a.samples,
+            "icodes": a.icodes, "names": a.names,
             "item_id": mapped.id if mapped else None, "item_name": mapped.name if mapped else None,
             "name_rules": name_rules.get(a.article_key, 0), "code_rules": code_rules.get(a.article_key, 0),
             "suggested_item_id": suggestion.id if suggestion and best >= 0.5 else None,

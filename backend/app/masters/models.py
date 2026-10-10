@@ -9,6 +9,13 @@ class Company(Base, AuditMixin, SoftDeleteMixin):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     code: Mapped[str] = mapped_column(String(20), unique=True)
     name: Mapped[str] = mapped_column(String(200))
+    # What the ERP calls this company, when that differs from `code` (the code is
+    # part of every asset code and cannot change). Empty = `code` is the ERP code.
+    erp_company_code: Mapped[str | None] = mapped_column(String(50))
+
+    @property
+    def erp_code(self) -> str:
+        return (self.erp_company_code or self.code).strip()
 
 
 class Location(Base, AuditMixin, SoftDeleteMixin):

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class BrandIn(BaseModel):
@@ -45,14 +45,25 @@ class VendorOut(VendorIn):
     erp_vendor_code: str | None = None
 
 
+def _blank_to_none(value: str | None) -> str | None:
+    return (value or "").strip() or None
+
+
 class CompanyIn(BaseModel):
     code: str
     name: str
+    # The code the ERP uses for this company, when it differs from `code`.
+    erp_company_code: str | None = None
+
+    _clean_erp_code = field_validator("erp_company_code")(_blank_to_none)
 
 
 class CompanyEditIn(BaseModel):
     """`code` omitted deliberately -- immutable after creation (AM-05)."""
     name: str
+    erp_company_code: str | None = None
+
+    _clean_erp_code = field_validator("erp_company_code")(_blank_to_none)
 
 
 class CompanyOut(CompanyIn):

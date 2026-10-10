@@ -57,9 +57,15 @@ def derive_tax(po: ErpPo) -> tuple[float | None, float]:
 
 async def _match_company(session, po: ErpPo, allowed: list[int] | None, warnings: list[str]):
     companies = (await session.execute(select(Company).where(Company.is_active.is_(True)))).scalars().all()
-    company = next((c for c in companies if c.code.lower() == (po.company_code or "").lower()), None)
+    wanted = (po.company_code or "").strip().lower()
+    # the ERP company code (set on the company when it differs from its own code), else the plain code
+    company = next((c for c in companies if wanted and c.erp_code.lower() == wanted), None) \
+        or next((c for c in companies if wanted and c.code.lower() == wanted), None)
     if company is None:
-        warnings.append(f"No company with the code {po.company_code} exists here. Choose the company.")
+        warnings.append(
+            f"No company is set up for the ERP company {po.company_code}. In Setup > Companies, put {po.company_code} "
+            "in the company's ERP company code, or choose the company here."
+        )
         return None
     if allowed is not None and company.id not in allowed:
         warnings.append(f"You do not have access to {company.name}, so this PO cannot be created by you.")
@@ -73,7 +79,7 @@ async def _match_cost_center(session, company, warnings: list[str]):
     centers = (await session.execute(
         select(CostCenter).where(CostCenter.company_id == company.id, CostCenter.is_active.is_(True))
     )).scalars().all()
-    wanted = {_norm(company.code), _norm(company.name)}
+    wanted = {_norm(company.code), _norm(company.erp_code), _norm(company.name)}
     hits = [c for c in centers if _norm(c.code) in wanted or _norm(c.name) in wanted]
     if len(hits) == 1:
         return hits[0]

@@ -134,6 +134,9 @@ async def test_the_article_screen_shows_status_and_suggests_an_existing_item_by_
         "item_id": ids["item_cable"], "match_type": "NAME", "article_key": "FA_IT_OTHERS", "name_key": "6U Rack"})
     rows = {r["article_key"]: r for r in (await client.get("/api/items/articles", headers=h)).json()}
     assert rows["02-I3 CORE[IT-01]"]["item_name"] == "Desktop" and rows["02-I3 CORE[IT-01]"]["suggested_item_id"] is None   # already mapped
+    # every bought item code and product name is sent, so the screen can search by an item code
+    assert rows["02-I3 CORE[IT-01]"]["icodes"] == ["CT324973", "CT999001"]
+    assert "LENOVO DESKTOP I3" in rows["02-I3 CORE[IT-01]"]["names"]
     ups = rows["FA_CE_UPS"]
     assert ups["item_id"] is None and ups["suggested_item_name"] == "UPS"                  # "ups" appears in the Article name
     others = rows["FA_IT_OTHERS"]

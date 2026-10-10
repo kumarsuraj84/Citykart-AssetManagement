@@ -54,7 +54,8 @@ class FakeErp:
             "CT500002": ErpItem("CT500002", "FA_IT_OTHERS", "FA_IT_OTHERS", "IT EQUIPMENTS", "FA_IT_OTHERS", cats=["6U RACK"]),
         }
         self.articles = [
-            ErpArticle("02-I3 CORE[IT-01]", "02-I3 CORE[IT-01]", "IT EQUIPMENTS", "FA_CE_DESKTOP", codes=2, units=657, lines=60, samples=["DELL DESKTOP REFURB/I3"]),
+            ErpArticle("02-I3 CORE[IT-01]", "02-I3 CORE[IT-01]", "IT EQUIPMENTS", "FA_CE_DESKTOP", codes=2, units=657, lines=60, samples=["DELL DESKTOP REFURB/I3"],
+                       icodes=["CT324973", "CT999001"], names=["DELL DESKTOP REFURB/I3", "LENOVO DESKTOP I3"]),
             ErpArticle("FA_IT_OTHERS", "FA_IT_OTHERS", "IT EQUIPMENTS", "FA_IT_OTHERS", codes=2, units=40, lines=9, samples=["48 PORT SWITCH", "6U RACK"]),
             ErpArticle("FA_CE_UPS", "FA_CE_UPS", "COMPUTER EQUIPMENT", "FA_CE_UPS", codes=2, units=900, lines=114, samples=["APC UPS"]),
         ]
@@ -314,7 +315,7 @@ async def test_unknown_company_vendor_and_location_are_left_empty_with_warnings(
     erp.pos[1133610106] = desktop_po(company_code="CKXYZ", supplier_code="777", delivery_location="CKXYZ-WH-MARS")
     d = (await client.get("/api/erp/pos/1133610106/draft", headers=await _headers(client, "OPR"))).json()
     assert d["company_id"] is None and d["cost_center_id"] is None and d["vendor_id"] is None
-    assert any("No company with the code CKXYZ" in w for w in d["warnings"])
+    assert any("No company is set up for the ERP company CKXYZ" in w for w in d["warnings"])
     assert any("not linked to a CKAM vendor" in w for w in d["warnings"])
 
 

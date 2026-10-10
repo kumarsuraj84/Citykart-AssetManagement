@@ -151,6 +151,11 @@ class ErpArticle:
     units: float
     lines: int
     samples: list[str] = field(default_factory=list)
+    # Every bought item code and product name of the Article, so the screen can
+    # search by an item code (the "barcode") or any product name, not just the
+    # few samples it shows.
+    icodes: list[str] = field(default_factory=list)
+    names: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -287,14 +292,17 @@ class PgErpSource:
             f"""select coalesce(i.article_code::text, i.article_name) article_key, max(i.article_name) article_name,
                        max(i.section) section, max(i.department) department, count(distinct l.icode) codes,
                        sum(l.ordqty) units, count(*) lines,
-                       (array_agg(distinct left(i.cat1, 40)) filter (where i.cat1 is not null))[1:4] samples
+                       (array_agg(distinct left(i.cat1, 40)) filter (where i.cat1 is not null))[1:4] samples,
+                       array_agg(distinct l.icode) icodes,
+                       array_agg(distinct i.cat1) filter (where i.cat1 is not null) names
                 from {VIEW_PO_LINE} l join {rel} i on i.icode = l.icode
                 where ($1::text is null or l.company_code = $1)
                 group by 1 order by sum(l.line_netamt) desc""", company_code)
         return self._remember(key, [
             ErpArticle(article_key=r["article_key"], article_name=(r["article_name"] or "").strip(), section=(r["section"] or "").strip(),
                        department=(r["department"] or "").strip(), codes=int(r["codes"]), units=float(r["units"] or 0),
-                       lines=int(r["lines"]), samples=[s for s in (clean_name(x) for x in (r["samples"] or [])) if s])
+                       lines=int(r["lines"]), samples=[s for s in (clean_name(x) for x in (r["samples"] or [])) if s],
+                       icodes=sorted(r["icodes"] or []), names=[s for s in (clean_name(x) for x in (r["names"] or [])) if s])
             for r in rows
         ])
 

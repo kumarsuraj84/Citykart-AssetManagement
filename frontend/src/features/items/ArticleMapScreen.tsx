@@ -57,9 +57,16 @@ export function ArticleMapScreen() {
   });
 
   const needle = search.trim().toLowerCase();
+  const matchedCode = (a: ArticleRow) => (needle ? (a.icodes ?? []).find((c) => c.toLowerCase().includes(needle)) : undefined);
   const rows = (articlesQ.data ?? []).filter((a) => {
-    if (filter === "unmapped" && a.item_id !== null) return false;
-    return !needle || [a.article_name, a.department, a.section, a.item_name ?? "", ...a.samples].some((v) => v.toLowerCase().includes(needle));
+    // A search looks at every Article, linked or not: the "Not linked" filter only applies when nothing is typed.
+    if (needle) {
+      return (
+        [a.article_name, a.department, a.section, a.item_name ?? "", ...a.samples, ...(a.names ?? [])].some((v) => v.toLowerCase().includes(needle)) ||
+        matchedCode(a) !== undefined
+      );
+    }
+    return !(filter === "unmapped" && a.item_id !== null);
   });
 
   const columns: DataTableColumn<ArticleRow>[] = [
@@ -73,6 +80,11 @@ export function ArticleMapScreen() {
         <div className="min-w-0">
           <p className="truncate">{a.article_name}</p>
           {a.samples.length > 0 && <p className="truncate text-xs font-normal text-muted-foreground">{a.samples.join(", ")}</p>}
+          {matchedCode(a) && (
+            <p className="text-xs font-normal text-foreground">
+              Has code <span className="font-mono">{matchedCode(a)}</span>{a.item_name ? ` · linked to ${a.item_name}` : " · not linked yet"}
+            </p>
+          )}
         </div>
       ),
     },
@@ -133,7 +145,7 @@ export function ArticleMapScreen() {
           </div>
         )}
         <Input
-          aria-label="Search ERP Articles" placeholder="Search Article, Department, product…" className="max-w-sm"
+          aria-label="Search ERP Articles" placeholder="Search item code, Article, Department, product…" className="max-w-sm"
           value={search} onChange={(e) => setSearch(e.target.value)}
         />
         <Button size="sm" variant={filter === "unmapped" ? "default" : "outline"} onClick={() => setFilter("unmapped")}>Not linked</Button>
