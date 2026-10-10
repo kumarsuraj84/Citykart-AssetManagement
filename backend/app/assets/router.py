@@ -159,6 +159,8 @@ async def list_assets(
     q: str | None = Query(None),
     exact: bool = Query(False),
     serial_pending: bool = Query(False),
+    item_id: int | None = Query(None),
+    ids: str | None = Query(None, description="comma-separated asset ids (at most 200), for printing labels of a known set"),
     sort_by: str | None = Query(None),
     sort_dir: str = Query("asc"),
     limit: int = Query(50, ge=1, le=200),
@@ -185,9 +187,18 @@ async def list_assets(
     else:
         allowed = await scoped_company_ids(session, asset_user)
     domains = await allowed_asset_domains(session, asset_user)
+    id_list: list[int] | None = None
+    if ids is not None:
+        try:
+            id_list = [int(part) for part in ids.split(",") if part.strip()]
+        except ValueError:
+            raise HTTPException(422, "ids must be comma-separated numbers")  # `status` is the query parameter here, not the http module
+        if len(id_list) > 200:
+            raise HTTPException(422, "at most 200 ids at a time")
     items, total = await search_assets(
         session, allowed, status, category_id, asset_user_id, company_id, q, sort_by, sort_dir, limit, offset,
         allowed_domains=domains, domain=domain, exact=exact, serial_pending=serial_pending or None,
+        item_id=item_id, ids=id_list,
     )
     (
         asset_user_labels, company_labels, category_labels, subcategory_labels, vendor_labels, cost_center_labels,

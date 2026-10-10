@@ -76,6 +76,8 @@ async def search_assets(
     domain: str | None = None,
     exact: bool = False,
     serial_pending: bool | None = None,
+    item_id: int | None = None,
+    ids: list[int] | None = None,
 ) -> tuple[list[Asset], int]:
     """`allowed_domains` (from app.core.deps.allowed_asset_domains) is the
     caller's server-side scope -- None means unrestricted (ADMIN/SELF_SERVICE),
@@ -93,6 +95,10 @@ async def search_assets(
         stmt = stmt.where(Asset.asset_domain.in_(allowed_domains))
     if domain is not None and (allowed_domains is None or domain in allowed_domains):
         stmt = stmt.where(Asset.asset_domain == domain)
+    if item_id is not None:
+        stmt = stmt.where(Asset.item_id == item_id)
+    if ids is not None:
+        stmt = stmt.where(Asset.id.in_(ids))
     if serial_pending is True:
         # The to-do list: assets still in use (nobody chases the serial of one that is gone).
         stmt = stmt.where(Asset.serial_pending.is_(True), Asset.status.notin_(("DISPOSED", "SOLD", "SCRAPPED", "LOST")))

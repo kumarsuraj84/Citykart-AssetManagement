@@ -564,9 +564,14 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deliverOpen, typedSerialsKey]);
 
+  // The assets the last Mark Delivery just made, so their labels can be printed right away
+  // (tag every received unit before it is dispatched).
+  const deliveredAssetIds = lines.filter((l) => l.status === "DELIVERED" && l.delivered_asset_id != null).map((l) => l.delivered_asset_id as number);
+  const [justDelivered, setJustDelivered] = useState<number[]>([]);
+
   const deliverMutation = useMutation({
     mutationFn: () =>
-      apiClient.post(`/purchase-orders/${poId}/deliver`, {
+      apiClient.post<PendingAssetRow[]>(`/purchase-orders/${poId}/deliver`, {
         invoice_number: invoiceNumber, invoice_date: invoiceDate, invoice_amount: Number(invoiceAmount) || 0,
         // Only units that have a serial; the rest (if the user chose to leave
         // them pending) are simply not sent and stay in Pending Delivery.
@@ -583,10 +588,11 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
             .filter((line) => later || line.serial_number !== "");
         }),
       }),
-    onSuccess: () => {
+    onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ["purchase-order", poId, "lines"] });
       setSelected([]);
       setDeliverOpen(false);
+      setJustDelivered((Array.isArray(result) ? result : []).map((l) => l.delivered_asset_id).filter((id): id is number => id != null));
     },
   });
 
@@ -851,7 +857,26 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
       </div>
 
       <div className="rounded-md border p-3">
-        <h2 className="mb-2 text-sm font-semibold">Delivered ({deliveredLines.length})</h2>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">Delivered ({deliveredLines.length})</h2>
+          {deliveredAssetIds.length > 0 && (
+            <Button asChild size="sm" variant="outline">
+              <Link to="/print-labels" search={{ assets: deliveredAssetIds.slice(0, 200).join(",") }}>
+                Print labels for the delivered units
+              </Link>
+            </Button>
+          )}
+        </div>
+        {justDelivered.length > 0 && (
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-md border bg-success-soft/60 p-2 text-sm" role="status">
+            <span>{justDelivered.length} unit{justDelivered.length === 1 ? "" : "s"} delivered and now in the register.</span>
+            <Button asChild size="sm">
+              <Link to="/print-labels" search={{ assets: justDelivered.slice(0, 200).join(",") }}>
+                Print their labels now
+              </Link>
+            </Button>
+          </div>
+        )}
         <DataTable
           columns={deliveredColumns}
           rows={deliveredLines}

@@ -61,6 +61,7 @@ import MyAssetsRoute from "./routes/my-assets";
 import AssetsIndexRoute from "./routes/assets/index";
 import NewAssetRoute from "./routes/assets/new";
 import SerialPendingRoute from "./routes/assets/serial-pending";
+import DispatchRoute from "./routes/dispatch";
 import AssetDetailRoute from "./routes/assets/$id";
 import AssetMovementRoute from "./routes/asset-movement";
 import PrintLabelsRoute from "./routes/print-labels";
@@ -290,6 +291,7 @@ function AppShell() {
                       {canWrite && <SidebarNavItem to="/assets/new" label="Add Asset" icon={PackagePlus} />}
                       {canWrite && <SidebarNavItem to="/serial-pending" label="Serial Pending" icon={Hash} />}
                       {canWrite && <SidebarNavItem to="/asset-movement" label="Asset Movement" icon={ScanBarcode} />}
+                      {canWrite && <SidebarNavItem to="/dispatch" label="Dispatch" icon={Truck} />}
                       {canWrite && <SidebarNavItem to="/print-labels" label="Print Labels" icon={Printer} />}
                       {canWrite && <SidebarNavItem to="/purchase-orders" label="Purchase Orders" icon={ClipboardList} />}
                       {/* Bulk asset Import is Primary-Owner-only, not part of
@@ -455,7 +457,20 @@ export const assetMovementRoute = createRoute({
 export const printLabelsRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/print-labels",
-  component: PrintLabelsRoute,
+  // `assets`: comma-separated asset ids to start the queue with (a delivery's new assets).
+  validateSearch: (search: Record<string, unknown>): { assets?: string } => ({
+    assets: typeof search.assets === "string" && search.assets !== "" ? search.assets : undefined,
+  }),
+  component: function PrintLabelsComponent() {
+    const { assets } = printLabelsRoute.useSearch();
+    return <PrintLabelsRoute assets={assets} />;
+  },
+});
+
+export const dispatchRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/dispatch",
+  component: DispatchRoute,
 });
 
 export const purchaseOrdersIndexRoute = createRoute({
@@ -599,6 +614,7 @@ const routeTree = rootRoute.addChildren([
     assetDetailRoute,
     assetMovementRoute,
     printLabelsRoute,
+    dispatchRoute,
     purchaseOrdersIndexRoute,
     purchaseOrdersNewRoute,
     purchaseOrdersFromErpRoute,

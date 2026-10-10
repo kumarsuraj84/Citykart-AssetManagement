@@ -2,6 +2,23 @@
 
 Newest first. These override older spec/plan text where they conflict.
 
+## 2026-10-11 — Dispatch and labels: every unit is its own asset and gets its own 70 x 20 mm label
+
+CKAM tracks every item individually (no packs, no counted lots): 7 mice with no serial are 7 assets, each with its own
+asset code and its own label. Two ways to label, both built: (1) **tag after receiving** — Mark Delivery Done offers
+"Print their labels now", the Delivered section has "Print labels for the delivered units" (Print Labels opens with that
+delivery's assets queued, `/print-labels?assets=1,2,...`); (2) **label while dispatching** — the **Dispatch** screen
+(`/dispatch`): the sender scans each asset's serial (or types its asset code) instead of using Excel, CKAM finds it and
+prints its label at once (so the label is for the asset in hand; printing a batch later risks the wrong label on the wrong
+asset), and one click moves everything to the chosen store/stock point (`/api/assets/bulk-move`). Assets with no serial are
+added **by Item and quantity** from the sender's stock ("7 mouse"), one label each. Optional: scan each label back to
+confirm before Move. A label shows the item name, asset code, serial (or "to be added" / "none") and the ERP item code,
+plus the codes a scanner reads: **barcode (the asset code) and a QR that opens the asset in CKAM** from a phone camera
+(default "Barcode + QR"; barcode-only and a QR-of-the-asset-code remain). Scan fields understand the QR's link
+(`.../assets/<id>`) as that asset. Default label size 70 x 20 mm. Printing is the browser's print, one label per page;
+for no-dialog printing set the label printer as default and enable silent printing in the browser. Not built: reading the
+ERP packet contents (needs an ERP view), and counted packs (rejected: CKAM is for individual tracking).
+
 ## 2026-10-11 — "Serial pending": a third serial state for things whose serial is read later
 
 Some things (an amplifier) show no serial on the box; it is read in the store once opened. Beside "has a serial" and

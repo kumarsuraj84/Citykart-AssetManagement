@@ -515,6 +515,33 @@ describe("PurchaseOrderDetail", () => {
     }
   });
 
+  it("right after Mark Delivery Done, offers to print the labels of the units just delivered", async () => {
+    mockGets([PENDING_LINE]);
+    (apiClient.post as any).mockResolvedValue([{ ...PENDING_LINE, status: "DELIVERED", delivered_asset_id: 77 }]);
+    renderDetailAt();
+    await waitFor(() => expect(screen.getByText("Dell Laptop")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("checkbox", { name: /select dell laptop/i }));
+    fireEvent.click(screen.getByRole("button", { name: /mark 1 delivery done/i }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-1" } });
+    fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "1180" } });
+    fireEvent.click(within(dialog).getByLabelText(/initial asset user/i));
+    fireEvent.click(await screen.findByText("IT Stock-HO"));
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /no serial number for dell laptop/i }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /confirm/i }));
+
+    const banner = await screen.findByText(/1 unit delivered and now in the register/i);
+    expect(banner).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /print their labels now/i })).toHaveAttribute("href", expect.stringMatching(/^\/print-labels\?assets=.*77/));
+  });
+
+  it("the Delivered section links to the labels of every delivered unit of the PO", async () => {
+    mockGets([DELIVERED_LINE]);
+    renderDetailAt();
+    await waitFor(() => expect(screen.getByText("HP Printer")).toBeInTheDocument());
+    expect(screen.getByRole("link", { name: /print labels for the delivered units/i })).toHaveAttribute("href", expect.stringMatching(/^\/print-labels\?assets=.*99/));
+  });
+
   it("a line whose Item's serial is read later starts with 'add it later' ticked, and delivers without a serial", async () => {
     mockGets([{ ...PENDING_LINE, serial_later: true }]);
     (apiClient.post as any).mockResolvedValue([{ ...PENDING_LINE, status: "DELIVERED" }]);

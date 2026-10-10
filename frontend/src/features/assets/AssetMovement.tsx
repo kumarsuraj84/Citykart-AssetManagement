@@ -15,6 +15,7 @@ import { AsyncButton } from "@/components/shared/AsyncButton";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { useTableSort } from "@/components/shared/useTableSort";
 import { ScanBarcode, ArrowUp, ArrowDown, ChevronsUpDown } from "lucide-react";
+import { assetScanQuery, isAssetLink } from "../../lib/scan";
 
 interface Option {
   id: number;
@@ -167,6 +168,10 @@ export function AssetMovement() {
       // ever needs enough to detect "more than one match", hence 5.
       const fetchLimit = vars.requestedQty > 1 ? Math.min(Math.max(vars.requestedQty, 5), 500) : 5;
       const statusParam = vars.status ? `&status=${vars.status}` : "";
+      // The QR on an asset label is a link to the asset: look that one asset up directly.
+      if (isAssetLink(vars.value)) {
+        return apiClient.get<{ items: AssetSearchResult[]; total: number }>(`/assets?${assetScanQuery(vars.value)}`);
+      }
       return apiClient.get<{ items: AssetSearchResult[]; total: number }>(
         `/assets?q=${encodeURIComponent(vars.value)}&limit=${fetchLimit}${statusParam}`,
       );
