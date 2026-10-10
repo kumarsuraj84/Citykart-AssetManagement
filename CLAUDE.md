@@ -27,7 +27,8 @@ Full context lives in `docs/ai/`:
 - `REVIEW_FINDINGS.md` — open technical/design findings not yet fixed
 - `DECISIONS.md` — durable product decisions and why they were made
 - `UAT_MATRIX.md` — route-by-route functional/design/security/responsive test status
-- `ERP_INTEGRATION.md` — read-only link to the ERP warehouse (vendors, POs; receipts/PI planned)
+- `ERP_INTEGRATION.md` — read-only link to the ERP warehouse (vendors, POs, receipts, PI)
+- `ITEM_MODEL.md` — CityKart Items, and how ERP item codes map to them
 
 Spec/plan history (superseded where `docs/ai/DECISIONS.md` overrides it):
 - `docs/specs/2026-09-23-ckam-design.md`

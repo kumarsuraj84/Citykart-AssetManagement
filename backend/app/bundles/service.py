@@ -198,5 +198,6 @@ async def add_bundle_lines(
             "tax_percent": data.get("tax_percent", 0),
             "quantity": data["quantity"],
             "bundle_label": bundle.name,
+            "erp_item_code": data.get("erp_item_code"),
         }, actor))
     return created

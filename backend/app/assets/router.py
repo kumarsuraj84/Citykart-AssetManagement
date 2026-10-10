@@ -17,6 +17,7 @@ from app.assets.schemas import AssetCorrectionIn, AssetCreateIn, AssetDetailOut,
 from app.assets.search_service import search_assets
 from app.assets.service import check_serial_number_unique, compute_tax, compute_warranty_upto, procure_assets
 from app.asset_users.models import AssetUser
+from app.items.models import Item
 from app.lifecycle.service import apply_event
 from app.lifecycle.state_machine import LifecycleError
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Department, Location, Vendor
@@ -188,9 +189,12 @@ async def list_assets(
         asset_user_labels, company_labels, category_labels, subcategory_labels, vendor_labels, cost_center_labels,
         asset_user_locations, asset_user_types, brand_labels,
     ) = await _page_label_maps(session, items)
+    item_ids = {a.item_id for a in items if a.item_id}
+    item_labels = dict((await session.execute(select(Item.id, Item.name).where(Item.id.in_(item_ids)))).all()) if item_ids else {}
     out_items = []
     for a in items:
         out = AssetOut.model_validate(a)
+        out.item_name = item_labels.get(a.item_id) if a.item_id else None
         out.current_asset_user_name = asset_user_labels.get(a.current_asset_user_id)
         out.current_asset_user_location_name = asset_user_locations.get(a.current_asset_user_id)
         out.current_asset_user_type = asset_user_types.get(a.current_asset_user_id)
@@ -303,10 +307,13 @@ async def _to_detail_out(session: AsyncSession, asset: Asset) -> AssetDetailOut:
         exclude={
             "current_asset_user_name", "current_asset_user_location_name", "current_asset_user_type",
             "company_name", "category_name", "subcategory_name", "cost_center_name", "vendor_name", "brand_name",
+            "item_name",
         }
     )
+    item = await session.get(Item, asset.item_id) if asset.item_id else None
     return AssetDetailOut(
         **base,
+        item_name=item.name if item else None,
         current_asset_user_name=current_asset_user.name if current_asset_user else None,
         company_name=company.name if company else None,
         category_name=category.name if category else None,

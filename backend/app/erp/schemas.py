@@ -1,26 +1,34 @@
 from datetime import date
+from typing import Literal
 from pydantic import BaseModel, Field
 from app.bundles.schemas import BundleLineAmountIn
 
 
 class DraftLineIn(BaseModel):
-    item_code: str | None = None
-    group_code: str | None = None
+    item_code: str | None = None          # the ERP item code; kept on the asset as a link back to the PO/receipt/PI
     description: str = Field(min_length=1, max_length=500)
     barcode: str
     quantity: int = Field(ge=1, le=1000)
     rate: float = Field(gt=0)
     tax_percent: float = Field(default=0, ge=0, le=100)
     warranty_years: int = Field(default=0, ge=0)
-    category_id: int | None = None
-    subcategory_id: int | None = None
+    # What the asset IS. Its category, sub-category, serial rule and bundle come
+    # from the Item on the server, never from here.
+    item_id: int
     brand_id: int | None = None
     model: str | None = None
-    # A bundle line becomes one line per part; `bundle_parts` carries the
+    # A bundle Item becomes one line per part; `bundle_parts` carries the
     # (possibly edited) amount per part, else the bundle's own split is used.
-    bundle_id: int | None = None
     bundle_parts: list[BundleLineAmountIn] | None = None
-    remember: bool = False
+    # Remember this choice for the next PO: this one ERP code, this product name
+    # inside its Article, or the whole Article. The Article facts below come from
+    # the draft and are stored as a snapshot on the rule.
+    map_scope: Literal["CODE", "NAME", "ARTICLE"] | None = None
+    article_key: str | None = None
+    article_name: str | None = None
+    section: str | None = None
+    department: str | None = None
+    name_key: str | None = None
 
 
 class DraftCreateIn(BaseModel):

@@ -17,8 +17,8 @@ async def _create_desktop_po(client, ids, h):
     body = {k: draft[k] for k in ("erp_po_code", "po_number", "po_date", "company_id", "vendor_id", "cost_center_id",
                                   "delivery_asset_user_id", "warehouse_code")}
     ln = draft["lines"][0]
-    body["lines"] = [{k: ln[k] for k in ("item_code", "group_code", "description", "barcode", "quantity", "rate",
-                                         "tax_percent", "warranty_years", "bundle_id")}]
+    body["lines"] = [{k: ln[k] for k in ("item_code", "description", "barcode", "quantity", "rate", "tax_percent",
+                                         "warranty_years", "item_id")}]
     resp = await client.post("/api/erp/pos/create", headers=h, json=body)
     assert resp.status_code == 201, resp.text
     return resp.json()["po_id"]
@@ -42,6 +42,37 @@ async def _deliver(client, h, po_id, units, ids, invoice="INV-1", serial_prefix=
 
 def receipt(qty, grc="GRC-1", day=20):
     return ErpReceipt(po_code=PO_CODE, item_code="CT324973", grc_no=grc, grc_date=date(2026, 9, day), received_qty=qty)
+
+
+# ---------- the Item and the ERP code reach the asset ----------
+
+async def test_a_delivered_asset_knows_its_item_and_the_erp_code_it_was_bought_under(client, erp):
+    ids = await _setup()
+    h = await _headers(client, "OPR")
+    body = {"erp_po_code": PO_CODE, "company_id": ids["spl"], "po_number": "SPO/CBL", "po_date": "2026-09-18", "vendor_id": ids["vansh"],
+            "cost_center_id": ids["cost_spl"], "delivery_asset_user_id": ids["taj"], "lines": [
+                {"item_code": "CT500001", "description": "48 PORT SWITCH", "barcode": "CT500001", "quantity": 1, "rate": 9000,
+                 "tax_percent": 18, "item_id": ids["item_cable"]}]}
+    po_id = (await client.post("/api/erp/pos/create", headers=h, json=body)).json()["po_id"]
+    [pending] = (await client.get(f"/api/purchase-orders/{po_id}/lines", headers=h)).json()
+    assert (pending["item_id"], pending["erp_item_code"]) == (ids["item_cable"], "CT500001")
+
+    deliver = await client.post(f"/api/purchase-orders/{po_id}/deliver", headers=h, json={
+        "invoice_number": "INV-9", "invoice_date": "2026-09-20", "invoice_amount": 9000,
+        "lines": [{"pending_asset_id": pending["id"], "serial_number": "SW-1", "initial_asset_user_id": ids["taj"]}]})
+    assert deliver.status_code == 200, deliver.text
+    [asset] = (await client.get("/api/assets", headers=h)).json()["items"]
+    assert (asset["item_id"], asset["item_name"], asset["erp_item_code"]) == (ids["item_cable"], "Cable", "CT500001")
+    detail = (await client.get(f"/api/assets/{asset['id']}", headers=h)).json()
+    assert (detail["item_name"], detail["erp_item_code"]) == ("Cable", "CT500001")
+
+
+async def test_the_parts_of_a_bundle_keep_the_erp_code_but_are_not_themselves_the_bundle_item(client, erp):
+    ids = await _setup()
+    h = await _headers(client, "OPR")
+    po_id = await _create_desktop_po(client, ids, h)
+    lines = (await client.get(f"/api/purchase-orders/{po_id}/lines", headers=h)).json()
+    assert {l["erp_item_code"] for l in lines} == {"CT324973"} and {l["item_id"] for l in lines} == {None}
 
 
 # ---------- delivery reminders ----------

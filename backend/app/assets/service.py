@@ -221,6 +221,8 @@ async def procure_assets(session: AsyncSession, data: dict, quantity: int, actor
             cost_center_id=data["cost_center_id"],
             category_id=data["category_id"],
             subcategory_id=data.get("subcategory_id"),
+            item_id=data.get("item_id"),
+            erp_item_code=data.get("erp_item_code"),
             brand_id=data.get("brand_id"),
             model=data.get("model"),
             serial_number=data.get("serial_number"),

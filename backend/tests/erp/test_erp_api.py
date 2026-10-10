@@ -7,9 +7,11 @@ from app.asset_users.models import AssetUser
 from app.bundles.models import Bundle, BundlePart
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.erp.models import ItemCatalog
 from app.erp.service import derive_tax, split_location
-from app.erp.source import ErpInvoice, ErpPo, ErpPoLine, ErpReceipt, ErpUnavailable, ErpVendor, get_erp_source
+from app.erp.source import (
+    ErpArticle, ErpArticleCode, ErpInvoice, ErpItem, ErpPo, ErpPoLine, ErpReceipt, ErpUnavailable, ErpVendor, get_erp_source,
+)
+from app.items.models import Item, ItemMap
 from app.main import app
 from app.numbering.models import CodeRule
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Department, Location, Vendor
@@ -40,7 +42,38 @@ class FakeErp:
         self.pos = {1133610106: desktop_po()}
         self.receipt_list: list[ErpReceipt] = []
         self.invoice_list: list[ErpInvoice] = []
+        # The ERP item master: the Dell desktop sits in Article "02-I3 CORE[IT-01]".
+        self.erp_items = {
+            "CT324973": ErpItem("CT324973", "02-I3 CORE[IT-01]", "02-I3 CORE[IT-01]", "IT EQUIPMENTS", "FA_CE_DESKTOP",
+                                cats=["DELL DESKTOP REFURB/i3", "HARSHIT INFOSOLUTION"]),
+            # a second vendor code for the same Article -> lands on the same Item by itself
+            "CT999001": ErpItem("CT999001", "02-I3 CORE[IT-01]", "02-I3 CORE[IT-01]", "IT EQUIPMENTS", "FA_CE_DESKTOP",
+                                cats=["LENOVO DESKTOP I3", "OTHER VENDOR"]),
+            # a catch-all Article: products told apart by their name
+            "CT500001": ErpItem("CT500001", "FA_IT_OTHERS", "FA_IT_OTHERS", "IT EQUIPMENTS", "FA_IT_OTHERS", cats=["48 PORT SWITCH"]),
+            "CT500002": ErpItem("CT500002", "FA_IT_OTHERS", "FA_IT_OTHERS", "IT EQUIPMENTS", "FA_IT_OTHERS", cats=["6U RACK"]),
+        }
+        self.articles = [
+            ErpArticle("02-I3 CORE[IT-01]", "02-I3 CORE[IT-01]", "IT EQUIPMENTS", "FA_CE_DESKTOP", codes=2, units=657, lines=60, samples=["DELL DESKTOP REFURB/I3"]),
+            ErpArticle("FA_IT_OTHERS", "FA_IT_OTHERS", "IT EQUIPMENTS", "FA_IT_OTHERS", codes=2, units=40, lines=9, samples=["48 PORT SWITCH", "6U RACK"]),
+            ErpArticle("FA_CE_UPS", "FA_CE_UPS", "COMPUTER EQUIPMENT", "FA_CE_UPS", codes=2, units=900, lines=114, samples=["APC UPS"]),
+        ]
         self.down: str | None = None
+
+    async def items(self, codes):
+        if self.down:
+            raise ErpUnavailable(self.down)
+        return [self.erp_items[c] for c in codes if c in self.erp_items]
+
+    async def bought_articles(self):
+        if self.down:
+            raise ErpUnavailable(self.down)
+        return self.articles
+
+    async def article_codes(self, article_key):
+        if self.down:
+            raise ErpUnavailable(self.down)
+        return [ErpArticleCode(e.icode, e.name, e.description, 10.0, 2) for e in self.erp_items.values() if e.article_key == article_key]
 
     async def receipts(self, po_codes):
         if self.down:
@@ -127,9 +160,18 @@ async def _setup():
         )):
             session.add(BundlePart(bundle_id=desktop.id, name=name, category_id=cat.id, subcategory_id=sub.id,
                                    share_percent=share, sort_order=order))
+        # Items: "Desktop" is a bundle and owns the Dell Desktop's whole Article; "Cable" is a plain item.
+        item_desktop = Item(name="Desktop", category_id=comp.id, subcategory_id=cpu.id, bundle_id=desktop.id,
+                            default_warranty_years=1, created_by=owner.id, updated_by=owner.id)
+        item_cable = Item(name="Cable", category_id=acc.id, subcategory_id=cables.id, created_by=owner.id, updated_by=owner.id)
+        session.add_all([item_desktop, item_cable])
+        await session.flush()
+        session.add(ItemMap(item_id=item_desktop.id, match_type="ARTICLE", article_key="02-I3 CORE[IT-01]",
+                            article_name="02-I3 CORE[IT-01]", created_by=owner.id, updated_by=owner.id))
         await session.commit()
         return {"spl": spl.id, "vpl": vpl.id, "taj": taj.id, "faru": faru.id, "vtaj": vtaj.id,
                 "desktop": desktop.id, "acc": acc.id, "cables": cables.id,
+                "item_desktop": item_desktop.id, "item_cable": item_cable.id,
                 "cost_spl": (await session.execute(select(CostCenter.id).where(CostCenter.company_id == spl.id))).scalar_one(),
                 "vansh": (await session.execute(select(Vendor.id).where(Vendor.code == "VANSH"))).scalar_one(),
                 "harshit": (await session.execute(select(Vendor.id).where(Vendor.code == "HARSHIT_INF"))).scalar_one(),
@@ -236,7 +278,29 @@ async def test_a_po_becomes_a_fully_matched_draft(client, erp):
     assert d["warnings"] == [] and d["already_created_id"] is None
     [ln] = d["lines"]
     assert (ln["item_code"], ln["barcode"], ln["quantity"], ln["rate"], ln["tax_percent"]) == ("CT324973", "CT324973", 7, 20000.0, 18.0)
-    assert ln["bundle_id"] == ids["desktop"] and ln["brand_id"] is not None and ln["warnings"] == []
+    # The Item comes from the ERP Article; bundle, category, warranty come from the Item.
+    assert (ln["item_id"], ln["item_name"], ln["matched_by"]) == (ids["item_desktop"], "Desktop", "ARTICLE")
+    assert ln["bundle_id"] == ids["desktop"] and ln["bundle_name"] == "Desktop" and ln["warranty_years"] == 1
+    assert ln["brand_id"] is not None and ln["warnings"] == []
+    # What the ERP says is shown beside the code, with where it sits in the hierarchy.
+    assert ln["erp_description"] == "DELL DESKTOP REFURB/i3 · HARSHIT INFOSOLUTION"
+    assert (ln["section"], ln["department"], ln["article_key"]) == ("IT EQUIPMENTS", "FA_CE_DESKTOP", "02-I3 CORE[IT-01]")
+
+
+async def test_a_new_vendor_code_in_a_known_article_lands_on_the_same_item_by_itself(client, erp):
+    ids = await _setup()
+    erp.pos[1133610106] = desktop_po(lines=[line(1, "CT999001", "LENOVO DESKTOP I3", 3, 18000)])
+    [ln] = (await client.get("/api/erp/pos/1133610106/draft", headers=await _headers(client, "OPR"))).json()["lines"]
+    assert (ln["item_id"], ln["matched_by"]) == (ids["item_desktop"], "ARTICLE")
+
+
+async def test_a_code_with_no_item_is_flagged_and_nothing_is_guessed(client, erp):
+    await _setup()
+    erp.pos[1133610106] = desktop_po(lines=[line(1, "CT500001", "48 PORT SWITCH", 2, 9000), line(2, "CT777", "Unknown to the ERP master", 1, 100)])
+    a, b = (await client.get("/api/erp/pos/1133610106/draft", headers=await _headers(client, "OPR"))).json()["lines"]
+    assert a["item_id"] is None and a["category_id"] is None and a["article_key"] == "FA_IT_OTHERS"
+    assert any("No Item is linked to this ERP code yet (Article FA_IT_OTHERS)" in w for w in a["warnings"])
+    assert b["item_id"] is None and any("no record of this code" in w for w in b["warnings"])
 
 
 async def test_unknown_company_vendor_and_location_are_left_empty_with_warnings(client, erp):
@@ -271,8 +335,8 @@ async def test_creating_from_the_draft_makes_ordinary_lines_and_remembers_the_er
     body = {k: draft[k] for k in ("erp_po_code", "po_number", "po_date", "company_id", "vendor_id", "cost_center_id",
                                   "delivery_asset_user_id", "warehouse_code")}
     ln = draft["lines"][0]
-    body["lines"] = [{k: ln[k] for k in ("item_code", "group_code", "description", "barcode", "quantity", "rate",
-                                         "tax_percent", "warranty_years", "bundle_id")} | {"remember": True}]
+    body["lines"] = [{k: ln[k] for k in ("item_code", "description", "barcode", "quantity", "rate", "tax_percent",
+                                         "warranty_years", "item_id")}]
     resp = await client.post("/api/erp/pos/create", headers=h, json=body)
     assert resp.status_code == 201, resp.text
     assert resp.json()["lines_created"] == 28
@@ -286,33 +350,69 @@ async def test_creating_from_the_draft_makes_ordinary_lines_and_remembers_the_er
     redraft = (await client.get("/api/erp/pos/1133610106/draft", headers=h)).json()
     assert redraft["already_created_id"] is not None and any("already created" in w for w in redraft["warnings"])
     async with SessionLocal() as session:
-        assert (await session.execute(select(func.count()).select_from(PendingAsset))).scalar_one() == 28
-        mem = (await session.execute(select(ItemCatalog).where(ItemCatalog.item_code == "CT324973"))).scalar_one()
-        assert mem.bundle_id == ids["desktop"]
+        pending = (await session.execute(select(PendingAsset))).scalars().all()
+        assert len(pending) == 28
+        # Every part keeps the ERP code it was ordered under, as a link back to the PO / receipt / PI.
+        assert {p.erp_item_code for p in pending} == {"CT324973"} and {p.bundle_label for p in pending} == {"Desktop"}
 
 
-async def test_a_plain_line_needs_its_category_and_the_whole_po_is_all_or_nothing(client, erp):
+async def test_a_plain_line_gets_its_category_and_item_from_the_item_and_the_whole_po_is_all_or_nothing(client, erp):
     ids = await _setup()
     h = await _headers(client, "OPR")
+    good = {"item_code": "CT1", "description": "Good", "barcode": "CT1", "quantity": 2, "rate": 100, "tax_percent": 18,
+            "item_id": ids["item_cable"]}
     body = {
         "erp_po_code": 1133610106, "company_id": ids["spl"], "po_number": "SPO/9", "po_date": "2026-09-18",
         "vendor_id": ids["vansh"], "cost_center_id": ids["cost_spl"],
-        "lines": [
-            {"item_code": "CT1", "description": "Good", "barcode": "CT1", "quantity": 2, "rate": 100, "tax_percent": 18,
-             "category_id": ids["acc"], "subcategory_id": ids["cables"]},
-            {"item_code": "CT2", "description": "No category", "barcode": "CT2", "quantity": 1, "rate": 100, "tax_percent": 18},
-        ],
+        "lines": [good, {"item_code": "CT2", "description": "Item missing", "barcode": "CT2", "quantity": 1, "rate": 100, "tax_percent": 18,
+                         "item_id": 999999}],
     }
     resp = await client.post("/api/erp/pos/create", headers=h, json=body)
-    assert resp.status_code == 422 and "category and sub-category are required" in resp.json()["detail"]
+    assert resp.status_code == 422 and "choose the Item" in resp.json()["detail"]
     async with SessionLocal() as session:
         assert (await session.execute(select(func.count()).select_from(PurchaseOrder))).scalar_one() == 0
+
+    ok = await client.post("/api/erp/pos/create", headers=h, json=body | {"lines": [good]})
+    assert ok.status_code == 201, ok.text
+    async with SessionLocal() as session:
+        lines = (await session.execute(select(PendingAsset))).scalars().all()
+        assert len(lines) == 2
+        assert {(l.item_id, l.category_id, l.subcategory_id, l.erp_item_code) for l in lines} == {
+            (ids["item_cable"], ids["acc"], ids["cables"], "CT1")}
+
+
+async def test_choosing_an_item_can_be_remembered_for_the_code_the_product_name_or_the_whole_article(client, erp):
+    ids = await _setup()
+    h = await _headers(client, "OPR")
+
+    async def create(po_no, scope, code):
+        e = erp.erp_items[code]
+        body = {"company_id": ids["spl"], "po_number": po_no, "po_date": "2026-09-18", "vendor_id": ids["vansh"],
+                "cost_center_id": ids["cost_spl"], "lines": [{
+                    "item_code": code, "description": e.name, "barcode": code, "quantity": 1, "rate": 100, "tax_percent": 18,
+                    "item_id": ids["item_cable"], "map_scope": scope, "article_key": e.article_key, "article_name": e.article_name,
+                    "section": e.section, "department": e.department, "name_key": e.name}]}
+        resp = await client.post("/api/erp/pos/create", headers=h, json=body)
+        assert resp.status_code == 201, resp.text
+
+    async def draft_line(code):
+        erp.pos[1133610106] = desktop_po(lines=[line(1, code, erp.erp_items[code].name, 1, 100)])
+        return (await client.get("/api/erp/pos/1133610106/draft", headers=h)).json()["lines"][0]
+
+    await create("P-NAME", "NAME", "CT500001")            # the switch, by its product name
+    assert (await draft_line("CT500001"))["matched_by"] == "NAME"
+    assert (await draft_line("CT500002"))["item_id"] is None   # the rack in the same catch-all Article is NOT swept in
+    await create("P-CODE", "CODE", "CT500002")            # the rack, by its own code only
+    assert (await draft_line("CT500002"))["matched_by"] == "CODE"
+    async with SessionLocal() as session:
+        rules = {(m.match_type, m.erp_item_code or m.name_key or m.article_key) for m in (await session.execute(select(ItemMap).where(ItemMap.item_id == ids["item_cable"]))).scalars().all()}
+    assert rules == {("NAME", "48 port switch"), ("CODE", "CT500002")}
 
 
 async def test_an_operator_cannot_create_a_po_for_another_company_and_a_viewer_cannot_use_it_at_all(client, erp):
     ids = await _setup()
     body = {"company_id": ids["vpl"], "po_number": "X", "po_date": "2026-09-18", "cost_center_id": ids["cost_spl"],
-            "lines": [{"description": "d", "barcode": "b", "quantity": 1, "rate": 1}]}
+            "lines": [{"description": "d", "barcode": "b", "quantity": 1, "rate": 1, "item_id": ids["item_cable"]}]}
     assert (await client.post("/api/erp/pos/create", headers=await _headers(client, "OPR"), json=body)).status_code in (403, 404)
     viewer = await _headers(client, "VWR")
     assert (await client.get("/api/erp/pos", headers=viewer)).status_code == 403

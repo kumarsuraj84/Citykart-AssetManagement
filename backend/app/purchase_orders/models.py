@@ -64,6 +64,11 @@ class PendingAsset(Base, AuditMixin):
     # from, shown as a tag; null for ordinary lines.
     serial_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     bundle_label: Mapped[str | None] = mapped_column(String(100))
+    # The Item this unit is (see app.items), and the ERP item code it was ordered
+    # under -- carried onto the Asset at delivery. Both optional: lines typed by
+    # hand have neither.
+    item_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("item.id"))
+    erp_item_code: Mapped[str | None] = mapped_column(String(50))
 
     # IT / NON_IT, derived server-side from Category.asset_domain when the
     # line is created (spec §19) -- copied onto Asset.asset_domain unchanged

@@ -8,9 +8,10 @@ from app.asset_users.models import AssetUser
 from app.bundles.models import Bundle
 from app.bundles.service import add_bundle_lines
 from app.core.deps import ensure_company_in_scope, scoped_company_ids
-from app.erp.models import ItemCatalog
 from app.erp.source import ErpPo, ErpSource
-from app.masters.models import Brand, Company, CostCenter, Vendor
+from app.items.models import Item
+from app.items.service import norm as norm_name, resolve_items, upsert_map
+from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Vendor
 from app.purchase_orders.models import PurchaseOrder
 from app.purchase_orders.service import add_pending_asset_line, create_purchase_order
 
@@ -143,7 +144,7 @@ async def list_available_pos(session: AsyncSession, actor: AssetUser, source: Er
     ]
 
 
-async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo) -> dict:
+async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source: ErpSource) -> dict:
     allowed = await scoped_company_ids(session, actor)
     warnings: list[str] = []
     company = await _match_company(session, po, allowed, warnings)
@@ -163,10 +164,16 @@ async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo) -> dic
         warnings.append(f"This purchase order is {po.status.lower()} in the ERP.")
 
     brands = (await session.execute(select(Brand).where(Brand.is_active.is_(True)))).scalars().all()
-    bundles = (await session.execute(select(Bundle).where(Bundle.is_active.is_(True)))).scalars().all()
-    catalog = (await session.execute(select(ItemCatalog))).scalars().all()
-    by_code = {c.item_code.lower(): c for c in catalog}
     derived_tax, raw_tax = derive_tax(po)
+    # Which CKAM Item each ERP code is (code > product name > Article), and what
+    # the ERP says about each code, so the review screen can show words next to
+    # the code and ask once for any code that has no Item yet.
+    erp_items = {e.icode: e for e in await source.items([ln.item_code for ln in po.lines])}
+    resolutions = await resolve_items(session, list(erp_items.values()))
+    item_ids = {r.item.id for r in resolutions.values() if r.item}
+    cat_rows = {c.id: c for c in (await session.execute(select(AssetCategory))).scalars().all()}
+    sub_rows = {s.id: s for s in (await session.execute(select(AssetSubcategory))).scalars().all()}
+    bundles_by_id = {b.id: b for b in (await session.execute(select(Bundle).where(Bundle.is_active.is_(True)))).scalars().all()}
 
     lines = []
     for ln in po.lines:
@@ -189,32 +196,41 @@ async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo) -> dic
         else:
             tax = 0
             line_warnings.append("The ERP has no tax % for this line and it could not be worked out. Enter it.")
-        memory = by_code.get(ln.item_code.lower())
-        category_id = subcategory_id = brand_id = bundle_id = model = None
-        category_from_group = False
-        warranty = 0
-        if memory is not None:
-            category_id, subcategory_id, brand_id = memory.category_id, memory.subcategory_id, memory.brand_id
-            model, bundle_id = memory.model, memory.bundle_id
-            warranty = memory.warranty_years or 0
-        else:
-            same_group = next((c for c in reversed(catalog) if ln.group_code and c.group_code == ln.group_code and c.category_id), None)
-            if same_group is not None:
-                category_id, subcategory_id, category_from_group = same_group.category_id, same_group.subcategory_id, True
+        erp = erp_items.get(ln.item_code)
+        res = resolutions.get(ln.item_code)
+        item = res.item if res else None
+        brand_id = warranty = None
+        if item is not None:
+            brand_id, warranty = item.default_brand_id, item.default_warranty_years
+        if brand_id is None:
             words = set(re.findall(r"[a-z0-9]+", ln.description.lower()))
             brand_hits = [b for b in brands if _norm(b.name) and set(re.findall(r"[a-z0-9]+", b.name.lower())) <= words]
             if len(brand_hits) == 1:
                 brand_id = brand_hits[0].id
-            bundle_hits = [b for b in bundles if set(re.findall(r"[a-z0-9]+", b.name.lower())) <= words]
-            if len(bundle_hits) == 1:
-                bundle_id = bundle_hits[0].id
+        if erp is None:
+            line_warnings.append("The ERP item master has no record of this code, so it cannot be matched to an Item automatically.")
+        elif erp.extinct:
+            line_warnings.append("The ERP marks this item (or its Article) as extinct.")
+        if item is None:
+            where = f" (Article {erp.article_name})" if erp else ""
+            line_warnings.append(f"No Item is linked to this ERP code yet{where}. Choose the Item below; it is remembered for the next PO.")
+        category = cat_rows.get(item.category_id) if item else None
+        subcategory = sub_rows.get(item.subcategory_id) if item and item.subcategory_id else None
         lines.append({
             "item_code": ln.item_code, "description": ln.description[:500], "barcode": ln.item_code,
             "quantity": _whole(qty), "rate": ln.rate, "amount": round(ln.rate * qty, 2), "tax_percent": tax,
-            "hsn": ln.hsn, "unit": ln.unit, "group_code": ln.group_code, "warranty_years": warranty,
-            "category_id": category_id, "subcategory_id": subcategory_id, "brand_id": brand_id,
-            "model": model, "bundle_id": bundle_id, "remembered": memory is not None,
-            "category_from_group": category_from_group, "warnings": line_warnings,
+            "hsn": ln.hsn, "unit": ln.unit, "warranty_years": warranty or 0, "brand_id": brand_id, "model": None,
+            "item_id": item.id if item else None, "item_name": item.name if item else None,
+            "matched_by": res.matched_by if item and res else None,
+            "category_id": item.category_id if item else None, "category_name": category.name if category else None,
+            "subcategory_id": item.subcategory_id if item else None, "subcategory_name": subcategory.name if subcategory else None,
+            "bundle_id": item.bundle_id if item else None,
+            "bundle_name": bundles_by_id[item.bundle_id].name if item and item.bundle_id in bundles_by_id else None,
+            "erp_description": erp.description if erp else None, "erp_name": erp.name if erp else None,
+            "article_key": erp.article_key if erp else None, "article_name": erp.article_name if erp else None,
+            "section": erp.section if erp else None, "department": erp.department if erp else None,
+            "name_key": norm_name(erp.name) if erp else None,
+            "warnings": line_warnings,
         })
 
     return {
@@ -266,40 +282,40 @@ async def create_from_draft(session: AsyncSession, actor: AssetUser, data: dict)
             raise ValueError(f"{label}: barcode is required")
         if ln["rate"] <= 0:
             raise ValueError(f"{label}: cost must be more than 0")
-        if ln.get("bundle_id"):
+        item = await session.get(Item, ln.get("item_id")) if ln.get("item_id") else None
+        if item is None or not item.is_active:
+            raise ValueError(f"{label}: choose the Item")
+        # Category, sub-category and bundle come from the Item, never from the client.
+        if item.bundle_id:
             lines = await add_bundle_lines(session, po, {
-                "bundle_id": ln["bundle_id"], "description": ln["description"], "barcode": ln["barcode"],
+                "bundle_id": item.bundle_id, "description": ln["description"], "barcode": ln["barcode"],
                 "quantity": ln["quantity"], "price": ln["rate"], "tax_percent": ln["tax_percent"],
-                "warranty_years": ln["warranty_years"], "parts": ln.get("bundle_parts"),
+                "warranty_years": ln["warranty_years"], "parts": ln.get("bundle_parts"), "erp_item_code": ln.get("item_code"),
             }, actor)
         else:
-            if not ln.get("category_id") or not ln.get("subcategory_id"):
-                raise ValueError(f"{label}: category and sub-category are required")
             lines = await add_pending_asset_line(session, po, {
-                "description": ln["description"], "barcode": ln["barcode"], "category_id": ln["category_id"],
-                "subcategory_id": ln["subcategory_id"], "brand_id": ln.get("brand_id"), "model": ln.get("model"),
+                "description": ln["description"], "barcode": ln["barcode"], "category_id": item.category_id,
+                "subcategory_id": item.subcategory_id, "brand_id": ln.get("brand_id"), "model": ln.get("model"),
                 "warranty_years": ln["warranty_years"], "purchase_cost": ln["rate"],
                 "tax_percent": ln["tax_percent"], "quantity": ln["quantity"],
+                "item_id": item.id, "erp_item_code": ln.get("item_code"),
             }, actor)
         created += len(lines)
-        if ln.get("remember") and ln.get("item_code"):
-            await _remember(session, actor, ln)
+        if ln.get("map_scope"):
+            await _remember_mapping(session, actor, item, ln)
     return {"po_id": po.id, "po_number": po.po_number, "lines_created": created}
 
 
-async def _remember(session: AsyncSession, actor: AssetUser, ln: dict) -> None:
-    entry = (await session.execute(
-        select(ItemCatalog).where(func.lower(ItemCatalog.item_code) == ln["item_code"].lower())
-    )).scalar_one_or_none()
-    if entry is None:
-        entry = ItemCatalog(item_code=ln["item_code"], created_by=actor.id)
-        session.add(entry)
-    entry.group_code = ln.get("group_code") or entry.group_code
-    entry.bundle_id = ln.get("bundle_id")
-    entry.category_id = None if ln.get("bundle_id") else ln.get("category_id")
-    entry.subcategory_id = None if ln.get("bundle_id") else ln.get("subcategory_id")
-    entry.brand_id = ln.get("brand_id")
-    entry.model = ln.get("model") or None
-    entry.warranty_years = ln.get("warranty_years")
-    entry.updated_by = actor.id
-    await session.flush()
+async def _remember_mapping(session: AsyncSession, actor: AssetUser, item: Item, ln: dict) -> None:
+    """Saves the user's choice of Item as a rule, so the next PO with this code
+    (or Article, or product name) needs no choosing."""
+    scope = ln["map_scope"]
+    if scope not in ("CODE", "NAME", "ARTICLE"):
+        raise ValueError(f"unknown mapping scope {scope!r}")
+    if scope != "CODE" and not ln.get("article_key"):
+        raise ValueError("this code has no Article in the ERP, so it can only be remembered by its own code")
+    await upsert_map(session, actor, {
+        "item_id": item.id, "match_type": scope, "article_key": ln.get("article_key"), "name_key": ln.get("name_key"),
+        "erp_item_code": ln.get("item_code"), "section": ln.get("section"), "department": ln.get("department"),
+        "article_name": ln.get("article_name"),
+    })

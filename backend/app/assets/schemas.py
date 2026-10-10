@@ -73,6 +73,8 @@ class AssetOut(BaseModel):
     cost_center_id: int
     category_id: int
     subcategory_id: int | None
+    item_id: int | None = None
+    erp_item_code: str | None = None
     brand_id: int | None
     model: str | None
     serial_number: str | None
@@ -120,6 +122,9 @@ class AssetOut(BaseModel):
     cost_center_name: str | None = None
     vendor_name: str | None = None
     brand_name: str | None = None
+    # CityKart's own Item this asset is (see app.items); the ERP item code is
+    # only its link back to the PO / receipt / PI.
+    item_name: str | None = None
 
 
 class AssetDetailOut(AssetOut):

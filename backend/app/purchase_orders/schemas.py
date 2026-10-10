@@ -87,6 +87,8 @@ class PendingAssetOut(BaseModel):
     status: str
     serial_required: bool = True
     bundle_label: str | None = None
+    item_id: int | None = None
+    erp_item_code: str | None = None
     serial_number: str | None
     invoice_number: str | None
     invoice_date: date | None

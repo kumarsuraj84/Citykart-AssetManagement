@@ -7,6 +7,7 @@ from app.assets.service import compute_tax, procure_assets
 from app.asset_users.models import AssetUser
 from app.lifecycle.models import AssetEvent
 from app.masters.models import AssetCategory, AssetSubcategory, CostCenter
+from app.items.models import Item
 from app.masters.serial_rule import effective_serial_required
 from app.purchase_orders.models import PendingAsset, PurchaseOrder
 
@@ -115,9 +116,10 @@ async def add_pending_asset_line(
     # The delivery dialog starts with "No serial number" ticked for lines whose
     # category/sub-category carries none (a mouse). Only a default, snapshotted
     # here; an explicit value from the caller wins.
+    item = await session.get(Item, data["item_id"]) if data.get("item_id") else None
     serial_required = data.get("serial_required")
     if serial_required is None:
-        serial_required = effective_serial_required(category, subcategory)
+        serial_required = effective_serial_required(category, subcategory, item)
 
     quantity = data.get("quantity", 1)
     created: list[PendingAsset] = []
@@ -133,6 +135,7 @@ async def add_pending_asset_line(
             # line-creation time, same discipline as Asset.asset_domain.
             asset_domain=category.asset_domain,
             serial_required=serial_required, bundle_label=data.get("bundle_label"),
+            item_id=data.get("item_id"), erp_item_code=data.get("erp_item_code"),
             created_by=actor.id, updated_by=actor.id,
         )
         session.add(line)
@@ -146,7 +149,8 @@ async def update_pending_asset_line(session: AsyncSession, line: PendingAsset, d
         raise ValueError(f"cannot edit a {line.status.lower()} line")
     category, subcategory = await _validate_line_masters(session, data)
     tax_amount, total_cost = compute_tax(data.get("purchase_cost"), data.get("tax_percent"))
-    line.serial_required = effective_serial_required(category, subcategory)
+    line.serial_required = effective_serial_required(
+        category, subcategory, await session.get(Item, line.item_id) if line.item_id else None)
     line.description = data["description"]
     line.barcode = data.get("barcode")
     line.category_id = data["category_id"]
@@ -258,6 +262,7 @@ async def deliver_pending_assets(
                 {
                     "company_id": line.company_id, "cost_center_id": line.cost_center_id,
                     "category_id": line.category_id, "subcategory_id": line.subcategory_id,
+                    "item_id": line.item_id, "erp_item_code": line.erp_item_code,
                     "description": line.description, "barcode": line.barcode, "purchase_cost": line.purchase_cost,
                     "tax_percent": line.tax_percent, "purchase_date": invoice_date,
                     "brand_id": line.brand_id, "model": line.model, "warranty_years": line.warranty_years,

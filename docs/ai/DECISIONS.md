@@ -2,6 +2,19 @@
 
 Newest first. These override older spec/plan text where they conflict.
 
+## 2026-10-10 — An asset's identity is a CityKart Item, never an ERP item code
+
+The ERP issues a new item code per vendor/spec (48% of codes have a sibling for the
+same product), so codes and free-text names cannot identify what an asset is. CKAM has
+its own **Item** (see `ITEM_MODEL.md`); many ERP codes map to one Item through rules
+(code > product name > Article), the Article being the default so new vendor codes
+follow automatically. The ERP code stays on the asset only as a link back to its PO,
+receipt and PI. Category / Sub-Category stay underneath as the internal classification
+(asset codes, reports, Responsibility), filled from the Item. The serial default chain
+is now Item > Sub-Category > Category. This supersedes the per-code "remember this
+item" memory (`item_catalog`, never released) and the idea of mapping an Item to a
+single barcode.
+
 ## 2026-10-10 — Serial numbers are decided by Category / Sub-Category, not by Bundle
 
 Whether an item carries a serial number is a setting on Setup > Asset

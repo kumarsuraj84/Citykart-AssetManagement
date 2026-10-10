@@ -19,6 +19,16 @@ VIEW_PO_LINE = "gold_ckam.po_line"
 VIEW_VENDOR = "gold_ckam.vendor"
 VIEW_RECEIPT = "gold_ckam.po_receipt_line"
 VIEW_INVOICE = "gold_ckam.po_invoice"
+# The item master. `gold_ckam.item` is the view we asked the ERP team for (it
+# carries the stable article_code, vendor, unit, HSN and extinct flags); until it
+# exists the readable warehouse table is used, which has the same hierarchy and
+# CAT1..CAT6 text but no article_code, so the article NAME is the key then.
+VIEW_ITEM = "gold_ckam.item"
+FALLBACK_ITEM = """(select icode, null::text as article_code, article_name, section, department, division,
+        cat1, cat2, cat3, cat4, cat5, cat6, null::text as item_name, null::text as vendor_name,
+        null::text as unit_name, null::text as hsn_code, false as item_extinct, false as article_extinct
+    from silver.dim_item)"""
+PLACEHOLDER_NAMES = {"", "-", "undefined", "na", "n/a", "1", "0"}
 
 CONNECT_TIMEOUT_SECONDS = 10
 CACHE_SECONDS = 60
@@ -95,7 +105,67 @@ class ErpInvoice:
     pi_amount: float | None
 
 
+def clean_name(value: str | None) -> str:
+    """An ERP product-name field, or '' when it is one of the placeholders the
+    ERP uses for 'nothing here' ('-', UNDEFINED, 1 ...)."""
+    text = (value or "").strip()
+    return "" if text.lower() in PLACEHOLDER_NAMES else text
+
+
+@dataclass
+class ErpItem:
+    """One ERP item code with where it sits (Division > Section > Department >
+    Article) and the descriptive text users typed (CAT1..CAT6). The code is a
+    purchasing code (item + vendor + spec); it is not what an asset IS."""
+    icode: str
+    article_key: str           # article_code when the ERP view has it, else the article name
+    article_name: str
+    section: str
+    department: str
+    division: str = "FIXED ASSETS"
+    cats: list[str] = field(default_factory=list)   # CAT1..CAT6, placeholders removed
+    vendor_name: str | None = None
+    unit: str | None = None
+    hsn: str | None = None
+    extinct: bool = False
+
+    @property
+    def name(self) -> str:
+        """CAT1: the product's own name."""
+        return self.cats[0] if self.cats else ""
+
+    @property
+    def description(self) -> str:
+        """All the descriptive text, to show beside the code."""
+        return " · ".join(self.cats)
+
+
+@dataclass
+class ErpArticle:
+    """An Article that has been bought, with how much, for the mapping screen."""
+    article_key: str
+    article_name: str
+    section: str
+    department: str
+    codes: int
+    units: float
+    lines: int
+    samples: list[str] = field(default_factory=list)
+
+
+@dataclass
+class ErpArticleCode:
+    icode: str
+    name: str
+    description: str
+    units: float
+    lines: int
+
+
 class ErpSource(Protocol):
+    async def items(self, codes: list[str]) -> list[ErpItem]: ...
+    async def bought_articles(self) -> list[ErpArticle]: ...
+    async def article_codes(self, article_key: str) -> list[ErpArticleCode]: ...
     async def receipts(self, po_codes: list[int]) -> list[ErpReceipt]: ...
     async def invoices(self, po_codes: list[int]) -> list[ErpInvoice]: ...
     async def vendors(self) -> list[ErpVendor]: ...
@@ -162,6 +232,75 @@ class PgErpSource:
                       is_active=True if r["is_active"] is None else bool(r["is_active"]))
             for r in rows
         ])
+
+    async def _item_relation(self) -> str:
+        """`gold_ckam.item` when it exists and is readable, else the fallback."""
+        cached = self._cached("item_relation")
+        if cached is not None:
+            return cached
+        try:
+            await self._fetch(f"select 1 from {VIEW_ITEM} limit 1")
+            relation = VIEW_ITEM
+        except ErpUnavailable:
+            relation = FALLBACK_ITEM
+        return self._remember("item_relation", relation)
+
+    @staticmethod
+    def _erp_item(r) -> ErpItem:
+        article_name = (r["article_name"] or "").strip()
+        article_key = str(r["article_code"]).strip() if r["article_code"] is not None else article_name
+        cats = [c for c in (clean_name(r[f"cat{n}"]) for n in range(1, 7)) if c]
+        return ErpItem(
+            icode=r["icode"], article_key=article_key, article_name=article_name, section=(r["section"] or "").strip(),
+            department=(r["department"] or "").strip(), division=(r["division"] or "").strip(), cats=cats,
+            vendor_name=clean_name(r["vendor_name"]) or None, unit=clean_name(r["unit_name"]) or None,
+            hsn=clean_name(None if r["hsn_code"] is None else str(r["hsn_code"])) or None,
+            extinct=bool(r["item_extinct"] or r["article_extinct"]),
+        )
+
+    async def items(self, codes: list[str]) -> list[ErpItem]:
+        if not codes:
+            return []
+        rel = await self._item_relation()
+        rows = await self._fetch(
+            f"""select icode, article_code, article_name, section, department, division, cat1, cat2, cat3, cat4, cat5, cat6,
+                       vendor_name, unit_name, hsn_code, item_extinct, article_extinct
+                from {rel} i where icode = any($1::text[])""", codes)
+        return [self._erp_item(r) for r in rows]
+
+    async def bought_articles(self) -> list[ErpArticle]:
+        cached = self._cached("bought_articles")
+        if cached is not None:
+            return cached
+        rel = await self._item_relation()
+        rows = await self._fetch(
+            f"""select coalesce(i.article_code::text, i.article_name) article_key, max(i.article_name) article_name,
+                       max(i.section) section, max(i.department) department, count(distinct l.icode) codes,
+                       sum(l.ordqty) units, count(*) lines,
+                       (array_agg(distinct left(i.cat1, 40)) filter (where i.cat1 is not null))[1:4] samples
+                from {VIEW_PO_LINE} l join {rel} i on i.icode = l.icode
+                group by 1 order by sum(l.line_netamt) desc""")
+        return self._remember("bought_articles", [
+            ErpArticle(article_key=r["article_key"], article_name=(r["article_name"] or "").strip(), section=(r["section"] or "").strip(),
+                       department=(r["department"] or "").strip(), codes=int(r["codes"]), units=float(r["units"] or 0),
+                       lines=int(r["lines"]), samples=[s for s in (clean_name(x) for x in (r["samples"] or [])) if s])
+            for r in rows
+        ])
+
+    async def article_codes(self, article_key: str) -> list[ErpArticleCode]:
+        rel = await self._item_relation()
+        rows = await self._fetch(
+            f"""select i.icode, i.cat1, i.cat2, i.cat3, i.cat4, i.cat5, i.cat6, coalesce(sum(l.ordqty), 0) units, count(l.icode) lines
+                from {rel} i left join {VIEW_PO_LINE} l on l.icode = i.icode
+                where coalesce(i.article_code::text, i.article_name) = $1
+                group by i.icode, i.cat1, i.cat2, i.cat3, i.cat4, i.cat5, i.cat6
+                having count(l.icode) > 0 order by sum(l.ordqty) desc""", article_key)
+        out = []
+        for r in rows:
+            cats = [c for c in (clean_name(r[f"cat{n}"]) for n in range(1, 7)) if c]
+            out.append(ErpArticleCode(icode=r["icode"], name=cats[0] if cats else "", description=" · ".join(cats),
+                                      units=float(r["units"] or 0), lines=int(r["lines"])))
+        return out
 
     async def receipts(self, po_codes: list[int]) -> list[ErpReceipt]:
         if not po_codes:

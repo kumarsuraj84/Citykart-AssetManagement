@@ -22,6 +22,10 @@ class Asset(Base, AuditMixin):
     cost_center_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("cost_center.id"))
     category_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("asset_category.id"))
     subcategory_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("asset_subcategory.id"))
+    # What this asset IS (CityKart's own Item) and the ERP item code it was
+    # bought under -- the code is only a link back to the PO / receipt / PI.
+    item_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("item.id"), index=True)
+    erp_item_code: Mapped[str | None] = mapped_column(String(50))
     brand_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("brand.id"))
     model: Mapped[str | None] = mapped_column(String(200))
     serial_number: Mapped[str | None] = mapped_column(String(200))
