@@ -19,7 +19,7 @@ POs from an uploaded PDF (that code was dropped, never released).
 |---|---|---|
 | `po_line` | One row per PO line: PO number, date, status, company, delivery location, vendor, item, description, group, HSN, unit, qty, rate, tax %, received/cancelled qty, header totals | exists and readable (grant fixed 2026-10-10; CKAM's own `PgErpSource` was run against it read-only and works). If the load job rebuilds the table the grant can be lost again: the symptom is "CKAM is not allowed to read the ERP view" |
 | `item` | the item master: `icode, article_code, article_name, section, department, division, cat1..cat6, item_name, vendor_name, unit_name, hsn_code, item_extinct, article_extinct` (see `ITEM_MODEL.md`) | requested, **not created yet**; `silver.dim_item` (readable, no `article_code`/vendor/unit/HSN/extinct flags) is read as a fallback, so Items work today |
-| `vendor` | `supplier_code, supplier_name, gstin, contact_name, phone, email, is_active` | requested, **not created yet** (Vendors > Add from ERP says "view does not exist yet" until it is) |
+| `vendor` | `supplier_code, supplier_name, gstin, contact_name, phone, email, is_active` | requested, **not created yet**; until it is, Vendors > Add from ERP lists the suppliers that appear on Fixed Assets POs (about 104, from `po_line`) without GSTIN/contact details |
 | `po_receipt_line` | `po_code, icode, grc_no, grc_date, received_qty` (one row per GRC line) | requested, **not created yet**; code and tests are done |
 | `po_invoice` | `po_code, vendor_invoice_no, vendor_invoice_date, pi_number, pi_date, pi_amount` (rows without a `pi_number` = not booked yet) | requested, **not created yet**; code and tests are done |
 

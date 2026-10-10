@@ -224,8 +224,17 @@ class PgErpSource:
         cached = self._cached("vendors")
         if cached is not None:
             return cached
-        rows = await self._fetch(
-            f"select supplier_code, supplier_name, gstin, contact_name, phone, email, is_active from {VIEW_VENDOR} order by supplier_name")
+        try:
+            rows = await self._fetch(
+                f"select supplier_code, supplier_name, gstin, contact_name, phone, email, is_active from {VIEW_VENDOR} order by supplier_name")
+        except ErpUnavailable:
+            # The vendor view has not been created (or is not readable) yet: use the
+            # suppliers that appear on Fixed Assets POs. Same codes and names, just no
+            # GSTIN / contact details until the real vendor view exists.
+            rows = await self._fetch(
+                f"""select supplier_code, max(supplier_name) supplier_name, null::text gstin, null::text contact_name,
+                           null::text phone, null::text email, true as is_active
+                    from {VIEW_PO_LINE} group by supplier_code order by max(supplier_name)""")
         return self._remember("vendors", [
             ErpVendor(code=str(r["supplier_code"]), name=(r["supplier_name"] or "").strip(), gstin=r["gstin"],
                       contact_name=r["contact_name"], phone=r["phone"], email=r["email"],
