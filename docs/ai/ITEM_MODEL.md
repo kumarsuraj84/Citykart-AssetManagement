@@ -48,6 +48,25 @@ Rules store a snapshot of Section / Department / Article name so an ERP rename n
 changes history. The Article key is the ERP `article_code` when the item view has it,
 else the article name. A deactivated Item's rules stop applying; assets keep their link.
 
+## Two companies, two ERP masters
+
+CKSPL and CKVPL each have their own ERP item master: the same product (a mic) has different
+item codes, Sections, Departments and Articles in each, and the same Article *name* can mean
+different things. So the **Item is shared, the mapping rules are per company**
+(`item_map.company_id`): CKSPL's `FA_CE_MIC` and CKVPL's `VT_MIC_STD` both point to the one
+Item "Mic", and a rule made for one company never applies to the other. Resolution uses the
+PO's company, and at each step the company's own rule beats an every-company rule
+(`company_id` NULL = two companies that share one master). Setup > ERP Articles has a Company
+selector, so each company's bought Articles are linked in that company's own language, and a
+choice made on a PO is remembered for that PO's company only. An asset already records its
+company, so company + `erp_item_code` identifies the ERP code unambiguously.
+
+Open until the second company's data exists: where its item master / POs / receipts live (the
+same warehouse with a `company_code` column, or another database, in which case the ERP source
+becomes one connection per company) and its company code (CKVPL in the masters). Today the
+warehouse holds only CKSPL's data (13,256 PO lines, all `CKSPL`); other CityKart entities appear
+only as site and creditor names.
+
 ## Where it shows
 
 - **Setup > Items** (Primary Owner): create/edit/deactivate; "Create from

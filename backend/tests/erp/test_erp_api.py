@@ -58,6 +58,8 @@ class FakeErp:
             ErpArticle("FA_IT_OTHERS", "FA_IT_OTHERS", "IT EQUIPMENTS", "FA_IT_OTHERS", codes=2, units=40, lines=9, samples=["48 PORT SWITCH", "6U RACK"]),
             ErpArticle("FA_CE_UPS", "FA_CE_UPS", "COMPUTER EQUIPMENT", "FA_CE_UPS", codes=2, units=900, lines=114, samples=["APC UPS"]),
         ]
+        self.company_articles: dict[str, list[ErpArticle]] = {}
+        self.company_codes: dict[str, set[str]] = {}
         self.down: str | None = None
 
     async def items(self, codes):
@@ -65,15 +67,18 @@ class FakeErp:
             raise ErpUnavailable(self.down)
         return [self.erp_items[c] for c in codes if c in self.erp_items]
 
-    async def bought_articles(self):
+    async def bought_articles(self, company_code=None):
         if self.down:
             raise ErpUnavailable(self.down)
-        return self.articles
+        # a test can give one company its own list of Articles
+        return self.company_articles.get(company_code, self.articles)
 
-    async def article_codes(self, article_key):
+    async def article_codes(self, article_key, company_code=None):
         if self.down:
             raise ErpUnavailable(self.down)
-        return [ErpArticleCode(e.icode, e.name, e.description, 10.0, 2) for e in self.erp_items.values() if e.article_key == article_key]
+        wanted = self.company_codes.get(company_code)
+        return [ErpArticleCode(e.icode, e.name, e.description, 10.0, 2) for e in self.erp_items.values()
+                if e.article_key == article_key and (wanted is None or e.icode in wanted)]
 
     async def receipts(self, po_codes):
         if self.down:
@@ -173,6 +178,7 @@ async def _setup():
                 "desktop": desktop.id, "acc": acc.id, "cables": cables.id,
                 "item_desktop": item_desktop.id, "item_cable": item_cable.id,
                 "cost_spl": (await session.execute(select(CostCenter.id).where(CostCenter.company_id == spl.id))).scalar_one(),
+                "cost_vpl": (await session.execute(select(CostCenter.id).where(CostCenter.company_id == vpl.id))).scalar_one(),
                 "vansh": (await session.execute(select(Vendor.id).where(Vendor.code == "VANSH"))).scalar_one(),
                 "harshit": (await session.execute(select(Vendor.id).where(Vendor.code == "HARSHIT_INF"))).scalar_one(),
                 "oldco": (await session.execute(select(Vendor.id).where(Vendor.code == "OLDCO"))).scalar_one()}

@@ -164,8 +164,8 @@ class ErpArticleCode:
 
 class ErpSource(Protocol):
     async def items(self, codes: list[str]) -> list[ErpItem]: ...
-    async def bought_articles(self) -> list[ErpArticle]: ...
-    async def article_codes(self, article_key: str) -> list[ErpArticleCode]: ...
+    async def bought_articles(self, company_code: str | None = None) -> list[ErpArticle]: ...
+    async def article_codes(self, article_key: str, company_code: str | None = None) -> list[ErpArticleCode]: ...
     async def receipts(self, po_codes: list[int]) -> list[ErpReceipt]: ...
     async def invoices(self, po_codes: list[int]) -> list[ErpInvoice]: ...
     async def vendors(self) -> list[ErpVendor]: ...
@@ -277,8 +277,9 @@ class PgErpSource:
                 from {rel} i where icode = any($1::text[])""", codes)
         return [self._erp_item(r) for r in rows]
 
-    async def bought_articles(self) -> list[ErpArticle]:
-        cached = self._cached("bought_articles")
+    async def bought_articles(self, company_code: str | None = None) -> list[ErpArticle]:
+        key = f"bought_articles:{company_code}"
+        cached = self._cached(key)
         if cached is not None:
             return cached
         rel = await self._item_relation()
@@ -288,22 +289,23 @@ class PgErpSource:
                        sum(l.ordqty) units, count(*) lines,
                        (array_agg(distinct left(i.cat1, 40)) filter (where i.cat1 is not null))[1:4] samples
                 from {VIEW_PO_LINE} l join {rel} i on i.icode = l.icode
-                group by 1 order by sum(l.line_netamt) desc""")
-        return self._remember("bought_articles", [
+                where ($1::text is null or l.company_code = $1)
+                group by 1 order by sum(l.line_netamt) desc""", company_code)
+        return self._remember(key, [
             ErpArticle(article_key=r["article_key"], article_name=(r["article_name"] or "").strip(), section=(r["section"] or "").strip(),
                        department=(r["department"] or "").strip(), codes=int(r["codes"]), units=float(r["units"] or 0),
                        lines=int(r["lines"]), samples=[s for s in (clean_name(x) for x in (r["samples"] or [])) if s])
             for r in rows
         ])
 
-    async def article_codes(self, article_key: str) -> list[ErpArticleCode]:
+    async def article_codes(self, article_key: str, company_code: str | None = None) -> list[ErpArticleCode]:
         rel = await self._item_relation()
         rows = await self._fetch(
             f"""select i.icode, i.cat1, i.cat2, i.cat3, i.cat4, i.cat5, i.cat6, coalesce(sum(l.ordqty), 0) units, count(l.icode) lines
-                from {rel} i left join {VIEW_PO_LINE} l on l.icode = i.icode
+                from {rel} i left join {VIEW_PO_LINE} l on l.icode = i.icode and ($2::text is null or l.company_code = $2)
                 where coalesce(i.article_code::text, i.article_name) = $1
                 group by i.icode, i.cat1, i.cat2, i.cat3, i.cat4, i.cat5, i.cat6
-                having count(l.icode) > 0 order by sum(l.ordqty) desc""", article_key)
+                having count(l.icode) > 0 order by sum(l.ordqty) desc""", article_key, company_code)
         out = []
         for r in rows:
             cats = [c for c in (clean_name(r[f"cat{n}"]) for n in range(1, 7)) if c]

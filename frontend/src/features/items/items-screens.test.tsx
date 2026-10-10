@@ -199,4 +199,66 @@ describe("ERP Articles screen", () => {
     renderAt("/setup/erp-articles");
     expect(await screen.findByText(/could not be reached/)).toBeInTheDocument();
   });
+
+  describe("with two companies (each has its own ERP master)", () => {
+    function mockTwoCompanies() {
+      mockApi();
+      const base = (apiClient.get as any).getMockImplementation();
+      (apiClient.get as any).mockImplementation((path: string) => {
+        if (path === "/masters/companies") return Promise.resolve([{ id: 1, name: "Citykart Stores" }, { id: 2, name: "Citykart Ventures" }]);
+        if (path === "/items/articles?company_id=2") {
+          return Promise.resolve([{ ...ARTICLES[0], article_key: "VT_MIC_STD", article_name: "VT_MIC_STD", department: "VT_AUDIO", samples: ["MIC STAND TYPE"], suggested_item_id: null, suggested_item_name: null }]);
+        }
+        if (path === "/items/articles?company_id=1") return base("/items/articles");
+        return base(path);
+      });
+    }
+
+    it("asks the ERP for the first company's Articles, and the other company's when switched", async () => {
+      mockTwoCompanies();
+      renderAt("/setup/erp-articles");
+      expect(await screen.findByText("FA_CE_UPS")).toBeInTheDocument();
+      expect(apiClient.get).toHaveBeenCalledWith("/items/articles?company_id=1");
+
+      fireEvent.click(screen.getByLabelText("Company"));
+      fireEvent.click(await screen.findByRole("option", { name: "Citykart Ventures" }));
+      expect(await screen.findByText("VT_MIC_STD")).toBeInTheDocument();
+      expect(apiClient.get).toHaveBeenCalledWith("/items/articles?company_id=2");
+      expect(screen.queryByText("FA_CE_UPS")).not.toBeInTheDocument();
+    });
+
+    it("a link made for a company belongs to that company", async () => {
+      mockTwoCompanies();
+      renderAt("/setup/erp-articles");
+      await screen.findByText("FA_CE_UPS");
+      fireEvent.click(screen.getByRole("button", { name: "Link FA_CE_UPS" }));
+      await waitFor(() =>
+        expect(apiClient.post).toHaveBeenCalledWith("/items/maps", expect.objectContaining({ company_id: 1, match_type: "ARTICLE", article_key: "FA_CE_UPS" })),
+      );
+      fireEvent.click(screen.getByLabelText("Company"));
+      fireEvent.click(await screen.findByRole("option", { name: "Citykart Ventures" }));
+      await screen.findByText("VT_MIC_STD");
+      fireEvent.click(screen.getByLabelText("Item for VT_MIC_STD"));
+      fireEvent.click(await screen.findByRole("option", { name: "UPS" }));
+      fireEvent.click(screen.getByRole("button", { name: "Link VT_MIC_STD" }));
+      await waitFor(() =>
+        expect(apiClient.post).toHaveBeenCalledWith("/items/maps", expect.objectContaining({ company_id: 2, article_key: "VT_MIC_STD", item_id: 3 })),
+      );
+    });
+
+    it("the codes of an Article are read and linked for the chosen company", async () => {
+      mockTwoCompanies();
+      renderAt("/setup/erp-articles");
+      fireEvent.click(await screen.findByRole("button", { name: "Codes of FA_IT_OTHERS" }));
+      const dialog = await screen.findByRole("dialog");
+      await within(dialog).findByText("48 PORT SWITCH");
+      expect(apiClient.get).toHaveBeenCalledWith("/items/articles/codes?article_key=FA_IT_OTHERS&company_id=1");
+      fireEvent.click(within(dialog).getByLabelText("Item for CT500001"));
+      fireEvent.click(await screen.findByRole("option", { name: "UPS" }));
+      fireEvent.click(within(dialog).getByRole("button", { name: "Link code CT500001" }));
+      await waitFor(() =>
+        expect(apiClient.post).toHaveBeenCalledWith("/items/maps", expect.objectContaining({ company_id: 1, match_type: "CODE", erp_item_code: "CT500001" })),
+      );
+    });
+  });
 });

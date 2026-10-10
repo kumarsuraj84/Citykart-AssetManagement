@@ -37,6 +37,10 @@ class ItemMap(Base, AuditMixin, SoftDeleteMixin):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     item_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("item.id"))
+    # Whose ERP master the rule is for (CKSPL's and CVSPL's masters differ: same
+    # product, different codes / Articles). None = every company; a company's own
+    # rule beats an every-company rule.
+    company_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("company.id"))
     match_type: Mapped[str] = mapped_column(String(10))
     article_key: Mapped[str | None] = mapped_column(String(300))
     name_key: Mapped[str | None] = mapped_column(String(300))

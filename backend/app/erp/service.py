@@ -169,7 +169,7 @@ async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source
     # the ERP says about each code, so the review screen can show words next to
     # the code and ask once for any code that has no Item yet.
     erp_items = {e.icode: e for e in await source.items([ln.item_code for ln in po.lines])}
-    resolutions = await resolve_items(session, list(erp_items.values()))
+    resolutions = await resolve_items(session, list(erp_items.values()), company.id if company else None)
     item_ids = {r.item.id for r in resolutions.values() if r.item}
     cat_rows = {c.id: c for c in (await session.execute(select(AssetCategory))).scalars().all()}
     sub_rows = {s.id: s for s in (await session.execute(select(AssetSubcategory))).scalars().all()}
@@ -302,20 +302,21 @@ async def create_from_draft(session: AsyncSession, actor: AssetUser, data: dict)
             }, actor)
         created += len(lines)
         if ln.get("map_scope"):
-            await _remember_mapping(session, actor, item, ln)
+            await _remember_mapping(session, actor, item, ln, data["company_id"])
     return {"po_id": po.id, "po_number": po.po_number, "lines_created": created}
 
 
-async def _remember_mapping(session: AsyncSession, actor: AssetUser, item: Item, ln: dict) -> None:
-    """Saves the user's choice of Item as a rule, so the next PO with this code
-    (or Article, or product name) needs no choosing."""
+async def _remember_mapping(session: AsyncSession, actor: AssetUser, item: Item, ln: dict, company_id: int) -> None:
+    """Saves the user's choice of Item as a rule for this PO's company (its ERP
+    master is its own), so the next PO of that company with this code (or
+    Article, or product name) needs no choosing."""
     scope = ln["map_scope"]
     if scope not in ("CODE", "NAME", "ARTICLE"):
         raise ValueError(f"unknown mapping scope {scope!r}")
     if scope != "CODE" and not ln.get("article_key"):
         raise ValueError("this code has no Article in the ERP, so it can only be remembered by its own code")
     await upsert_map(session, actor, {
-        "item_id": item.id, "match_type": scope, "article_key": ln.get("article_key"), "name_key": ln.get("name_key"),
+        "item_id": item.id, "company_id": company_id, "match_type": scope, "article_key": ln.get("article_key"), "name_key": ln.get("name_key"),
         "erp_item_code": ln.get("item_code"), "section": ln.get("section"), "department": ln.get("department"),
         "article_name": ln.get("article_name"),
     })

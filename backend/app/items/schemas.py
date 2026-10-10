@@ -29,6 +29,8 @@ class ItemOut(BaseModel):
 
 class ItemMapIn(BaseModel):
     item_id: int
+    # Whose ERP master this rule is for; null = every company.
+    company_id: int | None = None
     match_type: str
     article_key: str | None = None
     name_key: str | None = None
@@ -43,6 +45,7 @@ class ItemMapOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     item_id: int
+    company_id: int | None = None
     match_type: str
     article_key: str | None
     name_key: str | None

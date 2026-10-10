@@ -8,7 +8,7 @@ from app.asset_users.models import AssetUser
 from app.bundles.models import Bundle
 from app.erp.source import ErpItem, ErpSource
 from app.items.models import Item, ItemMap, MATCH_TYPES
-from app.masters.models import AssetCategory, AssetSubcategory, Brand
+from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company
 from app.masters.serial_rule import effective_serial_required
 
 
@@ -145,13 +145,24 @@ async def _active_maps(session: AsyncSession) -> list[tuple[ItemMap, Item]]:
     )).all())
 
 
-async def resolve_items(session: AsyncSession, erp_items: list[ErpItem]) -> dict[str, Resolution]:
+async def resolve_items(session: AsyncSession, erp_items: list[ErpItem], company_id: int | None = None) -> dict[str, Resolution]:
     """For each ERP item: the Item it belongs to, found most specific first --
-    its own code, then its product name inside its Article, then its Article."""
-    maps = await _active_maps(session)
-    by_code = {m.erp_item_code.lower(): (m, i) for m, i in maps if m.match_type == "CODE" and m.erp_item_code}
-    by_name = {(m.article_key, m.name_key): (m, i) for m, i in maps if m.match_type == "NAME"}
-    by_article = {m.article_key: (m, i) for m, i in maps if m.match_type == "ARTICLE"}
+    its own code, then its product name inside its Article, then its Article.
+    Rules are per company (each company's ERP master is its own): at every step
+    the company's own rule wins over an every-company rule, and another
+    company's rule is never used."""
+    maps = [(m, i) for m, i in await _active_maps(session) if m.company_id in (None, company_id)]
+
+    def index(match_type: str, key):
+        table: dict = {}
+        for m, i in sorted(maps, key=lambda mi: mi[0].company_id is not None):   # every-company first, so a company's rule overwrites it
+            if m.match_type == match_type:
+                table[key(m)] = (m, i)
+        return table
+
+    by_code = index("CODE", lambda m: (m.erp_item_code or "").lower())
+    by_name = index("NAME", lambda m: (m.article_key, m.name_key))
+    by_article = index("ARTICLE", lambda m: m.article_key)
     out: dict[str, Resolution] = {}
     for e in erp_items:
         hit, how = by_code.get(e.icode.lower()), "CODE"
@@ -181,7 +192,11 @@ async def upsert_map(session: AsyncSession, actor: AssetUser, data: dict) -> Ite
         raise ValueError("this rule needs the Article")
     if mt == "NAME" and not name_key:
         raise ValueError("a product-name rule needs the product name")
+    company_id = data.get("company_id")
+    if company_id is not None and await session.get(Company, company_id) is None:
+        raise ValueError("company not found")
     stmt = select(ItemMap).where(ItemMap.is_active.is_(True), ItemMap.match_type == mt)
+    stmt = stmt.where(ItemMap.company_id.is_(None) if company_id is None else ItemMap.company_id == company_id)
     if mt == "CODE":
         stmt = stmt.where(func.lower(ItemMap.erp_item_code) == code.lower())
     elif mt == "ARTICLE":
@@ -190,7 +205,7 @@ async def upsert_map(session: AsyncSession, actor: AssetUser, data: dict) -> Ite
         stmt = stmt.where(ItemMap.article_key == article_key, ItemMap.name_key == name_key)
     rule = (await session.execute(stmt.limit(1))).scalar_one_or_none()
     if rule is None:
-        rule = ItemMap(match_type=mt, created_by=actor.id, article_key=article_key if mt != "CODE" else None,
+        rule = ItemMap(match_type=mt, created_by=actor.id, company_id=company_id, article_key=article_key if mt != "CODE" else None,
                        name_key=name_key if mt == "NAME" else None, erp_item_code=code if mt == "CODE" else None)
         session.add(rule)
     rule.item_id = item.id
@@ -212,13 +227,22 @@ async def remove_map(session: AsyncSession, rule: ItemMap, actor: AssetUser) -> 
 
 # ---------- the Article mapping screen ----------
 
-async def article_overview(session: AsyncSession, source: ErpSource) -> list[dict]:
-    """Every Article that has been bought, with how it is mapped and a
-    suggested Item (the existing Item whose name shares the most words with the
-    Article's name, department and sample product names)."""
-    articles = await source.bought_articles()
-    maps = await _active_maps(session)
-    article_item = {m.article_key: i for m, i in maps if m.match_type == "ARTICLE"}
+async def _company_code(session: AsyncSession, company_id: int | None) -> str | None:
+    company = await session.get(Company, company_id) if company_id is not None else None
+    return company.code if company else None
+
+
+async def article_overview(session: AsyncSession, source: ErpSource, company_id: int | None = None) -> list[dict]:
+    """Every Article that company has bought, with how it is mapped for that
+    company and a suggested Item (the existing Item whose name shares the most
+    words with the Article's name, department and sample product names)."""
+    articles = await source.bought_articles(await _company_code(session, company_id))
+    maps = [(m, i) for m, i in await _active_maps(session) if m.company_id in (None, company_id)]
+    # the company's own rule wins over an every-company one
+    article_item: dict[str, Item] = {}
+    for m, i in sorted(maps, key=lambda mi: mi[0].company_id is not None):
+        if m.match_type == "ARTICLE":
+            article_item[m.article_key] = i
     name_rules: dict[str, int] = {}
     code_rules: dict[str, int] = {}
     for m, _ in maps:
@@ -250,12 +274,14 @@ async def article_overview(session: AsyncSession, source: ErpSource) -> list[dic
     return out
 
 
-async def article_code_overview(session: AsyncSession, source: ErpSource, article_key: str) -> list[dict]:
-    """The codes of one Article that were bought, grouped by product name, with
-    the Item each currently resolves to (and why)."""
-    codes = await source.article_codes(article_key)
+async def article_code_overview(
+    session: AsyncSession, source: ErpSource, article_key: str, company_id: int | None = None,
+) -> list[dict]:
+    """The codes of one Article that were bought (by that company), grouped by
+    product name, with the Item each currently resolves to (and why)."""
+    codes = await source.article_codes(article_key, await _company_code(session, company_id))
     erp = {e.icode: e for e in await source.items([c.icode for c in codes])}
-    resolved = await resolve_items(session, list(erp.values()))
+    resolved = await resolve_items(session, list(erp.values()), company_id)
     out = []
     for c in codes:
         r = resolved.get(c.icode, Resolution(item=None))

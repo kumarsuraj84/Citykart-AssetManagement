@@ -69,22 +69,23 @@ async def seed(session: AsyncSession = Depends(get_session), actor=Depends(requi
 
 @router.get("/articles")
 async def articles(
-    session: AsyncSession = Depends(get_session), source: ErpSource = Depends(get_erp_source),
-    _actor=Depends(require_primary_owner()),
+    company_id: int | None = None, session: AsyncSession = Depends(get_session),
+    source: ErpSource = Depends(get_erp_source), _actor=Depends(require_primary_owner()),
 ):
+    """The Articles bought by one company (each company's ERP master is its own)."""
     try:
-        return await service.article_overview(session, source)
+        return await service.article_overview(session, source, company_id)
     except ErpUnavailable as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc))
 
 
 @router.get("/articles/codes")
 async def article_codes(
-    article_key: str, session: AsyncSession = Depends(get_session), source: ErpSource = Depends(get_erp_source),
-    _actor=Depends(require_primary_owner()),
+    article_key: str, company_id: int | None = None, session: AsyncSession = Depends(get_session),
+    source: ErpSource = Depends(get_erp_source), _actor=Depends(require_primary_owner()),
 ):
     try:
-        return await service.article_code_overview(session, source, article_key)
+        return await service.article_code_overview(session, source, article_key, company_id)
     except ErpUnavailable as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc))
 
