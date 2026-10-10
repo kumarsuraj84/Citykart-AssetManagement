@@ -7,6 +7,8 @@ class ItemIn(BaseModel):
     subcategory_id: int
     # Does this kind of thing carry a serial number? Only a default.
     serial_required: bool = True
+    # Only for an Item that has a serial: it is read later, once the box is opened.
+    serial_later: bool = False
     bundle_id: int | None = None
     default_brand_id: int | None = None
     default_warranty_years: int | None = Field(default=None, ge=0)
@@ -19,6 +21,7 @@ class ItemOut(BaseModel):
     category_id: int
     subcategory_id: int | None
     serial_required: bool = True
+    serial_later: bool = False
     bundle_id: int | None
     default_brand_id: int | None
     default_warranty_years: int | None

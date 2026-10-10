@@ -8,6 +8,8 @@ export interface Item {
   subcategory_id: number | null;
   /** Whether it carries a serial number (the only place this rule lives). */
   serial_required: boolean;
+  /** Has a serial, but it is only read later, once the box is opened (an amplifier). */
+  serial_later: boolean;
   bundle_id: number | null;
   default_brand_id: number | null;
   default_warranty_years: number | null;

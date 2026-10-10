@@ -48,6 +48,7 @@ interface Asset {
   brand_id: number | null;
   model: string | null;
   serial_number: string | null;
+  serial_pending?: boolean;
   barcode: string | null;
   description: string;
   vendor_id: number | null;
@@ -753,7 +754,10 @@ export function AssetDetail({ assetId }: { assetId: number }) {
               <ReadField label="Sub-Category" value={asset.subcategory_name} />
               <ReadField label="Brand" value={asset.brand_name} />
               <ReadField label="Model" value={asset.model} />
-              <ReadField label="Serial Number" value={asset.serial_number} />
+              <ReadField
+                label="Serial Number"
+                value={asset.serial_pending ? <span className="text-warning-foreground">Pending: still to be added</span> : asset.serial_number}
+              />
               <ReadField label="Barcode" value={asset.barcode} />
             </dl>
           </TabsContent>

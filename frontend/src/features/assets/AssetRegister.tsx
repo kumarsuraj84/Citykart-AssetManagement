@@ -43,6 +43,7 @@ interface AssetRow {
   brand_id: number | null;
   model: string | null;
   serial_number: string | null;
+  serial_pending?: boolean;
   barcode: string | null;
   po_number: string | null;
   po_date: string | null;
@@ -155,7 +156,7 @@ const ASSET_OPTIONAL_COLUMNS: AssetColumnDef[] = [
   { key: "description", label: "Description", defaultVisible: true, cell: (a) => a.description },
   { key: "brand", label: "Brand", defaultVisible: true, cell: (a) => dash(a.brand_name) },
   { key: "model", label: "Model", defaultVisible: true, cell: (a) => dash(a.model) },
-  { key: "serial_number", label: "Serial Number", defaultVisible: true, cell: (a) => dash(a.serial_number) },
+  { key: "serial_number", label: "Serial Number", defaultVisible: true, cell: (a) => (a.serial_pending ? "Pending" : dash(a.serial_number)) },
   { key: "status", label: "Status", defaultVisible: true, cell: (a) => <StatusBadge status={a.status} compact /> },
   { key: "asset_user", label: "Asset User", defaultVisible: true, cell: (a) => dash(a.current_asset_user_name) },
   { key: "asset_domain", label: "Responsibility", defaultVisible: true, cell: (a) => domainLabel(a.asset_domain) },

@@ -1,5 +1,5 @@
 from datetime import date
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class PurchaseOrderCreateIn(BaseModel):
@@ -90,6 +90,7 @@ class PendingAssetOut(BaseModel):
     total_cost: float | None
     status: str
     serial_required: bool = True
+    serial_later: bool = False
     bundle_label: str | None = None
     item_id: int | None = None
     erp_item_code: str | None = None
@@ -103,8 +104,18 @@ class PendingAssetOut(BaseModel):
 
 class DeliveryLineIn(BaseModel):
     pending_asset_id: int
-    serial_number: str
+    # Omitted only with serial_pending (the serial is read and added later).
+    serial_number: str | None = None
+    serial_pending: bool = False
     initial_asset_user_id: int
+
+    @model_validator(mode="after")
+    def _serial_or_later(self):
+        if self.serial_pending:
+            self.serial_number = None
+        elif self.serial_number is None:
+            raise ValueError("a serial number (or N/A, or 'add it later') is needed for every delivered unit")
+        return self
 
 
 class DeliveryDoneIn(BaseModel):

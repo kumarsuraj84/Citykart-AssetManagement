@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Integer, JSON, Numeric, String, func
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, JSON, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.db import Base
 from app.core.models import AuditMixin
@@ -29,6 +29,11 @@ class Asset(Base, AuditMixin):
     brand_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("brand.id"))
     model: Mapped[str | None] = mapped_column(String(200))
     serial_number: Mapped[str | None] = mapped_column(String(200))
+    # True while the serial is still to be read and filled in (an amplifier shows
+    # none on the box; it is read in the store). serial_number stays empty until
+    # then. Separate from "N/A" (genuinely none) so a serial that was never filled
+    # can be listed and chased.
+    serial_pending: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     barcode: Mapped[str | None] = mapped_column(String(200))
     """CityKart's own internal inventory barcode (not the manufacturer serial
     number) -- deliberately not unique (docs/ai/DECISIONS.md): the same

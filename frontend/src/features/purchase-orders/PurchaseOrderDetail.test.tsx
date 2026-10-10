@@ -515,6 +515,56 @@ describe("PurchaseOrderDetail", () => {
     }
   });
 
+  it("a line whose Item's serial is read later starts with 'add it later' ticked, and delivers without a serial", async () => {
+    mockGets([{ ...PENDING_LINE, serial_later: true }]);
+    (apiClient.post as any).mockResolvedValue([{ ...PENDING_LINE, status: "DELIVERED" }]);
+    renderDetailAt();
+    await waitFor(() => expect(screen.getByText("Dell Laptop")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /select dell laptop/i }));
+    fireEvent.click(screen.getByRole("button", { name: /mark 1 delivery done/i }));
+
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-1" } });
+    fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "1180" } });
+    fireEvent.click(within(dialog).getByLabelText(/initial asset user/i));
+    fireEvent.click(await screen.findByText("IT Stock-HO"));
+
+    const later = within(dialog).getByRole("checkbox", { name: /add the serial later for dell laptop/i });
+    expect(later).toBeChecked();                                               // the Item says so
+    expect(within(dialog).getByLabelText(/^serial number\*?$/i)).toBeDisabled();
+    expect(within(dialog).getByRole("checkbox", { name: /no serial number for dell laptop/i })).not.toBeChecked();   // not N/A
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: /confirm/i })).not.toBeDisabled());
+    fireEvent.click(within(dialog).getByRole("button", { name: /confirm/i }));
+
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith(
+        "/purchase-orders/1/deliver",
+        expect.objectContaining({ lines: [{ pending_asset_id: 10, serial_pending: true, initial_asset_user_id: 5 }] }),
+      ),
+    );
+  });
+
+  it("'add it later' and 'no serial number' exclude each other, and either can be unticked to type serials", async () => {
+    mockGets([{ ...PENDING_LINE, serial_later: true }]);
+    renderDetailAt();
+    await waitFor(() => expect(screen.getByText("Dell Laptop")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("checkbox", { name: /select dell laptop/i }));
+    fireEvent.click(screen.getByRole("button", { name: /mark 1 delivery done/i }));
+    const dialog = screen.getByRole("dialog");
+
+    const later = () => within(dialog).getByRole("checkbox", { name: /add the serial later/i });
+    const none = () => within(dialog).getByRole("checkbox", { name: /no serial number for/i });
+    fireEvent.click(none());
+    expect(none()).toBeChecked();
+    expect(later()).not.toBeChecked();
+    fireEvent.click(later());
+    expect(later()).toBeChecked();
+    expect(none()).not.toBeChecked();
+    fireEvent.click(later());
+    expect(within(dialog).getByLabelText(/^serial number\*?$/i)).toBeEnabled();
+  });
+
   it("checking \"No serial number\" for a delivery line disables its input and submits N/A", async () => {
     mockGets([PENDING_LINE]);
     (apiClient.post as any).mockResolvedValue([{ ...PENDING_LINE, status: "DELIVERED" }]);

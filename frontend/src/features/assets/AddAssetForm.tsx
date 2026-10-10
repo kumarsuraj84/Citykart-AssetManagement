@@ -79,6 +79,8 @@ interface FormState {
   model: string;
   serialNumber: string;
   noSerialNumber: boolean;
+  /** The serial exists but will be read and added later (saved as Pending). */
+  serialLater: boolean;
   warrantyYears: string;
   vendorId: string;
   poNumber: string;
@@ -103,6 +105,7 @@ const emptyForm: FormState = {
   model: "",
   serialNumber: "",
   noSerialNumber: false,
+  serialLater: false,
   warrantyYears: "0",
   vendorId: "",
   poNumber: "",
@@ -238,11 +241,13 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
   function applyItem(item: Item | undefined) {
     if (!item) return;
     const required = item.serial_required !== false;
+    const later = required && item.serial_later === true;
     setForm((f) => ({
       ...f,
       itemId: String(item.id),
       noSerialNumber: !required,
-      serialNumber: required ? f.serialNumber : "",
+      serialLater: later,
+      serialNumber: required && !later ? f.serialNumber : "",
       brandId: f.brandId || (item.default_brand_id ? String(item.default_brand_id) : ""),
       warrantyYears: f.warrantyYears === "0" && item.default_warranty_years != null ? String(item.default_warranty_years) : f.warrantyYears,
     }));
@@ -283,7 +288,7 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
     form.itemId !== "" &&
     form.costCenterId !== "" &&
     form.vendorId !== "" &&
-    (form.noSerialNumber || form.serialNumber.trim() !== "") &&
+    (form.noSerialNumber || form.serialLater || form.serialNumber.trim() !== "") &&
     form.initialAssetUserId !== "" &&
     !customFields.some(requiredCustomFieldMissing);
 
@@ -313,7 +318,8 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
         legacy_asset_code: form.legacyAssetCode || null,
         brand_id: form.brandId ? Number(form.brandId) : null,
         model: form.model || null,
-        serial_number: form.noSerialNumber ? "N/A" : form.serialNumber.trim(),
+        serial_number: form.serialLater ? null : form.noSerialNumber ? "N/A" : form.serialNumber.trim(),
+        serial_pending: form.serialLater,
         warranty_years: Number(form.warrantyYears) || 0,
         vendor_id: Number(form.vendorId),
         po_number: form.poNumber || null,
@@ -489,8 +495,9 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
               <Input
                 id="serial-number"
                 aria-label="Serial Number"
-                value={form.serialNumber}
-                disabled={form.noSerialNumber}
+                value={form.serialLater ? "" : form.serialNumber}
+                placeholder={form.serialLater ? "Pending: add it later" : undefined}
+                disabled={form.noSerialNumber || form.serialLater}
                 onChange={(e) => setField("serialNumber", e.target.value)}
               />
               <label className="flex items-center gap-2 text-sm">
@@ -500,10 +507,22 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
                   onCheckedChange={(checked) => {
                     const noSerial = checked === true;
                     setField("noSerialNumber", noSerial);
-                    if (noSerial) setField("serialNumber", "");
+                    if (noSerial) { setField("serialNumber", ""); setField("serialLater", false); }
                   }}
                 />
                 No serial number for this asset
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  aria-label="Serial number will be added later"
+                  checked={form.serialLater}
+                  onCheckedChange={(checked) => {
+                    const later = checked === true;
+                    setField("serialLater", later);
+                    if (later) { setField("serialNumber", ""); setField("noSerialNumber", false); }
+                  }}
+                />
+                It has one, but I will add it later (shows on the Serial Pending list)
               </label>
             </div>
           </FormField>

@@ -63,6 +63,8 @@ class PendingAsset(Base, AuditMixin):
     # lines are True. bundle_label names the bundle ("Desktop") a line came
     # from, shown as a tag; null for ordinary lines.
     serial_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    # Snapshot of Item.serial_later: delivery starts with "serial later" ticked.
+    serial_later: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     bundle_label: Mapped[str | None] = mapped_column(String(100))
     # The Item this unit is (see app.items), and the ERP item code it was ordered
     # under -- carried onto the Asset at delivery. Both optional: lines typed by

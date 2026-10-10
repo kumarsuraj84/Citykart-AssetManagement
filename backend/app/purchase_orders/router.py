@@ -173,7 +173,12 @@ async def deliver(
     lines = (await session.execute(stmt)).scalars().all()
     if len(lines) != len(line_ids):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "one or more selected lines do not belong to this purchase order")
-    deliveries = {d.pending_asset_id: {"serial_number": d.serial_number, "initial_asset_user_id": d.initial_asset_user_id} for d in body.lines}
+    deliveries = {
+        d.pending_asset_id: {
+            "serial_number": d.serial_number, "serial_pending": d.serial_pending,
+            "initial_asset_user_id": d.initial_asset_user_id,
+        } for d in body.lines
+    }
     try:
         delivered = await deliver_pending_assets(
             session, lines, deliveries, po.po_number, po.po_date, po.vendor_id,

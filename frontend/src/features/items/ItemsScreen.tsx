@@ -62,7 +62,10 @@ export function ItemsScreen() {
       key: "class", header: "Category › Sub-Category",
       cell: (i) => [catName(i.category_id), subName(i.subcategory_id)].filter(Boolean).join(" › "),
     },
-    { key: "serial", header: "Serial number", cell: (i) => yesNo(i.serial_required) },
+    {
+      key: "serial", header: "Serial number",
+      cell: (i) => (i.serial_required && i.serial_later ? "Yes (read later)" : yesNo(i.serial_required)),
+    },
     { key: "bundle", header: "Bundle", cell: (i) => bundles.find((b) => b.id === i.bundle_id)?.name ?? "—" },
     { key: "maps", header: "ERP links", cellClassName: "tabular-nums", cell: (i) => (i.map_count === 0 ? "—" : i.map_count) },
     {

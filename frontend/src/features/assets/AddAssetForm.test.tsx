@@ -195,6 +195,44 @@ describe("AddAssetForm", () => {
     expect(screen.getByLabelText(/^serial number\*?$/i)).toBeEnabled();
   });
 
+  it("an Item whose serial is read later starts with 'add it later' ticked and saves the asset as pending", async () => {
+    mockGets({ items: [item(11, "Amplifier", { serial_later: true })] });
+    (apiClient.post as any).mockResolvedValue([
+      { id: 20, asset_code: "FA/HO01/IT/AMP/CK_1" },
+      { id: 21, asset_code: "FA/HO01/IT/AMP/CK_2" },
+    ]);
+    renderFormAt();
+    fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Amplifier" } });
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /^item$/i })).toBeEnabled());
+    await pickSelectOption(/^item$/i, "Amplifier");
+    const later = () => screen.getByRole("checkbox", { name: /serial number will be added later/i });
+    expect(later()).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /no serial number/i })).not.toBeChecked();      // pending is not N/A
+    expect(screen.getByLabelText(/^serial number\*?$/i)).toBeDisabled();
+
+    await pickSelectOption(/cost centre/i, "Head Office");
+    await pickSelectOption(/goes into/i, "IT Stock-HO");
+    await pickSelectOption(/^vendor$/i, "Acme Traders");
+    fireEvent.change(screen.getByLabelText(/^barcode$/i), { target: { value: "BC-1" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: /save/i })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith("/assets", expect.objectContaining({ serial_number: null, serial_pending: true, item_id: 11 })),
+    );
+  });
+
+  it("an old asset of a serial-later Item can still be given a real serial or 'no serial'", async () => {
+    mockGets({ items: [item(11, "Amplifier", { serial_later: true })] });
+    renderFormAt();
+    await screen.findByLabelText(/description/i);
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /^item$/i })).toBeEnabled());
+    await pickSelectOption(/^item$/i, "Amplifier");
+    fireEvent.click(screen.getByRole("checkbox", { name: /serial number will be added later/i }));     // untick: type it now
+    expect(screen.getByLabelText(/^serial number\*?$/i)).toBeEnabled();
+    fireEvent.click(screen.getByRole("checkbox", { name: /no serial number/i }));
+    expect(screen.getByRole("checkbox", { name: /serial number will be added later/i })).not.toBeChecked();
+  });
+
   it("an Item's default brand and warranty fill the form when it is picked", async () => {
     mockGets({ items: [item(11, "Laptop", { default_brand_id: 9, default_warranty_years: 3 })] });
     renderFormAt();

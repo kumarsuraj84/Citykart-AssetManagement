@@ -101,6 +101,13 @@ async def dashboard_data(
     # omitting the whole metric when nothing is in that state.
     exception_counts = {s: status_counts.get(s, 0) for s in EXCEPTION_STATUSES}
 
+    # Same scope as every figure here; an asset that is gone (disposed, lost...) is not
+    # worth chasing a serial for, so only assets still in use are counted.
+    serial_pending_count = (await session.execute(
+        base.where(Asset.serial_pending.is_(True), Asset.status.notin_(("DISPOSED", "SOLD", "SCRAPPED", "LOST")))
+        .with_only_columns(func.count())
+    )).scalar_one()
+
     # Scoped exactly like the base asset query above (allowed_company_ids), joined to
     # Asset since AssetEvent itself has no company_id column. Ordered newest-first,
     # limited server-side -- never fetch-then-slice client-side (spec §16 perf note).
@@ -191,6 +198,7 @@ async def dashboard_data(
         "warranty_alerts": warranty_alerts,
         "long_allocation_alerts": long_allocation_alerts,
         "exception_counts": exception_counts,
+        "serial_pending_count": serial_pending_count,
         "recent_activity": recent_activity,
         "pending_po_summary": pending_po_summary,
         "open_purchase_orders": open_purchase_orders,

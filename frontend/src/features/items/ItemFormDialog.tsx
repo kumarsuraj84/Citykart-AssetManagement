@@ -24,12 +24,19 @@ interface Draft {
   categoryId: string;
   subcategoryId: string;
   serial: "yes" | "no";
+  /** When the serial is known: at delivery, or later once the box is opened. */
+  serialWhen: "delivery" | "later";
   bundleId: string;
   brandId: string;
   warranty: string;
 }
 
-const BLANK: Draft = { name: "", categoryId: "", subcategoryId: "", serial: "yes", bundleId: "", brandId: "", warranty: "" };
+const BLANK: Draft = { name: "", categoryId: "", subcategoryId: "", serial: "yes", serialWhen: "delivery", bundleId: "", brandId: "", warranty: "" };
+
+const SERIAL_WHEN_OPTIONS = [
+  { value: "delivery", label: "At delivery (it is on the box)" },
+  { value: "later", label: "Later, when the box is opened" },
+];
 
 const SERIAL_OPTIONS = [
   { value: "yes", label: "Yes, it has a serial number" },
@@ -77,7 +84,7 @@ export function ItemFormDialog({
       item
         ? {
             name: item.name, categoryId: String(item.category_id), subcategoryId: item.subcategory_id ? String(item.subcategory_id) : "",
-            serial: item.serial_required === false ? "no" : "yes", bundleId: item.bundle_id ? String(item.bundle_id) : "",
+            serial: item.serial_required === false ? "no" : "yes", serialWhen: item.serial_later ? "later" : "delivery", bundleId: item.bundle_id ? String(item.bundle_id) : "",
             brandId: item.default_brand_id ? String(item.default_brand_id) : "",
             warranty: item.default_warranty_years != null ? String(item.default_warranty_years) : "",
           }
@@ -91,7 +98,8 @@ export function ItemFormDialog({
     mutationFn: () => {
       const body = {
         name: draft.name.trim(), category_id: Number(draft.categoryId), subcategory_id: Number(draft.subcategoryId),
-        serial_required: draft.serial === "yes", bundle_id: draft.bundleId ? Number(draft.bundleId) : null,
+        serial_required: draft.serial === "yes", serial_later: draft.serial === "yes" && draft.serialWhen === "later",
+        bundle_id: draft.bundleId ? Number(draft.bundleId) : null,
         default_brand_id: draft.brandId ? Number(draft.brandId) : null,
         default_warranty_years: draft.warranty !== "" ? Number(draft.warranty) : null,
       };
@@ -136,6 +144,17 @@ export function ItemFormDialog({
             <FormField htmlFor="item-serial" label="Serial number" helperText="A default only: a serial can still be typed, or saved as N/A.">
               <SearchableSelect id="item-serial" value={draft.serial} onValueChange={(v) => set({ serial: v as Draft["serial"] })} options={SERIAL_OPTIONS} />
             </FormField>
+            {draft.serial === "yes" && (
+              <FormField
+                htmlFor="item-serial-when" label="When do we get the serial?"
+                helperText='"Later": delivery does not ask for it, and the asset waits on the Serial Pending list until IT fills it in.'
+              >
+                <SearchableSelect
+                  id="item-serial-when" value={draft.serialWhen} onValueChange={(v) => set({ serialWhen: v as Draft["serialWhen"] })}
+                  options={SERIAL_WHEN_OPTIONS}
+                />
+              </FormField>
+            )}
             <FormField htmlFor="item-bundle" label="Becomes several assets (bundle)" helperText="For a Desktop-style item: one asset per part.">
               <SearchableSelect
                 id="item-bundle" value={draft.bundleId || undefined} onValueChange={(v) => set({ bundleId: v })}

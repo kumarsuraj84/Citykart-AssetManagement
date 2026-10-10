@@ -322,3 +322,19 @@ async def test_preview_never_writes_to_the_database(client):
 
     asset = await _get_asset(ids["asset_id"])
     assert asset.brand_id == ids["brand_id"]  # untouched
+
+
+async def test_filling_a_pending_serial_through_the_edit_sheet_settles_it(client):
+    ids = await _setup("SERP1")
+    headers = await _login(client, ids["co"].id, ids["admin"])
+    async with SessionLocal() as session:
+        asset = await session.get(Asset, ids["asset_id"])
+        asset.serial_number = None
+        asset.serial_pending = True
+        await session.commit()
+
+    row = {"Asset Code": ids["asset_code"], "Serial Number": "SN-SERP1-FILLED"}
+    resp = await _post(client, "/api/imports/assets/commit", _xlsx([row]), headers)
+    assert resp.status_code == 200 and resp.json()["updated"] == 1
+    asset = await _get_asset(ids["asset_id"])
+    assert asset.serial_number == "SN-SERP1-FILLED" and asset.serial_pending is False

@@ -13,7 +13,7 @@ from app.assets.audit_service import AUDITED_SCALAR_FIELDS, record_field_changes
 from app.assets.correction_service import correct_asset, UNSET as CORRECTION_UNSET
 from app.assets.custom_field_values import validate_custom_field_values
 from app.assets.models import Asset, AssetFieldChange
-from app.assets.schemas import AssetCorrectionIn, AssetCreateIn, AssetDetailOut, AssetFieldChangeOut, AssetOut, AssetUpdateIn
+from app.assets.schemas import SerialFillIn, AssetCorrectionIn, AssetCreateIn, AssetDetailOut, AssetFieldChangeOut, AssetOut, AssetUpdateIn
 from app.assets.search_service import search_assets
 from app.assets.service import check_serial_number_unique, compute_tax, compute_warranty_upto, procure_assets
 from app.items.lookup import fill_from_item
@@ -158,6 +158,7 @@ async def list_assets(
     domain: str | None = Query(None),
     q: str | None = Query(None),
     exact: bool = Query(False),
+    serial_pending: bool = Query(False),
     sort_by: str | None = Query(None),
     sort_dir: str = Query("asc"),
     limit: int = Query(50, ge=1, le=200),
@@ -186,7 +187,7 @@ async def list_assets(
     domains = await allowed_asset_domains(session, asset_user)
     items, total = await search_assets(
         session, allowed, status, category_id, asset_user_id, company_id, q, sort_by, sort_dir, limit, offset,
-        allowed_domains=domains, domain=domain, exact=exact,
+        allowed_domains=domains, domain=domain, exact=exact, serial_pending=serial_pending or None,
     )
     (
         asset_user_labels, company_labels, category_labels, subcategory_labels, vendor_labels, cost_center_labels,
@@ -419,6 +420,9 @@ async def update_asset(
         "pi_number", "pi_date", "purchase_cost", "tax_percent",
     ):
         setattr(asset, field, data[field])
+    # Typing a serial (or N/A) on an asset whose serial was pending settles it.
+    if asset.serial_pending and (asset.serial_number or "").strip():
+        asset.serial_pending = False
     asset.tax_amount = tax_amount
     asset.total_cost = total_cost
     # AM-18: None means "leave exactly as-is" -- a legacy NULL-warranty_years
@@ -436,6 +440,40 @@ async def update_asset(
     after["custom_fields"] = dict(asset.custom_fields)
     await record_field_changes(session, asset_id=asset.id, actor_id=actor.id, before=before, after=after)
 
+    await session.commit()
+    await session.refresh(asset)
+    return await _to_detail_out(session, asset)
+
+
+@router.put("/{asset_id}/serial", response_model=AssetDetailOut)
+async def fill_pending_serial(
+    asset_id: int,
+    body: SerialFillIn,
+    session: AsyncSession = Depends(get_session),
+    actor=Depends(require_role(*WRITE_ROLES)),
+):
+    """Settles an asset whose serial was pending: the serial read from the opened
+    box, or "no serial" when it turns out to have none (saved as N/A). Same scope as
+    any other asset edit (company and Responsibility), same global-uniqueness rule,
+    and the change is written to the field-change audit like an ordinary edit."""
+    asset = await _get_scoped_asset(asset_id, session, actor)
+    if not asset.serial_pending:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "this asset's serial is not pending")
+    serial = "N/A" if body.no_serial else (body.serial_number or "").strip()
+    if not serial:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "enter the serial number, or choose no serial number")
+    try:
+        await check_serial_number_unique(session, serial, exclude_asset_id=asset.id)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    before = {field: getattr(asset, field) for field in AUDITED_SCALAR_FIELDS}
+    before["custom_fields"] = dict(asset.custom_fields)
+    asset.serial_number = serial
+    asset.serial_pending = False
+    asset.updated_by = actor.id
+    after = {field: getattr(asset, field) for field in AUDITED_SCALAR_FIELDS}
+    after["custom_fields"] = dict(asset.custom_fields)
+    await record_field_changes(session, asset_id=asset.id, actor_id=actor.id, before=before, after=after)
     await session.commit()
     await session.refresh(asset)
     return await _to_detail_out(session, asset)

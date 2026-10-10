@@ -214,7 +214,8 @@ async def procure_assets(session: AsyncSession, data: dict, quantity: int, actor
         # quantity>1 batch with a real (non-"N/A") serial must reject on the
         # 2nd unit onward, since each already-flushed unit from this same
         # call is itself a conflict for the next one.
-        await check_serial_number_unique(session, data.get("serial_number"))
+        if not data.get("serial_pending"):
+            await check_serial_number_unique(session, data.get("serial_number"))
         code = await generate_code(session, rule, tokens)
         asset = Asset(
             asset_code=code,
@@ -227,7 +228,8 @@ async def procure_assets(session: AsyncSession, data: dict, quantity: int, actor
             erp_item_code=data.get("erp_item_code"),
             brand_id=data.get("brand_id"),
             model=data.get("model"),
-            serial_number=data.get("serial_number"),
+            serial_number=None if data.get("serial_pending") else data.get("serial_number"),
+            serial_pending=bool(data.get("serial_pending")),
             barcode=data.get("barcode"),
             description=data["description"],
             vendor_id=data.get("vendor_id"),

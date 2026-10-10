@@ -22,6 +22,10 @@ class Item(Base, AuditMixin, SoftDeleteMixin):
     # lives (not on Category / Sub-Category). Only a default: a serial can still
     # be typed on a "no" Item, and a missing one saved as N/A on a "yes" Item.
     serial_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    # The serial exists but is only read later (an amplifier: not on the box, found
+    # when it is opened in the store). Delivery then starts with "serial later" and
+    # the asset joins the Serial Pending list until someone fills it in.
+    serial_later: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     # A Desktop-style item that becomes several assets (one per part).
     bundle_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("bundle.id"))
     default_brand_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("brand.id"))

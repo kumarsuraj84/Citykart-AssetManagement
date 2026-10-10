@@ -137,7 +137,8 @@ async def add_pending_asset_line(
             # Spec §19: derived server-side from the selected Category at
             # line-creation time, same discipline as Asset.asset_domain.
             asset_domain=category.asset_domain,
-            serial_required=serial_required, bundle_label=data.get("bundle_label"),
+            serial_required=serial_required, serial_later=bool(item and item.serial_later),
+            bundle_label=data.get("bundle_label"),
             item_id=data.get("item_id"), erp_item_code=data.get("erp_item_code"),
             created_by=actor.id, updated_by=actor.id,
         )
@@ -159,6 +160,7 @@ async def update_pending_asset_line(session: AsyncSession, line: PendingAsset, d
     tax_amount, total_cost = compute_tax(data.get("purchase_cost"), data.get("tax_percent"))
     if changed_item:
         line.serial_required = serial_default(item)
+        line.serial_later = bool(item and item.serial_later)
     if item is not None:
         line.item_id = item.id
     line.description = data["description"]
@@ -277,6 +279,7 @@ async def deliver_pending_assets(
                     "tax_percent": line.tax_percent, "purchase_date": invoice_date,
                     "brand_id": line.brand_id, "model": line.model, "warranty_years": line.warranty_years,
                     "serial_number": delivery["serial_number"],
+                    "serial_pending": bool(delivery.get("serial_pending")),
                     "initial_asset_user_id": delivery["initial_asset_user_id"],
                     "po_number": po_number, "po_date": po_date, "vendor_id": vendor_id,
                     "invoice_number": invoice_number, "invoice_date": invoice_date,

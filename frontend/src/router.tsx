@@ -60,6 +60,7 @@ import DashboardRoute from "./routes/dashboard";
 import MyAssetsRoute from "./routes/my-assets";
 import AssetsIndexRoute from "./routes/assets/index";
 import NewAssetRoute from "./routes/assets/new";
+import SerialPendingRoute from "./routes/assets/serial-pending";
 import AssetDetailRoute from "./routes/assets/$id";
 import AssetMovementRoute from "./routes/asset-movement";
 import PrintLabelsRoute from "./routes/print-labels";
@@ -287,6 +288,7 @@ function AppShell() {
                     <SidebarMenu>
                       <SidebarNavItem to="/assets" label="Asset Register" icon={ListChecks} />
                       {canWrite && <SidebarNavItem to="/assets/new" label="Add Asset" icon={PackagePlus} />}
+                      {canWrite && <SidebarNavItem to="/serial-pending" label="Serial Pending" icon={Hash} />}
                       {canWrite && <SidebarNavItem to="/asset-movement" label="Asset Movement" icon={ScanBarcode} />}
                       {canWrite && <SidebarNavItem to="/print-labels" label="Print Labels" icon={Printer} />}
                       {canWrite && <SidebarNavItem to="/purchase-orders" label="Purchase Orders" icon={ClipboardList} />}
@@ -427,6 +429,12 @@ export const assetsNewRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/assets/new",
   component: NewAssetRoute,
+});
+
+export const serialPendingRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/serial-pending",
+  component: SerialPendingRoute,
 });
 
 export const assetDetailRoute = createRoute({
@@ -587,6 +595,7 @@ const routeTree = rootRoute.addChildren([
     dashboardRoute,
     assetsIndexRoute,
     assetsNewRoute,
+    serialPendingRoute,
     assetDetailRoute,
     assetMovementRoute,
     printLabelsRoute,

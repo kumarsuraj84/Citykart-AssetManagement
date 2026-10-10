@@ -64,6 +64,8 @@ def _apply(item: Item, data: dict, actor: AssetUser) -> None:
     item.category_id = data["category_id"]
     item.subcategory_id = data.get("subcategory_id")
     item.serial_required = True if data.get("serial_required") is None else bool(data["serial_required"])
+    # "Read later" only makes sense for something that has a serial.
+    item.serial_later = bool(data.get("serial_later")) and item.serial_required
     item.bundle_id = data.get("bundle_id")
     item.default_brand_id = data.get("default_brand_id")
     item.default_warranty_years = data.get("default_warranty_years")
@@ -102,7 +104,7 @@ async def list_items(session: AsyncSession) -> list[dict]:
     return [
         {
             "id": i.id, "name": i.name, "category_id": i.category_id, "subcategory_id": i.subcategory_id,
-            "serial_required": i.serial_required, "bundle_id": i.bundle_id, "default_brand_id": i.default_brand_id,
+            "serial_required": i.serial_required, "serial_later": i.serial_later, "bundle_id": i.bundle_id, "default_brand_id": i.default_brand_id,
             "default_warranty_years": i.default_warranty_years, "is_active": i.is_active,
             "map_count": counts.get(i.id, 0),
         }

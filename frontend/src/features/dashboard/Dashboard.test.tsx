@@ -58,6 +58,20 @@ describe("Dashboard", () => {
     expect(screen.getByText("IN STOCK")).toBeInTheDocument();
   });
 
+  it("shows how many serial numbers are still to be added, linking to the Serial Pending list", async () => {
+    mockApiGet({ ...baseDashboardData, serial_pending_count: 7 });
+    renderDashboard();
+    expect(await screen.findByTestId("serial-pending-count")).toHaveTextContent("7");
+    expect(screen.getByRole("link", { name: /open the list/i })).toHaveAttribute("href", "/serial-pending");
+  });
+
+  it("shows no Serial Pending card when nothing is waiting", async () => {
+    mockApiGet({ ...baseDashboardData, serial_pending_count: 0 });
+    renderDashboard();
+    await waitFor(() => expect(screen.getByText("5")).toBeInTheDocument());
+    expect(screen.queryByTestId("serial-pending-count")).not.toBeInTheDocument();
+  });
+
   it("shows a real empty state, not just blank cards, when there is genuinely no data", async () => {
     mockApiGet({
       ...baseDashboardData,

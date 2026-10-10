@@ -383,8 +383,12 @@ async def _validate_add_rows(
         # genuinely has none -- see check_serial_number_unique).
         serial_number = cell("Serial Number")
         if _is_blank(serial_number):
-            errors.append({"row": row_idx, "field": "Serial Number", "message": "Serial Number is required (use \"N/A\" if this unit genuinely has none)"})
+            errors.append({"row": row_idx, "field": "Serial Number", "message": "Serial Number is required (use \"N/A\" if this unit genuinely has none, or \"PENDING\" if it will be added later)"})
             continue
+        # "PENDING": the serial exists but will be read and added later (the Serial Pending list).
+        serial_pending = str(serial_number).strip().upper() == "PENDING"
+        if serial_pending:
+            serial_number = None
 
         try:
             po_date = _parse_optional_date(cell("PO Date"), "PO Date")
@@ -458,7 +462,7 @@ async def _validate_add_rows(
             "invoice_amount": invoice_amount,
             "pi_number": cell("PI Number"), "pi_date": pi_date,
             "purchase_cost": purchase_cost, "tax_percent": tax_percent,
-            "brand": brand, "model": cell("Model"), "serial_number": serial_number,
+            "brand": brand, "model": cell("Model"), "serial_number": serial_number, "serial_pending": serial_pending,
             "warranty_years": warranty_years, "custom_fields": custom_values,
         })
 
@@ -691,6 +695,10 @@ async def _commit_edit(session: AsyncSession, content: bytes, actor: AssetUser, 
 
                 for field, value in r["updates"].items():
                     setattr(asset, field, value)
+                # A serial (or N/A) filled in through the sheet settles a pending serial,
+                # which is how a whole batch is filled from the Serial Pending export.
+                if asset.serial_pending and (asset.serial_number or "").strip():
+                    asset.serial_pending = False
 
                 # Always recomputed from the EFFECTIVE (possibly untouched)
                 # purchase_cost/tax_percent -- same rule ordinary Edit (PUT
@@ -786,14 +794,15 @@ async def _commit_add(
                     # Same global uniqueness rule Add Asset/PO delivery enforce
                     # (docs/ai/DECISIONS.md) -- "N/A" (case-insensitive) is
                     # exempt, everything else must be unique system-wide.
-                    await check_serial_number_unique(session, r["serial_number"])
+                    if not r["serial_pending"]:
+                        await check_serial_number_unique(session, r["serial_number"])
                     code = await generate_code(session, rule, tokens)
                     asset = Asset(
                         asset_code=code, legacy_asset_code=r["legacy_asset_code"], company_id=r["company"].id,
                         cost_center_id=r["cost_center"].id, category_id=r["category"].id,
                         subcategory_id=r["subcategory"].id if r["subcategory"] else None,
                         brand_id=r["brand"].id if r["brand"] else None, model=r["model"], serial_number=r["serial_number"],
-                        description=r["description"],
+                        serial_pending=r["serial_pending"], description=r["description"],
                         vendor_id=r["vendor"].id if r["vendor"] else None,
                         po_number=r["po_number"], po_date=r["po_date"],
                         invoice_number=r["invoice_number"], invoice_date=r["invoice_date"],

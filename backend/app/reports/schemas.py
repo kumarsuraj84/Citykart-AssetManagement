@@ -9,6 +9,8 @@ class DashboardOut(BaseModel):
     # AM-12 G03: operational exception visibility (Repair/Lost/Closed) and a small,
     # scoped, snapshot-correct recent-activity feed -- see dashboard_service.py.
     exception_counts: dict[str, int]
+    # Assets whose serial is still to be read and filled in (Serial Pending list).
+    serial_pending_count: int = 0
     recent_activity: list[dict]
     # Purchase Orders card (2026-09-25): open POs still awaiting delivery.
     pending_po_summary: dict

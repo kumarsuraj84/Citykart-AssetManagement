@@ -2,6 +2,21 @@
 
 Newest first. These override older spec/plan text where they conflict.
 
+## 2026-10-11 — "Serial pending": a third serial state for things whose serial is read later
+
+Some things (an amplifier) show no serial on the box; it is read in the store once opened. Beside "has a serial" and
+"genuinely none" (`N/A`) there is now **Pending**: `asset.serial_pending` (serial empty until filled). An Item can say
+"serial is read later" (`item.serial_later`, only meaningful when it has a serial); a PO line snapshots it
+(`pending_asset.serial_later`) and Mark Delivery starts with "add it later" ticked. Delivery, Add Asset and the Excel
+import (`PENDING` in the Serial Number column) can all leave a serial pending. Pending assets are listed on **Serial
+Pending** (`/serial-pending`, with a dashboard count); IT (any user who may edit assets, within their company and
+Responsibility scope) types the serial there (`PUT /api/assets/{id}/serial`, audited, global-uniqueness checked), or
+marks "no serial" (N/A). Filling it in the full Edit, or through the edit-mode Excel sheet, settles it too. Decided with
+the user: **nothing is blocked while it is pending** (the asset is moved, allotted and installed as usual, because the
+box is only opened after the move), the **PO closes on delivery regardless**, no email/WhatsApp reminders yet (in-app list
+and dashboard count only; configure later). Pending is deliberately separate from `N/A` so a serial that was never
+filled can be found and chased. Assets that are disposed/sold/scrapped/lost drop off the list and the count.
+
 ## 2026-10-11 — The serial rule lives on the Item only; bundle parts are Items; missing links are created in place
 
 (1) Whether a thing carries a serial number is decided by its **Item** alone (`item.serial_required`, a plain

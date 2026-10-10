@@ -426,3 +426,23 @@ class TestQuantityAndTransactionSafety:
         assert "serial number" in body["errors"][0]["message"].lower()
         assert len(await _assets_by_legacy("DUP2-A")) == 1
         assert await _assets_by_legacy("DUP2-B") == []
+
+
+class TestPendingSerial:
+    async def test_a_serial_number_of_pending_creates_assets_whose_serial_is_still_to_be_added(self, client):
+        ids = await _setup("PEND1")
+        headers = await _headers(client, ids["admin"])
+        row = _base_row(ids, **{"Legacy Asset Code": "OLD-PEND1", "Serial Number": "pending", "Quantity": 2})
+        resp = await _post(client, "/api/imports/assets/commit", _xlsx([row]), headers)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["imported"] == 2 and resp.json()["errors"] == []
+        assets = await _assets_by_legacy("OLD-PEND1")
+        assert len(assets) == 2 and all(a.serial_pending and a.serial_number is None for a in assets)
+
+    async def test_a_blank_serial_is_still_refused_and_says_how_to_defer_it(self, client):
+        ids = await _setup("PEND2")
+        headers = await _headers(client, ids["admin"])
+        row = _base_row(ids, **{"Legacy Asset Code": "OLD-PEND2", "Serial Number": None})
+        resp = await _post(client, "/api/imports/assets/commit", _xlsx([row]), headers)
+        assert resp.status_code == 200 and resp.json()["imported"] == 0
+        assert "PENDING" in str(resp.json()["errors"])

@@ -90,10 +90,46 @@ describe("Items screen", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith("/items", {
-        name: "Cassette AC", category_id: 1, subcategory_id: 10, serial_required: false, bundle_id: null, default_brand_id: null,
-        default_warranty_years: 2,
+        name: "Cassette AC", category_id: 1, subcategory_id: 10, serial_required: false, serial_later: false, bundle_id: null,
+        default_brand_id: null, default_warranty_years: 2,
       }),
     );
+  });
+
+  it("an Item whose serial is read later (an amplifier) says so, and the list shows it", async () => {
+    mockApi();
+    renderAt("/setup/items");
+    fireEvent.click(await screen.findByRole("button", { name: "New Item" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText(/^item name/i), { target: { value: "Amplifier" } });
+    fireEvent.click(within(dialog).getByLabelText(/^category/i));
+    fireEvent.click(await screen.findByRole("option", { name: "Computers" }));
+    fireEvent.click(within(dialog).getByLabelText(/^sub-category/i));
+    fireEvent.click(await screen.findByRole("option", { name: "CPU" }));
+    fireEvent.click(within(dialog).getByLabelText(/when do we get the serial/i));
+    fireEvent.click(await screen.findByRole("option", { name: /later, when the box is opened/i }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith("/items", expect.objectContaining({ name: "Amplifier", serial_required: true, serial_later: true })),
+    );
+  });
+
+  it("no question about when the serial comes is asked for an Item with no serial", async () => {
+    mockApi();
+    renderAt("/setup/items");
+    fireEvent.click(await screen.findByRole("button", { name: "Edit Mouse" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).queryByLabelText(/when do we get the serial/i)).not.toBeInTheDocument();
+  });
+
+  it("an Item's list entry spells out that its serial is read later", async () => {
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (path === "/items") return Promise.resolve([item(9, "Amplifier", { serial_later: true })]);
+      return Promise.resolve([]);
+    });
+    renderAt("/setup/items");
+    const row = (await screen.findByText("Amplifier")).closest("tr")!;
+    expect(within(row).getByText("Yes (read later)")).toBeInTheDocument();
   });
 
   it("an Item needs a sub-category: Save stays off without one", async () => {

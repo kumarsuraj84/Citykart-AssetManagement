@@ -26,6 +26,8 @@ interface DashboardData {
   long_allocation_alerts: { asset_id: number; asset_code: string; days_allotted: number }[];
   // AM-12 G03
   exception_counts: Record<string, number>;
+  // Assets whose serial is still to be added (the Serial Pending list).
+  serial_pending_count?: number;
   recent_activity: {
     id: number;
     asset_id: number;
@@ -222,6 +224,7 @@ export function Dashboard() {
   });
   const role = useAuthStore((s) => s.role);
   const canSeePurchaseOrders = role !== null && PURCHASE_ORDER_ROLES.includes(role);
+  const canWrite = role === "ADMIN" || role === "OPERATOR";
 
   const vendorsQ = useQuery({
     queryKey: ["masters", "vendors"],
@@ -334,6 +337,19 @@ export function Dashboard() {
               </CardContent>
             </Card>
           </div>
+
+          {(data?.serial_pending_count ?? 0) > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle>Serial Pending</CardTitle>
+                <CardDescription>Assets whose serial number is still to be added.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex items-center justify-between gap-4">
+                <p className="text-2xl font-semibold tabular-nums" data-testid="serial-pending-count">{data?.serial_pending_count}</p>
+                {canWrite && <Link to="/serial-pending" className="text-sm underline">Open the list</Link>}
+              </CardContent>
+            </Card>
+          )}
 
           {canSeePurchaseOrders && (
             <Card>

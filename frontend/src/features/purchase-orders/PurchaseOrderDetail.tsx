@@ -67,6 +67,8 @@ interface PendingAssetRow {
   // False for a part that never carries a serial (mouse, keyboard); the
   // delivery dialog then starts with "No serial number" ticked for it.
   serial_required?: boolean;
+  // The Item's serial is read later (an amplifier): delivery starts with "add it later" ticked.
+  serial_later?: boolean;
   bundle_label?: string | null;
   serial_number: string | null;
   invoice_number: string | null;
@@ -438,7 +440,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   // a pasted/scanned list, one serial per line, is handed to the units in
   // order, or "No serial number" sets N/A for the whole product.
   const [initialAssetUserId, setInitialAssetUserId] = useState("");
-  const [groupInput, setGroupInput] = useState<Record<string, { text: string; noSerial: boolean }>>({});
+  const [groupInput, setGroupInput] = useState<Record<string, { text: string; noSerial: boolean; later: boolean }>>({});
   // Deliberate opt-in to deliver only the units that have a serial and leave
   // the rest in Pending Delivery (instead of cancelling and re-selecting).
   const [leavePending, setLeavePending] = useState(false);
@@ -459,7 +461,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     setGroupInput(
       Object.fromEntries(
         groupUnits(lines.filter((l) => selected.includes(l.id))).map((g) => [
-          g.key, { text: "", noSerial: g.lines[0].serial_required === false },
+          g.key, { text: "", noSerial: g.lines[0].serial_required === false, later: g.lines[0].serial_required !== false && g.lines[0].serial_later === true },
         ]),
       ),
     );
@@ -468,9 +470,11 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     setDeliverOpen(true);
   }
 
-  function setGroupField(key: string, patch: Partial<{ text: string; noSerial: boolean }>) {
-    setGroupInput((p) => ({ ...p, [key]: { ...(p[key] ?? { text: "", noSerial: false }), ...patch } }));
+  function setGroupField(key: string, patch: Partial<{ text: string; noSerial: boolean; later: boolean }>) {
+    setGroupInput((p) => ({ ...p, [key]: { ...(p[key] ?? { text: "", noSerial: false, later: false }), ...patch } }));
   }
+  // A group that types nothing: "No serial number" (N/A) or "add it later" (Pending).
+  const skipsTyping = (key: string) => !!(groupInput[key]?.noSerial || groupInput[key]?.later);
 
   const selectedLines = useMemo(() => lines.filter((l) => selected.includes(l.id)), [lines, selected]);
   const deliveryGroups = useMemo(() => groupUnits(selectedLines), [selectedLines]);
@@ -481,7 +485,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const duplicateSerials = useMemo(() => {
     const counts = new Map<string, number>();
     for (const g of deliveryGroups) {
-      if (groupInput[g.key]?.noSerial) continue;
+      if (skipsTyping(g.key)) continue;
       for (const s of parseSerials(groupInput[g.key]?.text ?? "")) {
         const k = s.toLowerCase();
         if (k === "n/a") continue;
@@ -496,6 +500,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   function serialsForGroup(g: DeliveryGroup): string[] {
     const inp = groupInput[g.key];
     if (inp?.noSerial) return g.lines.map(() => "N/A");
+    if (inp?.later) return g.lines.map(() => "");
     const tokens = parseSerials(inp?.text ?? "");
     return g.lines.map((_, i) => tokens[i] ?? "");
   }
@@ -503,7 +508,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   // units, a serial repeated in this delivery, or one CKAM already has.
   function groupHasProblem(g: DeliveryGroup): boolean {
     const inp = groupInput[g.key];
-    if (inp?.noSerial) return false;
+    if (inp?.noSerial || inp?.later) return false;
     const tokens = parseSerials(inp?.text ?? "");
     return tokens.length > g.lines.length ||
       tokens.some((s) => duplicateSerials.has(s.toLowerCase()) || existingSerials[s.toLowerCase()] !== undefined);
@@ -511,7 +516,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   // Units of a group that would be delivered: all if "No serial number", else
   // as many as there are serials (never more than the units).
   function deliverCountForGroup(g: DeliveryGroup): number {
-    if (groupInput[g.key]?.noSerial) return g.lines.length;
+    if (skipsTyping(g.key)) return g.lines.length;
     return Math.min(parseSerials(groupInput[g.key]?.text ?? "").length, g.lines.length);
   }
   const deliverUnits = deliveryGroups.reduce((sum, g) => sum + deliverCountForGroup(g), 0);
@@ -528,7 +533,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const typedSerials = useMemo(() => {
     const seen = new Map<string, string>();
     for (const g of deliveryGroups) {
-      if (groupInput[g.key]?.noSerial) continue;
+      if (skipsTyping(g.key)) continue;
       for (const s of parseSerials(groupInput[g.key]?.text ?? "")) {
         if (s.toLowerCase() !== "n/a" && !seen.has(s.toLowerCase())) seen.set(s.toLowerCase(), s);
       }
@@ -567,9 +572,15 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
         // them pending) are simply not sent and stay in Pending Delivery.
         lines: deliveryGroups.flatMap((g) => {
           const serials = serialsForGroup(g);
+          const later = !!groupInput[g.key]?.later;
           return g.lines
-            .map((l, i) => ({ pending_asset_id: l.id, serial_number: serials[i], initial_asset_user_id: Number(initialAssetUserId) }))
-            .filter((line) => line.serial_number !== "");
+            .map((l, i): { pending_asset_id: number; serial_number?: string; serial_pending?: true; initial_asset_user_id: number } => ({
+              pending_asset_id: l.id,
+              // "Add it later": no serial is sent, the asset is made as Serial Pending.
+              ...(later ? { serial_pending: true as const } : { serial_number: serials[i] }),
+              initial_asset_user_id: Number(initialAssetUserId),
+            }))
+            .filter((line) => later || line.serial_number !== "");
         }),
       }),
     onSuccess: () => {
@@ -1059,12 +1070,13 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
             {deliveryGroups.map((g) => {
               const n = g.lines.length;
               const first = g.lines[0];
-              const inp = groupInput[g.key] ?? { text: "", noSerial: false };
+              const inp = groupInput[g.key] ?? { text: "", noSerial: false, later: false };
+              const typing = !inp.noSerial && !inp.later;
               const tokens = parseSerials(inp.text);
               const extra = Math.max(0, tokens.length - n);
               const dups = [...new Set(tokens.filter((s) => duplicateSerials.has(s.toLowerCase())))];
               const taken = [...new Set(tokens.filter((s) => existingSerials[s.toLowerCase()] !== undefined))];
-              const problem = !inp.noSerial && (extra > 0 || dups.length > 0 || taken.length > 0);
+              const problem = typing && (extra > 0 || dups.length > 0 || taken.length > 0);
               return (
                 <div key={g.key} className="flex flex-col gap-2 rounded-md border p-2">
                   <div className="flex items-center justify-between gap-2">
@@ -1081,21 +1093,22 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
                     {n === 1 ? (
                       <Input
                         id={`serial-${first.id}`}
-                        value={inp.noSerial ? "N/A" : inp.text}
-                        disabled={inp.noSerial}
+                        value={inp.noSerial ? "N/A" : inp.later ? "" : inp.text}
+                        placeholder={inp.later ? "Pending: add it later" : undefined}
+                        disabled={!typing}
                         onChange={(e) => setGroupField(g.key, { text: e.target.value })}
                       />
                     ) : (
                       <Textarea
                         id={`serials-${first.id}`}
                         rows={Math.min(Math.max(n, 2), 6)}
-                        value={inp.noSerial ? `N/A for all ${n} units` : inp.text}
-                        disabled={inp.noSerial}
-                        placeholder="One serial per line. Paste a list or scan; each scan goes on a new line."
+                        value={inp.noSerial ? `N/A for all ${n} units` : inp.later ? "" : inp.text}
+                        disabled={!typing}
+                        placeholder={inp.later ? "Pending: add them later" : "One serial per line. Paste a list or scan; each scan goes on a new line."}
                         onChange={(e) => setGroupField(g.key, { text: e.target.value })}
                       />
                     )}
-                    {n > 1 && !inp.noSerial && (
+                    {n > 1 && typing && (
                       <p className={`text-xs ${problem ? "text-destructive" : "text-muted-foreground"}`}>
                         {tokens.length} of {n} entered
                         {extra > 0 && ` -- ${extra} too many, remove ${extra === 1 ? "it" : "them"}`}
@@ -1103,10 +1116,10 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
                         {tokens.length < n && leavePending && ` -- ${n - tokens.length} will stay pending`}
                       </p>
                     )}
-                    {n === 1 && dups.length > 0 && !inp.noSerial && (
+                    {n === 1 && dups.length > 0 && typing && (
                       <p className="text-xs text-destructive">Duplicate serial: {dups.join(", ")}</p>
                     )}
-                    {!inp.noSerial && taken.map((s) => (
+                    {typing && taken.map((s) => (
                       <p key={s} className="text-xs text-destructive" role="alert">
                         Serial "{s}" is already used by asset {existingSerials[s.toLowerCase()]}
                       </p>
@@ -1116,9 +1129,17 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
                     <Checkbox
                       aria-label={`No serial number for ${first.description}`}
                       checked={inp.noSerial}
-                      onCheckedChange={(checked) => setGroupField(g.key, { noSerial: checked === true })}
+                      onCheckedChange={(checked) => setGroupField(g.key, checked === true ? { noSerial: true, later: false } : { noSerial: false })}
                     />
                     No serial number{n > 1 ? " (sets N/A for all units)" : ""}
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs">
+                    <Checkbox
+                      aria-label={`Add the serial later for ${first.description}`}
+                      checked={inp.later}
+                      onCheckedChange={(checked) => setGroupField(g.key, checked === true ? { later: true, noSerial: false } : { later: false })}
+                    />
+                    It has one, but add it later{n > 1 ? " (for all units)" : ""}: it shows on the Serial Pending list
                   </label>
                 </div>
               );

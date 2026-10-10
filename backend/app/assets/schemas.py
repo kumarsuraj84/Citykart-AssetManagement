@@ -33,8 +33,10 @@ class AssetCreateIn(BaseModel):
     model: str | None = None
     # Mandatory -- "N/A" (case-insensitive) is the reserved placeholder for
     # a unit that genuinely has no serial; see
-    # app.assets.service.check_serial_number_unique and DECISIONS.md.
-    serial_number: str
+    # app.assets.service.check_serial_number_unique and DECISIONS.md. Omitted only
+    # with serial_pending (the serial will be read and added later).
+    serial_number: str | None = None
+    serial_pending: bool = False
     description: str
     # CityKart's own internal inventory tag -- not the manufacturer serial,
     # and may legitimately repeat across assets (see Asset.barcode's own
@@ -62,6 +64,10 @@ class AssetCreateIn(BaseModel):
     def _item_or_classification(self):
         if self.item_id is None and (self.category_id is None or self.subcategory_id is None):
             raise ValueError("choose an Item (or a category and sub-category)")
+        if self.serial_pending:
+            self.serial_number = None
+        elif self.serial_number is None:
+            raise ValueError("Serial Number is required (use N/A if it has none, or choose to add it later)")
         return self
 
 
@@ -87,6 +93,7 @@ class AssetOut(BaseModel):
     brand_id: int | None
     model: str | None
     serial_number: str | None
+    serial_pending: bool = False
     barcode: str | None
     description: str
     vendor_id: int | None
@@ -227,3 +234,10 @@ class AssetUpdateIn(BaseModel):
     # app.assets.router.update_asset / app.assets.service.compute_warranty_upto.
     warranty_years: int | None = None
     custom_fields: dict | None = None
+
+
+class SerialFillIn(BaseModel):
+    """Fills in the serial of an asset whose serial was pending: a real serial,
+    or no_serial=true when it turns out to have none (saved as N/A)."""
+    serial_number: str | None = None
+    no_serial: bool = False
