@@ -28,6 +28,14 @@ scanned ("expected 20, scanned 18, 2 not scanned yet, 1 not on this challan"). C
 a date-limited query on `fact_dc_line` takes about 7 s. CKAM cannot query these live, so a small, indexed view is
 needed (as was done for `gold_ckam.po_line`).
 
+## Where the data is (so the view can be built from it)
+
+The warehouse's raw (bronze) layer, which CKAM cannot read, holds the whole chain for the main company (`SSRK.*`, from 2023-10):
+transfer / sales orders `SALORDMAIN/DET`, delivery challans `INVDCMAIN/DET`, transfer-out invoices `SALINVMAIN/DET`, store packets
+`PSITE_PACKETITEM`, packet receipts `T_PACKETREC`, store GRC `PSITE_GRC` / `PSITE_GRCITEM`. Silver already has `fact_dc_line` and
+`fact_store_receipt_event`; the transfer-out and transfer-order line tables are not readable by CKAM's login. The second company
+(`CSPL.*`) has only finance and master tables in the warehouse, so this view can only cover the main company for now.
+
 ## The view
 
 `gold_ckam.fa_transfer_line`, **one row per item line of a fixed-asset transfer**, rolling window of the last 90 days,

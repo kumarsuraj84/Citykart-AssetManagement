@@ -5,6 +5,33 @@ CKAM uses only `gold_ckam.po_line` today (and `silver.dim_item` as the item fall
 Row counts are estimates. **Large tables (millions of rows) time out unless filtered by a date or key**; CKAM must never
 query them live without a narrow filter or a purpose-built `gold_ckam` view.
 
+## The layers (checked 2026-10-12)
+
+| Layer | Schema | Can `ckpost` read it? |
+|---|---|---|
+| Bronze (raw ERP tables, as extracted) | `bronze` (71 relations) | **No** (no USAGE) |
+| Silver (cleaned facts and dimensions) | `silver` (35) | Yes, except `fact_to_line` and `fact_transfer_out_line` |
+| Gold (marts and views for apps) | `gold_dc` (45), `gold_fpa` (15), `gold_hr` (2), **`gold_ckam`** (1: `po_line`) | Yes. A plain `gold` schema exists but is empty / no access |
+| Catalogue and load logs | `meta` | Yes (`dataset_catalog`, `raw_files`, `load_status`, `v_freshness`) |
+
+Other databases on the server: `dc360_logistics` and `fpa_app` exist (no connect permission); `postgres`.
+
+**What is in bronze**, from `meta.raw_files` (names and sizes only; the tables themselves are not readable): 64 raw ERP source
+tables in two ERP schemas.
+- `SSRK.*` (the main company's ERP, 457 sites; history from 2023-10): purchase orders `PURORDMAIN/DET`; warehouse gate-in and GRC
+  `INVGATEIN`, `INVGRCMAIN/DET`; **delivery challans** `INVDCMAIN/DET` (26 M lines); sales / transfer documents `SALORDMAIN/DET`,
+  `SALINVMAIN/DET`; **store packets and receipts** `PSITE_PACKETITEM` (6.6 M), `T_PACKETREC` (2.8 M), `PSITE_GRC`, `PSITE_GRCITEM`
+  (25 M), `PSITE_GRT`/`GRTITEM` (store returns); masters `MAS$ITEM` (632 k items), `MAS$STOCKPOINT`, `ADMSITE`, `ADMOU`, `MLV_USER`,
+  `MLV_TRANSPORTER`; finance `FINPOST`, `FINCOSTTAG`, `FINGL`, `FINSL`...
+- `CSPL.*` (the second company, "ckv" in silver, 24 sites): **only finance and masters** (`FINPOST`, `FINCOSTTAG`, `FINGL`, `FINSL`,
+  `ADMSITE`, `ADMCLS`...). The warehouse has no purchase-order or inventory data for the second company.
+- `MISRETAIL.*`: management / reporting tables (targets, footfall, COGS, weekly closing stock, store opening dates).
+
+The packet trail the dispatcher wants (packet created -> in transit -> GRC at the store) lives in `PSITE_PACKETITEM`, `T_PACKETREC`,
+`PSITE_GRC*` and the challan / transfer tables, i.e. in bronze, partly already cleaned into silver (`fact_dc_line`,
+`fact_store_receipt_event`). The ERP team can build `gold_ckam.fa_transfer_line` from them (see `ERP_FA_TRANSFER_REQUEST.md`);
+CKAM should not be given the raw layer.
+
 ## Useful for CKAM (assets, purchasing, movement)
 
 | Relation | ~Rows | What it holds | Use for CKAM |
