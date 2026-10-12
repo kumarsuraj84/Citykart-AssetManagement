@@ -2,6 +2,15 @@
 
 Newest first. These override older spec/plan text where they conflict.
 
+## 2026-10-12 — ERP cancellations and edits of a PO made from the ERP: CKAM shows, a person decides
+
+A PO made from the ERP is a copy, so a later cancellation or edit in the ERP must not silently rewrite it (assets
+and costs are finance records), nor be ignored. CKAM compares the ERP with what the ERP said when the PO was made (or
+last looked at) and shows the differences on the PO (banner), as a badge and card on the PO list, and as a count on the
+dashboard; each difference offers a one-click apply (cancel pending units, add units, update the cost of pending units) or
+"keep as it is". **Manual confirmation** (a cancelled PO's pending lines are one click, not automatic); **anyone who may edit
+POs** may apply; **delivered units are never touched**; every choice is logged. Details in `ERP_INTEGRATION.md`.
+
 ## 2026-10-11 — Dispatch is part of Asset Movement: one screen, "Move / Dispatch"
 
 The separate Dispatch screen (below) was merged into Asset Movement at the user's request (two screens for nearly

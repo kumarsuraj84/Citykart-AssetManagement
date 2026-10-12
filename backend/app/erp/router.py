@@ -4,9 +4,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
 from app.core.deps import WRITE_ROLES, require_primary_owner, require_role, scoped_company_ids
 from app.erp import vendors as erp_vendors
+from app.erp.changes import apply_changes, changes_summary, po_changes, snapshot_baseline
 from app.erp.invoices import apply_pi, pi_preview
 from app.erp.reminders import delivery_reminders
-from app.erp.schemas import DraftCreateIn, ErpVendorCodeIn, PiApplyIn
+from app.erp.schemas import ChangesApplyIn, DraftCreateIn, ErpVendorCodeIn, PiApplyIn
 from app.erp.service import build_draft, create_from_draft, list_available_pos
 from app.erp.source import ErpSource, ErpUnavailable, get_erp_source, is_configured
 from app.masters.schemas import VendorOut
@@ -113,6 +114,59 @@ async def reminders(
         raise _unavailable(exc)
 
 
+@router.get("/changes/summary")
+async def erp_changes_summary(
+    session: AsyncSession = Depends(get_session), source: ErpSource = Depends(get_erp_source),
+    actor=Depends(require_role(*WRITE_ROLES)),
+):
+    """POs made from the ERP that the ERP has changed since (cancelled, quantity or rate edited...), for the
+    PO list and the dashboard. If the ERP cannot be read this is just "not available", never an error."""
+    if not is_configured():
+        return {"available": False, "items": []}
+    try:
+        return {"available": True, "items": await changes_summary(session, actor, source)}
+    except ErpUnavailable:
+        return {"available": False, "items": []}
+
+
+@router.get("/purchase-orders/{po_id}/changes")
+async def erp_po_changes(
+    po_id: int, session: AsyncSession = Depends(get_session), source: ErpSource = Depends(get_erp_source),
+    actor=Depends(require_role(*WRITE_ROLES)),
+):
+    """What the ERP says is different about this PO now, compared with when it was made (or last looked at).
+    Reads only."""
+    po = await _scoped_erp_po(session, actor, po_id)
+    if po.erp_po_code is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "this purchase order was not made from the ERP")
+    try:
+        return await po_changes(session, source, po)
+    except ErpUnavailable as exc:
+        raise _unavailable(exc)
+
+
+@router.post("/purchase-orders/{po_id}/changes/apply")
+async def erp_po_changes_apply(
+    po_id: int, body: ChangesApplyIn, session: AsyncSession = Depends(get_session),
+    source: ErpSource = Depends(get_erp_source), actor=Depends(require_role(*WRITE_ROLES)),
+):
+    """Applies the chosen differences to the PO (cancel pending units, add units, update the cost of pending
+    units), or keeps the PO as it is. Delivered units are never touched."""
+    po = await _scoped_erp_po(session, actor, po_id)
+    if po.erp_po_code is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "this purchase order was not made from the ERP")
+    try:
+        report = await apply_changes(session, actor, source, po, [i.model_dump() for i in body.items])
+        await session.commit()
+    except ErpUnavailable as exc:
+        await session.rollback()
+        raise _unavailable(exc)
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    return report
+
+
 @router.get("/purchase-orders/{po_id}/pi")
 async def pi_lookup(
     po_id: int, session: AsyncSession = Depends(get_session), source: ErpSource = Depends(get_erp_source),
@@ -181,10 +235,19 @@ async def po_draft(
 
 @router.post("/pos/create", status_code=201)
 async def create_po(
-    body: DraftCreateIn, session: AsyncSession = Depends(get_session), actor=Depends(require_role(*WRITE_ROLES)),
+    body: DraftCreateIn, session: AsyncSession = Depends(get_session), source: ErpSource = Depends(get_erp_source),
+    actor=Depends(require_role(*WRITE_ROLES)),
 ):
     try:
         result = await create_from_draft(session, actor, body.model_dump())
+        # Remember what the ERP says now, so a later change (cancelled, edited) can be recognised.
+        # If the ERP cannot be read this moment the PO is still made; it can be watched later.
+        try:
+            erp_po = await source.po(body.erp_po_code) if body.erp_po_code is not None else None
+            if erp_po is not None:
+                await snapshot_baseline(session, await session.get(PurchaseOrder, result["po_id"]), erp_po)
+        except ErpUnavailable:
+            pass
         await session.commit()
     except IntegrityError:
         await session.rollback()

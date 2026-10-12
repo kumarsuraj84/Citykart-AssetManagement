@@ -5,6 +5,7 @@ import { apiClient } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useErpChangesSummary } from "../erp/ErpChanges";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -233,6 +234,9 @@ export function Dashboard() {
   });
   const vendorNames = Object.fromEntries((vendorsQ.data ?? []).map((v) => [v.id, v.name]));
 
+  const erpChangesQ = useErpChangesSummary(canSeePurchaseOrders);
+  const erpChangedPos = erpChangesQ.data?.items ?? [];
+
   const statusEntries = Object.entries(data?.status_counts ?? {});
 
   return (
@@ -347,6 +351,19 @@ export function Dashboard() {
               <CardContent className="flex items-center justify-between gap-4">
                 <p className="text-2xl font-semibold tabular-nums" data-testid="serial-pending-count">{data?.serial_pending_count}</p>
                 {canWrite && <Link to="/serial-pending" className="text-sm underline">Open the list</Link>}
+              </CardContent>
+            </Card>
+          )}
+
+          {canSeePurchaseOrders && erpChangedPos.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle>Purchase Orders changed in the ERP</CardTitle>
+                <CardDescription>POs made from the ERP that the ERP has since cancelled or edited.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex items-center justify-between gap-4">
+                <p className="text-2xl font-semibold tabular-nums" data-testid="erp-changed-po-count">{erpChangedPos.length}</p>
+                <Link to="/purchase-orders" className="text-sm underline">Open Purchase Orders</Link>
               </CardContent>
             </Card>
           )}

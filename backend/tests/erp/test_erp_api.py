@@ -106,6 +106,11 @@ class FakeErp:
             raise ErpUnavailable(self.down)
         return self.pos.get(po_code)
 
+    async def pos_with_lines(self, po_codes):
+        if self.down:
+            raise ErpUnavailable(self.down)
+        return [self.pos[c] for c in po_codes if c in self.pos]
+
 
 @pytest.fixture
 def erp():

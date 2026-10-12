@@ -21,6 +21,7 @@ import { FormField } from "@/components/shared/FormField";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { AddBundleDialog } from "./AddBundleDialog";
 import { DeliveryReminderBanner } from "../erp/DeliveryReminders";
+import { ErpChangesPanel } from "../erp/ErpChanges";
 import { ErpPiDialog } from "../erp/ErpPiDialog";
 
 interface PurchaseOrderOut {
@@ -722,6 +723,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
         }
       />
 
+      {poQ.data?.erp_po_code != null && <ErpChangesPanel poId={poId} />}
       {poQ.data?.erp_po_code != null && <DeliveryReminderBanner poId={poId} fromErp />}
 
       {/* AM-14: a KPI summary row, derived from the already-fetched `lines` --

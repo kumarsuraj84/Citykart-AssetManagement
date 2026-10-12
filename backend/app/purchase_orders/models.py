@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.db import Base
 from app.core.models import AuditMixin, SoftDeleteMixin
@@ -23,6 +23,41 @@ class PurchaseOrder(Base, AuditMixin, SoftDeleteMixin):
     warehouse_code: Mapped[str | None] = mapped_column(String(100))
     # The ERP purchase order this was created from (unique when set).
     erp_po_code: Mapped[int | None] = mapped_column(BigInteger)
+    # What the ERP said about the PO header when this PO was made (or when its changes were last
+    # looked at); a later difference is "the ERP changed this PO". The item lines are in
+    # PurchaseOrderErpBaseline.
+    erp_status: Mapped[str | None] = mapped_column(String(30))
+    erp_supplier_code: Mapped[str | None] = mapped_column(String(50))
+    erp_delivery_location: Mapped[str | None] = mapped_column(String(200))
+    erp_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PurchaseOrderErpBaseline(Base):
+    """What the ERP said about one item code of a PO when CKAM last agreed with it: the quantity
+    after cancellations, the rate and the tax %. The ERP keeps no edit history, so "changed" means
+    different from this."""
+    __tablename__ = "purchase_order_erp_baseline"
+    __table_args__ = (UniqueConstraint("purchase_order_id", "item_code", name="uq_po_erp_baseline_item"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    purchase_order_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("purchase_order.id"))
+    item_code: Mapped[str] = mapped_column(String(50))
+    qty: Mapped[float] = mapped_column(Numeric(14, 3))
+    rate: Mapped[float] = mapped_column(Numeric(14, 4))
+    tax_percent: Mapped[float | None] = mapped_column(Numeric(6, 2))
+
+
+class PurchaseOrderErpChange(Base):
+    """A change the ERP made to a PO that a person applied here (or chose to keep as it is)."""
+    __tablename__ = "purchase_order_erp_change"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    purchase_order_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("purchase_order.id"))
+    actor_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("asset_user.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    kind: Mapped[str] = mapped_column(String(30))
+    item_code: Mapped[str | None] = mapped_column(String(50))
+    summary: Mapped[str] = mapped_column(String(500))
 
 
 class PendingAsset(Base, AuditMixin):

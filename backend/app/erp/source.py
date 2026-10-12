@@ -7,7 +7,7 @@ interface below, never to asyncpg, so tests swap in a stand-in
 (`app.erp.deps.get_erp_source` is a FastAPI dependency)."""
 import time
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from typing import Protocol
 
 import asyncpg
@@ -81,6 +81,7 @@ class ErpPo:
     header_charges: float = 0
     line_count: int = 0
     lines: list[ErpPoLine] = field(default_factory=list)
+    loaded_at: datetime | None = None      # when the warehouse last loaded this PO (it is loaded daily)
 
 
 @dataclass
@@ -178,6 +179,8 @@ class ErpSource(Protocol):
         """Headers only (no lines) of the OPEN POs of these suppliers, newest first."""
     async def po(self, po_code: int) -> ErpPo | None:
         """One PO with all its lines."""
+    async def pos_with_lines(self, po_codes: list[int]) -> list[ErpPo]:
+        """Several POs with all their lines (a PO the ERP no longer has is simply missing)."""
 
 
 def is_configured() -> bool:
@@ -371,23 +374,31 @@ class PgErpSource:
         return [self._header(r) for r in rows]
 
     async def po(self, po_code: int) -> ErpPo | None:
+        found = await self.pos_with_lines([po_code])
+        return found[0] if found else None
+
+    async def pos_with_lines(self, po_codes: list[int]) -> list[ErpPo]:
+        if not po_codes:
+            return []
         rows = await self._fetch(
             f"""select po_line_key, po_code, po_number, po_date, po_status, company_code, company_name,
                        delivery_location, supplier_code, supplier_name, icode, item_description, group_code, hsn,
-                       unit, ordqty, rate, tax_percent, line_netamt, rcqty, cnlqty, hdr_netamt, hdr_chgamt
-                from {VIEW_PO_LINE} where po_code = $1 order by po_line_key""", po_code)
-        if not rows:
-            return None
-        po = self._header(rows[0])
-        po.line_count = len(rows)
-        po.lines = [
-            ErpPoLine(po_line_key=r["po_line_key"], item_code=r["icode"], description=(r["item_description"] or "").strip(),
-                      group_code=r["group_code"], hsn=r["hsn"], unit=r["unit"], qty=float(r["ordqty"] or 0),
-                      rate=float(r["rate"] or 0), tax_percent=_f(r["tax_percent"]), line_net=float(r["line_netamt"] or 0),
-                      received_qty=float(r["rcqty"] or 0), cancelled_qty=float(r["cnlqty"] or 0))
-            for r in rows
-        ]
-        return po
+                       unit, ordqty, rate, tax_percent, line_netamt, rcqty, cnlqty, hdr_netamt, hdr_chgamt, _loaded_at
+                from {VIEW_PO_LINE} where po_code = any($1::bigint[]) order by po_code, po_line_key""", list(po_codes))
+        out: dict[int, ErpPo] = {}
+        for r in rows:
+            po = out.get(r["po_code"])
+            if po is None:
+                po = out[r["po_code"]] = self._header(r)
+                po.loaded_at = r["_loaded_at"]
+            po.line_count += 1
+            po.lines.append(
+                ErpPoLine(po_line_key=r["po_line_key"], item_code=r["icode"], description=(r["item_description"] or "").strip(),
+                          group_code=r["group_code"], hsn=r["hsn"], unit=r["unit"], qty=float(r["ordqty"] or 0),
+                          rate=float(r["rate"] or 0), tax_percent=_f(r["tax_percent"]), line_net=float(r["line_netamt"] or 0),
+                          received_qty=float(r["rcqty"] or 0), cancelled_qty=float(r["cnlqty"] or 0))
+            )
+        return list(out.values())
 
     @staticmethod
     def _header(r) -> ErpPo:

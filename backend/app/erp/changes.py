@@ -1,0 +1,394 @@
+"""When the ERP changes a purchase order that CKAM made from it.
+
+A CKAM PO made from an ERP PO is a copy. The ERP is loaded daily and keeps no edit history, so CKAM
+remembers what the ERP said when the PO was made (or when its changes were last looked at) and shows
+what is different NOW: the PO cancelled, a quantity reduced or raised, a rate or tax edited, a line
+added. Nothing is changed by itself: each difference is shown with what applying it would do, and a
+person applies it, or keeps the PO as it is. Delivered units (real assets) are never touched.
+
+Units are matched by the ERP item code stored on each line (`erp_item_code`); lines typed by hand have
+none and are ignored here."""
+from collections import defaultdict
+from datetime import datetime, timezone
+from decimal import Decimal
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.asset_users.models import AssetUser
+from app.assets.service import compute_tax
+from app.bundles.models import Bundle, BundlePart
+from app.bundles.service import add_bundle_lines, split_amounts
+from app.core.deps import scoped_company_ids
+from app.erp.service import derive_tax
+from app.erp.source import ErpPo, ErpSource
+from app.purchase_orders.models import PendingAsset, PurchaseOrder, PurchaseOrderErpBaseline, PurchaseOrderErpChange
+from app.purchase_orders.service import add_pending_asset_line, cancel_pending_asset_line
+
+RATE_TOLERANCE = 0.005
+
+
+def _cancelled(status: str | None) -> bool:
+    return (status or "").strip().upper().startswith("CANCEL")
+
+
+def _closed(status: str | None) -> bool:
+    return (status or "").strip().upper().startswith("CLOS")
+
+
+def _units(qty: float) -> int:
+    return int(qty) if qty > 0 else 0
+
+
+def erp_now(po: ErpPo) -> dict[str, dict]:
+    """What the ERP says now, per item code (upper-case): units after cancellations, rate, tax %."""
+    derived, _ = derive_tax(po)
+    out: dict[str, dict] = {}
+    for ln in po.lines:
+        code = (ln.item_code or "").strip().upper()
+        if not code:
+            continue
+        units = _units(ln.qty - ln.cancelled_qty)
+        tax = ln.tax_percent if ln.tax_percent is not None else (derived if derived is not None else 0.0)
+        entry = out.get(code)
+        if entry is None:
+            out[code] = {"qty": units, "rate": ln.rate, "tax": tax, "description": ln.description}
+        else:
+            entry["qty"] += units
+            if entry["qty"] == units and units > 0:        # the first line that actually has units sets the rate
+                entry["rate"], entry["tax"] = ln.rate, tax
+    return out
+
+
+async def snapshot_baseline(session: AsyncSession, po: PurchaseOrder, erp: ErpPo) -> None:
+    """Remembers what the ERP says now as the state CKAM agrees with (replacing any earlier one)."""
+    for row in (await session.execute(
+        select(PurchaseOrderErpBaseline).where(PurchaseOrderErpBaseline.purchase_order_id == po.id)
+    )).scalars().all():
+        await session.delete(row)
+    await session.flush()
+    for code, now in erp_now(erp).items():
+        session.add(PurchaseOrderErpBaseline(purchase_order_id=po.id, item_code=code, qty=now["qty"], rate=now["rate"], tax_percent=now["tax"]))
+    _stamp_header(po, erp)
+    await session.flush()
+
+
+def _stamp_header(po: PurchaseOrder, erp: ErpPo) -> None:
+    po.erp_status = erp.status
+    po.erp_supplier_code = erp.supplier_code
+    po.erp_delivery_location = erp.delivery_location
+    po.erp_synced_at = datetime.now(timezone.utc)
+
+
+async def _lines(session: AsyncSession, po_id: int) -> list[PendingAsset]:
+    return list((await session.execute(
+        select(PendingAsset).where(PendingAsset.purchase_order_id == po_id).order_by(PendingAsset.id)
+    )).scalars().all())
+
+
+def _ckam_groups(lines: list[PendingAsset]) -> dict[str, dict]:
+    """Per ERP item code: units here (a bundle's parts are one unit each), how many are still pending,
+    how many delivered, and the pending lines."""
+    groups: dict[str, dict[str, dict]] = defaultdict(dict)
+    for ln in lines:
+        code = (ln.erp_item_code or "").strip().upper()
+        if not code or ln.status == "CANCELLED":
+            continue
+        g = groups[code].setdefault(ln.description, {"total": 0, "pending": 0, "delivered": 0, "pending_lines": [], "lines": []})
+        g["total"] += 1
+        g["lines"].append(ln)
+        if ln.status == "PENDING":
+            g["pending"] += 1
+            g["pending_lines"].append(ln)
+        elif ln.status == "DELIVERED":
+            g["delivered"] += 1
+    return {
+        code: {
+            "parts": parts,
+            "units": max(g["total"] for g in parts.values()),
+            "pending": max(g["pending"] for g in parts.values()),
+            "delivered": max(g["delivered"] for g in parts.values()),
+            "description": next(iter(parts)),
+        }
+        for code, parts in groups.items()
+    }
+
+
+def compute_changes(po: PurchaseOrder, erp: ErpPo | None, baseline: dict[str, PurchaseOrderErpBaseline], lines: list[PendingAsset]) -> dict:
+    report: dict = {
+        "found": erp is not None, "watching": po.erp_synced_at is not None, "erp_status": erp.status if erp else None,
+        "erp_as_of": erp.loaded_at.isoformat() if erp and erp.loaded_at else None, "changes": [], "info": [],
+    }
+    if erp is None:
+        report["info"].append("The ERP no longer has this purchase order.")
+        return report
+    if not report["watching"]:
+        return report                       # no baseline yet: nothing can be said to have changed
+
+    groups = _ckam_groups(lines)
+    now = erp_now(erp)
+    pending_total = sum(g["pending"] for g in groups.values())
+    delivered_total = sum(g["delivered"] for g in groups.values())
+
+    if _cancelled(erp.status) and not _cancelled(po.erp_status):
+        report["changes"].append({
+            "id": "PO_CANCELLED", "kind": "PO_CANCELLED", "item_code": None, "pending_units": pending_total,
+            "delivered_units": delivered_total,
+            "message": "This purchase order was cancelled in the ERP.",
+        })
+    elif not _cancelled(po.erp_status):
+        for code in sorted(set(now) | set(baseline)):
+            was = baseline.get(code)
+            nw = now.get(code)
+            was_qty = _units(float(was.qty)) if was else 0
+            now_qty = nw["qty"] if nw else 0
+            g = groups.get(code)
+            description = (nw or {}).get("description") or (g["description"] if g else code)
+            if was is None:
+                if now_qty > 0:
+                    report["changes"].append({"id": f"NEW_ITEM:{code}", "kind": "NEW_ITEM", "item_code": code, "description": description,
+                                              "qty": now_qty, "rate": nw["rate"]})
+                continue
+            if now_qty < was_qty:
+                over = max(0, (g["delivered"] if g else 0) - now_qty)
+                report["changes"].append({
+                    "id": f"CANCEL_UNITS:{code}", "kind": "CANCEL_UNITS", "item_code": code, "description": description,
+                    "was_units": was_qty, "erp_units": now_qty, "pending_units": g["pending"] if g else 0,
+                    "delivered_units": g["delivered"] if g else 0,
+                    "count": min(g["pending"] if g else 0, was_qty - now_qty), "over_delivered": over,
+                })
+            elif now_qty > was_qty:
+                report["changes"].append({
+                    "id": f"ADD_UNITS:{code}", "kind": "ADD_UNITS", "item_code": code, "description": description,
+                    "was_units": was_qty, "erp_units": now_qty, "count": now_qty - was_qty, "can_add": g is not None,
+                })
+            if nw and was_qty > 0 and now_qty > 0:
+                tax_changed = (was.tax_percent is not None and nw["tax"] is not None and abs(float(was.tax_percent) - nw["tax"]) > RATE_TOLERANCE)
+                if abs(float(was.rate) - nw["rate"]) > RATE_TOLERANCE or tax_changed:
+                    pending = g["pending"] if g else 0
+                    change = {
+                        "id": f"COST_CHANGED:{code}", "kind": "COST_CHANGED", "item_code": code, "description": description,
+                        "was_rate": float(was.rate), "now_rate": nw["rate"], "was_tax": float(was.tax_percent) if was.tax_percent is not None else None,
+                        "now_tax": nw["tax"], "pending_units": pending, "delivered_units": g["delivered"] if g else 0,
+                    }
+                    report["changes"].append(change)
+
+    # header facts that are information, not something to apply to lines
+    if erp.status != po.erp_status and not _cancelled(erp.status):
+        if _closed(erp.status):
+            report["info"].append("The ERP now shows this purchase order as closed (fully received there). Nothing to change here.")
+        else:
+            report["info"].append(f"The ERP status changed from {po.erp_status or 'unknown'} to {erp.status}.")
+    if po.erp_supplier_code and erp.supplier_code != po.erp_supplier_code:
+        report["info"].append(f"The ERP now shows a different vendor ({erp.supplier_name}).")
+    if po.erp_delivery_location and (erp.delivery_location or "") != po.erp_delivery_location:
+        report["info"].append(f"The ERP now shows a different delivery location ({erp.delivery_location}).")
+    if report["info"]:
+        report["changes"].append({"id": "HEADER", "kind": "HEADER", "item_code": None, "messages": list(report["info"])})
+        report["info"] = []
+    return report
+
+
+async def _baseline(session: AsyncSession, po_id: int) -> dict[str, PurchaseOrderErpBaseline]:
+    rows = (await session.execute(select(PurchaseOrderErpBaseline).where(PurchaseOrderErpBaseline.purchase_order_id == po_id))).scalars().all()
+    return {r.item_code.upper(): r for r in rows}
+
+
+async def _log(session: AsyncSession, po_id: int, actor: AssetUser, kind: str, item_code: str | None, summary: str) -> None:
+    session.add(PurchaseOrderErpChange(purchase_order_id=po_id, actor_id=actor.id, kind=kind, item_code=item_code, summary=summary[:500]))
+
+
+async def po_changes(session: AsyncSession, source: ErpSource, po: PurchaseOrder) -> dict:
+    erp = await source.po(po.erp_po_code) if po.erp_po_code is not None else None
+    report = compute_changes(po, erp, await _baseline(session, po.id), await _lines(session, po.id))
+    report.update({"po_id": po.id, "po_number": po.po_number, "erp_po_code": po.erp_po_code})
+    log_rows = (await session.execute(
+        select(PurchaseOrderErpChange).where(PurchaseOrderErpChange.purchase_order_id == po.id)
+        .order_by(PurchaseOrderErpChange.id.desc()).limit(15)
+    )).scalars().all()
+    names = {u.id: u.name for u in (await session.execute(
+        select(AssetUser).where(AssetUser.id.in_({r.actor_id for r in log_rows if r.actor_id}))
+    )).scalars().all()} if log_rows else {}
+    report["log"] = [
+        {"at": r.created_at.isoformat(), "by": names.get(r.actor_id), "kind": r.kind, "item_code": r.item_code, "summary": r.summary}
+        for r in log_rows
+    ]
+    return report
+
+
+async def changes_summary(session: AsyncSession, actor: AssetUser, source: ErpSource) -> list[dict]:
+    """POs made from the ERP that are still being watched and still have units pending, with how many
+    differences the ERP now shows. One ERP read for all of them."""
+    allowed = await scoped_company_ids(session, actor)
+    stmt = select(PurchaseOrder).where(
+        PurchaseOrder.erp_po_code.is_not(None), PurchaseOrder.erp_synced_at.is_not(None), PurchaseOrder.is_active.is_(True))
+    if allowed is not None:
+        stmt = stmt.where(PurchaseOrder.company_id.in_(allowed))
+    pos = list((await session.execute(stmt)).scalars().all())
+    if not pos:
+        return []
+    pending_po_ids = set((await session.execute(
+        select(PendingAsset.purchase_order_id).where(PendingAsset.purchase_order_id.in_([p.id for p in pos]), PendingAsset.status == "PENDING")
+    )).scalars().all())
+    pos = [p for p in pos if p.id in pending_po_ids]
+    if not pos:
+        return []
+    erp_by_code = {e.po_code: e for e in await source.pos_with_lines([p.erp_po_code for p in pos])}
+    out = []
+    for p in pos:
+        report = compute_changes(p, erp_by_code.get(p.erp_po_code), await _baseline(session, p.id), await _lines(session, p.id))
+        if report["changes"]:
+            out.append({
+                "po_id": p.id, "po_number": p.po_number, "changes": len(report["changes"]),
+                "cancelled": any(c["kind"] == "PO_CANCELLED" for c in report["changes"]),
+            })
+    return out
+
+
+# ---- applying -----------------------------------------------------------
+
+async def _cancel_units(session: AsyncSession, actor: AssetUser, group: dict, count: int) -> int:
+    """Cancels `count` pending units (the most recently added first). A bundle's parts each lose `count`."""
+    cancelled = 0
+    for part in group["parts"].values():
+        for ln in sorted(part["pending_lines"], key=lambda l: l.id, reverse=True)[:count]:
+            await cancel_pending_asset_line(session, ln, actor)
+        cancelled = max(cancelled, min(count, len(part["pending_lines"])))
+    return cancelled
+
+
+async def _add_units(session: AsyncSession, actor: AssetUser, po: PurchaseOrder, group: dict, count: int, rate: float, tax: float) -> None:
+    first_part = next(iter(group["parts"].values()))
+    template = first_part["lines"][-1]
+    if template.bundle_label:
+        bundle = (await session.execute(
+            select(Bundle).where(Bundle.name == template.bundle_label, Bundle.is_active.is_(True))
+        )).scalars().first()
+        if bundle is None:
+            raise ValueError(f"The bundle {template.bundle_label!r} is not available any more, so the extra units cannot be added automatically. Add them with + Add Bundle.")
+        await add_bundle_lines(session, po, {
+            "bundle_id": bundle.id, "description": template.description.rsplit(" - ", 1)[0], "barcode": template.barcode or template.erp_item_code or "",
+            "quantity": count, "price": rate, "tax_percent": tax, "warranty_years": template.warranty_years or 0,
+            "erp_item_code": template.erp_item_code,
+        }, actor)
+        return
+    if len(group["parts"]) != 1:
+        raise ValueError("These lines have been split by hand, so the extra units cannot be added automatically. Add them with + Add Line.")
+    await add_pending_asset_line(session, po, {
+        "description": template.description, "barcode": template.barcode, "category_id": template.category_id,
+        "subcategory_id": template.subcategory_id, "brand_id": template.brand_id, "model": template.model,
+        "warranty_years": template.warranty_years or 0, "purchase_cost": rate, "tax_percent": tax, "quantity": count,
+        "item_id": template.item_id, "erp_item_code": template.erp_item_code,
+    }, actor)
+
+
+async def _update_cost(session: AsyncSession, group: dict, rate: float, tax: float) -> int:
+    """The pending units get the ERP's rate and tax %. A bundle's price is split over its parts by the
+    bundle's shares, as when it was added. Delivered units keep the cost they were delivered with."""
+    pending = [ln for part in group["parts"].values() for ln in part["pending_lines"]]
+    if not pending:
+        return 0
+    bundle_label = pending[0].bundle_label
+    if bundle_label:
+        bundle = (await session.execute(select(Bundle).where(Bundle.name == bundle_label, Bundle.is_active.is_(True)))).scalars().first()
+        parts = (await session.execute(
+            select(BundlePart).where(BundlePart.bundle_id == bundle.id, BundlePart.is_active.is_(True)).order_by(BundlePart.sort_order, BundlePart.id)
+        )).scalars().all() if bundle else []
+        amounts = dict(zip([p.name for p in parts], split_amounts(Decimal(str(rate)), [Decimal(str(p.share_percent)) for p in parts]))) if parts else {}
+        for ln in pending:
+            part_name = ln.description.rsplit(" - ", 1)[-1]
+            if part_name not in amounts:
+                raise ValueError("The parts of this bundle have changed, so the new rate cannot be split automatically. Edit the lines by hand.")
+        for ln in pending:
+            _set_cost(ln, float(amounts[ln.description.rsplit(" - ", 1)[-1]]), tax)
+    else:
+        for ln in pending:
+            _set_cost(ln, rate, tax)
+    return len(pending)
+
+
+def _set_cost(line: PendingAsset, cost: float, tax: float) -> None:
+    line.purchase_cost = cost
+    line.tax_percent = tax
+    line.tax_amount, line.total_cost = compute_tax(cost, tax)
+
+
+async def _set_baseline_item(session: AsyncSession, po: PurchaseOrder, code: str, now: dict | None, parts: str = "all") -> None:
+    """Records the ERP's state for one item code as agreed. `parts`: "qty" (a quantity change was dealt
+    with), "cost" (a rate / tax change was dealt with) or "all", so dealing with one leaves the other showing."""
+    row = (await session.execute(select(PurchaseOrderErpBaseline).where(
+        PurchaseOrderErpBaseline.purchase_order_id == po.id, PurchaseOrderErpBaseline.item_code == code))).scalar_one_or_none()
+    if row is None:
+        row = PurchaseOrderErpBaseline(purchase_order_id=po.id, item_code=code, qty=0, rate=now["rate"] if now else 0,
+                                       tax_percent=now["tax"] if now else None)
+        session.add(row)
+    if parts in ("qty", "all"):
+        row.qty = now["qty"] if now else 0
+    if parts in ("cost", "all") and now:
+        row.rate, row.tax_percent = now["rate"], now["tax"]
+
+
+async def apply_changes(session: AsyncSession, actor: AssetUser, source: ErpSource, po: PurchaseOrder, items: list[dict]) -> dict:
+    """`items`: [{"id": <change id from the report>, "mode": "apply" | "keep"}], or [{"id": "WATCH", "mode": "apply"}]
+    to start watching a PO that has no baseline yet. The ERP is read again first, and only changes that are
+    still there can be applied. "keep" leaves the PO as it is and remembers the ERP's new state as agreed."""
+    erp = await source.po(po.erp_po_code) if po.erp_po_code is not None else None
+    if erp is None:
+        raise ValueError("The ERP no longer has this purchase order, so there is nothing to compare with.")
+    if any(i["id"] == "WATCH" for i in items):
+        await snapshot_baseline(session, po, erp)
+        await _log(session, po.id, actor, "WATCH", None, "Started comparing this purchase order with the ERP.")
+        return await po_changes(session, source, po)
+
+    lines = await _lines(session, po.id)
+    groups = _ckam_groups(lines)
+    now = erp_now(erp)
+    report = compute_changes(po, erp, await _baseline(session, po.id), lines)
+    current = {c["id"]: c for c in report["changes"]}
+    for item in items:
+        change = current.get(item["id"])
+        if change is None:
+            raise ValueError("That change is not there any more (the ERP data or this PO has changed). Reload and look again.")
+        mode, code, kind = item["mode"], change.get("item_code"), change["kind"]
+        if mode not in ("apply", "keep"):
+            raise ValueError("mode must be apply or keep")
+
+        if mode == "keep":
+            summary = {
+                "PO_CANCELLED": "Kept this purchase order as it is although the ERP cancelled it.",
+                "HEADER": "Noted the ERP's header changes without changing anything here.",
+                "NEW_ITEM": f"Noted {code}, new in the ERP, as dealt with.",
+            }.get(kind, f"Kept {code} as it is although the ERP changed it.")
+        elif kind == "PO_CANCELLED":
+            n = 0
+            for g in groups.values():
+                n += await _cancel_units(session, actor, g, g["pending"])
+            summary = f"The ERP cancelled this purchase order: cancelled {n} pending unit{'s' if n != 1 else ''} here."
+        elif kind == "CANCEL_UNITS":
+            n = await _cancel_units(session, actor, groups[code], change["count"]) if change["count"] else 0
+            summary = f"The ERP reduced {code} from {change['was_units']} to {change['erp_units']}: cancelled {n} pending unit{'s' if n != 1 else ''}."
+        elif kind == "ADD_UNITS":
+            if not change["can_add"]:
+                raise ValueError(f"{code} has no lines here to copy, so add the extra units with + Add Line.")
+            await _add_units(session, actor, po, groups[code], change["count"], now[code]["rate"], now[code]["tax"])
+            summary = f"The ERP raised {code} from {change['was_units']} to {change['erp_units']}: added {change['count']} unit{'s' if change['count'] != 1 else ''}."
+        elif kind == "COST_CHANGED":
+            n = await _update_cost(session, groups[code], now[code]["rate"], now[code]["tax"]) if code in groups else 0
+            summary = f"The ERP changed the cost of {code} to {now[code]['rate']:g} + {now[code]['tax']:g}% tax: updated {n} pending unit{'s' if n != 1 else ''}."
+        elif kind == "NEW_ITEM":
+            raise ValueError(f"{code} is new in the ERP: add it with + Add Line (or + Add Bundle), then choose Keep here.")
+        elif kind == "HEADER":
+            summary = "Noted the ERP's header changes."
+        else:
+            raise ValueError(f"unknown change {kind}")
+
+        # what the ERP says about this item / header is now the state CKAM agrees with
+        if kind == "PO_CANCELLED":
+            known = set(now) | set(await _baseline(session, po.id))
+            for c in known:
+                await _set_baseline_item(session, po, c, now.get(c))
+        elif code:
+            await _set_baseline_item(session, po, code, now.get(code), "cost" if kind == "COST_CHANGED" else "all" if kind == "NEW_ITEM" else "qty")
+        if kind in ("PO_CANCELLED", "HEADER"):
+            _stamp_header(po, erp)
+        await _log(session, po.id, actor, f"{mode.upper()}_{kind}", code, summary)
+    await session.flush()
+    return await po_changes(session, source, po)

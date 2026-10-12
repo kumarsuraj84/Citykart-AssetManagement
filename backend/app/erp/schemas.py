@@ -55,3 +55,13 @@ class PiApplyIn(BaseModel):
 
 class ErpVendorCodeIn(BaseModel):
     erp_vendor_code: str = Field(min_length=1, max_length=50)
+
+
+class ChangeActionIn(BaseModel):
+    """One difference from the ERP: apply it to this PO, or keep the PO as it is."""
+    id: str
+    mode: str = "apply"          # "apply" | "keep"
+
+
+class ChangesApplyIn(BaseModel):
+    items: list[ChangeActionIn] = Field(min_length=1, max_length=200)

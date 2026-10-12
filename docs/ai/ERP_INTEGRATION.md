@@ -43,6 +43,32 @@ Open POs (539): series `GPO` 316 (store fixed assets: sensormatic/AC/lights/shel
 - **Delivery reminders** (`app/erp/reminders.py`, `GET /api/erp/reminders`): for POs created from the ERP, the ERP's received quantity per item code (summed over GRC lines) is compared with the units delivered here (barcode = item code; a bundle counts as its most-delivered part). If the ERP shows more received than delivered, a card on Purchase Orders and a banner on the PO say "N to deliver", with GRC numbers and dates. It only ever reminds: delivery needs serial numbers. If the ERP is off or unreachable the card is simply hidden.
 - **PI from the ERP** (`app/erp/invoices.py`, `GET/POST /api/erp/purchase-orders/{id}/pi[/apply]`): "Fetch PI from ERP" on a PO's delivered-invoices section previews the ERP PIs matched to the invoices delivered here by vendor invoice number (ignoring case/punctuation; if a PO has exactly one delivered invoice and the ERP has exactly one PI they are paired even if the numbers differ, and it says so). Rows are Ready / Already recorded / Different PI already recorded / No matching invoice. Only ticked rows are recorded, through `record_pi_for_invoice` (same audit trail); the server re-checks every requested PI against the ERP, so a PI the ERP does not hold for the PO can never be recorded; an existing different PI is kept unless "replace" is ticked.
 
+## When the ERP changes a PO that CKAM made from it (built 2026-10-12)
+
+A CKAM PO made from an ERP PO is a copy; the ERP is loaded daily and keeps no edit history. CKAM therefore
+remembers what the ERP said when the PO was made (`purchase_order.erp_status/erp_supplier_code/erp_delivery_location/
+erp_synced_at` and one `purchase_order_erp_baseline` row per item code: units after cancellations, rate, tax %)
+and shows what is different NOW (`app/erp/changes.py`). Changes are measured against that baseline, not against
+CKAM's own lines, so units a person cancelled deliberately here never reappear as a difference.
+
+| Difference | Shown as | Apply does |
+|---|---|---|
+| PO cancelled in the ERP | red banner | cancels every still-pending unit (delivered units stay; the banner says how many were delivered) |
+| quantity reduced / line cancelled | `CANCEL_UNITS` | cancels that many pending units (latest first; a bundle's parts each lose that many); warns if more than the new quantity was already delivered |
+| quantity raised | `ADD_UNITS` | adds units copied from the existing lines (bundles through the bundle) at the ERP's rate and tax |
+| rate / tax edited | `COST_CHANGED` | pending units get the new cost (a bundle's price is split by its shares); delivered assets keep theirs |
+| new item code | `NEW_ITEM` | not applied automatically: add it with + Add Line / + Add Bundle, then mark it as added |
+| closed, vendor or delivery location changed | `HEADER` | information only; "Noted" |
+
+Every difference can instead be **kept** (the PO is left alone and the ERP's state is remembered as agreed). Nothing
+changes by itself; only a person applies or keeps, and every choice is logged (`purchase_order_erp_change`, shown on
+the PO). Only differences still present when the choice is made can be applied (the ERP is re-read first). A PO made
+before this existed has no baseline: "Start comparing with the ERP" takes one. Endpoints: `GET /api/erp/purchase-orders/
+{id}/changes`, `POST .../changes/apply` (`{"items": [{"id", "mode": "apply"|"keep"}]}`, or id `WATCH`), `GET /api/erp/changes/summary`
+(PO list badge/card and the dashboard count; "not available" instead of an error when the ERP cannot be read). The
+ERP view shows a cancelled PO as `po_status = 'CANCELLED'` with `cnlqty` per line; "CLOSED" only means fully received
+there. The ERP's data is as of its daily load, so a change shows the next morning (the panel says "ERP data as of").
+
 ## Open decisions
 
 CKVPL POs (none in the view), whether store deliveries should be offered, and the 48 open POs whose number has no series prefix.

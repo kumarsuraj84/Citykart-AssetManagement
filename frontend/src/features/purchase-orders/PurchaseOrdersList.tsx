@@ -10,6 +10,7 @@ import { useTableSort } from "@/components/shared/useTableSort";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DeliveryRemindersCard } from "../erp/DeliveryReminders";
+import { ErpChangedBadge, ErpChangesCard, useErpChangesSummary } from "../erp/ErpChanges";
 
 interface PurchaseOrderRow {
   id: number;
@@ -53,6 +54,7 @@ function PiStatusBadge({ status }: { status: PurchaseOrderRow["pi_status"] }) {
 const columns = (
   vendorNames: Record<number, string>,
   costCenterNames: Record<number, string>,
+  erpChanges: Parameters<typeof ErpChangedBadge>[0]["summary"],
 ): DataTableColumn<PurchaseOrderRow>[] => [
   {
     key: "po_number",
@@ -63,9 +65,12 @@ const columns = (
     // below is a mouse-convenience shortcut to the same destination, matching
     // Asset Register's own established row-navigation pattern.
     cell: (po) => (
-      <Link to="/purchase-orders/$id" params={{ id: String(po.id) }} onClick={(e) => e.stopPropagation()}>
-        {po.po_number}
-      </Link>
+      <>
+        <Link to="/purchase-orders/$id" params={{ id: String(po.id) }} onClick={(e) => e.stopPropagation()}>
+          {po.po_number}
+        </Link>
+        <ErpChangedBadge summary={erpChanges} poId={po.id} />
+      </>
     ),
   },
   { key: "po_date", header: "PO Date", sortable: true, cell: (po) => po.po_date },
@@ -105,6 +110,7 @@ export function PurchaseOrdersList() {
     queryFn: () => apiClient.get<Option[]>("/masters/cost-centers"),
   });
   const costCenterNames = Object.fromEntries((costCentersQ.data ?? []).map((c) => [c.id, c.name]));
+  const erpChangesQ = useErpChangesSummary();
 
   const rows = posQ.data ?? [];
   const searchLower = search.trim().toLowerCase();
@@ -145,6 +151,7 @@ export function PurchaseOrdersList() {
         }
       />
 
+      <ErpChangesCard />
       <DeliveryRemindersCard />
 
       <Input
@@ -159,7 +166,7 @@ export function PurchaseOrdersList() {
         <ErrorState message="Couldn't load purchase orders." onRetry={() => posQ.refetch()} />
       ) : (
         <DataTable
-          columns={columns(vendorNames, costCenterNames)}
+          columns={columns(vendorNames, costCenterNames, erpChangesQ.data)}
           rows={sortedRows}
           rowKey={(po) => po.id}
           isLoading={posQ.isLoading}
