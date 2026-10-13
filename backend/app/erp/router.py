@@ -1,16 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.db import get_session
+from app.core.db import SessionLocal, get_session
 from app.core.deps import WRITE_ROLES, require_primary_owner, require_role, scoped_company_ids
 from app.erp import mirror_models  # noqa: F401  (registers the local ERP copy tables on the metadata)
 from app.erp import vendors as erp_vendors
 from app.erp.changes import apply_changes, changes_summary, po_changes, snapshot_baseline
 from app.erp.invoices import apply_pi, pi_preview
 from app.erp.reminders import delivery_reminders
-from app.erp.schemas import ChangesApplyIn, DraftCreateIn, ErpVendorCodeIn, PiApplyIn
+from app.erp.schemas import ChangesApplyIn, DraftCreateIn, ErpVendorCodeIn, PiApplyIn, SyncRunOut, SyncStatusOut
 from app.erp.service import build_draft, create_from_draft, list_available_pos
 from app.erp.source import ErpSource, ErpUnavailable, get_erp_source, is_configured
+from app.erp.sync import last_runs, run_sync
+from app.erp.warehouse import WarehouseReader, get_warehouse_reader
 from app.masters.schemas import VendorOut
 from app.purchase_orders.models import PurchaseOrder
 
@@ -25,6 +27,24 @@ def _unavailable(exc: ErpUnavailable) -> HTTPException:
 async def erp_status(_actor=Depends(require_role(*WRITE_ROLES))):
     """Whether this server has an ERP connection set up at all."""
     return {"configured": is_configured()}
+
+
+# ---- the copy of the ERP data -------------------------------------------
+
+@router.get("/sync", response_model=SyncStatusOut)
+async def sync_status(session: AsyncSession = Depends(get_session), _actor=Depends(require_role(*WRITE_ROLES))):
+    """When CKAM last copied the ERP data (what every ERP screen shows is as of that time)."""
+    last, ok = await last_runs(session)
+    return SyncStatusOut(configured=is_configured(), last=last, last_success=ok)
+
+
+@router.post("/sync", response_model=SyncRunOut)
+async def sync_now(reader: WarehouseReader = Depends(get_warehouse_reader), _actor=Depends(require_primary_owner())):
+    """Copies the ERP data now (the nightly check does the same by itself). A problem comes back as a
+    run with status "failed" and a message, not as an error."""
+    if not is_configured():
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "The ERP connection is not set up on this server.")
+    return await run_sync(SessionLocal, reader, "manual")
 
 
 # ---- vendors -----------------------------------------------------------

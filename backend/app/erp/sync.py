@@ -7,6 +7,7 @@ fields only (not the warehouse's load time), so a plain reload is not a "change"
 import asyncio
 import hashlib
 import logging
+import time
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import select, text
@@ -54,9 +55,17 @@ VENDOR_FIELDS = ("name", "gstin", "city", "is_extinct")
 ITEM_FIELDS = ("company_code", "article_name", "section", "department", "division", "cat1", "cat2", "cat3", "cat4", "cat5", "cat6", "hsn", "unit")
 
 
+async def last_runs(session) -> tuple[ErpSyncRun | None, ErpSyncRun | None]:
+    """(the latest run of any kind, the latest successful run)."""
+    last = (await session.execute(select(ErpSyncRun).order_by(ErpSyncRun.id.desc()).limit(1))).scalar_one_or_none()
+    ok = (await session.execute(
+        select(ErpSyncRun).where(ErpSyncRun.status == "success").order_by(ErpSyncRun.id.desc()).limit(1))).scalar_one_or_none()
+    return last, ok
+
+
 async def latest_run(session_factory) -> ErpSyncRun | None:
     async with session_factory() as session:
-        return (await session.execute(select(ErpSyncRun).order_by(ErpSyncRun.id.desc()).limit(1))).scalar_one_or_none()
+        return (await last_runs(session))[0]
 
 
 async def needs_sync(session_factory, reader: WarehouseReader) -> bool:
@@ -102,12 +111,15 @@ async def _record_failure(session_factory, trigger: str, started: datetime, mess
 
 async def _copy(session, reader: WarehouseReader, trigger: str, started: datetime) -> ErpSyncRun:
     now = datetime.now(timezone.utc)
+    clock = time.monotonic()
     since = date.today() - timedelta(days=HISTORY_DAYS)
     stamp = await reader.source_stamp()                 # taken first: a load that lands while we read makes the next check copy again
 
     existing = {(l.company_code, l.po_line_key): l for l in (await session.execute(select(ErpPoLineCopy))).scalars().all()}
     still_open = frozenset(l.po_code for l in existing.values() if l.is_present and l.line_status == "OPEN" and l.po_date < since)
+    logger.info("ERP copy: %d lines held; reading the warehouse (%.1fs)", len(existing), time.monotonic() - clock)
     incoming = await reader.po_lines(since, still_open)
+    logger.info("ERP copy: %d PO lines read (%.1fs)", len(incoming), time.monotonic() - clock)
 
     new = changed = 0
     seen_keys: set[tuple[str, str]] = set()
@@ -138,8 +150,11 @@ async def _copy(session, reader: WarehouseReader, trigger: str, started: datetim
             row.is_present = False
             gone += 1
 
+    logger.info("ERP copy: lines compared: %d new, %d changed, %d gone (%.1fs)", new, changed, gone, time.monotonic() - clock)
     vendors = await _copy_vendors(session, reader, incoming, now)
+    logger.info("ERP copy: %d vendors (%.1fs)", vendors, time.monotonic() - clock)
     items = await _copy_items(session, reader, incoming, now)
+    logger.info("ERP copy: %d items (%.1fs)", items, time.monotonic() - clock)
     return ErpSyncRun(started_at=started, finished_at=datetime.now(timezone.utc), status="success", trigger=trigger, source_stamp=stamp,
                       po_lines_new=new, po_lines_changed=changed, po_lines_gone=gone, vendors=vendors, items=items)
 

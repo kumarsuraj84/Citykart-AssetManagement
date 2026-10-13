@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import sys
 from contextlib import asynccontextmanager
@@ -6,6 +7,10 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from app.core.config import DEFAULT_DEV_JWT_SECRET, settings
+from app.core.db import SessionLocal
+from app.erp.source import is_configured as erp_is_configured
+from app.erp.sync import sync_loop
+from app.erp.warehouse import get_warehouse_reader
 from app.auth.router import router as auth_router
 from app.asset_users.router import router as asset_users_router
 from app.masters.router import router as masters_router
@@ -71,7 +76,20 @@ def warn_if_default_jwt_secret(secret: str) -> bool:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     warn_if_default_jwt_secret(settings.jwt_secret)
-    yield
+    # Keep CKAM's own copy of the ERP data up to date in the background (only when the ERP link is set up).
+    stop = asyncio.Event()
+    task = None
+    if settings.erp_sync_enabled and erp_is_configured():
+        task = asyncio.create_task(sync_loop(SessionLocal, get_warehouse_reader(), stop))
+    try:
+        yield
+    finally:
+        stop.set()
+        if task is not None:
+            try:
+                await asyncio.wait_for(task, timeout=10)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                task.cancel()
 
 
 app = FastAPI(title="CityKart Asset Manager API", lifespan=lifespan)

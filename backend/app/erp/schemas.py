@@ -1,6 +1,6 @@
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from app.bundles.schemas import BundleLineAmountIn
 
 
@@ -55,6 +55,28 @@ class PiApplyIn(BaseModel):
 
 class ErpVendorCodeIn(BaseModel):
     erp_vendor_code: str = Field(min_length=1, max_length=50)
+
+
+class SyncRunOut(BaseModel):
+    """One run of the copy of the ERP data (see app.erp.sync)."""
+    model_config = ConfigDict(from_attributes=True)
+    status: str
+    trigger: str
+    started_at: datetime
+    finished_at: datetime | None = None
+    source_stamp: datetime | None = None      # when the warehouse had last loaded the data this run copied
+    message: str | None = None
+    po_lines_new: int = 0
+    po_lines_changed: int = 0
+    po_lines_gone: int = 0
+    vendors: int = 0
+    items: int = 0
+
+
+class SyncStatusOut(BaseModel):
+    configured: bool
+    last: SyncRunOut | None = None            # the latest run, whatever happened
+    last_success: SyncRunOut | None = None    # the latest run that worked: the data on screen is as of this
 
 
 class ChangeActionIn(BaseModel):

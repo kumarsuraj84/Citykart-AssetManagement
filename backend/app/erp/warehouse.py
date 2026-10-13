@@ -166,3 +166,11 @@ class PgWarehouseReader(PgReadOnly):
         rows = await self._fetch(
             "select max(last_success_at) stamp from meta.v_freshness where target = '" + FRESHNESS_TARGET + "'")
         return rows[0]["stamp"] if rows else None
+
+
+_reader = PgWarehouseReader()
+
+
+def get_warehouse_reader() -> WarehouseReader:
+    """FastAPI dependency; tests override it with a stand-in."""
+    return _reader
