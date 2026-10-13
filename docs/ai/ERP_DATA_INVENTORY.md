@@ -23,8 +23,9 @@ tables in two ERP schemas.
   `SALINVMAIN/DET`; **store packets and receipts** `PSITE_PACKETITEM` (6.6 M), `T_PACKETREC` (2.8 M), `PSITE_GRC`, `PSITE_GRCITEM`
   (25 M), `PSITE_GRT`/`GRTITEM` (store returns); masters `MAS$ITEM` (632 k items), `MAS$STOCKPOINT`, `ADMSITE`, `ADMOU`, `MLV_USER`,
   `MLV_TRANSPORTER`; finance `FINPOST`, `FINCOSTTAG`, `FINGL`, `FINSL`...
-- `CSPL.*` (the second company, "ckv" in silver, 24 sites): **only finance and masters** (`FINPOST`, `FINCOSTTAG`, `FINGL`, `FINSL`,
-  `ADMSITE`, `ADMCLS`...). The warehouse has no purchase-order or inventory data for the second company.
+- `CSPL.*` (the second company, CKVPL, "ckv" in silver, 24 sites): in the *bronze* source list only finance and masters (`FINPOST`,
+  `FINCOSTTAG`, `FINGL`, `FINSL`, `ADMSITE`, `ADMCLS`...). **But silver does carry CKVPL purchasing data**: see "Both companies" below
+  (corrected 2026-10-13; an earlier version of this file wrongly said the warehouse had no PO data for the second company).
 - `MISRETAIL.*`: management / reporting tables (targets, footfall, COGS, weekly closing stock, store opening dates).
 
 The packet trail the dispatcher wants (packet created -> in transit -> GRC at the store) lives in `PSITE_PACKETITEM`, `T_PACKETREC`,
@@ -49,9 +50,40 @@ CKAM should not be given the raw layer.
 | `gold_dc.site_master`, `silver.dim_site`, `gold_fpa.dim_site` | 457 | sites: code, name, store type/status, state, city, warehouse code, coordinates | stores / delivery locations |
 | `silver.dim_stockpoint` | 76 | stock points (location code, name, site, warehouse) | stock points |
 | `silver.dim_company` | 2 | the two companies (`company_code`, name) | company link |
-| `silver.dim_party`, `gold_fpa.dim_party` | 13 k | vendors / parties: code, name, class, credit days (no GSTIN) | vendor link |
-| `silver.ap_open_item`, `gold_fpa.creditors_open_items` | 13 k | open vendor bills (document no/date, due date, amount, pending) | possible PI lead (a PI-to-PO link is still not in any readable table) |
+| `silver.dim_party`, `gold_fpa.dim_party` | 13 k | vendors / parties: code, name, class, credit days (no GSTIN here; **`silver.ckp_vendor` has GSTIN**, see below) | vendor link |
+| `silver.ap_open_item`, `gold_fpa.creditors_open_items` | 13 k | open vendor bills (document no/date, due date, amount, pending) | not needed for PI: `silver.ckp_pi_line` has the invoices themselves |
+| **`silver.ckp_*`** (`ckp_vendor`, `ckp_po_line`, `ckp_pi_line`, `ckp_article`, `ckp_site`) | 14 k / 969 k / 829 k / 633 k / 481 | **both companies** in one table each, with a `company` column (`CKSPL`, `CKVPL`) | see "Both companies" |
 | `silver.gl_posting*`, `gold_fpa.voucher_lines` | 8 M / 2.6 M | accounting postings with narration | not needed; maybe a PI reference lead |
+
+## Both companies (`silver.ckp_*`, surveyed 2026-10-13)
+
+One table per subject, `company` = `CKSPL` or `CKVPL`. `gold_ckam.po_line` is CKSPL only (13,254 lines); the CKVPL lines are in
+`silver.ckp_po_line`. The `ckp_*` tables are big because of CKSPL; **always filter on `company`** (CKVPL slices are tiny and fast).
+
+| Table | CKSPL | CKVPL | Notes |
+|---|---|---|---|
+| `ckp_vendor` | 13,231 (5,717 with GSTIN) | 904 (402 with GSTIN) | `vendor_code`, name, **`gstin`**, address, credit days, `is_extinct` |
+| `ckp_po_line` | 966 k | 3,217 (856 FIXED ASSETS lines, ~500 POs, newest 2026-10-09; 132 open FA lines) | same columns as `gold_ckam.po_line` (po_line_key text, line_status OPEN/CLOSED/CANCELLED, ordqty/rcqty/cnlqty, rate, tax, vendor, site, division/section/department/article) |
+| `ckp_pi_line` | 826 k | 2,905 | purchase invoice lines: `pi_number`, `vendor_bill_no`, `vendor_bill_date`, `vendor_gstin`, `company_gstin`, `grc_line_key`, amounts |
+| `ckp_article` | 632 k | 1,173 (693 FIXED ASSETS) | item master: `icode`, name, article, CAT1..CAT6, HSN |
+| `ckp_site` | 457 | 24 | CKVPL: HO, 5 warehouses (Gurgaon WH, Farukhnagar, Khetawas, Tajnagar, Wazirpur) and 18 `EXTERNAL` rows that are CKSPL regions |
+
+What the comparison showed:
+
+- **Item codes never clash**: CKVPL codes are `CV####`, CKSPL's are `CT######`; zero codes in both. CKVPL article names differ too
+  (`FIXED ASSETS-IT EQUIPMENST-FA_IT_LAPTOP`, `01-MOUSE[IT-01]`).
+- **Vendor codes DO clash**: 690 vendor codes exist in both companies and **in every case they are different vendors** (e.g. code 2470 =
+  JS Technology in CKSPL; code 61 = JS Technology in CKVPL). A vendor code is only meaningful together with the company.
+- **The same real vendor exists in both**: 271 GSTINs appear in both companies (different codes: CKSPL 2470 / CKVPL 61). Of the 108 CKVPL
+  vendors that have POs, 85 are also CKSPL vendors by GSTIN. Inside one company a GSTIN can still appear under several codes (CKSPL 228,
+  CKVPL 17), so GSTIN is a very good suggestion key but a person should confirm.
+- **Site codes clash** (1..24 exist in both companies): a site is also (company, code).
+- **PO line keys do not clash** across companies (0 overlap).
+- **PI -> PO link exists for CKSPL**: `ckp_pi_line.grc_line_key` -> `silver.fact_grc_line.grc_line_key` -> `fact_grc_line.po_line_key` ->
+  PO line. 725 of 1,163 FA invoice lines of the last 30 days resolve (the rest are not against a PO / not yet received). For CKVPL the
+  chain does **not** resolve (`fact_grc_line` holds no CKVPL receipts), so CKVPL gets received quantity from the PO line (`rcqty`) and the
+  invoice only by vendor + item. (This corrects the earlier claim that no PI link existed in any readable layer.)
+- CKVPL has no transfer / packet data in a readable layer.
 
 ## Readable, but not CKAM's business (do not use without a reason)
 

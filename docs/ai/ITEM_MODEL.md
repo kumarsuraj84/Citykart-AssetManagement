@@ -94,11 +94,11 @@ selector, so each company's bought Articles are linked in that company's own lan
 choice made on a PO is remembered for that PO's company only. An asset already records its
 company, so company + `erp_item_code` identifies the ERP code unambiguously.
 
-Open until the second company's data exists: where its item master / POs / receipts live (the
-same warehouse with a `company_code` column, or another database, in which case the ERP source
-becomes one connection per company) and its company code (CKVPL in the masters). Today the
-warehouse holds only CKSPL's data (13,256 PO lines, all `CKSPL`); other CityKart entities appear
-only as site and creditor names.
+Where the second company's data lives (found 2026-10-13): the same warehouse, in `silver.ckp_po_line`,
+`ckp_pi_line`, `ckp_vendor`, `ckp_article`, `ckp_site` with a `company` column (`CKSPL` / `CKVPL`); see
+`ERP_DATA_INVENTORY.md`. `gold_ckam.po_line` still holds CKSPL only. So one connection is enough, but the
+ERP codes are only unique *inside* a company (vendor codes and site codes clash across the two companies;
+item codes happen not to). Treat every ERP code as `(company, code)`.
 
 ## Where it shows
 
@@ -131,4 +131,5 @@ export proves they exist in the raw master.
    individual assets.
 4. Finance asset class per Item (the ERP's depreciable ledgers: Computer, Furniture &
    Fixture, Plant & Machinery) and a register-vs-ERP reconciliation.
-5. PI link (no PO/GRC link for a purchase invoice exists in any layer readable today).
+5. PI link: for CKSPL, `ckp_pi_line.grc_line_key` -> `fact_grc_line.po_line_key` resolves most recent FA invoices to their PO line
+   (bill no / date, GSTIN). CKVPL receipts are not in `fact_grc_line`, so its invoices can only be matched by vendor + item.

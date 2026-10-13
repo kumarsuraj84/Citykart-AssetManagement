@@ -34,7 +34,8 @@ The warehouse's raw (bronze) layer, which CKAM cannot read, holds the whole chai
 transfer / sales orders `SALORDMAIN/DET`, delivery challans `INVDCMAIN/DET`, transfer-out invoices `SALINVMAIN/DET`, store packets
 `PSITE_PACKETITEM`, packet receipts `T_PACKETREC`, store GRC `PSITE_GRC` / `PSITE_GRCITEM`. Silver already has `fact_dc_line` and
 `fact_store_receipt_event`; the transfer-out and transfer-order line tables are not readable by CKAM's login. The second company
-(`CSPL.*`) has only finance and master tables in the warehouse, so this view can only cover the main company for now.
+(CKVPL) has purchasing data in silver (`ckp_*`) but no transfer / packet data in any readable layer, so this view can only cover the
+main company for now. Please include a `company_code` column so CKVPL rows can be added later.
 
 ## The view
 
