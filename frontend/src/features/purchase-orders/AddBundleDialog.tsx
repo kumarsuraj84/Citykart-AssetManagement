@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField } from "@/components/shared/FormField";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
+import { MAX_QUANTITY, quantityHint, quantityProblem } from "@/lib/limits";
 
 // The split itself lives in ../bundles/bundle-parts (one copy for the whole app);
 // re-exported here for existing imports.
@@ -69,7 +70,7 @@ export function AddBundleDialog({ poId, open, onOpenChange }: Props) {
   );
   const totalMatches = Math.abs(partTotal - priceNum) < 0.005;
   const canAdd =
-    !!bundle && description.trim() !== "" && barcode.trim() !== "" && qty >= 1 && priceNum > 0 &&
+    !!bundle && description.trim() !== "" && barcode.trim() !== "" && quantityProblem(quantity) === null && priceNum > 0 &&
     totalMatches && bundle.parts.every((p) => Number(amounts[p.id]) > 0);
 
   const addMutation = useMutation({
@@ -116,8 +117,8 @@ export function AddBundleDialog({ poId, open, onOpenChange }: Props) {
                 <FormField htmlFor="bundle-barcode" label="Barcode" required helperText="The same barcode goes on every part.">
                   <Input id="bundle-barcode" value={barcode} onChange={(e) => setBarcode(e.target.value)} />
                 </FormField>
-                <FormField htmlFor="bundle-quantity" label="Quantity" required>
-                  <Input id="bundle-quantity" type="number" min={1} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+                <FormField htmlFor="bundle-quantity" label="Quantity" required helperText={quantityHint()} errorText={quantityProblem(quantity) ?? undefined}>
+                  <Input id="bundle-quantity" type="number" min={1} max={MAX_QUANTITY} step={1} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
                 </FormField>
                 <FormField htmlFor="bundle-price" label="Price per bundle (before tax)" required>
                   <Input id="bundle-price" type="number" min={0.01} step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} />
@@ -174,7 +175,7 @@ export function AddBundleDialog({ poId, open, onOpenChange }: Props) {
                 </div>
               )}
 
-              {bundle && qty >= 1 && (
+              {bundle && quantityProblem(quantity) === null && (
                 <p className="text-sm text-muted-foreground">
                   This will add {lineCount} line{lineCount === 1 ? "" : "s"}: {bundle.parts.map((p) => `${qty} ${p.name}`).join(", ")}.
                 </p>

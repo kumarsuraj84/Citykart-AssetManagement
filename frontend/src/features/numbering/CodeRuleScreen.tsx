@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
+import { useAccess } from "../../lib/access";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -19,6 +20,12 @@ const SAMPLE_TOKENS: Record<string, string> = {
   mm: "09",
 };
 
+/** How long typing must pause before the server is asked for the example. */
+export const PREVIEW_DEBOUNCE_MS = 350;
+
+export const OWNER_ONLY_NOTE = "Only the head-office admin can change the asset code format.";
+
+/** Quick offline example, shown until (or instead of) the server's own. */
 export function renderPreview(template: string, suffix: string, startNumber: number, padWidth: number): string {
   const prefix = template.replace(/\{([a-zA-Z0-9_.]+)\}/g, (_, key) => SAMPLE_TOKENS[key] ?? `{${key}}`);
   const num = padWidth ? String(startNumber).padStart(padWidth, "0") : String(startNumber);
@@ -32,10 +39,23 @@ interface CodeRule {
   suffix_template: string;
   start_number: number;
   pad_width: number;
+  /** Server-rendered example code (additive field, S0). */
+  example?: string | null;
+}
+
+interface RuleBody {
+  company_id: null;
+  prefix_template: string;
+  suffix_template: string;
+  start_number: number;
+  pad_width: number;
 }
 
 export function CodeRuleScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const qc = useQueryClient();
+  const { role, isPrimaryOwner } = useAccess();
+  // UX only: the server refuses anyone but the head-office admin (403).
+  const canEdit = role === "ADMIN" && isPrimaryOwner;
   const [form, setForm] = useState({ prefixTemplate: "", suffixTemplate: "", startNumber: 1, padWidth: 0 });
 
   // This screen edits the global rule (company_id null). The API keeps exactly one
@@ -67,19 +87,41 @@ export function CodeRuleScreen({ embedded = false }: { embedded?: boolean } = {}
     });
   }
 
+  const body: RuleBody = {
+    company_id: null,
+    prefix_template: form.prefixTemplate,
+    suffix_template: form.suffixTemplate,
+    start_number: form.startNumber,
+    pad_width: form.padWidth,
+  };
+
+  // The server's own example (POST /code-rules/preview, saves nothing), asked
+  // for after the owner pauses typing. Its 422 sentences ("the format needs ...")
+  // are shown inline. Only the owner can type, so only the owner asks.
+  const [debouncedBody, setDebouncedBody] = useState<RuleBody>(body);
+  const bodyKey = JSON.stringify(body);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedBody(JSON.parse(bodyKey) as RuleBody), PREVIEW_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [bodyKey]);
+  const settled = JSON.stringify(debouncedBody) === bodyKey;
+  const previewQ = useQuery({
+    queryKey: ["code-rule-preview", debouncedBody],
+    queryFn: async () => (await apiClient.post<{ example?: string }>("/code-rules/preview", debouncedBody)) ?? null,
+    enabled: canEdit && !isLoading && !isError && debouncedBody.prefix_template.trim() !== "",
+    retry: false,
+    staleTime: 60_000,
+  });
+  const previewError =
+    canEdit && settled && previewQ.isError && previewQ.error instanceof Error ? previewQ.error.message : null;
+  const serverExample =
+    canEdit && settled && !previewQ.isError && typeof previewQ.data?.example === "string" ? previewQ.data.example : null;
+
   const saveMutation = useMutation({
-    mutationFn: () => {
-      const body = {
-        company_id: null,
-        prefix_template: form.prefixTemplate,
-        suffix_template: form.suffixTemplate,
-        start_number: form.startNumber,
-        pad_width: form.padWidth,
-      };
+    mutationFn: () =>
       // Edit the existing rule in place; only the very first save creates one.
       // (Previously every Save POSTed another active rule.)
-      return activeRule ? apiClient.put(`/code-rules/${activeRule.id}`, body) : apiClient.post("/code-rules", body);
-    },
+      activeRule ? apiClient.put(`/code-rules/${activeRule.id}`, body) : apiClient.post("/code-rules", body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["code-rules"] }),
   });
 
@@ -87,7 +129,19 @@ export function CodeRuleScreen({ embedded = false }: { embedded?: boolean } = {}
     setForm((f) => ({ ...f, [key]: value }));
   }
 
-  const preview = renderPreview(form.prefixTemplate, form.suffixTemplate, form.startNumber, form.padWidth);
+  const clientPreview = renderPreview(form.prefixTemplate, form.suffixTemplate, form.startNumber, form.padWidth);
+  // Someone who cannot change the format sees the saved rule's example as the server rendered it.
+  const shownExample = canEdit
+    ? (serverExample ?? clientPreview)
+    : (activeRule?.example || clientPreview);
+
+  const statusText = activeRule
+    ? canEdit
+      ? "Editing the rule currently used to number new assets."
+      : "The rule currently used to number new assets."
+    : canEdit
+      ? "No code rule yet -- assets can't be added until one is saved."
+      : "No code rule yet -- assets can't be added until the head-office admin saves one.";
 
   return (
     <div className="flex flex-col gap-4">
@@ -97,11 +151,7 @@ export function CodeRuleScreen({ embedded = false }: { embedded?: boolean } = {}
         description={
           isLoading
             ? undefined
-            : `${
-                activeRule
-                  ? "Editing the rule currently used to number new assets."
-                  : "No code rule yet -- assets can't be added until one is saved."
-              } Tokens: ${Object.keys(SAMPLE_TOKENS).map((t) => `{${t}}`).join(" ")}`
+            : `${statusText} Tokens: ${Object.keys(SAMPLE_TOKENS).map((t) => `{${t}}`).join(" ")}`
         }
       />
 
@@ -115,12 +165,23 @@ export function CodeRuleScreen({ embedded = false }: { embedded?: boolean } = {}
         </div>
       ) : (
         <>
+          {!canEdit && (
+            <p
+              role="note"
+              data-testid="code-rule-owner-only"
+              className="max-w-md rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground"
+            >
+              {OWNER_ONLY_NOTE}
+            </p>
+          )}
+
           <div className="flex flex-col gap-4 max-w-md">
             <FormField htmlFor="prefix-template" label="Prefix Template">
               <Input
                 id="prefix-template"
                 aria-label="Prefix Template"
                 value={form.prefixTemplate}
+                readOnly={!canEdit}
                 onChange={(e) => setField("prefixTemplate", e.target.value)}
               />
             </FormField>
@@ -130,6 +191,7 @@ export function CodeRuleScreen({ embedded = false }: { embedded?: boolean } = {}
                 id="suffix-template"
                 aria-label="Suffix Template"
                 value={form.suffixTemplate}
+                readOnly={!canEdit}
                 onChange={(e) => setField("suffixTemplate", e.target.value)}
               />
             </FormField>
@@ -140,6 +202,7 @@ export function CodeRuleScreen({ embedded = false }: { embedded?: boolean } = {}
                 aria-label="Start Number"
                 type="number"
                 value={form.startNumber}
+                readOnly={!canEdit}
                 onChange={(e) => setField("startNumber", Number(e.target.value))}
               />
             </FormField>
@@ -150,6 +213,7 @@ export function CodeRuleScreen({ embedded = false }: { embedded?: boolean } = {}
                 aria-label="Pad Width (0 = no padding)"
                 type="number"
                 value={form.padWidth}
+                readOnly={!canEdit}
                 onChange={(e) => setField("padWidth", Number(e.target.value))}
               />
             </FormField>
@@ -158,33 +222,41 @@ export function CodeRuleScreen({ embedded = false }: { embedded?: boolean } = {}
           {/* AM-15: this line answers the screen's whole reason for existing --
               "what code will my next asset get" -- so it gets stronger visual
               weight than the technical fields above it, not the same plain
-              bordered-box treatment as an ordinary input (found during the
-              AM-15 visual acceptance pass; no numbering logic changed). */}
+              bordered-box treatment as an ordinary input. The example is the
+              server's (so it follows the real numbering rules); until it
+              arrives, or if it cannot be had, the offline example shows. */}
           <div className="max-w-md rounded-md border border-primary/20 bg-primary/5 px-4 py-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Next Asset Code
             </p>
             <p data-testid="code-preview" className="font-mono text-lg font-semibold text-foreground">
-              {preview}
+              {previewError ? "—" : shownExample}
             </p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <AsyncButton
-              onClick={() => saveMutation.mutate()}
-              disabled={!form.prefixTemplate}
-              pending={saveMutation.isPending}
-              pendingLabel="Saving…"
-            >
-              Save
-            </AsyncButton>
-            {saveMutation.isSuccess && <span className="text-sm text-muted-foreground">Saved.</span>}
-            {saveMutation.isError && (
-              <span className="text-sm text-destructive">
-                {saveMutation.error instanceof Error ? saveMutation.error.message : "Save failed."}
-              </span>
+            {previewError && (
+              <p role="alert" data-testid="code-preview-error" className="mt-1 text-sm text-destructive">
+                {previewError}
+              </p>
             )}
           </div>
+
+          {canEdit && (
+            <div className="flex items-center gap-3">
+              <AsyncButton
+                onClick={() => saveMutation.mutate()}
+                disabled={!form.prefixTemplate}
+                pending={saveMutation.isPending}
+                pendingLabel="Saving…"
+              >
+                Save
+              </AsyncButton>
+              {saveMutation.isSuccess && <span className="text-sm text-muted-foreground">Saved.</span>}
+              {saveMutation.isError && (
+                <span role="alert" className="text-sm text-destructive">
+                  {saveMutation.error instanceof Error ? saveMutation.error.message : "Save failed."}
+                </span>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>

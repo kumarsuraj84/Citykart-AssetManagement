@@ -102,6 +102,57 @@ describe("PurchaseOrderDetail", () => {
     );
   });
 
+  it("S0: Add Line quantity is 1 to 1,000 -- hint shown, a bad value blocks Add Line with a sentence", async () => {
+    mockGets([]);
+    (apiClient.post as any).mockResolvedValue([PENDING_LINE]);
+    renderDetailAt();
+    await waitFor(() => expect(screen.getByRole("button", { name: /\+ add line/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /\+ add line/i }));
+    await waitFor(() => expect(screen.getByLabelText(/^description\*?$/i)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/^description\*?$/i), { target: { value: "Dell Laptop" } });
+    fireEvent.change(screen.getByLabelText(/^barcode\*?$/i), { target: { value: "BC-1" } });
+    fireEvent.click(screen.getByLabelText(/^item\*?$/i));
+    fireEvent.click(await screen.findByRole("option", { name: /^Laptop ?· IT Equipment$/ }));
+    fireEvent.change(screen.getByLabelText(/^cost\*?$/i), { target: { value: "1000" } });
+
+    const qty = screen.getByLabelText(/^quantity\*?$/i);
+    expect(qty).toHaveAttribute("max", "1000");
+    expect(screen.getByText("Whole number, 1 to 1,000.")).toBeInTheDocument();
+    const add = screen.getByRole("button", { name: /^add line$/i });
+    await waitFor(() => expect(add).not.toBeDisabled());
+
+    for (const [value, sentence] of [["0", "Enter at least 1."], ["1001", "At most 1,000 at a time."], ["15000000000", "At most 1,000 at a time."], ["2.5", "Enter a whole number."], ["", "Enter how many (1 to 1,000)."]] as const) {
+      fireEvent.change(qty, { target: { value } });
+      expect(await screen.findByText(sentence)).toBeInTheDocument();
+      expect(add).toBeDisabled();
+    }
+    expect(apiClient.post).not.toHaveBeenCalled();
+
+    fireEvent.change(qty, { target: { value: "1000" } });
+    await waitFor(() => expect(add).not.toBeDisabled());
+    fireEvent.click(add);
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith("/purchase-orders/1/lines", expect.objectContaining({ quantity: 1000 })),
+    );
+  });
+
+  it("S0: the server's refusal of a line (readable sentence) is shown under the form", async () => {
+    mockGets([]);
+    (apiClient.post as any).mockRejectedValue(new Error("Quantity must be at least 1. Cost cannot be negative."));
+    renderDetailAt();
+    await waitFor(() => expect(screen.getByRole("button", { name: /\+ add line/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /\+ add line/i }));
+    await waitFor(() => expect(screen.getByLabelText(/^description\*?$/i)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/^description\*?$/i), { target: { value: "Dell Laptop" } });
+    fireEvent.change(screen.getByLabelText(/^barcode\*?$/i), { target: { value: "BC-1" } });
+    fireEvent.click(screen.getByLabelText(/^item\*?$/i));
+    fireEvent.click(await screen.findByRole("option", { name: /^Laptop ?· IT Equipment$/ }));
+    fireEvent.change(screen.getByLabelText(/^cost\*?$/i), { target: { value: "1000" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: /^add line$/i })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: /^add line$/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Quantity must be at least 1. Cost cannot be negative.");
+  });
+
   it("posts an Add Line request with the selected Brand's id, not free text", async () => {
     mockGets([]);
     (apiClient.post as any).mockResolvedValue([PENDING_LINE]);
@@ -456,6 +507,20 @@ describe("PurchaseOrderDetail", () => {
     fireEvent.change(box, { target: { value: "333\n222" } });
     await waitFor(() => expect(within(dialog).queryByText(/is already used by asset/)).not.toBeInTheDocument());
     await waitFor(() => expect(confirmBtn(dialog)).not.toBeDisabled());
+  });
+
+  it("a conflict whose asset code the server masks is shown as the server worded it, still blocking Confirm", async () => {
+    const dialog = await openDeliveryFor([PENDING_LINE, LAPTOP_2]);
+    (apiClient.post as any).mockImplementation((path: string, body: { serials?: string[] }) =>
+      path === "/purchase-orders/check-serials"
+        ? Promise.resolve({ conflicts: (body.serials ?? []).filter((s) => s === "111").map((s) => ({ serial: s, asset_code: "an asset outside your companies or work area" })) })
+        : Promise.resolve([]),
+    );
+    fireEvent.change(within(dialog).getByLabelText(/^serial numbers\*?$/i), { target: { value: "111\n222" } });
+    const alert = await within(dialog).findByText(/Serial "111" is already used by/);
+    expect(alert).toHaveTextContent('Serial "111" is already used by an asset outside your companies or work area.');
+    expect(alert.textContent).not.toMatch(/by asset an asset/);
+    expect(confirmBtn(dialog)).toBeDisabled();
   });
 
   it("bundle lines show their bundle tag, and a part that never carries a serial starts with 'No serial number' ticked", async () => {

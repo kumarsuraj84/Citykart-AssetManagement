@@ -198,6 +198,9 @@ function editFormFromAsset(asset: Asset): EditFormState {
   };
 }
 
+/** The server's own sentence for an attempt to clear a serial number (shown before saving too). */
+const SERIAL_REMOVED_TEXT = "The serial number cannot be removed. Type N/A if the asset has none.";
+
 type CustomFieldValue = string | number | boolean;
 
 function customValuesFromAsset(asset: Asset): Record<string, CustomFieldValue> {
@@ -346,6 +349,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
   }
 
   function openAction(action: ActionDef) {
+    actMutation.reset(); // a refusal shown for the last attempt must not greet the next one
     setForm(emptyActionForm);
     setActiveAction(action);
   }
@@ -423,6 +427,14 @@ export function AssetDetail({ assetId }: { assetId: number }) {
     return payload;
   }
 
+  // The serial number is sent only when it was changed (a request without it keeps the stored one), and never
+  // blank: the server refuses to remove a serial ("Type N/A if the asset has none."), so the form says so first.
+  const originalSerial = (asset?.serial_number ?? "").trim();
+  const typedSerial = (editForm?.serialNumber ?? "").trim();
+  const serialRemoved = editing && originalSerial !== "" && typedSerial === "";
+  const serialPatch = (typed: string, original: string): { serial_number?: string } =>
+    typed !== "" && typed !== original ? { serial_number: typed } : {};
+
   const editMutation = useMutation({
     mutationFn: () => {
       const f = editForm!;
@@ -430,7 +442,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
         legacy_asset_code: f.legacyAssetCode || null,
         brand_id: f.brandId ? Number(f.brandId) : null,
         model: f.model || null,
-        serial_number: f.serialNumber || null,
+        ...serialPatch(f.serialNumber.trim(), originalSerial),
         barcode: f.barcode || null,
         description: f.description,
         vendor_id: f.vendorId ? Number(f.vendorId) : null,
@@ -620,6 +632,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
               htmlFor="edit-serial"
               label="Serial Number"
               helperText="Unique across every asset in CKAM. Use “No serial number” for a category that genuinely has none."
+              errorText={serialRemoved ? SERIAL_REMOVED_TEXT : undefined}
             >
               <div className="flex flex-col gap-2">
                 <Input
@@ -740,7 +753,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
           <div className="flex gap-2">
             <AsyncButton
               onClick={() => editMutation.mutate()}
-              disabled={editForm.description.trim().length === 0 || editHasMissingRequiredUdf}
+              disabled={editForm.description.trim().length === 0 || editHasMissingRequiredUdf || serialRemoved}
               pending={editMutation.isPending}
               pendingLabel="Saving…"
             >
@@ -907,7 +920,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
             </div>
 
             {actMutation.isError && (
-              <p className="text-sm text-destructive">
+              <p className="text-sm text-destructive" role="alert">
                 {actMutation.error instanceof Error ? actMutation.error.message : "Failed to record event."}
               </p>
             )}

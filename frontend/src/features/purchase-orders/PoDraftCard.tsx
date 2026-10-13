@@ -9,9 +9,11 @@ import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField } from "@/components/shared/FormField";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { ItemFormDialog } from "../items/ItemFormDialog";
-import { NewBrandDialog, NewCostCenterDialog, NewVendorDialog, useCanCreateMasters } from "@/components/quick-create/masters";
-import { brandOptions, companyOptions, costCentreOptions, itemOptions, namesById, stockRoomOptions, vendorOptions } from "@/lib/option-labels";
+import { NewBrandDialog, NewCostCenterDialog, useCanCreateMasters } from "@/components/quick-create/masters";
+import { brandOptions, companyOptions, costCentreOptions, itemOptions, namesById, stockRoomOptions } from "@/lib/option-labels";
 import { usePlaceLookups } from "@/lib/lookups";
+import { MAX_QUANTITY, quantityHint } from "@/lib/limits";
+import { RATE_HIGH_FACTOR, RATE_LOW_FACTOR, lineIndexesForServerMessage } from "./erp-create-errors";
 
 export type MapScope = "NONE" | "ARTICLE" | "NAME" | "CODE";
 /** How far a "not tracked" decision reaches: one code, a product name, an Article, or a whole Department / Section / Division. */
@@ -128,9 +130,10 @@ const SCOPE_LABEL: Record<MapScope, string> = {
 export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: Bundle[]; items: Item[] }) {
   const qc = useQueryClient();
   const [companyId, setCompanyId] = useState(str(draft.company_id));
-  const [poNumber, setPoNumber] = useState(draft.po_number ?? "");
-  const [poDate, setPoDate] = useState(draft.po_date ?? "");
-  const [vendorId, setVendorId] = useState(str(draft.vendor_id));
+  // The PO number, date and vendor are the ERP's: the server takes them from the ERP
+  // (and the vendor linked to its supplier) whatever is sent, so they are shown, not edited.
+  const poNumber = draft.po_number ?? "";
+  const poDate = draft.po_date ?? "";
   const [costCenterId, setCostCenterId] = useState(str(draft.cost_center_id));
   const [deliveryId, setDeliveryId] = useState(str(draft.delivery_asset_user_id));
   const itemById = (id: string) => items.find((i) => String(i.id) === id);
@@ -169,7 +172,6 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
   const canCreateMasters = useCanCreateMasters();
   const [newItemFor, setNewItemFor] = useState<number | null>(null);
   const [newBrandFor, setNewBrandFor] = useState<number | null>(null);
-  const [newVendor, setNewVendor] = useState(false);
   const [newCostCenter, setNewCostCenter] = useState(false);
   const deliveryOptions = (usersQ.data ?? []).filter((u) => !u.asset_user_type || u.asset_user_type === "STOCK_POINT");
   const placeLookups = usePlaceLookups();
@@ -199,8 +201,19 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
     if (l.itemId === "") return "choose the Item";
     if (l.description.trim() === "") return "description is required";
     if (l.barcode.trim() === "") return "barcode is required";
-    if (!(Number(l.quantity) >= 1) || !Number.isInteger(Number(l.quantity))) return "quantity must be a whole number, at least 1";
+    const q = Number(l.quantity);
+    if (l.quantity.trim() === "" || !(q >= 1) || !Number.isInteger(q)) return "quantity must be a whole number, at least 1";
+    if (q > MAX_QUANTITY) return `quantity can be at most ${MAX_QUANTITY.toLocaleString("en-IN")} on one line`;
+    if (q > l.src.quantity) return `quantity cannot be more than the ${l.src.quantity.toLocaleString("en-IN")} the ERP still has open`;
     if (!(Number(l.rate) > 0)) return "cost must be more than 0";
+    const erpRate = l.src.rate;
+    if (erpRate > 0) {
+      const low = erpRate * RATE_LOW_FACTOR;
+      const high = erpRate * RATE_HIGH_FACTOR;
+      if (Number(l.rate) < low || Number(l.rate) > high) {
+        return `cost must be between ${money(low)} and ${money(high)} (half to double the ERP rate of ${money(erpRate)})`;
+      }
+    }
     const bundle = bundleOf(l.itemId);
     if (bundle) {
       const total = bundle.parts.reduce((s, p) => s + (Number(l.partAmounts[p.id]) || 0), 0);
@@ -210,15 +223,21 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
   }
   const problems = useMemo(() => lines.map(lineProblem), [lines, items, bundles]); // eslint-disable-line react-hooks/exhaustive-deps
   const alreadyCreated = draft.already_created_id !== null;
+  // The vendor is the one linked to the ERP's supplier for this company. When the draft was worked out for
+  // the company still chosen and no vendor is linked, the server would refuse: say so now instead.
+  const sameCompanyAsDraft = draft.company_id !== null && companyId === String(draft.company_id);
+  const vendorId = sameCompanyAsDraft ? draft.vendor_id : null;
+  const vendorMissing = sameCompanyAsDraft && draft.vendor_id === null;
   const canCreate =
-    companyId !== "" && poNumber.trim() !== "" && poDate !== "" && costCenterId !== "" && !alreadyCreated &&
+    companyId !== "" && costCenterId !== "" && !alreadyCreated && !vendorMissing &&
     lines.length > 0 && problems.every((p) => p === null);
 
   const createMutation = useMutation({
     mutationFn: () =>
       apiClient.post<{ po_id: number; po_number: string; lines_created: number }>("/erp/pos/create", {
+        // erp_po_code is always sent: the server re-reads this ERP purchase order and takes the number and date from it.
         erp_po_code: draft.erp_po_code, company_id: Number(companyId), po_number: poNumber.trim(), po_date: poDate,
-        vendor_id: vendorId ? Number(vendorId) : null, cost_center_id: Number(costCenterId),
+        vendor_id: vendorId, cost_center_id: Number(costCenterId),
         delivery_asset_user_id: deliveryId ? Number(deliveryId) : null, warehouse_code: draft.warehouse_code,
         lines: lines.map((l) => {
           const bundle = bundleOf(l.itemId);
@@ -272,6 +291,13 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
 
   const created = createMutation.data;
   const locked = !!created;
+  // The server checks the draft against the ERP again; when it refuses one line (too many units, a cost
+  // too far from the ERP's) its sentence is shown right under that line.
+  const createMessage = createMutation.isError
+    ? createMutation.error instanceof Error ? createMutation.error.message : "Failed to create the purchase order."
+    : null;
+  const serverLineIdx = createMessage ? lineIndexesForServerMessage(createMessage, lines.map((l) => l.src.item_code)) : [];
+  const vendorShown = (vendorsQ.data ?? []).find((v) => v.id === draft.vendor_id)?.name ?? draft.vendor_name ?? "";
   const leftOut = draft.untracked_lines ?? [];
   const categoryName = (id: number) => categoriesQ.data?.find((c) => c.id === id)?.name ?? "";
   const subcategoryName = (id: number | null) => (id ? subcategoriesQ.data?.find((s) => s.id === id)?.name ?? "" : "");
@@ -306,18 +332,18 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
               options={companyOptions(companies)}
             />
           </FormField>
-          <FormField htmlFor={`${poNumber}-po-number`} label="PO No" required>
-            <Input id={`${poNumber}-po-number`} value={poNumber} onChange={(e) => setPoNumber(e.target.value)} />
+          <FormField htmlFor={`${poNumber}-po-number`} label="PO No" helperText="From the ERP.">
+            <Input id={`${poNumber}-po-number`} value={poNumber} readOnly aria-readonly="true" className="bg-muted/40" />
           </FormField>
-          <FormField htmlFor={`${poNumber}-po-date`} label="PO Date" required>
-            <Input id={`${poNumber}-po-date`} type="date" value={poDate} onChange={(e) => setPoDate(e.target.value)} />
+          <FormField htmlFor={`${poNumber}-po-date`} label="PO Date" helperText="From the ERP.">
+            <Input id={`${poNumber}-po-date`} type="date" value={poDate} readOnly aria-readonly="true" className="bg-muted/40" />
           </FormField>
-          <FormField htmlFor={`${poNumber}-vendor`} label="Vendor" helperText={draft.vendor_name ? `In the ERP: ${draft.vendor_name}` : undefined}>
-            <SearchableSelect
-              id={`${poNumber}-vendor`} value={opt(vendorId)} onValueChange={setVendorId}
-              options={vendorOptions(vendorsQ.data)}
-              onCreateNew={canCreateMasters ? () => setNewVendor(true) : undefined} createLabel="New Vendor…"
-            />
+          <FormField
+            htmlFor={`${poNumber}-vendor`} label="Vendor"
+            helperText={draft.vendor_name ? `In the ERP: ${draft.vendor_name}. The vendor linked to this supplier is used.` : "The vendor linked to the ERP supplier is used."}
+            errorText={vendorMissing ? `${draft.vendor_name ?? "This supplier"} is not linked to a CKAM vendor for this company yet. Add or link it in Vendors first.` : undefined}
+          >
+            <Input id={`${poNumber}-vendor`} value={vendorShown} readOnly aria-readonly="true" className="bg-muted/40" />
           </FormField>
           <FormField htmlFor={`${poNumber}-cost-center`} label="Cost Centre" required>
             <SearchableSelect
@@ -387,10 +413,23 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
                   <FormField htmlFor={`${id}-barcode`} label="Barcode" required>
                     <Input id={`${id}-barcode`} value={l.barcode} onChange={(e) => setLine(i, { barcode: e.target.value })} />
                   </FormField>
-                  <FormField htmlFor={`${id}-quantity`} label="Quantity" required>
-                    <Input id={`${id}-quantity`} type="number" min={1} value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })} />
+                  <FormField
+                    htmlFor={`${id}-quantity`} label="Quantity" required
+                    helperText={
+                      s.quantity <= MAX_QUANTITY
+                        ? `The ERP has ${s.quantity.toLocaleString("en-IN")} open: 1 to ${s.quantity.toLocaleString("en-IN")}.`
+                        : `${quantityHint()} The ERP has ${s.quantity.toLocaleString("en-IN")} open.`
+                    }
+                  >
+                    <Input
+                      id={`${id}-quantity`} type="number" min={1} max={Math.min(MAX_QUANTITY, s.quantity)} step={1}
+                      value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })}
+                    />
                   </FormField>
-                  <FormField htmlFor={`${id}-rate`} label={bundle ? "Price per bundle" : "Cost per unit"} required>
+                  <FormField
+                    htmlFor={`${id}-rate`} label={bundle ? "Price per bundle" : "Cost per unit"} required
+                    helperText={s.rate > 0 ? `ERP rate ${money(s.rate)}; keep within half to double.` : undefined}
+                  >
                     <Input id={`${id}-rate`} type="number" min={0.01} step="0.01" value={l.rate} onChange={(e) => changeRate(i, e.target.value)} />
                   </FormField>
                   <FormField htmlFor={`${id}-tax`} label="Tax %">
@@ -436,6 +475,9 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
                   )}
                 </div>
                 {problems[i] && <p className="text-xs text-destructive">Line {i + 1}: {problems[i]}.</p>}
+                {serverLineIdx.includes(i) && createMessage && (
+                  <p className="text-xs font-medium text-destructive" role="alert" aria-label={`Line ${i + 1} refused`}>{createMessage}</p>
+                )}
                 {canCreateMasters && s.item_id === null && s.item_code && (
                   <div className="flex flex-wrap items-end gap-2 border-t pt-2" aria-label={`Line ${i + 1} not tracked`}>
                     <span className="pb-2 text-xs text-muted-foreground">Not something CKAM tracks (a cable, a hanger)?</span>
@@ -480,9 +522,11 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
         </div>
       </fieldset>
 
-      {createMutation.isError && (
+      {createMessage && (
         <p className="text-sm text-destructive" role="alert">
-          {createMutation.error instanceof Error ? createMutation.error.message : "Failed to create the purchase order."}
+          {serverLineIdx.length > 0
+            ? `The purchase order was not created. Fix ${serverLineIdx.length === 1 ? `line ${serverLineIdx[0] + 1}` : "the lines"} marked in red above, then try again.`
+            : createMessage}
         </p>
       )}
 
@@ -498,7 +542,6 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
         onOpenChange={(open) => !open && setNewBrandFor(null)}
         onCreated={(row) => newBrandFor !== null && setLine(newBrandFor, { brandId: String(row.id) })}
       />
-      <NewVendorDialog open={newVendor} onOpenChange={setNewVendor} onCreated={(row) => setVendorId(String(row.id))} />
       {companyId !== "" && (
         <NewCostCenterDialog
           companyId={Number(companyId)} open={newCostCenter} onOpenChange={setNewCostCenter}

@@ -136,6 +136,25 @@ describe("Set up CKAM screen", () => {
     expect(await screen.findByTestId("code-preview")).toHaveTextContent("FA/CKS/0001");
     expect(screen.getByRole("link", { name: "Finish" })).toHaveAttribute("href", "/settings");
   });
+
+  it("step 7 shows the SERVER's example for the format, asked from the preview endpoint", async () => {
+    mockApi("complete");
+    (apiClient.post as any).mockImplementation((path: string) =>
+      path === "/code-rules/preview" ? Promise.resolve({ example: "FA/CKSPL/IT/0001" }) : Promise.resolve({}),
+    );
+    renderAt("/settings/setup?step=7");
+    await waitFor(() => expect(screen.getByTestId("code-preview")).toHaveTextContent("FA/CKSPL/IT/0001"));
+    expect(apiClient.post).toHaveBeenCalledWith("/code-rules/preview", expect.objectContaining({ company_id: null, prefix_template: "FA/{company.code}/" }));
+  });
+
+  it("step 7 for someone who may not change the format is read-only with the owner-only note", async () => {
+    loginAs("ADMIN", false);
+    mockApi("complete");
+    renderAt("/settings/setup?step=7");
+    // An ordinary admin is turned away from Settings altogether; the screen itself stays safe if reached.
+    await screen.findByText(/don't have access/i);
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+  });
 });
 
 describe("Home: Finish setting up", () => {

@@ -48,6 +48,7 @@ import {
   type PlaceType,
 } from "../../lib/labels";
 import { usePlaceLookups } from "../../lib/lookups";
+import { useAccess } from "../../lib/access";
 import { companyOptions } from "../../lib/option-labels";
 import { ErpStoresDialog } from "./ErpStoresDialog";
 
@@ -135,7 +136,7 @@ interface AssetUserDraft {
   phone: string;
   role: string;
   loginEnabled: boolean;
-  /** Carried through from the record being edited (not editable here yet). */
+  /** The login's work area (IT / NON_IT / BOTH; null = Both). Carried through from the record being edited. */
   allowed_asset_domains?: string | null;
   primary_asset_domain?: string | null;
 }
@@ -153,6 +154,25 @@ const emptyDraft: AssetUserDraft = {
   loginEnabled: false,
 };
 
+/** Work area choices on a login: the two areas or both (the stored "BOTH" / unset mean the same). */
+const WORK_AREA_CHOICES = [
+  { value: "IT", label: workAreaLabel("IT") },
+  { value: "NON_IT", label: workAreaLabel("NON_IT") },
+  { value: "BOTH", label: workAreaLabel("BOTH") },
+];
+
+/** A login that is limited by work area (a self-service login sees only what it holds). */
+const WORK_AREA_ROLES = ["ADMIN", "OPERATOR", "VIEWER"];
+
+/**
+ * UX only (the server answers 403 either way): a head-office admin's account can
+ * only be changed by a head-office admin, so for anyone else Edit / Deactivate /
+ * Reset password / Company access are not offered on that row.
+ */
+export function canManageAccount(row: { is_primary_owner: boolean }, viewerIsPrimaryOwner: boolean): boolean {
+  return !row.is_primary_owner || viewerIsPrimaryOwner;
+}
+
 function buildPayload(draft: AssetUserDraft) {
   return {
     company_id: Number(draft.company_id),
@@ -168,10 +188,16 @@ function buildPayload(draft: AssetUserDraft) {
     phone: draft.phone || null,
     role: draft.loginEnabled ? draft.role : "SELF_SERVICE",
     login_enabled: draft.loginEnabled,
-    // The server's PUT replaces every field it receives a default for, so an
-    // edit sends the work area back exactly as it was (never clears it).
-    ...(draft.allowed_asset_domains !== undefined ? { allowed_asset_domains: draft.allowed_asset_domains } : {}),
-    ...(draft.primary_asset_domain !== undefined ? { primary_asset_domain: draft.primary_asset_domain } : {}),
+    // The work area is only meaningful for a login (the server refuses one on a
+    // record that cannot log in, and keeps the stored value when it is left out).
+    // An edit always sends the stored value back unless the person changed it, so
+    // saving the form can never clear it.
+    ...(draft.loginEnabled && draft.allowed_asset_domains !== undefined
+      ? { allowed_asset_domains: draft.allowed_asset_domains }
+      : {}),
+    ...(draft.loginEnabled && draft.primary_asset_domain !== undefined
+      ? { primary_asset_domain: draft.primary_asset_domain }
+      : {}),
   };
 }
 
@@ -192,6 +218,7 @@ interface AssetUsersScreenProps {
 
 export function AssetUsersScreen({ fixedType, embedded = false }: AssetUsersScreenProps = {}) {
   const qc = useQueryClient();
+  const { isPrimaryOwner: viewerIsPrimaryOwner } = useAccess();
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [originalRole, setOriginalRole] = useState<string | null>(null);
@@ -515,7 +542,10 @@ export function AssetUsersScreen({ fixedType, embedded = false }: AssetUsersScre
       header: <span className="sr-only">Actions</span>,
       headerClassName: "w-32 text-right",
       cellClassName: "text-right",
-      cell: (h) => (
+      cell: (h) =>
+        !canManageAccount(h, viewerIsPrimaryOwner) ? (
+          <span className="text-xs text-muted-foreground">Head-office admin only</span>
+        ) : (
         <div className="flex justify-end gap-1">
           <Button variant="ghost" size="icon" aria-label={`Edit ${h.name}`} onClick={() => openEdit(h)}>
             <Pencil className="h-4 w-4" aria-hidden="true" />
@@ -542,7 +572,7 @@ export function AssetUsersScreen({ fixedType, embedded = false }: AssetUsersScre
             <Trash2 className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
-      ),
+        ),
     },
   ];
 
@@ -599,6 +629,19 @@ export function AssetUsersScreen({ fixedType, embedded = false }: AssetUsersScre
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {resetMutation.isError && (
+        <div
+          role="alert"
+          aria-label="Could not reset the password"
+          className="flex items-center justify-between gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          <span>{resetMutation.error instanceof Error ? resetMutation.error.message : "Could not reset the password."}</span>
+          <Button variant="ghost" size="sm" onClick={() => resetMutation.reset()}>
+            Dismiss
+          </Button>
         </div>
       )}
 
@@ -802,6 +845,30 @@ export function AssetUsersScreen({ fixedType, embedded = false }: AssetUsersScre
                     </p>
                   )}
                 </FormField>
+
+                {WORK_AREA_ROLES.includes(draft.role) && (
+                  <FormField
+                    htmlFor="work_area"
+                    label="Work area"
+                    helperText="Which assets this person works with: IT Team, Admin / Non-IT Team, or Both. If you handle only one area yourself, you can only choose yours."
+                  >
+                    <Select
+                      value={draft.allowed_asset_domains || "BOTH"}
+                      onValueChange={(v) => setDraft((d) => ({ ...d, allowed_asset_domains: v }))}
+                    >
+                      <SelectTrigger id="work_area" aria-label="Work area">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {WORK_AREA_CHOICES.map((o) => (
+                          <SelectItem key={o.value} value={o.value}>
+                            {o.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+                )}
               </>
             )}
 
@@ -900,7 +967,15 @@ export function AssetUsersScreen({ fixedType, embedded = false }: AssetUsersScre
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={deactivateRow !== null} onOpenChange={(open) => !open && setDeactivateRow(null)}>
+      <AlertDialog
+        open={deactivateRow !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeactivateRow(null);
+            deactivateMutation.reset();
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Deactivate {deactivateRow?.name}?</AlertDialogTitle>
@@ -909,12 +984,24 @@ export function AssetUsersScreen({ fixedType, embedded = false }: AssetUsersScre
               them stay where they are, and their history is kept. It is deactivated, not deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {/* The server refuses while the person still holds assets ("X still holds 3 assets. Move
+              them ... first, then deactivate.") -- shown here, with the dialog kept open. */}
+          {deactivateMutation.isError && (
+            <p className="text-sm text-destructive" role="alert">
+              {deactivateMutation.error instanceof Error
+                ? deactivateMutation.error.message
+                : "Could not deactivate this record."}
+            </p>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               disabled={deactivateMutation.isPending}
-              onClick={() => deactivateRow && deactivateMutation.mutate(deactivateRow.id)}
+              onClick={(e) => {
+                e.preventDefault(); // stay open to show a refusal; closes itself on success
+                if (deactivateRow) deactivateMutation.mutate(deactivateRow.id);
+              }}
             >
               Deactivate
             </AlertDialogAction>

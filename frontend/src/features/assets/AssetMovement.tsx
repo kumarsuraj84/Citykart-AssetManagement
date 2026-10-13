@@ -7,6 +7,7 @@ import { actionsFor, targetLabelFor } from "./actionRules";
 import { statusLabel } from "../../lib/labels";
 import { itemOptions, placeOptions, stockRoomOptions } from "../../lib/option-labels";
 import { useCategoryLookups, usePlaceLookups } from "../../lib/lookups";
+import { MAX_QUANTITY, quantityHint, quantityProblem } from "../../lib/limits";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -50,6 +51,8 @@ interface QueuedAsset extends AssetSearchResult {
 }
 
 const PREFS_KEY = "ckam.movement.prefs";
+/** The most assets the server returns for one search. */
+const PAGE_SIZE = 200;
 
 function loadPrefs(): { autoPrint: boolean; verify: boolean } {
   try {
@@ -229,8 +232,19 @@ export function AssetMovement() {
 
   // Add by Item: the sender's own stock of that Item, one label each.
   const byItemMutation = useMutation({
-    mutationFn: (v: { itemId: string; fromId: string; count: number }) =>
-      apiClient.get<{ items: AssetSearchResult[]; total: number }>(`/assets?item_id=${v.itemId}&asset_user_id=${v.fromId}&status=IN_STOCK&limit=200`),
+    mutationFn: async (v: { itemId: string; fromId: string; count: number }) => {
+      // The server returns at most 200 assets a request, so a bigger count is read page by page
+      // (enough to cover the count plus whatever is already in this batch).
+      const base = `/assets?item_id=${v.itemId}&asset_user_id=${v.fromId}&status=IN_STOCK&limit=${PAGE_SIZE}`;
+      const wanted = v.count + queue.length;
+      let page = await apiClient.get<{ items: AssetSearchResult[]; total: number }>(base);
+      const items = [...page.items];
+      while (items.length < wanted && page.items.length > 0 && items.length < page.total) {
+        page = await apiClient.get<{ items: AssetSearchResult[]; total: number }>(`${base}&offset=${items.length}`);
+        items.push(...page.items);
+      }
+      return { items, total: page.total };
+    },
     onSuccess: (result, v) => {
       const have = new Set(queue.map((a) => a.id));
       const free = result.items.filter((a) => !have.has(a.id));
@@ -261,7 +275,7 @@ export function AssetMovement() {
       // typing a shared description/barcode for a batch of identical,
       // serial-less items) -- the ordinary single-scan case still only
       // ever needs enough to detect "more than one match", hence 5.
-      const fetchLimit = vars.requestedQty > 1 ? Math.min(Math.max(vars.requestedQty, 5), 500) : 5;
+      const fetchLimit = vars.requestedQty > 1 ? Math.min(Math.max(vars.requestedQty, 5), PAGE_SIZE) : 5;
       const statusParam = vars.status ? `&status=${vars.status}` : "";
       type Found = { items: AssetSearchResult[]; total: number };
       // The QR on an asset label is a link to the asset: look that one asset up directly.
@@ -322,9 +336,12 @@ export function AssetMovement() {
     onError: () => setScanError("Search failed -- try again."),
   });
 
+  const qtyProblem = quantityProblem(qty);
+  const itemQtyProblem = quantityProblem(itemQty);
+
   function handleScanSubmit() {
     const value = scanValue.trim();
-    if (!value) return;
+    if (!value || qtyProblem) return;
     // Confirming a label that was stuck on: scanning the label itself ticks it off.
     if (prefs.verify) {
       const match = queue.find((a) => a.printed && !a.confirmed && a.asset_code.toLowerCase() === value.toLowerCase());
@@ -339,7 +356,7 @@ export function AssetMovement() {
     setBulkSummary(null);
     searchMutation.mutate({
       value,
-      requestedQty: Math.max(1, Number(qty) || 1),
+      requestedQty: Number(qty),
       status: onlyInStock ? "IN_STOCK" : undefined,
     });
   }
@@ -387,8 +404,10 @@ export function AssetMovement() {
   }
   const unprinted = eligibleQueue.filter((a) => !a.printed);
   const unconfirmed = prefs.verify && labelsOn ? eligibleQueue.filter((a) => !a.confirmed).length : 0;
+  const tooManyToApply = eligibleQueue.length > MAX_QUANTITY;
   const canApply =
     eligibleQueue.length > 0 &&
+    !tooManyToApply &&
     (!action.needsAssetUser || toAssetUserId !== "") &&
     unconfirmed === 0;
 
@@ -516,7 +535,7 @@ export function AssetMovement() {
               }}
               autoFocus
             />
-            <Button type="button" variant="outline" onClick={handleScanSubmit} disabled={searchMutation.isPending}>
+            <Button type="button" variant="outline" onClick={handleScanSubmit} disabled={searchMutation.isPending || qtyProblem !== null}>
               <ScanBarcode className="h-4 w-4" aria-hidden="true" />
               Add
             </Button>
@@ -525,10 +544,11 @@ export function AssetMovement() {
         <FormField
           htmlFor="movement-qty"
           label="Qty"
-          helperText="For a batch of identical, serial-less items (keyboards, cables…): search by description/barcode above, and this many eligible matches get queued in one go."
+          helperText={`For a batch of identical, serial-less items (keyboards, cables…): search by description/barcode above, and this many eligible matches get queued in one go. ${quantityHint()}`}
+          errorText={qtyProblem ?? undefined}
         >
           <Input
-            id="movement-qty" aria-label="Qty" type="number" min={1} step={1} value={qty}
+            id="movement-qty" aria-label="Qty" type="number" min={1} max={MAX_QUANTITY} step={1} value={qty}
             onChange={(e) => setQty(e.target.value)}
             className="w-20"
           />
@@ -575,16 +595,16 @@ export function AssetMovement() {
               placeholder="Choose the Stock Room"
             />
           </FormField>
-          <FormField htmlFor="movement-item-qty" label="How many">
-            <Input id="movement-item-qty" aria-label="How many" type="number" min={1} max={200} value={itemQty} onChange={(e) => setItemQty(e.target.value)} />
+          <FormField htmlFor="movement-item-qty" label="How many" helperText={quantityHint()} errorText={itemQtyProblem ?? undefined}>
+            <Input id="movement-item-qty" aria-label="How many" type="number" min={1} max={MAX_QUANTITY} step={1} value={itemQty} onChange={(e) => setItemQty(e.target.value)} />
           </FormField>
           <div className="flex items-end">
             <Button
               type="button" variant="outline"
-              disabled={!itemId || !fromId || !(Number(itemQty) >= 1) || byItemMutation.isPending}
+              disabled={!itemId || !fromId || itemQtyProblem !== null || byItemMutation.isPending}
               onClick={() => byItemMutation.mutate({ itemId, fromId, count: Math.floor(Number(itemQty)) })}
             >
-              Add {Number(itemQty) >= 1 ? Math.floor(Number(itemQty)) : ""} to this batch
+              Add {itemQtyProblem === null ? Math.floor(Number(itemQty)) : ""} to this batch
             </Button>
           </div>
         </div>
@@ -737,6 +757,11 @@ export function AssetMovement() {
         )}
       </div>
 
+      {tooManyToApply && (
+        <p className="text-sm text-destructive" role="alert">
+          You can move at most {MAX_QUANTITY.toLocaleString("en-IN")} assets at a time. Remove {eligibleQueue.length - MAX_QUANTITY} from the batch, then apply, and do the rest in a second batch.
+        </p>
+      )}
       {unconfirmed > 0 && <p className="text-xs text-muted-foreground">{unconfirmed} label{unconfirmed === 1 ? " is" : "s are"} not confirmed yet.</p>}
       {applyMutation.isSuccess && (
         <div className="rounded-md border bg-muted/40 p-3 text-sm">

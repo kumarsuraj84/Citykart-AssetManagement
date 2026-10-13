@@ -100,6 +100,25 @@ describe("AddBundleDialog", () => {
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
   });
 
+  it("S0: Quantity is 1 to 1,000 -- hint shown, a bad value blocks Add and hides the line count", async () => {
+    renderDialog();
+    await fillDesktop("1000");
+    const qty = screen.getByLabelText(/^quantity\*?$/i);
+    const add = screen.getByRole("button", { name: /^add bundle$/i });
+    expect(qty).toHaveAttribute("max", "1000");
+    expect(screen.getByText("Whole number, 1 to 1,000.")).toBeInTheDocument();
+    expect(add).not.toBeDisabled();
+    for (const [value, sentence] of [["0", "Enter at least 1."], ["1001", "At most 1,000 at a time."], ["1.5", "Enter a whole number."]] as const) {
+      fireEvent.change(qty, { target: { value } });
+      expect(await screen.findByText(sentence)).toBeInTheDocument();
+      expect(add).toBeDisabled();
+      expect(screen.queryByText(/This will add/)).not.toBeInTheDocument();
+    }
+    fireEvent.change(qty, { target: { value: "1000" } });
+    await waitFor(() => expect(add).not.toBeDisabled());
+    expect(screen.getByText(/This will add 4000 lines/)).toBeInTheDocument();
+  });
+
   it("needs a bundle, description, barcode and price before Add is enabled", async () => {
     renderDialog();
     const add = await screen.findByRole("button", { name: /^add bundle$/i });

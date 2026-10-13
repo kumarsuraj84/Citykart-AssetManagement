@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { createAppRouter } from "../../router";
@@ -308,5 +308,135 @@ describe("Things CKAM does not track", () => {
     mockApi({ rows: [{ ...ROW, tracked_lines: 1, untracked_lines: 3 }] });
     renderScreen();
     expect(await screen.findByText("1 (+3 not tracked)")).toBeInTheDocument();
+  });
+});
+
+describe("S0 contract: the ERP decides number, date, vendor, open quantity and rate", () => {
+  const CABLE_LINE = () => line({
+    item_code: "CT900001", description: "HDMI CABLE", barcode: "CT900001", quantity: 10, rate: 100, item_id: 2, item_name: "Cable",
+    matched_by: "CODE", bundle_id: null, bundle_name: null,
+  });
+  const QTY = "SPO/012994/26-27-line-0-quantity";
+  const ID = "SPO/012994/26-27-line-0";
+
+  async function openCableDraft(over: Partial<Draft> = {}) {
+    mockApi({ d: draft(over, [CABLE_LINE()]) });
+    renderScreen();
+    const create = await openDraft();
+    await waitFor(() => expect(create).not.toBeDisabled());
+    return create;
+  }
+
+  it("PO No, PO Date and the Vendor are shown read-only (from the ERP), and erp_po_code is always sent", async () => {
+    mockApi();
+    renderScreen();
+    const create = await openDraft();
+    const poNo = screen.getByLabelText(/^po no/i);
+    const poDate = screen.getByLabelText(/^po date/i);
+    expect(poNo).toHaveAttribute("readonly");
+    expect(poDate).toHaveAttribute("readonly");
+    expect(poNo).toHaveValue("SPO/012994/26-27");
+    expect(poDate).toHaveValue("2026-09-18");
+    const vendor = screen.getByLabelText(/^vendor/i);
+    expect(vendor).toHaveAttribute("readonly");
+    await waitFor(() => expect(vendor).toHaveValue("Vansh Enterprises")); // the CKAM vendor linked to the ERP supplier
+    expect(screen.queryByText("New Vendor…")).not.toBeInTheDocument();
+    expect(screen.getAllByText("From the ERP.").length).toBe(2);
+    await waitFor(() => expect(create).not.toBeDisabled());
+    fireEvent.click(create);
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/erp/pos/create", expect.objectContaining({
+      erp_po_code: 1133610106, po_number: "SPO/012994/26-27", po_date: "2026-09-18", vendor_id: 7,
+    })));
+  });
+
+  it("an ERP supplier with no linked vendor says so and blocks Create", async () => {
+    mockApi({ d: draft({ vendor_id: null }) });
+    renderScreen();
+    const create = await openDraft();
+    expect(await screen.findByText(/is not linked to a CKAM vendor for this company yet/i)).toBeInTheDocument();
+    expect(create).toBeDisabled();
+  });
+
+  it("Item, description, barcode, brand, model, tax, warranty and FEWER units stay editable", async () => {
+    const create = await openCableDraft();
+    for (const field of ["description", "barcode", "tax", "warranty", "model"]) {
+      expect(document.getElementById(`${ID}-${field}`)).not.toHaveAttribute("readonly");
+      expect(document.getElementById(`${ID}-${field}`)).not.toBeDisabled();
+    }
+    fireEvent.change(document.getElementById(QTY)!, { target: { value: "4" } });
+    fireEvent.change(document.getElementById(`${ID}-description`)!, { target: { value: "HDMI CABLE 2m" } });
+    await waitFor(() => expect(create).not.toBeDisabled());
+    fireEvent.click(create);
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalled());
+    expect((apiClient.post as any).mock.calls[0][1].lines[0]).toMatchObject({ quantity: 4, description: "HDMI CABLE 2m", rate: 100 });
+  });
+
+  it("shows how many the ERP has open, and blocks more than that (and 0)", async () => {
+    const create = await openCableDraft();
+    const qty = document.getElementById(QTY)!;
+    expect(qty).toHaveAttribute("max", "10");
+    expect(screen.getByText("The ERP has 10 open: 1 to 10.")).toBeInTheDocument();
+
+    fireEvent.change(qty, { target: { value: "11" } });
+    expect(await screen.findByText(/Line 1: quantity cannot be more than the 10 the ERP still has open\./)).toBeInTheDocument();
+    expect(create).toBeDisabled();
+
+    fireEvent.change(qty, { target: { value: "0" } });
+    expect(await screen.findByText(/Line 1: quantity must be a whole number, at least 1\./)).toBeInTheDocument();
+    expect(create).toBeDisabled();
+
+    fireEvent.change(qty, { target: { value: "10" } });
+    await waitFor(() => expect(create).not.toBeDisabled());
+  });
+
+  it("a line the ERP has more than 1,000 of cannot be sent above 1,000", async () => {
+    mockApi({ d: draft({}, [{ ...CABLE_LINE(), quantity: 5000 }]) });
+    renderScreen();
+    const create = await openDraft();
+    expect(screen.getByText(/Whole number, 1 to 1,000\. The ERP has 5,000 open\./)).toBeInTheDocument();
+    expect(await screen.findByText(/Line 1: quantity can be at most 1,000 on one line\./)).toBeInTheDocument();
+    expect(create).toBeDisabled();
+    fireEvent.change(document.getElementById(QTY)!, { target: { value: "1000" } });
+    await waitFor(() => expect(create).not.toBeDisabled());
+  });
+
+  it("blocks a cost outside half to double the ERP rate, and says the range", async () => {
+    const create = await openCableDraft();
+    const rate = document.getElementById(`${ID}-rate`)!;
+    expect(screen.getByText(/ERP rate 100\.00; keep within half to double\./)).toBeInTheDocument();
+    fireEvent.change(rate, { target: { value: "0.0001" } });
+    expect(await screen.findByText(/Line 1: cost must be between 50\.00 and 200\.00 \(half to double the ERP rate of 100\.00\)\./)).toBeInTheDocument();
+    expect(create).toBeDisabled();
+    fireEvent.change(rate, { target: { value: "250" } });
+    await waitFor(() => expect(create).toBeDisabled());
+    fireEvent.change(rate, { target: { value: "90" } });
+    await waitFor(() => expect(create).not.toBeDisabled());
+  });
+
+  it("shows the server's 'units asked' refusal under the offending line, not only at the bottom", async () => {
+    const create = await openCableDraft();
+    (apiClient.post as any).mockRejectedValueOnce(new Error("CT900001: 12 units asked, but the ERP purchase order has only 10 open."));
+    fireEvent.click(create);
+    const inline = await screen.findByRole("alert", { name: "Line 1 refused" });
+    expect(inline).toHaveTextContent("CT900001: 12 units asked, but the ERP purchase order has only 10 open.");
+    expect(screen.getByText(/The purchase order was not created\. Fix line 1 marked in red above/)).toBeInTheDocument();
+    expect(within(screen.getByLabelText("Line 1")).getByRole("alert")).toBe(inline);
+  });
+
+  it("shows the server's 'too far from the ERP rate' refusal under its line", async () => {
+    const create = await openCableDraft();
+    const sentence = "Line 1 (CT900001): the cost 60 is too far from the ERP rate 100 (it may be between half and double the ERP rate).";
+    (apiClient.post as any).mockRejectedValueOnce(new Error(sentence));
+    fireEvent.click(create);
+    expect(await screen.findByRole("alert", { name: "Line 1 refused" })).toHaveTextContent(sentence);
+  });
+
+  it("an order-level refusal is shown once at the bottom, as the server wrote it", async () => {
+    const create = await openCableDraft();
+    const sentence = "This ERP purchase order belongs to the ERP company CKSPL, not to Other Co.";
+    (apiClient.post as any).mockRejectedValueOnce(new Error(sentence));
+    fireEvent.click(create);
+    expect(await screen.findByText(sentence)).toBeInTheDocument();
+    expect(screen.queryByRole("alert", { name: "Line 1 refused" })).not.toBeInTheDocument();
   });
 });

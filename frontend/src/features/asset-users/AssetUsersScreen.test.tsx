@@ -1,7 +1,7 @@
-﻿import { describe, it, expect, vi } from "vitest";
+﻿import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { AssetUsersScreen } from "./AssetUsersScreen";
+import { AssetUsersScreen, canManageAccount } from "./AssetUsersScreen";
 import { apiClient, ApiError } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
 
@@ -540,5 +540,202 @@ describe("People & Places lists (one type each)", () => {
     const dialog = await screen.findByRole("alertdialog");
     expect(dialog).toHaveTextContent(/history is kept/i);
     expect(dialog.textContent ?? "").not.toMatch(/restored|reversed/i);
+  });
+});
+
+describe("S0 server rules on the People & Places screens", () => {
+  const OPERATOR_IT = { ...ASSET_USER_2, role: "OPERATOR", allowed_asset_domains: "IT", primary_asset_domain: "IT" };
+  const OWNER = { ...ASSET_USER, id: 99, code: null, name: "Head Office Owner", is_primary_owner: true, role: "ADMIN", company_id: null, location_id: null };
+
+  function mockPeople(rows: unknown[] = [ASSET_USER, OPERATOR_IT]) {
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (path === "/asset-users") return Promise.resolve(rows);
+      if (path === "/masters/companies") return Promise.resolve([COMPANY]);
+      if (path.startsWith("/masters/locations")) return Promise.resolve([LOCATION]);
+      if (path === "/masters/departments") return Promise.resolve([]);
+      return Promise.resolve([]);
+    });
+  }
+
+  function loginAs(isPrimaryOwner: boolean) {
+    useAuthStore.getState().setAuth({ accessToken: "t", role: "ADMIN", companyId: isPrimaryOwner ? null : 1, isPrimaryOwner, mustChangePassword: false });
+  }
+
+  afterEach(() => {
+    useAuthStore.getState().logout();
+    vi.clearAllMocks();
+  });
+
+  it("canManageAccount: a head-office admin's account is managed only by a head-office admin", () => {
+    expect(canManageAccount({ is_primary_owner: true }, false)).toBe(false);
+    expect(canManageAccount({ is_primary_owner: true }, true)).toBe(true);
+    expect(canManageAccount({ is_primary_owner: false }, false)).toBe(true);
+  });
+
+  it("a head-office admin's own row is not in the list at all, for an ordinary admin or the owner", async () => {
+    mockPeople([ASSET_USER, OWNER]);
+    loginAs(false);
+    const { unmount } = renderWithClient(<AssetUsersScreen fixedType="EMPLOYEE" />);
+    await waitFor(() => expect(screen.getByText("Ankur")).toBeInTheDocument());
+    expect(screen.queryByText("Head Office Owner")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /head office owner/i })).not.toBeInTheDocument();
+    unmount();
+    loginAs(true);
+    renderWithClient(<AssetUsersScreen fixedType="EMPLOYEE" />);
+    await waitFor(() => expect(screen.getByText("Ankur")).toBeInTheDocument());
+    expect(screen.queryByText("Head Office Owner")).not.toBeInTheDocument();
+  });
+
+  it("a refused deactivation shows the server's 'still holds N assets' sentence and keeps the dialog open", async () => {
+    mockPeople();
+    loginAs(false);
+    const sentence = "Ankur still holds 3 assets. Move them to someone else or back to a stock room first, then deactivate.";
+    (apiClient.delete as any).mockRejectedValue(new ApiError(sentence, 422));
+    renderWithClient(<AssetUsersScreen fixedType="EMPLOYEE" />);
+    await waitFor(() => expect(screen.getByText("Ankur")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /^deactivate ankur$/i }));
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /^deactivate$/i }));
+
+    await waitFor(() => expect(within(screen.getByRole("alertdialog")).getByRole("alert")).toHaveTextContent(sentence));
+    // The dialog stayed open so the message is read; Cancel clears it for next time.
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^cancel$/i }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /^deactivate ankur$/i }));
+    const again = await screen.findByRole("alertdialog");
+    expect(within(again).queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("a successful deactivation still closes the dialog", async () => {
+    mockPeople();
+    (apiClient.delete as any).mockResolvedValue(undefined);
+    renderWithClient(<AssetUsersScreen fixedType="EMPLOYEE" />);
+    await waitFor(() => expect(screen.getByText("Ankur")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /^deactivate ankur$/i }));
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: /^deactivate$/i }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+  });
+
+  it("a refused password reset shows the server's sentence", async () => {
+    mockPeople();
+    (apiClient.post as any).mockRejectedValue(new ApiError("Only a head-office admin can change a head-office admin account.", 403));
+    renderWithClient(<AssetUsersScreen fixedType="EMPLOYEE" />);
+    await waitFor(() => expect(screen.getByText("Ankur")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /reset password for ankur/i }));
+    expect(await screen.findByRole("alert", { name: /could not reset the password/i })).toHaveTextContent(
+      "Only a head-office admin can change a head-office admin account.",
+    );
+  });
+
+  it.each([
+    ["Full Admin", true],
+    ["Can Add & Move Assets", true],
+    ["View Only", true],
+    ["Own Assets Only", false],
+  ])("Work area field with access '%s' is offered: %s", async (roleWord, offered) => {
+    mockPeople([]);
+    loginAs(true);
+    renderWithClient(<AssetUsersScreen fixedType="EMPLOYEE" />);
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/masters/companies"));
+    fireEvent.click(screen.getAllByRole("button", { name: "Add Employee" })[0]);
+    expect(screen.queryByRole("combobox", { name: "Work area" })).not.toBeInTheDocument(); // no login yet
+    fireEvent.click(screen.getByRole("checkbox", { name: "Login Enabled" }));
+    await pickSelectOption("Access Role", roleWord);
+    if (offered) {
+      const box = screen.getByRole("combobox", { name: "Work area" });
+      expect(box).toHaveTextContent("Both");
+      fireEvent.click(box);
+      for (const name of ["IT Team", "Admin / Non-IT Team", "Both"]) {
+        expect(await screen.findByRole("option", { name })).toBeInTheDocument();
+      }
+    } else {
+      expect(screen.queryByRole("combobox", { name: "Work area" })).not.toBeInTheDocument();
+    }
+  });
+
+  it("choosing a Work area for a new Full Admin sends it", async () => {
+    mockPeople([]);
+    loginAs(true);
+    (apiClient.post as any).mockResolvedValue({ ...ASSET_USER, id: 9 });
+    renderWithClient(<AssetUsersScreen fixedType="EMPLOYEE" />);
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/masters/companies"));
+    fireEvent.click(screen.getAllByRole("button", { name: "Add Employee" })[0]);
+    fireEvent.change(screen.getByLabelText("Employee Code"), { target: { value: "CS5" } });
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Meera" } });
+    await pickSelectOption("Company", "CityKart HQ");
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/masters/locations?company_id=1"));
+    await pickSelectOption("Place", "Head Office");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Login Enabled" }));
+    await pickSelectOption("Access Role", "Full Admin");
+    await pickSelectOption("Work area", "IT Team");
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith(
+        "/asset-users",
+        expect.objectContaining({ role: "ADMIN", login_enabled: true, allowed_asset_domains: "IT" }),
+      ),
+    );
+  });
+
+  it("editing a login shows its stored work area, sends it unchanged, and sends a changed one", async () => {
+    mockPeople();
+    (apiClient.put as any).mockResolvedValue(OPERATOR_IT);
+    renderWithClient(<AssetUsersScreen fixedType="EMPLOYEE" />);
+    await waitFor(() => expect(screen.getByText("Priya")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /^edit priya$/i }));
+    expect(screen.getByRole("combobox", { name: "Work area" })).toHaveTextContent("IT Team");
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() =>
+      expect(apiClient.put).toHaveBeenLastCalledWith("/asset-users/2", expect.objectContaining({ allowed_asset_domains: "IT", primary_asset_domain: "IT" })),
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /^edit priya$/i }));
+    await pickSelectOption("Work area", "Both");
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() =>
+      expect(apiClient.put).toHaveBeenLastCalledWith("/asset-users/2", expect.objectContaining({ allowed_asset_domains: "BOTH" })),
+    );
+  });
+
+  it("a record whose login is switched off sends no work area (the server refuses one on a non-login)", async () => {
+    mockPeople();
+    (apiClient.put as any).mockResolvedValue(OPERATOR_IT);
+    renderWithClient(<AssetUsersScreen fixedType="EMPLOYEE" />);
+    await waitFor(() => expect(screen.getByText("Priya")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /^edit priya$/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Login Enabled" }));
+    expect(screen.queryByRole("combobox", { name: "Work area" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => expect(apiClient.put).toHaveBeenCalled());
+    const body = (apiClient.put as any).mock.calls.at(-1)[1];
+    expect(body.login_enabled).toBe(false);
+    expect(body).not.toHaveProperty("allowed_asset_domains");
+    expect(body).not.toHaveProperty("primary_asset_domain");
+  });
+
+  it("the server's work-area refusal for a one-area admin is shown inside the form", async () => {
+    mockPeople();
+    loginAs(false);
+    const sentence = "You handle only IT work, so you cannot give anyone a wider work area than your own. Set their work area to IT, or ask the head-office admin.";
+    (apiClient.put as any).mockRejectedValue(new ApiError(sentence, 403));
+    renderWithClient(<AssetUsersScreen fixedType="EMPLOYEE" />);
+    await waitFor(() => expect(screen.getByText("Priya")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /^edit priya$/i }));
+    await pickSelectOption("Work area", "Both");
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    expect(await within(screen.getByRole("dialog")).findByRole("alert")).toHaveTextContent(sentence);
+  });
+
+  it("a validation 422 from the server (one readable sentence) is shown in the form", async () => {
+    mockPeople();
+    (apiClient.put as any).mockRejectedValue(new ApiError("Enter a valid email address. Code is too long (max 50 characters).", 422));
+    renderWithClient(<AssetUsersScreen fixedType="EMPLOYEE" />);
+    await waitFor(() => expect(screen.getByText("Priya")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /^edit priya$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    expect(await within(screen.getByRole("dialog")).findByRole("alert")).toHaveTextContent(
+      "Enter a valid email address. Code is too long (max 50 characters).",
+    );
   });
 });

@@ -248,6 +248,136 @@ describe("Move / Dispatch: labels print as assets are scanned for a move", () =>
   });
 });
 
+async function chooseAction(name: string) {
+  fireEvent.click(screen.getByRole("combobox", { name: "Action" }));
+  fireEvent.click(await screen.findByRole("option", { name }));
+}
+
+describe("S0: the destination follows the server's rule", () => {
+  it.each([
+    ["Move / Allot / Transfer", "Move To"],
+    ["Receive from Repair", "Received Into"],
+    ["Mark Found", "Received Into"],
+  ])("%s asks for a destination (%s) and will not apply without one", async (action, label) => {
+    mockGets({ "SN-1": [LAPTOP] });
+    await renderMovement();
+    await chooseAction(action);
+    expect(screen.getByRole("combobox", { name: label })).toBeInTheDocument();
+  });
+
+  it.each(["Send for Repair", "Report Lost", "Dispose", "Sell", "Scrap"])(
+    "%s has no destination picker, and a destination chosen earlier is not sent",
+    async (action) => {
+      mockGets({ "SN-1": [LAPTOP] });
+      await renderMovement();
+      scan("SN-1");
+      await screen.findByText(/FA\/IT\/LAP\/1/);
+      await chooseDestination();                                    // chosen while the action was "Move"
+      await chooseAction(action);
+      expect(screen.queryByRole("combobox", { name: /move to|received into/i })).not.toBeInTheDocument();
+      fireEvent.click(applyButton(1));
+      await waitFor(() => expect(apiClient.post).toHaveBeenCalled());
+      expect((apiClient.post as any).mock.calls.at(-1)[1]).toMatchObject({ to_asset_user_id: null });
+    },
+  );
+
+  it("the server's refusal for an asset is listed with its plain sentence", async () => {
+    mockGets({ "SN-1": [LAPTOP] });
+    await renderMovement();
+    scan("SN-1");
+    await screen.findByText(/FA\/IT\/LAP\/1/);
+    await chooseDestination();
+    (apiClient.post as any).mockResolvedValue({ done: 0, failed: [{ asset_id: 1, reason: "Store Hisar is no longer active, so assets cannot be sent there." }] });
+    fireEvent.click(applyButton(1));
+    expect(await screen.findByText(/Asset #1: Store Hisar is no longer active, so assets cannot be sent there\./)).toBeInTheDocument();
+  });
+
+  it("a whole-request refusal (422 sentence) is shown", async () => {
+    mockGets({ "SN-1": [LAPTOP] });
+    await renderMovement();
+    scan("SN-1");
+    await screen.findByText(/FA\/IT\/LAP\/1/);
+    await chooseDestination();
+    (apiClient.post as any).mockRejectedValue(new Error("You can choose at most 1,000 assets at a time."));
+    fireEvent.click(applyButton(1));
+    expect(await screen.findByRole("alert")).toHaveTextContent("You can choose at most 1,000 assets at a time.");
+  });
+});
+
+describe("S0: quantities are 1 to 1,000", () => {
+  it("Qty must be a whole number from 1 to 1,000: the hint is printed and a bad value blocks adding", async () => {
+    mockGets({ keyboard: [LAPTOP] });
+    await renderMovement();
+    expect(screen.getAllByText(/Whole number, 1 to 1,000\./)).toHaveLength(2);   // under Qty and under "How many"
+    const qty = screen.getByLabelText(/^qty$/i);
+    expect(qty).toHaveAttribute("max", "1000");
+    const add = screen.getByRole("button", { name: /^add$/i });
+
+    for (const [value, sentence] of [["0", /enter at least 1/i], ["1001", /at most 1,000/i], ["2.5", /whole number\./i], ["", /enter how many/i]] as const) {
+      fireEvent.change(qty, { target: { value } });
+      expect(await screen.findByText(sentence)).toBeInTheDocument();
+      expect(add).toBeDisabled();
+      scan("keyboard");                                             // Enter does nothing either
+    }
+    expect(apiClient.get).not.toHaveBeenCalledWith(expect.stringContaining("q=keyboard"));
+
+    fireEvent.change(qty, { target: { value: "1000" } });
+    await waitFor(() => expect(add).toBeEnabled());
+  });
+
+  it("Qty above 200 never asks the server for more than its 200-per-search limit", async () => {
+    mockGets({ keyboard: [LAPTOP] });
+    await renderMovement();
+    fireEvent.change(screen.getByLabelText(/^qty$/i), { target: { value: "800" } });
+    scan("keyboard");
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("q=keyboard&limit=200")));
+    expect(apiClient.get).not.toHaveBeenCalledWith(expect.stringContaining("limit=500"));
+  });
+
+  it("'How many' by Item is 1 to 1,000 too: a bad value shows the hint and blocks the button", async () => {
+    mockGets();
+    await renderMovement();
+    fireEvent.click(screen.getByRole("combobox", { name: "Item" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Mouse" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Currently in stock at" }));
+    fireEvent.click(await screen.findByRole("option", { name: "WH Stock" }));
+    const how = screen.getByLabelText("How many");
+    expect(how).toHaveAttribute("max", "1000");
+    for (const value of ["0", "1001", "-4"]) {
+      fireEvent.change(how, { target: { value } });
+      expect(screen.getByRole("button", { name: /to this batch/i })).toBeDisabled();
+    }
+    expect(screen.getByText(/At most 1,000 at a time\.|Enter at least 1\./)).toBeInTheDocument();
+    fireEvent.change(how, { target: { value: "1000" } });
+    expect(screen.getByRole("button", { name: /add 1000 to this batch/i })).toBeEnabled();
+  });
+
+  it("a count above the server's 200-per-request limit is read page by page", async () => {
+    const MANY = Array.from({ length: 450 }, (_, i) => asset(1000 + i, `FA/IT/MSE/${1000 + i}`, { serial_number: null, item_name: "Mouse", erp_item_code: null }));
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (path === "/asset-users") return Promise.resolve(USERS);
+      if (path === "/items") return Promise.resolve(ITEMS);
+      if (path.startsWith("/assets?item_id=31")) {
+        const offset = Number(/[&]offset=(\d+)/.exec(path)?.[1] ?? 0);
+        return Promise.resolve({ items: MANY.slice(offset, offset + 200), total: MANY.length });
+      }
+      return Promise.resolve([]);
+    });
+    await renderMovement();
+    await chooseAction("Send for Repair");                          // no labels to print
+    fireEvent.click(screen.getByRole("combobox", { name: "Item" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Mouse" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Currently in stock at" }));
+    fireEvent.click(await screen.findByRole("option", { name: "WH Stock" }));
+    fireEvent.change(screen.getByLabelText("How many"), { target: { value: "450" } });
+    fireEvent.click(screen.getByRole("button", { name: /add 450 to this batch/i }));
+    expect(await screen.findByText(/Queued \(450\)/)).toBeInTheDocument();
+    expect(apiClient.get).toHaveBeenCalledWith("/assets?item_id=31&asset_user_id=5&status=IN_STOCK&limit=200");
+    expect(apiClient.get).toHaveBeenCalledWith("/assets?item_id=31&asset_user_id=5&status=IN_STOCK&limit=200&offset=200");
+    expect(apiClient.get).toHaveBeenCalledWith("/assets?item_id=31&asset_user_id=5&status=IN_STOCK&limit=200&offset=400");
+  });
+});
+
 describe("Move / Dispatch is one screen", () => {
   it("is a single menu entry, and the old Dispatch address goes to it", async () => {
     mockGets();

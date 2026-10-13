@@ -20,6 +20,8 @@ import { ErrorState } from "@/components/shared/ErrorState";
 import { FormField } from "@/components/shared/FormField";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { AddBundleDialog } from "./AddBundleDialog";
+import { serialConflictSentence } from "./serial-conflict";
+import { MAX_QUANTITY, quantityHint, quantityProblem } from "@/lib/limits";
 import { DeliveryReminderBanner } from "../erp/DeliveryReminders";
 import { ErpChangesPanel } from "../erp/ErpChanges";
 import { ErpPiDialog } from "../erp/ErpPiDialog";
@@ -300,7 +302,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     lineForm.barcode.trim() !== "" &&
     lineForm.itemId !== "" &&
     Number(lineForm.purchaseCost) > 0 &&
-    Number(lineForm.quantity) >= 1 &&
+    quantityProblem(lineForm.quantity) === null &&
     lineForm.warrantyYears.trim() !== "" &&
     Number(lineForm.warrantyYears) >= 0;
 
@@ -316,7 +318,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
         warranty_years: Number(lineForm.warrantyYears) || 0,
         purchase_cost: Number(lineForm.purchaseCost) || 0,
         tax_percent: Number(lineForm.taxPercent) || 0,
-        quantity: Number(lineForm.quantity) || 1,
+        quantity: Number(lineForm.quantity),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["purchase-order", poId, "lines"] });
@@ -813,8 +815,8 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
           <FormField htmlFor="line-tax" label="Tax %">
             <Input id="line-tax" type="number" value={lineForm.taxPercent} onChange={(e) => setLineForm((f) => ({ ...f, taxPercent: e.target.value }))} />
           </FormField>
-          <FormField htmlFor="line-quantity" label="Quantity" required>
-            <Input id="line-quantity" type="number" min={1} value={lineForm.quantity} onChange={(e) => setLineForm((f) => ({ ...f, quantity: e.target.value }))} />
+          <FormField htmlFor="line-quantity" label="Quantity" required helperText={quantityHint()} errorText={quantityProblem(lineForm.quantity) ?? undefined}>
+            <Input id="line-quantity" type="number" min={1} max={MAX_QUANTITY} step={1} value={lineForm.quantity} onChange={(e) => setLineForm((f) => ({ ...f, quantity: e.target.value }))} />
           </FormField>
           <FormField htmlFor="line-brand" label="Brand">
             <SearchableSelect
@@ -1153,7 +1155,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
                     )}
                     {typing && taken.map((s) => (
                       <p key={s} className="text-xs text-destructive" role="alert">
-                        Serial "{s}" is already used by asset {existingSerials[s.toLowerCase()]}
+                        {serialConflictSentence(s, existingSerials[s.toLowerCase()])}
                       </p>
                     ))}
                   </div>

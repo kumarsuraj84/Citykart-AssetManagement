@@ -369,6 +369,132 @@ describe("AssetDetail (Asset 360)", () => {
     expect(await screen.findByText(/missing required custom field/i)).toBeInTheDocument();
   });
 
+  describe("S0: the serial number on Edit", () => {
+    async function openEdit(asset: Record<string, unknown> = FULL_ASSET) {
+      mockGets({ asset });
+      (apiClient.put as any).mockResolvedValue(asset);
+      renderWithClient(<AssetDetail assetId={1} />);
+      await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+      fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
+      return await screen.findByLabelText("Serial Number");
+    }
+    const lastBody = () => (apiClient.put as any).mock.calls.at(-1)[1] as Record<string, unknown>;
+
+    it("saving without touching the serial leaves it out of the request (the server keeps it)", async () => {
+      await openEdit();
+      fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+      await waitFor(() => expect(apiClient.put).toHaveBeenCalled());
+      expect(lastBody()).not.toHaveProperty("serial_number");
+      expect(lastBody()).toMatchObject({ description: "Laptop", barcode: "BC-XYZ789" });
+    });
+
+    it("a changed serial is sent, trimmed", async () => {
+      const box = await openEdit();
+      fireEvent.change(box, { target: { value: "  SN-NEW-9 " } });
+      fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+      await waitFor(() => expect(apiClient.put).toHaveBeenCalled());
+      expect(lastBody().serial_number).toBe("SN-NEW-9");
+    });
+
+    it("'No serial number' sends N/A", async () => {
+      await openEdit();
+      fireEvent.click(screen.getByRole("checkbox", { name: "No serial number" }));
+      fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+      await waitFor(() => expect(apiClient.put).toHaveBeenCalled());
+      expect(lastBody().serial_number).toBe("N/A");
+    });
+
+    it("emptying an existing serial is stopped with the server's sentence; nothing is sent, never null or blank", async () => {
+      const box = await openEdit();
+      fireEvent.change(box, { target: { value: "" } });
+      expect(await screen.findByText("The serial number cannot be removed. Type N/A if the asset has none.")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^save$/i })).toBeDisabled();
+      fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+      expect(apiClient.put).not.toHaveBeenCalled();
+      // Typing N/A (or anything) clears it again.
+      fireEvent.change(box, { target: { value: "N/A" } });
+      expect(screen.queryByText(/cannot be removed/)).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^save$/i })).not.toBeDisabled();
+    });
+
+    it("an asset with no serial yet can be saved without one, and the field stays out of the request", async () => {
+      await openEdit({ ...FULL_ASSET, serial_number: null });
+      expect(screen.queryByText(/cannot be removed/)).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+      await waitFor(() => expect(apiClient.put).toHaveBeenCalled());
+      expect(lastBody()).not.toHaveProperty("serial_number");
+    });
+
+    it("if the server still refuses the serial, its sentence is shown", async () => {
+      const box = await openEdit();
+      (apiClient.put as any).mockRejectedValue(new ApiError("The serial number cannot be removed. Type N/A if the asset has none.", 422));
+      fireEvent.change(box, { target: { value: "SN-OTHER" } });
+      fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+      expect(await screen.findByText("The serial number cannot be removed. Type N/A if the asset has none.")).toBeInTheDocument();
+    });
+  });
+
+  describe("S0: the destination in the action dialog follows the server's rule", () => {
+    const NO_DESTINATION: [string, RegExp][] = [
+      ["Send for Repair", /send for repair/i],
+      ["Dispose", /^dispose$/i],
+      ["Sell", /^sell$/i],
+      ["Scrap", /^scrap$/i],
+      ["Report Lost", /report lost/i],
+    ];
+    it.each(NO_DESTINATION)("%s has no destination picker and sends none", async (_label, button) => {
+      mockGets();
+      (apiClient.post as any).mockResolvedValue({ id: 99 });
+      renderWithClient(<AssetDetail assetId={1} />);
+      await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+      fireEvent.click(screen.getByRole("button", { name: button }));
+      const dialog = await screen.findByRole("dialog");
+      expect(within(dialog).queryByRole("combobox")).not.toBeInTheDocument();
+      expect(within(dialog).queryByText(/move to|received into/i)).not.toBeInTheDocument();
+      fireEvent.click(within(dialog).getByRole("button", { name: /confirm/i }));
+      await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/assets/1/events", expect.objectContaining({ to_asset_user_id: null })));
+    });
+
+    it.each([
+      ["IN_STOCK", /move \/ allot/i, "Move To"],
+      ["UNDER_REPAIR", /receive from repair/i, "Received Into"],
+      ["LOST", /mark found/i, "Received Into"],
+    ])("from %s the destination picker is shown, required, and sent", async (status, button, label) => {
+      mockGets({ asset: { ...FULL_ASSET, status } });
+      (apiClient.post as any).mockResolvedValue({ id: 99 });
+      renderWithClient(<AssetDetail assetId={1} />);
+      await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+      fireEvent.click(screen.getByRole("button", { name: button }));
+      const dialog = await screen.findByRole("dialog");
+      expect(within(dialog).getByRole("combobox", { name: label })).toBeInTheDocument();
+      expect(within(dialog).getByRole("button", { name: /confirm/i })).toBeDisabled();
+      await pickSelectOption(label, "Ankur");
+      fireEvent.click(within(dialog).getByRole("button", { name: /confirm/i }));
+      await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/assets/1/events", expect.objectContaining({ to_asset_user_id: 5 })));
+    });
+
+    it("the server's plain refusal (inactive or missing destination, illegal move) is shown inside the dialog", async () => {
+      mockGets();
+      renderWithClient(<AssetDetail assetId={1} />);
+      await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+      for (const sentence of [
+        "Ankur is no longer active, so assets cannot be sent there.",
+        "Choose where the asset is going.",
+        "This action does not send the asset anywhere, so do not choose a destination.",
+        "The date cannot be before the asset's last recorded movement (01-06-2025).",
+      ]) {
+        (apiClient.post as any).mockRejectedValueOnce(new ApiError(sentence, 422));
+        fireEvent.click(screen.getByRole("button", { name: /move \/ allot/i }));
+        const dialog = await screen.findByRole("dialog");
+        await pickSelectOption(/^move to$/i, "Ankur");
+        fireEvent.click(within(dialog).getByRole("button", { name: /confirm/i }));
+        expect(await within(dialog).findByRole("alert")).toHaveTextContent(sentence);
+        fireEvent.click(within(dialog).getByRole("button", { name: /cancel/i }));
+        await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      }
+    });
+  });
+
   it("only shows actions valid for the current status and posts the chosen action", async () => {
     mockGets();
     (apiClient.post as any).mockResolvedValue({ id: 99, status_after: "ALLOTTED" });

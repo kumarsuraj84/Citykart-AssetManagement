@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
+import { MAX_BUNDLE_PARTS } from "../../lib/limits";
 import { blankPart, desktopExample, shareTotal, sharesAddUp, type DraftPart } from "./bundle-parts";
 
 function lookup(map: NameLookup | undefined, id: number | null | undefined): string | undefined {
@@ -110,9 +111,17 @@ export function BundlePartsEditor({
         </div>
       ))}
       <div className="flex items-center justify-between">
-        <Button type="button" variant="outline" size="sm" onClick={() => onChange([...parts, blankPart()])}>
-          + Add part
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button" variant="outline" size="sm" disabled={parts.length >= MAX_BUNDLE_PARTS}
+            onClick={() => onChange([...parts, blankPart()])}
+          >
+            + Add part
+          </Button>
+          {parts.length >= MAX_BUNDLE_PARTS && (
+            <span className="text-xs text-muted-foreground">A set can have at most {MAX_BUNDLE_PARTS} parts.</span>
+          )}
+        </div>
         <p className={`text-sm tabular-nums ${totalOk ? "text-muted-foreground" : "text-destructive"}`} role="status">
           Total {Math.round(total * 100) / 100}% {totalOk ? "" : "(must be exactly 100%)"}
         </p>

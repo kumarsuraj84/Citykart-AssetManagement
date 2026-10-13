@@ -1,14 +1,19 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CodeRuleScreen } from "./CodeRuleScreen";
 import { apiClient } from "../../lib/api-client";
+import { useAuthStore } from "../../lib/auth-store";
 
 vi.mock("../../lib/api-client");
 
 function renderWithClient(ui: React.ReactElement) {
   const qc = new QueryClient();
   return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+}
+
+function loginAs(role: string, isPrimaryOwner: boolean) {
+  useAuthStore.getState().setAuth({ accessToken: "tok", role, companyId: isPrimaryOwner ? null : 1, isPrimaryOwner, mustChangePassword: false });
 }
 
 const EXISTING = {
@@ -19,18 +24,24 @@ const EXISTING = {
   start_number: 100,
   pad_width: 4,
   is_active: true,
+  example: "FA/HO01/IT/0100-X",
 };
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  loginAs("ADMIN", true); // the head-office admin: the only person who may change the format
+});
+afterEach(() => useAuthStore.getState().logout());
 
-describe("CodeRuleScreen", () => {
+describe("CodeRuleScreen (head-office admin)", () => {
   it("is titled Asset Code Format", async () => {
     (apiClient.get as any).mockResolvedValue([]);
     renderWithClient(<CodeRuleScreen />);
     expect(await screen.findByRole("heading", { name: "Asset Code Format" })).toBeInTheDocument();
+    expect(screen.queryByTestId("code-rule-owner-only")).not.toBeInTheDocument();
   });
 
-  it("shows a live preview as the template is typed", async () => {
+  it("shows a live preview as the template is typed (offline example until the server answers)", async () => {
     (apiClient.get as any).mockResolvedValue([]);
     renderWithClient(<CodeRuleScreen />);
 
@@ -69,7 +80,7 @@ describe("CodeRuleScreen", () => {
         pad_width: 4,
       }),
     );
-    expect(apiClient.post).not.toHaveBeenCalled();
+    expect(apiClient.post).not.toHaveBeenCalledWith("/code-rules", expect.anything());
     expect(await screen.findByText(/saved/i)).toBeInTheDocument();
   });
 
@@ -93,10 +104,88 @@ describe("CodeRuleScreen", () => {
 
   it("shows the server error when saving fails", async () => {
     (apiClient.get as any).mockResolvedValue([EXISTING]);
-    (apiClient.put as any).mockRejectedValue(new Error("Not permitted for this action"));
+    (apiClient.put as any).mockRejectedValue(new Error("Only the head-office admin can do this."));
     renderWithClient(<CodeRuleScreen />);
     await waitFor(() => expect(screen.getByLabelText(/prefix template/i)).toHaveValue(EXISTING.prefix_template));
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
-    expect(await screen.findByText("Not permitted for this action")).toBeInTheDocument();
+    expect(await screen.findByText("Only the head-office admin can do this.")).toBeInTheDocument();
+  });
+
+  it("asks the server for the example while typing (debounced, body = the rule fields) and shows it", async () => {
+    (apiClient.get as any).mockResolvedValue([EXISTING]);
+    (apiClient.post as any).mockImplementation((path: string, b: any) =>
+      path === "/code-rules/preview"
+        ? Promise.resolve({ example: `SERVER:${b.prefix_template}${b.start_number}` })
+        : Promise.resolve({}),
+    );
+    renderWithClient(<CodeRuleScreen />);
+    await waitFor(() => expect(screen.getByLabelText(/prefix template/i)).toHaveValue(EXISTING.prefix_template));
+
+    // Type three characters quickly: only the final text may reach the server.
+    const input = screen.getByLabelText(/prefix template/i);
+    fireEvent.change(input, { target: { value: "A" } });
+    fireEvent.change(input, { target: { value: "AB" } });
+    fireEvent.change(input, { target: { value: "ABC/" } });
+
+    await waitFor(() => expect(screen.getByTestId("code-preview")).toHaveTextContent("SERVER:ABC/100"));
+    const previewCalls = (apiClient.post as any).mock.calls.filter((c: any[]) => c[0] === "/code-rules/preview");
+    expect(previewCalls.some((c: any[]) => c[1].prefix_template === "A" || c[1].prefix_template === "AB")).toBe(false);
+    expect(previewCalls.at(-1)[1]).toEqual({
+      company_id: null,
+      prefix_template: "ABC/",
+      suffix_template: "-X",
+      start_number: 100,
+      pad_width: 4,
+    });
+    // Nothing was saved by previewing.
+    expect(apiClient.put).not.toHaveBeenCalled();
+  });
+
+  it("shows the server's validation sentence inline when the format is not valid", async () => {
+    (apiClient.get as any).mockResolvedValue([EXISTING]);
+    (apiClient.post as any).mockRejectedValue(new Error("The asset code format uses {nope}, which is not a known token."));
+    renderWithClient(<CodeRuleScreen />);
+    await waitFor(() => expect(screen.getByLabelText(/prefix template/i)).toHaveValue(EXISTING.prefix_template));
+
+    fireEvent.change(screen.getByLabelText(/prefix template/i), { target: { value: "FA/{nope}/" } });
+
+    expect(await screen.findByTestId("code-preview-error")).toHaveTextContent(
+      "The asset code format uses {nope}, which is not a known token.",
+    );
+    // No misleading example next to an error.
+    expect(screen.getByTestId("code-preview")).toHaveTextContent("—");
+  });
+});
+
+describe("CodeRuleScreen (anyone else)", () => {
+  afterEach(() => vi.clearAllMocks());
+
+  it.each([
+    ["an ordinary admin", "ADMIN", false],
+    ["an operator", "OPERATOR", false],
+    ["a viewer", "VIEWER", false],
+  ])("%s sees the current format read-only, no Save, and the owner-only note", async (_n, role, owner) => {
+    loginAs(role, owner);
+    (apiClient.get as any).mockResolvedValue([EXISTING]);
+    renderWithClient(<CodeRuleScreen />);
+
+    await waitFor(() => expect(screen.getByLabelText(/prefix template/i)).toHaveValue(EXISTING.prefix_template));
+    expect(screen.queryByRole("button", { name: /save/i })).not.toBeInTheDocument();
+    expect(screen.getByText("Only the head-office admin can change the asset code format.")).toBeInTheDocument();
+    for (const label of [/prefix template/i, /suffix template/i, /start number/i, /pad width/i]) {
+      expect(screen.getByLabelText(label)).toHaveAttribute("readonly");
+    }
+    // The server's own example of the saved rule is shown; nothing is asked of the preview endpoint.
+    expect(screen.getByTestId("code-preview")).toHaveTextContent("FA/HO01/IT/0100-X");
+    expect(apiClient.post).not.toHaveBeenCalled();
+    expect(apiClient.put).not.toHaveBeenCalled();
+  });
+
+  it("with no rule yet, says the head-office admin must set one up", async () => {
+    loginAs("ADMIN", false);
+    (apiClient.get as any).mockResolvedValue([]);
+    renderWithClient(<CodeRuleScreen />);
+    expect(await screen.findByText(/until the head-office admin saves one/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /save/i })).not.toBeInTheDocument();
   });
 });
