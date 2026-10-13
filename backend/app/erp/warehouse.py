@@ -71,9 +71,10 @@ class WhItem:
 
 
 class WarehouseReader(Protocol):
-    async def po_lines(self, since: date) -> list[WhPoLine]:
+    async def po_lines(self, since: date, also_po_codes: frozenset[int] = frozenset()) -> list[WhPoLine]:
         """Fixed-asset PO lines of both companies: every line of a PO dated `since` or later, plus every
-        line of any PO that still has an open line (however old)."""
+        line of any PO that still has an open line (however old), plus the POs in `also_po_codes` (the
+        ones the copy still holds as open, so a PO that closed today is seen closing)."""
     async def vendors(self, codes: dict[str, set[str]]) -> list[WhVendor]:
         """The suppliers asked for: {company_code: {vendor codes}}."""
     async def items(self, icodes: set[str]) -> list[WhItem]: ...
@@ -104,7 +105,7 @@ def _f(value) -> float | None:
 class PgWarehouseReader(PgReadOnly):
     statement_timeout_ms = 120_000          # the PO table has about a million rows; this runs at night
 
-    async def po_lines(self, since: date) -> list[WhPoLine]:
+    async def po_lines(self, since: date, also_po_codes: frozenset[int] = frozenset()) -> list[WhPoLine]:
         rows = await self._fetch(
             f"""select p.company, p.po_line_key, p.po_code, p.po_number, p.po_date, p.line_status,
                        coalesce(nullif(trim(s.short_name), ''), nullif(trim(s.site_name), ''), nullif(trim(p.site_name), '')) delivery_location,
@@ -115,9 +116,9 @@ class PgWarehouseReader(PgReadOnly):
                 from {SCHEMA}.po_line p
                 left join {SCHEMA}.site s on s.company = p.company and s.site_code = p.site_code
                 where p.division = 'FIXED ASSETS' and not coalesce(p.is_template, false)
-                  and (p.po_date >= $1 or p.po_code in (
+                  and (p.po_date >= $1 or p.po_code = any($2::bigint[]) or p.po_code in (
                         select po_code from {SCHEMA}.po_line where division = 'FIXED ASSETS' and line_status = 'OPEN'))
-                order by p.company, p.po_code, p.po_line_key""", since)
+                order by p.company, p.po_code, p.po_line_key""", since, sorted(also_po_codes))
         return [
             WhPoLine(
                 company_code=r["company"], po_line_key=str(r["po_line_key"]), po_code=int(r["po_code"]), po_number=(r["po_number"] or "").strip(),

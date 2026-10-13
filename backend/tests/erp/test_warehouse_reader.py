@@ -42,10 +42,10 @@ async def test_po_lines_of_both_companies_are_read_from_the_gold_layer():
         return [row("CKSPL", "1217282"), row("CKVPL", "CV-77", supplier_code="61", delivery_location="CKVPL-WH-FARUKHNAGAR", delivery_site_kind="WAREHOUSE")]
 
     reader._fetch = fake_fetch
-    lines = await reader.po_lines(date(2025, 4, 1))
+    lines = await reader.po_lines(date(2025, 4, 1), frozenset({7, 3}))
     sql, args = calls[0]
     assert "gold_ckpost.po_line" in sql and "gold_ckpost.site" in sql and "'FIXED ASSETS'" in sql
-    assert args == (date(2025, 4, 1),)
+    assert args == (date(2025, 4, 1), [3, 7])       # also the POs the copy still holds as open
     assert [(l.company_code, l.po_line_key, l.supplier_code) for l in lines] == [("CKSPL", "1217282", "4431"), ("CKVPL", "CV-77", "61")]
     first = lines[0]
     assert isinstance(first, WhPoLine)
