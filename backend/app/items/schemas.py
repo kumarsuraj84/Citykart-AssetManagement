@@ -11,7 +11,7 @@ class ItemIn(BaseModel):
     serial_later: bool = False
     bundle_id: int | None = None
     default_brand_id: int | None = None
-    default_warranty_years: int | None = Field(default=None, ge=0)
+    default_warranty_years: int | None = Field(default=None, ge=0, le=100)
 
 
 class ItemOut(BaseModel):

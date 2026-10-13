@@ -56,7 +56,7 @@ def require_primary_owner():
     management."""
     def checker(asset_user: AssetUser = Depends(get_current_asset_user)) -> AssetUser:
         if not asset_user.is_primary_owner:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the Primary Owner may perform this action")
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the head-office admin can do this.")
         return asset_user
     return checker
 
@@ -97,19 +97,55 @@ def can_manage_assets(asset_user) -> bool:
 
 
 async def allowed_asset_domains(session: AsyncSession, asset_user) -> tuple[str, ...] | None:
-    """None means unrestricted -- ADMIN always works across both domains
-    regardless of its own configured `primary_asset_domain` (spec §14, the
-    "ADMIN cross-domain rule"); SELF_SERVICE is also unrestricted here
-    because its scope is governed entirely by custody (current_asset_user_id),
-    not domain (spec §15). OPERATOR/VIEWER are restricted to their configured
-    `allowed_asset_domains` ("IT"/"NON_IT"/"BOTH", defaulting to "BOTH" if
-    never explicitly set)."""
-    if asset_user.role in ("ADMIN", "SELF_SERVICE"):
+    """None means unrestricted. The Primary Owner is always unrestricted;
+    SELF_SERVICE is also unrestricted here because its scope is governed
+    entirely by custody (current_asset_user_id), not domain (spec §15).
+
+    S0.3: an ordinary ADMIN (not the Primary Owner) is now limited by its own
+    configured `allowed_asset_domains` exactly like OPERATOR/VIEWER -- but only
+    when it was explicitly set to "IT" or "NON_IT". NULL or "BOTH" keeps an
+    ADMIN unrestricted, so every existing ADMIN keeps working unchanged.
+    OPERATOR/VIEWER: "IT"/"NON_IT"/"BOTH", defaulting to "BOTH" if never set."""
+    if asset_user.role == "SELF_SERVICE" or getattr(asset_user, "is_primary_owner", False):
         return None
     value = asset_user.allowed_asset_domains or "BOTH"
+    if asset_user.role == "ADMIN" and value == "BOTH":
+        return None
     if value == "BOTH":
         return ("IT", "NON_IT")
     return (value,)
+
+
+WORK_AREA_WORDS = {"IT": "IT", "NON_IT": "Non-IT"}
+
+
+def work_area_words(domain: str | None) -> str:
+    return WORK_AREA_WORDS.get(domain or "", "this")
+
+
+def outside_work_area_message(domain: str | None) -> str:
+    return (f"This is {work_area_words(domain)} work, which is outside your work area. "
+            "Ask someone who handles it, or the head-office admin.")
+
+
+def check_work_area(domains: tuple[str, ...] | None, domain: str | None, what: str | None = None) -> None:
+    """Write check: refuses (403) when `domain` is outside `domains` (the
+    caller's work area from allowed_asset_domains; None = unrestricted).
+    Raises HTTPException on purpose -- it is not a ValueError, so the
+    routers' "except ValueError -> 422" blocks let it through as a 403."""
+    if domains is not None and domain is not None and domain not in domains:
+        message = outside_work_area_message(domain)
+        raise HTTPException(status.HTTP_403_FORBIDDEN, f"{what}: {message}" if what else message)
+
+
+async def ensure_work_area(session: AsyncSession, asset_user, domain: str | None) -> None:
+    """Write check: refuses (403) when `domain` is outside the caller's work area."""
+    check_work_area(await allowed_asset_domains(session, asset_user), domain)
+
+
+async def has_both_work_areas(session: AsyncSession, asset_user) -> bool:
+    """Primary Owner, or an ADMIN not limited to one work area."""
+    return asset_user.role == "ADMIN" and await allowed_asset_domains(session, asset_user) is None
 
 
 async def can_access_asset(session: AsyncSession, asset_user, asset) -> bool:

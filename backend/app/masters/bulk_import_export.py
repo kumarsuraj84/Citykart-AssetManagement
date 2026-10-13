@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from io import BytesIO
 import openpyxl
+from app.core.excel import open_workbook
 from sqlalchemy import select
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -149,7 +150,7 @@ async def _validate_rows(
     session: AsyncSession, fields: list[FieldSpec], content: bytes,
     allowed_company_ids: list[int] | None, company_field: str | None,
 ) -> tuple[list[dict], list[dict], list[dict]]:
-    wb = openpyxl.load_workbook(BytesIO(content))
+    wb = open_workbook(content, ImportTemplateError)
     ws = wb.active
     header = _read_header(ws)
 

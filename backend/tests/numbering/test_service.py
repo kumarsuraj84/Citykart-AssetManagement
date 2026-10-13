@@ -22,13 +22,13 @@ def test_resolve_prefix_substitutes_tokens():
 def test_resolve_prefix_rejects_empty_token():
     rule = _rule(prefix_template="FA/{cost_center.code}/{category.code}/{subcategory.code}/CK_")
     tokens = {"cost_center.code": "HO01", "category.code": "IT", "subcategory.code": ""}
-    with pytest.raises(ValueError, match="subcategory"):
+    with pytest.raises(ValueError, match="sub-category"):
         resolve_prefix(rule, tokens)
 
 
 def test_resolve_prefix_rejects_unknown_token():
     rule = _rule(prefix_template="FA/{not_a_real_token}/CK_")
-    with pytest.raises(ValueError, match="unknown token"):
+    with pytest.raises(ValueError, match="does not know"):
         resolve_prefix(rule, {})
 
 

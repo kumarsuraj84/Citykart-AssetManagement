@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import SessionLocal, get_session
-from app.core.deps import WRITE_ROLES, require_primary_owner, require_role, scoped_company_ids
+from app.core.errors import integrity_message
+from app.core.deps import WRITE_ROLES, allowed_asset_domains, require_primary_owner, require_role, scoped_company_ids
 from app.erp import mirror_models  # noqa: F401  (registers the local ERP copy tables on the metadata)
 from app.erp import stores as erp_stores
 from app.erp import vendors as erp_vendors
@@ -16,6 +17,7 @@ from app.erp.sync import last_runs, run_sync
 from app.erp.warehouse import WarehouseReader, get_warehouse_reader
 from app.masters.schemas import VendorOut
 from app.purchase_orders.models import PurchaseOrder
+from app.purchase_orders.service import po_is_visible
 
 router = APIRouter(prefix="/api/erp", tags=["erp"])
 
@@ -159,6 +161,9 @@ async def _scoped_erp_po(session: AsyncSession, actor, po_id: int) -> PurchaseOr
     allowed = await scoped_company_ids(session, actor)
     if po is None or not po.is_active or (allowed is not None and po.company_id not in allowed):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "purchase order not found")
+    # S0.3: same work-area visibility as the purchase-order screens.
+    if not await po_is_visible(session, po.id, await allowed_asset_domains(session, actor)):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "purchase order not found")
     return po
 
 
@@ -252,7 +257,10 @@ async def pi_apply(
     """Records the PIs the user confirmed, through the same function as Record PI."""
     po = await _scoped_erp_po(session, actor, po_id)
     try:
-        results = await apply_pi(session, actor, source, po, [i.model_dump() for i in body.items])
+        results = await apply_pi(
+            session, actor, source, po, [i.model_dump() for i in body.items],
+            allowed_domains=await allowed_asset_domains(session, actor),
+        )
         await session.commit()
     except ErpUnavailable as exc:
         raise _unavailable(exc)
@@ -300,7 +308,9 @@ async def create_po(
     actor=Depends(require_role(*WRITE_ROLES)),
 ):
     try:
-        result = await create_from_draft(session, actor, body.model_dump())
+        # S0.8: the ERP purchase order is read again from CKAM's ERP copy and the
+        # reviewed draft is checked against it (number, vendor, codes, units, rate).
+        result = await create_from_draft(session, actor, body.model_dump(), source)
         # Remember what the ERP says now, so a later change (cancelled, edited) can be recognised.
         # If the ERP cannot be read this moment the PO is still made; it can be watched later.
         try:
@@ -311,9 +321,16 @@ async def create_po(
         except ErpUnavailable:
             pass
         await session.commit()
-    except IntegrityError:
+    except ErpUnavailable as exc:
         await session.rollback()
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "this purchase order was already created here")
+        raise _unavailable(exc)
+    except IntegrityError as exc:
+        await session.rollback()
+        code, message = integrity_message(exc)
+        if code == status.HTTP_409_CONFLICT:
+            # the one unique key a create can still race on: the same ERP PO twice
+            message = "This purchase order was already created here."
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, message)
     except ValueError as exc:
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))

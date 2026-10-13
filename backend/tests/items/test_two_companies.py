@@ -6,6 +6,7 @@ from sqlalchemy import select
 from app.core.db import SessionLocal
 from app.erp.source import ErpArticle, ErpItem
 from app.items.models import Item, ItemMap
+from app.masters.models import VendorErpLink
 from tests.erp.test_erp_api import _headers, _setup, erp, line, desktop_po  # noqa: F401  (erp is a fixture)
 
 PO_CODE = 1133610106
@@ -109,7 +110,13 @@ async def test_the_same_rule_can_exist_once_per_company(client, erp):
 async def test_choosing_an_item_on_a_po_remembers_it_for_that_pos_company_only(client, erp):
     ids, h = await _two_company_setup(client, erp)
     e = erp.erp_items["VM200"]
-    body = {"company_id": ids["vpl"], "po_number": "VPO-1", "po_date": "2026-09-18", "vendor_id": ids["vansh"],
+    # S0.8: the PO is created from a real CKVPL ERP purchase order of a vendor linked in CKVPL.
+    async with SessionLocal() as session:
+        session.add(VendorErpLink(vendor_id=ids["vansh"], company_id=ids["vpl"], erp_vendor_code="11338"))
+        await session.commit()
+    erp.pos[31] = desktop_po(po_code=31, po_number="VPO-1", company_code="CKVPL", delivery_location="CKVPL-WH-X",
+                             lines=[line(1, "VM200", "MIC STAND TYPE", 1, 100)])
+    body = {"erp_po_code": 31, "company_id": ids["vpl"], "po_number": "VPO-1", "po_date": "2026-09-18", "vendor_id": ids["vansh"],
             "cost_center_id": ids["cost_vpl"], "lines": [{
                 "item_code": "VM200", "description": "MIC STAND TYPE", "barcode": "VM200", "quantity": 1, "rate": 100, "tax_percent": 18,
                 "item_id": ids["mic"], "map_scope": "ARTICLE", "article_key": e.article_key, "article_name": e.article_name,

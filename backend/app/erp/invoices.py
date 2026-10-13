@@ -71,6 +71,7 @@ async def pi_preview(session: AsyncSession, source: ErpSource, po: PurchaseOrder
 
 async def apply_pi(
     session: AsyncSession, actor: AssetUser, source: ErpSource, po: PurchaseOrder, requests: list[dict],
+    allowed_domains: tuple[str, ...] | None = None,
 ) -> list[dict]:
     """Records the confirmed PIs. Each request names a PI and the CKAM invoice
     it goes to; both are checked against what the ERP says right now, so the
@@ -86,7 +87,7 @@ async def apply_pi(
             raise ValueError(f"PI {req['pi_number']} has no date in the ERP")
         result = await record_pi_for_invoice(
             session, po, row["ckam_invoice_number"], row["pi_number"], date.fromisoformat(row["pi_date"]),
-            bool(req.get("overwrite")), actor,
+            bool(req.get("overwrite")), actor, allowed_domains=allowed_domains,
         )
         results.append(result)
     return results

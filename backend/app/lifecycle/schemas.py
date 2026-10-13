@@ -1,13 +1,14 @@
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+from app.core.validation import InModel
 
 
-class ApplyEventIn(BaseModel):
-    event_type: str
+class ApplyEventIn(InModel):
+    event_type: str = Field(max_length=30)
     to_asset_user_id: int | None = None
     event_date: datetime | None = None
-    remarks: str | None = None
-    reference_no: str | None = None
+    remarks: str | None = Field(default=None, max_length=1000)
+    reference_no: str | None = Field(default=None, max_length=100)
 
 
 class AssetEventOut(BaseModel):

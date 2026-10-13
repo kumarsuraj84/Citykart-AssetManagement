@@ -51,14 +51,25 @@ async def _validate_item(session: AsyncSession, data: dict, item_id: int | None)
     )).first()
     if clash is not None:
         raise ValueError(f"an Item named {name!r} already exists")
+    current = await session.get(Item, item_id) if item_id is not None else None
     category = await session.get(AssetCategory, data["category_id"])
     if category is None:
         raise ValueError("category not found")
+    # S0.6: a deactivated category / sub-category / brand cannot be newly chosen.
+    if not category.is_active and (current is None or current.category_id != category.id):
+        raise ValueError(f"The category {category.name} is no longer active; choose another.")
     if data.get("subcategory_id") is None:
         raise ValueError("an Item needs a sub-category")
     sub = await session.get(AssetSubcategory, data["subcategory_id"])
     if sub is None or sub.category_id != category.id:
         raise ValueError("the sub-category does not belong to the chosen category")
+    if not sub.is_active and (current is None or current.subcategory_id != sub.id):
+        raise ValueError(f"The sub-category {sub.name} is no longer active; choose another.")
+    brand_id = data.get("default_brand_id")
+    if brand_id is not None:
+        brand = await session.get(Brand, brand_id)
+        if brand is not None and not brand.is_active and (current is None or current.default_brand_id != brand_id):
+            raise ValueError(f"The brand {brand.name} is no longer active; choose another.")
     if data.get("bundle_id") is not None:
         bundle = await session.get(Bundle, data["bundle_id"])
         if bundle is None or not bundle.is_active:

@@ -13,6 +13,7 @@ other bulk-import capability, not because this one is any more
 destructive than the manual screen it mirrors."""
 from io import BytesIO
 import openpyxl
+from app.core.excel import open_workbook
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.assets.models import Asset
@@ -54,7 +55,7 @@ async def _validate_rows(
     pure function -- it never touches the database) so the preview's own
     "ready to apply" list is never optimistic about something commit would
     actually reject."""
-    wb = openpyxl.load_workbook(BytesIO(content))
+    wb = open_workbook(content, ImportTemplateError)
     ws = wb.active
     header = _read_header(ws)
 

@@ -23,6 +23,52 @@ _ALLOWED_EVENTS = {
     "SCRAPPED": set(),
 }
 
+# S0.4: events that move the asset to a holder, and events that by definition
+# have no destination (the asset stays recorded against its last holder).
+DESTINATION_EVENTS = frozenset({"PROCURED", "IMPORTED", "MOVED", "RECEIVED_FROM_REPAIR", "FOUND"})
+NO_DESTINATION_EVENTS = frozenset({"SENT_FOR_REPAIR", "LOST", "DISPOSED", "SOLD", "SCRAPPED", "CORRECTION"})
+
+# Plain words for messages (never the stored codes).
+STATUS_WORDS = {
+    "IN_STOCK": "in stock",
+    "ALLOTTED": "with a person or store",
+    "INSTALLED": "installed at a store",
+    "UNDER_REPAIR": "under repair",
+    "DISPOSED": "disposed of",
+    "SOLD": "sold",
+    "SCRAPPED": "scrapped",
+    "LOST": "reported lost",
+}
+EVENT_WORDS = {
+    "PROCURED": "received",
+    "IMPORTED": "imported",
+    "MOVED": "moved",
+    "SENT_FOR_REPAIR": "sent for repair",
+    "RECEIVED_FROM_REPAIR": "received back from repair",
+    "DISPOSED": "disposed of",
+    "SOLD": "sold",
+    "SCRAPPED": "scrapped",
+    "LOST": "reported lost",
+    "FOUND": "marked as found",
+    "CORRECTION": "given a correction note",
+}
+
+CHOOSE_DESTINATION = "Choose where the asset is going."
+
+
+def _status_words(status: str) -> str:
+    return STATUS_WORDS.get(status, status.replace("_", " ").lower())
+
+
+def _event_words(event_type: str) -> str:
+    return EVENT_WORDS.get(event_type, event_type.replace("_", " ").lower())
+
+
+def _status_by_destination(to_asset_user_type: str | None) -> str:
+    if to_asset_user_type not in _STOCK_LIKE_STATUS_BY_ASSET_USER_TYPE:
+        raise LifecycleError(CHOOSE_DESTINATION)
+    return _STOCK_LIKE_STATUS_BY_ASSET_USER_TYPE[to_asset_user_type]
+
 
 def transition(current_status: str, event_type: str, to_asset_user_type: str | None, actor_role: str) -> str:
     if event_type == "CORRECTION":
@@ -30,38 +76,35 @@ def transition(current_status: str, event_type: str, to_asset_user_type: str | N
         # a terminal one — it only annotates history (spec §5: "Only Admin can ... add a
         # correction note to the history").
         if actor_role != "ADMIN":
-            raise LifecycleError("only ADMIN may add a correction note")
+            raise LifecycleError("Only an admin can add a correction note.")
         return current_status
 
+    if event_type not in EVENT_WORDS:
+        raise LifecycleError("That action is not one CKAM knows.")
+
     if current_status in _TERMINAL_STATUSES:
-        raise LifecycleError(f"{current_status} is a terminal state; no further events are allowed")
+        raise LifecycleError(
+            f"This asset has been {_status_words(current_status)}, so nothing more can be recorded for it."
+        )
 
     allowed = _ALLOWED_EVENTS.get(current_status, set())
     if event_type not in allowed:
-        raise LifecycleError(f"event '{event_type}' is not allowed from status '{current_status}'")
+        raise LifecycleError(
+            f"This asset is {_status_words(current_status)}, so it cannot be {_event_words(event_type)}."
+        )
 
     if event_type == "FOUND" and actor_role != "ADMIN":
-        raise LifecycleError("only ADMIN may mark a LOST asset as FOUND")
+        raise LifecycleError("Only an admin can mark a lost asset as found.")
 
-    if event_type in ("PROCURED", "IMPORTED", "MOVED"):
-        if to_asset_user_type not in _STOCK_LIKE_STATUS_BY_ASSET_USER_TYPE:
-            raise LifecycleError(f"unknown asset user type '{to_asset_user_type}'")
-        return _STOCK_LIKE_STATUS_BY_ASSET_USER_TYPE[to_asset_user_type]
+    if event_type in ("PROCURED", "IMPORTED", "MOVED", "RECEIVED_FROM_REPAIR"):
+        return _status_by_destination(to_asset_user_type)
 
     if event_type == "SENT_FOR_REPAIR":
         return "UNDER_REPAIR"
 
-    if event_type == "RECEIVED_FROM_REPAIR":
-        if to_asset_user_type not in _STOCK_LIKE_STATUS_BY_ASSET_USER_TYPE:
-            raise LifecycleError(f"unknown asset user type '{to_asset_user_type}'")
-        return _STOCK_LIKE_STATUS_BY_ASSET_USER_TYPE[to_asset_user_type]
-
     if event_type == "FOUND":
-        if to_asset_user_type not in _STOCK_LIKE_STATUS_BY_ASSET_USER_TYPE:
-            raise LifecycleError(f"unknown asset user type '{to_asset_user_type}'")
-        result_status = _STOCK_LIKE_STATUS_BY_ASSET_USER_TYPE[to_asset_user_type]
-        if result_status != "IN_STOCK":
-            raise LifecycleError("FOUND asset must be returned to a STOCK_POINT, not another asset user type")
+        if _status_by_destination(to_asset_user_type) != "IN_STOCK":
+            raise LifecycleError("A found asset must go back to a stock room.")
         return "IN_STOCK"
 
     if event_type in ("DISPOSED", "SOLD", "SCRAPPED"):
@@ -70,7 +113,7 @@ def transition(current_status: str, event_type: str, to_asset_user_type: str | N
     if event_type == "LOST":
         return "LOST"
 
-    raise LifecycleError(f"unhandled event '{event_type}'")
+    raise LifecycleError("That action is not one CKAM knows.")
 
 
 def label_for_event(event_type: str, from_asset_user_type: str | None, to_asset_user_type: str | None) -> str:

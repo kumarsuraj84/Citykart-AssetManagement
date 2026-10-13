@@ -1,13 +1,16 @@
 ﻿from datetime import date, datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
 from app.core.deps import (
-    WRITE_ROLES, allowed_asset_domains, ensure_company_in_scope, get_current_asset_user, is_self_service,
-    require_role, scoped_company_ids,
+    WRITE_ROLES, allowed_asset_domains, check_work_area, ensure_company_in_scope, get_current_asset_user,
+    has_both_work_areas, is_self_service, require_role, scoped_company_ids,
+)
+from app.core.validation import (
+    InModel, MAX_AMOUNT, MAX_BULK_IDS, MAX_WARRANTY_YEARS, not_in_future,
 )
 from app.assets.audit_service import AUDITED_SCALAR_FIELDS, record_field_changes
 from app.assets.correction_service import correct_asset, UNSET as CORRECTION_UNSET
@@ -32,8 +35,9 @@ class AssetListOut(BaseModel):
     total: int
 
 
-class BulkMoveIn(BaseModel):
-    asset_ids: list[int]
+class BulkMoveIn(InModel):
+    # S0.2: at most 1,000 assets per request.
+    asset_ids: list[int] = Field(max_length=MAX_BULK_IDS)
     to_asset_user_id: int
 
 
@@ -42,7 +46,7 @@ class BulkMoveOut(BaseModel):
     failed: list[dict]
 
 
-class BulkActionIn(BaseModel):
+class BulkActionIn(InModel):
     """AM-20: the Asset Movement console -- scan a batch of assets by Serial
     Number/Asset Code, pick ONE action and (for the actions that need one) ONE
     destination AssetUser for the whole batch, apply to all of them at once.
@@ -51,10 +55,10 @@ class BulkActionIn(BaseModel):
     state machine (app.lifecycle.state_machine.transition) remains the real
     authority on which is actually legal from each asset's current status,
     exactly as it already is for the single-asset action buttons."""
-    asset_ids: list[int]
-    event_type: str
+    asset_ids: list[int] = Field(max_length=MAX_BULK_IDS)
+    event_type: str = Field(max_length=30)
     to_asset_user_id: int | None = None
-    remarks: str | None = None
+    remarks: str | None = Field(default=None, max_length=1000)
 
 
 class BulkActionOut(BaseModel):
@@ -135,8 +139,13 @@ async def create_asset(
     try:
         # The Item (when given) decides Category and Sub-Category, whatever the client sent.
         await fill_from_item(session, data)
+        # S0.3: the asset's work area (its Category's) must be the caller's.
+        category = await session.get(AssetCategory, data["category_id"]) if data.get("category_id") else None
+        if category is not None:
+            check_work_area(await allowed_asset_domains(session, actor), category.asset_domain)
         # AM-19: quantity is gone -- every call creates exactly one asset.
-        assets = await procure_assets(session, data, quantity=1, actor=actor)
+        # S0.6: every master chosen here is a new choice -> must be active.
+        assets = await procure_assets(session, data, quantity=1, actor=actor, require_active=True)
     except (ValueError, LifecycleError) as exc:
         # e.g. no active code rule, an unresolvable code-rule token, initial asset_user /
         # cost center from another company, a future purchase date -- all problems
@@ -156,7 +165,7 @@ async def list_assets(
     asset_user_id: int | None = Query(None),
     company_id: int | None = Query(None),
     domain: str | None = Query(None),
-    q: str | None = Query(None),
+    q: str | None = Query(None, max_length=200),
     exact: bool = Query(False),
     serial_pending: bool = Query(False),
     item_id: int | None = Query(None),
@@ -236,7 +245,7 @@ async def _bulk_apply_event(
     over one bad item would be far worse than reporting it and moving on."""
     done = 0
     failed: list[dict] = []
-    for asset_id in asset_ids:
+    for asset_id in dict.fromkeys(asset_ids):
         try:
             asset = await _get_scoped_asset(asset_id, session, actor)
         except HTTPException:
@@ -246,7 +255,10 @@ async def _bulk_apply_event(
             failed.append({"asset_id": asset_id, "reason": "not found"})
             continue
         try:
-            await apply_event(session, asset, event_type, to_asset_user_id=to_asset_user_id, actor=actor, remarks=remarks)
+            # Each asset in its own savepoint: one refusal never leaves a
+            # half-written event behind for the others' commit.
+            async with session.begin_nested():
+                await apply_event(session, asset, event_type, to_asset_user_id=to_asset_user_id, actor=actor, remarks=remarks)
             done += 1
         except LifecycleError as exc:
             failed.append({"asset_id": asset_id, "reason": str(exc)})
@@ -380,6 +392,61 @@ async def list_asset_changes(
     ]
 
 
+async def _check_edit_values(session: AsyncSession, asset: Asset, data: dict) -> None:
+    """S0.5/S0.6 for PUT /assets/{id}: only values this edit actually CHANGES are
+    checked, so an asset that already holds an odd stored value (from before
+    these rules) can still be edited. Raises a 422 with a plain sentence."""
+    def changed(field: str) -> bool:
+        old = getattr(asset, field)
+        new = data.get(field)
+        if old is None or new is None:
+            return old is not new
+        try:
+            return float(old) != float(new)
+        except (TypeError, ValueError):
+            return old != new
+
+    def refuse(message: str):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, message)
+
+    # A serial can be corrected but never removed (use N/A for "has none").
+    serial = (data.get("serial_number") or "").strip()
+    data["serial_number"] = serial or None
+    if not serial and (asset.serial_number or "").strip() and not asset.serial_pending:
+        refuse("The serial number cannot be removed. Type N/A if the asset has none.")
+    if not serial and not asset.serial_number and not asset.serial_pending:
+        data["serial_number"] = asset.serial_number
+    description = (data.get("description") or "").strip()
+    if description != (asset.description or "").strip() and not description:
+        refuse("Description cannot be blank.")
+    if description:
+        data["description"] = description
+    for field, label in (("purchase_cost", "Purchase cost"), ("invoice_amount", "Invoice amount")):
+        value = data.get(field)
+        if changed(field) and value is not None and not (0 <= value <= MAX_AMOUNT):
+            refuse(f"{label} must be between 0 and {MAX_AMOUNT:,}.")
+    tax = data.get("tax_percent")
+    if changed("tax_percent") and tax is not None and not (0 <= tax <= 100):
+        refuse("Tax % must be between 0 and 100.")
+    years = data.get("warranty_years")
+    if years is not None and changed("warranty_years") and not (0 <= years <= MAX_WARRANTY_YEARS):
+        refuse(f"Warranty years must be between 0 and {MAX_WARRANTY_YEARS}.")
+    try:
+        if changed("po_date"):
+            not_in_future(data.get("po_date"), "PO date")
+        if changed("invoice_date"):
+            not_in_future(data.get("invoice_date"), "Invoice date")
+    except ValueError as exc:
+        refuse(str(exc))
+    for field, model, what in (("vendor_id", Vendor, "vendor"), ("brand_id", Brand, "brand")):
+        if data.get(field) is not None and changed(field):
+            obj = await session.get(model, data[field])
+            if obj is None:
+                refuse(f"The {what} you chose does not exist.")
+            if not obj.is_active:
+                refuse(f"The {what} {obj.name} is no longer active; choose another.")
+
+
 @router.put("/{asset_id}", response_model=AssetDetailOut)
 async def update_asset(
     asset_id: int,
@@ -406,6 +473,11 @@ async def update_asset(
     together below, never separately)."""
     asset = await _get_scoped_asset(asset_id, session, actor)
     data = body.model_dump()
+    # S0.5: an edit that does not mention the serial keeps it (it used to
+    # clear it); an edit that sends it blank is refused in _check_edit_values.
+    if "serial_number" not in body.model_fields_set:
+        data["serial_number"] = asset.serial_number
+    await _check_edit_values(session, asset, data)
     replacing_custom_fields = data.get("custom_fields") is not None
     try:
         await validate_custom_field_values(
@@ -514,7 +586,20 @@ async def correct_asset_classification(
     # for Category/Subcategory/Purchase Date, which predates the domain
     # rebuild and is left unchanged.
     if "asset_domain" in fields_set and actor.role != "ADMIN":
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "only ADMIN may correct an asset's Responsibility")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only an admin can correct an asset's work area (IT / Non-IT).")
+    # S0.3: moving an asset between IT and Non-IT -- directly, or by giving it
+    # a Category of the other work area -- needs someone who handles both: the
+    # head-office admin or an admin not limited to one work area.
+    crosses_area = "asset_domain" in fields_set and body.asset_domain != asset.asset_domain
+    if "category_id" in fields_set and body.category_id is not None:
+        new_category = await session.get(AssetCategory, body.category_id)
+        if new_category is not None and new_category.asset_domain != asset.asset_domain:
+            crosses_area = True
+    if crosses_area and not await has_both_work_areas(session, actor):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Moving an asset between IT and Non-IT needs the head-office admin or an admin who handles both.",
+        )
     try:
         await correct_asset(
             session, asset, actor,

@@ -5,7 +5,7 @@ from app.assets.models import Asset
 from app.asset_users.models import AssetUser
 from app.lifecycle.models import AssetEvent
 from app.lifecycle.schemas import AssetEventOut
-from app.lifecycle.state_machine import LifecycleError, label_for_event, transition
+from app.lifecycle.state_machine import NO_DESTINATION_EVENTS, LifecycleError, label_for_event, transition
 
 UNKNOWN_ASSET_USER_NAME = "unknown asset user"
 
@@ -78,7 +78,16 @@ async def apply_event(
         event_date = event_date.replace(tzinfo=timezone.utc)
     now = datetime.now(timezone.utc)
     if event_date > now:
-        raise LifecycleError("event date cannot be in the future")
+        raise LifecycleError("The date cannot be in the future.")
+
+    # S0.4: an event that by definition has no destination (repair, lost,
+    # disposed, sold, scrapped, a correction note) must never change who holds
+    # the asset -- refused rather than silently ignored, so a caller that sent
+    # one learns that it had no effect.
+    if event_type in NO_DESTINATION_EVENTS and to_asset_user_id is not None:
+        raise LifecycleError("This action does not send the asset anywhere, so do not choose a destination.")
+    # (A destination event without a destination is refused by `transition`
+    # with "Choose where the asset is going." after the status checks.)
 
     last_event_stmt = (
         select(AssetEvent)
@@ -87,16 +96,26 @@ async def apply_event(
     )
     last_event = (await session.execute(last_event_stmt)).scalars().first()
     if last_event and event_date < last_event.event_date:
-        raise LifecycleError("event date cannot be before the asset's last recorded event")
+        if event_date.date() < last_event.event_date.date():
+            raise LifecycleError(
+                "The date cannot be before the asset's last recorded movement "
+                f"({last_event.event_date.date().strftime('%d-%m-%Y')})."
+            )
+        # Same day, earlier clock time (a date picked without a time is
+        # midnight): record it at the last event's own time so the ledger
+        # order stays right, instead of refusing today's date.
+        event_date = last_event.event_date
 
     to_asset_user_type = None
     to_asset_user = None
     if to_asset_user_id is not None:
         to_asset_user = await session.get(AssetUser, to_asset_user_id)
         if to_asset_user is None:
-            raise LifecycleError("target asset user not found")
+            raise LifecycleError("The destination you chose does not exist.")
+        if not to_asset_user.is_active:
+            raise LifecycleError(f"{to_asset_user.name} is no longer active, so assets cannot be sent there.")
         if to_asset_user.company_id != asset.company_id:
-            raise LifecycleError("assets can only move within their own company")
+            raise LifecycleError("Assets can only move within their own company.")
         to_asset_user_type = to_asset_user.asset_user_type
 
     # Loaded purely for the display-snapshot below (see AssetEvent.from_asset_user_name_snapshot's
@@ -125,13 +144,20 @@ async def apply_event(
     )
     session.add(event)
 
+    # S0.4: status_since only moves on a real change -- a new status or a new
+    # holder. A correction note (and any event that changes neither) leaves it
+    # exactly as it was.
+    really_changed = new_status != asset.status or (
+        to_asset_user_id is not None and to_asset_user_id != asset.current_asset_user_id
+    )
     asset.status = new_status
-    if to_asset_user_id is not None:
+    if to_asset_user_id is not None and event_type != "CORRECTION":
         asset.current_asset_user_id = to_asset_user_id
     # asset.status_since is a Date column (the custody/status change is dated, not
     # timestamped) while event_date is a timezone-aware datetime; store just the date
     # part so the assigned value's type actually matches the column.
-    asset.status_since = event_date.date()
+    if really_changed and event_type != "CORRECTION":
+        asset.status_since = event_date.date()
 
     await session.flush()
     return event

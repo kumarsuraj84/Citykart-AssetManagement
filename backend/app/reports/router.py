@@ -97,7 +97,7 @@ async def export_assets(
     category_id: int | None = Query(None),
     asset_user_id: int | None = Query(None),
     company_id: int | None = Query(None),
-    q: str | None = Query(None),
+    q: str | None = Query(None, max_length=200),
     exact: bool = Query(False),
     domain: str | None = Query(None),
     session: AsyncSession = Depends(get_session),
@@ -164,11 +164,17 @@ async def export_movements(
         .outerjoin(from_asset_user, from_asset_user.id == AssetEvent.from_asset_user_id)
         .outerjoin(to_asset_user, to_asset_user.id == AssetEvent.to_asset_user_id)
         .where(AssetEvent.event_date >= from_date, AssetEvent.event_date < to_date + timedelta(days=1))
+        # S0.3: assets deleted as data-entry mistakes are not part of the log.
+        .where(Asset.deleted_at.is_(None))
         .order_by(AssetEvent.event_date, AssetEvent.id)
     )
     allowed = await scoped_company_ids(session, asset_user)
     if allowed is not None:
         stmt = stmt.where(Asset.company_id.in_(allowed))
+    # S0.3: and only the caller's own work area (IT / Non-IT), like the register.
+    domains = await allowed_asset_domains(session, asset_user)
+    if domains is not None:
+        stmt = stmt.where(Asset.asset_domain.in_(domains))
     rows = (await session.execute(stmt)).all()
     return Response(
         content=movements_to_xlsx(rows),
@@ -197,11 +203,15 @@ async def export_field_changes(
         select(AssetFieldChange, Asset.asset_code, actor.name)
         .join(Asset, Asset.id == AssetFieldChange.asset_id)
         .outerjoin(actor, actor.id == AssetFieldChange.actor_id)
+        .where(Asset.deleted_at.is_(None))
         .order_by(AssetFieldChange.created_at, AssetFieldChange.id)
     )
     allowed = await scoped_company_ids(session, asset_user)
     if allowed is not None:
         stmt = stmt.where(Asset.company_id.in_(allowed))
+    domains = await allowed_asset_domains(session, asset_user)
+    if domains is not None:
+        stmt = stmt.where(Asset.asset_domain.in_(domains))
     if from_date is not None:
         stmt = stmt.where(AssetFieldChange.created_at >= from_date)
     if to_date is not None:

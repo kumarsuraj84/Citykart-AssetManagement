@@ -117,7 +117,7 @@ async def test_unresolvable_token_is_422_not_500(client):
     headers = await _headers(client, a["co"].id, "ADM")
     resp = await client.post("/api/assets", json=_asset_body(a, cat, sub, subcategory_id=999999), headers=headers)
     assert resp.status_code == 422
-    assert "subcategory" in resp.json()["detail"]
+    assert "sub-category" in resp.json()["detail"]
 
 
 async def test_initial_asset_user_from_other_company_is_422_not_500(client):
@@ -133,7 +133,7 @@ async def test_cost_center_from_other_company_is_rejected(client):
     headers = await _headers(client, a["co"].id, "ADM")
     resp = await client.post("/api/assets", json=_asset_body(a, cat, sub, cost_center_id=b["cc"].id), headers=headers)
     assert resp.status_code == 422
-    assert "cost center" in resp.json()["detail"]
+    assert "cost centre" in resp.json()["detail"]
 
 
 async def test_future_purchase_date_is_422_not_500(client):

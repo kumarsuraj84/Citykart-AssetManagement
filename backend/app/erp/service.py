@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.asset_users.models import AssetUser
 from app.bundles.models import Bundle
 from app.bundles.service import add_bundle_lines
-from app.core.deps import ensure_company_in_scope, scoped_company_ids
+from app.core.deps import allowed_asset_domains, check_work_area, ensure_company_in_scope, scoped_company_ids
 from app.erp.source import ErpPo, ErpSource
 from app.items.models import Item
 from app.items.service import norm as norm_name, resolve_items, upsert_map
@@ -278,40 +278,98 @@ async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source
     }
 
 
-async def create_from_draft(session: AsyncSession, actor: AssetUser, data: dict) -> dict:
-    """Creates the PO and all its lines in one go (bundles expanded), or
-    nothing at all. Raises ValueError with a message for the user."""
-    await ensure_company_in_scope(session, actor, data["company_id"])
-    number = data["po_number"].strip()
-    if not number:
-        raise ValueError("PO number is required")
-    if data.get("erp_po_code") is not None:
-        done = (await session.execute(
-            select(PurchaseOrder.id).where(PurchaseOrder.erp_po_code == data["erp_po_code"]).limit(1)
-        )).scalar_one_or_none()
-        if done is not None:
-            raise ValueError(f"purchase order {number} was already created here")
-    existing = (await session.execute(
-        select(PurchaseOrder.id).where(
-            PurchaseOrder.company_id == data["company_id"], func.lower(PurchaseOrder.po_number) == number.lower(),
-            PurchaseOrder.is_active.is_(True),
-        ).limit(1)
-    )).scalar_one_or_none()
-    if existing is not None:
-        raise ValueError(f"purchase order {number} already exists for this company")
-    if not data["lines"]:
-        raise ValueError("a purchase order needs at least one line")
+# S0.8: how far a reviewed line's cost may move from the ERP's rate for that
+# item code (a rounding fix or a corrected rate is fine; 0.0001 is not).
+RATE_LOW_FACTOR = 0.5
+RATE_HIGH_FACTOR = 2.0
 
+
+async def _revalidate_against_erp(session: AsyncSession, data: dict, source: ErpSource) -> tuple[ErpPo, Company, Vendor]:
+    """S0.8: the reviewed draft comes from the browser, so everything that is
+    the ERP's to decide is read again from CKAM's ERP copy: the ERP PO must
+    exist and belong to the chosen company, the PO number and date are the
+    ERP's, the vendor is the one linked to the ERP supplier, every line's
+    item code is on that ERP PO, no item code asks for more units than the
+    ERP has open, and a line's cost stays within half to double the ERP rate.
+    Edits the reviewer may legitimately make (description, barcode, brand,
+    model, tax, warranty, the Item, fewer units) are kept."""
+    if data.get("erp_po_code") is None:
+        raise ValueError("Choose the ERP purchase order this is created from.")
+    erp_po = await source.po(data["erp_po_code"])
+    if erp_po is None:
+        raise ValueError("This purchase order was not found in the ERP.")
+    company = await session.get(Company, data["company_id"])
+    if company is None or not company.is_active:
+        raise ValueError("The company you chose does not exist or is no longer active.")
+    wanted = (erp_po.company_code or "").strip().lower()
+    if wanted not in (company.erp_code.lower(), company.code.lower()):
+        raise ValueError(f"This ERP purchase order belongs to the ERP company {erp_po.company_code}, not to {company.name}.")
+    vendor = (await linked_vendors(session, company.id)).get(erp_po.supplier_code)
+    if vendor is None:
+        raise ValueError(
+            f"The vendor {erp_po.supplier_name} is not linked to a CKAM vendor for {company.name}. "
+            "Add or link it in Vendors first."
+        )
+    if data.get("vendor_id") is not None and data["vendor_id"] != vendor.id:
+        raise ValueError(f"The vendor of this purchase order is {vendor.name} (the vendor linked to the ERP supplier); it cannot be changed here.")
+
+    open_units: dict[str, float] = {}
+    rates: dict[str, list[float]] = {}
+    for ln in erp_po.lines:
+        code = (ln.item_code or "").strip().upper()
+        units = ln.qty - ln.cancelled_qty
+        if not code or units <= 0:
+            continue
+        open_units[code] = open_units.get(code, 0) + units
+        rates.setdefault(code, []).append(ln.rate)
+    asked: dict[str, int] = {}
+    for position, ln in enumerate(data["lines"], start=1):
+        code = (ln.get("item_code") or "").strip().upper()
+        label = f"Line {position} ({ln.get('item_code') or ln['description'][:30]})"
+        if not code or code not in open_units:
+            raise ValueError(f"{label}: this ERP item code is not on the ERP purchase order {erp_po.po_number}.")
+        asked[code] = asked.get(code, 0) + ln["quantity"]
+        erp_rates = [r for r in rates[code] if r and r > 0]
+        if erp_rates and not (min(erp_rates) * RATE_LOW_FACTOR <= ln["rate"] <= max(erp_rates) * RATE_HIGH_FACTOR):
+            raise ValueError(
+                f"{label}: the cost {ln['rate']:g} is too far from the ERP rate {min(erp_rates):g} "
+                "(it may be between half and double the ERP rate)."
+            )
+    for code, units in asked.items():
+        allowed = int(open_units[code])
+        if units > allowed:
+            raise ValueError(f"{code}: {units} units asked, but the ERP purchase order has only {allowed} open.")
+    return erp_po, company, vendor
+
+
+async def create_from_draft(session: AsyncSession, actor: AssetUser, data: dict, source: ErpSource) -> dict:
+    """Creates the PO and all its lines in one go (bundles expanded), or
+    nothing at all. Raises ValueError with a message for the user.
+    S0.8: re-reads the ERP purchase order first (see _revalidate_against_erp);
+    S0.3: a line whose Item belongs to the other work area is refused."""
+    await ensure_company_in_scope(session, actor, data["company_id"])
+    erp_po, company, vendor = await _revalidate_against_erp(session, data, source)
+    number = erp_po.po_number.strip()
+    done = (await session.execute(
+        select(PurchaseOrder.id).where(PurchaseOrder.erp_po_code == erp_po.po_code).limit(1)
+    )).scalar_one_or_none()
+    if done is not None:
+        raise ValueError(f"Purchase order {number} was already created here.")
+    if not data["lines"]:
+        raise ValueError("A purchase order needs at least one line.")
+    domains = await allowed_asset_domains(session, actor)
+
+    # create_purchase_order refuses a number already used in this company.
     po = await create_purchase_order(session, {
-        "company_id": data["company_id"], "po_number": number, "po_date": data["po_date"],
-        "vendor_id": data.get("vendor_id"), "cost_center_id": data["cost_center_id"],
+        "company_id": company.id, "po_number": number, "po_date": erp_po.po_date,
+        "vendor_id": vendor.id, "cost_center_id": data["cost_center_id"],
         "delivery_asset_user_id": data.get("delivery_asset_user_id"), "warehouse_code": data.get("warehouse_code"),
-        "erp_po_code": data.get("erp_po_code"),
+        "erp_po_code": erp_po.po_code,
     }, actor)
 
     created = 0
     for position, ln in enumerate(data["lines"], start=1):
-        label = f"line {position} ({ln['item_code'] or ln['description'][:30]})"
+        label = f"Line {position} ({ln['item_code'] or ln['description'][:30]})"
         if not ln["barcode"].strip():
             raise ValueError(f"{label}: barcode is required")
         if ln["rate"] <= 0:
@@ -319,13 +377,15 @@ async def create_from_draft(session: AsyncSession, actor: AssetUser, data: dict)
         item = await session.get(Item, ln.get("item_id")) if ln.get("item_id") else None
         if item is None or not item.is_active:
             raise ValueError(f"{label}: choose the Item")
+        category = await session.get(AssetCategory, item.category_id)
+        check_work_area(domains, category.asset_domain if category else None, label)
         # Category, sub-category and bundle come from the Item, never from the client.
         if item.bundle_id:
             lines = await add_bundle_lines(session, po, {
                 "bundle_id": item.bundle_id, "description": ln["description"], "barcode": ln["barcode"],
                 "quantity": ln["quantity"], "price": ln["rate"], "tax_percent": ln["tax_percent"],
                 "warranty_years": ln["warranty_years"], "parts": ln.get("bundle_parts"), "erp_item_code": ln.get("item_code"),
-            }, actor)
+            }, actor, allowed_domains=domains)
         else:
             lines = await add_pending_asset_line(session, po, {
                 "description": ln["description"], "barcode": ln["barcode"], "category_id": item.category_id,
@@ -333,10 +393,10 @@ async def create_from_draft(session: AsyncSession, actor: AssetUser, data: dict)
                 "warranty_years": ln["warranty_years"], "purchase_cost": ln["rate"],
                 "tax_percent": ln["tax_percent"], "quantity": ln["quantity"],
                 "item_id": item.id, "erp_item_code": ln.get("item_code"),
-            }, actor)
+            }, actor, allowed_domains=domains)
         created += len(lines)
         if ln.get("map_scope"):
-            await _remember_mapping(session, actor, item, ln, data["company_id"])
+            await _remember_mapping(session, actor, item, ln, company.id)
     return {"po_id": po.id, "po_number": po.po_number, "lines_created": created}
 
 

@@ -1,5 +1,9 @@
 from pydantic import BaseModel, Field, model_validator
 
+MIN_PASSWORD_LENGTH = 8
+# S0 (audit B-15): a 100,000-character password used to be accepted and hashed.
+MAX_PASSWORD_LENGTH = 128
+
 
 class LoginRequest(BaseModel):
     # Either the asset_user's Employee Code OR their email address. Many asset_users
@@ -12,8 +16,8 @@ class LoginRequest(BaseModel):
     # every active company -- see router.py::login for how an ambiguous
     # match (the same emp_code or email reused in more than one company) is
     # handled.
-    login_id: str
-    password: str
+    login_id: str = Field(max_length=200)
+    password: str = Field(max_length=MAX_PASSWORD_LENGTH)
 
 
 class LoginResponse(BaseModel):
@@ -28,12 +32,9 @@ class LoginResponse(BaseModel):
     is_primary_owner: bool
 
 
-MIN_PASSWORD_LENGTH = 8
-
-
 class ChangePasswordRequest(BaseModel):
-    old_password: str
-    new_password: str = Field(min_length=MIN_PASSWORD_LENGTH)
+    old_password: str = Field(max_length=MAX_PASSWORD_LENGTH)
+    new_password: str = Field(min_length=MIN_PASSWORD_LENGTH, max_length=MAX_PASSWORD_LENGTH)
 
     @model_validator(mode="after")
     def _must_differ(self):

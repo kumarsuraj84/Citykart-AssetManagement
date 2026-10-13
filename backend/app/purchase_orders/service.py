@@ -1,12 +1,15 @@
 from datetime import date, datetime, timezone
 from uuid import uuid4
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 from app.assets.models import Asset, AssetFieldChange
 from app.assets.service import compute_tax, procure_assets
 from app.asset_users.models import AssetUser
 from app.lifecycle.models import AssetEvent
-from app.masters.models import AssetCategory, AssetSubcategory, CostCenter
+from app.core.deps import check_work_area
+from app.core.validation import MAX_QUANTITY
+from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Vendor
 from app.items.lookup import fill_from_item
 from app.masters.serial_rule import serial_default
 from app.purchase_orders.models import PendingAsset, PurchaseOrder
@@ -51,21 +54,52 @@ async def compute_pi_status(session: AsyncSession, po_ids: list[int]) -> dict[in
     return result
 
 
+async def active_or_error(session: AsyncSession, model, id_: int | None, what: str, *, allow_inactive_id: int | None = None):
+    """S0.6: loads a master row a NEW transaction wants to use; refuses (as a
+    plain sentence) one that does not exist or has been deactivated. History
+    that already points at an inactive row stays readable -- this is only
+    called for new choices. `allow_inactive_id`: the value the record already
+    had (keeping an existing choice is not a new use)."""
+    if id_ is None:
+        return None
+    obj = await session.get(model, id_)
+    if obj is None:
+        raise ValueError(f"The {what} you chose does not exist.")
+    if not getattr(obj, "is_active", True) and id_ != allow_inactive_id:
+        raise ValueError(f"The {what} {getattr(obj, 'name', '')} is no longer active; choose another.".replace("  ", " "))
+    return obj
+
+
 async def create_purchase_order(session: AsyncSession, data: dict, actor: AssetUser) -> PurchaseOrder:
-    cost_center = await session.get(CostCenter, data["cost_center_id"])
-    if cost_center is None:
-        raise ValueError(f"cost center {data['cost_center_id']} not found")
+    company = await session.get(Company, data["company_id"])
+    if company is None or not company.is_active:
+        raise ValueError("The company you chose does not exist or is no longer active.")
+    cost_center = await active_or_error(session, CostCenter, data["cost_center_id"], "cost centre")
     if cost_center.company_id != data["company_id"]:
-        raise ValueError("cost center must belong to the same company as the purchase order")
+        raise ValueError("The cost centre must belong to the same company as the purchase order.")
+    await active_or_error(session, Vendor, data.get("vendor_id"), "vendor")
     delivery_id = data.get("delivery_asset_user_id")
     if delivery_id is not None:
         delivery = await session.get(AssetUser, delivery_id)
         if delivery is None or not delivery.is_active:
-            raise ValueError(f"delivery location {delivery_id} not found")
+            raise ValueError("The delivery location you chose does not exist or is no longer active.")
         if delivery.company_id != data["company_id"]:
-            raise ValueError("the delivery location must belong to the same company as the purchase order")
+            raise ValueError("The delivery location must belong to the same company as the purchase order.")
+    # S0.5: a PO number is used once per company (trimmed, any letter case).
+    number = (data.get("po_number") or "").strip()
+    if not number:
+        raise ValueError("PO number cannot be blank.")
+    clash = (await session.execute(
+        select(PurchaseOrder.id).where(
+            PurchaseOrder.company_id == data["company_id"],
+            func.lower(func.trim(PurchaseOrder.po_number)) == number.lower(),
+            PurchaseOrder.is_active.is_(True),
+        ).limit(1)
+    )).scalar_one_or_none()
+    if clash is not None:
+        raise ValueError(f"Purchase order {number} already exists for this company.")
     po = PurchaseOrder(
-        company_id=data["company_id"], po_number=data["po_number"],
+        company_id=data["company_id"], po_number=number,
         po_date=data["po_date"], vendor_id=data.get("vendor_id"),
         cost_center_id=data["cost_center_id"],
         delivery_asset_user_id=delivery_id, warehouse_code=(data.get("warehouse_code") or None),
@@ -77,7 +111,56 @@ async def create_purchase_order(session: AsyncSession, data: dict, actor: AssetU
     return po
 
 
-async def _validate_line_masters(session: AsyncSession, data: dict) -> tuple[AssetCategory, AssetSubcategory | None]:
+# ---- S0.3 work area (IT / Non-IT) on purchase orders -----------------------
+# A line's work area is its asset_domain snapshot (the Category's at line
+# creation); a line without one (made before the snapshot existed) takes its
+# Category's current one. A PO is visible to a user limited to one work area
+# when it has at least one line (any status) in that area, or no lines at all
+# yet (a fresh header must stay reachable so its lines can be added). A PO
+# that mixes both areas is visible to both, but each user sees, adds, edits,
+# cancels, delivers and records PI only for the lines/assets of their own area.
+
+def line_area_of(line_alias=PendingAsset, category_alias=AssetCategory):
+    return func.coalesce(line_alias.asset_domain, category_alias.asset_domain)
+
+
+def po_visible_clause(domains: tuple[str, ...]):
+    pa = aliased(PendingAsset)
+    cat = aliased(AssetCategory)
+    any_line = select(pa.id).where(pa.purchase_order_id == PurchaseOrder.id).exists()
+    in_area = (
+        select(pa.id).join(cat, cat.id == pa.category_id)
+        .where(pa.purchase_order_id == PurchaseOrder.id, line_area_of(pa, cat).in_(domains))
+        .exists()
+    )
+    return or_(~any_line, in_area)
+
+
+async def po_is_visible(session: AsyncSession, po_id: int, domains: tuple[str, ...] | None) -> bool:
+    if domains is None:
+        return True
+    found = (await session.execute(
+        select(PurchaseOrder.id).where(PurchaseOrder.id == po_id, po_visible_clause(domains))
+    )).first()
+    return found is not None
+
+
+async def line_area(session: AsyncSession, line: PendingAsset) -> str | None:
+    if line.asset_domain:
+        return line.asset_domain
+    category = await session.get(AssetCategory, line.category_id)
+    return category.asset_domain if category else None
+
+
+def ensure_po_open(po: PurchaseOrder) -> None:
+    """S0.6: a deleted purchase order takes no new lines, deliveries or PIs."""
+    if not po.is_active:
+        raise ValueError("This purchase order has been deleted, so nothing new can be recorded on it.")
+
+
+async def _validate_line_masters(
+    session: AsyncSession, data: dict, current: PendingAsset | None = None,
+) -> tuple[AssetCategory, AssetSubcategory | None]:
     """Same referential checks procure_assets already does for category/
     subcategory -- duplicated narrowly here (not imported) because
     procure_assets validates a *complete* asset-creation payload (also
@@ -89,31 +172,41 @@ async def _validate_line_masters(session: AsyncSession, data: dict) -> tuple[Ass
     lookup. A line that names an Item takes its Category / Sub-Category from
     that Item (done by the caller through `fill_from_item`)."""
     if data.get("category_id") is None:
-        raise ValueError("choose an Item (or a category) for the line")
-    category = await session.get(AssetCategory, data["category_id"])
-    if category is None:
-        raise ValueError(f"category {data['category_id']} not found")
+        raise ValueError("Choose an Item (or a category) for the line.")
+    category = await active_or_error(session, AssetCategory, data["category_id"], "category",
+                                     allow_inactive_id=current.category_id if current else None)
     subcategory_id = data.get("subcategory_id")
     subcategory = None
     if subcategory_id is not None:
-        subcategory = await session.get(AssetSubcategory, subcategory_id)
-        if subcategory is None:
-            raise ValueError(f"subcategory {subcategory_id} not found")
+        subcategory = await active_or_error(session, AssetSubcategory, subcategory_id, "sub-category",
+                                            allow_inactive_id=current.subcategory_id if current else None)
         if subcategory.category_id != category.id:
-            raise ValueError("sub-category does not belong to the selected category")
+            raise ValueError("The sub-category does not belong to the selected category.")
+    await active_or_error(session, Brand, data.get("brand_id"), "brand",
+                          allow_inactive_id=current.brand_id if current else None)
     return category, subcategory
 
 
 async def add_pending_asset_line(
     session: AsyncSession, purchase_order: PurchaseOrder, data: dict, actor: AssetUser,
+    allowed_domains: tuple[str, ...] | None = None,
 ) -> list[PendingAsset]:
     """quantity>1 creates that many separate PendingAsset rows (each will get
     its own distinct serial number at Delivery Done) -- mirrors
-    procure_assets' own quantity handling, never one row with a count."""
+    procure_assets' own quantity handling, never one row with a count.
+    `allowed_domains` (S0.3): the caller's work area; a line whose Category
+    belongs to the other work area is refused (403)."""
+    ensure_po_open(purchase_order)
     if purchase_order.cost_center_id is None:
-        raise ValueError("purchase order has no cost centre set")
+        raise ValueError("This purchase order has no cost centre set.")
+    quantity = data.get("quantity", 1)
+    if not isinstance(quantity, int) or quantity < 1 or quantity > MAX_QUANTITY:
+        # S0.2: also guards the internal callers (bundles, ERP create, ERP
+        # change "add units", Excel PO import) that do not go through the schema.
+        raise ValueError(f"Quantity must be between 1 and {MAX_QUANTITY}.")
     item = await fill_from_item(session, data)
     category, subcategory = await _validate_line_masters(session, data)
+    check_work_area(allowed_domains, category.asset_domain, data.get("description"))
     purchase_cost = data.get("purchase_cost")
     tax_percent = data.get("tax_percent")
     tax_amount, total_cost = compute_tax(purchase_cost, tax_percent)
@@ -124,7 +217,6 @@ async def add_pending_asset_line(
     if serial_required is None:
         serial_required = serial_default(item)
 
-    quantity = data.get("quantity", 1)
     created: list[PendingAsset] = []
     for _ in range(quantity):
         line = PendingAsset(
@@ -148,7 +240,10 @@ async def add_pending_asset_line(
     return created
 
 
-async def update_pending_asset_line(session: AsyncSession, line: PendingAsset, data: dict, actor: AssetUser) -> PendingAsset:
+async def update_pending_asset_line(
+    session: AsyncSession, line: PendingAsset, data: dict, actor: AssetUser,
+    allowed_domains: tuple[str, ...] | None = None,
+) -> PendingAsset:
     if line.status != "PENDING":
         raise ValueError(f"cannot edit a {line.status.lower()} line")
     # Picking another Item changes the line's kind; otherwise it keeps its own.
@@ -156,7 +251,8 @@ async def update_pending_asset_line(session: AsyncSession, line: PendingAsset, d
     if data.get("item_id") is None and line.item_id is not None:
         data = {**data, "item_id": line.item_id}
     item = await fill_from_item(session, data, keep_inactive_id=line.item_id)
-    category, subcategory = await _validate_line_masters(session, data)
+    category, subcategory = await _validate_line_masters(session, data, current=line)
+    check_work_area(allowed_domains, category.asset_domain)
     tax_amount, total_cost = compute_tax(data.get("purchase_cost"), data.get("tax_percent"))
     if changed_item:
         line.serial_required = serial_default(item)
@@ -266,7 +362,8 @@ async def deliver_pending_assets(
     delivered: list[PendingAsset] = []
     for line in lines:
         if line.status != "PENDING":
-            raise ValueError(f"pending asset {line.id} is not PENDING (already {line.status})")
+            what = {"DELIVERED": "already delivered", "CANCELLED": "cancelled"}.get(line.status, "not waiting for delivery")
+            raise ValueError(f"One of the selected units ({line.description}) is {what}, so it cannot be delivered.")
         delivery = deliveries[line.id]
         async with session.begin_nested():
             [asset] = await procure_assets(
@@ -304,6 +401,7 @@ async def deliver_pending_assets(
 async def record_pi_for_invoice(
     session: AsyncSession, purchase_order: PurchaseOrder, invoice_number: str,
     pi_number: str, pi_date: date, overwrite: bool, actor: AssetUser,
+    allowed_domains: tuple[str, ...] | None = None,
 ) -> dict:
     """AM-19: PI Number/Date arrive from Finance well after delivery, and
     ground reality is one PO can be delivered across several invoices (a
@@ -324,7 +422,13 @@ async def record_pi_for_invoice(
     actually changed per asset, all sharing one request_id -- same
     audit-trail shape app.assets.audit_service.record_field_changes
     already uses for a single-asset edit, just applied across many assets
-    in one call."""
+    in one call.
+
+    S0.3: `allowed_domains` (the caller's work area; None = both) -- only
+    the assets of that invoice inside the caller's work area are touched; the
+    other work area's assets are left for someone who handles them. S0.6: a
+    deleted PO takes no PI; soft-deleted assets are never touched."""
+    ensure_po_open(purchase_order)
     stmt = select(PendingAsset).where(
         PendingAsset.purchase_order_id == purchase_order.id,
         PendingAsset.invoice_number == invoice_number,
@@ -337,7 +441,9 @@ async def record_pi_for_invoice(
     skipped: list[str] = []
     for line in lines:
         asset = await session.get(Asset, line.delivered_asset_id)
-        if asset is None:
+        if asset is None or asset.deleted_at is not None:
+            continue
+        if allowed_domains is not None and asset.asset_domain not in allowed_domains:
             continue
         already_set = bool((asset.pi_number or "").strip())
         if already_set and not overwrite:

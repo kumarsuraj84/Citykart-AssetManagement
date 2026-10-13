@@ -1,22 +1,23 @@
 from datetime import date, datetime
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.bundles.schemas import BundleLineAmountIn
+from app.core.validation import InModel, MAX_AMOUNT, MAX_QUANTITY, MAX_WARRANTY_YEARS, require_text
 
 
-class DraftLineIn(BaseModel):
-    item_code: str | None = None          # the ERP item code; kept on the asset as a link back to the PO/receipt/PI
+class DraftLineIn(InModel):
+    item_code: str | None = Field(default=None, max_length=50)   # the ERP item code; kept on the asset as a link back to the PO/receipt/PI
     description: str = Field(min_length=1, max_length=500)
-    barcode: str
-    quantity: int = Field(ge=1, le=1000)
-    rate: float = Field(gt=0)
+    barcode: str = Field(max_length=200)
+    quantity: int = Field(ge=1, le=MAX_QUANTITY)
+    rate: float = Field(gt=0, le=MAX_AMOUNT)
     tax_percent: float = Field(default=0, ge=0, le=100)
-    warranty_years: int = Field(default=0, ge=0)
+    warranty_years: int = Field(default=0, ge=0, le=MAX_WARRANTY_YEARS)
     # What the asset IS. Its category, sub-category, serial rule and bundle come
     # from the Item on the server, never from here.
     item_id: int
     brand_id: int | None = None
-    model: str | None = None
+    model: str | None = Field(default=None, max_length=200)
     # A bundle Item becomes one line per part; `bundle_parts` carries the
     # (possibly edited) amount per part, else the bundle's own split is used.
     bundle_parts: list[BundleLineAmountIn] | None = None
@@ -30,17 +31,24 @@ class DraftLineIn(BaseModel):
     department: str | None = None
     name_key: str | None = None
 
+    @field_validator("description")
+    @classmethod
+    def _description(cls, value: str) -> str:
+        return require_text(value, "Description")
 
-class DraftCreateIn(BaseModel):
+
+class DraftCreateIn(InModel):
+    # S0.8: required in practice -- the server re-reads this ERP purchase order
+    # from CKAM's ERP copy and takes the PO number, date and vendor from it.
     erp_po_code: int | None = None
     company_id: int
-    po_number: str
+    po_number: str = Field(max_length=100)
     po_date: date
     vendor_id: int | None = None
     cost_center_id: int
     delivery_asset_user_id: int | None = None
-    warehouse_code: str | None = None
-    lines: list[DraftLineIn] = Field(min_length=1)
+    warehouse_code: str | None = Field(default=None, max_length=100)
+    lines: list[DraftLineIn] = Field(min_length=1, max_length=500)
 
 
 class PiApplyItemIn(BaseModel):

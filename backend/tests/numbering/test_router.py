@@ -13,8 +13,9 @@ async def test_create_code_rule(client):
         dept = Department(name="IT-CKS7")
         session.add_all([loc, dept])
         await session.flush()
+        # S0.9: saving a code rule is head-office admin (Primary Owner) only.
         asset_user = AssetUser(company_id=co.id, code="NADMIN", name="N Admin", asset_user_type="EMPLOYEE",
-                         location_id=loc.id, department_id=dept.id, role="ADMIN",
+                         location_id=loc.id, department_id=dept.id, role="ADMIN", is_primary_owner=True,
                          login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False)
         session.add(asset_user)
         await session.commit()
@@ -28,6 +29,8 @@ async def test_create_code_rule(client):
     }, headers=headers)
     assert create_resp.status_code == 201
     assert create_resp.json()["prefix_template"].startswith("FA/")
+    # S0.9 (additive): the response shows what the first code looks like.
+    assert create_resp.json()["example"] == "FA/CC01/IT/LAP/CK_1"
 
 
 async def test_write_access_is_admin_only(client):

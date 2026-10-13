@@ -1,7 +1,8 @@
 ﻿from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
+from app.core.validation import check_email
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
 from app.core.deps import READ_ROLES, get_current_asset_user, require_primary_owner, require_role, scoped_company_ids
@@ -121,17 +122,19 @@ def _validate_asset_user_fields(data: dict) -> None:
     # AM-02 closes that gap, same pattern as documents/router.py's existing doc_type
     # check. ASSET_USER_TYPES/ROLES were already defined in app/asset_users/models.py and used
     # everywhere else in the codebase; they just weren't checked against an incoming
-    # request body.
+    # request body. S0.7: messages in plain words, never the stored codes.
     if data.get("asset_user_type") not in ASSET_USER_TYPES:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"asset_user_type must be one of {ASSET_USER_TYPES}")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            "Choose a type: employee, store, installed at a store, or stock room.")
     if data.get("role") not in ROLES:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"role must be one of {ROLES}")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            "Choose an access level: full admin, can add and move, can only view, or sees own assets.")
     domain = data.get("primary_asset_domain")
     if domain is not None and domain not in PRIMARY_ASSET_DOMAINS:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"primary_asset_domain must be one of {PRIMARY_ASSET_DOMAINS}")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose a default work area: IT, Non-IT or all.")
     allowed_domains = data.get("allowed_asset_domains")
     if allowed_domains is not None and allowed_domains not in ALLOWED_ASSET_DOMAINS:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"allowed_asset_domains must be one of {ALLOWED_ASSET_DOMAINS}")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose a work area: IT, Non-IT or both.")
     # Spec §13: primary_asset_domain/allowed_asset_domains are only meaningful
     # for a login-capable operational asset_user -- refuse rather than
     # silently store them on a STORE/INSTALLED/STOCK_POINT point-record or a
@@ -140,8 +143,44 @@ def _validate_asset_user_fields(data: dict) -> None:
     if not data.get("login_enabled") and (domain or allowed_domains):
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "primary_asset_domain/allowed_asset_domains require login_enabled",
+            "A work area can only be set for someone who can log in.",
         )
+
+
+HEAD_OFFICE_ONLY = "Only a head-office admin can change a head-office admin account."
+
+
+def _protect_primary_owner(target: AssetUser, actor: AssetUser) -> None:
+    """S0.1: an ordinary ADMIN may never reset the password of, edit,
+    deactivate, or change the company access of a Primary Owner account (that
+    used to let any ADMIN take the owner's login over). A Primary Owner may
+    (including their own record)."""
+    if target.is_primary_owner and not actor.is_primary_owner:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, HEAD_OFFICE_ONLY)
+
+
+async def _validate_new_values(session: AsyncSession, data: dict, existing: AssetUser | None) -> None:
+    """S0.10: email format and a case-insensitive, trimmed code check -- only
+    for what is new or changed, so an existing record is never blocked by
+    what it already holds (mixed-case codes stay as they are)."""
+    email = data.get("email")
+    if email is not None and (existing is None or (existing.email or "").strip() != email):
+        try:
+            check_email(email)
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    code = data.get("code")
+    if code is not None and (existing is None or (existing.code or "").strip().lower() != code.lower()
+                             or existing.company_id != data.get("company_id")):
+        stmt = select(AssetUser.id).where(
+            AssetUser.company_id == data.get("company_id"),
+            func.lower(func.trim(AssetUser.code)) == code.lower(),
+        )
+        if existing is not None:
+            stmt = stmt.where(AssetUser.id != existing.id)
+        if (await session.execute(stmt.limit(1))).first() is not None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                f"A person or place with the code {code} already exists in this company.")
 
 
 async def _validate_asset_user_references(session: AsyncSession, data: dict) -> None:
@@ -156,17 +195,17 @@ async def _validate_asset_user_references(session: AsyncSession, data: dict) -> 
     # leaking DB errors in API responses.
     company = await session.get(Company, data.get("company_id"))
     if company is None or not company.is_active:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "company not found or inactive")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "The company you chose does not exist or is no longer active.")
     location = await session.get(Location, data.get("location_id"))
     if location is None or not location.is_active:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "location not found or inactive")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "The location you chose does not exist or is no longer active.")
     if location.company_id != data.get("company_id"):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "location must belong to the same company as the asset user")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "The location must belong to the same company as the person or place.")
     department_id = data.get("department_id")
     if department_id is not None:
         department = await session.get(Department, department_id)
         if department is None or not department.is_active:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "department not found or inactive")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "The department you chose does not exist or is no longer active.")
 
 
 @router.get("", response_model=list[AssetUserOut])
@@ -195,6 +234,7 @@ async def create_asset_user(
     data = body.model_dump()
     _validate_asset_user_fields(data)
     await _validate_asset_user_references(session, data)
+    await _validate_new_values(session, data, None)
     try:
         return await AssetUserService(session).create(data, asset_user.id)
     except IntegrityError:
@@ -204,7 +244,15 @@ async def create_asset_user(
         # validation error. Rollback is required before the session can be used
         # again in this request (a failed INSERT leaves the transaction aborted).
         await session.rollback()
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "a code already exists for this company")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A person or place with this code already exists in this company.")
+
+
+async def _get_target(session: AsyncSession, asset_user_id: int, actor: AssetUser) -> AssetUser:
+    target = await AssetUserService(session).get(asset_user_id)
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "This person or place was not found.")
+    _protect_primary_owner(target, actor)
+    return target
 
 
 @router.put("/{asset_user_id}", response_model=AssetUserOut)
@@ -214,14 +262,16 @@ async def update_asset_user(
     session: AsyncSession = Depends(get_session),
     asset_user=Depends(require_role("ADMIN")),
 ):
+    target = await _get_target(session, asset_user_id, asset_user)
     data = body.model_dump()
     _validate_asset_user_fields(data)
     await _validate_asset_user_references(session, data)
+    await _validate_new_values(session, data, target)
     try:
         obj = await AssetUserService(session).update(asset_user_id, data, asset_user.id)
     except IntegrityError:
         await session.rollback()
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "a code already exists for this company")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A person or place with this code already exists in this company.")
     if obj is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     return obj
@@ -233,6 +283,7 @@ async def deactivate_asset_user(
     session: AsyncSession = Depends(get_session),
     asset_user=Depends(require_role("ADMIN")),
 ):
+    await _get_target(session, asset_user_id, asset_user)
     try:
         ok = await AssetUserService(session).deactivate(asset_user_id, asset_user.id)
     except ValueError as exc:
@@ -281,11 +332,9 @@ async def reset_password(
     # Spec §51: Reset Password only applies to a login-capable asset_user --
     # a STORE/INSTALLED/STOCK_POINT point-record (or an EMPLOYEE that was
     # never activated for login) has nothing meaningful to reset.
-    target = await AssetUserService(session).get(asset_user_id)
-    if target is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND)
+    target = await _get_target(session, asset_user_id, actor)
     if not target.login_enabled:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "this asset user is not login-enabled")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "This person or place cannot log in, so there is no password to reset.")
     temp = await AssetUserService(session).reset_password(asset_user_id, actor.id)
     if temp is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
@@ -299,7 +348,16 @@ async def set_company_access(
     session: AsyncSession = Depends(get_session),
     _actor=Depends(require_role("ADMIN")),
 ):
-    ok = await AssetUserService(session).set_company_access(asset_user_id, body.company_ids)
+    await _get_target(session, asset_user_id, _actor)
+    company_ids = list(dict.fromkeys(body.company_ids))
+    if company_ids:
+        found = set((await session.execute(
+            select(Company.id).where(Company.id.in_(company_ids), Company.is_active.is_(True))
+        )).scalars().all())
+        if len(found) != len(company_ids):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                "One of the companies you chose does not exist or is no longer active.")
+    ok = await AssetUserService(session).set_company_access(asset_user_id, company_ids)
     if not ok:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
 

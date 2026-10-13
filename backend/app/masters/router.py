@@ -1,7 +1,9 @@
 ﻿from typing import Callable
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
+from app.core.validation import check_email, check_gstin
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
 from app.core.deps import ensure_company_in_scope, get_current_asset_user, require_primary_owner, scoped_company_ids
@@ -23,6 +25,36 @@ router = APIRouter(prefix="/api/masters", tags=["masters"])
 SCOPE_NONE = None
 SCOPE_COMPANY_ID = "company_id"
 SCOPE_SELF = "self"
+
+
+async def _check_new_record(session: AsyncSession, model, data: dict) -> None:
+    """S0.10 / S0.6 for a NEW master row: its code must be unique ignoring
+    letter case and spaces within its scope (`it` next to `IT` was allowed);
+    existing mixed-case rows are left as they are. Its parent (company,
+    category) must exist and be active."""
+    parent_scope = {}
+    if "company_id" in data and hasattr(model, "company_id"):
+        company = await session.get(models.Company, data["company_id"])
+        if company is None or not company.is_active:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "The company you chose does not exist or is no longer active.")
+        parent_scope["company_id"] = data["company_id"]
+    if "category_id" in data and model is models.AssetSubcategory:
+        category = await session.get(models.AssetCategory, data["category_id"])
+        if category is None or not category.is_active:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "The category you chose does not exist or is no longer active.")
+        parent_scope["category_id"] = data["category_id"]
+    for field in ("code", "name"):
+        if field not in data or not hasattr(model, field):
+            continue
+        if field == "name" and model is not models.Department:
+            continue          # only a Department is identified by its name
+        value = (data.get(field) or "").strip()
+        data[field] = value
+        stmt = select(model.id).where(func.lower(func.trim(getattr(model, field))) == value.lower())
+        for key, parent_id in parent_scope.items():
+            stmt = stmt.where(getattr(model, key) == parent_id)
+        if (await session.execute(stmt.limit(1))).first() is not None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"A record with the {field} {value} already exists.")
 
 
 def build_master_router(
@@ -108,9 +140,10 @@ def build_master_router(
         await check_incoming(session, asset_user, data)
         if validate_incoming is not None:
             try:
-                validate_incoming(data)
+                validate_incoming(data, None)
             except ValueError as exc:
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+        await _check_new_record(session, model, data)
         try:
             return await MasterCRUDService(model, session).create(data, asset_user.id)
         except IntegrityError:
@@ -121,7 +154,7 @@ def build_master_router(
             # validation error. Rollback is required before the session can be used
             # again in this request (a failed INSERT leaves the transaction aborted).
             await session.rollback()
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "a record with this code already exists")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A record with this code already exists.")
 
     @sub.put("/{item_id}", response_model=schema_out)
     async def update_item(
@@ -139,14 +172,14 @@ def build_master_router(
         await check_incoming(session, asset_user, data)      # ...nor move an own row into another company
         if validate_incoming is not None:
             try:
-                validate_incoming(data)
+                validate_incoming(data, existing)
             except ValueError as exc:
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
         try:
             return await service.update(item_id, data, asset_user.id)
         except IntegrityError:
             await session.rollback()
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "a record with this code already exists")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A record with this name or code already exists.")
 
     @sub.delete("/{item_id}", status_code=204)
     async def deactivate_item(
@@ -259,9 +292,21 @@ router.include_router(build_master_router(
         FieldSpec("Name", "name", required=True, max_length=200),
     ],
 ))
-def _validate_category(data: dict) -> None:
+def _validate_category(data: dict, existing=None) -> None:
     if data.get("asset_domain") not in models.ASSET_DOMAINS:
-        raise ValueError(f"asset_domain must be one of {models.ASSET_DOMAINS}")
+        raise ValueError("Choose who handles this category: IT or Non-IT.")
+
+
+def _validate_vendor(data: dict, existing=None) -> None:
+    """S0.10: GSTIN (15 characters) and contact email formats -- only for a
+    value that is new or changed, so a stored legacy value never blocks an
+    unrelated edit. A valid GSTIN is stored in capitals."""
+    gstin = (data.get("gstin") or "").strip() or None
+    if gstin is None or existing is None or (existing.gstin or "").strip().upper() != gstin.upper():
+        data["gstin"] = check_gstin(gstin)
+    email = (data.get("contact_email") or "").strip() or None
+    if email is None or existing is None or (existing.contact_email or "").strip() != email:
+        data["contact_email"] = check_email(email, "Contact email")
 
 
 router.include_router(build_master_router(
@@ -294,6 +339,7 @@ router.include_router(build_master_router(
 router.include_router(build_master_router(
     "/vendors", models.Vendor, schemas.VendorIn, schemas.VendorOut,
     schema_edit=schemas.VendorEditIn,
+    validate_incoming=_validate_vendor,
     import_fields=[
         FieldSpec("Code", "code", required=True, max_length=100),
         FieldSpec("Name", "name", required=True, max_length=200),

@@ -144,7 +144,7 @@ async def test_bulk_action_partial_failure_reports_the_ineligible_asset_and_stil
     assert body["done"] == 2
     assert len(body["failed"]) == 1
     assert body["failed"][0]["asset_id"] == scrapped_id
-    assert "terminal" in body["failed"][0]["reason"]
+    assert "nothing more can be recorded" in body["failed"][0]["reason"]
 
     for asset_id in eligible_ids:
         got = (await client.get(f"/api/assets/{asset_id}", headers=headers)).json()

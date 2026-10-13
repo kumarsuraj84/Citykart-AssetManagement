@@ -169,7 +169,7 @@ class TestCategoryCorrection:
             "category_id": ids["inactive_cat"].id, "reason": "typo fix",
         }, headers=headers)
         assert resp.status_code == 422
-        assert "not found or inactive" in resp.json()["detail"]
+        assert "no longer active" in resp.json()["detail"]
 
     async def test_nonexistent_category_rejected(self, client):
         ids = await _setup("CAT3")
@@ -265,7 +265,7 @@ class TestSubcategoryCorrection:
             "subcategory_id": ids["inactive_sub"].id, "reason": "typo fix",
         }, headers=headers)
         assert resp.status_code == 422
-        assert "not found or inactive" in resp.json()["detail"]
+        assert "no longer active" in resp.json()["detail"]
 
 
 class TestPurchaseDateCorrection:

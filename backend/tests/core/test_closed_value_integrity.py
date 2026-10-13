@@ -73,7 +73,7 @@ class TestAssetUserTypeValidated:
             "asset_user_type": "NOT_A_REAL_TYPE", "location_id": loc_id, "department_id": dept_id,
         }, headers=headers)
         assert resp.status_code == 422
-        assert "asset_user_type" in resp.json()["detail"]
+        assert "Choose a type" in resp.json()["detail"]
 
     async def test_a_valid_asset_user_type_still_works(self, client):
         co_id, loc_id, dept_id = await _company_with_admin("CVI1B")
@@ -95,7 +95,7 @@ class TestAssetUserRoleValidated:
             "role": "SUPER_ADMIN_GOD_MODE",
         }, headers=headers)
         assert resp.status_code == 422
-        assert "role" in resp.json()["detail"]
+        assert "access level" in resp.json()["detail"]
 
 
 class TestCustomFieldTypeValidated:

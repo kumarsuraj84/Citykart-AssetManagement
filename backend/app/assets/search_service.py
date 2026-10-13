@@ -111,15 +111,19 @@ async def search_assets(
     if q and exact:
         stmt = stmt.where(_exact_match_clause(q))
     elif q:
-        pattern = f"%{q}%"
+        # S0.10: a typed %, _ or \ matches itself (it used to match everything).
+        pattern = f"%{_escape_like(q)}%"
+
+        def like(column):
+            return column.ilike(pattern, escape="\\")
         stmt = stmt.where(or_(
-            Asset.asset_code.ilike(pattern), Asset.legacy_asset_code.ilike(pattern),
-            Asset.serial_number.ilike(pattern), Asset.po_number.ilike(pattern),
-            Asset.invoice_number.ilike(pattern), Asset.pi_number.ilike(pattern),
+            like(Asset.asset_code), like(Asset.legacy_asset_code),
+            like(Asset.serial_number), like(Asset.po_number),
+            like(Asset.invoice_number), like(Asset.pi_number),
             # AM-11: a real operator is more likely to remember an asset's
             # description ("the Dell laptop") than its generated code --
             # found missing during the Phase-1 gap review's search check.
-            Asset.description.ilike(pattern),
+            like(Asset.description),
             # AM-21: rounds the register's own search box out to every
             # remaining free-text identifier column an operator might scan
             # or type -- barcode/model were the ones still missing. Brand
@@ -127,7 +131,7 @@ async def search_assets(
             # dropped from free-text search for the same reason
             # category_id/vendor_id never were, matching this file's own
             # SORTABLE_COLUMNS comment above.
-            Asset.barcode.ilike(pattern), Asset.model.ilike(pattern),
+            like(Asset.barcode), like(Asset.model),
         ))
 
     # COUNT(*) in the database over the same filtered query, rather than

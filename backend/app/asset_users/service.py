@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import secrets
-from sqlalchemy import select, delete
+from sqlalchemy import delete, func, select
+from app.assets.models import Asset
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import hash_password
 from app.asset_users.models import AssetUser, AssetUserCompanyAccess
@@ -65,7 +66,23 @@ class AssetUserService:
         if asset_user is None:
             return False
         if asset_user.is_primary_owner and await self.count_active_primary_owners() <= 1:
-            raise ValueError("cannot deactivate the last remaining Primary Owner")
+            raise ValueError("The last remaining head-office admin cannot be deactivated.")
+        # S0.6: someone (or some place) still holding assets cannot be
+        # deactivated -- those assets would be left with an inactive holder that
+        # no screen can move them away from cleanly. Assets that are gone
+        # (disposed, sold, scrapped) or reported lost do not count.
+        held = (await self.session.execute(
+            select(func.count()).select_from(Asset).where(
+                Asset.current_asset_user_id == asset_user.id,
+                Asset.deleted_at.is_(None),
+                Asset.status.notin_(("DISPOSED", "SOLD", "SCRAPPED", "LOST")),
+            )
+        )).scalar_one()
+        if held:
+            raise ValueError(
+                f"{asset_user.name} still holds {held} asset{'s' if held != 1 else ''}. "
+                "Move them to someone else or back to a stock room first, then deactivate."
+            )
         asset_user.is_active = False
         asset_user.updated_by = actor_id
         await self.session.commit()
@@ -97,7 +114,7 @@ class AssetUserService:
         if asset_user is None:
             return None
         if not value and asset_user.is_primary_owner and await self.count_active_primary_owners() <= 1:
-            raise ValueError("cannot remove the last remaining Primary Owner")
+            raise ValueError("The last remaining head-office admin cannot be removed.")
         asset_user.is_primary_owner = value
         asset_user.updated_by = actor_id
         await self.session.commit()

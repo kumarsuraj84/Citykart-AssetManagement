@@ -77,5 +77,5 @@ async def test_raises_a_clear_error_when_no_active_rule_exists_at_all():
         session.add(co)
         await session.commit()
 
-        with pytest.raises(ValueError, match="no active code rule configured"):
+        with pytest.raises(ValueError, match="No code rule"):
             await get_active_rule(session, co.id)

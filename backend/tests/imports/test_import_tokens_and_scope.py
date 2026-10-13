@@ -130,7 +130,7 @@ async def test_import_with_unknown_token_reports_row_errors_not_500(client):
     resp = await _post(client, "/api/imports/assets/commit", _xlsx([_row()]), headers)
     assert resp.status_code == 200
     assert resp.json()["imported"] == 0
-    assert "unknown token" in resp.json()["errors"][0]["message"]
+    assert "does not know" in resp.json()["errors"][0]["message"]
     assert await _asset_codes() == []
 
 

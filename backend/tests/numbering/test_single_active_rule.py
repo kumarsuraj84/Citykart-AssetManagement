@@ -14,6 +14,7 @@ from app.numbering.service import get_active_rule
 
 
 async def _admin(client, code):
+    # S0.9: saving a code rule is head-office admin (Primary Owner) only.
     async with SessionLocal() as session:
         co = Company(code=code, name=f"{code} Co")
         session.add(co)
@@ -23,7 +24,7 @@ async def _admin(client, code):
         session.add_all([loc, dept])
         await session.flush()
         session.add(AssetUser(company_id=co.id, code="RADMIN", name="Rule Admin", asset_user_type="EMPLOYEE",
-                           location_id=loc.id, department_id=dept.id, role="ADMIN",
+                           location_id=loc.id, department_id=dept.id, role="ADMIN", is_primary_owner=True,
                            login_enabled=True, password_hash=hash_password("Passw0rd!"), must_change_password=False))
         await session.commit()
         co_id = co.id

@@ -17,6 +17,7 @@ Reuses app.imports.asset_import_service's own row-parsing helpers and
 exceptions rather than reimplementing them."""
 from io import BytesIO
 import openpyxl
+from app.core.excel import open_workbook
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.asset_users.models import AssetUser
@@ -62,7 +63,7 @@ async def _validate_rows(
     (company_id, po_number) -> the valid rows belonging to that PO, in file
     order -- the exact unit commit_import iterates to create one
     PurchaseOrder per group."""
-    wb = openpyxl.load_workbook(BytesIO(content))
+    wb = open_workbook(content, ImportTemplateError)
     ws = wb.active
     header = _read_header(ws)
 

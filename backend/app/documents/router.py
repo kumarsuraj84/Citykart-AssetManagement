@@ -41,6 +41,8 @@ async def upload_document(
     if doc_type not in DOC_TYPES:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"doc_type must be one of {DOC_TYPES}")
     content = await _read_bounded(file)
+    if not content:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "The file is empty.")
     try:
         doc = await save_document(asset.id, doc_type, file.filename, content, file.content_type or "application/octet-stream", actor.id)
     except ValueError as exc:

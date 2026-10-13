@@ -6,7 +6,7 @@ from app.assets.models import Asset
 from app.core.db import SessionLocal
 from app.erp.source import ErpInvoice, ErpReceipt
 from app.purchase_orders.models import PendingAsset
-from tests.erp.test_erp_api import _headers, _setup, erp  # noqa: F401  (erp is a fixture)
+from tests.erp.test_erp_api import _headers, _setup, desktop_po, erp, line  # noqa: F401  (erp is a fixture)
 
 PO_CODE = 1133610106
 
@@ -49,6 +49,8 @@ def receipt(qty, grc="GRC-1", day=20):
 async def test_a_delivered_asset_knows_its_item_and_the_erp_code_it_was_bought_under(client, erp):
     ids = await _setup()
     h = await _headers(client, "OPR")
+    # S0.8: the line must be on the ERP purchase order it is created from.
+    erp.pos[PO_CODE] = desktop_po(lines=[line(1, "CT500001", "48 PORT SWITCH", 1, 9000)])
     body = {"erp_po_code": PO_CODE, "company_id": ids["spl"], "po_number": "SPO/CBL", "po_date": "2026-09-18", "vendor_id": ids["vansh"],
             "cost_center_id": ids["cost_spl"], "delivery_asset_user_id": ids["taj"], "lines": [
                 {"item_code": "CT500001", "description": "48 PORT SWITCH", "barcode": "CT500001", "quantity": 1, "rate": 9000,

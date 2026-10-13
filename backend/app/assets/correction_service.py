@@ -31,6 +31,7 @@ from datetime import date, datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.assets.audit_service import record_correction_changes
+from app.core.validation import EARLIEST_PURCHASE_DATE
 from app.assets.models import Asset
 from app.asset_users.models import AssetUser
 from app.lifecycle.models import AssetEvent
@@ -78,7 +79,7 @@ async def correct_asset(
             raise ValueError("category_id cannot be cleared")
         category = await session.get(AssetCategory, category_id)
         if category is None or not category.is_active:
-            raise ValueError(f"category {category_id} not found or inactive")
+            raise ValueError("The category you chose does not exist or is no longer active.")
         effective_category_id = category_id
 
     # ---- Subcategory ----
@@ -87,8 +88,8 @@ async def correct_asset(
         effective_subcategory_id = subcategory_id
     if effective_subcategory_id is not None:
         subcategory = await session.get(AssetSubcategory, effective_subcategory_id)
-        if subcategory is None or not subcategory.is_active:
-            raise ValueError(f"subcategory {effective_subcategory_id} not found or inactive")
+        if subcategory is None or (not subcategory.is_active and effective_subcategory_id != asset.subcategory_id):
+            raise ValueError("The sub-category you chose does not exist or is no longer active.")
         if subcategory.category_id != effective_category_id:
             if subcategory_id is UNSET:
                 # The asset's *existing* subcategory no longer belongs to the
@@ -110,7 +111,10 @@ async def correct_asset(
             raise ValueError("purchase_date must be a valid date")
         now = datetime.now(timezone.utc)
         if datetime.combine(purchase_date_value, datetime.min.time()).replace(tzinfo=timezone.utc) > now:
-            raise ValueError("purchase date cannot be in the future")
+            raise ValueError("The purchase date cannot be in the future.")
+        # S0.5: a corrected purchase date before 1990 is a typo, not history.
+        if purchase_date_value < EARLIEST_PURCHASE_DATE:
+            raise ValueError(f"The purchase date cannot be before {EARLIEST_PURCHASE_DATE.strftime('%d-%m-%Y')}.")
 
         earliest_event_stmt = (
             select(AssetEvent)
@@ -134,7 +138,7 @@ async def correct_asset(
     effective_asset_domain = asset.asset_domain
     if asset_domain is not UNSET:
         if asset_domain not in ("IT", "NON_IT"):
-            raise ValueError("asset_domain must be one of ('IT', 'NON_IT')")
+            raise ValueError("Choose a work area: IT or Non-IT.")
         effective_asset_domain = asset_domain
 
     if (

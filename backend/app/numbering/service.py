@@ -31,17 +31,84 @@ def build_code_tokens(*, company, location, cost_center, category, subcategory, 
     }
 
 
+TOKEN_WORDS = {
+    "company.code": "company code",
+    "location.code": "location code",
+    "cost_center.code": "cost centre code",
+    "category.code": "category code",
+    "subcategory.code": "sub-category code",
+    "yyyy": "year",
+    "yy": "year",
+    "mm": "month",
+}
+SUPPORTED_TOKENS = tuple(TOKEN_WORDS)
+MAX_START_NUMBER = 999_999_999
+MAX_PAD_WIDTH = 20
+
+
 def resolve_prefix(rule: CodeRule, tokens: dict[str, str]) -> str:
     def replace(match: re.Match) -> str:
         key = match.group(1)
         if key not in tokens:
-            raise ValueError(f"unknown token '{{{key}}}' in code rule template")
+            raise ValueError(f"The asset code format uses {{{key}}}, which CKAM does not know. Fix the code format in Settings.")
         value = tokens[key]
         if not value:
-            raise ValueError(f"token '{key}' resolved to an empty value; asset is missing that field")
+            raise ValueError(
+                f"The asset code format needs the {TOKEN_WORDS.get(key, key)}, but this asset has none "
+                "(for example no sub-category). Choose one, or change the code format."
+            )
         return value
 
     return _TOKEN_RE.sub(replace, rule.prefix_template)
+
+
+def sample_tokens(company_code: str | None = None) -> dict[str, str]:
+    today = date.today()
+    return {
+        "company.code": company_code or "CKSPL",
+        "location.code": "HO",
+        "cost_center.code": "CC01",
+        "category.code": "IT",
+        "subcategory.code": "LAP",
+        "yyyy": f"{today.year:04d}",
+        "yy": f"{today.year % 100:02d}",
+        "mm": f"{today.month:02d}",
+    }
+
+
+def render_example(prefix_template: str, suffix_template: str, start_number: int, pad_width: int,
+                   company_code: str | None = None) -> str:
+    """What the first asset code of a rule looks like, with sample values."""
+    tokens = sample_tokens(company_code)
+    prefix = _TOKEN_RE.sub(lambda m: tokens.get(m.group(1), m.group(0)), prefix_template)
+    number = str(max(start_number, 0))
+    if pad_width:
+        number = number.zfill(pad_width)
+    return f"{prefix}{number}{suffix_template}"
+
+
+def validate_rule(prefix_template: str, suffix_template: str, start_number: int, pad_width: int) -> None:
+    """S0.9: refuses a code format that could only fail later (at the first
+    asset) or produce nonsense codes. Raises ValueError with a plain sentence."""
+    if not (prefix_template or "").strip():
+        raise ValueError("The code format needs a beginning, for example FA/{company.code}/.")
+    if len(prefix_template) > 300:
+        raise ValueError("The code format is too long (max 300 characters).")
+    if len(suffix_template or "") > 100:
+        raise ValueError("The code ending is too long (max 100 characters).")
+    without_tokens = _TOKEN_RE.sub("", prefix_template)
+    if "{" in without_tokens or "}" in without_tokens:
+        raise ValueError("The code format has a { or } that is not part of a known value. Use values such as {company.code}.")
+    unknown = [m.group(1) for m in _TOKEN_RE.finditer(prefix_template) if m.group(1) not in TOKEN_WORDS]
+    if unknown:
+        known = ", ".join("{" + t + "}" for t in SUPPORTED_TOKENS)
+        raise ValueError(f"The code format uses {{{unknown[0]}}}, which CKAM does not know. You can use: {known}.")
+    if "{" in (suffix_template or "") or "}" in (suffix_template or ""):
+        raise ValueError("The code ending cannot contain values in { }; put them in the code format instead.")
+    if start_number < 0 or start_number > MAX_START_NUMBER:
+        raise ValueError(f"The starting number must be between 0 and {MAX_START_NUMBER:,}.")
+    if pad_width < 0 or pad_width > MAX_PAD_WIDTH:
+        raise ValueError(f"The number of digits must be between 0 and {MAX_PAD_WIDTH}.")
 
 
 async def generate_code(session: AsyncSession, rule: CodeRule, tokens: dict[str, str]) -> str:
@@ -86,7 +153,7 @@ async def get_active_rule(session: AsyncSession, company_id: int) -> CodeRule:
     ).order_by(CodeRule.company_id.desc().nullslast(), CodeRule.id.desc())
     rule = (await session.execute(stmt)).scalars().first()
     if rule is None:
-        raise ValueError("no active code rule configured for this company (set one up under Setup > Code Rule)")
+        raise ValueError("No code rule (asset code format) is set up for this company yet. Ask the head-office admin to set one up in Settings > Code Rule.")
     return rule
 
 

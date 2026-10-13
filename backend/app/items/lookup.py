@@ -16,8 +16,10 @@ async def fill_from_item(session: AsyncSession, data: dict, *, keep_inactive_id:
     if item_id is None:
         return None
     item = await session.get(Item, item_id)
-    if item is None or (not item.is_active and item_id != keep_inactive_id):
-        raise ValueError(f"item {item_id} not found")
+    if item is None:
+        raise ValueError("The Item you chose does not exist.")
+    if not item.is_active and item_id != keep_inactive_id:
+        raise ValueError(f"The Item {item.name} is no longer active; choose another.")
     data["category_id"] = item.category_id
     data["subcategory_id"] = item.subcategory_id
     return item

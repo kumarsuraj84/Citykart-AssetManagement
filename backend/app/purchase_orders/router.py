@@ -1,33 +1,61 @@
-﻿from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
-from app.core.deps import WRITE_ROLES, ensure_company_in_scope, require_role, scoped_company_ids
+from app.core.deps import (
+    WRITE_ROLES, allowed_asset_domains, check_work_area, ensure_company_in_scope, require_role, scoped_company_ids,
+)
+from app.masters.models import AssetCategory
 from app.purchase_orders.models import PurchaseOrder, PendingAsset
 from app.purchase_orders.schemas import (
     DeliveryDoneIn, PendingAssetLineIn, PendingAssetLineUpdateIn, PendingAssetOut,
     PurchaseOrderCreateIn, PurchaseOrderDeleteOut, PurchaseOrderOut, RecordPiIn, RecordPiOut,
     SerialCheckIn, SerialCheckOut, SerialConflictOut,
 )
+from app.assets.models import Asset
 from app.assets.service import find_serials_in_use
 from app.bundles.schemas import BundleLinesIn
 from app.bundles.service import add_bundle_lines
+from app.lifecycle.state_machine import LifecycleError
 from app.purchase_orders.service import (
     add_pending_asset_line, cancel_pending_asset_line, compute_pi_status, create_purchase_order,
-    delete_purchase_order, deliver_pending_assets, record_pi_for_invoice, update_pending_asset_line,
+    delete_purchase_order, deliver_pending_assets, ensure_po_open, line_area, line_area_of, po_is_visible,
+    po_visible_clause, record_pi_for_invoice, update_pending_asset_line,
 )
 
 router = APIRouter(prefix="/api/purchase-orders", tags=["purchase-orders"])
 
+PO_NOT_FOUND = "purchase order not found"
+
 
 async def _get_scoped_po(po_id: int, session: AsyncSession, asset_user) -> PurchaseOrder:
+    """Company scope, plus (S0.3) work area: a user limited to IT or Non-IT
+    only reaches a PO that has a line in their area, or no lines yet."""
     po = await session.get(PurchaseOrder, po_id)
     if po is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "purchase order not found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, PO_NOT_FOUND)
     allowed = await scoped_company_ids(session, asset_user)
     if allowed is not None and po.company_id not in allowed:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "purchase order not found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, PO_NOT_FOUND)
+    if not await po_is_visible(session, po.id, await allowed_asset_domains(session, asset_user)):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, PO_NOT_FOUND)
     return po
+
+
+def _open_or_422(po: PurchaseOrder) -> None:
+    try:
+        ensure_po_open(po)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+
+
+async def _get_scoped_line(line_id: int, session: AsyncSession, actor) -> tuple[PendingAsset, PurchaseOrder]:
+    line = await session.get(PendingAsset, line_id)
+    if line is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "This PO line was not found.")
+    po = await _get_scoped_po(line.purchase_order_id, session, actor)
+    check_work_area(await allowed_asset_domains(session, actor), await line_area(session, line))
+    return line, po
 
 
 @router.post("", response_model=PurchaseOrderOut, status_code=201)
@@ -53,19 +81,38 @@ async def check_serials(
 ):
     """Advisory pre-check for the Mark Delivery dialog: which of these serials
     are already used by an asset anywhere in CKAM. Only roles that can deliver
-    may ask, and only the serial and the holding asset's code come back (the
-    same thing the real delivery error already reveals). The delivery still
+    may ask. S0.3: a conflicting asset outside the caller's companies or work
+    area is still reported (serials are unique everywhere, so the delivery
+    would fail), but its asset code is not revealed. The delivery still
     re-checks everything server-side."""
     found = await find_serials_in_use(session, body.serials)
-    return SerialCheckOut(conflicts=[SerialConflictOut(serial=s, asset_code=c) for s, c in found])
+    if not found:
+        return SerialCheckOut(conflicts=[])
+    allowed = await scoped_company_ids(session, actor)
+    domains = await allowed_asset_domains(session, actor)
+    codes = [c for _, c in found]
+    rows = (await session.execute(
+        select(Asset.asset_code, Asset.company_id, Asset.asset_domain).where(Asset.asset_code.in_(codes))
+    )).all()
+    visible = {
+        code for code, company_id, domain in rows
+        if (allowed is None or company_id in allowed) and (domains is None or domain in domains)
+    }
+    return SerialCheckOut(conflicts=[
+        SerialConflictOut(serial=s, asset_code=c if c in visible else "an asset outside your companies or work area")
+        for s, c in found
+    ])
 
 
 @router.get("", response_model=list[PurchaseOrderOut])
 async def list_pos(session: AsyncSession = Depends(get_session), asset_user=Depends(require_role(*WRITE_ROLES))):
     allowed = await scoped_company_ids(session, asset_user)
+    domains = await allowed_asset_domains(session, asset_user)
     stmt = select(PurchaseOrder).where(PurchaseOrder.is_active.is_(True))
     if allowed is not None:
         stmt = stmt.where(PurchaseOrder.company_id.in_(allowed))
+    if domains is not None:
+        stmt = stmt.where(po_visible_clause(domains))
     pos = (await session.execute(stmt.order_by(PurchaseOrder.id.desc()))).scalars().all()
     pi_by_po = await compute_pi_status(session, [po.id for po in pos])
     return [
@@ -83,8 +130,13 @@ async def get_po(po_id: int, session: AsyncSession = Depends(get_session), asset
 
 @router.get("/{po_id}/lines", response_model=list[PendingAssetOut])
 async def list_lines(po_id: int, session: AsyncSession = Depends(get_session), asset_user=Depends(require_role(*WRITE_ROLES))):
+    """S0.3: a user limited to one work area sees only that area's lines."""
     await _get_scoped_po(po_id, session, asset_user)
+    domains = await allowed_asset_domains(session, asset_user)
     stmt = select(PendingAsset).where(PendingAsset.purchase_order_id == po_id).order_by(PendingAsset.id)
+    if domains is not None:
+        stmt = (stmt.join(AssetCategory, AssetCategory.id == PendingAsset.category_id)
+                .where(line_area_of().in_(domains)))
     return (await session.execute(stmt)).scalars().all()
 
 
@@ -94,8 +146,11 @@ async def add_line(
     actor=Depends(require_role(*WRITE_ROLES)),
 ):
     po = await _get_scoped_po(po_id, session, actor)
+    _open_or_422(po)
     try:
-        lines = await add_pending_asset_line(session, po, body.model_dump(), actor)
+        lines = await add_pending_asset_line(
+            session, po, body.model_dump(), actor, allowed_domains=await allowed_asset_domains(session, actor),
+        )
     except ValueError as exc:
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
@@ -113,8 +168,11 @@ async def add_bundle(
     """Adds `quantity` bundles (for example 4 Desktops) as ordinary lines, one
     per part, all or nothing -- see app.bundles.service.add_bundle_lines."""
     po = await _get_scoped_po(po_id, session, actor)
+    _open_or_422(po)
     try:
-        lines = await add_bundle_lines(session, po, body.model_dump(), actor)
+        lines = await add_bundle_lines(
+            session, po, body.model_dump(), actor, allowed_domains=await allowed_asset_domains(session, actor),
+        )
     except ValueError as exc:
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
@@ -129,12 +187,12 @@ async def edit_line(
     line_id: int, body: PendingAssetLineUpdateIn, session: AsyncSession = Depends(get_session),
     actor=Depends(require_role(*WRITE_ROLES)),
 ):
-    line = await session.get(PendingAsset, line_id)
-    if line is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "pending asset line not found")
-    await _get_scoped_po(line.purchase_order_id, session, actor)
+    line, po = await _get_scoped_line(line_id, session, actor)
+    _open_or_422(po)
     try:
-        line = await update_pending_asset_line(session, line, body.model_dump(), actor)
+        line = await update_pending_asset_line(
+            session, line, body.model_dump(), actor, allowed_domains=await allowed_asset_domains(session, actor),
+        )
     except ValueError as exc:
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
@@ -148,10 +206,8 @@ async def cancel_line(
     line_id: int, session: AsyncSession = Depends(get_session),
     actor=Depends(require_role(*WRITE_ROLES)),
 ):
-    line = await session.get(PendingAsset, line_id)
-    if line is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "pending asset line not found")
-    await _get_scoped_po(line.purchase_order_id, session, actor)
+    line, po = await _get_scoped_line(line_id, session, actor)
+    _open_or_422(po)
     try:
         line = await cancel_pending_asset_line(session, line, actor)
     except ValueError as exc:
@@ -168,11 +224,23 @@ async def deliver(
     actor=Depends(require_role(*WRITE_ROLES)),
 ):
     po = await _get_scoped_po(po_id, session, actor)
+    _open_or_422(po)
     line_ids = [d.pending_asset_id for d in body.lines]
+    if len(set(line_ids)) != len(line_ids):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "The same unit was chosen twice.")
+    # S0.5: an invoice cannot be dated before its purchase order.
+    if po.po_date is not None and body.invoice_date < po.po_date:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"The invoice date cannot be before the PO date ({po.po_date.strftime('%d-%m-%Y')}).",
+        )
     stmt = select(PendingAsset).where(PendingAsset.id.in_(line_ids), PendingAsset.purchase_order_id == po_id)
     lines = (await session.execute(stmt)).scalars().all()
     if len(lines) != len(line_ids):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "one or more selected lines do not belong to this purchase order")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "One or more selected lines do not belong to this purchase order.")
+    domains = await allowed_asset_domains(session, actor)
+    for line in lines:
+        check_work_area(domains, await line_area(session, line))
     deliveries = {
         d.pending_asset_id: {
             "serial_number": d.serial_number, "serial_pending": d.serial_pending,
@@ -184,7 +252,9 @@ async def deliver(
             session, lines, deliveries, po.po_number, po.po_date, po.vendor_id,
             body.invoice_number, body.invoice_date, body.invoice_amount, actor,
         )
-    except ValueError as exc:
+    except (ValueError, LifecycleError) as exc:
+        # S0.7: LifecycleError (e.g. a date the ledger refuses) used to escape
+        # as a bare 500 here; it is a problem with the request like any other.
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
     await session.commit()
@@ -199,11 +269,13 @@ async def record_pi(
     actor=Depends(require_role(*WRITE_ROLES)),
 ):
     po = await _get_scoped_po(po_id, session, actor)
+    _open_or_422(po)
     result = await record_pi_for_invoice(
         session, po, body.invoice_number, body.pi_number, body.pi_date, body.overwrite, actor,
+        allowed_domains=await allowed_asset_domains(session, actor),
     )
     if not result["updated"] and not result["skipped"]:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"no delivered assets found for invoice {body.invoice_number!r} on this purchase order")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"No delivered assets were found for invoice {body.invoice_number} on this purchase order.")
     await session.commit()
     return result
 
@@ -217,17 +289,22 @@ async def delete_po(
     this only while every line is still PENDING/CANCELLED; the moment even
     one line has been delivered (a real Asset now exists in the Fixed
     Asset Register), only the Primary Owner may delete it, since doing so
-    also removes those delivered assets (see delete_purchase_order)."""
+    also removes those delivered assets (see delete_purchase_order).
+    S0.3: someone limited to one work area may only delete a PO whose lines
+    are all in their own area (deleting cancels every line)."""
     po = await _get_scoped_po(po_id, session, actor)
     if not po.is_active:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "purchase order not found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, PO_NOT_FOUND)
     lines = (await session.execute(
         select(PendingAsset).where(PendingAsset.purchase_order_id == po_id)
     )).scalars().all()
+    domains = await allowed_asset_domains(session, actor)
+    for line in lines:
+        check_work_area(domains, await line_area(session, line))
     if any(line.status == "DELIVERED" for line in lines) and not actor.is_primary_owner:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
-            "Only the Primary Owner may delete a purchase order that already has delivered items",
+            "Only the head-office admin can delete a purchase order that already has delivered items.",
         )
     try:
         result = await delete_purchase_order(session, po, lines, actor)

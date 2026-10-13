@@ -406,6 +406,8 @@ async def test_creating_from_the_draft_makes_ordinary_lines_and_remembers_the_er
 async def test_a_plain_line_gets_its_category_and_item_from_the_item_and_the_whole_po_is_all_or_nothing(client, erp):
     ids = await _setup()
     h = await _headers(client, "OPR")
+    # S0.8: the lines must be on the ERP purchase order the PO is created from.
+    erp.pos[1133610106] = desktop_po(lines=[line(1, "CT1", "Good", 2, 100), line(2, "CT2", "Item missing", 1, 100)])
     good = {"item_code": "CT1", "description": "Good", "barcode": "CT1", "quantity": 2, "rate": 100, "tax_percent": 18,
             "item_id": ids["item_cable"]}
     body = {
@@ -434,7 +436,10 @@ async def test_choosing_an_item_can_be_remembered_for_the_code_the_product_name_
 
     async def create(po_no, scope, code):
         e = erp.erp_items[code]
-        body = {"company_id": ids["spl"], "po_number": po_no, "po_date": "2026-09-18", "vendor_id": ids["vansh"],
+        # S0.8: every create names the ERP purchase order it comes from.
+        po_code = {"P-NAME": 21, "P-CODE": 22}[po_no]
+        erp.pos[po_code] = desktop_po(po_code=po_code, po_number=po_no, lines=[line(1, code, e.name, 1, 100)])
+        body = {"erp_po_code": po_code, "company_id": ids["spl"], "po_number": po_no, "po_date": "2026-09-18", "vendor_id": ids["vansh"],
                 "cost_center_id": ids["cost_spl"], "lines": [{
                     "item_code": code, "description": e.name, "barcode": code, "quantity": 1, "rate": 100, "tax_percent": 18,
                     "item_id": ids["item_cable"], "map_scope": scope, "article_key": e.article_key, "article_name": e.article_name,

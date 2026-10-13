@@ -149,7 +149,8 @@ async def test_deliver_rejects_an_already_delivered_line():
         )
         await session.commit()
 
-        with pytest.raises(ValueError, match="not PENDING"):
+        # S0.7: plain words instead of the stored status code.
+        with pytest.raises(ValueError, match="already delivered"):
             await deliver_pending_assets(
                 session, [line], {line.id: {"serial_number": "SN-1-AGAIN", "initial_asset_user_id": ctx["stock"].id}},
                 po.po_number, po.po_date, po.vendor_id, "INV-005", date(2026, 2, 2), 1000.0, admin,

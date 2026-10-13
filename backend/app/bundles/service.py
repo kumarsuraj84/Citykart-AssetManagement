@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.asset_users.models import AssetUser
 from app.bundles.models import Bundle, BundlePart
+from app.core.validation import MAX_QUANTITY
 from app.items.models import Item
 from app.masters.serial_rule import serial_default
 from app.purchase_orders.models import PendingAsset, PurchaseOrder
@@ -154,6 +155,7 @@ async def deactivate_bundle(session: AsyncSession, bundle: Bundle, actor: AssetU
 
 async def add_bundle_lines(
     session: AsyncSession, po: PurchaseOrder, data: dict, actor: AssetUser,
+    allowed_domains: tuple[str, ...] | None = None,
 ) -> list[PendingAsset]:
     """Expands `quantity` bundles into ordinary PO lines, one per part (each
     `quantity` units, under that part's own category/sub-category), all or
@@ -163,7 +165,10 @@ async def add_bundle_lines(
     (derived by add_pending_asset_line)."""
     bundle = await session.get(Bundle, data["bundle_id"])
     if bundle is None or not bundle.is_active:
-        raise ValueError("bundle not found")
+        raise ValueError("The bundle you chose does not exist or is no longer active.")
+    quantity = data.get("quantity", 1)
+    if not isinstance(quantity, int) or quantity < 1 or quantity > MAX_QUANTITY:
+        raise ValueError(f"Quantity must be between 1 and {MAX_QUANTITY}.")
     parts = (await session.execute(
         select(BundlePart)
         .where(BundlePart.bundle_id == bundle.id, BundlePart.is_active.is_(True))
@@ -208,5 +213,5 @@ async def add_bundle_lines(
             "quantity": data["quantity"],
             "bundle_label": bundle.name,
             "erp_item_code": data.get("erp_item_code"),
-        }, actor))
+        }, actor, allowed_domains=allowed_domains))
     return created

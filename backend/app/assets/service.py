@@ -6,7 +6,7 @@ from app.assets.custom_field_values import validate_custom_field_values
 from app.assets.models import Asset
 from app.asset_users.models import AssetUser
 from app.lifecycle.service import apply_event
-from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Location
+from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Location, Vendor
 from app.numbering.service import build_code_tokens, generate_code, get_active_rule
 
 # The one reserved placeholder value exempt from Serial Number's global
@@ -129,43 +129,60 @@ async def _get_initial_asset_user(session: AsyncSession, company_id: int, initia
     in practice.
     """
     if initial_asset_user_id is None:
-        raise ValueError("initial_asset_user_id is required")
+        raise ValueError("Choose where the asset is received into.")
     asset_user = await session.get(AssetUser, initial_asset_user_id)
     if asset_user is None:
-        raise ValueError(f"initial asset user {initial_asset_user_id} not found")
+        raise ValueError("The place you chose to receive the asset into does not exist.")
+    if not asset_user.is_active:
+        raise ValueError(f"{asset_user.name} is no longer active, so assets cannot be received there.")
     if asset_user.company_id != company_id:
-        raise ValueError("initial asset user must belong to the same company as the asset")
+        raise ValueError("The place the asset is received into must belong to the same company as the asset.")
     return asset_user
 
 
-async def procure_assets(session: AsyncSession, data: dict, quantity: int, actor: AssetUser) -> list[Asset]:
+def _usable(obj, what: str, require_active: bool):
+    """S0.6: None -> "does not exist"; inactive -> refused when this is a new
+    choice (Add Asset). The PO delivery path delivers lines that were valid
+    when ordered, so it does not re-refuse a master deactivated since."""
+    if obj is None:
+        raise ValueError(f"The {what} you chose does not exist.")
+    if require_active and not getattr(obj, "is_active", True):
+        raise ValueError(f"The {what} {obj.name} is no longer active; choose another.")
+    return obj
+
+
+async def procure_assets(
+    session: AsyncSession, data: dict, quantity: int, actor: AssetUser, require_active: bool = False,
+) -> list[Asset]:
     """Behind "Add Asset": creates `quantity` identical assets (the "buying 20 mice" case),
     each with its own generated asset_code and its own PROCURED ledger entry recorded
     through apply_event — the only function allowed to write status/current_asset_user_id.
 
     Raises ValueError (bad/missing master data, no code rule, unresolvable code-rule
     token) or LifecycleError (e.g. a future purchase date); POST /api/assets turns
-    both into a 422.
+    both into a 422. `require_active` (S0.6): refuse deactivated masters (Add Asset).
     """
     company_id = data["company_id"]
     company = await session.get(Company, company_id)
-    if company is None:
-        raise ValueError(f"company {company_id} not found")
+    if company is None or (require_active and not company.is_active):
+        raise ValueError("The company you chose does not exist or is no longer active.")
     rule = await get_active_rule(session, company_id)
 
-    cost_center = await session.get(CostCenter, data["cost_center_id"])
-    if cost_center is None:
-        raise ValueError(f"cost center {data['cost_center_id']} not found")
+    cost_center = _usable(await session.get(CostCenter, data["cost_center_id"]), "cost centre", require_active)
     if cost_center.company_id != company_id:
-        raise ValueError("cost center must belong to the same company as the asset")
+        raise ValueError("The cost centre must belong to the same company as the asset.")
     if data.get("category_id") is None:
-        raise ValueError("choose an Item (or a category) for the asset")
-    category = await session.get(AssetCategory, data["category_id"])
-    if category is None:
-        raise ValueError(f"category {data['category_id']} not found")
+        raise ValueError("Choose an Item (or a category) for the asset.")
+    category = _usable(await session.get(AssetCategory, data["category_id"]), "category", require_active)
     subcategory = await session.get(AssetSubcategory, data["subcategory_id"]) if data.get("subcategory_id") else None
+    if data.get("subcategory_id"):
+        _usable(subcategory, "sub-category", require_active)
     if subcategory is not None and subcategory.category_id != category.id:
-        raise ValueError("sub-category does not belong to the selected category")
+        raise ValueError("The sub-category does not belong to the selected category.")
+    if data.get("vendor_id") is not None:
+        _usable(await session.get(Vendor, data["vendor_id"]), "vendor", require_active)
+    if data.get("brand_id") is not None:
+        _usable(await session.get(Brand, data["brand_id"]), "brand", require_active)
 
     asset_user = await _get_initial_asset_user(session, company_id, data.get("initial_asset_user_id"))
     location = await session.get(Location, asset_user.location_id)

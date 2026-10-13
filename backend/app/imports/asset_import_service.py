@@ -34,6 +34,8 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from io import BytesIO
 import openpyxl
+from app.core.excel import open_workbook
+from app.core.validation import MAX_QUANTITY, MAX_WARRANTY_YEARS
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.assets.audit_service import AUDITED_SCALAR_FIELDS, record_field_changes
@@ -151,6 +153,9 @@ def _parse_quantity(value) -> int:
         raise ValueError(f"Quantity '{value}' must be a whole number")
     if quantity < 1:
         raise ValueError("Quantity must be at least 1")
+    # S0.2: one row may never ask for an unbounded number of units.
+    if quantity > MAX_QUANTITY:
+        raise ValueError(f"Quantity must be at most {MAX_QUANTITY}")
     return quantity
 
 
@@ -165,6 +170,8 @@ def _parse_warranty_years(value) -> int:
         raise ValueError(f"Warranty Years '{value}' must be a whole number")
     if years < 0:
         raise ValueError("Warranty Years cannot be negative")
+    if years > MAX_WARRANTY_YEARS:
+        raise ValueError(f"Warranty Years must be at most {MAX_WARRANTY_YEARS}")
     return years
 
 
@@ -216,6 +223,8 @@ def _parse_edit_warranty_years(value):
         raise ValueError(f"Warranty Years '{value}' must be a whole number")
     if years < 0:
         raise ValueError("Warranty Years cannot be negative")
+    if years > MAX_WARRANTY_YEARS:
+        raise ValueError(f"Warranty Years must be at most {MAX_WARRANTY_YEARS}")
     return years
 
 
@@ -281,7 +290,7 @@ async def _validate_add_rows(
     actor's `scoped_company_ids` (None = ADMIN, unrestricted); a row whose company
     is outside it is never valid, and is also reported in `scope_violations` so
     commit can refuse the whole file (403) rather than quietly skip it."""
-    wb = openpyxl.load_workbook(BytesIO(content))
+    wb = open_workbook(content, ImportTemplateError)
     ws = wb.active
     header = _read_header(ws)
 
@@ -481,7 +490,7 @@ async def _validate_edit_rows(
     (valid_rows, errors, scope_violations) shape as `_validate_add_rows`,
     so the router/preview/commit plumbing doesn't need to know which mode
     it's looking at."""
-    wb = openpyxl.load_workbook(BytesIO(content))
+    wb = open_workbook(content, ImportTemplateError)
     ws = wb.active
     header = _read_header(ws)
 

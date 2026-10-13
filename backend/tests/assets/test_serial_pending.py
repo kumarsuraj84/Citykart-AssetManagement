@@ -14,9 +14,9 @@ async def _item(client, headers, ctx, name, **over):
     return resp.json()
 
 
-async def _po_with_lines(client, headers, ctx, item_id, quantity=2):
+async def _po_with_lines(client, headers, ctx, item_id, quantity=2, po_number="PO-SP"):
     po_id = (await client.post("/api/purchase-orders", headers=headers, json={
-        "company_id": ctx["co_id"], "po_number": "PO-SP", "po_date": "2026-01-01", "cost_center_id": ctx["cc_id"],
+        "company_id": ctx["co_id"], "po_number": po_number, "po_date": "2026-01-01", "cost_center_id": ctx["cc_id"],
     })).json()["id"]
     lines = (await client.post(f"/api/purchase-orders/{po_id}/lines", headers=headers, json={
         "description": "Amplifier", "item_id": item_id, "barcode": "AMP", "quantity": quantity, "purchase_cost": 500,
@@ -81,7 +81,8 @@ async def test_delivering_with_serial_pending_makes_assets_without_a_serial_that
     assert pending["total"] == 2
     assert all(a["serial_pending"] is True and a["serial_number"] is None for a in pending["items"])
     # a delivery with a real serial or N/A is never pending
-    po2, lines2 = await _po_with_lines(client, h, ctx, amp["id"], quantity=1)
+    # S0.5: a PO number is used once per company, so the second PO gets its own.
+    po2, lines2 = await _po_with_lines(client, h, ctx, amp["id"], quantity=1, po_number="PO-SP-2")
     ok = await client.post(f"/api/purchase-orders/{po2}/deliver", headers=h, json=_deliver_body(ctx, lines2, serial_number="N/A"))
     assert ok.status_code == 200
     assert (await client.get("/api/assets?serial_pending=true", headers=h)).json()["total"] == 2

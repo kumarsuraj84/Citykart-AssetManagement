@@ -1,15 +1,28 @@
 from datetime import date
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from app.core.validation import (
+    InModel, MAX_AMOUNT, MAX_QUANTITY, MAX_WARRANTY_YEARS, not_in_future, require_text,
+)
 
 
-class PurchaseOrderCreateIn(BaseModel):
+class PurchaseOrderCreateIn(InModel):
     company_id: int
-    po_number: str
+    po_number: str = Field(max_length=100)
     po_date: date
     vendor_id: int | None = None
     cost_center_id: int
     delivery_asset_user_id: int | None = None
-    warehouse_code: str | None = None
+    warehouse_code: str | None = Field(default=None, max_length=100)
+
+    @field_validator("po_number")
+    @classmethod
+    def _po_number(cls, value: str) -> str:
+        return require_text(value, "PO number")
+
+    @field_validator("po_date")
+    @classmethod
+    def _po_date(cls, value: date) -> date:
+        return not_in_future(value, "PO date")
 
 
 class PurchaseOrderOut(BaseModel):
@@ -39,36 +52,33 @@ class PurchaseOrderOut(BaseModel):
     pi_date: date | None = None
 
 
-class PendingAssetLineIn(BaseModel):
-    description: str
-    barcode: str | None = None
+class PendingAssetLineUpdateIn(InModel):
+    description: str = Field(max_length=500)
+    barcode: str | None = Field(default=None, max_length=200)
+    item_id: int | None = None
+    category_id: int | None = None
+    subcategory_id: int | None = None
+    brand_id: int | None = None
+    model: str | None = Field(default=None, max_length=200)
+    warranty_years: int = Field(default=0, ge=0, le=MAX_WARRANTY_YEARS)
+    purchase_cost: float | None = Field(default=None, ge=0, le=MAX_AMOUNT)
+    tax_percent: float | None = Field(default=None, ge=0, le=100)
+
+    @field_validator("description")
+    @classmethod
+    def _description(cls, value: str) -> str:
+        return require_text(value, "Description")
+
+
+class PendingAssetLineIn(PendingAssetLineUpdateIn):
     # The Item decides the Category and Sub-Category (the server fills them in
     # and overrides anything sent); category_id is only needed without an Item.
-    item_id: int | None = None
-    category_id: int | None = None
-    subcategory_id: int | None = None
-    brand_id: int | None = None
-    model: str | None = None
-    # AM-18: mandatory like Add Asset's own warranty_years -- 0 means "no
+    # AM-18: warranty_years is mandatory like Add Asset's own -- 0 means "no
     # warranty". Entered once per line, inherited by every unit this line's
     # quantity creates, same as barcode/description already are.
-    warranty_years: int = 0
-    purchase_cost: float | None = None
-    tax_percent: float | None = None
-    quantity: int = 1
-
-
-class PendingAssetLineUpdateIn(BaseModel):
-    description: str
-    barcode: str | None = None
-    item_id: int | None = None
-    category_id: int | None = None
-    subcategory_id: int | None = None
-    brand_id: int | None = None
-    model: str | None = None
-    warranty_years: int = 0
-    purchase_cost: float | None = None
-    tax_percent: float | None = None
+    # S0.2: quantity 1..1000 -- each unit is its own row, so an unbounded
+    # quantity used to let one request exhaust the server's memory.
+    quantity: int = Field(default=1, ge=1, le=MAX_QUANTITY)
 
 
 class PendingAssetOut(BaseModel):
@@ -102,10 +112,10 @@ class PendingAssetOut(BaseModel):
     delivered_asset_id: int | None
 
 
-class DeliveryLineIn(BaseModel):
+class DeliveryLineIn(InModel):
     pending_asset_id: int
     # Omitted only with serial_pending (the serial is read and added later).
-    serial_number: str | None = None
+    serial_number: str | None = Field(default=None, max_length=200)
     serial_pending: bool = False
     initial_asset_user_id: int
 
@@ -113,19 +123,33 @@ class DeliveryLineIn(BaseModel):
     def _serial_or_later(self):
         if self.serial_pending:
             self.serial_number = None
-        elif self.serial_number is None:
-            raise ValueError("a serial number (or N/A, or 'add it later') is needed for every delivered unit")
+            return self
+        # S0.5: a blank serial used to create an asset that was neither
+        # "pending" nor "N/A" -- it must be a real value, N/A, or "add it later".
+        self.serial_number = (self.serial_number or "").strip() or None
+        if self.serial_number is None:
+            raise ValueError("A serial number (or N/A, or 'add it later') is needed for every delivered unit.")
         return self
 
 
-class DeliveryDoneIn(BaseModel):
-    invoice_number: str
+class DeliveryDoneIn(InModel):
+    invoice_number: str = Field(max_length=100)
     invoice_date: date
-    invoice_amount: float
-    lines: list[DeliveryLineIn]
+    invoice_amount: float = Field(ge=0, le=MAX_AMOUNT)
+    lines: list[DeliveryLineIn] = Field(min_length=1, max_length=MAX_QUANTITY)
+
+    @field_validator("invoice_number")
+    @classmethod
+    def _invoice_number(cls, value: str) -> str:
+        return require_text(value, "Invoice number")
+
+    @field_validator("invoice_date")
+    @classmethod
+    def _invoice_date(cls, value: date) -> date:
+        return not_in_future(value, "Invoice date")
 
 
-class SerialCheckIn(BaseModel):
+class SerialCheckIn(InModel):
     serials: list[str] = Field(max_length=2000)
 
 
@@ -138,14 +162,19 @@ class SerialCheckOut(BaseModel):
     conflicts: list[SerialConflictOut]
 
 
-class RecordPiIn(BaseModel):
+class RecordPiIn(InModel):
     """AM-19: PI arrives per Invoice, not per PO -- a PO delivered across
     several partial deliveries gets one Invoice (and later one PI) per
     delivery, never a single PI for the whole PO. See
     app.purchase_orders.service.record_pi_for_invoice."""
-    invoice_number: str
-    pi_number: str
+    invoice_number: str = Field(max_length=100)
+    pi_number: str = Field(max_length=100)
     pi_date: date
+
+    @field_validator("pi_number")
+    @classmethod
+    def _pi_number(cls, value: str) -> str:
+        return require_text(value, "PI number")
     # False (default): only fills in assets whose PI is still blank.
     # True: overwrites every matching asset's PI, the deliberate escape
     # hatch for fixing a typo across all of them at once.
