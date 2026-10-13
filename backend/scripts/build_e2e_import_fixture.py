@@ -52,7 +52,7 @@ def _main():
         "Description": args.description, "Legacy Asset Code": args.legacy_asset_code,
         "Invoice Date": args.invoice_date, "PI Number": args.pi_number,
         "Vendor Code": args.vendor_code, "Serial Number": args.serial_number,
-        "Initial AssetUser Code": args.initial_asset_user_code,
+        "Received Into Code": args.initial_asset_user_code,
     }
     if args.custom_field_key:
         row[f"Custom:{args.custom_field_key}"] = args.custom_field_value

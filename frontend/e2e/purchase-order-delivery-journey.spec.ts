@@ -164,8 +164,9 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   const identity = page.getByRole("region", { name: "Identity" });
   await expect(identity.getByText(serialA, { exact: true })).toBeVisible();
   await expect(identity.getByText(barcode, { exact: true })).toBeVisible();
-  // AM-18: the line's Warranty Years was left at its default of 0, so Warranty Upto == Purchase Date.
-  await expect(identity.getByText(`0 years · until ${invoiceDate}`, { exact: true })).toBeVisible();
+  // AM-18 / S7 P3-3: the line's Warranty Years was left at its default of 0, so there is NO warranty to show
+  // (the screen no longer prints a meaningless "0 years · until <purchase date>").
+  await expect(identity.getByText(/years · until/)).toHaveCount(0);
 
   const procurement = page.getByRole("region", { name: "Procurement" });
   await expect(procurement.getByText(poNumber)).toBeVisible();
@@ -218,6 +219,8 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   await expect(lineOnce.getByText(/is already used by asset/i)).toBeVisible();
   await expect(page.getByRole("button", { name: "Receive 1 unit", exact: true })).toBeDisabled();
   await expect(page.locator("#receive-why")).toContainText("Line 1:");
+  // S7 fix round: leaving a Receive form that has typed data asks first ("leave without saving?"); accept it.
+  page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("link", { name: "Open PO" }).click();
   await expect(lineAgain.getByRole("cell").nth(3)).toHaveText("2");
   await expect(lineAgain.getByRole("cell").nth(4)).toHaveText("1");
