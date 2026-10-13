@@ -6,9 +6,10 @@ CKVPL, while the same real supplier (same GSTIN) has a different code in each. S
 supplier is matched to an existing CKAM vendor by GSTIN first, then by name or code, and a person
 confirms; the choice is remembered as a link."""
 import re
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.asset_users.models import AssetUser
+from app.erp.mirror_models import ErpVendorCopy
 from app.erp.source import ErpSource, ErpVendor
 from app.masters.models import Company, Vendor, VendorErpLink
 
@@ -32,11 +33,29 @@ async def _active_vendors(session: AsyncSession) -> list[Vendor]:
     return list((await session.execute(select(Vendor).where(Vendor.is_active.is_(True)).order_by(Vendor.id))).scalars().all())
 
 
-def suggest_vendor(erp: ErpVendor, vendors: list[Vendor]) -> tuple[Vendor | None, str | None]:
+async def known_gstins(session: AsyncSession, vendors: list[Vendor]) -> dict[int, set[str]]:
+    """Every GSTIN we know for each vendor: its own, plus the one the ERP holds for each supplier it is linked
+    to (a vendor made before the ERP supplied GSTINs may have none of its own, yet its linked supplier does)."""
+    known: dict[int, set[str]] = {v.id: ({_gstin(v.gstin)} - {""}) for v in vendors}
+    companies = {c.id: c.erp_code for c in (await session.execute(select(Company))).scalars().all()}
+    owner = {(companies[l.company_id], l.erp_vendor_code): v.id for v in vendors for l in v.erp_links if l.company_id in companies}
+    if owner:
+        rows = (await session.execute(
+            select(ErpVendorCopy.company_code, ErpVendorCopy.vendor_code, ErpVendorCopy.gstin)
+            .where(tuple_(ErpVendorCopy.company_code, ErpVendorCopy.vendor_code).in_(list(owner)), ErpVendorCopy.gstin.is_not(None))
+        )).all()
+        for company_code, vendor_code, gstin in rows:
+            if _gstin(gstin):
+                known[owner[(company_code, vendor_code)]].add(_gstin(gstin))
+    return known
+
+
+def suggest_vendor(erp: ErpVendor, vendors: list[Vendor], gstins: dict[int, set[str]] | None = None) -> tuple[Vendor | None, str | None]:
     """The CKAM vendor that is probably the same supplier: the same GSTIN, else the same name or code."""
     gstin = _gstin(erp.gstin)
     if gstin:
-        hit = next((v for v in vendors if _gstin(v.gstin) == gstin), None)
+        known = gstins if gstins is not None else {v.id: ({_gstin(v.gstin)} - {""}) for v in vendors}
+        hit = next((v for v in vendors if gstin in known.get(v.id, set())), None)
         if hit is not None:
             return hit, "gstin"
     keys = {_norm(erp.name), _norm(erp.code)} - {""}
@@ -51,10 +70,11 @@ async def list_erp_vendors(session: AsyncSession, source: ErpSource, company_id:
     erp = await source.vendors(company.erp_code)
     ckam = await _active_vendors(session)
     by_code = {link.erp_vendor_code: v for v in ckam for link in v.erp_links if link.company_id == company.id}
+    gstins = await known_gstins(session, ckam)
     out = []
     for e in erp:
         linked = by_code.get(e.code)
-        suggestion, reason = (None, None) if linked is not None else suggest_vendor(e, ckam)
+        suggestion, reason = (None, None) if linked is not None else suggest_vendor(e, ckam, gstins)
         out.append({
             "company_id": company.id, "erp_code": e.code, "name": e.name, "gstin": e.gstin, "contact_name": e.contact_name,
             "phone": e.phone, "email": e.email, "is_active": e.is_active,
@@ -88,7 +108,9 @@ async def import_vendor(session: AsyncSession, actor: AssetUser, source: ErpSour
         raise ValueError(f"{erp.name} is already a vendor here")
     gstin = _gstin(erp.gstin)
     if gstin:
-        twin = next((v for v in await _active_vendors(session) if _gstin(v.gstin) == gstin), None)
+        vendors = await _active_vendors(session)
+        known = await known_gstins(session, vendors)
+        twin = next((v for v in vendors if gstin in known.get(v.id, set())), None)
         if twin is not None:
             raise ValueError(f"{erp.name} is already a vendor here (same GSTIN as {twin.name}). Link it instead of adding it again.")
     code = erp.code

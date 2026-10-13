@@ -102,6 +102,24 @@ async def test_the_same_gstin_is_suggested_before_the_same_name(client, erp):
     assert row["suggested_vendor_id"] == await vendor_id("JSTECH") and row["suggestion_reason"] == "name"
 
 
+async def test_a_vendor_without_its_own_gstin_is_found_through_the_gstin_the_erp_holds_for_its_linked_supplier(client, erp):
+    from tests.erp.fake_warehouse import FakeWarehouse, wh_item, wh_line, wh_vendor
+    from app.erp.sync import run_sync
+    ids = await _setup()
+    # VANSH has no GSTIN of its own but is linked to CKSPL's supplier 11338, whose GSTIN is in CKAM's copy of the ERP data
+    wh = FakeWarehouse()
+    wh.lines = [wh_line("CKSPL", "A1", supplier_code="11338")]
+    wh.vendor_list = [wh_vendor("CKSPL", "11338", "VANSH ENTERPRISES", gstin=GSTIN)]
+    wh.item_list = [wh_item("CT371487")]
+    await run_sync(SessionLocal, wh, "manual")
+    erp.vendor_list = [ErpVendor("61", "A DIFFERENT NAME ALTOGETHER", gstin=GSTIN, company_code="CKVPL")]
+    [row] = (await client.get("/api/erp/vendors", params={"company_id": ids["vpl"]}, headers=await _headers(client))).json()
+    assert row["suggested_vendor_id"] == ids["vansh"] and row["suggestion_reason"] == "gstin"
+    # and adding it as a new vendor is refused for the same reason
+    resp = await client.post("/api/erp/vendors/import", headers=await _headers(client), json=link(ids["vpl"], "61"))
+    assert resp.status_code == 422 and "same GSTIN as Vansh Enterprises" in resp.json()["detail"]
+
+
 async def test_a_supplier_linked_in_this_company_shows_its_vendor_not_a_suggestion(client, erp):
     ids = await _setup()
     erp.vendor_list = [ErpVendor("11338", "VANSH ENTERPRISES", gstin=GSTIN, company_code="CKSPL")]
