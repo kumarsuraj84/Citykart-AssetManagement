@@ -61,8 +61,11 @@ Today CKAM asks the ERP live and keeps one baseline per PO. Instead:
   or turned CANCELLED is a cancellation. This replaces the baseline table and makes the PO change check automatic and instant.
 - Screens read the copy, never the ERP. The ERP can be down, slow or change its views and CKAM keeps working ("as of 06:10 today").
   A "Refresh now" button runs the same sync for one PO.
-- CKVPL needs no special code: its reader points at `silver.ckp_po_line`; when the ERP team adds CKVPL to `gold_ckam.po_line` we change
-  one query. CKAM never writes to the ERP.
+- **Silver only (owner decision 2026-10-13):** the gold layer for CKAM does not exist yet beyond `gold_ckam.po_line`, so the sync reads
+  `silver.ckp_po_line`, `ckp_pi_line`, `ckp_vendor`, `ckp_article`, `ckp_site` for **both** companies with one query shape (company
+  column). Measured: CKSPL fixed-asset PO lines since 2025-04 = 18 k rows in 10 s, open ones in 0.2 s, invoices 2.7 s: fine for a nightly
+  job (impossible for live screens, which is another reason for the local copy). When gold views arrive the owner will tell us and we
+  change one query. CKAM never writes to the ERP.
 - Nothing personal is copied (no employees, no finance).
 
 ### Change 2: one rule for linking ERP codes to CKAM records
@@ -75,11 +78,16 @@ Today CKAM asks the ERP live and keeps one baseline per PO. Instead:
 
 ### Change 3: places are first-class (Location grows up)
 Location gets a `kind` (STORE, WAREHOUSE, HEAD_OFFICE, OTHER) and `erp_site_code`. Then:
-- **"Create stores from ERP"**: one STORE user per active ERP store with `code = ERP short name` (LAM...) and `email = <code>@<domain>`
-  from a pattern the owner sets once (ERP has no emails). Re-running adds only new stores. The store logs in with that email
-  (login by code or email already works) as a self-service user: it sees only what is allotted to it, and confirms receipts (Change 4).
-- **HO and WH**: created by hand, two holders each: **stock point** (spares, status In stock) and **in use** point (equipment installed
-  there, status Installed). Plus normal named users.
+- **"Create stores from ERP"**: one STORE user per active ERP store with `code = ERP short name` (LAM...) and
+  **`email = sm.<code in lower case>@citykartstores.com`** (owner's rule: all sites except HO / WH / Training Room; codes are 3 letters,
+  one has 4: `SPR2` -> `sm.spr2@citykartstores.com`). ERP has no emails, so the rule is the only source.
+  Checked against the ERP (2026-10-13): of 300 CKSPL sites of kind STORE, 276 have exactly 3 letters; 24 have other shapes (SPR2 and
+  NSO1 are real-looking; the rest are DUMMY / test / `xx` / closed). So the button creates users only for codes of 3 letters or
+  3 letters + 1 digit whose ERP store status is active, and lists the others as "skipped, please review" for the owner to include or ignore.
+  Re-running adds only new stores. No duplicates exist among active short names. The store logs in with that email (login by code or email
+  already works) as a self-service user: it sees only what is allotted to it, and confirms receipts (Change 4) if the owner chooses so.
+- **HO, WH and Training Room** (no location mailbox; the ERP has no Training Room site): created by hand, two holders each: **stock
+  point** (spares, status In stock) and **in use** point (equipment installed there, status Installed). Plus normal named users.
 - **People**: own email, own login; a person in both companies gets one user per company plus the existing company-access grant.
 - A new store opening in the ERP shows up in a "new stores" list; one click creates its user.
 
@@ -101,7 +109,9 @@ Today each asset gets an instant MOVED event. Warehouse to store needs more. New
 An asset belongs to the company that bought it (books, asset code). Today it can only move to holders of that company. Recommended:
 an asset may sit with a holder of **another** company when the person moving it can act in both; it stays owned by the buyer and is
 flagged "inter-company use" in the register, so reports can be cut by *owner company* and by *location company*.
-This is a decision for the owner (section 7).
+**Decided 2026-10-13: yes, both ways.** A CKSPL asset can be allotted or installed to a CKVPL user or location, and a CKVPL asset to a
+CKSPL user or location. The "only within its own company" rule in `lifecycle/service.py` is replaced by: the person moving it must have
+access to the asset's company and to the holder's company.
 
 ### PO model on top of the copy
 - A CKAM PO = ERP PO lines (from the copy) + CKAM's own part: Item chosen per line, units staged, deliveries with serials. Manual POs
@@ -131,11 +141,15 @@ In transit. 6. The store logs in and confirms; assets are Allotted to the store 
 | 4 | Transfer documents, In transit status, store receipt, "not received" dashboard | 3 |
 | 5 | Inter-company use (owner company vs location company) | decision |
 | 6 | Invoice details from the ERP | 1, 2 |
-| 7 | ERP packet reference on transfers | ERP team's view |
+| 7 | ERP packet reference on transfers, from silver challan + receipt tables (CKSPL only) | 1, 4 |
 
 ## 7. Decisions needed from the owner
 
-1. Email pattern for store users (`<code>@???`).
-2. Can a CKVPL-bought asset sit in a CKSPL store or with CKSPL staff? (Recommended: yes, flagged as inter-company use.)
-3. Do stores confirm receipt themselves, or only IT? (Recommended: stores, with IT able to confirm for them.)
-4. Ask the ERP team for: CKVPL in `gold_ckam.po_line`, the `gold_ckam.fa_transfer_line` view, and a narrower `ckpost` login.
+1. ~~Email pattern~~ **Answered:** `sm.<code>@citykartstores.com` for every site except HO / WH / Training Room.
+2. ~~Cross-company use~~ **Answered:** yes, both directions.
+3. **Open:** does the store confirm that the boxes arrived (recommended), or does IT do it for them? (Asked again in plain words.)
+4. ~~ERP team requests~~ **Answered:** use the silver layer only for now; the owner will share gold views when they exist. Consequence: the
+   ERP packet reference is built from `silver.fact_dc_line` (challan lines of fixed assets: challan no, date, destination site, item, qty;
+   2.2 s for 30 days, fine for the nightly copy) and `silver.fact_store_receipt_event` (store receipt, where it matches). The per-item
+   "in transit" table (`fact_transfer_out_line`) is still not readable, so "in transit" in the packet panel is inferred (challan exists,
+   no receipt yet). `ERP_FA_TRANSFER_REQUEST.md` stays on file but is not needed to start.
