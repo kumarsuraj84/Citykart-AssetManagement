@@ -79,7 +79,9 @@ describe("NewPurchaseOrderForm", () => {
     fireEvent.change(screen.getByLabelText(/po no/i), { target: { value: "PO-2" } });
     fireEvent.click(screen.getByLabelText(/cost centre/i));
     fireEvent.click(await screen.findByText("Head Office"));
-    fireEvent.click(screen.getByLabelText(/delivery location/i));
+    // The delivery location is labelled "Received Into", never "Initial Asset User".
+    expect(screen.queryByText(/initial asset user|delivery location/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText(/received into/i));
     expect(screen.queryByText("A Person")).not.toBeInTheDocument();          // only stock points are offered
     fireEvent.click(await screen.findByText("WH Tajnagar Stores"));
     fireEvent.click(screen.getByRole("button", { name: /create purchase order/i }));

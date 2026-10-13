@@ -102,6 +102,7 @@ describe("PI from the ERP", () => {
     open(preview([ROW]));
     expect(await screen.findByText(/PI PI-100 · 2026-09-28/)).toBeInTheDocument();
     expect(screen.getByText("Ready to record")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Purchase Invoice (PI) from the ERP" })).toBeInTheDocument();
     expect(screen.getByText(/delivered here as INV-1 \(8 assets\)/)).toBeInTheDocument();
     const box = screen.getByRole("checkbox", { name: "Record PI PI-100" });
     expect(box).toBeChecked();

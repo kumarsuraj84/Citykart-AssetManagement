@@ -1,7 +1,13 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { PackagePlus, Printer, Hash, UserRound } from "lucide-react";
 import { apiClient } from "../../lib/api-client";
+import { useAccess } from "../../lib/access";
+import { useMyAssetUserId } from "../../lib/auth-store";
+import { statusOptions, workAreaLabel } from "../../lib/labels";
+import { categoryOptions, companyOptions, placeOptions } from "../../lib/option-labels";
+import { usePlaceLookups } from "../../lib/lookups";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -67,6 +73,9 @@ interface AssetRow {
   // Sub-Category/Vendor/Cost Centre so every FK column on the register can
   // show a name instead of a bare id.
   current_asset_user_name: string | null;
+  /** EMPLOYEE / STORE / STOCK_POINT / INSTALLED: lets the status read
+   * "With Employee" or "With Store" instead of the generic wording. */
+  current_asset_user_type?: string | null;
   company_name: string | null;
   category_name: string | null;
   subcategory_name: string | null;
@@ -91,18 +100,10 @@ interface Option {
   code?: string;
   email?: string;
   name: string;
+  asset_user_type?: string | null;
+  company_id?: number | null;
+  location_id?: number | null;
 }
-
-// Lets someone find an Asset User by typing their code or email, not just
-// their name -- the same fields AssetUsersScreen's own Code/Email columns
-// show, so the search matches what's actually on their record.
-function assetUserKeywords(h: Option): string[] {
-  return [h.code, h.email].filter((v): v is string => Boolean(v));
-}
-
-// Fixed list, matches backend/app/assets/models.py ASSET_STATUSES -- this is a closed set
-// of lifecycle states, not master data, so there's nothing to fetch.
-const ASSET_STATUSES = ["IN_STOCK", "ALLOTTED", "INSTALLED", "UNDER_REPAIR", "DISPOSED", "SOLD", "SCRAPPED", "LOST"];
 
 // Radix Select doesn't allow an empty-string item value, so "an unfiltered dimension" is
 // represented by this sentinel rather than by the empty string the query param logic uses.
@@ -120,7 +121,6 @@ function asOptionArray(data: unknown): Option[] {
 export const PAGE_SIZE = 50;
 
 const dash = (v: string | null | undefined) => (v === null || v === undefined || v === "" ? "—" : v);
-const domainLabel = (v: string) => (v === "NON_IT" ? "Admin / Non-IT" : v);
 // Matches AssetDetail.tsx's own ReadField formatting for these same four
 // money fields (toFixed(2), no currency symbol) -- one number convention
 // across the register and Asset 360, not two.
@@ -152,14 +152,18 @@ interface AssetColumnDef {
 // field added ... that should come outside also").
 const ASSET_OPTIONAL_COLUMNS: AssetColumnDef[] = [
   { key: "category", label: "Category", defaultVisible: true, cell: (a) => dash(a.category_name) },
-  { key: "subcategory", label: "Sub-Category", defaultVisible: true, cell: (a) => dash(a.subcategory_name) },
+  { key: "subcategory", label: "Sub-category", defaultVisible: true, cell: (a) => dash(a.subcategory_name) },
   { key: "description", label: "Description", defaultVisible: true, cell: (a) => a.description },
   { key: "brand", label: "Brand", defaultVisible: true, cell: (a) => dash(a.brand_name) },
   { key: "model", label: "Model", defaultVisible: true, cell: (a) => dash(a.model) },
   { key: "serial_number", label: "Serial Number", defaultVisible: true, cell: (a) => (a.serial_pending ? "Pending" : dash(a.serial_number)) },
-  { key: "status", label: "Status", defaultVisible: true, cell: (a) => <StatusBadge status={a.status} compact /> },
-  { key: "asset_user", label: "Asset User", defaultVisible: true, cell: (a) => dash(a.current_asset_user_name) },
-  { key: "asset_domain", label: "Responsibility", defaultVisible: true, cell: (a) => domainLabel(a.asset_domain) },
+  {
+    key: "status", label: "Status", defaultVisible: true,
+    cell: (a) => <StatusBadge status={a.status} holderType={a.current_asset_user_type} compact />,
+  },
+  // Who or where the asset is with: a person, store, stock room or install point.
+  { key: "asset_user", label: "With", defaultVisible: true, cell: (a) => dash(a.current_asset_user_name) },
+  { key: "asset_domain", label: "Work area", defaultVisible: true, cell: (a) => dash(workAreaLabel(a.asset_domain)) },
   { key: "company", label: "Company", defaultVisible: true, cell: (a) => dash(a.company_name) },
   { key: "legacy_asset_code", label: "Legacy Asset Code", defaultVisible: false, cell: (a) => dash(a.legacy_asset_code) },
   { key: "barcode", label: "Barcode", defaultVisible: false, cell: (a) => dash(a.barcode) },
@@ -169,7 +173,7 @@ const ASSET_OPTIONAL_COLUMNS: AssetColumnDef[] = [
   { key: "po_date", label: "PO Date", defaultVisible: false, cell: (a) => dash(a.po_date) },
   { key: "invoice_number", label: "Invoice Number", defaultVisible: false, cell: (a) => dash(a.invoice_number) },
   { key: "invoice_date", label: "Invoice Date", defaultVisible: false, cell: (a) => dash(a.invoice_date) },
-  { key: "pi_number", label: "PI Number", defaultVisible: false, cell: (a) => dash(a.pi_number) },
+  { key: "pi_number", label: "Purchase Invoice (PI) Number", defaultVisible: false, cell: (a) => dash(a.pi_number) },
   { key: "pi_date", label: "PI Date", defaultVisible: false, cell: (a) => dash(a.pi_date) },
   // AM-16: right-aligned + tabular-nums -- these are genuinely numeric,
   // scanned-down-a-column values (unlike the mixed-content columns above),
@@ -238,17 +242,30 @@ interface AssetRegisterProps {
   // target, not a decorative number -- applied once, on first render, the
   // same way every other filter starts empty and is then user-driven.
   initialStatus?: string;
+  /** Start with the "Mine" filter on (/my-assets sends staff here). */
+  initialMine?: boolean;
+  /** Start with this search text. */
+  initialQuery?: string;
+  /** Put the cursor in the search box (Home's "Find Asset"). */
+  focusSearch?: boolean;
 }
 
-export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
+export function AssetRegister({ initialStatus, initialMine, initialQuery, focusSearch }: AssetRegisterProps = {}) {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const [q, setQRaw] = useState("");
+  const { can, isPrimaryOwner } = useAccess();
+  const canWork = can("work");
+  // "Mine": the assets with the logged-in person. Only for someone who can
+  // hold assets (the head-office admin account is not a person or place).
+  const myId = useMyAssetUserId();
+  const canFilterMine = myId !== null && !isPrimaryOwner;
+  const [q, setQRaw] = useState(initialQuery ?? "");
   const [exact, setExactRaw] = useState(false);
   const [status, setStatusRaw] = useState(initialStatus ?? "");
   const [domain, setDomainRaw] = useState("");
   const [categoryId, setCategoryIdRaw] = useState("");
-  const [assetUserId, setAssetUserIdRaw] = useState("");
+  const [assetUserId, setAssetUserIdRaw] = useState(initialMine && canFilterMine ? String(myId) : "");
+  const mine = canFilterMine && assetUserId === String(myId);
   const [companyId, setCompanyIdRaw] = useState("");
   const [page, setPageRaw] = useState(0);
   const [sortBy, setSortByRaw] = useState<string | null>(null);
@@ -389,6 +406,17 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
     queryFn: () => apiClient.get<Option[]>("/asset-users"),
   });
   const asset_users = asOptionArray(asset_usersData);
+  // Place and company for each person/place in the "With" and "Move to" lists.
+  const placeLookups = usePlaceLookups();
+  const peopleAndPlaces = placeOptions(asset_users, placeLookups);
+
+  // "Serial Pending (n)": one cheap count (limit 1), only for people who can fill them in.
+  const serialPendingQ = useQuery({
+    queryKey: ["assets", "serial-pending-count"],
+    queryFn: () => apiClient.get<{ total?: number }>("/assets?serial_pending=true&limit=1"),
+    enabled: canWork,
+  });
+  const serialPendingCount = typeof serialPendingQ.data?.total === "number" ? serialPendingQ.data.total : null;
 
   const allSelected = items.length > 0 && items.every((a) => selected.includes(a.id));
 
@@ -464,7 +492,28 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Asset Register" description="Search, filter and bulk-move assets.">
+      <PageHeader
+        title="Assets"
+        description="Search, filter and move assets."
+        actions={
+          canWork ? (
+            <>
+              <Button asChild variant="outline" size="sm">
+                <Link to="/serial-pending">
+                  <Hash className="h-4 w-4" aria-hidden="true" />
+                  Serial Pending{serialPendingCount !== null ? ` (${serialPendingCount})` : ""}
+                </Link>
+              </Button>
+              <Button asChild size="sm">
+                <Link to="/assets/new">
+                  <PackagePlus className="h-4 w-4" aria-hidden="true" />
+                  Add Assets
+                </Link>
+              </Button>
+            </>
+          ) : undefined
+        }
+      >
         {/* AM-14: one toolbar band (subtle bg-muted/40 + border) groups search/
             filters and the Columns view-option together, instead of the filter
             row and the Columns button floating as two structurally-unrelated
@@ -479,6 +528,7 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
               placeholder="Asset code, description, serial, PO, invoice…"
               value={q}
               onChange={(e) => setQ(e.target.value)}
+              autoFocus={focusSearch}
               className="w-64"
             />
             <label
@@ -502,9 +552,9 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>All statuses</SelectItem>
-                {ASSET_STATUSES.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {s.replace(/_/g, " ")}
+                {statusOptions().map((s) => (
+                  <SelectItem key={s.value} value={s.value}>
+                    {s.label}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -512,67 +562,69 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="filter-domain">Responsibility</Label>
+            <Label htmlFor="filter-domain">Work area</Label>
             <Select value={domain || ALL} onValueChange={(v) => setDomain(v === ALL ? "" : v)}>
-              <SelectTrigger id="filter-domain" aria-label="Responsibility" className="w-40">
+              <SelectTrigger id="filter-domain" aria-label="Work area" className="w-44">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>All</SelectItem>
-                <SelectItem value="IT">IT</SelectItem>
-                <SelectItem value="NON_IT">Admin / Non-IT</SelectItem>
+                <SelectItem value="IT">{workAreaLabel("IT")}</SelectItem>
+                <SelectItem value="NON_IT">{workAreaLabel("NON_IT")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="filter-category">Category</Label>
-            <Select value={categoryId || ALL} onValueChange={(v) => setCategoryId(v === ALL ? "" : v)}>
-              <SelectTrigger id="filter-category" aria-label="Category" className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All categories</SelectItem>
-                {categories.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              id="filter-category"
+              aria-label="Category"
+              className="w-44"
+              value={categoryId || ALL}
+              onValueChange={(v) => setCategoryId(v === ALL ? "" : v)}
+              options={[{ value: ALL, label: "All categories" }, ...categoryOptions(categories)]}
+            />
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="filter-asset-user">Asset User</Label>
+            <Label htmlFor="filter-asset-user">With</Label>
             <SearchableSelect
               id="filter-asset-user"
-              aria-label="Asset User"
-              className="w-40"
+              aria-label="With"
+              className="w-48"
               value={assetUserId || ALL}
               onValueChange={(v) => setAssetUserId(v === ALL ? "" : v)}
-              options={[
-                { value: ALL, label: "All asset_users" },
-                ...asset_users.map((h) => ({ value: String(h.id), label: h.name, keywords: assetUserKeywords(h) })),
-              ]}
+              searchPlaceholder="Code, name, place…"
+              options={[{ value: ALL, label: "Everyone" }, ...peopleAndPlaces]}
             />
           </div>
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="filter-company">Company</Label>
-            <Select value={companyId || ALL} onValueChange={(v) => setCompanyId(v === ALL ? "" : v)}>
-              <SelectTrigger id="filter-company" aria-label="Company" className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All companies</SelectItem>
-                {companies.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              id="filter-company"
+              aria-label="Company"
+              className="w-44"
+              value={companyId || ALL}
+              onValueChange={(v) => setCompanyId(v === ALL ? "" : v)}
+              options={[{ value: ALL, label: "All companies" }, ...companyOptions(companies)]}
+            />
           </div>
+
+          {canFilterMine && (
+            <Button
+              type="button"
+              size="sm"
+              variant={mine ? "default" : "outline"}
+              aria-pressed={mine}
+              onClick={() => setAssetUserId(mine ? "" : String(myId))}
+              title="Only the assets with you"
+            >
+              <UserRound className="h-4 w-4" aria-hidden="true" />
+              Mine
+            </Button>
+          )}
         </div>
 
         <DropdownMenu>
@@ -604,12 +656,26 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
         </div>
       </PageHeader>
 
-      {selected.length > 0 && (
+      {mine && (
+        <p className="text-sm text-muted-foreground" role="status">
+          Showing only the assets with you.
+        </p>
+      )}
+
+      {canWork && selected.length > 0 && (
         <div className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2">
           <span className="text-sm">{selected.length} selected</span>
-          <Button size="sm" onClick={openMove}>
-            Move
-          </Button>
+          <div className="flex gap-2">
+            <Button asChild size="sm" variant="outline">
+              <Link to="/print-labels" search={{ assets: selected.join(",") }}>
+                <Printer className="h-4 w-4" aria-hidden="true" />
+                Print labels
+              </Link>
+            </Button>
+            <Button size="sm" onClick={openMove}>
+              Move
+            </Button>
+          </div>
         </div>
       )}
 
@@ -630,13 +696,19 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
             description={q || status || domain || categoryId || assetUserId || companyId ? "Try a different search or filter." : undefined}
           />
         }
-        selection={{
-          isSelected: (a) => selected.includes(a.id),
-          onToggle: (a, checked) => toggleOne(a.id, checked),
-          isAllSelected: allSelected,
-          onToggleAll: toggleAll,
-          rowAriaLabel: (a) => `Select ${a.asset_code}`,
-        }}
+        // Selection only serves the Move / Print labels bar, so people who
+        // cannot move assets (View Only) get no checkboxes at all.
+        selection={
+          canWork
+            ? {
+                isSelected: (a) => selected.includes(a.id),
+                onToggle: (a, checked) => toggleOne(a.id, checked),
+                isAllSelected: allSelected,
+                onToggleAll: toggleAll,
+                rowAriaLabel: (a) => `Select ${a.asset_code}`,
+              }
+            : undefined
+        }
         pagination={{
           summary: (
             <>
@@ -668,7 +740,8 @@ export function AssetRegister({ initialStatus }: AssetRegisterProps = {}) {
               aria-label="Move to"
               value={moveAssetUserId || undefined}
               onValueChange={setMoveAssetUserId}
-              options={asset_users.map((h) => ({ value: String(h.id), label: h.name, keywords: assetUserKeywords(h) }))}
+              searchPlaceholder="Code, name, place…"
+              options={peopleAndPlaces}
             />
           </div>
 

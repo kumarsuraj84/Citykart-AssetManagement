@@ -38,13 +38,31 @@ import { BulkImportExport } from "@/components/shared/BulkImportExport";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { NewDepartmentDialog, NewLocationDialog, useCanCreateMasters } from "@/components/quick-create/masters";
 import { bulkDeactivate, type BulkDeactivateFailure } from "../../lib/bulk-deactivate";
+import {
+  PLACE_TYPES,
+  ROLES,
+  placeTypeLabel,
+  placeTypePlural,
+  roleLabel,
+  workAreaLabel,
+  type PlaceType,
+} from "../../lib/labels";
+import { usePlaceLookups } from "../../lib/lookups";
+import { companyOptions } from "../../lib/option-labels";
 import { ErpStoresDialog } from "./ErpStoresDialog";
 
-const ASSET_USER_TYPES = ["EMPLOYEE", "STORE", "INSTALLED", "STOCK_POINT"] as const;
-// The Primary Owner is deliberately excluded -- it's fixed, not selectable
-// here (see require_primary_owner on the backend); this list is what
-// ordinary ADMIN-managed accounts may be set to.
-const ROLES = ["ADMIN", "OPERATOR", "VIEWER", "SELF_SERVICE"] as const;
+const ASSET_USER_TYPES = PLACE_TYPES;
+// ROLES (lib/labels): the Primary Owner is deliberately not one of them -- it
+// is fixed, not selectable here (see require_primary_owner on the backend);
+// that list is what ordinary ADMIN-managed accounts may be set to.
+
+/** What each People & Places list is for, in plain words. */
+const TYPE_DESCRIPTIONS: Record<PlaceType, string> = {
+  EMPLOYEE: "People who can be given assets, and their logins.",
+  STORE: "CityKart stores that hold assets.",
+  STOCK_POINT: "Places where assets are kept in stock, such as head-office stock or a warehouse.",
+  INSTALLED: "Places where assets are installed, such as inside a store.",
+};
 
 // STOCK_POINT/INSTALLED asset_users aren't people -- they're a location's own
 // stock/install bucket (one per physical location a company has), which
@@ -54,7 +72,7 @@ const ROLES = ["ADMIN", "OPERATOR", "VIEWER", "SELF_SERVICE"] as const;
 // and the coverage checklist below ("which locations still need a stock
 // point") -- see the product discussion that prompted this.
 const TYPE_POINT_CONFIG: Partial<Record<(typeof ASSET_USER_TYPES)[number], { prefix: string; noun: string }>> = {
-  STOCK_POINT: { prefix: "STK", noun: "Stock Point" },
+  STOCK_POINT: { prefix: "STK", noun: "Stock Room" },
   INSTALLED: { prefix: "INS", noun: "Install Point" },
 };
 
@@ -83,6 +101,10 @@ interface AssetUserRow {
   is_primary_owner: boolean;
   login_enabled: boolean;
   is_active: boolean;
+  /** IT / NON_IT / BOTH (null = Both): the login's work area. Shown, and sent
+   * back unchanged on edit so saving the form never clears it. */
+  allowed_asset_domains?: string | null;
+  primary_asset_domain?: string | null;
 }
 
 interface Company {
@@ -113,6 +135,9 @@ interface AssetUserDraft {
   phone: string;
   role: string;
   loginEnabled: boolean;
+  /** Carried through from the record being edited (not editable here yet). */
+  allowed_asset_domains?: string | null;
+  primary_asset_domain?: string | null;
 }
 
 const emptyDraft: AssetUserDraft = {
@@ -143,10 +168,27 @@ function buildPayload(draft: AssetUserDraft) {
     phone: draft.phone || null,
     role: draft.loginEnabled ? draft.role : "SELF_SERVICE",
     login_enabled: draft.loginEnabled,
+    // The server's PUT replaces every field it receives a default for, so an
+    // edit sends the work area back exactly as it was (never clears it).
+    ...(draft.allowed_asset_domains !== undefined ? { allowed_asset_domains: draft.allowed_asset_domains } : {}),
+    ...(draft.primary_asset_domain !== undefined ? { primary_asset_domain: draft.primary_asset_domain } : {}),
   };
 }
 
-export function AssetUsersScreen() {
+/** "Both" when a login has no work-area limit; a dash for records without a login. */
+function workAreaText(h: AssetUserRow): string {
+  if (!h.login_enabled) return "—";
+  return workAreaLabel(h.allowed_asset_domains || "BOTH");
+}
+
+interface AssetUsersScreenProps {
+  /** People & Places shows one type per list (Employees, Stores, Stock Rooms,
+   * Install Points): the list is filtered to it, new records get it, and the
+   * type selector is hidden. Without it, every type is listed together. */
+  fixedType?: PlaceType;
+}
+
+export function AssetUsersScreen({ fixedType }: AssetUsersScreenProps = {}) {
   const qc = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -200,13 +242,26 @@ export function AssetUsersScreen() {
   const [newDepartment, setNewDepartment] = useState(false);
 
   const companyName = (id: number | null) => (id === null ? "—" : companies.find((c) => c.id === id)?.name ?? String(id));
+  // Every company's places, for the Place column (the form itself still
+  // fetches only the chosen company's places, above).
+  const placeLookups = usePlaceLookups();
+  const placeName = (id: number | null) =>
+    id === null ? "—" : (placeLookups.locations[id] ?? "—");
+  const departmentName = (id: number | null) =>
+    id === null ? "—" : (departments.find((d) => d.id === id)?.name ?? "—");
+
+  // Wording for this list: "Employee"/"Employees" when fixed to one type.
+  const noun = fixedType ? placeTypeLabel(fixedType) : "Person / Place";
+  const title = fixedType ? placeTypePlural(fixedType) : "People & Places";
 
   // The Primary Owner is a fixed, company-less bootstrap account managed
   // through its own protected grant/revoke flow, not this ordinary
   // Add/Edit/Deactivate CRUD screen (see app.core.deps.require_primary_owner).
   // It's excluded from this list entirely rather than half-rendered with
   // blank Company/Location/Code cells.
-  const visibleAssetUsers = asset_users.filter((h) => !h.is_primary_owner);
+  const visibleAssetUsers = asset_users.filter(
+    (h) => !h.is_primary_owner && (fixedType === undefined || h.asset_user_type === fixedType),
+  );
 
   const createMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) => apiClient.post("/asset-users", payload),
@@ -332,7 +387,7 @@ export function AssetUsersScreen() {
   function openAdd() {
     setEditingId(null);
     setOriginalRole(null);
-    setDraft(emptyDraft);
+    setDraft(fixedType ? { ...emptyDraft, asset_user_type: fixedType } : emptyDraft);
     setFormOpen(true);
   }
 
@@ -350,6 +405,8 @@ export function AssetUsersScreen() {
       phone: h.phone ?? "",
       role: h.role,
       loginEnabled: h.login_enabled,
+      allowed_asset_domains: h.allowed_asset_domains,
+      primary_asset_domain: h.primary_asset_domain,
     });
     setFormOpen(true);
   }
@@ -387,7 +444,11 @@ export function AssetUsersScreen() {
     draft.location_id !== "";
 
   const activePointConfig = pointConfigFor(draft.asset_user_type);
-  const codeLabel = activePointConfig ? `${activePointConfig.noun} Code` : "Code";
+  const codeLabel = activePointConfig
+    ? `${activePointConfig.noun} Code`
+    : draft.asset_user_type === "EMPLOYEE" || draft.asset_user_type === "STORE"
+      ? `${placeTypeLabel(draft.asset_user_type)} Code`
+      : "Code";
   const nameLabel = activePointConfig ? `${activePointConfig.noun} Name` : "Name";
 
   // "Which of this company's locations already have a STOCK_POINT/INSTALLED
@@ -415,11 +476,37 @@ export function AssetUsersScreen() {
 
   const selectedRows = visibleAssetUsers.filter((h) => selected.includes(h.id));
 
+  // Plain-word columns per list. A Stock Room / Install Point is a place, not a
+  // person: no login, no department -- just where it is.
+  const isPlaceList = fixedType === "STOCK_POINT" || fixedType === "INSTALLED";
+  const showsLogins = !isPlaceList;
   const columns: DataTableColumn<AssetUserRow>[] = [
-    { key: "code", header: "Code", cell: (h) => h.code },
-    { key: "name", header: "Name", cell: (h) => h.name },
-    { key: "asset_user_type", header: "Type", cell: (h) => h.asset_user_type },
-    { key: "role", header: "Role", cell: (h) => (h.login_enabled ? h.role : "—") },
+    ...(isPlaceList
+      ? [
+          { key: "name", header: noun, cell: (h: AssetUserRow) => h.name },
+          { key: "code", header: "Code", cell: (h: AssetUserRow) => h.code },
+        ]
+      : [
+          { key: "code", header: fixedType === "EMPLOYEE" ? "Employee Code" : fixedType === "STORE" ? "Store Code" : "Code", cell: (h: AssetUserRow) => h.code },
+          { key: "name", header: "Name", cell: (h: AssetUserRow) => h.name },
+        ]),
+    ...(fixedType === undefined
+      ? [{ key: "asset_user_type", header: "Type", cell: (h: AssetUserRow) => placeTypeLabel(h.asset_user_type) || "—" }]
+      : []),
+    { key: "place", header: "Place", cell: (h) => placeName(h.location_id) },
+    ...(fixedType === "EMPLOYEE"
+      ? [{ key: "department", header: "Department", cell: (h: AssetUserRow) => departmentName(h.department_id) }]
+      : []),
+    ...(showsLogins
+      ? [
+          {
+            key: "role",
+            header: "Login",
+            cell: (h: AssetUserRow) => (h.login_enabled ? roleLabel(h.role, h.is_primary_owner) : "No login"),
+          },
+          { key: "work_area", header: "Work area", cell: (h: AssetUserRow) => workAreaText(h) },
+        ]
+      : []),
     { key: "company", header: "Company", cell: (h) => companyName(h.company_id) },
     {
       key: "__actions",
@@ -460,17 +547,20 @@ export function AssetUsersScreen() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title="Asset Users"
+        title={title}
+        description={fixedType ? TYPE_DESCRIPTIONS[fixedType] : "Employees, stores, stock rooms and install points that can hold assets."}
         actions={
           <>
+            {/* One import/export file covers every kind of person and place
+                (its Type column says which), whichever list it is opened from. */}
             <BulkImportExport
               resource="asset-users"
-              label="Asset Users"
+              label="People & Places"
               basePath="/asset-users"
               onImported={() => qc.invalidateQueries({ queryKey: ["asset_users"] })}
             />
-            {canCreateMasters && <ErpStoresDialog />}
-            <Button onClick={openAdd}>Add</Button>
+            {canCreateMasters && (fixedType === undefined || fixedType === "STORE") && <ErpStoresDialog />}
+            <Button onClick={openAdd}>{fixedType ? `Add ${noun}` : "Add"}</Button>
           </>
         }
       />
@@ -527,9 +617,9 @@ export function AssetUsersScreen() {
         emptyState={
           <EmptyState
             icon={Users}
-            title="No asset users yet"
-            description="Add employees, stores, or stock locations that can hold assets."
-            action={<Button onClick={openAdd}>Add</Button>}
+            title={fixedType ? `No ${title.toLowerCase()} yet` : "No people or places yet"}
+            description={fixedType ? TYPE_DESCRIPTIONS[fixedType] : "Add employees, stores, stock rooms or install points that can hold assets."}
+            action={<Button onClick={openAdd}>{fixedType ? `Add ${noun}` : "Add"}</Button>}
           />
         }
       />
@@ -537,50 +627,54 @@ export function AssetUsersScreen() {
       <Dialog open={formOpen} onOpenChange={(open) => (open ? setFormOpen(true) : closeForm())}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingId != null ? "Edit User" : "Add User"}</DialogTitle>
+            <DialogTitle>
+              {editingId != null
+                ? `Edit ${fixedType ? noun : placeTypeLabel(draft.asset_user_type) || "Person / Place"}`
+                : `Add ${fixedType ? noun : "Person / Place"}`}
+            </DialogTitle>
           </DialogHeader>
 
           <div className="flex flex-col gap-4">
             <FormField htmlFor="company_id" label="Company" required>
-              <Select value={draft.company_id || undefined} onValueChange={handleCompanyChange}>
-                <SelectTrigger id="company_id" aria-label="Company">
-                  <SelectValue placeholder="Select…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {companies.map((c) => (
-                    <SelectItem key={c.id} value={String(c.id)}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                id="company_id"
+                aria-label="Company"
+                value={draft.company_id || undefined}
+                onValueChange={handleCompanyChange}
+                options={companyOptions(companies)}
+              />
             </FormField>
 
-            <FormField htmlFor="asset_user_type" label="Type" required>
-              <Select value={draft.asset_user_type || undefined} onValueChange={handleTypeChange}>
-                <SelectTrigger id="asset_user_type" aria-label="Type">
-                  <SelectValue placeholder="Select…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ASSET_USER_TYPES.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {activePointConfig && (
-                <p className="text-xs text-muted-foreground">
-                  {activePointConfig.noun} isn't a person -- it's the place assets sit at one Location. Pick a
-                  Location below and its Code/Name will be filled in for you.
-                </p>
-              )}
-            </FormField>
+            {/* The type is fixed by the list it was opened from (Employees,
+                Stores, Stock Rooms, Install Points), so it is only asked here
+                in the combined list. */}
+            {fixedType === undefined && (
+              <FormField htmlFor="asset_user_type" label="Type" required>
+                <Select value={draft.asset_user_type || undefined} onValueChange={handleTypeChange}>
+                  <SelectTrigger id="asset_user_type" aria-label="Type">
+                    <SelectValue placeholder="Select…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ASSET_USER_TYPES.map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {placeTypeLabel(t)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+            )}
+            {activePointConfig && (
+              <p className="text-xs text-muted-foreground">
+                A {activePointConfig.noun} isn&apos;t a person: it is where assets are kept at one place. Pick the
+                Place below and its code and name are filled in for you.
+              </p>
+            )}
 
             {pointCoverage && pointCoverage.length > 0 && (
               <div className="flex flex-col gap-1.5 rounded-md border bg-muted/40 p-3">
                 <p className="text-xs font-medium text-muted-foreground">
-                  {activePointConfig?.noun} coverage for this company
+                  Places in this company that already have a {activePointConfig?.noun}
                 </p>
                 <div className="flex flex-wrap gap-1.5">
                   {pointCoverage.map(({ location, covered }) => (
@@ -599,15 +693,15 @@ export function AssetUsersScreen() {
               </div>
             )}
 
-            <FormField htmlFor="location_id" label="Location" required>
+            <FormField htmlFor="location_id" label="Place" required>
               <SearchableSelect
                 id="location_id"
-                aria-label="Location"
+                aria-label="Place"
                 value={draft.location_id || undefined}
                 onValueChange={handleLocationChange}
-                options={locations.map((l) => ({ value: String(l.id), label: l.name }))}
+                options={locations.map((l) => ({ value: String(l.id), label: l.name, keywords: [l.code] }))}
                 onCreateNew={canCreateMasters && draft.company_id ? () => setNewLocation(true) : undefined}
-                createLabel="New Location…"
+                createLabel="New Place…"
               />
             </FormField>
 
@@ -653,7 +747,7 @@ export function AssetUsersScreen() {
             <FormField
               htmlFor="login_enabled"
               label="Login Enabled"
-              helperText="Only a login-enabled person can sign in and needs an Access Role. A Store/Install Point/Stock Point normally stays off."
+              helperText="Only someone with a login can sign in, and needs an Access level. A Stock Room or Install Point normally has no login."
             >
               <label className="flex items-center gap-2 text-sm">
                 <Checkbox
@@ -682,7 +776,7 @@ export function AssetUsersScreen() {
                   label="Access Role"
                   helperText={
                     editingId != null
-                      ? `Current role: ${originalRole}. Controls what this person can see and do in CKAM.`
+                      ? `Current access: ${roleLabel(originalRole)}. Controls what this person can see and do in CKAM.`
                       : "Controls what this person can see and do in CKAM."
                   }
                 >
@@ -693,14 +787,15 @@ export function AssetUsersScreen() {
                     <SelectContent>
                       {ROLES.map((r) => (
                         <SelectItem key={r} value={r}>
-                          {r}
+                          {roleLabel(r)}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                   {roleChanged && (
                     <p className="text-xs font-medium text-warning" role="alert">
-                      Changing role from {originalRole} to {draft.role} will immediately change this person's access.
+                      Changing access from {roleLabel(originalRole)} to {roleLabel(draft.role)} will immediately
+                      change what this person can do.
                     </p>
                   )}
                 </FormField>
@@ -709,7 +804,7 @@ export function AssetUsersScreen() {
 
             {saveError && (
               <p className="text-sm text-destructive" role="alert">
-                {saveError instanceof Error ? saveError.message : "Failed to save this user."}
+                {saveError instanceof Error ? saveError.message : `Failed to save this ${noun.toLowerCase()}.`}
               </p>
             )}
           </div>
@@ -807,8 +902,8 @@ export function AssetUsersScreen() {
           <AlertDialogHeader>
             <AlertDialogTitle>Deactivate {deactivateRow?.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              {deactivateRow?.name} will no longer be able to sign in or be assigned assets. Assets already in
-              their custody and their history are not affected. This can be reversed later by an administrator.
+              {deactivateRow?.name} will no longer be able to sign in or be given assets. Assets already with
+              them stay where they are, and their history is kept. It is deactivated, not deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -827,11 +922,17 @@ export function AssetUsersScreen() {
       <AlertDialog open={bulkConfirmOpen} onOpenChange={(open) => !open && setBulkConfirmOpen(false)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Deactivate {selected.length} asset user{selected.length === 1 ? "" : "s"}?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Deactivate {selected.length}{" "}
+              {fixedType
+                ? (selected.length === 1 ? noun : title).toLowerCase()
+                : selected.length === 1 ? "person or place" : "people or places"}
+              ?
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              {selectedRows.map((h) => h.name).join(", ")} will no longer be able to sign in or be assigned assets.
-              Assets already in their custody and their history are not affected. Each can be reversed individually
-              later by an administrator.
+              {selectedRows.map((h) => h.name).join(", ")} will no longer be able to sign in or be given assets.
+              Assets already with them stay where they are, and their history is kept. They are deactivated, not
+              deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

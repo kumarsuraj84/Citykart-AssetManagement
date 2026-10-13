@@ -26,7 +26,7 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-IN"
 
 /**
  * "ERP data as of ...": the ERP screens read CKAM's own copy of the ERP data, copied again whenever the ERP's
- * warehouse has loaded newer data. The Primary Owner can copy it right now. Says nothing when this server has
+ * warehouse has loaded newer data. The head-office admin can copy it right now. Says nothing when this server has
  * no ERP connection (or the user may not see it): it is an extra, never in the way.
  */
 export function ErpSyncStatus() {

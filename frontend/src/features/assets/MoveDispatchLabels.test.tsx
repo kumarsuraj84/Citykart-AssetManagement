@@ -57,7 +57,7 @@ function scan(value: string) {
 }
 
 async function chooseDestination(name = "Store Hisar") {
-  fireEvent.click(screen.getByRole("combobox", { name: "Destination Asset User" }));
+  fireEvent.click(screen.getByRole("combobox", { name: "Move To" }));
   fireEvent.click(await screen.findByRole("option", { name }));
 }
 
@@ -254,9 +254,9 @@ describe("Move / Dispatch is one screen", () => {
     const router = await renderMovement("/dispatch");
     expect(router.state.location.pathname).toBe("/asset-movement");
     const nav = screen.getByRole("navigation", { name: "Main" });
-    expect(within(nav).getByRole("link", { name: "Move / Dispatch" })).toHaveAttribute("href", "/asset-movement");
+    expect(within(nav).getByRole("link", { name: "Move" })).toHaveAttribute("href", "/asset-movement");
     expect(within(nav).queryByRole("link", { name: "Dispatch" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("link", { name: "Asset Movement" })).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Move / Dispatch" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Move Assets" })).toBeInTheDocument();
   });
 });

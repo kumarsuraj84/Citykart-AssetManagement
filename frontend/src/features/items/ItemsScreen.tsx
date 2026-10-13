@@ -23,7 +23,7 @@ interface Sub extends Named {
   category_id: number;
 }
 
-/** Setup > Items: CityKart's own names for what an asset is. */
+/** Settings › Catalogue › Items: CityKart's own names for what an asset is. */
 export function ItemsScreen() {
   const qc = useQueryClient();
   const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => apiClient.get<Item[]>("/items") });
@@ -61,7 +61,7 @@ export function ItemsScreen() {
   const columns: DataTableColumn<Item>[] = [
     { key: "name", header: "Item", cellClassName: "font-medium", cell: (i) => i.name },
     {
-      key: "class", header: "Category › Sub-Category",
+      key: "class", header: "Category › Sub-category",
       cell: (i) => [catName(i.category_id), subName(i.subcategory_id)].filter(Boolean).join(" › "),
     },
     {
@@ -96,12 +96,12 @@ export function ItemsScreen() {
     <div className="flex flex-col gap-4">
       <PageHeader
         title="Items"
-        description="An Item is what an asset is, in CityKart's own words (for example Ceiling Fan, PoE Switch, UPS). It sits under a Category and a Sub-Category, and it is the only place that says whether the thing has a serial number. Many ERP item codes can point to one Item; link them under ERP Articles."
+        description="An Item is what an asset is, in CityKart's own words (for example Ceiling Fan, PoE Switch, UPS). It sits under a Category and a Sub-category, and it is the only place that says whether the thing has a serial number. Many ERP item codes can point to one Item; link them under ERP Mapping."
         actions={
           <>
-            <Button asChild variant="outline"><Link to="/setup/erp-articles">ERP Articles</Link></Button>
+            <Button asChild variant="outline"><Link to="/setup/erp-articles">ERP Mapping</Link></Button>
             <Button variant="outline" onClick={() => seedMutation.mutate()} disabled={seedMutation.isPending}>
-              Create from Sub-Categories
+              Create from Sub-categories
             </Button>
             <Button onClick={() => setEditing("new")}>New Item</Button>
           </>
@@ -109,7 +109,7 @@ export function ItemsScreen() {
       />
       {seeded !== null && (
         <p className="text-sm text-muted-foreground" role="status">
-          {seeded === 0 ? "Every Sub-Category already has an Item." : `Created ${seeded} Item${seeded === 1 ? "" : "s"} from Sub-Categories.`}
+          {seeded === 0 ? "Every Sub-category already has an Item." : `Created ${seeded} Item${seeded === 1 ? "" : "s"} from Sub-categories.`}
         </p>
       )}
       {seedMutation.isError && (
@@ -120,7 +120,7 @@ export function ItemsScreen() {
 
       <DataTable
         columns={columns} rows={items} rowKey={(i) => i.id} isLoading={itemsQ.isLoading}
-        emptyState={<EmptyState title="No Items yet." description="Use Create from Sub-Categories to start from today's classification, or add one by hand." />}
+        emptyState={<EmptyState title="No Items yet." description="Use Create from Sub-categories to start from today's classification, or add one by hand." />}
       />
 
       {linking && <ItemLinksDialog item={linking} onClose={() => setLinking(null)} />}
@@ -137,7 +137,8 @@ export function ItemsScreen() {
             <DialogTitle className="text-base">Deactivate {deleting?.name}?</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            It will no longer be offered, and its ERP links stop applying. Assets already linked to it keep their link.
+            It will no longer be offered, and its ERP links stop applying. It is deactivated, not deleted: assets already
+            linked to it keep their link and its history is kept.
           </p>
           {deleteMutation.isError && (
             <p className="text-sm text-destructive" role="alert">

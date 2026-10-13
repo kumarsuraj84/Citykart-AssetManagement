@@ -46,14 +46,14 @@ test("a new Item brings its own new Category and Sub-Category with it, all from 
   await categoryDialog.locator("#qc-name").fill(categoryName);
   await categoryDialog.locator("#qc-code").fill(`E2EC${ts}`);
   await categoryDialog.locator("#qc-asset_domain").click();
-  await page.getByRole("option", { name: "Admin / Non-IT", exact: true }).click();
+  await page.getByRole("option", { name: "Admin / Non-IT Team", exact: true }).click();
   await categoryDialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect(itemDialog.locator("#item-category")).toHaveText(categoryName);       // picked for us
 
-  // ---- and its Sub-Category, with that Category already chosen ----
+  // ---- and its Sub-category, with that Category already chosen ----
   await itemDialog.locator("#item-subcategory").click();
-  await page.getByRole("option", { name: "New Sub-Category…" }).click();
-  const subDialog = page.getByRole("dialog", { name: "New Sub-Category" });
+  await page.getByRole("option", { name: "New Sub-category…" }).click();
+  const subDialog = page.getByRole("dialog", { name: "New Sub-category" });
   await expect(subDialog.locator("#qc-category_id")).toHaveText(categoryName);
   await subDialog.locator("#qc-name").fill(subName);
   await subDialog.locator("#qc-code").fill(`E2ES${ts}`);

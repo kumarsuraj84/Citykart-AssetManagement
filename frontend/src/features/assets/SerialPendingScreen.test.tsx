@@ -41,6 +41,9 @@ describe("Serial Pending list", () => {
     expect(codes).toEqual(["FA/AMP/2", "FA/AMP/1"]);          // 2026-08-01 before 2026-09-01
     expect(screen.getByText("Store Rohtak")).toBeInTheDocument();
     expect(apiClient.get).toHaveBeenCalledWith("/assets?serial_pending=true&limit=200");
+    // One spelling of Sub-category in visible text.
+    expect(screen.getByText("Category › Sub-category")).toBeInTheDocument();
+    expect(screen.queryByText(/Sub-Category/)).not.toBeInTheDocument();
   });
 
   it("types the serial and saves it for that asset only", async () => {

@@ -81,7 +81,10 @@ describe("ReportsScreen", () => {
     renderWithClient();
 
     fireEvent.click(screen.getByRole("combobox", { name: "Status" }));
-    fireEvent.click(await screen.findByRole("option", { name: "IN STOCK" }));
+    // Statuses read as words (never IN_STOCK / IN STOCK).
+    expect(await screen.findByRole("option", { name: "With Employee / Store" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /IN.STOCK/ })).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("option", { name: "In Stock" }));
     fireEvent.click(screen.getByRole("combobox", { name: "Category" }));
     fireEvent.click(await screen.findByRole("option", { name: "IT Equipment" }));
 
@@ -93,15 +96,17 @@ describe("ReportsScreen", () => {
     ));
   });
 
-  it("downloads the asset register filtered by Responsibility (spec §38)", async () => {
+  it("downloads the asset register filtered by Work area (spec §38)", async () => {
     const blob = new Blob(["xlsx-bytes"]);
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, blob: () => Promise.resolve(blob) });
     window.fetch = fetchMock as any;
 
     renderWithClient();
 
-    fireEvent.click(screen.getByRole("combobox", { name: "Responsibility" }));
-    fireEvent.click(await screen.findByRole("option", { name: "IT" }));
+    expect(screen.queryByText("Responsibility")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("combobox", { name: "Work area" }));
+    expect(await screen.findByRole("option", { name: "Admin / Non-IT Team" })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("option", { name: "IT Team" }));
 
     fireEvent.click(screen.getByRole("button", { name: /download asset register/i }));
 

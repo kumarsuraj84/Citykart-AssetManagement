@@ -15,6 +15,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 export interface SearchableSelectOption {
   value: string;
   label: string;
+  /** Context shown after the label in muted text ("Laptop · IT Fixed Assets",
+   * "CS6872 · Ankur Pahwa · Head Office"), so two similar names can be told
+   * apart in the list. Also searchable. Built by src/lib/option-labels.ts. */
+  detail?: string;
   /** Extra terms matched when searching (e.g. an Asset User's code/email) --
    * never displayed, only `label` is shown. Lets someone find "Ankur Pahwa"
    * by typing his code (CS6872) or email, not just his name. */
@@ -37,6 +41,11 @@ interface SearchableSelectProps {
    * missing choice can be created right here instead of in another screen. */
   onCreateNew?: () => void;
   createLabel?: string;
+}
+
+/** The full text of an option, as read and searched ("label · detail"). */
+function optionText(option: SearchableSelectOption): string {
+  return option.detail ? `${option.label} · ${option.detail}` : option.label;
 }
 
 /**
@@ -70,6 +79,7 @@ export function SearchableSelect({
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false);
   const selected = options.find((o) => o.value === value);
+  const selectedText = selected ? optionText(selected) : undefined;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -93,7 +103,21 @@ export function SearchableSelect({
             className,
           )}
         >
-          <span className="line-clamp-1 text-left">{selected ? selected.label : placeholder}</span>
+          <span className="line-clamp-1 text-left" title={selectedText}>
+            {selected ? (
+              <>
+                {selected.label}
+                {selected.detail && (
+                  <>
+                    {" "}
+                    <span className="text-muted-foreground">· {selected.detail}</span>
+                  </>
+                )}
+              </>
+            ) : (
+              placeholder
+            )}
+          </span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" aria-hidden="true" />
         </Button>
       </PopoverTrigger>
@@ -106,7 +130,7 @@ export function SearchableSelect({
               {options.map((option) => (
                 <CommandItem
                   key={option.value}
-                  value={option.label}
+                  value={optionText(option)}
                   keywords={option.keywords}
                   onSelect={() => {
                     onValueChange(option.value);
@@ -117,7 +141,15 @@ export function SearchableSelect({
                     className={cn("h-4 w-4", option.value === value ? "opacity-100" : "opacity-0")}
                     aria-hidden="true"
                   />
-                  {option.label}
+                  <span>
+                    {option.label}
+                    {option.detail && (
+                      <>
+                        {" "}
+                        <span className="text-muted-foreground">· {option.detail}</span>
+                      </>
+                    )}
+                  </span>
                 </CommandItem>
               ))}
             </CommandGroup>

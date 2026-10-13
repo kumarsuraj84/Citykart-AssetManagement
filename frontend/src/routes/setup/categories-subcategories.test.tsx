@@ -51,8 +51,17 @@ describe("the serial number rule is not on Categories or Sub-Categories", () => 
     expect(screen.queryByRole("columnheader", { name: /serial number/i })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /add category/i }));
     const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByLabelText("Responsibility")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Work area")).toBeInTheDocument();
     expect(within(dialog).queryByLabelText(/serial number/i)).not.toBeInTheDocument();
+  });
+
+  it("Asset Groups shows each Category's work area in plain words, never Responsibility or a raw code", async () => {
+    renderWith(<CategoriesSetup />);
+    expect(await screen.findByRole("heading", { name: "Asset Groups (Categories)" })).toBeInTheDocument();
+    expect(within((await screen.findByText("IT Fixed Assets")).closest("tr")!).getByText("IT Team")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /work area/i })).toBeInTheDocument();
+    expect(within(screen.getByText("Admin Fixed Assets").closest("tr")!).getByText("Admin / Non-IT Team")).toBeInTheDocument();
+    expect(screen.queryByText(/responsibility|NON_IT/i)).not.toBeInTheDocument();
   });
 
   it("a new category is saved without any serial setting", async () => {
@@ -62,8 +71,8 @@ describe("the serial number rule is not on Categories or Sub-Categories", () => 
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText("Code"), { target: { value: "HRFA" } });
     fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "HR Fixed Assets" } });
-    fireEvent.click(within(dialog).getByRole("combobox", { name: "Responsibility" }));
-    fireEvent.click(await screen.findByRole("option", { name: "Admin / Non-IT" }));
+    fireEvent.click(within(dialog).getByRole("combobox", { name: "Work area" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Admin / Non-IT Team" }));
     fireEvent.click(within(dialog).getByRole("button", { name: /^save$/i }));
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith("/masters/categories", { code: "HRFA", name: "HR Fixed Assets", asset_domain: "NON_IT" }),
@@ -74,7 +83,7 @@ describe("the serial number rule is not on Categories or Sub-Categories", () => 
     renderWith(<SubcategoriesSetup />);
     expect(await screen.findByText("Network Switch")).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: /serial number/i })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /add subcategory/i }));
+    fireEvent.click(screen.getByRole("button", { name: /add sub-category/i }));
     expect(within(screen.getByRole("dialog")).queryByLabelText(/serial number/i)).not.toBeInTheDocument();
   });
 });
@@ -96,7 +105,7 @@ describe("a missing Category is created from the Sub-Category form", () => {
     });
     renderWith(<SubcategoriesSetup />);
     await screen.findByText("Network Switch");
-    fireEvent.click(screen.getByRole("button", { name: /add subcategory/i }));
+    fireEvent.click(screen.getByRole("button", { name: /add sub-category/i }));
     const subDialog = screen.getByRole("dialog");
     fireEvent.click(within(subDialog).getByRole("combobox", { name: "Category" }));
     fireEvent.click(await screen.findByRole("option", { name: /new category/i }));
@@ -104,15 +113,15 @@ describe("a missing Category is created from the Sub-Category form", () => {
     const catDialog = await screen.findByRole("dialog", { name: /new category/i });
     fireEvent.change(within(catDialog).getByLabelText(/^name/i), { target: { value: "Stores Fixed Assets" } });
     fireEvent.change(within(catDialog).getByLabelText(/^code/i), { target: { value: "STFA" } });
-    fireEvent.click(within(catDialog).getByLabelText(/^responsibility/i));
-    fireEvent.click(await screen.findByRole("option", { name: "Admin / Non-IT" }));
+    fireEvent.click(within(catDialog).getByLabelText(/^work area/i));
+    fireEvent.click(await screen.findByRole("option", { name: "Admin / Non-IT Team" }));
     fireEvent.click(within(catDialog).getByRole("button", { name: "Save" }));
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith("/masters/categories", { name: "Stores Fixed Assets", code: "STFA", asset_domain: "NON_IT" }),
     );
 
     // back on the Sub-Category form: finish it with the Category that was just made
-    const back = await screen.findByRole("dialog", { name: /add subcategory/i });
+    const back = await screen.findByRole("dialog", { name: /add sub-category/i });
     fireEvent.change(within(back).getByLabelText("Code"), { target: { value: "RACK" } });
     fireEvent.change(within(back).getByLabelText("Name"), { target: { value: "Rack" } });
     fireEvent.click(within(back).getByRole("button", { name: /^save$/i }));
@@ -125,7 +134,7 @@ describe("a missing Category is created from the Sub-Category form", () => {
     useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: false, mustChangePassword: false });
     renderWith(<SubcategoriesSetup />);
     await screen.findByText("Network Switch");
-    fireEvent.click(screen.getByRole("button", { name: /add subcategory/i }));
+    fireEvent.click(screen.getByRole("button", { name: /add sub-category/i }));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("combobox", { name: "Category" }));
     await screen.findByRole("option", { name: "IT Fixed Assets" });
     expect(screen.queryByRole("option", { name: /new category/i })).not.toBeInTheDocument();

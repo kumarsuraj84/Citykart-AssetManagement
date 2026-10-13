@@ -95,7 +95,7 @@ export function PoFromErp() {
       {statusQ.data && !statusQ.data.configured && (
         <EmptyState
           icon={DatabaseZap} title="The ERP connection is not set up on this server."
-          description="Ask the administrator to add the ERP connection settings (PO_SOURCE_*)."
+          description="Ask the head-office admin."
         />
       )}
 

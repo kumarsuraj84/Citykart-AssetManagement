@@ -24,6 +24,12 @@ const EXISTING = {
 beforeEach(() => vi.clearAllMocks());
 
 describe("CodeRuleScreen", () => {
+  it("is titled Asset Code Format", async () => {
+    (apiClient.get as any).mockResolvedValue([]);
+    renderWithClient(<CodeRuleScreen />);
+    expect(await screen.findByRole("heading", { name: "Asset Code Format" })).toBeInTheDocument();
+  });
+
   it("shows a live preview as the template is typed", async () => {
     (apiClient.get as any).mockResolvedValue([]);
     renderWithClient(<CodeRuleScreen />);

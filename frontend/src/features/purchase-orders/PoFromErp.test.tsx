@@ -83,9 +83,11 @@ async function openDraft() {
   return await screen.findByRole("button", { name: /create this purchase order/i });
 }
 
+// An option reads "label" or "label · detail" (Items show their Category › Sub-category).
 async function chooseItem(label: RegExp, name: string) {
   fireEvent.click(screen.getByLabelText(label));
-  fireEvent.click(await screen.findByRole("option", { name }));
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  fireEvent.click(await screen.findByRole("option", { name: new RegExp(`^${escaped}( ?· .*)?$`) }));
 }
 
 beforeEach(() => {
@@ -153,7 +155,7 @@ describe("Purchase Orders from the ERP", () => {
 
     await chooseItem(/^item\*?$/i, "Network Switch");
     await waitFor(() => expect(create).not.toBeDisabled());
-    expect(await screen.findByText(/Computers › CPU$/)).toBeInTheDocument();    // category and sub-category come from the Item
+    expect(await screen.findByText("Computers › CPU")).toBeInTheDocument();    // category and sub-category come from the Item
     fireEvent.click(create);
     await waitFor(() => expect(apiClient.post).toHaveBeenCalled());
     const sent = (apiClient.post as any).mock.calls[0][1].lines[0];
@@ -211,6 +213,8 @@ describe("Purchase Orders from the ERP", () => {
     mockApi({ configured: false });
     renderScreen();
     expect(await screen.findByText("The ERP connection is not set up on this server.")).toBeInTheDocument();
+    expect(screen.getByText("Ask the head-office admin.")).toBeInTheDocument();
+    expect(screen.queryByText(/PO_SOURCE/)).not.toBeInTheDocument();
     expect(apiClient.get).not.toHaveBeenCalledWith("/erp/pos");
   });
 

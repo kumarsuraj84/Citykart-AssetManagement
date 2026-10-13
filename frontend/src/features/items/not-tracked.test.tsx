@@ -125,7 +125,7 @@ describe("ERP codes: every barcode is its own row", () => {
     expect(bar).toHaveTextContent("3 codes selected");
     expect(within(bar).getByRole("button", { name: "Link 3 to this Item" })).toBeDisabled();
     fireEvent.click(within(bar).getByLabelText("Item for the selected codes"));
-    fireEvent.click(await screen.findByRole("option", { name: "Indoor Camera" }));
+    fireEvent.click(await screen.findByRole("option", { name: /^Indoor Camera( ?· |$)/ }));
     fireEvent.click(within(bar).getByRole("button", { name: "Link 3 to this Item" }));
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledTimes(3));
     expect(apiClient.post).toHaveBeenCalledWith("/items/maps", {
@@ -156,7 +156,7 @@ describe("ERP codes: every barcode is its own row", () => {
     const bar = screen.getByRole("region", { name: "Selected codes" });
     fireEvent.click(within(bar).getByLabelText("Also for new codes of these Articles"));
     fireEvent.click(within(bar).getByLabelText("Item for the selected codes"));
-    fireEvent.click(await screen.findByRole("option", { name: "Indoor Camera" }));
+    fireEvent.click(await screen.findByRole("option", { name: /^Indoor Camera( ?· |$)/ }));
     fireEvent.click(within(bar).getByRole("button", { name: "Link 3 to this Item" }));
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledTimes(5));                              // 3 codes + 2 distinct Articles
     expect(apiClient.post).toHaveBeenCalledWith("/items/maps", { item_id: 3, article_key: "FA_CE_CAMERA", article_name: "FA_CE_CAMERA", ...ARTICLE_RULE });
@@ -257,7 +257,7 @@ describe("ERP Articles view: not tracked", () => {
     const bar = screen.getByRole("region", { name: "Selected Articles" });
     expect(bar).toHaveTextContent("2 selected");
     fireEvent.click(within(bar).getByLabelText("Item for the selected Articles"));
-    fireEvent.click(await screen.findByRole("option", { name: "Indoor Camera" }));
+    fireEvent.click(await screen.findByRole("option", { name: /^Indoor Camera( ?· |$)/ }));
     fireEvent.click(within(bar).getByRole("button", { name: "Link 2 to this Item" }));
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledTimes(2));
     expect(apiClient.post).toHaveBeenCalledWith("/items/maps", { item_id: 3, article_key: "FA_CE_CAMERA", article_name: "FA_CE_CAMERA", ...ARTICLE_RULE });

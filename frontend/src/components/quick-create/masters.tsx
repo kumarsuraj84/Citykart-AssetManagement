@@ -2,10 +2,12 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
+import { WORK_AREA_OPTIONS } from "../../lib/labels";
+import { categoryOptions } from "../../lib/option-labels";
 import { QuickCreateDialog, type QuickCreateProps } from "./QuickCreateDialog";
 
-/** Who may create master records: the server only lets the Primary Owner do it, so
- * only they are offered the "+ New ..." entries (the server still decides). */
+/** Who may create master records: the server only lets the head-office admin (Primary
+ * Owner) do it, so only they are offered the "+ New ..." entries (the server still decides). */
 export function useCanCreateMasters(): boolean {
   return useAuthStore((s) => s.isPrimaryOwner);
 }
@@ -15,10 +17,8 @@ interface Named {
   name: string;
 }
 
-export const DOMAIN_OPTIONS = [
-  { value: "IT", label: "IT" },
-  { value: "NON_IT", label: "Admin / Non-IT" },
-];
+/** A Category's work area (backend asset_domain): "IT Team" / "Admin / Non-IT Team". */
+export const DOMAIN_OPTIONS = WORK_AREA_OPTIONS;
 
 /** New Category, from wherever a Category is needed. */
 export function NewCategoryDialog(props: QuickCreateProps) {
@@ -31,14 +31,14 @@ export function NewCategoryDialog(props: QuickCreateProps) {
       fields={[
         { key: "name", label: "Name", required: true, placeholder: "IT Fixed Assets" },
         { key: "code", label: "Code", required: true, placeholder: "ITFA", helperText: "Short and unique; it becomes part of asset codes and cannot be changed later." },
-        { key: "asset_domain", label: "Responsibility", kind: "select", required: true, options: DOMAIN_OPTIONS,
-          helperText: "Who looks after assets of this Category: the IT team or Admin / Non-IT." },
+        { key: "asset_domain", label: "Work area", kind: "select", required: true, options: DOMAIN_OPTIONS,
+          helperText: "Who looks after assets of this Category: the IT Team or the Admin / Non-IT Team." },
       ]}
     />
   );
 }
 
-/** New Sub-Category. Its Category can be chosen, or created right here. */
+/** New Sub-category. Its Category can be chosen, or created right here. */
 export function NewSubcategoryDialog({ defaultCategoryId, ...props }: QuickCreateProps & { defaultCategoryId?: string }) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [newCategory, setNewCategory] = useState(false);
@@ -50,14 +50,14 @@ export function NewSubcategoryDialog({ defaultCategoryId, ...props }: QuickCreat
         {...props}
         values={values}
         onValuesChange={setValues}
-        title="New Sub-Category"
+        title="New Sub-category"
         endpoint="/masters/subcategories"
         refresh={[["masters", "subcategories"]]}
         initial={defaultCategoryId ? { category_id: defaultCategoryId } : undefined}
         toBody={(v) => ({ category_id: Number(v.category_id), name: (v.name ?? "").trim(), code: (v.code ?? "").trim() })}
         fields={[
           { key: "category_id", label: "Category", kind: "select", required: true,
-            options: (categoriesQ.data ?? []).map((c) => ({ value: String(c.id), label: c.name })),
+            options: categoryOptions(categoriesQ.data),
             onCreateNew: canCreate ? () => setNewCategory(true) : undefined, createLabel: "New Category…" },
           { key: "name", label: "Name", required: true, placeholder: "Network Switch" },
           { key: "code", label: "Code", required: true, placeholder: "SWT", helperText: "Short and unique within the Category; it becomes part of asset codes and cannot be changed later." },
@@ -96,7 +96,7 @@ export function NewVendorDialog(props: QuickCreateProps) {
       refresh={[["masters", "vendors"]]}
       fields={[
         { key: "name", label: "Name", required: true },
-        { key: "code", label: "Code", required: true, helperText: "Unique; often the vendor's short name. Contact details can be added later under Setup > Vendors." },
+        { key: "code", label: "Code", required: true, helperText: "Unique; often the vendor's short name. Contact details can be added later under Settings › Vendors." },
       ]}
     />
   );
@@ -114,12 +114,12 @@ export function NewDepartmentDialog(props: QuickCreateProps) {
   );
 }
 
-/** New Location of one company (the company is already known where this is used). */
+/** New Place (backend: location) of one company (the company is already known where this is used). */
 export function NewLocationDialog({ companyId, ...props }: QuickCreateProps & { companyId: number }) {
   return (
     <QuickCreateDialog
       {...props}
-      title="New Location"
+      title="New Place"
       endpoint="/masters/locations"
       refresh={[["masters", "locations"]]}
       toBody={(v) => ({ company_id: companyId, name: (v.name ?? "").trim(), code: (v.code ?? "").trim() })}

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { newSeedRegistry, seedTestCompany, teardownTestCompany, type SeedRegistry } from "./fixtures";
+import { optionMatcher, newSeedRegistry, seedTestCompany, teardownTestCompany, type SeedRegistry } from "./fixtures";
 
 async function loginAs(page: Page, empCode: string, password: string) {
   await page.goto("/login");
@@ -10,7 +10,7 @@ async function loginAs(page: Page, empCode: string, password: string) {
 
 async function pickSelectOption(page: Page, label: string, optionText: string) {
   await page.getByLabel(label, { exact: true }).click();
-  await page.getByRole("option", { name: optionText, exact: true }).click();
+  await page.getByRole("option", { name: optionMatcher(optionText) }).click();
 }
 
 async function api<T>(baseURL: string, method: string, urlPath: string, token: string, body?: unknown): Promise<T> {
@@ -102,7 +102,7 @@ test("asset correction journey: correct classification and purchase date, Asset 
   await expect(dialog.getByText(/asset code will not change/i)).toBeVisible();
 
   await pickSelectOption(page, "Category", category2.name);
-  await pickSelectOption(page, "Sub-Category", subcategory2.name);
+  await pickSelectOption(page, "Sub-category", subcategory2.name);
   await page.getByLabel("Purchase Date", { exact: true }).fill("2025-05-28");
   await page.getByLabel("Reason", { exact: true }).fill("Wrong category selected during initial entry");
 

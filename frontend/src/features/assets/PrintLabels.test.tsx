@@ -69,6 +69,12 @@ describe("PrintLabels label content and delivery preload", () => {
     expect(label.style.height).toBe("20mm");
   });
 
+  it("links to Move Assets for labelling as you send", async () => {
+    mockGets({});
+    await renderPrintLabels();
+    expect(await screen.findByRole("link", { name: "Move Assets (label as you send)" })).toHaveAttribute("href", "/asset-movement");
+  });
+
   it("an asset whose serial is still to be added says so on its label", async () => {
     mockGets({ AMP: [{ ...LAPTOP, id: 8, serial_number: null, serial_pending: true, item_name: "Amplifier" } as any] });
     await renderPrintLabels();

@@ -29,7 +29,9 @@ function selectFile() {
 describe("ImportScreen", () => {
   it("renders the page header and the three-step layout", () => {
     render(<ImportScreen />);
-    expect(screen.getByRole("heading", { name: /^import$/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^bulk import$/i })).toBeInTheDocument();
+    expect(screen.getByText("Settings › Advanced › Custom Fields")).toBeInTheDocument();
+    expect(screen.queryByText(/Setup/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /download template/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/file/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^preview$/i })).toBeInTheDocument();
@@ -52,6 +54,8 @@ describe("ImportScreen", () => {
     await waitFor(() => expect(screen.getByText(/1 row ready to import/i)).toBeInTheDocument());
     expect(screen.getByText("CityKart HQ")).toBeInTheDocument();
     expect(screen.getByText("IT Equipment / Laptop")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Received Into" })).toBeInTheDocument();
+    expect(screen.queryByText("Goes Into")).not.toBeInTheDocument();
     expect(screen.getByText("unknown Subcategory Code 'BAD'")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^commit/i })).toBeEnabled();
   });
@@ -146,7 +150,7 @@ describe("ImportScreen", () => {
     window.URL.revokeObjectURL = vi.fn();
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, blob: () => Promise.resolve(new Blob(["x"])) });
     window.fetch = fetchMock as any;
-    const EDIT_ROW = { row: 2, asset_code: "FA/HO/IT/LAP/CK_1", fields_changed: ["pi_number"] };
+    const EDIT_ROW = { row: 2, asset_code: "FA/HO/IT/LAP/CK_1", fields_changed: ["pi_number", "Custom:warranty_card"] };
     (apiClient.post as any).mockImplementation((path: string) => {
       if (path === "/imports/assets/preview?mode=edit") return Promise.resolve({ valid_rows: [EDIT_ROW], errors: [] });
       if (path === "/imports/assets/commit?mode=edit") return Promise.resolve({ updated: 1, errors: [] });
@@ -168,7 +172,9 @@ describe("ImportScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: /^preview$/i }));
     await waitFor(() => expect(screen.getByText(/1 row ready to update/i)).toBeInTheDocument());
     expect(screen.getByText("FA/HO/IT/LAP/CK_1")).toBeInTheDocument();
-    expect(screen.getByText("pi_number")).toBeInTheDocument();
+    // Changed fields read as words, never raw field names.
+    expect(screen.getByText("Purchase Invoice (PI) number, Custom field: warranty_card")).toBeInTheDocument();
+    expect(screen.queryByText(/pi_number/)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /^commit/i }));
     await waitFor(() => expect(screen.getByText(/updated 1 asset\./i)).toBeInTheDocument());

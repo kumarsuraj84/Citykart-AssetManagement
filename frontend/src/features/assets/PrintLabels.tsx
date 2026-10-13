@@ -87,7 +87,7 @@ export function PrintLabels({ preloadIds }: { preloadIds?: string }) {
       <PageHeader
         title="Print Labels"
         description="Scan or type a Serial Number/Asset Code to queue assets, then print all their labels in one go. Each label shows the item name, asset code, serial and ERP item code, with a barcode that scans back as the asset code."
-        actions={<Button asChild variant="outline"><Link to="/asset-movement">Move / Dispatch (label as you send)</Link></Button>}
+        actions={<Button asChild variant="outline"><Link to="/asset-movement">Move Assets (label as you send)</Link></Button>}
       />
 
       <LabelSettingsFields settings={settings} />

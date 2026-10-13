@@ -216,6 +216,9 @@ describe("MasterCrudScreen", () => {
 
     const dialog = await screen.findByRole("alertdialog");
     expect(dialog).toHaveTextContent("Vendor One");
+    // There is no reactivation anywhere, so the dialog promises none.
+    expect(dialog).toHaveTextContent("deactivated, not deleted: its history is kept");
+    expect(dialog).not.toHaveTextContent(/restored|reversed|administrator/i);
     expect(apiClient.delete).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: /^deactivate$/i }));
@@ -253,6 +256,7 @@ describe("MasterCrudScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: /^deactivate 2 selected$/i }));
 
     const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).not.toHaveTextContent(/restored|reversed/i);
     expect(apiClient.delete).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole("button", { name: /^deactivate$/i }));
 

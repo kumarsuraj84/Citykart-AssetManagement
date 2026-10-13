@@ -46,7 +46,9 @@ describe("MyAssets", () => {
     await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK_1")).toBeInTheDocument());
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
     expect(screen.getByText("Laptop")).toBeInTheDocument();
-    expect(screen.getByText("ALLOTTED")).toBeInTheDocument();
+    expect(screen.getByText("With Employee / Store")).toBeInTheDocument();
+    // It says the list is what is with you, never the whole register.
+    expect(screen.getByText(/the assets that are with you right now/i)).toBeInTheDocument();
   });
 
   it("renders the asset code as a real link to Asset 360, not a hardcoded color", async () => {
@@ -62,7 +64,7 @@ describe("MyAssets", () => {
     mockGets([]);
     renderWithClient();
 
-    await waitFor(() => expect(screen.getByText(/no assets in your custody/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/no assets are with you/i)).toBeInTheDocument());
   });
 
   it("shows an error state with a retry that refetches", async () => {

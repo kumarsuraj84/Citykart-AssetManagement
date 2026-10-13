@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { statusLabel } from "@/lib/labels";
 
 type Tone = "info" | "success" | "warning" | "destructive" | "neutral";
 
@@ -53,16 +54,20 @@ interface StatusBadgeProps {
    * keeps the existing pill, which has more room to carry emphasis. Default
    * false so every existing call site is unchanged unless it opts in. */
   compact?: boolean;
+  /** The type of whoever holds the asset (EMPLOYEE / STORE / ...), when the
+   * row carries it: ALLOTTED then reads "With Employee" or "With Store". */
+  holderType?: string | null;
 }
 
-/** Centralizes CKAM's asset-status color/label mapping (REVIEW_FINDINGS.md #3
- * "status not used consistently"). The status name itself is always shown as
- * text, never color alone, so tone communicates urgency without being the
- * sole signal. Never invents a status or renames a backend value -- an
- * unmapped string still renders, just with the neutral tone. */
-export function StatusBadge({ status, className, compact }: StatusBadgeProps) {
+/** Centralizes CKAM's asset-status color mapping (REVIEW_FINDINGS.md #3
+ * "status not used consistently"); the words come from the one label module
+ * (src/lib/labels.ts), so no raw status code is ever shown. The status is
+ * always shown as text, never color alone, so tone communicates urgency
+ * without being the sole signal. Never renames a backend value -- an
+ * unmapped string still renders, in sentence case with the neutral tone. */
+export function StatusBadge({ status, className, compact, holderType }: StatusBadgeProps) {
   const tone = ASSET_STATUS_TONE[status] ?? "neutral";
-  const label = status.replace(/_/g, " ");
+  const label = statusLabel(status, holderType);
 
   if (compact) {
     return (

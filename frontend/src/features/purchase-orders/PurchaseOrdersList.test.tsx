@@ -71,6 +71,8 @@ describe("PurchaseOrdersList", () => {
     expect(screen.getByText("Recorded")).toBeInTheDocument();
     expect(screen.getByText("PI-9001")).toBeInTheDocument();
     expect(screen.getByText("2026-02-10")).toBeInTheDocument();
+    // PI is spelled out once, in the first PI column.
+    expect(screen.getByText("Purchase Invoice (PI) Status")).toBeInTheDocument();
   });
 
   it("search matches PO No, Vendor and PI Status, and the hint names exactly those fields plus PI No", async () => {

@@ -25,7 +25,7 @@ export default function CostCentersSetup() {
     <MasterCrudScreen<CostCenter>
       config={{
         resource: "cost-centers",
-        title: "Cost Centers",
+        title: "Cost Centres",
         singular: "Cost Centre",
         columns: [
           { key: "company_id", label: "Company", format: companyName },
@@ -39,6 +39,7 @@ export default function CostCentersSetup() {
             type: "select",
             options: companies.map((c) => ({ value: c.id, label: c.name })),
             format: companyName,
+            searchable: true,
           },
           { key: "code", label: "Code" },
           { key: "name", label: "Name" },

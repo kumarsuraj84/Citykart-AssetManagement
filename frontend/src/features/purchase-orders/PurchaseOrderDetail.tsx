@@ -23,6 +23,9 @@ import { AddBundleDialog } from "./AddBundleDialog";
 import { DeliveryReminderBanner } from "../erp/DeliveryReminders";
 import { ErpChangesPanel } from "../erp/ErpChanges";
 import { ErpPiDialog } from "../erp/ErpPiDialog";
+import { workAreaLabel } from "@/lib/labels";
+import { brandOptions, itemOptions, namesById, placeOptions } from "@/lib/option-labels";
+import { usePlaceLookups } from "@/lib/lookups";
 
 interface PurchaseOrderOut {
   id: number;
@@ -128,22 +131,19 @@ interface Option {
   name: string;
 }
 
-// Lets someone find an Asset User by typing their code or email, not just
-// their name -- the same fields AssetUsersScreen's own Code/Email columns
-// show, so the search matches what's actually on their record.
-function assetUserKeywords(h: Option): string[] {
-  return [h.code, h.email].filter((v): v is string => Boolean(v));
+// A person or place a delivery can be Received Into. placeOptions keeps its
+// code/email searchable and shows its Place beside the name.
+interface PlaceOption extends Option {
+  asset_user_type?: string | null;
+  company_id?: number | null;
+  location_id?: number | null;
 }
 
 interface CategoryOption extends Option {
-  // IT / NON_IT (spec §17/§19) -- drives the read-only Responsibility
-  // preview on the Add Line dialog; the backend independently re-derives
-  // it from this Category when the line is saved.
+  // IT / NON_IT (spec §17/§19) -- drives the read-only Work area preview on
+  // the Add Line dialog; the backend independently re-derives it from this
+  // Category when the line is saved.
   asset_domain: string;
-}
-
-function domainLabel(value: string): string {
-  return value === "NON_IT" ? "Admin / Non-IT" : value;
 }
 
 function selectValue(v: string): string | undefined {
@@ -197,7 +197,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   });
   const asset_usersQ = useQuery({
     queryKey: ["asset_users", poQ.data?.company_id],
-    queryFn: () => apiClient.get<Option[]>(`/asset-users?company_id=${poQ.data!.company_id}`),
+    queryFn: () => apiClient.get<PlaceOption[]>(`/asset-users?company_id=${poQ.data!.company_id}`),
     enabled: !!poQ.data,
   });
   // AM-14: the header previously named PO Date/Cost Centre but never Vendor --
@@ -206,6 +206,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const brandsQ = useQuery({ queryKey: ["masters", "brands"], queryFn: () => apiClient.get<Option[]>("/masters/brands") });
   const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => apiClient.get<Item[]>("/items") });
   const canCreate = useCanCreateMasters();
+  const placeLookups = usePlaceLookups();
   const [newItemFor, setNewItemFor] = useState<"add" | "edit" | null>(null);
   const [newBrandFor, setNewBrandFor] = useState<"add" | "edit" | null>(null);
 
@@ -220,6 +221,10 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const categoryName = (id: number) => categories.find((c) => c.id === id)?.name ?? String(id);
   const costCenterName = (id: number | null) => (id == null ? "—" : costCenters.find((c) => c.id === id)?.name ?? String(id));
   const vendorName = (id: number | null) => (id == null ? "—" : vendors.find((v) => v.id === id)?.name ?? String(id));
+  // Dropdown options with context: "Laptop · IT Fixed Assets", "CS6872 · Ankur Pahwa · Head Office".
+  const itemSelectOptions = itemOptions(items, { categories: namesById(categories), subcategories: namesById(subcategories) });
+  const brandSelectOptions = brandOptions(brands);
+  const receivedIntoOptions = placeOptions(asset_users, placeLookups);
 
   // AM-14 summary row -- derived entirely from `lines`, already fetched for the
   // table below, so this costs zero extra requests. Value is every non-
@@ -435,7 +440,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().slice(0, 10));
   const [invoiceAmount, setInvoiceAmount] = useState("");
-  // A PO is delivered to one location only, so the Initial Asset User is
+  // A PO is delivered to one location only, so where it is Received Into is
   // chosen once for the whole delivery. Serial numbers are entered per
   // product (all identical units of one line item together), not per unit:
   // a pasted/scanned list, one serial per line, is handed to the units in
@@ -454,8 +459,8 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     setInvoiceNumber("");
     setInvoiceDate(new Date().toISOString().slice(0, 10));
     setInvoiceAmount("");
-    // The PO's delivery location (a stock point read from the PO, or chosen
-    // when it was created) is the natural Initial Asset User; still changeable.
+    // The PO's delivery location (a Stock Room read from the PO, or chosen
+    // when it was created) is where it is naturally Received Into; still changeable.
     setInitialAssetUserId(poQ.data?.delivery_asset_user_id ? String(poQ.data.delivery_asset_user_id) : "");
     // Parts that never carry a serial (a bundle's mouse/keyboard) start with
     // "No serial number" already ticked; it can still be unticked.
@@ -704,7 +709,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
           poQ.data
             ? `Vendor: ${vendorName(poQ.data.vendor_id)} · PO Date: ${poQ.data.po_date} · Cost Centre: ${costCenterName(poQ.data.cost_center_id)}` +
               (poQ.data.delivery_asset_user_id
-                ? ` · Delivery: ${asset_users.find((u) => u.id === poQ.data!.delivery_asset_user_id)?.name ?? poQ.data.warehouse_code ?? ""}`
+                ? ` · Received Into: ${asset_users.find((u) => u.id === poQ.data!.delivery_asset_user_id)?.name ?? poQ.data.warehouse_code ?? ""}`
                 : "")
             : undefined
         }
@@ -743,7 +748,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
             {poQ.data?.erp_po_code != null && <ErpPiDialog poId={poId} />}
           </div>
           <p className="mb-2 text-xs text-muted-foreground">
-            PI Number/Date arrive from Finance per invoice, not per PO -- a partial delivery on a
+            Purchase Invoice (PI) Number/Date arrive from Finance per invoice, not per PO -- a partial delivery on a
             different invoice gets its own PI, recorded separately.
           </p>
           <ul className="flex flex-col gap-1.5">
@@ -786,20 +791,20 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
             htmlFor="line-item"
             label="Item"
             required
-            helperText={lineItem ? `Category › Sub-Category: ${[lineCategory?.name, lineSubcategory?.name].filter(Boolean).join(" › ")}` : "What this is. Its Category and Sub-Category follow from it."}
+            helperText={lineItem ? `Category › Sub-category: ${[lineCategory?.name, lineSubcategory?.name].filter(Boolean).join(" › ")}` : "What this is. Its Category and Sub-category follow from it."}
           >
             <SearchableSelect
               id="line-item"
               value={selectValue(lineForm.itemId)}
               onValueChange={(v) => pickLineItem(items.find((i) => i.id === Number(v)))}
-              options={items.map((i) => ({ value: String(i.id), label: i.name }))}
+              options={itemSelectOptions}
               onCreateNew={canCreate ? () => setNewItemFor("add") : undefined}
               createLabel="New Item…"
             />
           </FormField>
           {lineForm.itemId && lineCategory && (
-            <FormField htmlFor="line-responsibility" label="Responsibility" helperText="Derived from the Item's Category.">
-              <Input id="line-responsibility" value={domainLabel(lineCategory.asset_domain ?? "")} disabled readOnly />
+            <FormField htmlFor="line-work-area" label="Work area" helperText="Follows from the Item's Category.">
+              <Input id="line-work-area" value={workAreaLabel(lineCategory.asset_domain ?? "")} disabled readOnly />
             </FormField>
           )}
           <FormField htmlFor="line-cost" label="Cost" required>
@@ -816,7 +821,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
               id="line-brand"
               value={selectValue(lineForm.brandId)}
               onValueChange={(v) => setLineForm((f) => ({ ...f, brandId: v }))}
-              options={brands.map((b) => ({ value: String(b.id), label: b.name }))}
+              options={brandSelectOptions}
               onCreateNew={canCreate ? () => setNewBrandFor("add") : undefined}
               createLabel="New Brand…"
             />
@@ -914,12 +919,12 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
             <FormField htmlFor="edit-barcode" label="Barcode" required>
               <Input id="edit-barcode" value={editForm.barcode} onChange={(e) => setEditForm((f) => ({ ...f, barcode: e.target.value }))} />
             </FormField>
-            <FormField htmlFor="edit-item" label="Item" helperText="Changing the Item also changes the Category and Sub-Category.">
+            <FormField htmlFor="edit-item" label="Item" helperText="Changing the Item also changes the Category and Sub-category.">
               <SearchableSelect
                 id="edit-item"
                 value={selectValue(editForm.itemId)}
                 onValueChange={(v) => setEditForm((f) => ({ ...f, itemId: v }))}
-                options={items.map((i) => ({ value: String(i.id), label: i.name }))}
+                options={itemSelectOptions}
                 onCreateNew={canCreate ? () => setNewItemFor("edit") : undefined}
                 createLabel="New Item…"
               />
@@ -935,7 +940,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
                 id="edit-brand"
                 value={selectValue(editForm.brandId)}
                 onValueChange={(v) => setEditForm((f) => ({ ...f, brandId: v }))}
-                options={brands.map((b) => ({ value: String(b.id), label: b.name }))}
+                options={brandSelectOptions}
                 onCreateNew={canCreate ? () => setNewBrandFor("edit") : undefined}
                 createLabel="New Brand…"
               />
@@ -1061,15 +1066,15 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
 
           <div className="flex shrink-0 flex-col gap-1">
             <Label htmlFor="initial-asset-user" className="text-xs">
-              Initial Asset User<span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
+              Received Into<span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
             </Label>
             <SearchableSelect
               id="initial-asset-user"
               value={selectValue(initialAssetUserId)}
               onValueChange={setInitialAssetUserId}
-              options={asset_users.map((h) => ({ value: String(h.id), label: h.name, keywords: assetUserKeywords(h) }))}
+              options={receivedIntoOptions}
             />
-            <p className="text-xs text-muted-foreground">Where this delivery goes. Applies to every asset below.</p>
+            <p className="text-xs text-muted-foreground">The Stock Room, Store or person this delivery goes to. Applies to every asset below.</p>
           </div>
 
           <div className="grid shrink-0 grid-cols-3 gap-2">
@@ -1213,8 +1218,8 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
               </DialogHeader>
               <p className="text-sm text-muted-foreground">
                 {allDeliveredLines.length} item{allDeliveredLines.length === 1 ? "" : "s"} under this PO
-                {allDeliveredLines.length === 1 ? " has" : " have"} already been delivered into the Fixed Asset
-                Register. Only the Primary Owner can delete a purchase order once items have been delivered.
+                {allDeliveredLines.length === 1 ? " has" : " have"} already been delivered into the Asset
+                Register. Only the head-office admin can delete a purchase order once items have been delivered.
               </p>
               <DialogFooter>
                 <Button onClick={() => setDeleteOpen(false)}>Close</Button>
@@ -1233,7 +1238,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
                   <>
                     <p className="font-medium text-destructive">
                       This will also permanently remove {allDeliveredLines.length} asset
-                      {allDeliveredLines.length === 1 ? "" : "s"} already in the Fixed Asset Register:
+                      {allDeliveredLines.length === 1 ? "" : "s"} already in the Asset Register:
                     </p>
                     <ul className="list-disc pl-5">
                       {allDeliveredLines.map((l) => (

@@ -6,53 +6,25 @@ import {
   createRoute,
   createRouter,
   redirect,
-  useLocation,
   useNavigate,
   useRouter,
 } from "@tanstack/react-router";
-import {
-  LayoutDashboard,
-  Boxes,
-  ListChecks,
-  PackagePlus,
-  ClipboardList,
-  ScanBarcode,
-  Printer,
-  Upload,
-  BarChart3,
-  Building2,
-  MapPin,
-  Users2,
-  Wallet,
-  Tag,
-  Tags,
-  Truck,
-  Award,
-  Layers,
-  Link2,
-  Package,
-  SlidersHorizontal,
-  UserCog,
-  Hash,
-  LogOut,
-  type LucideIcon,
-} from "lucide-react";
+import { LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sidebar,
   SidebarContent,
-  SidebarGroup,
-  SidebarGroupLabel,
   SidebarInset,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { AppNav } from "@/components/app-shell/AppNav";
+import { guarded } from "@/components/app-shell/RouteGuard";
 import { apiClient } from "./lib/api-client";
 import { applySession, logoutSession, safeNextPath, type SessionPayload } from "./lib/auth-fetch";
 import { useAuthStore } from "./lib/auth-store";
+import { canUse, currentAccess, homePathFor } from "./lib/access";
+import { roleLabel } from "./lib/labels";
 import { LoginForm } from "./routes/login";
 import { ChangePasswordForm, type ChangePasswordValues } from "./routes/change-password";
 
@@ -82,8 +54,14 @@ import BundlesSetup from "./routes/setup/bundles";
 import ItemsSetup from "./routes/setup/items";
 import ErpArticlesSetup from "./routes/setup/erp-articles";
 import CustomFieldsSetup from "./routes/setup/custom-fields";
-import AssetUsersSetup from "./routes/setup/asset-users";
 import CodeRuleSetup from "./routes/setup/code-rule";
+import ReceiveRoute from "./routes/receive";
+import {
+  EmployeesRoute,
+  InstallPointsRoute,
+  StockRoomsRoute,
+  StoresRoute,
+} from "./routes/people";
 
 /** `?next=<in-app path>`: where to go after login / the forced password change
  * (e.g. the asset page a QR label pointed at before the user was logged in). */
@@ -95,40 +73,12 @@ function validateNextSearch(search: Record<string, unknown>): NextSearch {
   return { next: safeNextPath(search.next) };
 }
 
-// A SELF_SERVICE asset_user lands on their own read-only asset list; everyone
-// else lands on the operational dashboard. Used both right after login and to
-// bounce an already authenticated visitor away from /login.
-function landingPathFor(role: string | null): string {
-  return role === "SELF_SERVICE" ? "/my-assets" : "/dashboard";
-}
-
+// A SELF_SERVICE login lands on their own read-only asset list; everyone else
+// lands on Home. Used both right after login and to bounce an already
+// authenticated visitor away from /login.
 function destinationAfterAuth(role: string | null, next: string | undefined): string {
-  return safeNextPath(next) ?? landingPathFor(role);
+  return safeNextPath(next) ?? homePathFor(role);
 }
-
-// Asset User / RBAC rebuild: roles are now ADMIN/OPERATOR/VIEWER/SELF_SERVICE.
-const WRITE_ROLES = ["ADMIN", "OPERATOR"];
-const REPORT_ROLES = ["ADMIN", "OPERATOR", "VIEWER"];
-
-// "Setup lists" -- OPERATOR may manage masters but not users/roles/code rule.
-const MASTER_SETUP_LINKS: { to: string; label: string; icon: LucideIcon }[] = [
-  { to: "/setup/companies", label: "Companies", icon: Building2 },
-  { to: "/setup/locations", label: "Locations", icon: MapPin },
-  { to: "/setup/departments", label: "Departments", icon: Users2 },
-  { to: "/setup/cost-centers", label: "Cost Centers", icon: Wallet },
-  { to: "/setup/categories", label: "Categories", icon: Tag },
-  { to: "/setup/subcategories", label: "Sub-Categories", icon: Tags },
-  { to: "/setup/vendors", label: "Vendors", icon: Truck },
-  { to: "/setup/brands", label: "Brands", icon: Award },
-  { to: "/setup/items", label: "Items", icon: Package },
-  { to: "/setup/erp-articles", label: "ERP Articles", icon: Link2 },
-  { to: "/setup/bundles", label: "Bundles", icon: Layers },
-  { to: "/setup/custom-fields", label: "Custom Fields", icon: SlidersHorizontal },
-];
-const ADMIN_SETUP_LINKS: { to: string; label: string; icon: LucideIcon }[] = [
-  { to: "/setup/asset-users", label: "Asset Users", icon: UserCog },
-  { to: "/setup/code-rule", label: "Code Rule", icon: Hash },
-];
 
 function LoginPage() {
   const { next } = loginRoute.useSearch();
@@ -212,31 +162,10 @@ function ChangePasswordPage() {
   );
 }
 
-function SidebarNavItem({ to, label, icon: Icon }: { to: string; label: string; icon?: LucideIcon }) {
-  const location = useLocation();
-  const isActive = location.pathname === to;
-  return (
-    <SidebarMenuItem>
-      <SidebarMenuButton asChild isActive={isActive} tooltip={label}>
-        <Link to={to}>
-          {Icon && <Icon className="h-4 w-4" />}
-          <span>{label}</span>
-        </Link>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
-  );
-}
-
 function AppShell() {
   const role = useAuthStore((s) => s.role);
   const isPrimaryOwner = useAuthStore((s) => s.isPrimaryOwner);
   const navigate = useNavigate();
-  const canWrite = role !== null && WRITE_ROLES.includes(role);
-  const canReport = role !== null && REPORT_ROLES.includes(role);
-  // Master data management AND bulk asset Import are Primary-Owner-only --
-  // stricter than the ADMIN role itself (an ordinary ADMIN account, if one
-  // is ever created, has neither master-write access nor Import).
-  const canManageMasters = isPrimaryOwner;
 
   async function handleLogout() {
     await logoutSession();
@@ -261,6 +190,11 @@ function AppShell() {
             </Link>
           </div>
           <div className="flex items-center gap-3 text-sm">
+            {role && (
+              <span className="hidden text-xs text-muted-foreground md:inline" data-testid="session-role">
+                {roleLabel(role, isPrimaryOwner)}
+              </span>
+            )}
             <Link to="/change-password" className="hidden text-muted-foreground hover:text-foreground hover:underline sm:inline">
               Change password
             </Link>
@@ -274,54 +208,10 @@ function AppShell() {
         <div className="flex min-h-0 flex-1">
           <Sidebar collapsible="icon" className="top-14 h-[calc(100svh-3.5rem)]">
             <SidebarContent>
-              <nav aria-label="Main">
-                <SidebarGroup>
-                  <SidebarMenu>
-                    {canReport && <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} />}
-                    <SidebarNavItem to="/my-assets" label="My Assets" icon={Boxes} />
-                  </SidebarMenu>
-                </SidebarGroup>
-
-                {canReport && (
-                  <SidebarGroup>
-                    <SidebarGroupLabel>Assets</SidebarGroupLabel>
-                    <SidebarMenu>
-                      <SidebarNavItem to="/assets" label="Asset Register" icon={ListChecks} />
-                      {canWrite && <SidebarNavItem to="/assets/new" label="Add Asset" icon={PackagePlus} />}
-                      {canWrite && <SidebarNavItem to="/serial-pending" label="Serial Pending" icon={Hash} />}
-                      {canWrite && <SidebarNavItem to="/asset-movement" label="Move / Dispatch" icon={ScanBarcode} />}
-                      {canWrite && <SidebarNavItem to="/print-labels" label="Print Labels" icon={Printer} />}
-                      {canWrite && <SidebarNavItem to="/purchase-orders" label="Purchase Orders" icon={ClipboardList} />}
-                      {/* Bulk asset Import is Primary-Owner-only, not part of
-                          ADMIN/OPERATOR's shared operational rights. */}
-                      {canManageMasters && <SidebarNavItem to="/import" label="Import" icon={Upload} />}
-                      <SidebarNavItem to="/reports" label="Reports" icon={BarChart3} />
-                    </SidebarMenu>
-                  </SidebarGroup>
-                )}
-
-                {canManageMasters && (
-                  <SidebarGroup>
-                    <SidebarGroupLabel>Masters</SidebarGroupLabel>
-                    <SidebarMenu>
-                      {MASTER_SETUP_LINKS.map((l) => (
-                        <SidebarNavItem key={l.to} to={l.to} label={l.label} icon={l.icon} />
-                      ))}
-                    </SidebarMenu>
-                  </SidebarGroup>
-                )}
-
-                {role === "ADMIN" && (
-                  <SidebarGroup>
-                    <SidebarGroupLabel>Administration</SidebarGroupLabel>
-                    <SidebarMenu>
-                      {ADMIN_SETUP_LINKS.map((l) => (
-                        <SidebarNavItem key={l.to} to={l.to} label={l.label} icon={l.icon} />
-                      ))}
-                    </SidebarMenu>
-                  </SidebarGroup>
-                )}
-              </nav>
+              {/* Role-aware: Home · Work · People & Places · Reports · Settings
+                  (head-office admin only, one collapsed group). Hiding a link is
+                  UX; the route guards below and the server enforce access. */}
+              <AppNav access={{ role, isPrimaryOwner }} />
             </SidebarContent>
           </Sidebar>
 
@@ -346,7 +236,7 @@ export const indexRoute = createRoute({
   beforeLoad: () => {
     const { accessToken, role, mustChangePassword } = useAuthStore.getState();
     if (!accessToken) throw redirect({ to: "/login" });
-    throw redirect({ to: mustChangePassword ? "/change-password" : landingPathFor(role) });
+    throw redirect({ to: mustChangePassword ? "/change-password" : homePathFor(role) });
   },
 });
 
@@ -398,45 +288,67 @@ export const authedLayoutRoute = createRoute({
   component: AppShell,
 });
 
+// Route guards (UX; the server stays the authority): every screen below is
+// wrapped in `guarded(area, ...)`, which renders an in-shell "You don't have
+// access to this area." page for anyone who may not use it -- no flash of the
+// screen, no working-looking buttons that then fail with 403. Areas live in
+// lib/access.ts: "staff" (Home, Assets, Reports), "work" (POs, Receive, Add,
+// Move, Serial Pending, Print Labels), "people" (ADMIN), "settings"
+// (head-office admin), "self" (My Assets for self-service logins).
+
 export const dashboardRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/dashboard",
-  component: DashboardRoute,
+  component: guarded("staff", DashboardRoute),
 });
 
-/** `?status=<ASSET_STATUS>`: lets the Dashboard's exception summary (AM-12)
- * link straight into a pre-filtered register instead of a dead, decorative
- * count -- e.g. "Repair" -> `/assets?status=UNDER_REPAIR`. */
-interface AssetsSearch {
+/** Search params of the Assets list:
+ * `status` -- a status filter (Home's "N under repair" rows link here);
+ * `mine` -- start with the "Mine" filter on (/my-assets sends staff here);
+ * `q` -- start with this search text; `find` -- put the cursor in the search
+ * box (Home's "Find Asset"). */
+export interface AssetsSearch {
   status?: string;
+  mine?: boolean;
+  q?: string;
+  find?: boolean;
 }
 
+const truthyParam = (v: unknown) => v === true || v === 1 || v === "1" || v === "true";
+
 function validateAssetsSearch(search: Record<string, unknown>): AssetsSearch {
-  return { status: typeof search.status === "string" ? search.status : undefined };
+  return {
+    status: typeof search.status === "string" ? search.status : undefined,
+    mine: truthyParam(search.mine) ? true : undefined,
+    q: typeof search.q === "string" && search.q !== "" ? search.q : undefined,
+    find: truthyParam(search.find) ? true : undefined,
+  };
 }
 
 export const assetsIndexRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/assets",
   validateSearch: validateAssetsSearch,
-  component: function AssetsIndexComponent() {
-    const { status } = assetsIndexRoute.useSearch();
-    return <AssetsIndexRoute search={{ status }} />;
-  },
+  component: guarded("staff", function AssetsIndexComponent() {
+    const search = assetsIndexRoute.useSearch();
+    return <AssetsIndexRoute search={search} />;
+  }),
 });
 
 export const assetsNewRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/assets/new",
-  component: NewAssetRoute,
+  component: guarded("work", NewAssetRoute),
 });
 
 export const serialPendingRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/serial-pending",
-  component: SerialPendingRoute,
+  component: guarded("work", SerialPendingRoute),
 });
 
+// Asset 360 stays open to everyone the server allows (a self-service login
+// opening its own asset from a QR label included): not guarded here.
 export const assetDetailRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/assets/$id",
@@ -449,7 +361,7 @@ export const assetDetailRoute = createRoute({
 export const assetMovementRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/asset-movement",
-  component: AssetMovementRoute,
+  component: guarded("work", AssetMovementRoute),
 });
 
 export const printLabelsRoute = createRoute({
@@ -459,10 +371,16 @@ export const printLabelsRoute = createRoute({
   validateSearch: (search: Record<string, unknown>): { assets?: string } => ({
     assets: typeof search.assets === "string" && search.assets !== "" ? search.assets : undefined,
   }),
-  component: function PrintLabelsComponent() {
+  component: guarded("work", function PrintLabelsComponent() {
     const { assets } = printLabelsRoute.useSearch();
     return <PrintLabelsRoute assets={assets} />;
-  },
+  }),
+});
+
+export const receiveRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/receive",
+  component: guarded("work", ReceiveRoute),
 });
 
 // Dispatch is now part of Move / Dispatch (one screen); the old address keeps working.
@@ -477,130 +395,167 @@ export const dispatchRoute = createRoute({
 export const purchaseOrdersIndexRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/purchase-orders",
-  component: PurchaseOrdersIndexRoute,
+  component: guarded("work", PurchaseOrdersIndexRoute),
 });
 
 export const purchaseOrdersNewRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/purchase-orders/new",
-  component: NewPurchaseOrderRoute,
+  component: guarded("work", NewPurchaseOrderRoute),
 });
 
 export const purchaseOrdersFromErpRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/purchase-orders/from-erp",
-  component: PoFromErpRoute,
+  component: guarded("work", PoFromErpRoute),
 });
 
 export const purchaseOrderDetailRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/purchase-orders/$id",
-  component: function PurchaseOrderDetailComponent() {
+  component: guarded("work", function PurchaseOrderDetailComponent() {
     const { id } = purchaseOrderDetailRoute.useParams();
     return <PurchaseOrderDetailRoute params={{ id }} />;
-  },
+  }),
 });
 
+// My Assets is the self-service login's own page. Staff have no separate
+// "My Assets": they are sent to Assets with the "Mine" filter on.
 export const myAssetsRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/my-assets",
-  component: MyAssetsRoute,
+  beforeLoad: () => {
+    if (canUse("staff", currentAccess())) {
+      throw redirect({ to: "/assets", search: { mine: true } });
+    }
+  },
+  component: guarded("self", MyAssetsRoute),
 });
 
 export const importRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/import",
-  component: ImportRoute,
+  component: guarded("settings", ImportRoute),
 });
 
 export const reportsRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/reports",
-  component: ReportsRoute,
+  component: guarded("staff", ReportsRoute),
 });
 
+// People & Places: the one asset-user table shown as four natural lists.
+export const peopleEmployeesRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/people/employees",
+  component: guarded("people", EmployeesRoute),
+});
+
+export const peopleStoresRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/people/stores",
+  component: guarded("people", StoresRoute),
+});
+
+export const peopleStockRoomsRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/people/stock-rooms",
+  component: guarded("people", StockRoomsRoute),
+});
+
+export const peopleInstallPointsRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/people/install-points",
+  component: guarded("people", InstallPointsRoute),
+});
+
+// Settings (head-office admin). The /setup/* addresses are unchanged; only the
+// menu around them moved.
 export const setupCompaniesRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/companies",
-  component: CompaniesSetup,
+  component: guarded("settings", CompaniesSetup),
 });
 
 export const setupLocationsRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/locations",
-  component: LocationsSetup,
+  component: guarded("settings", LocationsSetup),
 });
 
 export const setupDepartmentsRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/departments",
-  component: DepartmentsSetup,
+  component: guarded("settings", DepartmentsSetup),
 });
 
 export const setupCostCentersRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/cost-centers",
-  component: CostCentersSetup,
+  component: guarded("settings", CostCentersSetup),
 });
 
 export const setupCategoriesRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/categories",
-  component: CategoriesSetup,
+  component: guarded("settings", CategoriesSetup),
 });
 
 export const setupSubcategoriesRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/subcategories",
-  component: SubcategoriesSetup,
+  component: guarded("settings", SubcategoriesSetup),
 });
 
 export const setupVendorsRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/vendors",
-  component: VendorsSetup,
+  component: guarded("settings", VendorsSetup),
 });
 
 export const setupBrandsRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/brands",
-  component: BrandsSetup,
+  component: guarded("settings", BrandsSetup),
 });
 
 export const setupBundlesRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/bundles",
-  component: BundlesSetup,
+  component: guarded("settings", BundlesSetup),
 });
 
 export const setupItemsRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/items",
-  component: ItemsSetup,
+  component: guarded("settings", ItemsSetup),
 });
 
 export const setupErpArticlesRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/erp-articles",
-  component: ErpArticlesSetup,
+  component: guarded("settings", ErpArticlesSetup),
 });
 
 export const setupCustomFieldsRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/custom-fields",
-  component: CustomFieldsSetup,
+  component: guarded("settings", CustomFieldsSetup),
 });
 
+// The old Asset Users address now opens People & Places > Employees.
 export const setupAssetUsersRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/asset-users",
-  component: AssetUsersSetup,
+  beforeLoad: () => {
+    throw redirect({ to: "/people/employees" });
+  },
 });
 
 export const setupCodeRuleRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/code-rule",
-  component: CodeRuleSetup,
+  component: guarded("settings", CodeRuleSetup),
 });
 
 const routeTree = rootRoute.addChildren([
@@ -615,6 +570,7 @@ const routeTree = rootRoute.addChildren([
     assetDetailRoute,
     assetMovementRoute,
     printLabelsRoute,
+    receiveRoute,
     dispatchRoute,
     purchaseOrdersIndexRoute,
     purchaseOrdersNewRoute,
@@ -623,6 +579,10 @@ const routeTree = rootRoute.addChildren([
     myAssetsRoute,
     importRoute,
     reportsRoute,
+    peopleEmployeesRoute,
+    peopleStoresRoute,
+    peopleStockRoomsRoute,
+    peopleInstallPointsRoute,
     setupCompaniesRoute,
     setupLocationsRoute,
     setupDepartmentsRoute,

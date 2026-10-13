@@ -36,4 +36,21 @@ describe("Timeline", () => {
     render(<Timeline events={[ev({ id: 3, event_type: "SENT_FOR_REPAIR", status_after: "UNDER_REPAIR", label: "" })]} />);
     expect(screen.getByText("Sent for repair")).toBeInTheDocument();
   });
+
+  it("shows the status after each event in plain words, never the raw code", () => {
+    render(
+      <Timeline
+        events={[
+          ev({ id: 1, event_type: "PROCURED", status_after: "IN_STOCK", label: "Received into HO Stock" }),
+          ev({ id: 2, event_type: "SENT_FOR_REPAIR", status_after: "UNDER_REPAIR", label: "" }),
+          ev({ id: 3, event_type: "RECEIVED_FROM_REPAIR", status_after: "ALLOTTED", label: "" }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("In Stock")).toBeInTheDocument();
+    expect(screen.getByText("Under Repair")).toBeInTheDocument();
+    expect(screen.getByText("With Employee / Store")).toBeInTheDocument();
+    expect(screen.getByText("Back from repair")).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/IN_STOCK|UNDER_REPAIR|ALLOTTED|Allotted\b/);
+  });
 });

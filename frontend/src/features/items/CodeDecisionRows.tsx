@@ -7,6 +7,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { ItemFormDialog } from "./ItemFormDialog";
 import { useCanCreateMasters } from "@/components/quick-create/masters";
+import { itemOptions as buildItemOptions } from "@/lib/option-labels";
+import { useCategoryLookups } from "@/lib/lookups";
 
 /** An ERP item code with the Article it sits in (an Article is a purchasing group, not a statement of what each code is). */
 export interface CodeDecisionRow extends ArticleCodeRow {
@@ -49,7 +51,9 @@ export function CodeDecisionRows({ rows, items, companyId, showArticle = false }
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkItem, setBulkItem] = useState<string | undefined>();
   const [newItemFor, setNewItemFor] = useState<CodeDecisionRow | null>(null);
-  const options = items.map((i) => ({ value: String(i.id), label: i.name }));
+  // "Laptop · IT Fixed Assets": the Category tells two similar Items apart.
+  const categoryLookups = useCategoryLookups();
+  const options = buildItemOptions(items, categoryLookups);
 
   const rule = (row: CodeDecisionRow, type: Mode) => ({
     match_type: type, article_key: row.article_key, article_name: row.article_name, section: row.section, department: row.department,

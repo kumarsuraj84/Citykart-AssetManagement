@@ -73,7 +73,7 @@ export function SerialPendingScreen() {
         </div>
       ),
     },
-    { key: "class", header: "Category › Sub-Category", cell: (r) => [r.category_name, r.subcategory_name].filter(Boolean).join(" › ") },
+    { key: "class", header: "Category › Sub-category", cell: (r) => [r.category_name, r.subcategory_name].filter(Boolean).join(" › ") },
     {
       key: "holder", header: "Now with", cell: (r) => (
         <div className="min-w-0">

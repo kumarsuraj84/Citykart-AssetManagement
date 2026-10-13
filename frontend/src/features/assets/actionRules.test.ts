@@ -1,5 +1,21 @@
 import { describe, it, expect } from "vitest";
-import { actionsFor } from "./actionRules";
+import { actionsFor, targetLabelFor } from "./actionRules";
+
+describe("targetLabelFor", () => {
+  it("says Move To for a move and Received Into for a return from repair or a found asset", () => {
+    expect(targetLabelFor("MOVED")).toBe("Move To");
+    expect(targetLabelFor("RECEIVED_FROM_REPAIR")).toBe("Received Into");
+    expect(targetLabelFor("FOUND")).toBe("Received Into");
+  });
+
+  it("every action that needs a person/place has a plain label (never 'Asset User')", () => {
+    for (const status of ["IN_STOCK", "ALLOTTED", "INSTALLED", "UNDER_REPAIR", "LOST"]) {
+      for (const a of actionsFor(status).filter((x) => x.needsAssetUser)) {
+        expect(targetLabelFor(a.eventType)).not.toMatch(/asset user|holder/i);
+      }
+    }
+  });
+});
 
 describe("actionsFor", () => {
   it("offers Allot/Transfer, Send for Repair and Lost from IN_STOCK", () => {

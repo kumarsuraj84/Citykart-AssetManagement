@@ -1,9 +1,20 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import {
+  ArrowRight,
+  ClipboardList,
+  PackageCheck,
+  PackagePlus,
+  ScanBarcode,
+  Search,
+  type LucideIcon,
+} from "lucide-react";
 import { apiClient } from "../../lib/api-client";
-import { useAuthStore } from "../../lib/auth-store";
+import { useAccess } from "../../lib/access";
+import { statusLabel, workAreaLabel, ASSET_STATUSES } from "../../lib/labels";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useErpChangesSummary } from "../erp/ErpChanges";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,21 +24,25 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
-import { StatusBadge } from "@/components/shared/StatusBadge";
 
-// Matches router.tsx's own WRITE_ROLES: the Purchase Orders module is
-// ADMIN/OPERATOR only, so this card (and the data behind it -- see
-// dashboard_service.py's include_purchase_orders) is too.
-const PURCHASE_ORDER_ROLES = ["ADMIN", "OPERATOR"];
+/**
+ * Home (route /dashboard): what to do next, not a wall of numbers.
+ *  1. Quick actions the person's role may use.
+ *  2. "Needs attention": rows built only from data the server already returns
+ *     (GET /reports/dashboard, /erp/changes/summary, /erp/reminders), each
+ *     opening the screen where it is dealt with. ERP trouble (503, not set up)
+ *     simply means fewer rows -- never an alarming error.
+ *  3. Recent changes and Stock by Place, compact; a collapsed Watch list keeps
+ *     Warranty Expiring Soon and the long-with-someone list.
+ */
 
-interface DashboardData {
+export interface DashboardData {
   status_counts: Record<string, number>;
   stock_by_location: { location: string; count: number }[];
   warranty_alerts: { asset_id: number; asset_code: string; warranty_upto: string }[];
   long_allocation_alerts: { asset_id: number; asset_code: string; days_allotted: number }[];
-  // AM-12 G03
   exception_counts: Record<string, number>;
-  // Assets whose serial is still to be added (the Serial Pending list).
+  /** Assets whose serial is still to be added (the Serial Pending list). */
   serial_pending_count?: number;
   recent_activity: {
     id: number;
@@ -38,7 +53,7 @@ interface DashboardData {
     label: string;
     recorded_by_name: string | null;
   }[];
-  // Purchase Orders card (2026-09-25)
+  /** `count` = units on purchase orders still waiting for goods. */
   pending_po_summary: { count: number; value: number };
   open_purchase_orders: {
     id: number;
@@ -48,6 +63,117 @@ interface DashboardData {
     pending_line_count: number;
   }[];
 }
+
+interface Reminder {
+  po_id: number;
+  to_deliver: number;
+}
+
+/** One "needs attention" row: plain sentence + where to deal with it. */
+export interface AttentionRow {
+  key: string;
+  text: string;
+  to: string;
+  search?: Record<string, string>;
+  action: string;
+}
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** Builds the "Needs attention" rows (pure; exported for tests). */
+export function buildAttentionRows(input: {
+  data: DashboardData | undefined;
+  canWork: boolean;
+  erpChangedPos: number;
+  erpArrivedPos: number;
+}): AttentionRow[] {
+  const { data, canWork, erpChangedPos, erpArrivedPos } = input;
+  const rows: AttentionRow[] = [];
+  if (canWork) {
+    const waitingUnits = data?.pending_po_summary?.count ?? 0;
+    if (waitingUnits > 0) {
+      rows.push({
+        key: "receive",
+        text: `${plural(waitingUnits, "unit")} on purchase orders ${waitingUnits === 1 ? "is" : "are"} waiting for goods`,
+        to: "/receive",
+        action: "Receive",
+      });
+    }
+    if (erpArrivedPos > 0) {
+      rows.push({
+        key: "erp-arrived",
+        text: `The ERP shows goods arrived for ${plural(erpArrivedPos, "purchase order")} not yet received here`,
+        to: "/receive",
+        action: "Receive",
+      });
+    }
+    const serialPending = data?.serial_pending_count ?? 0;
+    if (serialPending > 0) {
+      rows.push({
+        key: "serial",
+        text: `${plural(serialPending, "asset")} waiting for a serial number`,
+        to: "/serial-pending",
+        action: "Add serials",
+      });
+    }
+    if (erpChangedPos > 0) {
+      rows.push({
+        key: "erp-changed",
+        text: `The ERP changed ${plural(erpChangedPos, "purchase order")}`,
+        to: "/purchase-orders",
+        action: "Review",
+      });
+    }
+  }
+  const underRepair = data?.exception_counts?.UNDER_REPAIR ?? 0;
+  if (underRepair > 0) {
+    rows.push({
+      key: "repair",
+      text: `${plural(underRepair, "asset")} under repair`,
+      to: "/assets",
+      search: { status: "UNDER_REPAIR" },
+      action: "See them",
+    });
+  }
+  const lost = data?.exception_counts?.LOST ?? 0;
+  if (lost > 0) {
+    rows.push({
+      key: "lost",
+      text: `${plural(lost, "asset")} reported lost`,
+      to: "/assets",
+      search: { status: "LOST" },
+      action: "See them",
+    });
+  }
+  return rows;
+}
+
+interface QuickAction {
+  label: string;
+  to: string;
+  search?: Record<string, string | boolean>;
+  icon: LucideIcon;
+}
+
+function quickActionsFor(canWork: boolean): QuickAction[] {
+  const find: QuickAction = { label: "Find Asset", to: "/assets", search: { find: true }, icon: Search };
+  if (!canWork) return [find];
+  return [
+    { label: "Create PO", to: "/purchase-orders/new", icon: ClipboardList },
+    { label: "Receive Delivery", to: "/receive", icon: PackageCheck },
+    { label: "Add Assets", to: "/assets/new", icon: PackagePlus },
+    { label: "Move Assets", to: "/asset-movement", icon: ScanBarcode },
+    find,
+  ];
+}
+
+// Work area filter: a convenience view, never an authorization restriction --
+// the server always narrows to the person's own allowed work area anyway.
+const WORK_AREA_FILTER = [
+  { value: "ALL", label: "All" },
+  { value: "IT", label: workAreaLabel("IT") },
+  { value: "NON_IT", label: workAreaLabel("NON_IT") },
+];
 
 interface LocationRow {
   location: string;
@@ -63,28 +189,27 @@ interface AllocationRow {
   asset_code: string;
   days_allotted: number;
 }
+type ActivityRow = DashboardData["recent_activity"][number];
+
+const assetLink = (id: number, code: string) => (
+  <Link to="/assets/$id" params={{ id: String(id) }}>
+    {code}
+  </Link>
+);
 
 const locationColumns: DataTableColumn<LocationRow>[] = [
-  { key: "location", header: "Location", cell: (r) => r.location },
+  { key: "location", header: "Place", cell: (r) => r.location },
   {
     key: "count",
-    header: "Count",
+    header: "In Stock",
     headerClassName: "text-right",
-    cellClassName: "text-right",
-    // "N unit(s)", not a bare number: a KPI tile above already renders the same
-    // figures as standalone digits, and this row's own count must stay
-    // text-distinct so both remain independently findable.
+    cellClassName: "text-right tabular-nums",
     cell: (r) => `${r.count} unit${r.count === 1 ? "" : "s"}`,
   },
 ];
 
 const warrantyColumns: DataTableColumn<WarrantyRow>[] = [
-  {
-    key: "asset",
-    header: "Asset",
-    cellClassName: "font-mono text-sm",
-    cell: (r) => <a href={`/assets/${r.asset_id}`}>{r.asset_code}</a>,
-  },
+  { key: "asset", header: "Asset", cellClassName: "font-mono text-sm", cell: (r) => assetLink(r.asset_id, r.asset_code) },
   {
     key: "warranty",
     header: "Warranty Until",
@@ -94,166 +219,95 @@ const warrantyColumns: DataTableColumn<WarrantyRow>[] = [
   },
 ];
 
-// AM-12 G03: the fixed, recognized "something needs attention or is
-// permanently closed out" statuses (backend/app/assets/models.py's
-// ASSET_STATUSES) -- mirrors EXCEPTION_STATUSES in
-// backend/app/reports/dashboard_service.py exactly, in display order.
-// IN_STOCK/ALLOTTED/INSTALLED stay in the existing per-status KPI cards
-// above; nothing here duplicates or replaces that.
-const EXCEPTION_STATUSES = ["UNDER_REPAIR", "LOST", "DISPOSED", "SOLD", "SCRAPPED"];
-
-interface ExceptionRow {
-  status: string;
-  count: number;
-}
-
-const exceptionColumns: DataTableColumn<ExceptionRow>[] = [
-  { key: "status", header: "Status", cell: (r) => <StatusBadge status={r.status} compact /> },
-  {
-    key: "count",
-    header: "Count",
-    headerClassName: "text-right",
-    cellClassName: "text-right",
-    // Every row is a real navigation target (AM-12 §6), not a dead number --
-    // the Asset Register's own single-status Select filter is what this
-    // deep-links into, so each of the five states gets its own link rather
-    // than a lossy "Closed/Disposed" total that couldn't be filtered to in
-    // one click anyway.
-    cell: (r) => (
-      <Link to="/assets" search={{ status: r.status }} className="font-medium underline-offset-2 hover:underline">
-        {r.count}
-      </Link>
-    ),
-  },
-];
-
-interface ActivityRow {
-  id: number;
-  asset_id: number;
-  asset_code: string;
-  event_date: string;
-  label: string;
-  recorded_by_name: string | null;
-}
-
-const activityColumns: DataTableColumn<ActivityRow>[] = [
-  {
-    key: "asset",
-    header: "Asset",
-    cellClassName: "font-mono text-sm",
-    cell: (r) => <Link to="/assets/$id" params={{ id: String(r.asset_id) }}>{r.asset_code}</Link>,
-  },
-  { key: "activity", header: "Activity", cell: (r) => r.label },
-  {
-    key: "when",
-    header: "When",
-    headerClassName: "text-right",
-    cellClassName: "text-right whitespace-nowrap",
-    // Locale date+time, not a raw ISO string -- consistent with warranty_upto's
-    // own already-readable rendering elsewhere on this page.
-    cell: (r) => new Date(r.event_date).toLocaleString(),
-  },
-  {
-    key: "by",
-    header: "By",
-    cell: (r) => r.recorded_by_name ?? "—",
-  },
-];
-
-interface OpenPoRow {
-  id: number;
-  po_number: string;
-  po_date: string;
-  vendor_id: number | null;
-  pending_line_count: number;
-}
-
-const openPoColumns = (vendorNames: Record<number, string>): DataTableColumn<OpenPoRow>[] => [
-  {
-    key: "po_number",
-    header: "PO No",
-    cell: (po) => (
-      <Link to="/purchase-orders/$id" params={{ id: String(po.id) }}>
-        {po.po_number}
-      </Link>
-    ),
-  },
-  { key: "po_date", header: "PO Date", cell: (po) => po.po_date },
-  { key: "vendor", header: "Vendor", cell: (po) => (po.vendor_id ? (vendorNames[po.vendor_id] ?? "—") : "—") },
-  {
-    key: "pending",
-    header: "Pending Lines",
-    headerClassName: "text-right",
-    cellClassName: "text-right",
-    cell: (po) => po.pending_line_count,
-  },
-];
-
 const allocationColumns: DataTableColumn<AllocationRow>[] = [
-  {
-    key: "asset",
-    header: "Asset",
-    cellClassName: "font-mono text-sm",
-    cell: (r) => <a href={`/assets/${r.asset_id}`}>{r.asset_code}</a>,
-  },
+  { key: "asset", header: "Asset", cellClassName: "font-mono text-sm", cell: (r) => assetLink(r.asset_id, r.asset_code) },
   {
     key: "days",
-    header: "Days Allotted",
+    header: "Days",
     headerClassName: "text-right",
     cellClassName: "text-right",
     cell: (r) => <Badge variant="destructive">{r.days_allotted} days</Badge>,
   },
 ];
 
-// Spec §37/§67: "All" is the always-safe default -- the caller's own
-// primary_asset_domain isn't threaded into the frontend auth session, so
-// rather than guess it this simply starts unfiltered and lets anyone
-// (ADMIN/Primary Owner included, since this is a convenience view, never
-// an authorization restriction -- spec §14) narrow it themselves.
-const DOMAIN_OPTIONS = [
-  { value: "ALL", label: "All" },
-  { value: "IT", label: "IT" },
-  { value: "NON_IT", label: "Admin / Non-IT" },
+const activityColumns: DataTableColumn<ActivityRow>[] = [
+  { key: "asset", header: "Asset", cellClassName: "font-mono text-sm", cell: (r) => assetLink(r.asset_id, r.asset_code) },
+  { key: "activity", header: "What happened", cell: (r) => r.label },
+  {
+    key: "when",
+    header: "When",
+    headerClassName: "text-right",
+    cellClassName: "text-right whitespace-nowrap",
+    cell: (r) => new Date(r.event_date).toLocaleString(),
+  },
+  { key: "by", header: "By", cell: (r) => r.recorded_by_name ?? "—" },
 ];
 
-export function Dashboard() {
+/** ERP "goods arrived here but not received" reminders; any ERP trouble = none. */
+function useErpArrivedReminders(enabled: boolean) {
+  const statusQ = useQuery({
+    queryKey: ["erp", "status"],
+    queryFn: () => apiClient.get<{ configured: boolean }>("/erp/status"),
+    enabled,
+    retry: false,
+  });
+  return useQuery({
+    queryKey: ["erp", "reminders", "all"],
+    queryFn: () => apiClient.get<Reminder[]>("/erp/reminders"),
+    enabled: enabled && statusQ.data?.configured === true,
+    retry: false,
+  });
+}
+
+export interface DashboardProps {
+  /** Extension point: a later stage adds a "Head-office admin" group of rows
+   * (new ERP items / vendors / stores) here, shown under Needs attention. */
+  headOfficeSection?: ReactNode;
+}
+
+export function Dashboard({ headOfficeSection }: DashboardProps = {}) {
   const [domain, setDomain] = useState("ALL");
+  const { can } = useAccess();
+  const canWork = can("work");
+
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["dashboard", domain],
     queryFn: () =>
       apiClient.get<DashboardData>(`/reports/dashboard${domain !== "ALL" ? `?domain=${domain}` : ""}`),
   });
-  const role = useAuthStore((s) => s.role);
-  const canSeePurchaseOrders = role !== null && PURCHASE_ORDER_ROLES.includes(role);
-  const canWrite = role === "ADMIN" || role === "OPERATOR";
 
-  const vendorsQ = useQuery({
-    queryKey: ["masters", "vendors"],
-    queryFn: () => apiClient.get<{ id: number; name: string }[]>("/masters/vendors"),
-    enabled: canSeePurchaseOrders,
-  });
-  const vendorNames = Object.fromEntries((vendorsQ.data ?? []).map((v) => [v.id, v.name]));
+  const erpChangesQ = useErpChangesSummary(canWork);
+  const erpRemindersQ = useErpArrivedReminders(canWork);
+  const erpChangedPos = Array.isArray(erpChangesQ.data?.items) ? erpChangesQ.data.items.length : 0;
+  const erpArrivedPos = Array.isArray(erpRemindersQ.data) ? erpRemindersQ.data.length : 0;
 
-  const erpChangesQ = useErpChangesSummary(canSeePurchaseOrders);
-  const erpChangedPos = erpChangesQ.data?.items ?? [];
-
-  const statusEntries = Object.entries(data?.status_counts ?? {});
+  const attention = buildAttentionRows({ data, canWork, erpChangedPos, erpArrivedPos });
+  const statusCounts = ASSET_STATUSES.filter((s) => (data?.status_counts?.[s] ?? 0) > 0).map((s) => ({
+    status: s,
+    count: data?.status_counts?.[s] ?? 0,
+  }));
+  const warranty = data?.warranty_alerts ?? [];
+  const longWith = data?.long_allocation_alerts ?? [];
 
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title="Dashboard"
-        description="Asset counts, stock levels and alerts across your companies."
+        title="Home"
+        description="What needs doing, and where to start."
         actions={
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="dashboard-domain" className="text-xs text-muted-foreground">My Responsibility</Label>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="home-work-area" className="text-xs text-muted-foreground">
+              Work area
+            </Label>
             <Select value={domain} onValueChange={setDomain}>
-              <SelectTrigger id="dashboard-domain" aria-label="My Responsibility" className="w-40">
+              <SelectTrigger id="home-work-area" aria-label="Work area" className="h-8 w-44">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {DOMAIN_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                {WORK_AREA_FILTER.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -261,74 +315,93 @@ export function Dashboard() {
         }
       />
 
+      <nav aria-label="Quick actions" className="flex flex-wrap gap-2">
+        {quickActionsFor(canWork).map((a) => (
+          <Button key={a.label} asChild variant={a.label === "Find Asset" ? "outline" : "default"} size="sm">
+            <Link to={a.to} search={a.search as never}>
+              <a.icon className="h-4 w-4" aria-hidden="true" />
+              {a.label}
+            </Link>
+          </Button>
+        ))}
+      </nav>
+
       {isError ? (
-        <ErrorState message="Couldn't load the dashboard." onRetry={() => refetch()} />
+        <ErrorState message="Couldn't load Home." onRetry={() => refetch()} />
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {isLoading ? (
-              Array.from({ length: 4 }).map((_, i) => (
-                <Card key={`kpi-skeleton-${i}`}>
-                  <CardHeader className="pb-2">
-                    <Skeleton className="h-4 w-20" />
-                  </CardHeader>
-                  <CardContent>
-                    <Skeleton className="h-8 w-12" />
-                  </CardContent>
-                </Card>
-              ))
-            ) : statusEntries.length === 0 ? (
-              <Card className="col-span-full">
-                <CardContent className="pt-6">
-                  <EmptyState title="No assets yet." />
-                </CardContent>
-              </Card>
-            ) : (
-              statusEntries.map(([status, count]) => (
-                <Card key={status}>
-                  <CardHeader className="pb-2">
-                    <CardDescription>
-                      <StatusBadge status={status} />
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-2xl font-semibold tabular-nums">{count}</p>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle>Needs attention</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="flex flex-col gap-2">
+                  <Skeleton className="h-5 w-2/3" />
+                  <Skeleton className="h-5 w-1/2" />
+                </div>
+              ) : attention.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nothing needs your attention right now.</p>
+              ) : (
+                <ul className="flex flex-col divide-y" aria-label="Needs attention">
+                  {attention.map((r) => (
+                    <li key={r.key} className="flex items-center justify-between gap-3 py-2 text-sm">
+                      <span>{r.text}</span>
+                      <Link
+                        to={r.to}
+                        search={r.search as never}
+                        className="inline-flex shrink-0 items-center gap-1 font-medium text-primary underline-offset-2 hover:underline"
+                        data-attention={r.key}
+                      >
+                        {r.action}
+                        <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
 
-          {/* Exceptions + Stock by Location are both compact two-column tables -- pairing
-              them (same lg:grid-cols-2 pattern as Warranty/Allotted below) uses the
-              available laptop-width horizontal space instead of two full-width rows. */}
+          {headOfficeSection}
+
+          {statusCounts.length > 0 && (
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm" aria-label="Assets by status">
+              <span className="text-muted-foreground">Assets:</span>
+              {statusCounts.map(({ status, count }) => (
+                <Link
+                  key={status}
+                  to="/assets"
+                  search={{ status }}
+                  className="underline-offset-2 hover:underline"
+                >
+                  {statusLabel(status)} <span className="font-semibold tabular-nums">{count}</span>
+                </Link>
+              ))}
+            </p>
+          )}
+
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
-              <CardHeader>
-                <CardTitle>Exceptions</CardTitle>
-                <CardDescription>
-                  Assets that may need attention, or have reached a closed/disposed state. Each count links to the
-                  matching Asset Register filter.
-                </CardDescription>
+              <CardHeader className="pb-2">
+                <CardTitle>Recent changes</CardTitle>
+                <CardDescription>The latest moves and updates. The full history is in Reports.</CardDescription>
               </CardHeader>
               <CardContent>
                 <DataTable
-                  columns={exceptionColumns}
-                  rows={EXCEPTION_STATUSES.map((status) => ({ status, count: data?.exception_counts?.[status] ?? 0 }))}
-                  rowKey={(r) => r.status}
+                  columns={activityColumns}
+                  rows={(data?.recent_activity ?? []).slice(0, 8)}
+                  rowKey={(r) => r.id}
                   isLoading={isLoading}
-                  // Every one of the 5 recognized exception statuses always renders its own
-                  // row (defaulted to 0), so this never actually triggers -- required by
-                  // DataTable's own contract regardless.
-                  emptyState={<EmptyState title="No exception data." />}
+                  emptyState={<EmptyState title="No recent asset activity." />}
                 />
               </CardContent>
             </Card>
 
             <Card>
-              <CardHeader>
-                <CardTitle>Stock by Location</CardTitle>
-                <CardDescription>Assets currently at a stock point, by location.</CardDescription>
+              <CardHeader className="pb-2">
+                <CardTitle>Stock by Place</CardTitle>
+                <CardDescription>Assets in Stock Rooms, by place.</CardDescription>
               </CardHeader>
               <CardContent>
                 <DataTable
@@ -342,106 +415,43 @@ export function Dashboard() {
             </Card>
           </div>
 
-          {(data?.serial_pending_count ?? 0) > 0 && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle>Serial Pending</CardTitle>
-                <CardDescription>Assets whose serial number is still to be added.</CardDescription>
-              </CardHeader>
-              <CardContent className="flex items-center justify-between gap-4">
-                <p className="text-2xl font-semibold tabular-nums" data-testid="serial-pending-count">{data?.serial_pending_count}</p>
-                {canWrite && <Link to="/serial-pending" className="text-sm underline">Open the list</Link>}
-              </CardContent>
-            </Card>
-          )}
-
-          {canSeePurchaseOrders && erpChangedPos.length > 0 && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle>Purchase Orders changed in the ERP</CardTitle>
-                <CardDescription>POs made from the ERP that the ERP has since cancelled or edited.</CardDescription>
-              </CardHeader>
-              <CardContent className="flex items-center justify-between gap-4">
-                <p className="text-2xl font-semibold tabular-nums" data-testid="erp-changed-po-count">{erpChangedPos.length}</p>
-                <Link to="/purchase-orders" className="text-sm underline">Open Purchase Orders</Link>
-              </CardContent>
-            </Card>
-          )}
-
-          {canSeePurchaseOrders && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Purchase Orders</CardTitle>
-                <CardDescription>Assets on order, not yet delivered.</CardDescription>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-4">
-                <Link to="/purchase-orders" className="flex items-baseline gap-2 text-2xl font-semibold tabular-nums hover:underline">
-                  {isLoading ? <Skeleton className="h-8 w-12" /> : (data?.pending_po_summary.count ?? 0)}
-                  <span className="text-sm font-normal text-muted-foreground">
-                    pending {(data?.pending_po_summary.count ?? 0) === 1 ? "line" : "lines"} · value{" "}
-                    {(data?.pending_po_summary.value ?? 0).toFixed(2)}
-                  </span>
-                </Link>
-                <DataTable
-                  columns={openPoColumns(vendorNames)}
-                  rows={data?.open_purchase_orders ?? []}
-                  rowKey={(po) => po.id}
-                  isLoading={isLoading}
-                  emptyState={<EmptyState title="No open purchase orders." />}
-                />
-              </CardContent>
-            </Card>
-          )}
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Warranty Expiring Soon</CardTitle>
-                <CardDescription>Within the next 30 days.</CardDescription>
-              </CardHeader>
-              <CardContent>
+          <details className="rounded-md border bg-card" data-testid="watch-list">
+            <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">
+              Watch list
+              <span className="ml-2 font-normal text-muted-foreground">
+                {plural(warranty.length, "warranty", "warranties")} ending soon ·{" "}
+                {plural(longWith.length, "asset")} with someone over 180 days
+              </span>
+            </summary>
+            <div className="grid gap-4 border-t p-4 lg:grid-cols-2">
+              <section aria-labelledby="watch-warranty">
+                <h2 id="watch-warranty" className="mb-1 text-sm font-semibold">
+                  Warranty Expiring Soon
+                </h2>
+                <p className="mb-2 text-xs text-muted-foreground">Within the next 30 days.</p>
                 <DataTable
                   columns={warrantyColumns}
-                  rows={data?.warranty_alerts ?? []}
+                  rows={warranty}
                   rowKey={(r) => r.asset_id}
                   isLoading={isLoading}
                   emptyState={<EmptyState title="Nothing expiring soon." />}
                 />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Allotted Over 180 Days</CardTitle>
-                <CardDescription>Assets that may need to be recalled or checked on.</CardDescription>
-              </CardHeader>
-              <CardContent>
+              </section>
+              <section aria-labelledby="watch-long">
+                <h2 id="watch-long" className="mb-1 text-sm font-semibold">
+                  With Employee / Store Over 180 Days
+                </h2>
+                <p className="mb-2 text-xs text-muted-foreground">May need to be recalled or checked on.</p>
                 <DataTable
                   columns={allocationColumns}
-                  rows={data?.long_allocation_alerts ?? []}
+                  rows={longWith}
                   rowKey={(r) => r.asset_id}
                   isLoading={isLoading}
                   emptyState={<EmptyState title="Nothing overdue." />}
                 />
-              </CardContent>
-            </Card>
-          </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Activity</CardTitle>
-              <CardDescription>The latest lifecycle events. For full history, see the Movement Log report.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <DataTable
-                columns={activityColumns}
-                rows={data?.recent_activity ?? []}
-                rowKey={(r) => r.id}
-                isLoading={isLoading}
-                emptyState={<EmptyState title="No recent asset activity." />}
-              />
-            </CardContent>
-          </Card>
+              </section>
+            </div>
+          </details>
         </>
       )}
     </div>

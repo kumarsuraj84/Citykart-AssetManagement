@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
-import { newSeedRegistry, seedTestCompany, teardownTestCompany, type SeedRegistry } from "./fixtures";
+import { optionMatcher, newSeedRegistry, seedTestCompany, teardownTestCompany, type SeedRegistry } from "./fixtures";
 
-// Desktop bundles end to end: define the bundle in Masters, add 2 Desktops to a
+// Desktop bundles end to end: define the bundle in Settings › Catalogue › Bundles, add 2 Desktops to a
 // PO (16000 each, 18% tax), see them become 8 ordinary lines, then deliver them
 // -- the mouse and keyboard parts (their sub-category is set to "No serial
 // number" in Setup) must start with "No serial number" ticked,
@@ -18,7 +18,7 @@ async function loginAs(page: Page, empCode: string, password: string) {
 // purchase-order-delivery-journey.spec.ts).
 async function selectRadixById(page: Page, triggerId: string, optionText: string) {
   await page.locator(`#${triggerId}`).click();
-  await page.getByRole("option", { name: optionText, exact: true }).click();
+  await page.getByRole("option", { name: optionMatcher(optionText) }).click();
 }
 
 let registry: SeedRegistry | null = null;

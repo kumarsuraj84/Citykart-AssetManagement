@@ -22,7 +22,7 @@ export interface QuickField {
   required?: boolean;
   placeholder?: string;
   helperText?: string;
-  /** A select can offer its own "+ New ..." (for example the Category inside a new Sub-Category). */
+  /** A select can offer its own "+ New ..." (for example the Category inside a new Sub-category). */
   onCreateNew?: () => void;
   createLabel?: string;
 }
@@ -37,9 +37,9 @@ export interface QuickCreateProps {
 
 /**
  * A small "create it right here" dialog for a record that a screen needs but does not
- * have yet (a Category while adding a Sub-Category, a Sub-Category while adding an
+ * have yet (a Category while adding a Sub-category, a Sub-category while adding an
  * Item, ...), so nobody has to leave the screen they started on. It posts to the same
- * endpoint the Setup screen uses, so the same server rules and permissions apply.
+ * endpoint the Settings screen uses, so the same server rules and permissions apply.
  */
 export function QuickCreateDialog({
   open, onOpenChange, onCreated, title, endpoint, fields, initial, toBody, refresh, submitLabel = "Save",
@@ -55,7 +55,7 @@ export function QuickCreateDialog({
   refresh: unknown[][];
   submitLabel?: string;
   /** Let the caller hold the values, so a nested "create" (the new Category chosen
-   * inside a new Sub-Category) can fill a field from outside. */
+   * inside a new Sub-category) can fill a field from outside. */
   values?: Record<string, string>;
   onValuesChange?: (updater: (v: Record<string, string>) => Record<string, string>) => void;
 }) {

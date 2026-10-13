@@ -17,6 +17,8 @@ import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { ItemFormDialog } from "./ItemFormDialog";
 import { ErpGroupsDialog } from "./ErpGroupsDialog";
 import { useCanCreateMasters } from "@/components/quick-create/masters";
+import { companyOptions, itemOptions as buildItemOptions } from "@/lib/option-labels";
+import { useCategoryLookups } from "@/lib/lookups";
 
 const units = (n: number) => Math.round(n).toLocaleString("en-IN");
 
@@ -27,7 +29,7 @@ interface Company {
 
 type Tab = "unmapped" | "untracked" | "linked" | "all";
 
-/** Setup > ERP Articles. Two views of the same decisions. **Codes** (the main one): every ERP barcode on its own row,
+/** Settings › ERP › ERP Mapping (formerly "ERP Articles"). Two views of the same decisions. **Codes** (the main one): every ERP barcode on its own row,
  * never bundled, to tick any of them and link them to one Item or mark them not tracked. **Articles**: a shortcut
  * for a whole family at once (every code under an Article, including new vendor codes, follows it). */
 export function ArticleMapScreen() {
@@ -44,7 +46,7 @@ export function ArticleMapScreen() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title="ERP Articles"
+        title="ERP Mapping"
         description="Decide what CKAM does with every ERP item code (barcode): link it to an Item, or mark it Not tracked (cables, hangers, sensor tags: purchase orders leave those lines out). In Codes, every barcode is its own row: tick the ones you want and link them to one Item. Each company has its own ERP master, so decide per company. Articles is a shortcut for a whole family at once; Groups… clears a whole Department, Section or Division."
         actions={
           <div className="flex gap-2">
@@ -58,7 +60,7 @@ export function ArticleMapScreen() {
           <div className="w-64">
             <SearchableSelect
               id="article-company" aria-label="Company" value={companyId} onValueChange={setPickedCompany}
-              options={companies.map((c) => ({ value: String(c.id), label: c.name }))}
+              options={companyOptions(companies)}
             />
           </div>
         )}
@@ -96,7 +98,9 @@ function ArticlesView({ companyId, items }: { companyId?: string; items: Item[] 
       })),
     retry: false,
   });
-  const itemOptions = items.map((i) => ({ value: String(i.id), label: i.name }));
+  // "Laptop · IT Fixed Assets": the Category tells two similar Items apart.
+  const categoryLookups = useCategoryLookups();
+  const itemOptions = buildItemOptions(items, categoryLookups);
 
   const company = companyId ? { company_id: Number(companyId) } : {};
   const articleRule = (a: ArticleRow) => ({
@@ -300,7 +304,7 @@ function ArticlesView({ companyId, items }: { companyId?: string; items: Item[] 
           emptyState={
             <EmptyState
               title={filter === "unmapped" && !needle ? "Every bought Article has been decided." : "No Articles match."}
-              description={items.length === 0 ? "Create some Items first (Setup > Items)." : undefined}
+              description={items.length === 0 ? "Create some Items first (Settings › Catalogue › Items)." : undefined}
             />
           }
         />

@@ -14,6 +14,9 @@ import {
 import { PageHeader } from "@/components/shared/PageHeader";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField } from "@/components/shared/FormField";
+import { SearchableSelect } from "@/components/shared/SearchableSelect";
+import { WORK_AREA_OPTIONS, statusOptions } from "@/lib/labels";
+import { categoryOptions } from "@/lib/option-labels";
 
 interface Option {
   id: number;
@@ -24,18 +27,11 @@ function asOptionArray(data: unknown): Option[] {
   return Array.isArray(data) ? (data as Option[]) : [];
 }
 
-// Matches backend/app/assets/models.py ASSET_STATUSES -- same closed set
-// AssetRegister's own status filter uses.
-const ASSET_STATUSES = ["IN_STOCK", "ALLOTTED", "INSTALLED", "UNDER_REPAIR", "DISPOSED", "SOLD", "SCRAPPED", "LOST"];
-const ALL = "ALL";
-
-// Same Responsibility values/labels as AssetRegister's own filter (spec §38) --
-// always further bounded server-side by the caller's allowed_asset_domains,
+// Status filter: the backend codes (lib/labels ASSET_STATUSES), shown as words
+// via statusOptions(). The work-area filter (spec §38) uses WORK_AREA_OPTIONS and
+// is always further bounded server-side by the caller's allowed_asset_domains,
 // never a way to widen past it (see search_assets).
-const DOMAINS = [
-  { value: "IT", label: "IT" },
-  { value: "NON_IT", label: "Admin / Non-IT" },
-];
+const ALL = "ALL";
 
 function toDateInput(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -136,44 +132,38 @@ export function ReportsScreen() {
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <div className="flex flex-wrap items-end gap-3">
-            <FormField htmlFor="assets-status" label="Status" className="w-40">
+            <FormField htmlFor="assets-status" label="Status" className="w-48">
               <Select value={status || ALL} onValueChange={(v) => setStatus(v === ALL ? "" : v)}>
                 <SelectTrigger id="assets-status" aria-label="Status">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={ALL}>All statuses</SelectItem>
-                  {ASSET_STATUSES.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s.replace(/_/g, " ")}
+                  {statusOptions().map((s) => (
+                    <SelectItem key={s.value} value={s.value}>
+                      {s.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </FormField>
-            <FormField htmlFor="assets-category" label="Category" className="w-40">
-              <Select value={categoryId || ALL} onValueChange={(v) => setCategoryId(v === ALL ? "" : v)}>
-                <SelectTrigger id="assets-category" aria-label="Category">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>All categories</SelectItem>
-                  {categories.map((c) => (
-                    <SelectItem key={c.id} value={String(c.id)}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <FormField htmlFor="assets-category" label="Category" className="w-48">
+              <SearchableSelect
+                id="assets-category"
+                aria-label="Category"
+                value={categoryId || ALL}
+                onValueChange={(v) => setCategoryId(v === ALL ? "" : v)}
+                options={[{ value: ALL, label: "All categories" }, ...categoryOptions(categories)]}
+              />
             </FormField>
-            <FormField htmlFor="assets-domain" label="Responsibility" className="w-40">
+            <FormField htmlFor="assets-domain" label="Work area" className="w-48">
               <Select value={domain || ALL} onValueChange={(v) => setDomain(v === ALL ? "" : v)}>
-                <SelectTrigger id="assets-domain" aria-label="Responsibility">
+                <SelectTrigger id="assets-domain" aria-label="Work area">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={ALL}>All</SelectItem>
-                  {DOMAINS.map((d) => (
+                  {WORK_AREA_OPTIONS.map((d) => (
                     <SelectItem key={d.value} value={d.value}>
                       {d.label}
                     </SelectItem>
@@ -227,7 +217,7 @@ export function ReportsScreen() {
           <CardTitle>Field Change Audit</CardTitle>
           <CardDescription>
             Every edit to a descriptive/procurement field (e.g. a corrected serial number) in a date range -- separate
-            from the movement log above, which tracks custody, not data corrections.
+            from the movement log above, which tracks where assets are, not data corrections.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">

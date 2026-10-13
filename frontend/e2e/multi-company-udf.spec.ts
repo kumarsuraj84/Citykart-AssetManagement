@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { newSeedRegistry, seedTestCompany, teardownTestCompany, fillAddAssetProcurementFields, type SeedRegistry } from "./fixtures";
+import { optionMatcher, newSeedRegistry, seedTestCompany, teardownTestCompany, fillAddAssetProcurementFields, type SeedRegistry } from "./fixtures";
 
 async function loginAs(page: Page, empCode: string, password: string) {
   await page.goto("/login");
@@ -10,7 +10,7 @@ async function loginAs(page: Page, empCode: string, password: string) {
 
 async function selectRadix(page: Page, label: string, optionText: string) {
   await page.getByLabel(label, { exact: true }).click();
-  await page.getByRole("option", { name: optionText, exact: true }).click();
+  await page.getByRole("option", { name: optionMatcher(optionText) }).click();
 }
 
 async function api<T>(baseURL: string, method: string, urlPath: string, token: string, body?: unknown): Promise<T> {
@@ -114,7 +114,7 @@ test("a required custom field scoped to company B never blocks asset creation fo
   await selectRadix(page, "Item", ctxA.item.name);
   await page.getByLabel("Description", { exact: true }).fill("Multi-Company UDF Test Laptop");
   await selectRadix(page, "Cost Centre", ctxA.costCenter.name);
-  await selectRadix(page, "Goes Into", ctxA.stock.name);
+  await selectRadix(page, "Received Into", ctxA.stock.name);
   await fillAddAssetProcurementFields(page, ctxA.vendor.name);
   await page.getByRole("button", { name: "Save", exact: true }).click();
 

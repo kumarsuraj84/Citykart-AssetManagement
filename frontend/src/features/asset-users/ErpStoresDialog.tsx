@@ -114,7 +114,7 @@ export function ErpStoresDialog() {
           <DialogHeader>
             <DialogTitle>Stores from the ERP</DialogTitle>
             <DialogDescription>
-              Makes a store user for each store you tick. Its code is the store's code in the ERP, and it signs in with its own email
+              Adds each store you tick to Stores, with its place. Its code is the store's code in the ERP, and it signs in with its own email
               (for example sm.lam@citykartstores.com). A new store has no password yet: issue one with Reset Password when it is ready to sign in.
             </DialogDescription>
           </DialogHeader>
@@ -139,7 +139,7 @@ export function ErpStoresDialog() {
             </p>
           )}
           {listQ.data && !listQ.data.copied && (
-            <p className="text-sm text-muted-foreground">The ERP data has not been copied yet. Use Refresh now on the Purchase Orders page first.</p>
+            <p className="text-sm text-muted-foreground">The ERP data has not been copied yet. Use Refresh now on the Purchase Orders page (Work › Purchase Orders) first.</p>
           )}
           {summary && listQ.data?.copied && (
             <p className="text-xs text-muted-foreground" aria-label="Store summary">

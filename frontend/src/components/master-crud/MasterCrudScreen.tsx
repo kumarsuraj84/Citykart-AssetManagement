@@ -83,7 +83,7 @@ function MasterFormField({
   value: unknown;
   onChange: (value: unknown) => void;
 }) {
-  if (field.type === "select" && field.onCreateNew) {
+  if (field.type === "select" && (field.onCreateNew || field.searchable)) {
     const create = field.onCreateNew;
     return (
       <SearchableSelect
@@ -92,7 +92,7 @@ function MasterFormField({
         value={value !== undefined && value !== "" ? String(value) : undefined}
         onValueChange={onChange}
         options={(field.options ?? []).map((o) => ({ value: String(o.value), label: o.label }))}
-        onCreateNew={() => create((v) => onChange(v))}
+        onCreateNew={create ? () => create((v) => onChange(v)) : undefined}
         createLabel={field.createLabel}
       />
     );
@@ -495,8 +495,8 @@ export function MasterCrudScreen<T extends object>({
           <AlertDialogHeader>
             <AlertDialogTitle>Deactivate {deactivateRow ? rowLabel(deactivateRow as Record<string, unknown>) : ""}?</AlertDialogTitle>
             <AlertDialogDescription>
-              This {singular.toLowerCase()} will no longer appear in lists or be available for new records. It can be
-              restored later by an administrator; nothing that already references it is affected.
+              This {singular.toLowerCase()} will no longer appear in lists or be available for new records. It is
+              deactivated, not deleted: its history is kept and nothing that already references it is affected.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -520,7 +520,7 @@ export function MasterCrudScreen<T extends object>({
             </AlertDialogTitle>
             <AlertDialogDescription>
               {selectedRows.map((row) => rowLabel(row as Record<string, unknown>)).join(", ")} will no longer appear in
-              lists or be available for new records. Each can be restored individually later by an administrator;
+              lists or be available for new records. They are deactivated, not deleted: their history is kept and
               nothing that already references any of them is affected.
             </AlertDialogDescription>
           </AlertDialogHeader>

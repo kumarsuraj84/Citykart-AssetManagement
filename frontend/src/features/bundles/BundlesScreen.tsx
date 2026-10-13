@@ -15,6 +15,7 @@ import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
+import { itemOptions, namesById } from "@/lib/option-labels";
 
 export interface BundlePart {
   id: number;
@@ -71,6 +72,8 @@ export function BundlesScreen() {
   const canCreate = useCanCreateMasters();
   // A part is a single thing (CPU, Mouse), never an Item that is itself a bundle.
   const partItems = (itemsQ.data ?? []).filter((i) => i.bundle_id === null);
+  // "CPU · Computers": the Category tells two similar Items apart.
+  const partItemOptions = itemOptions(partItems, { categories: namesById(categoriesQ.data), subcategories: namesById(subcategoriesQ.data) });
   const bundles = bundlesQ.data ?? [];
   const [newItemFor, setNewItemFor] = useState<number | null>(null);
   const classOf = (i: Item | undefined) =>
@@ -202,7 +205,7 @@ export function BundlesScreen() {
                     id={`part-item-${i}`}
                     value={p.itemId || undefined}
                     onValueChange={(v) => setPart(i, { itemId: v })}
-                    options={partItems.map((it) => ({ value: String(it.id), label: it.name }))}
+                    options={partItemOptions}
                     placeholder="Choose the Item"
                     onCreateNew={canCreate ? () => setNewItemFor(i) : undefined}
                     createLabel="New Item…"
@@ -213,7 +216,7 @@ export function BundlesScreen() {
                   <Label htmlFor={`part-share-${i}`} className="text-xs">Share %</Label>
                   <Input id={`part-share-${i}`} type="number" min={0} step="0.01" value={p.share} onChange={(e) => setPart(i, { share: e.target.value })} />
                 </div>
-                {/* Not chosen here: it is the Item's own setting (Setup > Items). */}
+                {/* Not chosen here: it is the Item's own setting (Settings › Catalogue › Items). */}
                 <p className="col-span-2 pb-2 text-xs text-muted-foreground" title="Set on the Item, not on the bundle">
                   Serial: {p.itemId ? yesNo(partItems.find((it) => it.id === Number(p.itemId))?.serial_required !== false) : "—"}
                 </p>
@@ -262,7 +265,8 @@ export function BundlesScreen() {
             <DialogTitle className="text-base">Deactivate {deleting?.name}?</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            It will no longer be offered on Purchase Orders. Lines already created from it are not changed.
+            It will no longer be offered on Purchase Orders. It is deactivated, not deleted: lines already created from it
+            are not changed and its history is kept.
           </p>
           {deleteMutation.isError && (
             <p className="text-sm text-destructive" role="alert">

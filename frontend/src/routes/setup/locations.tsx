@@ -26,8 +26,9 @@ export default function LocationsSetup() {
     <MasterCrudScreen<Location>
       config={{
         resource: "locations",
-        title: "Locations",
-        singular: "Location",
+        // Settings › Organisation › Places (backend: locations).
+        title: "Places",
+        singular: "Place",
         columns: [
           { key: "company_id", label: "Company", format: companyName },
           { key: "code", label: "Code" },
@@ -41,6 +42,7 @@ export default function LocationsSetup() {
             type: "select",
             options: companies.map((c) => ({ value: c.id, label: c.name })),
             format: companyName,
+            searchable: true,
           },
           { key: "code", label: "Code" },
           { key: "name", label: "Name" },

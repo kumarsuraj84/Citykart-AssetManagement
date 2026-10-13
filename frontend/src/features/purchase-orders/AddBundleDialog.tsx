@@ -108,7 +108,7 @@ export function AddBundleDialog({ poId, open, onOpenChange }: Props) {
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
           {!bundlesQ.isLoading && bundles.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No bundles are set up yet. The Primary Owner can create one under Masters, Bundles.
+              No bundles are set up yet. The head-office admin can create one under Settings › Catalogue › Bundles.
             </p>
           ) : (
             <>

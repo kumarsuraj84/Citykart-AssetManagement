@@ -300,3 +300,141 @@ describe("AssetRegister", () => {
     expect(screen.getByRole("checkbox", { name: "Select FA/HO01/IT/LAP/CK_1" })).toBeChecked();
   });
 });
+
+describe("AssetRegister: S1 navigation and plain words", () => {
+  const ROW = { id: 1, asset_code: "FA/HO01/IT/LAP/CK_1", description: "Laptop", status: "ALLOTTED", current_asset_user_type: "EMPLOYEE", current_asset_user_name: "Jane Doe" };
+  const PEOPLE = [
+    { id: 5, code: "CS5", name: "Me Myself", asset_user_type: "EMPLOYEE", company_id: 1, location_id: 10 },
+    { id: 6, code: "STK-HO", name: "HO Stock", asset_user_type: "STOCK_POINT", company_id: 2, location_id: 10 },
+  ];
+
+  function mockRegister() {
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (path.startsWith("/assets?serial_pending=true")) return Promise.resolve({ items: [], total: 4 });
+      if (path.startsWith("/assets")) return Promise.resolve({ items: [ROW], total: 1 });
+      if (path === "/asset-users") return Promise.resolve(PEOPLE);
+      if (path === "/masters/locations") return Promise.resolve([{ id: 10, name: "Head Office" }]);
+      if (path === "/masters/companies") return Promise.resolve([{ id: 1, code: "CKSPL", name: "CityKart Stores" }, { id: 2, code: "CKV", name: "CityKart Ventures" }]);
+      return Promise.resolve([]);
+    });
+  }
+
+  function loginAs(role: string, assetUserId: number | null = 5, isPrimaryOwner = false) {
+    useAuthStore.getState().setAuth({ accessToken: "tok", role, companyId: 1, isPrimaryOwner, mustChangePassword: false, assetUserId });
+  }
+
+  it("is titled Assets, with Add Assets and Serial Pending (n) in the header for people who can add", async () => {
+    loginAs("OPERATOR");
+    mockRegister();
+    renderRegisterAt();
+    expect(await screen.findByRole("heading", { name: "Assets" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /add assets/i })).toHaveAttribute("href", "/assets/new");
+    const serial = await screen.findByRole("link", { name: /serial pending \(4\)/i });
+    expect(serial).toHaveAttribute("href", "/serial-pending");
+  });
+
+  it("a VIEWER gets neither header button nor row checkboxes (nothing to move)", async () => {
+    loginAs("VIEWER");
+    mockRegister();
+    renderRegisterAt();
+    await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK_1")).toBeInTheDocument());
+    expect(screen.queryByRole("link", { name: /add assets/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /serial pending/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /select/i })).not.toBeInTheDocument();
+  });
+
+  it("offers Print labels next to Move for the selected assets", async () => {
+    loginAs("ADMIN");
+    mockRegister();
+    renderRegisterAt();
+    await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK_1")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select FA/HO01/IT/LAP/CK_1" }));
+    // The router JSON-quotes a numeric-looking string ("1" -> %221%22); Print
+    // Labels reads it back as the id list "1".
+    const href = screen.getByRole("link", { name: /print labels/i }).getAttribute("href") ?? "";
+    expect(href.startsWith("/print-labels?assets=")).toBe(true);
+    expect(decodeURIComponent(href)).toMatch(/assets="?1"?$/);
+  });
+
+  it("the Mine toggle filters to the logged-in person's own assets, and turns off again", async () => {
+    loginAs("OPERATOR", 5);
+    mockRegister();
+    renderRegisterAt();
+    const mine = await screen.findByRole("button", { name: /mine/i });
+    expect(mine).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(mine);
+    await waitFor(() => expect(apiClient.get).toHaveBeenLastCalledWith(expect.stringContaining("asset_user_id=5")));
+    expect(screen.getByRole("button", { name: /mine/i })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText(/showing only the assets with you/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /mine/i }));
+    await waitFor(() => expect(apiClient.get).toHaveBeenLastCalledWith(expect.not.stringContaining("asset_user_id=")));
+  });
+
+  it("/assets?mine=true starts with Mine on", async () => {
+    loginAs("VIEWER", 5);
+    mockRegister();
+    renderRegisterAt("/assets?mine=true");
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("asset_user_id=5")));
+    expect(await screen.findByRole("button", { name: /mine/i })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("hides Mine for the head-office admin account (not a person who holds assets) and when the id is unknown", async () => {
+    loginAs("ADMIN", 5, true);
+    mockRegister();
+    const { unmount } = render(<></>);
+    unmount();
+    renderRegisterAt();
+    await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK_1")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /mine/i })).not.toBeInTheDocument();
+  });
+
+  it("Find Asset (?find=true) puts the cursor in the search box", async () => {
+    loginAs("OPERATOR");
+    mockRegister();
+    renderRegisterAt("/assets?find=true");
+    const search = await screen.findByLabelText("Search");
+    await waitFor(() => expect(search).toHaveFocus());
+  });
+
+  it("shows statuses, work area and the With column in plain words -- never a raw code", async () => {
+    loginAs("OPERATOR");
+    mockRegister();
+    renderRegisterAt();
+    await waitFor(() => expect(screen.getByText("Jane Doe")).toBeInTheDocument());
+    expect(screen.getByText("With Employee")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "With" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Work area" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("combobox", { name: /status/i }));
+    const options = (await screen.findAllByRole("option")).map((o) => o.textContent);
+    expect(options).toEqual([
+      "All statuses", "In Stock", "With Employee / Store", "Installed", "Under Repair", "Lost", "Sold", "Scrapped", "Disposed",
+    ]);
+    fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
+
+    expect(document.body.textContent ?? "").not.toMatch(/IN_STOCK|ALLOTTED|asset_users|Responsibility|Asset User/);
+  });
+
+  it("the With filter starts at Everyone and shows code, name, place and company for each person or place", async () => {
+    loginAs("OPERATOR");
+    mockRegister();
+    renderRegisterAt();
+    const withFilter = await screen.findByRole("combobox", { name: "With" });
+    expect(withFilter).toHaveTextContent("Everyone");
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/masters/locations"));
+    fireEvent.click(withFilter);
+    expect(await screen.findByRole("option", { name: "CS5 · Me Myself · Head Office · CKSPL" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "HO Stock · Head Office · CKV" })).toBeInTheDocument();
+  });
+
+  it("Category and Company filters are searchable", async () => {
+    loginAs("OPERATOR");
+    mockRegister();
+    renderRegisterAt();
+    fireEvent.click(await screen.findByRole("combobox", { name: "Company" }));
+    expect(await screen.findByPlaceholderText("Search…")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("option", { name: "CityKart Ventures" }));
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("company_id=2")));
+  });
+});

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { newSeedRegistry, seedTestCompany, teardownTestCompany, fillAddAssetProcurementFields, type SeedRegistry } from "./fixtures";
+import { optionMatcher, newSeedRegistry, seedTestCompany, teardownTestCompany, fillAddAssetProcurementFields, type SeedRegistry } from "./fixtures";
 
 async function loginAs(page: Page, empCode: string, password: string) {
   await page.goto("/login");
@@ -19,7 +19,7 @@ async function fillLogin(page: Page, empCode: string, password: string) {
 // these fields is driven by opening the combobox trigger and clicking the listbox option.
 async function selectRadix(page: Page, label: string, optionText: string) {
   await page.getByLabel(label, { exact: true }).click();
-  await page.getByRole("option", { name: optionText, exact: true }).click();
+  await page.getByRole("option", { name: optionMatcher(optionText) }).click();
 }
 
 // Filled in by seedTestCompany as it creates each row, so the afterEach below can
@@ -47,7 +47,7 @@ test("full custody journey: procure, allot, return, allot again", async ({ page,
   await selectRadix(page, "Item", ctx.item.name);
   await page.getByLabel("Description", { exact: true }).fill("E2E Test Laptop");
   await selectRadix(page, "Cost Centre", ctx.costCenter.name);
-  await selectRadix(page, "Goes Into", ctx.stock.name);
+  await selectRadix(page, "Received Into", ctx.stock.name);
   await fillAddAssetProcurementFields(page, ctx.vendor.name);
   await page.getByRole("button", { name: "Save", exact: true }).click();
 
@@ -88,21 +88,21 @@ test("full custody journey: procure, allot, return, allot again", async ({ page,
 
   // ---- Allot to the test EMPLOYEE asset_user ----
   await page.getByRole("button", { name: "Move / Allot", exact: true }).click();
-  await selectRadix(page, "Asset User", ctx.employee.name);
+  await selectRadix(page, "Move To", ctx.employee.name);
   await page.getByRole("button", { name: "Confirm", exact: true }).click();
-  await expect(page.getByText("ALLOTTED", { exact: true })).toBeVisible();
+  await expect(page.getByText("With Employee", { exact: true }).first()).toBeVisible();
 
-  // ---- Return to IT Stock ----
+  // ---- Return to the Stock Room ----
   await page.getByRole("button", { name: "Move / Transfer", exact: true }).click();
-  await selectRadix(page, "Asset User", ctx.stock.name);
+  await selectRadix(page, "Move To", ctx.stock.name);
   await page.getByRole("button", { name: "Confirm", exact: true }).click();
-  await expect(page.getByText("IN STOCK", { exact: true })).toBeVisible();
+  await expect(page.getByText("In Stock", { exact: true }).first()).toBeVisible();
 
   // ---- Allot to the test STORE asset_user ----
   await page.getByRole("button", { name: "Move / Allot", exact: true }).click();
-  await selectRadix(page, "Asset User", ctx.store.name);
+  await selectRadix(page, "Move To", ctx.store.name);
   await page.getByRole("button", { name: "Confirm", exact: true }).click();
-  await expect(page.getByText("ALLOTTED", { exact: true })).toBeVisible();
+  await expect(page.getByText("With Store", { exact: true }).first()).toBeVisible();
 
   // ---- History tab: all four steps, in order ----
   await page.getByRole("tab", { name: "History", exact: true }).click();

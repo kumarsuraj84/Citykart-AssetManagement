@@ -3,7 +3,10 @@ import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import type { Item } from "../items/types";
-import { actionsFor } from "./actionRules";
+import { actionsFor, targetLabelFor } from "./actionRules";
+import { statusLabel } from "../../lib/labels";
+import { itemOptions, placeOptions, stockRoomOptions } from "../../lib/option-labels";
+import { useCategoryLookups, usePlaceLookups } from "../../lib/lookups";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -21,19 +24,15 @@ import { assetScanQuery, isAssetLink } from "../../lib/scan";
 import { LabelPrintStyle, PrintNow, useLabelSettings, type LabelAsset } from "@/components/labels/AssetLabel";
 import { LabelSettingsFields } from "@/components/labels/LabelSettingsFields";
 
+// A person or place (backend: an asset user).
 interface Option {
   id: number;
-  code?: string;
-  email?: string;
+  code?: string | null;
+  email?: string | null;
   name: string;
-  asset_user_type?: string;
-}
-
-// Lets someone find an Asset User by typing their code or email, not just
-// their name -- the same fields AssetUsersScreen's own Code/Email columns
-// show, so the search matches what's actually on their record.
-function assetUserKeywords(h: Option): string[] {
-  return [h.code, h.email].filter((v): v is string => Boolean(v));
+  asset_user_type?: string | null;
+  company_id?: number | null;
+  location_id?: number | null;
 }
 
 interface AssetSearchResult extends LabelAsset {
@@ -87,11 +86,28 @@ function isEligible(status: string, eventType: string): boolean {
 }
 
 // An operator scanning a batch should be able to tell at a glance that an
-// asset is currently with a real person/store/install, not sitting in an
-// STOCK_POINT warehouse bin -- moving it means pulling it out of someone's
-// hands, worth a second look before it's bundled into a bulk action.
-function isNotInItStock(assetUserType: string | null): boolean {
-  return assetUserType !== null && assetUserType !== "STOCK_POINT";
+// asset is currently with a real person/store/install point, not sitting in
+// a Stock Room -- moving it means pulling it out of someone's hands, worth a
+// second look before it's bundled into a bulk action.
+function isNotInStockRoom(assetUserType: string | null | undefined): boolean {
+  return assetUserType != null && assetUserType !== "STOCK_POINT";
+}
+
+function notInStockRoomText(assetUserType: string | null | undefined): string {
+  return assetUserType === "INSTALLED" ? "At an install point" : "With a person or at a store";
+}
+
+/** "With: Suraj (Head Office) · With Employee". */
+function withLine(a: AssetSearchResult): string {
+  return `With: ${a.current_asset_user_name ?? "—"} (${a.current_asset_user_location_name ?? "—"}) · ${statusLabel(a.status, a.current_asset_user_type)}`;
+}
+
+function NotInStockRoomBadge({ type }: { type: string | null | undefined }) {
+  return (
+    <Badge variant="outline" className="border-transparent bg-warning-soft text-on-warning-soft px-1.5 py-0 text-[10px] font-medium">
+      {notInStockRoomText(type)}
+    </Badge>
+  );
 }
 
 function selectValue(v: string): string | undefined {
@@ -160,6 +176,11 @@ export function AssetMovement() {
 
   const asset_usersQ = useQuery({ queryKey: ["asset_users"], queryFn: () => apiClient.get<Option[]>("/asset-users") });
   const asset_users = asset_usersQ.data ?? [];
+  // Dropdown context: people/places show their place (and company when the
+  // list spans companies); Items show their Category.
+  const placeLookups = usePlaceLookups();
+  const categoryLookups = useCategoryLookups();
+  const peopleAndPlaces = placeOptions(asset_users, placeLookups);
 
   // "Currently With" browse: everything a specific person/store/point holds
   // right now, so an operator who knows WHO has something (but not its
@@ -339,7 +360,7 @@ export function AssetMovement() {
   const queueSearchLower = queueSearch.trim().toLowerCase();
   const filteredQueue = queueSearchLower
     ? queue.filter((a) =>
-        [a.asset_code, a.description, a.current_asset_user_name, a.status]
+        [a.asset_code, a.description, a.current_asset_user_name, statusLabel(a.status, a.current_asset_user_type)]
           .some((v) => (v ?? "").toLowerCase().includes(queueSearchLower)),
       )
     : queue;
@@ -347,7 +368,7 @@ export function AssetMovement() {
     asset_code: (a) => a.asset_code,
     description: (a) => a.description,
     asset_user: (a) => a.current_asset_user_name,
-    status: (a) => a.status,
+    status: (a) => statusLabel(a.status, a.current_asset_user_type),
   });
 
   function QueueSortButton({ label, sortKey }: { label: string; sortKey: string }) {
@@ -407,8 +428,8 @@ export function AssetMovement() {
       )}
 
       <PageHeader
-        title="Move / Dispatch"
-        description="Scan or type a Serial Number/Asset Code to queue assets, then apply one action to the whole batch. For a move to a store, each asset's label prints as you scan it, so the label is for the asset in your hand."
+        title="Move Assets"
+        description="Move or dispatch assets in one batch: scan or type a Serial Number/Asset Code to queue them, then apply one action to the whole batch. For a move to a store, each asset's label prints as you scan it, so the label is for the asset in your hand."
         actions={<Button asChild variant="outline"><Link to="/print-labels">Print Labels</Link></Button>}
       />
 
@@ -427,13 +448,15 @@ export function AssetMovement() {
         </FormField>
 
         {action.needsAssetUser && (
-          <FormField htmlFor="movement-asset-user" label="Destination Asset User" required>
+          <FormField htmlFor="movement-asset-user" label={targetLabelFor(eventType)} required>
             <SearchableSelect
               id="movement-asset-user"
-              aria-label="Destination Asset User"
+              aria-label={targetLabelFor(eventType)}
               value={selectValue(toAssetUserId)}
               onValueChange={setToAssetUserId}
-              options={asset_users.map((h) => ({ value: String(h.id), label: h.name, keywords: assetUserKeywords(h) }))}
+              options={peopleAndPlaces}
+              placeholder="Pick an employee, store or stock room…"
+              searchPlaceholder="Search by name or code…"
             />
           </FormField>
         )}
@@ -522,15 +545,9 @@ export function AssetMovement() {
                 <Button type="button" variant="ghost" size="sm" className="w-full flex-col items-start" onClick={() => addToQueue(a)}>
                   <span className="flex items-center gap-1.5">
                     {a.asset_code} — {a.description} ({a.serial_number ?? "no serial"})
-                    {isNotInItStock(a.current_asset_user_type) && (
-                      <Badge variant="outline" className="border-transparent bg-warning-soft text-on-warning-soft px-1.5 py-0 text-[10px] font-medium">
-                        Not in IT Stock
-                      </Badge>
-                    )}
+                    {isNotInStockRoom(a.current_asset_user_type) && <NotInStockRoomBadge type={a.current_asset_user_type} />}
                   </span>
-                  <span className="text-xs text-muted-foreground">
-                    AssetUser: {a.current_asset_user_name ?? "—"} ({a.current_asset_user_location_name ?? "—"}) · Status: {a.status}
-                  </span>
+                  <span className="text-xs text-muted-foreground">{withLine(a)}</span>
                 </Button>
               </li>
             ))}
@@ -548,14 +565,14 @@ export function AssetMovement() {
           <FormField htmlFor="movement-item" label="Item">
             <SearchableSelect
               id="movement-item" aria-label="Item" value={selectValue(itemId)} onValueChange={setItemId}
-              options={(itemsQ.data ?? []).map((i) => ({ value: String(i.id), label: i.name }))} placeholder="Choose the Item"
+              options={itemOptions(itemsQ.data, categoryLookups)} placeholder="Choose the Item"
             />
           </FormField>
           <FormField htmlFor="movement-from" label="Currently in stock at">
             <SearchableSelect
               id="movement-from" aria-label="Currently in stock at" value={selectValue(fromId)} onValueChange={setFromId}
-              options={asset_users.filter((u) => u.asset_user_type === "STOCK_POINT").map((u) => ({ value: String(u.id), label: u.name, keywords: assetUserKeywords(u) }))}
-              placeholder="Choose the stock point"
+              options={stockRoomOptions(asset_users.filter((u) => u.asset_user_type === "STOCK_POINT"), placeLookups)}
+              placeholder="Choose the Stock Room"
             />
           </FormField>
           <FormField htmlFor="movement-item-qty" label="How many">
@@ -577,14 +594,16 @@ export function AssetMovement() {
       <FormField
         htmlFor="movement-currently-with"
         label="Currently With"
-        helperText="Browse everything a specific person, store, or stock point currently holds, then select what to move -- for when you know WHO has something but not its serial or code."
+        helperText="Browse everything that is with a specific person, store or stock room right now, then select what to move -- for when you know WHO has something but not its serial or code."
       >
         <SearchableSelect
           id="movement-currently-with"
           aria-label="Currently With"
           value={selectValue(currentlyWithId)}
           onValueChange={handleCurrentlyWithChange}
-          options={asset_users.map((h) => ({ value: String(h.id), label: h.name, keywords: assetUserKeywords(h) }))}
+          options={peopleAndPlaces}
+          placeholder="Pick an employee, store or stock room…"
+          searchPlaceholder="Search by name or code…"
         />
       </FormField>
 
@@ -606,7 +625,7 @@ export function AssetMovement() {
           {browseQ.isLoading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : browseItems.length === 0 ? (
-            <EmptyState title="Nothing here." description="This person, store, or point currently holds no assets." />
+            <EmptyState title="Nothing here." description="No assets are with this person, store or stock room right now." />
           ) : (
             <ul className="flex max-h-80 flex-col gap-1.5 overflow-y-auto">
               <li className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground">
@@ -627,7 +646,7 @@ export function AssetMovement() {
                   <div className="flex flex-col">
                     <span className="font-medium">{a.asset_code} — {a.description}</span>
                     <span className="text-xs text-muted-foreground">
-                      Serial: {a.serial_number ?? "—"} · Status: {a.status}
+                      Serial: {a.serial_number ?? "—"} · {statusLabel(a.status, a.current_asset_user_type)}
                     </span>
                   </div>
                 </li>
@@ -653,7 +672,7 @@ export function AssetMovement() {
               <span className="text-xs text-muted-foreground">Sort:</span>
               <QueueSortButton label="Code" sortKey="asset_code" />
               <QueueSortButton label="Description" sortKey="description" />
-              <QueueSortButton label="Asset User" sortKey="SELF_SERVICE" />
+              <QueueSortButton label="With" sortKey="asset_user" />
               <QueueSortButton label="Status" sortKey="status" />
             </div>
           )}
@@ -674,7 +693,7 @@ export function AssetMovement() {
         ) : (
           <ul className="flex flex-col gap-1.5">
             {sortedQueue.map((a) => {
-              const notInStock = isNotInItStock(a.current_asset_user_type);
+              const notInStock = isNotInStockRoom(a.current_asset_user_type);
               return (
               <li
                 key={a.id}
@@ -689,14 +708,10 @@ export function AssetMovement() {
                 <div className="flex flex-col">
                   <span className="flex items-center gap-1.5 font-medium">
                     {a.asset_code} — {a.item_name ?? a.description} ({a.serial_pending ? "serial to be added" : a.serial_number ?? "no serial"})
-                    {notInStock && (
-                      <Badge variant="outline" className="border-transparent bg-warning-soft text-on-warning-soft px-1.5 py-0 text-[10px] font-medium">
-                        Not in IT Stock
-                      </Badge>
-                    )}
+                    {notInStock && <NotInStockRoomBadge type={a.current_asset_user_type} />}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    AssetUser: {a.current_asset_user_name ?? "—"} ({a.current_asset_user_location_name ?? "—"}) · Status: {a.status}
+                    {withLine(a)}
                     {!a.eligible && ` · not eligible for "${action.label}" from this status`}
                   </span>
                 </div>

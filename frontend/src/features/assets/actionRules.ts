@@ -46,3 +46,12 @@ const RULES: Record<string, ActionDef[]> = {
 export function actionsFor(status: string): ActionDef[] {
   return RULES[status] ?? [];
 }
+
+/**
+ * The words for the person/place picker in an action's dialog: a move goes
+ * "Move To" someone; an asset coming back from repair, or found again, is
+ * "Received Into" a place. Display only -- the payload field is unchanged.
+ */
+export function targetLabelFor(eventType: string): string {
+  return eventType === "RECEIVED_FROM_REPAIR" || eventType === "FOUND" ? "Received Into" : "Move To";
+}

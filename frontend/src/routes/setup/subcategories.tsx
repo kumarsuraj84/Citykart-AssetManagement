@@ -23,7 +23,7 @@ export default function SubcategoriesSetup() {
     queryFn: () => apiClient.get<Category[]>("/masters/categories"),
   });
   const categoryName = (id: unknown) => categories.find((c) => c.id === id)?.name ?? String(id);
-  // The Category a new Sub-Category needs can be created without leaving this screen;
+  // The Category a new Sub-category needs can be created without leaving this screen;
   // `fillCategory` puts the new one into the open form.
   const [fillCategory, setFillCategory] = useState<((value: string) => void) | null>(null);
 
@@ -32,8 +32,8 @@ export default function SubcategoriesSetup() {
       <MasterCrudScreen<Subcategory>
         config={{
           resource: "subcategories",
-          title: "Asset Subcategories",
-          singular: "Subcategory",
+          title: "Sub-categories",
+          singular: "Sub-category",
           columns: [
             { key: "category_id", label: "Category", format: categoryName },
             { key: "code", label: "Code" },
@@ -46,6 +46,7 @@ export default function SubcategoriesSetup() {
               type: "select",
               options: categories.map((c) => ({ value: c.id, label: c.name })),
               format: categoryName,
+              searchable: true,
               onCreateNew: canCreate ? (select) => setFillCategory(() => select) : undefined,
               createLabel: "New Category…",
             },

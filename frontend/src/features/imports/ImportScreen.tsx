@@ -10,6 +10,14 @@ import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField } from "@/components/shared/FormField";
+import { fieldLabel } from "@/lib/labels";
+
+/** A changed field as people read it: "pi_number" -> "Purchase Invoice (PI) number",
+ * "Custom:warranty_card" -> "Custom field: warranty_card". */
+function changedFieldLabel(name: string): string {
+  if (name.startsWith("Custom:")) return `Custom field: ${name.slice("Custom:".length)}`;
+  return fieldLabel(name);
+}
 
 type ImportMode = "add" | "edit" | "po" | "movement";
 
@@ -77,18 +85,18 @@ const ADD_PREVIEW_COLUMNS: DataTableColumn<AddPreviewRow>[] = [
   { key: "company", header: "Company", cell: (r) => r.company },
   {
     key: "class",
-    header: "Category / Sub-Category",
+    header: "Category / Sub-category",
     cell: (r) => (r.subcategory ? `${r.category} / ${r.subcategory}` : r.category),
   },
   { key: "description", header: "Description", cell: (r) => r.description },
-  { key: "asset_user", header: "Goes Into", cell: (r) => r.asset_user },
+  { key: "asset_user", header: "Received Into", cell: (r) => r.asset_user },
   { key: "quantity", header: "Qty", cell: (r) => r.quantity },
 ];
 
 const EDIT_PREVIEW_COLUMNS: DataTableColumn<EditPreviewRow>[] = [
   { key: "row", header: "Row", cell: (r) => r.row },
   { key: "asset_code", header: "Asset Code", cell: (r) => r.asset_code },
-  { key: "fields_changed", header: "Fields Changed", cell: (r) => r.fields_changed.join(", ") },
+  { key: "fields_changed", header: "Fields Changed", cell: (r) => r.fields_changed.map(changedFieldLabel).join(", ") },
 ];
 
 const PO_PREVIEW_COLUMNS: DataTableColumn<PoPreviewRow>[] = [
@@ -227,7 +235,7 @@ export function ImportScreen() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Import"
+        title="Bulk Import"
         description={
           mode === "edit"
             ? "Bulk-correct existing assets by Asset Code -- download the template, fill in only the fields you want to change, then preview before committing."
@@ -260,7 +268,7 @@ export function ImportScreen() {
           <p className="text-xs text-muted-foreground">
             <span className="font-medium">Asset Code</span> is the only required column -- every other column is
             optional, and a blank cell always means "leave this field exactly as it is", never "clear it". Category,
-            Sub-Category, and Purchase Date can't be changed this way -- use Asset 360's "Correct Classification"
+            Sub-category, and Purchase Date can't be changed this way -- use Asset 360's "Correct Classification"
             for those.
           </p>
         )}
@@ -281,15 +289,16 @@ export function ImportScreen() {
         {mode === "movement" && (
           <p className="text-xs text-muted-foreground">
             One row per asset -- identify it by <span className="font-medium">Serial Number or Asset Code</span>,
-            pick an <span className="font-medium">Action</span> (Move/Send for Repair/Report Lost/etc.), and a{" "}
-            <span className="font-medium">Destination AssetUser Code</span> when that action needs one.
+            pick an <span className="font-medium">Action</span> (Move/Send for Repair/Report Lost/etc.), and the{" "}
+            <span className="font-medium">Moved To (code)</span> of the Employee, Store, Stock Room or Install Point
+            (the template's destination code column) when that action needs one.
           </p>
         )}
         {(mode === "add" || mode === "edit") && (
           <p className="text-xs text-muted-foreground">
-            Custom Fields: add a column named <code className="font-mono">Custom:&lt;field key&gt;</code> (e.g.{" "}
+            Custom fields: add a column named <code className="font-mono">Custom:&lt;field key&gt;</code> (e.g.{" "}
             <code className="font-mono">Custom:warranty_card</code>) -- find each field's key under{" "}
-            <span className="font-medium">Setup → Custom Fields</span>.
+            <span className="font-medium">Settings › Advanced › Custom Fields</span>.
           </p>
         )}
       </div>

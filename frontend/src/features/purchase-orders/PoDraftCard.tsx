@@ -11,6 +11,8 @@ import { FormField } from "@/components/shared/FormField";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { ItemFormDialog } from "../items/ItemFormDialog";
 import { NewBrandDialog, NewCostCenterDialog, NewVendorDialog, useCanCreateMasters } from "@/components/quick-create/masters";
+import { brandOptions, companyOptions, costCentreOptions, itemOptions, namesById, stockRoomOptions, vendorOptions } from "@/lib/option-labels";
+import { usePlaceLookups } from "@/lib/lookups";
 
 export type MapScope = "NONE" | "ARTICLE" | "NAME" | "CODE";
 /** How far a "not tracked" decision reaches: one code, a product name, an Article, or a whole Department / Section / Division. */
@@ -83,7 +85,11 @@ export interface Draft {
 interface Option {
   id: number;
   name: string;
+  code?: string | null;
+  gstin?: string | null;
   asset_user_type?: string;
+  company_id?: number | null;
+  location_id?: number | null;
 }
 
 interface LineForm {
@@ -167,6 +173,13 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
   const [newVendor, setNewVendor] = useState(false);
   const [newCostCenter, setNewCostCenter] = useState(false);
   const deliveryOptions = (usersQ.data ?? []).filter((u) => !u.asset_user_type || u.asset_user_type === "STOCK_POINT");
+  const placeLookups = usePlaceLookups();
+  // Dropdown options with context ("Laptop · IT Fixed Assets", "HO Stock · Head Office").
+  const itemSelectOptions = useMemo(
+    () => itemOptions(items, { categories: namesById(categoriesQ.data), subcategories: namesById(subcategoriesQ.data) }),
+    [items, categoriesQ.data, subcategoriesQ.data],
+  );
+  const brandSelectOptions = useMemo(() => brandOptions(brandsQ.data), [brandsQ.data]);
 
   function setLine(i: number, patch: Partial<LineForm>) {
     setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
@@ -291,7 +304,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
             <SearchableSelect
               id={`${poNumber}-company`} value={opt(companyId)}
               onValueChange={(v) => { setCompanyId(v); setCostCenterId(""); setDeliveryId(""); }}
-              options={companies.map((c) => ({ value: String(c.id), label: c.name }))}
+              options={companyOptions(companies)}
             />
           </FormField>
           <FormField htmlFor={`${poNumber}-po-number`} label="PO No" required>
@@ -303,24 +316,24 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
           <FormField htmlFor={`${poNumber}-vendor`} label="Vendor" helperText={draft.vendor_name ? `In the ERP: ${draft.vendor_name}` : undefined}>
             <SearchableSelect
               id={`${poNumber}-vendor`} value={opt(vendorId)} onValueChange={setVendorId}
-              options={(vendorsQ.data ?? []).map((v) => ({ value: String(v.id), label: v.name }))}
+              options={vendorOptions(vendorsQ.data)}
               onCreateNew={canCreateMasters ? () => setNewVendor(true) : undefined} createLabel="New Vendor…"
             />
           </FormField>
           <FormField htmlFor={`${poNumber}-cost-center`} label="Cost Centre" required>
             <SearchableSelect
               id={`${poNumber}-cost-center`} value={opt(costCenterId)} onValueChange={setCostCenterId}
-              options={(costCentersQ.data ?? []).map((c) => ({ value: String(c.id), label: c.name }))}
+              options={costCentreOptions(costCentersQ.data)}
               onCreateNew={canCreateMasters && companyId !== "" ? () => setNewCostCenter(true) : undefined} createLabel="New Cost Centre…"
             />
           </FormField>
           <FormField
-            htmlFor={`${poNumber}-delivery`} label="Delivery location"
-            helperText={draft.warehouse ? `Location in the ERP: ${draft.warehouse}. Becomes the Initial Asset User at delivery.` : "Becomes the Initial Asset User at delivery."}
+            htmlFor={`${poNumber}-delivery`} label="Received Into"
+            helperText={draft.warehouse ? `Location in the ERP: ${draft.warehouse}. The Stock Room the delivery goes to.` : "The Stock Room the delivery goes to."}
           >
             <SearchableSelect
               id={`${poNumber}-delivery`} value={opt(deliveryId)} onValueChange={setDeliveryId}
-              options={deliveryOptions.map((u) => ({ value: String(u.id), label: u.name }))}
+              options={stockRoomOptions(deliveryOptions, placeLookups)}
             />
           </FormField>
         </div>
@@ -357,7 +370,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
                   >
                     <SearchableSelect
                       id={`${id}-item`} value={opt(l.itemId)} onValueChange={(v) => changeItem(i, v)}
-                      options={items.map((it) => ({ value: String(it.id), label: it.name }))} placeholder="Choose the Item"
+                      options={itemSelectOptions} placeholder="Choose the Item"
                       onCreateNew={canCreateMasters ? () => setNewItemFor(i) : undefined} createLabel="New Item…"
                     />
                   </FormField>
@@ -413,7 +426,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
                       <FormField htmlFor={`${id}-brand`} label="Brand" className="col-span-2">
                         <SearchableSelect
                           id={`${id}-brand`} value={opt(l.brandId)} onValueChange={(v) => setLine(i, { brandId: v })}
-                          options={(brandsQ.data ?? []).map((b) => ({ value: String(b.id), label: b.name }))}
+                          options={brandSelectOptions}
                           onCreateNew={canCreateMasters ? () => setNewBrandFor(i) : undefined} createLabel="New Brand…"
                         />
                       </FormField>

@@ -193,8 +193,9 @@ describe("Items screen", () => {
     const catDialog = await screen.findByRole("dialog", { name: /new category/i });
     fireEvent.change(within(catDialog).getByLabelText(/^name/i), { target: { value: "Admin Fixed Assets" } });
     fireEvent.change(within(catDialog).getByLabelText(/^code/i), { target: { value: "ADMFA" } });
-    fireEvent.click(within(catDialog).getByLabelText(/^responsibility/i));
-    fireEvent.click(await screen.findByRole("option", { name: "Admin / Non-IT" }));
+    fireEvent.click(within(catDialog).getByLabelText(/^work area/i));
+    expect(await screen.findByRole("option", { name: "IT Team" })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("option", { name: "Admin / Non-IT Team" }));
     fireEvent.click(within(catDialog).getByRole("button", { name: "Save" }));
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith("/masters/categories", { name: "Admin Fixed Assets", code: "ADMFA", asset_domain: "NON_IT" }),
@@ -236,17 +237,26 @@ describe("Items screen", () => {
     await waitFor(() => expect(apiClient.delete).toHaveBeenCalledWith("/items/3"));
   });
 
-  it("Create from Sub-Categories reports how many Items were made", async () => {
+  it("Create from Sub-categories reports how many Items were made", async () => {
     mockApi();
     (apiClient.post as any).mockResolvedValue({ created: 3 });
     renderAt("/setup/items");
-    fireEvent.click(await screen.findByRole("button", { name: "Create from Sub-Categories" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("Created 3 Items from Sub-Categories.");
+    fireEvent.click(await screen.findByRole("button", { name: "Create from Sub-categories" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Created 3 Items from Sub-categories.");
     expect(apiClient.post).toHaveBeenCalledWith("/items/seed-from-subcategories", {});
   });
 });
 
-describe("ERP Articles screen", () => {
+describe("ERP Mapping screen (formerly ERP Articles)", () => {
+  it("is titled ERP Mapping, and its Item picker shows each Item's Category", async () => {
+    mockApi();
+    renderAt("/setup/erp-articles");
+    expect(await screen.findByRole("heading", { name: "ERP Mapping" })).toBeInTheDocument();
+    await openArticles();
+    fireEvent.click(await screen.findByLabelText("Item for FA_CE_UPS"));
+    expect(await screen.findByRole("option", { name: /^UPS ?· Accessories › UPS Unit$/ })).toBeInTheDocument();
+  });
+
   it("shows the Articles not linked yet, with a suggested Item, and links one", async () => {
     mockApi();
     renderAt("/setup/erp-articles");
@@ -276,7 +286,7 @@ describe("ERP Articles screen", () => {
     expect(within(row).getByText("+ 1 by name, 0 by code")).toBeInTheDocument();
     expect(within(row).getByRole("button", { name: "Link 02-I3 CORE[IT-01]" })).toBeDisabled();
     fireEvent.click(screen.getByLabelText("Item for 02-I3 CORE[IT-01]"));
-    fireEvent.click(await screen.findByRole("option", { name: "UPS" }));
+    fireEvent.click(await screen.findByRole("option", { name: /^UPS( ?· |$)/ }));
     expect(within(row).getByRole("button", { name: "Link 02-I3 CORE[IT-01]" })).toHaveTextContent("Change");
     expect(within(row).getByRole("button", { name: "Link 02-I3 CORE[IT-01]" })).not.toBeDisabled();
   });
@@ -329,7 +339,7 @@ describe("ERP Articles screen", () => {
     expect(within(dialog).getByText(/by its product name/)).toBeInTheDocument();             // the rack already follows a name rule
 
     fireEvent.click(within(dialog).getByLabelText("Item for CT500001"));
-    fireEvent.click(await screen.findByRole("option", { name: "UPS" }));
+    fireEvent.click(await screen.findByRole("option", { name: /^UPS( ?· |$)/ }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Every code with the same product name" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Link CT500001" }));
     await waitFor(() =>
@@ -393,7 +403,7 @@ describe("ERP Articles screen", () => {
       fireEvent.click(await screen.findByRole("option", { name: "Citykart Ventures" }));
       await screen.findByText("VT_MIC_STD");
       fireEvent.click(screen.getByLabelText("Item for VT_MIC_STD"));
-      fireEvent.click(await screen.findByRole("option", { name: "UPS" }));
+      fireEvent.click(await screen.findByRole("option", { name: /^UPS( ?· |$)/ }));
       fireEvent.click(screen.getByRole("button", { name: "Link VT_MIC_STD" }));
       await waitFor(() =>
         expect(apiClient.post).toHaveBeenCalledWith("/items/maps", expect.objectContaining({ company_id: 2, article_key: "VT_MIC_STD", item_id: 3 })),
@@ -409,7 +419,7 @@ describe("ERP Articles screen", () => {
       await within(dialog).findByText("48 PORT SWITCH");
       expect(apiClient.get).toHaveBeenCalledWith("/items/articles/codes?article_key=FA_IT_OTHERS&company_id=1");
       fireEvent.click(within(dialog).getByLabelText("Item for CT500001"));
-      fireEvent.click(await screen.findByRole("option", { name: "UPS" }));
+      fireEvent.click(await screen.findByRole("option", { name: /^UPS( ?· |$)/ }));
       fireEvent.click(within(dialog).getByRole("button", { name: "Link CT500001" }));
       await waitFor(() =>
         expect(apiClient.post).toHaveBeenCalledWith("/items/maps", expect.objectContaining({ company_id: 1, match_type: "CODE", erp_item_code: "CT500001" })),

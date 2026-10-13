@@ -1,5 +1,5 @@
 ﻿import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { cleanup as cleanupDom, render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { createAppRouter } from "./router";
@@ -145,62 +145,216 @@ describe("login flow", () => {
   });
 });
 
-describe("AppShell navigation", () => {
-  // The Setup dropdown is gone -- Masters/Administration are always-visible
-  // sidebar groups now, so their links are just ordinary nav links.
+const navLinkNames = (nav: HTMLElement) => within(nav).getAllByRole("link").map((l) => l.textContent?.trim());
 
-  it("gives the Primary Owner every screen, including Import, Reports, Masters and all Setup screens", async () => {
+const OPERATOR_MENU = ["Home", "Assets", "Purchase Orders", "Receive", "Move", "Reports"];
+const PEOPLE_MENU = ["Employees", "Stores", "Stock Rooms", "Install Points"];
+const SETTINGS_LINKS = [
+  "Companies", "Places", "Cost Centres", "Departments",
+  "Items", "Asset Groups", "Sub-categories", "Brands", "Bundles",
+  "Vendors", "People & Logins", "ERP Mapping",
+  "Custom Fields", "Asset Code Format", "Bulk Import",
+];
+
+describe("AppShell navigation (role-aware sidebar)", () => {
+  it("gives the head-office admin the work menu, People & Places and a collapsed Settings group", async () => {
     loginAs("ADMIN", false, true);
     renderAt("/dashboard");
     const nav = await screen.findByRole("navigation", { name: "Main" });
-    for (const name of [
-      "Dashboard", "My Assets", "Asset Register", "Add Asset", "Import", "Reports",
-      "Companies", "Locations", "Departments", "Cost Centers", "Categories", "Sub-Categories",
-      "Vendors", "Custom Fields", "Asset Users", "Code Rule",
-    ]) {
+    expect(navLinkNames(nav)).toEqual(["Home", "Assets", "Purchase Orders", "Receive", "Move", ...PEOPLE_MENU, "Reports"]);
+
+    // Settings starts collapsed: none of its screens are listed until it is opened.
+    const settings = within(nav).getByRole("button", { name: /settings/i });
+    expect(settings).toHaveAttribute("aria-expanded", "false");
+    expect(within(nav).queryByRole("link", { name: "Companies" })).not.toBeInTheDocument();
+
+    fireEvent.click(settings);
+    await waitFor(() => expect(within(nav).getByRole("link", { name: "Companies" })).toBeInTheDocument());
+    for (const name of SETTINGS_LINKS) {
       expect(within(nav).getByRole("link", { name })).toBeInTheDocument();
     }
-    expect(within(nav).getByRole("link", { name: "Code Rule" })).toHaveAttribute("href", "/setup/code-rule");
+    // Only the menu moved: every Settings link still opens its old address.
+    expect(within(nav).getByRole("link", { name: "Asset Code Format" })).toHaveAttribute("href", "/setup/code-rule");
+    expect(within(nav).getByRole("link", { name: "ERP Mapping" })).toHaveAttribute("href", "/setup/erp-articles");
+    expect(within(nav).getByRole("link", { name: "Bulk Import" })).toHaveAttribute("href", "/import");
+    expect(within(nav).getByRole("link", { name: "Places" })).toHaveAttribute("href", "/setup/locations");
   });
 
-  it("gives an ordinary ADMIN the operational screens but never Masters -- only the Primary Owner manages master data", async () => {
+  it("opens the Settings group by itself when the current page is one of its screens", async () => {
+    loginAs("ADMIN", false, true);
+    renderAt("/setup/companies");
+    const nav = await screen.findByRole("navigation", { name: "Main" });
+    expect(await within(nav).findByRole("link", { name: "Companies" })).toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: /settings/i })).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("gives an ordinary ADMIN the operator menu plus People & Places, but no Settings", async () => {
     loginAs("ADMIN");
     renderAt("/dashboard");
     const nav = await screen.findByRole("navigation", { name: "Main" });
-    expect(within(nav).getByRole("link", { name: "Add Asset" })).toBeInTheDocument();
-    // Bulk asset Import is Primary-Owner-only too, same tier as Masters.
-    expect(within(nav).queryByRole("link", { name: "Import" })).not.toBeInTheDocument();
-    expect(within(nav).queryByRole("link", { name: "Cost Centers" })).not.toBeInTheDocument();
-    expect(within(nav).queryByRole("link", { name: "Custom Fields" })).not.toBeInTheDocument();
-    // Administration (Asset Users/Code Rule) is unaffected by this change.
-    expect(within(nav).getByRole("link", { name: "Asset Users" })).toBeInTheDocument();
+    expect(navLinkNames(nav)).toEqual(["Home", "Assets", "Purchase Orders", "Receive", "Move", ...PEOPLE_MENU, "Reports"]);
+    expect(within(nav).queryByRole("button", { name: /settings/i })).not.toBeInTheDocument();
   });
 
-  it("gives OPERATOR the same operational screens as ADMIN but no Masters or Administration", async () => {
+  it("gives an OPERATOR (IT or Non-IT: the same menu) Home, Assets, Purchase Orders, Receive, Move and Reports", async () => {
     loginAs("OPERATOR");
     renderAt("/dashboard");
     const nav = await screen.findByRole("navigation", { name: "Main" });
-    expect(within(nav).getByRole("link", { name: "Add Asset" })).toBeInTheDocument();
-    expect(within(nav).queryByRole("link", { name: "Import" })).not.toBeInTheDocument();
-    expect(within(nav).queryByRole("link", { name: "Cost Centers" })).not.toBeInTheDocument();
-    expect(within(nav).queryByRole("link", { name: "Code Rule" })).not.toBeInTheDocument();
-    expect(within(nav).queryByRole("link", { name: "Asset Users" })).not.toBeInTheDocument();
+    expect(navLinkNames(nav)).toEqual(OPERATOR_MENU);
+    expect(within(nav).queryByRole("button", { name: /settings/i })).not.toBeInTheDocument();
   });
 
-  it("gives a VIEWER read-only screens only", async () => {
+  it("gives a VIEWER Home, Assets and Reports only", async () => {
     loginAs("VIEWER");
     renderAt("/dashboard");
     const nav = await screen.findByRole("navigation", { name: "Main" });
-    expect(within(nav).getByRole("link", { name: "Reports" })).toBeInTheDocument();
-    expect(within(nav).queryByRole("link", { name: "Import" })).not.toBeInTheDocument();
-    expect(within(nav).queryByRole("link", { name: "Add Asset" })).not.toBeInTheDocument();
-    expect(within(nav).queryByRole("link", { name: "Companies" })).not.toBeInTheDocument();
+    expect(navLinkNames(nav)).toEqual(["Home", "Assets", "Reports"]);
   });
 
-  it("gives a ASSET_USER only My Assets", async () => {
+  it("gives a self-service login only My Assets", async () => {
     loginAs("SELF_SERVICE");
     renderAt("/my-assets");
     const nav = await screen.findByRole("navigation", { name: "Main" });
-    expect(within(nav).getAllByRole("link").map((l) => l.textContent)).toEqual(["My Assets"]);
+    expect(navLinkNames(nav)).toEqual(["My Assets"]);
+  });
+
+  it("no longer lists Add Asset, Serial Pending, Print Labels, Import or My Assets for staff", async () => {
+    loginAs("ADMIN", false, true);
+    renderAt("/dashboard");
+    const nav = await screen.findByRole("navigation", { name: "Main" });
+    for (const name of ["Add Asset", "Serial Pending", "Print Labels", "Import", "My Assets", "Dashboard", "Asset Register"]) {
+      expect(within(nav).queryByRole("link", { name })).not.toBeInTheDocument();
+    }
+  });
+
+  it("shows the person's access level in plain words in the header", async () => {
+    loginAs("OPERATOR");
+    renderAt("/dashboard");
+    expect(await screen.findByTestId("session-role")).toHaveTextContent("Can Add & Move Assets");
+  });
+});
+
+describe("route guards by area", () => {
+  // UX only: the server still refuses; the point is that nobody sees a
+  // working-looking screen that later fails with 403.
+  const NO_ACCESS = /you don't have access to this area/i;
+
+  async function expectNoAccess(url: string) {
+    renderAt(url);
+    expect(await screen.findByText(NO_ACCESS)).toBeInTheDocument();
+  }
+
+  async function expectAllowed(url: string) {
+    renderAt(url);
+    await screen.findByRole("navigation", { name: "Main" });
+    // The screen's own page heading renders, and it is not the no-access page.
+    await waitFor(() => expect(document.querySelector("h1")).not.toBeNull());
+    expect(screen.queryByText(NO_ACCESS)).not.toBeInTheDocument();
+  }
+
+  afterEach(() => cleanupDom());
+
+  it("Settings screens and Bulk Import: head-office admin only", async () => {
+    for (const url of ["/setup/companies", "/setup/custom-fields", "/setup/code-rule", "/setup/erp-articles", "/import"]) {
+      loginAs("ADMIN", false, true);
+      await expectAllowed(url);
+      cleanupDom();
+      for (const role of ["ADMIN", "OPERATOR", "VIEWER", "SELF_SERVICE"]) {
+        loginAs(role);
+        await expectNoAccess(url);
+        cleanupDom();
+      }
+    }
+  });
+
+  it("People & Places: role ADMIN (head-office admin included) only", async () => {
+    for (const url of ["/people/employees", "/people/stores", "/people/stock-rooms", "/people/install-points"]) {
+      loginAs("ADMIN");
+      await expectAllowed(url);
+      cleanupDom();
+      loginAs("ADMIN", false, true);
+      await expectAllowed(url);
+      cleanupDom();
+      for (const role of ["OPERATOR", "VIEWER", "SELF_SERVICE"]) {
+        loginAs(role);
+        await expectNoAccess(url);
+        cleanupDom();
+      }
+    }
+  });
+
+  it("Purchase Orders, Receive, Add Assets, Move, Serial Pending, Print Labels: ADMIN or OPERATOR", async () => {
+    for (const url of ["/receive", "/purchase-orders", "/purchase-orders/new", "/assets/new", "/asset-movement", "/serial-pending", "/print-labels"]) {
+      for (const role of ["ADMIN", "OPERATOR"]) {
+        loginAs(role);
+        await expectAllowed(url);
+        cleanupDom();
+      }
+      for (const role of ["VIEWER", "SELF_SERVICE"]) {
+        loginAs(role);
+        await expectNoAccess(url);
+        cleanupDom();
+      }
+    }
+  });
+
+  it("Home, Assets and Reports: every staff role, not a self-service login", async () => {
+    for (const url of ["/dashboard", "/assets", "/reports"]) {
+      for (const role of ["ADMIN", "OPERATOR", "VIEWER"]) {
+        loginAs(role);
+        await expectAllowed(url);
+        cleanupDom();
+      }
+      loginAs("SELF_SERVICE");
+      await expectNoAccess(url);
+      cleanupDom();
+    }
+  });
+
+  it("the no-access page offers a way back Home (My Assets for a self-service login)", async () => {
+    loginAs("OPERATOR");
+    renderAt("/setup/companies");
+    expect(await screen.findByRole("link", { name: /go to home/i })).toHaveAttribute("href", "/dashboard");
+    cleanupDom();
+    loginAs("SELF_SERVICE");
+    renderAt("/dashboard");
+    expect(await screen.findByRole("link", { name: /go to my assets/i })).toHaveAttribute("href", "/my-assets");
+  });
+
+  it("never fetches a guarded screen's data for someone who may not use it", async () => {
+    loginAs("OPERATOR");
+    renderAt("/setup/companies");
+    await screen.findByText(NO_ACCESS);
+    expect(apiClient.get).not.toHaveBeenCalledWith(expect.stringContaining("/masters/companies"));
+  });
+
+  it("keeps Asset 360 open to everyone the server allows, including a self-service login", async () => {
+    loginAs("SELF_SERVICE");
+    renderAt("/assets/123");
+    expect(await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_123" })).toBeInTheDocument();
+    expect(screen.queryByText(NO_ACCESS)).not.toBeInTheDocument();
+  });
+
+  it("sends the old Asset Users address to People & Places > Employees", async () => {
+    loginAs("ADMIN");
+    const router = renderAt("/setup/asset-users");
+    await waitFor(() => expect(router.state.location.pathname).toBe("/people/employees"));
+  });
+});
+
+describe("My Assets", () => {
+  it("sends staff to Assets with the Mine filter on", async () => {
+    loginAs("OPERATOR");
+    const router = renderAt("/my-assets");
+    await waitFor(() => expect(router.state.location.pathname).toBe("/assets"));
+    expect(router.state.location.search).toEqual({ mine: true });
+  });
+
+  it("stays the self-service login's own page", async () => {
+    loginAs("SELF_SERVICE");
+    const router = renderAt("/my-assets");
+    expect(await screen.findByRole("heading", { name: "My Assets" })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/my-assets");
+    expect(screen.getByText(/assets that are with you/i)).toBeInTheDocument();
   });
 });

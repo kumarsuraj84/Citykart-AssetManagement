@@ -93,7 +93,7 @@ export function ErpPiDialog({ poId }: { poId: number }) {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>PI from the ERP</DialogTitle>
+            <DialogTitle>Purchase Invoice (PI) from the ERP</DialogTitle>
             <DialogDescription>
               The PIs the ERP holds for this purchase order, matched to the invoices delivered here by the vendor's invoice number. Nothing is recorded until you confirm.
             </DialogDescription>

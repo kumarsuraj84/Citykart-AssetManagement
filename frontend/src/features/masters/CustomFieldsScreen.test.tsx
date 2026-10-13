@@ -129,7 +129,8 @@ describe("CustomFieldsScreen", () => {
 
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText("warranty_card")).toBeInTheDocument();
-    expect(within(dialog).getByText("text")).toBeInTheDocument();
+    expect(within(dialog).getByText("Text")).toBeInTheDocument();     // the type in words, never the raw code
+    expect(within(dialog).queryByText("text")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Field Key")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Field Type")).not.toBeInTheDocument();
   });
@@ -184,6 +185,9 @@ describe("CustomFieldsScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: /^deactivate warranty card #$/i }));
     const dialog = await screen.findByRole("alertdialog");
     expect(dialog).toHaveTextContent("Warranty Card #");
+    // No false promise that it can be restored: it is deactivated, not deleted, and its history is kept.
+    expect(dialog).toHaveTextContent("deactivated, not deleted");
+    expect(dialog).not.toHaveTextContent(/reversed|restored/i);
     expect(apiClient.delete).not.toHaveBeenCalled();
 
     fireEvent.click(within(dialog).getByRole("button", { name: /^deactivate$/i }));

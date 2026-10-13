@@ -30,6 +30,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/shared/SearchableSelect";
+import { companyOptions } from "@/lib/option-labels";
+import { humanizeCode } from "@/lib/labels";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -43,6 +46,11 @@ const FIELD_TYPES = [
   { value: "dropdown", label: "Dropdown" },
   { value: "checkbox", label: "Checkbox" },
 ];
+
+/** "text" -> "Text": the stored type code is never shown raw. */
+function fieldTypeLabel(type: string): string {
+  return FIELD_TYPES.find((t) => t.value === type)?.label ?? humanizeCode(type);
+}
 
 const GLOBAL_SCOPE = "__global__";
 const FIELD_KEY_RE = /^[a-z][a-z0-9_]*$/;
@@ -140,6 +148,10 @@ export function CustomFieldsScreen() {
     queryKey: ["masters", "companies"],
     queryFn: () => apiClient.get<Company[]>("/masters/companies"),
   });
+  const scopeOptions = [
+    { value: GLOBAL_SCOPE, label: "Global (all companies)" },
+    ...companyOptions(Array.isArray(companies) ? companies : []),
+  ];
 
   function canManage(_field: CustomFieldRow): boolean {
     return isPrimaryOwner;
@@ -250,7 +262,7 @@ export function CustomFieldsScreen() {
   const columns: DataTableColumn<CustomFieldRow>[] = [
     { key: "label", header: "Label", cell: (f) => f.label },
     { key: "field_key", header: "Field Key", cell: (f) => <code className="text-xs">{f.field_key}</code> },
-    { key: "field_type", header: "Type", cell: (f) => f.field_type },
+    { key: "field_type", header: "Type", cell: (f) => fieldTypeLabel(f.field_type) },
     { key: "scope", header: "Scope", cell: (f) => scopeLabel(f.company_id, companies) },
     { key: "is_required", header: "Required", cell: (f) => (f.is_required ? "Yes" : "No") },
     { key: "sort_order", header: "Sort Order", cell: (f) => String(f.sort_order) },
@@ -375,19 +387,13 @@ export function CustomFieldsScreen() {
               }
             >
               {canManageGlobal ? (
-                <Select value={createDraft.scope} onValueChange={(v) => setCreateDraft((d) => ({ ...d, scope: v }))}>
-                  <SelectTrigger id="cf-scope" aria-label="Scope">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={GLOBAL_SCOPE}>Global (all companies)</SelectItem>
-                    {companies.map((c) => (
-                      <SelectItem key={c.id} value={String(c.id)}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  id="cf-scope"
+                  aria-label="Scope"
+                  value={createDraft.scope}
+                  onValueChange={(v) => setCreateDraft((d) => ({ ...d, scope: v }))}
+                  options={scopeOptions}
+                />
               ) : (
                 <Input id="cf-scope" aria-label="Scope" value={scopeLabel(companyId, companies)} disabled readOnly />
               )}
@@ -451,7 +457,7 @@ export function CustomFieldsScreen() {
                 </div>
                 <div className="flex justify-between gap-4">
                   <span className="text-muted-foreground">Field Type</span>
-                  <span className="font-medium">{editingField.field_type}</span>
+                  <span className="font-medium">{fieldTypeLabel(editingField.field_type)}</span>
                 </div>
                 <p className="text-xs text-muted-foreground">Not editable after creation.</p>
               </div>
@@ -486,22 +492,13 @@ export function CustomFieldsScreen() {
                 }
               >
                 {canManageGlobal ? (
-                  <Select
+                  <SearchableSelect
+                    id="edit-cf-scope"
+                    aria-label="Scope"
                     value={editDraft.scope}
                     onValueChange={(v) => setEditDraft((d) => (d ? { ...d, scope: v } : d))}
-                  >
-                    <SelectTrigger id="edit-cf-scope" aria-label="Scope">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={GLOBAL_SCOPE}>Global (all companies)</SelectItem>
-                      {companies.map((c) => (
-                        <SelectItem key={c.id} value={String(c.id)}>
-                          {c.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    options={scopeOptions}
+                  />
                 ) : (
                   <Input
                     id="edit-cf-scope"
@@ -592,8 +589,8 @@ export function CustomFieldsScreen() {
           <AlertDialogHeader>
             <AlertDialogTitle>Deactivate {deactivateRow?.label}?</AlertDialogTitle>
             <AlertDialogDescription>
-              This field will no longer be collected on new assets. Values already stored on existing assets remain
-              visible. This can be reversed later by an administrator.
+              This field will no longer be collected on new assets. It is deactivated, not deleted: values already
+              stored on existing assets remain visible and their history is kept.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

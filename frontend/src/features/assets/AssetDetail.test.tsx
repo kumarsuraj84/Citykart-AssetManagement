@@ -227,10 +227,56 @@ describe("AssetDetail (Asset 360)", () => {
 
     clickTab("Changes");
     const panel = await screen.findByRole("tabpanel", { name: "Changes" });
-    expect(within(panel).getByText("brand_id")).toBeInTheDocument();
+    expect(within(panel).getByText("Brand")).toBeInTheDocument();
     expect(within(panel).getByText("Dell (#9)")).toBeInTheDocument();
     expect(within(panel).getByText("HP (#10)")).toBeInTheDocument();
     expect(within(panel).getByText("Admin")).toBeInTheDocument();
+  });
+
+  it("the Changes tab names each field in plain words, never its internal name", async () => {
+    mockGets({
+      changes: [
+        { id: 1, field_name: "serial_number", old_value: "SN-1", new_value: "SN-2", actor_id: 9, actor_name: "Admin", request_id: "r1", created_at: "2025-07-01T00:00:00Z", reason: null },
+        { id: 2, field_name: "custom_fields.asset_tag", old_value: "T-1", new_value: "T-2", actor_id: 9, actor_name: null, request_id: "r2", created_at: "2025-07-02T00:00:00Z", reason: null },
+        { id: 3, field_name: "pi_number", old_value: null, new_value: "PI-9", actor_id: 9, actor_name: "Admin", request_id: "r3", created_at: "2025-07-03T00:00:00Z", reason: null },
+      ],
+    });
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+
+    clickTab("Changes");
+    const panel = await screen.findByRole("tabpanel", { name: "Changes" });
+    expect(within(panel).getByText("Serial number")).toBeInTheDocument();
+    expect(within(panel).getByText("Asset Tag")).toBeInTheDocument();          // the custom field's own label
+    expect(within(panel).getByText("Purchase Invoice (PI) number")).toBeInTheDocument();
+    expect(within(panel).queryByText(/serial_number|custom_fields|pi_number/)).not.toBeInTheDocument();
+    // A change whose actor is not known reads "Unknown", never "#9".
+    expect(within(panel).getByText("Unknown")).toBeInTheDocument();
+    expect(within(panel).queryByText("#9")).not.toBeInTheDocument();
+  });
+
+  it("says who has the asset in plain words: Stock Room, Work area, never raw codes", async () => {
+    mockGets();
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    expect(screen.getByText(/\(Stock Room\)/)).toBeInTheDocument();
+    expect(screen.getAllByText("In Stock").length).toBeGreaterThan(0);
+
+    clickTab("Custody");
+    const panel = await screen.findByRole("tabpanel", { name: "Custody" });
+    expect(within(panel).getByText("Currently With")).toBeInTheDocument();
+    expect(within(panel).getByText("Stock Room")).toBeInTheDocument();
+    expect(within(panel).getByText("Work area")).toBeInTheDocument();
+    expect(within(panel).queryByText(/STOCK.POINT|IN_STOCK|Asset User|Responsibility/i)).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/IN_STOCK|STOCK_POINT|Holder|stock point/i);
+  });
+
+  it("an allotted asset's status says exactly who has it (With Employee)", async () => {
+    mockGets({ asset: { ...FULL_ASSET, status: "ALLOTTED", current_asset_user_name: "Ankur", current_asset_user_type: "EMPLOYEE" } });
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    expect(screen.getByText("With Employee")).toBeInTheDocument();
+    expect(screen.getByText(/\(Employee\)/)).toBeInTheDocument();
   });
 
   it("preserves the Documents tab", async () => {
@@ -337,7 +383,7 @@ describe("AssetDetail (Asset 360)", () => {
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/asset-users?company_id=1"));
 
     fireEvent.click(screen.getByRole("button", { name: /move \/ allot/i }));
-    await pickSelectOption(/asset user/i, "Ankur");
+    await pickSelectOption(/^move to$/i, "Ankur");
     fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
 
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/assets/1/events", expect.objectContaining({
@@ -356,6 +402,41 @@ describe("AssetDetail (Asset 360)", () => {
     expect(screen.queryByRole("button", { name: /^edit$/i })).not.toBeInTheDocument();
     // Print Label is a read-only action available to every role.
     expect(screen.getByRole("button", { name: /print label/i })).toBeInTheDocument();
+  });
+
+  it("hides the lifecycle action buttons for VIEWER too (they only look)", async () => {
+    mockAuth("VIEWER");
+    mockGets();
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    for (const label of [/move \/ allot/i, /send for repair/i, /dispose/i, /sell/i, /scrap/i, /report lost/i]) {
+      expect(screen.queryByRole("button", { name: label })).not.toBeInTheDocument();
+    }
+    expect(screen.getByRole("button", { name: /print label/i })).toBeInTheDocument();
+  });
+
+  it("shows the lifecycle action buttons for OPERATOR", async () => {
+    mockAuth("OPERATOR");
+    mockGets();
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    expect(screen.getByRole("button", { name: /move \/ allot/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /send for repair/i })).toBeInTheDocument();
+  });
+
+  it("the move dialog asks where to Move To, listing people/places with their place", async () => {
+    mockGets({ asset_users: [{ id: 5, code: "CS6872", name: "Ankur", asset_user_type: "EMPLOYEE", location_id: 50, company_id: 1 }] });
+    (apiClient.get as any).mockImplementation(((base: (p: string) => unknown) => (path: string) =>
+      path === "/masters/locations" ? Promise.resolve([{ id: 50, name: "Head Office" }]) : base(path))(
+      (apiClient.get as any).getMockImplementation(),
+    ));
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    fireEvent.click(screen.getByRole("button", { name: /move \/ allot/i }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryByText(/asset user/i)).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("combobox", { name: /^move to$/i }));
+    expect(await screen.findByRole("option", { name: /^CS6872 · Ankur\s?· Head Office$/ })).toBeInTheDocument();
   });
 
   it("shows a QR code image and a working Print Label button", async () => {
@@ -406,7 +487,7 @@ describe("AssetDetail -- AM-07 asset correction", () => {
     expect(within(dialog).getByText("FA/HO01/IT/LAP/CK_1")).toBeInTheDocument();
     expect(within(dialog).getByText(/asset code will not change/i)).toBeInTheDocument();
     await waitFor(() => expect(within(dialog).getByRole("combobox", { name: "Category" })).toHaveTextContent("IT Equipment"));
-    await waitFor(() => expect(within(dialog).getByRole("combobox", { name: "Sub-Category" })).toHaveTextContent("Laptop"));
+    await waitFor(() => expect(within(dialog).getByRole("combobox", { name: "Sub-category" })).toHaveTextContent("Laptop"));
     expect(within(dialog).getByLabelText("Purchase Date")).toHaveValue("2025-06-01");
   });
 
@@ -416,7 +497,7 @@ describe("AssetDetail -- AM-07 asset correction", () => {
     await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
     fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
     expect(screen.queryByLabelText("Category")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Sub-Category")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Sub-category")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Purchase Date")).not.toBeInTheDocument();
   });
 
@@ -428,7 +509,7 @@ describe("AssetDetail -- AM-07 asset correction", () => {
     await screen.findByRole("dialog", { name: /correct classification/i });
 
     await pickSelectOption("Category", "Furniture");
-    const subcategoryTrigger = screen.getByRole("combobox", { name: "Sub-Category" });
+    const subcategoryTrigger = screen.getByRole("combobox", { name: "Sub-category" });
     expect(subcategoryTrigger).toHaveTextContent(/none/i); // Laptop no longer valid for Furniture
 
     fireEvent.click(subcategoryTrigger);
@@ -450,7 +531,7 @@ describe("AssetDetail -- AM-07 asset correction", () => {
     expect(confirm).toBeDisabled(); // reason alone isn't enough -- nothing actually changed
 
     await pickSelectOption("Category", "Furniture");
-    await pickSelectOption("Sub-Category", "Chair");
+    await pickSelectOption("Sub-category", "Chair");
     expect(confirm).toBeEnabled();
   });
 
@@ -462,11 +543,11 @@ describe("AssetDetail -- AM-07 asset correction", () => {
     await screen.findByRole("dialog", { name: /correct classification/i });
 
     await pickSelectOption("Category", "Furniture");
-    await pickSelectOption("Sub-Category", "Chair");
+    await pickSelectOption("Sub-category", "Chair");
 
     expect(screen.getByText(/impact summary/i)).toBeInTheDocument();
     expect(screen.getByText("Category: IT Equipment → Furniture")).toBeInTheDocument();
-    expect(screen.getByText("Sub-Category: Laptop → Chair")).toBeInTheDocument();
+    expect(screen.getByText("Sub-category: Laptop → Chair")).toBeInTheDocument();
     expect(screen.getByText(/asset code: fa\/ho01\/it\/lap\/ck_1 — unchanged/i)).toBeInTheDocument();
   });
 
@@ -479,7 +560,7 @@ describe("AssetDetail -- AM-07 asset correction", () => {
     await screen.findByRole("dialog", { name: /correct classification/i });
 
     await pickSelectOption("Category", "Furniture");
-    await pickSelectOption("Sub-Category", "Chair");
+    await pickSelectOption("Sub-category", "Chair");
     fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "Wrong category selected initially" } });
     fireEvent.click(screen.getByRole("button", { name: /confirm correction/i }));
 

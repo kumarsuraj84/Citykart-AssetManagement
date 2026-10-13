@@ -100,8 +100,10 @@ describe("BundlesScreen", () => {
     fireEvent.change(within(dialog).getByLabelText("Part name", { selector: "#part-name-0" }), { target: { value: "Base" } });
     fireEvent.change(within(dialog).getByLabelText("Share %", { selector: "#part-share-0" }), { target: { value: "100" } });
     fireEvent.click(within(dialog).getByLabelText("Item", { selector: "#part-item-0" }));
-    expect(screen.queryByRole("option", { name: "Desktop" })).not.toBeInTheDocument();
-    fireEvent.click(await screen.findByRole("option", { name: "CPU" }));
+    expect(screen.queryByRole("option", { name: /^Desktop\b/ })).not.toBeInTheDocument();
+    // Each Item reads with its Category › Sub-category, so similar names can be told apart.
+    // (jsdom computes the name without the space before "·"; a browser reads "CPU · Computers › CPU Unit".)
+    fireEvent.click(await screen.findByRole("option", { name: /^CPU ?· Computers › CPU Unit$/ }));
     expect(within(dialog).getByText("Serial: Yes")).toBeInTheDocument();     // the Item's own setting
     expect(within(dialog).getByText("Computers › CPU Unit")).toBeInTheDocument();
 
@@ -122,7 +124,7 @@ describe("BundlesScreen", () => {
     fireEvent.click(await screen.findByRole("button", { name: /new bundle/i }));
     const dialog = screen.getByRole("dialog");
     fireEvent.click(within(dialog).getByLabelText("Item", { selector: "#part-item-0" }));
-    fireEvent.click(await screen.findByRole("option", { name: "Mouse" }));
+    fireEvent.click(await screen.findByRole("option", { name: /^Mouse ?· / }));
     expect(within(dialog).getByText("Serial: No")).toBeInTheDocument();
   });
 

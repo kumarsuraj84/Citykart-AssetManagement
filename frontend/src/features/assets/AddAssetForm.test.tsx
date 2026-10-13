@@ -37,13 +37,15 @@ const CUSTOM_FIELDS = [
 ];
 
 function mockGets({
-  asset_users = [{ id: 4, name: "IT Stock-HO" }], customFields = [] as unknown[],
+  asset_users = [{ id: 4, name: "IT Stock-HO" }] as unknown[], customFields = [] as unknown[],
   categories = [{ id: 1, code: "IT", name: "IT Equipment", asset_domain: "IT" }] as unknown[],
   subcategories = [{ id: 2, code: "LAP", name: "Laptop", category_id: 1 }] as unknown[],
   items = [item(11, "Laptop")] as unknown[],
+  locations = [] as unknown[],
 } = {}) {
   (apiClient.get as any).mockImplementation((path: string) => {
     if (path === "/items") return Promise.resolve(items);
+    if (path === "/masters/locations") return Promise.resolve(locations);
     if (path.startsWith("/masters/categories")) return Promise.resolve(categories);
     if (path.startsWith("/masters/subcategories")) return Promise.resolve(subcategories);
     if (path.startsWith("/masters/cost-centers")) return Promise.resolve([{ id: 3, code: "HO01", name: "Head Office" }]);
@@ -55,9 +57,20 @@ function mockGets({
   });
 }
 
-async function pickSelectOption(label: RegExp | string, optionName: RegExp | string) {
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// A dropdown option now reads "label · context" (e.g. "Laptop · IT
+// Equipment"). jsdom drops the space before the muted " · context" span when
+// it computes the accessible name, so the matchers allow either spacing.
+function optionName(label: string, detail?: string): RegExp {
+  const tail = detail === undefined ? "(\\s?· .*)?" : `\\s?· ${escapeRe(detail)}`;
+  return new RegExp(`^${escapeRe(label)}${tail}$`);
+}
+
+// A plain string picks the option whose label it is, with or without context.
+async function pickSelectOption(label: RegExp | string, name: RegExp | string) {
   fireEvent.click(screen.getByRole("combobox", { name: label }));
-  const option = await screen.findByRole("option", { name: optionName });
+  const option = await screen.findByRole("option", { name: typeof name === "string" ? optionName(name) : name });
   fireEvent.click(option);
 }
 
@@ -75,7 +88,7 @@ async function fillMandatoryProcurementFields() {
   fireEvent.change(screen.getByLabelText(/po date/i), { target: { value: "2025-06-01" } });
   fireEvent.change(screen.getByLabelText(/invoice number/i), { target: { value: "INV-1" } });
   fireEvent.change(screen.getByLabelText(/invoice date/i), { target: { value: "2025-06-02" } });
-  fireEvent.change(screen.getByLabelText(/pi number/i), { target: { value: "PI-1" } });
+  fireEvent.change(screen.getByLabelText(/purchase invoice \(pi\) number/i), { target: { value: "PI-1" } });
   fireEvent.change(screen.getByLabelText(/pi date/i), { target: { value: "2025-06-03" } });
   fireEvent.change(screen.getByLabelText(/^serial number\*?$/i), { target: { value: "SN-1" } });
   fireEvent.change(screen.getByLabelText(/^barcode$/i), { target: { value: "BC-1" } });
@@ -102,8 +115,8 @@ describe("AddAssetForm", () => {
     renderFormAt();
     fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Test Laptop" } });
     await pickSelectOption(/^item$/i, "Laptop");
-    await pickSelectOption(/cost centre/i, "Head Office");
-    await pickSelectOption(/goes into/i, "IT Stock-HO");
+    await pickSelectOption(/cost centre/i, optionName("HO01 · Head Office"));
+    await pickSelectOption(/received into/i, "IT Stock-HO");
     await pickSelectOption(/^vendor$/i, "Acme Traders");
     await pickSelectOption(/^brand$/i, "Dell");
 
@@ -111,7 +124,7 @@ describe("AddAssetForm", () => {
     fireEvent.change(screen.getByLabelText(/po date/i), { target: { value: "2025-06-01" } });
     fireEvent.change(screen.getByLabelText(/invoice number/i), { target: { value: "INV-1" } });
     fireEvent.change(screen.getByLabelText(/invoice date/i), { target: { value: "2025-06-02" } });
-    fireEvent.change(screen.getByLabelText(/pi number/i), { target: { value: "PI-1" } });
+    fireEvent.change(screen.getByLabelText(/purchase invoice \(pi\) number/i), { target: { value: "PI-1" } });
     fireEvent.change(screen.getByLabelText(/pi date/i), { target: { value: "2025-06-03" } });
     fireEvent.change(screen.getByLabelText(/warranty years/i), { target: { value: "3" } });
     fireEvent.change(screen.getByLabelText(/^serial number\*?$/i), { target: { value: "SN-1" } });
@@ -148,8 +161,8 @@ describe("AddAssetForm", () => {
     renderFormAt();
     fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Test Mouse" } });
     await pickSelectOption(/^item$/i, "Laptop");
-    await pickSelectOption(/cost centre/i, "Head Office");
-    await pickSelectOption(/goes into/i, "IT Stock-HO");
+    await pickSelectOption(/cost centre/i, optionName("HO01 · Head Office"));
+    await pickSelectOption(/received into/i, "IT Stock-HO");
     await fillMandatoryProcurementFields();
 
     const serialInput = screen.getByLabelText(/^serial number\*?$/i);
@@ -210,8 +223,8 @@ describe("AddAssetForm", () => {
     expect(screen.getByRole("checkbox", { name: /no serial number/i })).not.toBeChecked();      // pending is not N/A
     expect(screen.getByLabelText(/^serial number\*?$/i)).toBeDisabled();
 
-    await pickSelectOption(/cost centre/i, "Head Office");
-    await pickSelectOption(/goes into/i, "IT Stock-HO");
+    await pickSelectOption(/cost centre/i, optionName("HO01 · Head Office"));
+    await pickSelectOption(/received into/i, "IT Stock-HO");
     await pickSelectOption(/^vendor$/i, "Acme Traders");
     fireEvent.change(screen.getByLabelText(/^barcode$/i), { target: { value: "BC-1" } });
     await waitFor(() => expect(screen.getByRole("button", { name: /save/i })).toBeEnabled());
@@ -243,14 +256,39 @@ describe("AddAssetForm", () => {
     expect(screen.getByLabelText(/warranty years/i)).toHaveValue(3);
   });
 
-  it("shows the Item's Category and Sub-Category and the Responsibility that follows", async () => {
+  it("shows the Item's Category and Sub-category and the Work area that follows", async () => {
     mockGets();
     renderFormAt();
     await screen.findByLabelText(/description/i);
     await waitFor(() => expect(screen.getByRole("combobox", { name: /^item$/i })).toBeEnabled());
     await pickSelectOption(/^item$/i, "Laptop");
     expect(screen.getByText(/IT Equipment › Laptop/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/responsibility/i)).toHaveValue("IT");
+    expect(screen.getByLabelText(/^work area$/i)).toHaveValue("IT Team");
+    expect(screen.queryByText(/responsibility/i)).not.toBeInTheDocument();
+  });
+
+  it("Item options show their Category so similar names can be told apart", async () => {
+    mockGets();
+    renderFormAt();
+    await screen.findByLabelText(/description/i);
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /^item$/i })).toBeEnabled());
+    fireEvent.click(screen.getByRole("combobox", { name: /^item$/i }));
+    expect(await screen.findByRole("option", { name: optionName("Laptop", "IT Equipment") })).toBeInTheDocument();
+  });
+
+  it("asks where the asset is Received Into, listing Stock Rooms with their place", async () => {
+    mockGets({
+      asset_users: [{ id: 4, name: "HO Stock", code: "STK-HO", location_id: 50 }],
+      locations: [{ id: 50, name: "Head Office" }],
+    });
+    renderFormAt();
+    await screen.findByLabelText(/description/i);
+    expect(screen.getByText("Where it is received")).toBeInTheDocument();
+    expect(screen.queryByText(/goes into|initial custody/i)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /^received into$/i })).toBeEnabled());
+    fireEvent.click(screen.getByRole("combobox", { name: /^received into$/i }));
+    // A Stock Room reads by its name (not its machine code) plus its place.
+    expect(await screen.findByRole("option", { name: optionName("HO Stock", "Head Office") })).toBeInTheDocument();
   });
 
   it("only the Primary Owner is offered \"New Item…\" (the server only lets them create masters)", async () => {
@@ -259,7 +297,7 @@ describe("AddAssetForm", () => {
     await screen.findByLabelText(/description/i);
     await waitFor(() => expect(screen.getByRole("combobox", { name: /^item$/i })).toBeEnabled());
     fireEvent.click(screen.getByRole("combobox", { name: /^item$/i }));
-    await screen.findByRole("option", { name: "Laptop" });
+    await screen.findByRole("option", { name: /^Laptop\b/ });
     expect(screen.queryByRole("option", { name: /new item/i })).not.toBeInTheDocument();
   });
 
@@ -307,8 +345,8 @@ describe("AddAssetForm", () => {
 
     fireEvent.change(screen.getByLabelText(/description/i), { target: { value: "Test Laptop" } });
     await pickSelectOption(/^item$/i, "Laptop");
-    await pickSelectOption(/cost centre/i, "Head Office");
-    await pickSelectOption(/goes into/i, "IT Stock-HO");
+    await pickSelectOption(/cost centre/i, optionName("HO01 · Head Office"));
+    await pickSelectOption(/received into/i, "IT Stock-HO");
     await fillMandatoryProcurementFields();
 
     fireEvent.change(screen.getByLabelText(/asset tag/i), { target: { value: "TAG-1" } });
@@ -338,8 +376,8 @@ describe("AddAssetForm", () => {
     renderFormAt();
     fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Test Laptop" } });
     await pickSelectOption(/^item$/i, "Laptop");
-    await pickSelectOption(/cost centre/i, "Head Office");
-    await pickSelectOption(/goes into/i, "IT Stock-HO");
+    await pickSelectOption(/cost centre/i, optionName("HO01 · Head Office"));
+    await pickSelectOption(/received into/i, "IT Stock-HO");
     await fillMandatoryProcurementFields();
 
     // Asset Tag (required) was never filled in.
@@ -367,8 +405,8 @@ describe("AddAssetForm", () => {
     renderFormAt();
     fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Test Laptop" } });
     await pickSelectOption(/^item$/i, "Laptop");
-    await pickSelectOption(/cost centre/i, "Head Office");
-    await pickSelectOption(/goes into/i, "IT Stock-HO");
+    await pickSelectOption(/cost centre/i, optionName("HO01 · Head Office"));
+    await pickSelectOption(/received into/i, "IT Stock-HO");
     await fillMandatoryProcurementFields();
 
     expect(await screen.findByText("Global Notes")).toBeInTheDocument();
@@ -420,8 +458,8 @@ describe("AddAssetForm", () => {
     const router = renderFormAt();
     fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Test Laptop" } });
     await pickSelectOption(/^item$/i, "Laptop");
-    await pickSelectOption(/cost centre/i, "Head Office");
-    await pickSelectOption(/goes into/i, "IT Stock-HO");
+    await pickSelectOption(/cost centre/i, optionName("HO01 · Head Office"));
+    await pickSelectOption(/received into/i, "IT Stock-HO");
     await fillMandatoryProcurementFields();
 
     await waitFor(() => expect(screen.getByRole("button", { name: /save/i })).toBeEnabled());
@@ -438,8 +476,8 @@ describe("AddAssetForm", () => {
     renderFormAt();
     fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Test Laptop" } });
     await pickSelectOption(/^item$/i, "Laptop");
-    await pickSelectOption(/cost centre/i, "Head Office");
-    await pickSelectOption(/goes into/i, "IT Stock-HO");
+    await pickSelectOption(/cost centre/i, optionName("HO01 · Head Office"));
+    await pickSelectOption(/received into/i, "IT Stock-HO");
     await fillMandatoryProcurementFields();
 
     await waitFor(() => expect(screen.getByRole("button", { name: /save/i })).toBeEnabled());
@@ -477,8 +515,8 @@ describe("AddAssetForm", () => {
     fireEvent.change(screen.getByLabelText(/^barcode$/i), { target: { value: "BC-1" } });
     await pickSelectOption(/^item$/i, "Laptop");
     await pickSelectOption(/^vendor$/i, "Acme Traders");
-    await pickSelectOption(/cost centre/i, "Head Office");
-    await pickSelectOption(/goes into/i, "IT Stock-HO");
+    await pickSelectOption(/cost centre/i, optionName("HO01 · Head Office"));
+    await pickSelectOption(/received into/i, "IT Stock-HO");
 
     await waitFor(() => expect(screen.getByRole("button", { name: /save/i })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
@@ -529,11 +567,11 @@ describe("AddAssetForm", () => {
     renderFormAt();
     fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Test Laptop" } });
     await pickSelectOption(/^item$/i, "Laptop");
-    await pickSelectOption(/cost centre/i, "Head Office");
+    await pickSelectOption(/cost centre/i, optionName("HO01 · Head Office"));
 
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("/asset-users")));
 
-    expect(screen.getByText(/no it stock asset user found for this company/i)).toBeInTheDocument();
+    expect(screen.getByText(/no stock room found for this company/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /save/i })).toBeDisabled();
     expect(apiClient.post).not.toHaveBeenCalled();
   });
@@ -550,13 +588,13 @@ describe("AddAssetForm", () => {
     renderFormAt();
     fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Test Laptop" } });
     await pickSelectOption(/^item$/i, "Laptop");
-    await pickSelectOption(/cost centre/i, "Head Office");
+    await pickSelectOption(/cost centre/i, optionName("HO01 · Head Office"));
 
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("/asset-users")));
 
     // Neither of the two asset_users is pre-selected -- the combobox still shows
     // its placeholder, and clicking Save without a pick must not submit.
-    const assetUserCombobox = screen.getByRole("combobox", { name: /goes into/i });
+    const assetUserCombobox = screen.getByRole("combobox", { name: /received into/i });
     expect(assetUserCombobox).not.toHaveTextContent("IT Stock-HO");
     expect(assetUserCombobox).not.toHaveTextContent("IT Stock-WH-F");
     expect(screen.getByRole("button", { name: /save/i })).toBeDisabled();
@@ -564,7 +602,7 @@ describe("AddAssetForm", () => {
     fireEvent.click(screen.getByRole("button", { name: /save/i }));
     expect(apiClient.post).not.toHaveBeenCalled();
 
-    await pickSelectOption(/goes into/i, "IT Stock-WH-F");
+    await pickSelectOption(/received into/i, "IT Stock-WH-F");
     await fillMandatoryProcurementFields();
     await waitFor(() => expect(screen.getByRole("button", { name: /save/i })).toBeEnabled());
 

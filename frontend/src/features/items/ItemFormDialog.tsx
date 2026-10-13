@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField } from "@/components/shared/FormField";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
+import { brandOptions, categoryOptions } from "@/lib/option-labels";
 
 interface Named {
   id: number;
@@ -44,9 +45,9 @@ const SERIAL_OPTIONS = [
 ];
 
 /**
- * The Item form -- one dialog for Setup > Items and for every screen that needs an Item
+ * The Item form -- one dialog for Settings › Catalogue › Items and for every screen that needs an Item
  * it does not have yet (Add Asset, a PO line, the ERP review, a Bundle part, ERP
- * Articles), so nobody has to leave what they were doing. The Category and Sub-Category
+ * Mapping), so nobody has to leave what they were doing. The Category and Sub-category
  * can be created from here too.
  */
 export function ItemFormDialog({
@@ -130,15 +131,15 @@ export function ItemFormDialog({
               <SearchableSelect
                 id="item-category" value={draft.categoryId || undefined}
                 onValueChange={(v) => set({ categoryId: v, subcategoryId: "" })}
-                options={categories.map((c) => ({ value: String(c.id), label: c.name }))}
+                options={categoryOptions(categories)}
                 onCreateNew={canCreate ? () => setNewCategory(true) : undefined} createLabel="New Category…"
               />
             </FormField>
-            <FormField htmlFor="item-subcategory" label="Sub-Category" required>
+            <FormField htmlFor="item-subcategory" label="Sub-category" required>
               <SearchableSelect
                 id="item-subcategory" value={draft.subcategoryId || undefined} onValueChange={(v) => set({ subcategoryId: v })}
                 options={visibleSubs.map((s) => ({ value: String(s.id), label: s.name }))}
-                onCreateNew={canCreate ? () => setNewSub(true) : undefined} createLabel="New Sub-Category…"
+                onCreateNew={canCreate ? () => setNewSub(true) : undefined} createLabel="New Sub-category…"
               />
             </FormField>
             <FormField htmlFor="item-serial" label="Serial number" helperText="A default only: a serial can still be typed, or saved as N/A.">
@@ -165,7 +166,7 @@ export function ItemFormDialog({
             <FormField htmlFor="item-brand" label="Default brand">
               <SearchableSelect
                 id="item-brand" value={draft.brandId || undefined} onValueChange={(v) => set({ brandId: v })}
-                options={[{ value: "", label: "None" }, ...brands.map((b) => ({ value: String(b.id), label: b.name }))]}
+                options={[{ value: "", label: "None" }, ...brandOptions(brands)]}
                 placeholder="None"
                 onCreateNew={canCreate ? () => setNewBrand(true) : undefined} createLabel="New Brand…"
               />

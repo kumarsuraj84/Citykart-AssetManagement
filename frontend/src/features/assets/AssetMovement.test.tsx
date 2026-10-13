@@ -126,7 +126,7 @@ describe("AssetMovement", () => {
 
     expect(screen.getByRole("button", { name: /apply/i })).toBeDisabled();
 
-    fireEvent.click(screen.getByRole("combobox", { name: /destination asset user/i }));
+    fireEvent.click(screen.getByRole("combobox", { name: /^move to$/i }));
     fireEvent.click(await screen.findByRole("option", { name: "IT Stock-HO" }));
 
     await waitFor(() => expect(screen.getByRole("button", { name: /apply/i })).toBeEnabled());
@@ -141,7 +141,7 @@ describe("AssetMovement", () => {
     fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
     await waitFor(() => expect(screen.getByText(/Queued \(1\)/)).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("combobox", { name: /destination asset user/i }));
+    fireEvent.click(screen.getByRole("combobox", { name: /^move to$/i }));
     fireEvent.click(await screen.findByRole("option", { name: "IT Stock-HO" }));
     await waitFor(() => expect(screen.getByRole("button", { name: /apply/i })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: /apply/i }));
@@ -249,6 +249,65 @@ describe("AssetMovement", () => {
     fireEvent.click(screen.getByRole("button", { name: /add 1 selected to queue/i }));
 
     await waitFor(() => expect(screen.getByText(/Queued \(1\)/)).toBeInTheDocument());
+  });
+
+  it("sorting the queue by \"With\" really reorders it by who has each asset", async () => {
+    const withZara = { ...LAPTOP, id: 61, asset_code: "FA/Z/61", description: "Zara's Laptop", current_asset_user_name: "Zara" };
+    const withAmit = { ...LAPTOP, id: 62, asset_code: "FA/A/62", description: "Amit's Laptop", current_asset_user_name: "Amit" };
+    const withMeena = { ...LAPTOP, id: 63, asset_code: "FA/M/63", description: "Meena's Laptop", current_asset_user_name: "Meena" };
+    mockGets({ searchResults: { z: [withZara], a: [withAmit], m: [withMeena] } });
+    await renderMovement();
+    for (const q of ["z", "a", "m"]) {
+      fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: q } });
+      fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
+    }
+    await waitFor(() => expect(screen.getByText(/Queued \(3\)/)).toBeInTheDocument());
+
+    const order = () => screen.getAllByText(/^With: /).map((el) => el.textContent?.match(/^With: (\w+)/)?.[1]);
+    expect(order()).toEqual(["Zara", "Amit", "Meena"]);                       // scan order
+    expect(screen.queryByRole("button", { name: /sort queue by asset user/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Sort queue by With" }));
+    expect(order()).toEqual(["Amit", "Meena", "Zara"]);                       // A -> Z
+    fireEvent.click(screen.getByRole("button", { name: "Sort queue by With" }));
+    expect(order()).toEqual(["Zara", "Meena", "Amit"]);                       // Z -> A
+  });
+
+  it("the queue and pick list say who has an asset in plain words, never raw codes", async () => {
+    const inStock = { ...LAPTOP, id: 71, asset_code: "FA/S/71", description: "Spare Laptop", status: "IN_STOCK", current_asset_user_name: "HO Stock", current_asset_user_location_name: "Head Office", current_asset_user_type: "STOCK_POINT" };
+    const withEmployee = { ...LAPTOP, id: 72, asset_code: "FA/E/72", description: "Suraj's Laptop", status: "ALLOTTED", current_asset_user_name: "Suraj", current_asset_user_location_name: "Head Office", current_asset_user_type: "EMPLOYEE" };
+    mockGets({ searchResults: { lap: [inStock, withEmployee] } });
+    await renderMovement();
+
+    fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "lap" } });
+    fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
+    await waitFor(() => expect(screen.getByText(/more than one match/i)).toBeInTheDocument());
+    expect(screen.getByText("With: HO Stock (Head Office) · In Stock")).toBeInTheDocument();
+    expect(screen.getByText("With: Suraj (Head Office) · With Employee")).toBeInTheDocument();
+    // Only the asset that is not in a stock room gets the warning badge.
+    expect(screen.getAllByText("With a person or at a store")).toHaveLength(1);
+    expect(document.body.textContent).not.toMatch(/IN_STOCK|ALLOTTED|STOCK_POINT|AssetUser:|Not in IT Stock|Status: /);
+
+    fireEvent.click(screen.getByText(/Suraj's Laptop/));
+    await waitFor(() => expect(screen.getByText(/Queued \(1\)/)).toBeInTheDocument());
+    expect(screen.getByText(/With: Suraj \(Head Office\) · With Employee/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/IN_STOCK|ALLOTTED|STOCK_POINT|AssetUser:|Not in IT Stock|Destination Asset User/);
+  });
+
+  it("people and places in the pickers show their place, and the company when the list spans companies", async () => {
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (path.startsWith("/asset-users")) return Promise.resolve([
+        { id: 11, code: "CS6872", name: "Ankur", asset_user_type: "EMPLOYEE", company_id: 1, location_id: 50 },
+        { id: 12, code: "STK-WH", name: "WH Stock", asset_user_type: "STOCK_POINT", company_id: 2, location_id: 51 },
+      ]);
+      if (path === "/masters/locations") return Promise.resolve([{ id: 50, name: "Head Office" }, { id: 51, name: "Warehouse" }]);
+      if (path === "/masters/companies") return Promise.resolve([{ id: 1, code: "CKSPL", name: "CityKart Stores" }, { id: 2, code: "CKRPL", name: "CityKart Retail" }]);
+      return Promise.resolve([]);
+    });
+    await renderMovement();
+    fireEvent.click(screen.getByRole("combobox", { name: /^move to$/i }));
+    expect(await screen.findByRole("option", { name: /^CS6872 · Ankur\s?· Head Office · CKSPL$/ })).toBeInTheDocument();
+    // A Stock Room reads by its name, not its machine code.
+    expect(screen.getByRole("option", { name: /^WH Stock\s?· Warehouse · CKRPL$/ })).toBeInTheDocument();
   });
 
   it("checking \"Only assets currently in stock\" adds status=IN_STOCK to the search", async () => {

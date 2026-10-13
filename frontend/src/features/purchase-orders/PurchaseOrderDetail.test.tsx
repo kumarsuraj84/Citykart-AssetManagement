@@ -87,7 +87,7 @@ describe("PurchaseOrderDetail", () => {
     expect(screen.getByRole("button", { name: /add line/i })).toBeDisabled();
 
     fireEvent.click(screen.getByLabelText(/^item\*?$/i));
-    fireEvent.click(await screen.findByRole("option", { name: "Laptop" }));
+    fireEvent.click(await screen.findByRole("option", { name: /^Laptop ?· IT Equipment$/ }));
     expect(screen.getByText(/IT Equipment › Laptop/)).toBeInTheDocument();      // the Item decides the Category and Sub-Category
     fireEvent.change(screen.getByLabelText(/^cost\*?$/i), { target: { value: "1000" } });
 
@@ -114,7 +114,7 @@ describe("PurchaseOrderDetail", () => {
     fireEvent.change(screen.getByLabelText(/^barcode\*?$/i), { target: { value: "BC-BATCH-9" } });
 
     fireEvent.click(screen.getByLabelText(/^item\*?$/i));
-    fireEvent.click(await screen.findByRole("option", { name: "Laptop" }));
+    fireEvent.click(await screen.findByRole("option", { name: /^Laptop ?· IT Equipment$/ }));
     fireEvent.change(screen.getByLabelText(/^cost\*?$/i), { target: { value: "1000" } });
 
     fireEvent.click(screen.getByLabelText(/^brand$/i));
@@ -201,7 +201,7 @@ describe("PurchaseOrderDetail", () => {
     fireEvent.change(within(dialog).getByLabelText(/^serial number\*?$/i), { target: { value: "SN-001" } });
 
     // Radix Select isn't a native <select>; pick the asset_user option via its trigger.
-    fireEvent.click(within(dialog).getByLabelText(/initial asset user/i));
+    fireEvent.click(within(dialog).getByLabelText(/received into/i));
     fireEvent.click(await screen.findByText("IT Stock-HO"));
 
     await waitFor(() => expect(within(dialog).getByRole("button", { name: /confirm/i })).not.toBeDisabled());
@@ -219,7 +219,7 @@ describe("PurchaseOrderDetail", () => {
     );
   });
 
-  it("the Delivery Done dialog asks for Initial Asset User once, above the invoice fields, and sends it with every selected line", async () => {
+  it("the Delivery Done dialog asks where it is Received Into once, above the invoice fields, and sends it with every selected line", async () => {
     mockGets([PENDING_LINE, PENDING_LINE_2]);
     (apiClient.post as any).mockResolvedValue([]);
     renderDetailAt();
@@ -229,7 +229,8 @@ describe("PurchaseOrderDetail", () => {
     fireEvent.click(screen.getByRole("button", { name: /mark 2 delivery done/i }));
 
     const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getAllByLabelText(/initial asset user/i)).toHaveLength(1);
+    expect(within(dialog).getAllByLabelText(/received into/i)).toHaveLength(1);
+    expect(within(dialog).queryByText(/initial asset user/i)).not.toBeInTheDocument();
     const assetUserLabel = dialog.querySelector('label[for="initial-asset-user"]')!;
     const invoiceLabel = dialog.querySelector('label[for="invoice-number"]')!;
     expect(assetUserLabel.compareDocumentPosition(invoiceLabel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -243,7 +244,7 @@ describe("PurchaseOrderDetail", () => {
     // Every serial and invoice field is filled, but no asset user yet: still blocked.
     expect(within(dialog).getByRole("button", { name: /confirm/i })).toBeDisabled();
 
-    fireEvent.click(within(dialog).getByLabelText(/initial asset user/i));
+    fireEvent.click(within(dialog).getByLabelText(/received into/i));
     fireEvent.click(await screen.findByText("IT Stock-HO"));
     await waitFor(() => expect(within(dialog).getByRole("button", { name: /confirm/i })).not.toBeDisabled());
     fireEvent.click(within(dialog).getByRole("button", { name: /confirm/i }));
@@ -261,17 +262,17 @@ describe("PurchaseOrderDetail", () => {
     );
   });
 
-  it("a PO with a delivery location shows it in the header and starts Mark Delivery with it as the Initial Asset User", async () => {
+  it("a PO with a delivery location shows it in the header and starts Mark Delivery with it as Received Into", async () => {
     mockGets([PENDING_LINE], { ...PO, delivery_asset_user_id: 5, warehouse_code: "CKSPL-WH-TAJNAGAR" });
     (apiClient.post as any).mockResolvedValue([]);
     renderDetailAt();
     await waitFor(() => expect(screen.getByText("Dell Laptop")).toBeInTheDocument());
-    await waitFor(() => expect(screen.getByText(/Delivery: IT Stock-HO/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Received Into: IT Stock-HO/)).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("checkbox", { name: /select all pending lines/i }));
     fireEvent.click(screen.getByRole("button", { name: /mark 1 delivery done/i }));
     const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByLabelText(/initial asset user/i)).toHaveTextContent("IT Stock-HO");
+    expect(within(dialog).getByLabelText(/received into/i)).toHaveTextContent("IT Stock-HO");
 
     // Nothing else to pick: invoice + serial are enough, and the delivery location is sent.
     fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-3" } });
@@ -314,7 +315,7 @@ describe("PurchaseOrderDetail", () => {
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-9" } });
     fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "900" } });
-    fireEvent.click(within(dialog).getByLabelText(/initial asset user/i));
+    fireEvent.click(within(dialog).getByLabelText(/received into/i));
     fireEvent.click(await screen.findByText("IT Stock-HO"));
     return dialog;
   }
@@ -471,7 +472,7 @@ describe("PurchaseOrderDetail", () => {
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-D" } });
     fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "5000" } });
-    fireEvent.click(within(dialog).getByLabelText(/initial asset user/i));
+    fireEvent.click(within(dialog).getByLabelText(/received into/i));
     fireEvent.click(await screen.findByText("IT Stock-HO"));
 
     expect(within(dialog).getByRole("checkbox", { name: /no serial number for dell desktop - mouse/i })).toBeChecked();
@@ -525,7 +526,7 @@ describe("PurchaseOrderDetail", () => {
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-1" } });
     fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "1180" } });
-    fireEvent.click(within(dialog).getByLabelText(/initial asset user/i));
+    fireEvent.click(within(dialog).getByLabelText(/received into/i));
     fireEvent.click(await screen.findByText("IT Stock-HO"));
     fireEvent.click(within(dialog).getByRole("checkbox", { name: /no serial number for dell laptop/i }));
     fireEvent.click(within(dialog).getByRole("button", { name: /confirm/i }));
@@ -554,7 +555,7 @@ describe("PurchaseOrderDetail", () => {
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-1" } });
     fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "1180" } });
-    fireEvent.click(within(dialog).getByLabelText(/initial asset user/i));
+    fireEvent.click(within(dialog).getByLabelText(/received into/i));
     fireEvent.click(await screen.findByText("IT Stock-HO"));
 
     const later = within(dialog).getByRole("checkbox", { name: /add the serial later for dell laptop/i });
@@ -604,7 +605,7 @@ describe("PurchaseOrderDetail", () => {
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-1" } });
     fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "1180" } });
-    fireEvent.click(within(dialog).getByLabelText(/initial asset user/i));
+    fireEvent.click(within(dialog).getByLabelText(/received into/i));
     fireEvent.click(await screen.findByText("IT Stock-HO"));
 
     const serialInput = within(dialog).getByLabelText(/^serial number\*?$/i);
@@ -686,7 +687,7 @@ describe("PurchaseOrderDetail", () => {
     fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-1" } });
     fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "1180" } });
     fireEvent.change(within(dialog).getByLabelText(/^serial number\*?$/i), { target: { value: "SN-001" } });
-    fireEvent.click(within(dialog).getByLabelText(/initial asset user/i));
+    fireEvent.click(within(dialog).getByLabelText(/received into/i));
     fireEvent.click(await screen.findByText("IT Stock-HO"));
     fireEvent.click(within(dialog).getByRole("button", { name: /confirm/i }));
 
@@ -701,6 +702,28 @@ describe("PurchaseOrderDetail", () => {
 
     expect(screen.getByText("INV-777")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /record pi/i })).toBeInTheDocument();
+    // PI is spelled out once on the screen.
+    expect(screen.getByText(/Purchase Invoice \(PI\) Number\/Date/)).toBeInTheDocument();
+  });
+
+  it("picking an Item shows its Work area in plain words, never Responsibility or a raw code", async () => {
+    mockGets([]);
+    renderDetailAt();
+    fireEvent.click(await screen.findByRole("button", { name: /\+ add line/i }));
+    fireEvent.click(await screen.findByLabelText(/^item\*?$/i));
+    fireEvent.click(await screen.findByRole("option", { name: /^Laptop ?· IT Equipment$/ }));
+    expect(await screen.findByLabelText("Work area")).toHaveValue("IT Team");
+    expect(screen.queryByText(/responsibility/i)).not.toBeInTheDocument();
+  });
+
+  it("a non-head-office admin is told the head-office admin deletes a delivered PO (no 'Primary Owner' wording)", async () => {
+    mockGets([DELIVERED_LINE]);
+    renderDetailAt();
+    await waitFor(() => expect(screen.getByText("HP Printer")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /delete po/i }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/only the head-office admin can delete/i)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/primary owner|fixed asset register/i)).not.toBeInTheDocument();
   });
 
   it("AM-19: Record PI posts to the record-pi endpoint and shows the result", async () => {

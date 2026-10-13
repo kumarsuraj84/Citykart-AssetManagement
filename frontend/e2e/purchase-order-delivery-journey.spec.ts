@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { newSeedRegistry, seedTestCompany, teardownTestCompany, type SeedRegistry } from "./fixtures";
+import { optionMatcher, newSeedRegistry, seedTestCompany, teardownTestCompany, type SeedRegistry } from "./fixtures";
 
 // AM-17: the PO->delivery->Asset 360 journey had zero permanent E2E coverage
 // before this spec (5 existing specs never touch Purchase Orders at all).
@@ -27,7 +27,7 @@ async function loginAs(page: Page, empCode: string, password: string) {
 // and add-asset-company-scoping.spec.ts already use).
 async function selectRadix(page: Page, label: string, optionText: string) {
   await page.getByLabel(label, { exact: true }).click();
-  await page.getByRole("option", { name: optionText, exact: true }).click();
+  await page.getByRole("option", { name: optionMatcher(optionText) }).click();
 }
 
 // NewPurchaseOrderForm/PurchaseOrderDetail's Add-Line form build their
@@ -43,7 +43,7 @@ async function selectRadix(page: Page, label: string, optionText: string) {
 // therefore driven by its input `id` directly, not by label text.
 async function selectRadixById(page: Page, triggerId: string, optionText: string) {
   await page.locator(`#${triggerId}`).click();
-  await page.getByRole("option", { name: optionText, exact: true }).click();
+  await page.getByRole("option", { name: optionMatcher(optionText) }).click();
 }
 
 let registry: SeedRegistry | null = null;
@@ -107,7 +107,7 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
 
   // ---- Trigger Delivery Done ----
   await page.getByRole("button", { name: "Mark 2 Delivery Done", exact: true }).click();
-  // Named, not a bare "dialog": the Initial Asset User dropdown's popup also
+  // Named, not a bare "dialog": the Received Into dropdown's popup also
   // has role=dialog and can still be in the DOM while this dialog closes.
   const deliverDialog = page.getByRole("dialog", { name: /assets? delivered/ });
   await expect(deliverDialog.getByRole("heading", { name: "Mark 2 assets delivered" })).toBeVisible();
@@ -119,11 +119,11 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   await deliverDialog.locator("#invoice-date").fill(invoiceDate);
   await deliverDialog.locator("#invoice-amount").fill("2100");
 
-  // ---- Initial AssetUser: chosen once for the whole delivery (a PO goes to
+  // ---- Received Into: chosen once for the whole delivery (a PO goes to
   // one location only), not per unit ----
   await expect(deliverDialog.locator('[id^="asset-user-"]')).toHaveCount(0);
   await deliverDialog.locator("#initial-asset-user").click();
-  await page.getByRole("option", { name: ctx.stock.name, exact: true }).click();
+  await page.getByRole("option", { name: optionMatcher(ctx.stock.name) }).click();
 
   // ---- Distinct Serial Number per selected unit ----
   // The 2 selected units are identical units of one line item, so the dialog
@@ -218,7 +218,7 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   await dupDialog.locator("#invoice-amount").fill("1050");
   await dupDialog.locator('input[id^="serial-"]').fill(serialA); // duplicate, real value -- not "N/A"
   await dupDialog.locator("#initial-asset-user").click();
-  await page.getByRole("option", { name: ctx.store.name, exact: true }).click();
+  await page.getByRole("option", { name: optionMatcher(ctx.store.name) }).click();
 
   // The dialog now asks the server while the serial is being typed, so the
   // clash is shown right away -- naming the asset that already has it -- and

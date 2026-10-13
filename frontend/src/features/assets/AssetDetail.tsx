@@ -4,7 +4,10 @@ import { apiClient, ApiError } from "../../lib/api-client";
 import { authFetch } from "../../lib/auth-fetch";
 import { useAuthStore } from "../../lib/auth-store";
 import { computeWarrantyUpto } from "../../lib/warranty";
-import { actionsFor, type ActionDef } from "./actionRules";
+import { actionsFor, targetLabelFor, type ActionDef } from "./actionRules";
+import { fieldLabel, humanizeCode, placeTypeLabel, workAreaLabel } from "../../lib/labels";
+import { brandOptions, categoryOptions, nameOptions, placeOptions, vendorOptions } from "../../lib/option-labels";
+import { usePlaceLookups } from "../../lib/lookups";
 import { Timeline, type AssetEvent } from "./Timeline";
 import { DocumentsTab } from "./DocumentsTab";
 import { Button } from "@/components/ui/button";
@@ -115,23 +118,25 @@ interface FieldChange {
   reason: string | null;
 }
 
+// A person or place an asset can be moved to (backend: an asset user).
 interface AssetUserOption {
   id: number;
-  code?: string;
-  email?: string;
+  code?: string | null;
+  email?: string | null;
   name: string;
-}
-
-// Lets someone find an Asset User by typing their code or email, not just
-// their name -- the same fields AssetUsersScreen's own Code/Email columns
-// show, so the search matches what's actually on their record.
-function assetUserKeywords(h: AssetUserOption): string[] {
-  return [h.code, h.email].filter((v): v is string => Boolean(v));
+  asset_user_type?: string | null;
+  company_id?: number | null;
+  location_id?: number | null;
 }
 
 interface MasterOption {
   id: number;
   name: string;
+  code?: string | null;
+}
+
+interface VendorOption extends MasterOption {
+  gstin?: string | null;
 }
 
 interface ActionFormState {
@@ -216,7 +221,9 @@ function ReadField({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
-const CHANGE_COLUMNS: DataTableColumn<FieldChange>[] = [
+/** The Changes tab's columns; custom fields show the label the admin gave them. */
+function changeColumns(customFieldLabels: Record<string, string>): DataTableColumn<FieldChange>[] {
+  return [
   {
     key: "type",
     header: "Type",
@@ -229,17 +236,20 @@ const CHANGE_COLUMNS: DataTableColumn<FieldChange>[] = [
         <span className="text-xs text-muted-foreground">Edit</span>
       ),
   },
-  { key: "field", header: "Field", cell: (c) => <span className="font-mono text-xs">{c.field_name}</span> },
+  { key: "field", header: "Field", cell: (c) => fieldLabel(c.field_name, customFieldLabels) },
   { key: "old", header: "Old Value", cell: (c) => c.old_value ?? "—" },
   { key: "new", header: "New Value", cell: (c) => c.new_value ?? "—" },
   { key: "reason", header: "Reason", cell: (c) => c.reason ?? "—" },
-  { key: "actor", header: "Changed By", cell: (c) => c.actor_name ?? `#${c.actor_id}` },
+  { key: "actor", header: "Changed By", cell: (c) => c.actor_name ?? "Unknown" },
   { key: "when", header: "When", cellClassName: "text-right", cell: (c) => new Date(c.created_at).toLocaleString() },
-];
+  ];
+}
 
 export function AssetDetail({ assetId }: { assetId: number }) {
   const qc = useQueryClient();
   const role = useAuthStore((s) => s.role);
+  // Edit, Correct and every lifecycle action are for ADMIN/OPERATOR only
+  // (VIEWER and SELF_SERVICE just look). The server re-checks every write.
   const canEdit = role === "ADMIN" || role === "OPERATOR";
   const [activeAction, setActiveAction] = useState<ActionDef | null>(null);
   const [form, setForm] = useState<ActionFormState>(emptyActionForm);
@@ -285,11 +295,14 @@ export function AssetDetail({ assetId }: { assetId: number }) {
   const { data: asset_users = [] } = useQuery({
     queryKey: ["asset_users", asset?.company_id],
     queryFn: () => apiClient.get<AssetUserOption[]>(`/asset-users?company_id=${asset!.company_id}`),
-    enabled: asset?.company_id != null && role !== "SELF_SERVICE",
+    // Only the action dialog (ADMIN/OPERATOR) needs the list of people/places.
+    enabled: asset?.company_id != null && canEdit,
   });
+  // Place names for the Move To / Received Into picker ("CS6872 · Ankur · Head Office").
+  const placeLookups = usePlaceLookups(activeAction !== null);
   const { data: vendors = [] } = useQuery({
     queryKey: ["masters", "vendors"],
-    queryFn: () => apiClient.get<AssetUserOption[]>("/masters/vendors"),
+    queryFn: () => apiClient.get<VendorOption[]>("/masters/vendors"),
     enabled: editing,
   });
   const { data: brands = [] } = useQuery({
@@ -319,6 +332,14 @@ export function AssetDetail({ assetId }: { assetId: number }) {
     () => new Map(customFieldDefs.map((d) => [d.field_key, d])),
     [customFieldDefs],
   );
+  // Every known custom field's label (any company), for the Changes tab and
+  // the read-only Custom Fields tab.
+  const customFieldLabelsByKey = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const d of customFieldDefsRaw) out[d.field_key] = d.label;
+    return out;
+  }, [customFieldDefsRaw]);
+  const changeCols = useMemo(() => changeColumns(customFieldLabelsByKey), [customFieldLabelsByKey]);
 
   function setField<K extends keyof ActionFormState>(key: K, value: ActionFormState[K]) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -550,7 +571,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
         description={asset.description}
         actions={
           <>
-            <StatusBadge status={asset.status} />
+            <StatusBadge status={asset.status} holderType={asset.current_asset_user_type} />
             {qrUrl && <img src={qrUrl} alt="Asset QR code" width={64} height={64} />}
             <Button variant="outline" size="sm" onClick={() => window.print()}>Print Label</Button>
             {canEdit && !editing && (
@@ -563,11 +584,11 @@ export function AssetDetail({ assetId }: { assetId: number }) {
         }
       >
         <p className="text-sm text-muted-foreground">
-          Held by <span className="font-medium text-foreground">{asset.current_asset_user_name ?? "—"}</span>
-          {asset.current_asset_user_type && ` (${asset.current_asset_user_type.replace(/_/g, " ").toLowerCase()})`}
+          With <span className="font-medium text-foreground">{asset.current_asset_user_name ?? "—"}</span>
+          {asset.current_asset_user_type && ` (${placeTypeLabel(asset.current_asset_user_type)})`}
           {asset.location_name && <> · {asset.location_name}</>}
         </p>
-        {!editing && role !== "SELF_SERVICE" && actions.length > 0 && (
+        {!editing && canEdit && actions.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {actions.map((a) => (
               <Button key={a.eventType + a.label} variant="secondary" size="sm" onClick={() => openAction(a)}>
@@ -586,12 +607,13 @@ export function AssetDetail({ assetId }: { assetId: number }) {
               <Textarea id="edit-description" aria-label="Description" value={editForm.description} onChange={(e) => setEditField("description", e.target.value)} />
             </FormField>
             <FormField htmlFor="edit-brand" label="Brand">
-              <Select value={selectValue(editForm.brandId)} onValueChange={(v) => setEditField("brandId", v)}>
-                <SelectTrigger id="edit-brand" aria-label="Brand"><SelectValue placeholder="Select…" /></SelectTrigger>
-                <SelectContent>
-                  {brands.map((b) => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                id="edit-brand"
+                aria-label="Brand"
+                value={selectValue(editForm.brandId)}
+                onValueChange={(v) => setEditField("brandId", v)}
+                options={brandOptions(brands)}
+              />
             </FormField>
             <FormField htmlFor="edit-model" label="Model"><Input id="edit-model" aria-label="Model" value={editForm.model} onChange={(e) => setEditField("model", e.target.value)} /></FormField>
             <FormField
@@ -620,12 +642,13 @@ export function AssetDetail({ assetId }: { assetId: number }) {
             <FormField htmlFor="edit-barcode" label="Barcode"><Input id="edit-barcode" aria-label="Barcode" value={editForm.barcode} onChange={(e) => setEditField("barcode", e.target.value)} /></FormField>
             <FormField htmlFor="edit-legacy" label="Legacy Asset Code"><Input id="edit-legacy" aria-label="Legacy Asset Code" value={editForm.legacyAssetCode} onChange={(e) => setEditField("legacyAssetCode", e.target.value)} /></FormField>
             <FormField htmlFor="edit-vendor" label="Vendor">
-              <Select value={selectValue(editForm.vendorId)} onValueChange={(v) => setEditField("vendorId", v)}>
-                <SelectTrigger id="edit-vendor" aria-label="Vendor"><SelectValue placeholder="Select…" /></SelectTrigger>
-                <SelectContent>
-                  {vendors.map((v) => <SelectItem key={v.id} value={String(v.id)}>{v.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                id="edit-vendor"
+                aria-label="Vendor"
+                value={selectValue(editForm.vendorId)}
+                onValueChange={(v) => setEditField("vendorId", v)}
+                options={vendorOptions(vendors)}
+              />
             </FormField>
             <FormField
               htmlFor="edit-warranty-years" label="Warranty Years"
@@ -646,7 +669,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
             <FormField htmlFor="edit-invoice-number" label="Invoice Number"><Input id="edit-invoice-number" aria-label="Invoice Number" value={editForm.invoiceNumber} onChange={(e) => setEditField("invoiceNumber", e.target.value)} /></FormField>
             <FormField htmlFor="edit-invoice-date" label="Invoice Date"><Input id="edit-invoice-date" aria-label="Invoice Date" type="date" value={editForm.invoiceDate} onChange={(e) => setEditField("invoiceDate", e.target.value)} /></FormField>
             <FormField htmlFor="edit-invoice-amount" label="Invoice Amount"><Input id="edit-invoice-amount" aria-label="Invoice Amount" type="number" min={0} step="0.01" value={editForm.invoiceAmount} onChange={(e) => setEditField("invoiceAmount", e.target.value)} /></FormField>
-            <FormField htmlFor="edit-pi-number" label="PI Number" helperText="CityKart's internal reference for the payment made to the vendor."><Input id="edit-pi-number" aria-label="PI Number" value={editForm.piNumber} onChange={(e) => setEditField("piNumber", e.target.value)} /></FormField>
+            <FormField htmlFor="edit-pi-number" label="Purchase Invoice (PI) Number" helperText="CityKart's internal reference for the payment made to the vendor."><Input id="edit-pi-number" aria-label="Purchase Invoice (PI) Number" value={editForm.piNumber} onChange={(e) => setEditField("piNumber", e.target.value)} /></FormField>
             <FormField htmlFor="edit-pi-date" label="PI Date"><Input id="edit-pi-date" aria-label="PI Date" type="date" value={editForm.piDate} onChange={(e) => setEditField("piDate", e.target.value)} /></FormField>
             <FormField htmlFor="edit-purchase-cost" label="Purchase Cost"><Input id="edit-purchase-cost" aria-label="Purchase Cost" type="number" value={editForm.purchaseCost} onChange={(e) => setEditField("purchaseCost", e.target.value)} /></FormField>
             <FormField htmlFor="edit-tax-percent" label="Tax %"><Input id="edit-tax-percent" aria-label="Tax %" type="number" value={editForm.taxPercent} onChange={(e) => setEditField("taxPercent", e.target.value)} /></FormField>
@@ -751,7 +774,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
               <ReadField label="Description" value={asset.description} />
               <ReadField label="Item" value={asset.item_name} />
               <ReadField label="Category" value={asset.category_name} />
-              <ReadField label="Sub-Category" value={asset.subcategory_name} />
+              <ReadField label="Sub-category" value={asset.subcategory_name} />
               <ReadField label="Brand" value={asset.brand_name} />
               <ReadField label="Model" value={asset.model} />
               <ReadField
@@ -771,7 +794,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
               <ReadField label="Invoice Number" value={asset.invoice_number} />
               <ReadField label="Invoice Date" value={asset.invoice_date} />
               <ReadField label="Invoice Amount" value={asset.invoice_amount != null ? asset.invoice_amount.toFixed(2) : null} />
-              <ReadField label="PI Number" value={asset.pi_number} />
+              <ReadField label="Purchase Invoice (PI) Number" value={asset.pi_number} />
               <ReadField label="PI Date" value={asset.pi_date} />
               <ReadField label="Purchase Date" value={asset.purchase_date} />
               <ReadField label="Purchase Cost" value={asset.purchase_cost != null ? asset.purchase_cost.toFixed(2) : null} />
@@ -785,13 +808,13 @@ export function AssetDetail({ assetId }: { assetId: number }) {
 
           <TabsContent value="custody" className="pt-4">
             <dl className="grid gap-4 lg:grid-cols-2">
-              <ReadField label="Responsibility" value={asset.asset_domain === "NON_IT" ? "Admin / Non-IT" : asset.asset_domain} />
-              <ReadField label="Current Asset User" value={asset.current_asset_user_name} />
-              <ReadField label="Asset User Type" value={asset.current_asset_user_type?.replace(/_/g, " ")} />
-              <ReadField label="Location" value={asset.location_name} />
+              <ReadField label="Work area" value={workAreaLabel(asset.asset_domain)} />
+              <ReadField label="Currently With" value={asset.current_asset_user_name} />
+              <ReadField label="Type" value={placeTypeLabel(asset.current_asset_user_type)} />
+              <ReadField label="Place" value={asset.location_name} />
               <ReadField label="Department" value={asset.department_name} />
               <ReadField label="Cost Centre" value={asset.cost_center_name} />
-              <ReadField label="Status" value={<StatusBadge status={asset.status} />} />
+              <ReadField label="Status" value={<StatusBadge status={asset.status} holderType={asset.current_asset_user_type} />} />
               <ReadField label="Status Since" value={asset.status_since} />
             </dl>
           </TabsContent>
@@ -803,7 +826,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
               <dl className="grid gap-4 lg:grid-cols-2">
                 {Object.entries(asset.custom_fields).map(([key, value]) => {
                   const def = activeDefsByKey.get(key);
-                  const label = def?.label ?? `${key} (retired field)`;
+                  const label = def?.label ?? `${customFieldLabelsByKey[key] ?? humanizeCode(key)} (retired field)`;
                   const display = typeof value === "boolean" ? (value ? "Yes" : "No") : String(value ?? "—");
                   return <ReadField key={key} label={label} value={display} />;
                 })}
@@ -817,7 +840,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
 
           <TabsContent value="changes" className="pt-4">
             <DataTable
-              columns={CHANGE_COLUMNS}
+              columns={changeCols}
               rows={changes}
               rowKey={(c) => c.id}
               emptyState={<EmptyState title="No descriptive/procurement edits yet." description="Lifecycle moves and other custody changes are shown under History, not here." />}
@@ -839,13 +862,15 @@ export function AssetDetail({ assetId }: { assetId: number }) {
           <div className="flex flex-col gap-4">
             {activeAction?.needsAssetUser && (
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="asset-user-select">Asset User</Label>
+                <Label htmlFor="asset-user-select">{targetLabelFor(activeAction.eventType)}</Label>
                 <SearchableSelect
                   id="asset-user-select"
-                  aria-label="Asset User"
+                  aria-label={targetLabelFor(activeAction.eventType)}
                   value={form.assetUserId || undefined}
                   onValueChange={(v) => setField("assetUserId", v)}
-                  options={asset_users.map((h) => ({ value: String(h.id), label: h.name, keywords: assetUserKeywords(h) }))}
+                  options={placeOptions(asset_users, placeLookups)}
+                  placeholder="Pick an employee, store or stock room…"
+                  searchPlaceholder="Search by name or code…"
                 />
               </div>
             )}
@@ -922,32 +947,24 @@ export function AssetDetail({ assetId }: { assetId: number }) {
               </div>
 
               <FormField htmlFor="correction-category" label="Category">
-                <Select value={correctionCategoryId || undefined} onValueChange={handleCorrectionCategoryChange}>
-                  <SelectTrigger id="correction-category" aria-label="Category">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map((c) => (
-                      <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  id="correction-category"
+                  aria-label="Category"
+                  value={correctionCategoryId || undefined}
+                  onValueChange={handleCorrectionCategoryChange}
+                  options={categoryOptions(categories)}
+                />
               </FormField>
 
-              <FormField htmlFor="correction-subcategory" label="Sub-Category" helperText="Optional.">
-                <Select
+              <FormField htmlFor="correction-subcategory" label="Sub-category" helperText="Optional.">
+                <SearchableSelect
+                  id="correction-subcategory"
+                  aria-label="Sub-category"
                   value={correctionSubcategoryId || undefined}
                   onValueChange={(v) => setCorrectionSubcategoryId(v)}
-                >
-                  <SelectTrigger id="correction-subcategory" aria-label="Sub-Category">
-                    <SelectValue placeholder="None" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {correctionSubcategories.map((s) => (
-                      <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  options={nameOptions(correctionSubcategories)}
+                  placeholder="None"
+                />
               </FormField>
 
               <FormField htmlFor="correction-purchase-date" label="Purchase Date">
@@ -968,7 +985,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
                   )}
                   {correctionSubcategoryChanged && (
                     <p>
-                      Sub-Category: {subcategoryName(asset.subcategory_id != null ? String(asset.subcategory_id) : "")}
+                      Sub-category: {subcategoryName(asset.subcategory_id != null ? String(asset.subcategory_id) : "")}
                       {" → "}
                       {subcategoryName(correctionSubcategoryId)}
                     </p>

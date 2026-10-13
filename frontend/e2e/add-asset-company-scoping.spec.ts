@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { newSeedRegistry, seedTestCompany, teardownTestCompany, fillAddAssetProcurementFields, type SeedRegistry } from "./fixtures";
+import { optionMatcher, newSeedRegistry, seedTestCompany, teardownTestCompany, fillAddAssetProcurementFields, type SeedRegistry } from "./fixtures";
 
 async function loginAs(page: Page, empCode: string, password: string) {
   await page.goto("/login");
@@ -10,7 +10,7 @@ async function loginAs(page: Page, empCode: string, password: string) {
 
 async function pickSelectOption(page: Page, label: string, optionText: string) {
   await page.getByLabel(label, { exact: true }).click();
-  await page.getByRole("option", { name: optionText, exact: true }).click();
+  await page.getByRole("option", { name: optionMatcher(optionText) }).click();
 }
 
 async function api<T>(baseURL: string, method: string, urlPath: string, token: string, body?: unknown): Promise<T> {
@@ -74,13 +74,13 @@ test("Add Asset offers only this company's own Cost Centres, and asset creation 
   await page.goto("/assets/new");
   await page.getByLabel("Cost Centre", { exact: true }).click();
 
-  await expect(page.getByRole("option", { name: ctx.costCenter.name, exact: true })).toBeVisible();
-  await expect(page.getByRole("option", { name: costCenterB.name, exact: true })).not.toBeVisible();
-  await page.getByRole("option", { name: ctx.costCenter.name, exact: true }).click();
+  await expect(page.getByRole("option", { name: optionMatcher(ctx.costCenter.name) })).toBeVisible();
+  await expect(page.getByRole("option", { name: optionMatcher(costCenterB.name) })).not.toBeVisible();
+  await page.getByRole("option", { name: optionMatcher(ctx.costCenter.name) }).click();
 
   await page.getByLabel("Description", { exact: true }).fill("AM08 Company-Scoped Cost Centre Test Laptop");
   await pickSelectOption(page, "Item", ctx.item.name);
-  await pickSelectOption(page, "Goes Into", ctx.stock.name);
+  await pickSelectOption(page, "Received Into", ctx.stock.name);
   await fillAddAssetProcurementFields(page, ctx.vendor.name);
 
   await page.getByRole("button", { name: "Save", exact: true }).click();

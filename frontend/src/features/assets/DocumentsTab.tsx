@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import { downloadFile } from "../../lib/auth-fetch";
 import { useAuthStore } from "../../lib/auth-store";
+import { humanizeCode } from "../../lib/labels";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -32,6 +33,11 @@ const DOC_TYPES = [
   { value: "photo", label: "Photo" },
   { value: "other", label: "Other" },
 ];
+
+/** "po" -> "PO Copy"; an unknown type is shown in sentence case. */
+function docTypeLabel(docType: string): string {
+  return DOC_TYPES.find((t) => t.value === docType)?.label ?? humanizeCode(docType);
+}
 
 function formatSize(bytes: number): string {
   return `${Math.round(bytes / 1024)} KB`;
@@ -145,7 +151,7 @@ export function DocumentsTab({ assetId }: { assetId: number }) {
                 {docs.map((d) => (
                   <TableRow key={d.id}>
                     <TableCell>{d.file_name}</TableCell>
-                    <TableCell className="capitalize">{d.doc_type.replace(/_/g, " ")}</TableCell>
+                    <TableCell>{docTypeLabel(d.doc_type)}</TableCell>
                     <TableCell>{formatSize(d.size_bytes)}</TableCell>
                     <TableCell>
                       <Button variant="secondary" size="sm" onClick={() => handleDownload(d)}>

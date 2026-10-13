@@ -13,6 +13,8 @@ import { ErrorState } from "@/components/shared/ErrorState";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { ItemFormDialog } from "./ItemFormDialog";
 import { useCanCreateMasters } from "@/components/quick-create/masters";
+import { itemOptions as buildItemOptions } from "@/lib/option-labels";
+import { useCategoryLookups } from "@/lib/lookups";
 
 type Tab = "undecided" | "linked" | "untracked" | "all";
 
@@ -41,7 +43,9 @@ export function ErpCodesView({ companyId, items, fixedItem }: { companyId?: stri
 
   const codesQ = useErpCodes(companyId);
   const all = codesQ.data ?? [];
-  const itemOptions = items.map((i) => ({ value: String(i.id), label: i.name }));
+  // "Laptop · IT Fixed Assets": the Category tells two similar Items apart.
+  const categoryLookups = useCategoryLookups();
+  const itemOptions = buildItemOptions(items, categoryLookups);
 
   const state = (c: CodeDecisionRow): Tab => (c.not_tracked ? "untracked" : c.item_id !== null ? "linked" : "undecided");
   const count = {
@@ -211,7 +215,7 @@ export function ErpCodesView({ companyId, items, fixedItem }: { companyId?: stri
             emptyState={
               <EmptyState
                 title={tab === "undecided" && !needle && department === ALL_DEPARTMENTS ? "Every bought code has been decided." : "No codes match."}
-                description={items.length === 0 ? "Create some Items first (Setup > Items)." : undefined}
+                description={items.length === 0 ? "Create some Items first (Settings › Catalogue › Items)." : undefined}
               />
             }
           />

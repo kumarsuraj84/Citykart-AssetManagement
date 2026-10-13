@@ -8,6 +8,7 @@ import { useErpCodes } from "./useErpCodes";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
+import { companyOptions } from "@/lib/option-labels";
 
 interface Company {
   id: number;
@@ -78,7 +79,7 @@ export function ItemLinksDialog({ item, onClose }: { item: Item; onClose: () => 
             <div className="w-64">
               <SearchableSelect
                 id="item-links-company" aria-label="Company" value={companyId} onValueChange={setPickedCompany}
-                options={companies.map((c) => ({ value: String(c.id), label: c.name }))}
+                options={companyOptions(companies)}
               />
             </div>
           )}

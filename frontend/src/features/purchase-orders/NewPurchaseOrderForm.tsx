@@ -8,11 +8,17 @@ import { FormField } from "@/components/shared/FormField";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { NewCostCenterDialog, NewVendorDialog, useCanCreateMasters } from "@/components/quick-create/masters";
+import { companyOptions, costCentreOptions, stockRoomOptions, vendorOptions } from "@/lib/option-labels";
+import { usePlaceLookups } from "@/lib/lookups";
 
 interface Option {
   id: number;
   name: string;
+  code?: string | null;
+  gstin?: string | null;
   asset_user_type?: string;
+  company_id?: number | null;
+  location_id?: number | null;
 }
 
 interface CreatedPurchaseOrder {
@@ -50,8 +56,8 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
     enabled: selectedCompanyId != null,
   });
   const costCenters = costCentersQ.data ?? [];
-  // Where the goods arrive (a stock point of this company). Optional: Mark
-  // Delivery Done then starts with it as the Initial Asset User.
+  // Where the goods arrive (a Stock Room of this company). Optional: Mark
+  // Delivery Done then starts with it as the place it is Received Into.
   const [deliveryId, setDeliveryId] = useState("");
   const usersQ = useQuery({
     queryKey: ["asset_users", selectedCompanyId],
@@ -59,6 +65,7 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
     enabled: selectedCompanyId != null,
   });
   const stockPoints = (usersQ.data ?? []).filter((u) => !u.asset_user_type || u.asset_user_type === "STOCK_POINT");
+  const placeLookups = usePlaceLookups();
 
   const canCreate = useCanCreateMasters();
   const [newVendor, setNewVendor] = useState(false);
@@ -96,7 +103,7 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
                 setCostCenterId("");
                 setDeliveryId("");
               }}
-              options={myCompanies.map((c) => ({ value: String(c.id), label: c.name }))}
+              options={companyOptions(myCompanies)}
             />
           </FormField>
         )}
@@ -111,7 +118,7 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
             id="vendor"
             value={selectValue(vendorId)}
             onValueChange={setVendorId}
-            options={vendors.map((v) => ({ value: String(v.id), label: v.name }))}
+            options={vendorOptions(vendors)}
             onCreateNew={canCreate ? () => setNewVendor(true) : undefined}
             createLabel="New Vendor…"
           />
@@ -121,20 +128,20 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
             id="cost-center"
             value={selectValue(costCenterId)}
             onValueChange={setCostCenterId}
-            options={costCenters.map((c) => ({ value: String(c.id), label: c.name }))}
+            options={costCentreOptions(costCenters)}
             onCreateNew={canCreate && selectedCompanyId != null ? () => setNewCostCenter(true) : undefined}
             createLabel="New Cost Centre…"
           />
         </FormField>
         <FormField
-          htmlFor="delivery-location" label="Delivery location" className="col-span-2"
-          helperText="Optional. Where the goods arrive; Mark Delivery Done starts with it as the Initial Asset User."
+          htmlFor="delivery-location" label="Received Into" className="col-span-2"
+          helperText="Optional. The Stock Room the goods arrive at; Mark Delivery Done starts with it."
         >
           <SearchableSelect
             id="delivery-location"
             value={selectValue(deliveryId)}
             onValueChange={setDeliveryId}
-            options={stockPoints.map((u) => ({ value: String(u.id), label: u.name }))}
+            options={stockRoomOptions(stockPoints, placeLookups)}
           />
         </FormField>
       </div>

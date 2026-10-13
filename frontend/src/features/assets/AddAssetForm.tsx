@@ -16,6 +16,11 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionHeading } from "@/components/shared/SectionHeading";
 import { FormField } from "@/components/shared/FormField";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
+import { workAreaLabel } from "@/lib/labels";
+import {
+  brandOptions, companyOptions, costCentreOptions, itemOptions, namesById, stockRoomOptions, vendorOptions,
+} from "@/lib/option-labels";
+import { usePlaceLookups } from "@/lib/lookups";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { ErrorState } from "@/components/shared/ErrorState";
 import type { Item } from "../items/types";
@@ -29,24 +34,16 @@ interface Option {
   code?: string;
   email?: string;
   name: string;
-}
-
-// Lets someone find an Asset User by typing their code or email, not just
-// their name -- the same fields AssetUsersScreen's own Code/Email columns
-// show, so the search matches what's actually on their record.
-function assetUserKeywords(h: Option): string[] {
-  return [h.code, h.email].filter((v): v is string => Boolean(v));
+  gstin?: string | null;
+  company_id?: number | null;
+  location_id?: number | null;
 }
 
 interface CategoryOption extends Option {
-  // IT / NON_IT (spec §17/§18) -- drives the read-only Responsibility
+  // IT / NON_IT (spec §17/§18) -- drives the read-only Work area
   // preview below; the backend independently re-derives the same value
   // from this Category at save time, never trusting this display value.
   asset_domain: string;
-}
-
-function domainLabel(value: string): string {
-  return value === "NON_IT" ? "Admin / Non-IT" : value;
 }
 
 interface CustomFieldDef {
@@ -207,6 +204,11 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
   const vendors = vendorsQ.data ?? [];
   const brands = brandsQ.data ?? [];
   const stockAssetUsers = stockAssetUsersQ.data ?? [];
+  // Dropdown context: an Item shows its Category (› Sub-category); a Stock
+  // Room shows its place.
+  const categoryNames = useMemo(() => namesById(categoriesQ.data), [categoriesQ.data]);
+  const subcategoryNames = useMemo(() => namesById(subcategoriesQ.data), [subcategoriesQ.data]);
+  const { locations } = usePlaceLookups();
   // AM-05: only fields applicable to THIS asset's company -- Global
   // (company_id null) plus this company's own -- ever render, are
   // validated, or count toward requiredness here. A field scoped to a
@@ -375,7 +377,7 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
 
   return (
     <div className="flex flex-col gap-5 max-w-4xl">
-      <PageHeader title="Add Asset" description="Record a new asset and where it goes into stock." />
+      <PageHeader title="Add Asset" description="Record a new asset and the Stock Room it is received into." />
 
       {createdAssets.length > 0 && (
         <div className="rounded-md border bg-success-soft/60 p-3 text-sm">
@@ -395,7 +397,7 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
       )}
 
       <section className="flex flex-col gap-4">
-        <SectionHeading>Organization</SectionHeading>
+        <SectionHeading>Organisation</SectionHeading>
         <div className="grid gap-4 sm:grid-cols-2">
           {/* AM-24: only shown when the caller actually has more than one
               company to choose from -- otherwise this stays exactly as
@@ -411,7 +413,7 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
                   setField("costCenterId", "");
                   setField("initialAssetUserId", "");
                 }}
-                options={myCompanies.map((c) => ({ value: String(c.id), label: c.name }))}
+                options={companyOptions(myCompanies)}
               />
             </FormField>
           )}
@@ -422,13 +424,13 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
               value={selectValue(form.costCenterId)}
               onValueChange={(v) => setField("costCenterId", v)}
               disabled={mastersLoading}
-              options={costCenters.map((c) => ({ value: String(c.id), label: c.name }))}
+              options={costCentreOptions(costCenters)}
               onCreateNew={canCreate && selectedCompanyId != null ? () => setNewCostCenter(true) : undefined}
               createLabel="New Cost Centre…"
             />
             {!mastersLoading && !hasCostCenterOption && (
               <p className="text-sm text-destructive">
-                No active cost centres are configured for this company. Add one under Setup &gt; Cost Centers first.
+                No active cost centres are configured for this company. Ask the head-office admin to add one under Settings › Organisation › Cost Centres.
               </p>
             )}
           </FormField>
@@ -442,7 +444,7 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
             htmlFor="item"
             label="Item"
             required
-            helperText={selectedItem ? `Category › Sub-Category: ${[selectedCategory?.name, selectedSubcategory?.name].filter(Boolean).join(" › ")}` : "What this asset is. Its Category and Sub-Category follow from it."}
+            helperText={selectedItem ? `Category › Sub-category: ${[selectedCategory?.name, selectedSubcategory?.name].filter(Boolean).join(" › ")}` : "What this asset is. Its Category and Sub-category follow from it."}
           >
             <SearchableSelect
               id="item"
@@ -450,15 +452,15 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
               value={selectValue(form.itemId)}
               onValueChange={(v) => applyItem(items.find((i) => i.id === Number(v)))}
               disabled={mastersLoading}
-              options={items.map((i) => ({ value: String(i.id), label: i.name }))}
+              options={itemOptions(items, { categories: categoryNames, subcategories: subcategoryNames })}
               onCreateNew={canCreate ? () => setNewItem(true) : undefined}
               createLabel="New Item…"
             />
           </FormField>
 
           {selectedCategoryDomain && (
-            <FormField htmlFor="responsibility" label="Responsibility" helperText="Derived from the Item's Category -- not editable here.">
-              <Input id="responsibility" aria-label="Responsibility" value={domainLabel(selectedCategoryDomain)} disabled readOnly />
+            <FormField htmlFor="work-area" label="Work area" helperText="Follows from the Item's Category -- not editable here.">
+              <Input id="work-area" aria-label="Work area" value={workAreaLabel(selectedCategoryDomain)} disabled readOnly />
             </FormField>
           )}
 
@@ -477,7 +479,7 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
               value={selectValue(form.brandId)}
               onValueChange={(v) => setField("brandId", v)}
               disabled={mastersLoading}
-              options={brands.map((b) => ({ value: String(b.id), label: b.name }))}
+              options={brandOptions(brands)}
               onCreateNew={canCreate ? () => setNewBrand(true) : undefined}
               createLabel="New Brand…"
             />
@@ -560,7 +562,7 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
             value={selectValue(form.vendorId)}
             onValueChange={(v) => setField("vendorId", v)}
             disabled={mastersLoading}
-            options={vendors.map((v) => ({ value: String(v.id), label: v.name }))}
+            options={vendorOptions(vendors)}
             onCreateNew={canCreate ? () => setNewVendor(true) : undefined}
             createLabel="New Vendor…"
           />
@@ -594,8 +596,8 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <FormField htmlFor="pi-number" label="PI Number" helperText="CityKart's internal reference for the payment made to the vendor. Usually arrives from Finance after delivery -- leave blank and add it later.">
-            <Input id="pi-number" aria-label="PI Number" value={form.piNumber} onChange={(e) => setField("piNumber", e.target.value)} />
+          <FormField htmlFor="pi-number" label="Purchase Invoice (PI) Number" helperText="CityKart's internal reference for the payment made to the vendor. Usually arrives from Finance after delivery -- leave blank and add it later.">
+            <Input id="pi-number" aria-label="Purchase Invoice (PI) Number" value={form.piNumber} onChange={(e) => setField("piNumber", e.target.value)} />
           </FormField>
           <FormField htmlFor="pi-date" label="PI Date" helperText="Optional.">
             <Input id="pi-date" aria-label="PI Date" type="date" value={form.piDate} onChange={(e) => setField("piDate", e.target.value)} />
@@ -619,19 +621,19 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
       </section>
 
       <section className="flex flex-col gap-4">
-        <SectionHeading>Initial Custody</SectionHeading>
+        <SectionHeading>Where it is received</SectionHeading>
         <div className="grid gap-4 sm:grid-cols-2">
-          <FormField htmlFor="initial-asset-user" label="Goes Into" required>
+          <FormField htmlFor="initial-asset-user" label="Received Into" required helperText="The Stock Room this asset is received into.">
             <SearchableSelect
               id="initial-asset-user"
-              aria-label="Goes Into"
+              aria-label="Received Into"
               value={selectValue(form.initialAssetUserId)}
               onValueChange={(v) => setField("initialAssetUserId", v)}
               disabled={mastersLoading}
-              options={stockAssetUsers.map((h) => ({ value: String(h.id), label: h.name, keywords: assetUserKeywords(h) }))}
+              options={stockRoomOptions(stockAssetUsers, { locations })}
             />
             {!mastersLoading && !hasAssetUserOption && (
-              <p className="text-sm text-destructive">No IT Stock asset user found for this company. Add one under Setup &gt; Users first.</p>
+              <p className="text-sm text-destructive">No Stock Room found for this company. An admin can add one under People &amp; Places › Stock Rooms.</p>
             )}
           </FormField>
         </div>

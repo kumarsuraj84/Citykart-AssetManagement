@@ -170,7 +170,7 @@ function Change({ c, busy, onChoose }: { c: ErpChange; busy: boolean; onChoose: 
         </p>
         <p className="text-xs text-muted-foreground">
           {(c.pending_units ?? 0) > 0 ? `${plural(c.pending_units ?? 0, "pending unit")} would get the new cost.` : "Nothing is pending here."}
-          {(c.delivered_units ?? 0) > 0 && ` ${plural(c.delivered_units ?? 0, "delivered unit")} keep the cost they were delivered with (the Primary Owner can correct an asset's cost by editing it).`}
+          {(c.delivered_units ?? 0) > 0 && ` ${plural(c.delivered_units ?? 0, "delivered unit")} keep the cost they were delivered with (the head-office admin can correct an asset's cost by editing it).`}
         </p>
         <div className="flex gap-2">
           {(c.pending_units ?? 0) > 0 && <Button size="sm" disabled={busy} onClick={() => onChoose(c.id, "apply")}>Update {plural(c.pending_units ?? 0, "pending unit")}</Button>}
@@ -188,7 +188,7 @@ function Change({ c, busy, onChoose }: { c: ErpChange; busy: boolean; onChoose: 
           <p className="text-xs text-muted-foreground">That is the vendor <b>{c.linked_vendor_name}</b> here. Units already delivered keep the vendor they were delivered with.</p>
         ) : (
           <p className="text-xs text-muted-foreground">
-            That supplier is not linked to a vendor here yet. The Primary Owner can link it in Setup &gt; Vendors (Add from ERP), then you can move the PO.
+            That supplier is not linked to a vendor here yet. The head-office admin can link it in Settings › Vendors (Add from ERP), then you can move the PO.
           </p>
         )}
         <div className="flex gap-2">

@@ -129,8 +129,8 @@ describe("AssetUsersScreen", () => {
     fireEvent.change(screen.getByLabelText("Code"), { target: { value: "NEW01" } });
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "New Hire" } });
     await pickSelectOption("Company", "CityKart HQ");
-    await pickSelectOption("Type", "EMPLOYEE");
-    await pickSelectOption("Location", "Head Office");
+    await pickSelectOption("Type", "Employee");
+    await pickSelectOption("Place", "Head Office");
     // Login Enabled stays unchecked -- Role/Email aren't shown, and the
     // payload's role falls back to SELF_SERVICE, with no interaction needed.
 
@@ -162,7 +162,7 @@ describe("AssetUsersScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: /^edit ankur$/i }));
 
     // Prefilled from the existing row.
-    expect(screen.getByLabelText("Code")).toHaveValue("CS6872");
+    expect(screen.getByLabelText("Employee Code")).toHaveValue("CS6872");
     expect(screen.getByLabelText("Name")).toHaveValue("Ankur");
 
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Ankur K" } });
@@ -188,7 +188,7 @@ describe("AssetUsersScreen", () => {
     mockGets([]);
     renderWithClient(<AssetUsersScreen />);
 
-    await waitFor(() => expect(screen.getByText(/no asset users yet/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/no people or places yet/i)).toBeInTheDocument());
     expect(screen.getAllByRole("button", { name: /^add$/i }).length).toBeGreaterThan(0);
   });
 
@@ -274,7 +274,7 @@ describe("AssetUsersScreen", () => {
     fireEvent.change(screen.getByLabelText("Code"), { target: { value: "NOLOC" } });
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "No Location" } });
     await pickSelectOption("Company", "CityKart HQ");
-    await pickSelectOption("Type", "EMPLOYEE");
+    await pickSelectOption("Type", "Employee");
     // Location deliberately left unselected.
 
     expect(screen.getByRole("button", { name: /^save$/i })).toBeDisabled();
@@ -293,8 +293,8 @@ describe("AssetUsersScreen", () => {
     fireEvent.change(screen.getByLabelText("Code"), { target: { value: "NEW02" } });
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "New Hire 2" } });
     await pickSelectOption("Company", "CityKart HQ");
-    await pickSelectOption("Type", "EMPLOYEE");
-    await pickSelectOption("Location", "Head Office");
+    await pickSelectOption("Type", "Employee");
+    await pickSelectOption("Place", "Head Office");
 
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/location not found or inactive/i);
@@ -312,7 +312,7 @@ describe("AssetUsersScreen", () => {
 
     // Editing an unrelated field does not touch the prefilled role.
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Ankur K" } });
-    expect(screen.queryByText(/will immediately change this person's access/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/will immediately change what this person can do/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     await waitFor(() =>
       expect(apiClient.put).toHaveBeenCalledWith("/asset-users/1", expect.objectContaining({ role: "SELF_SERVICE" })),
@@ -360,21 +360,21 @@ describe("AssetUsersScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
 
     await pickSelectOption("Company", "CityKart HQ");
-    await pickSelectOption("Type", "STOCK_POINT");
+    await pickSelectOption("Type", "Stock Room");
     // Labels relabel away from the "Code"/"Name" wording once a non-person type is picked.
-    expect(screen.getByText("Stock Point Code")).toBeInTheDocument();
-    expect(screen.getByText("Stock Point Name")).toBeInTheDocument();
+    expect(screen.getByText("Stock Room Code")).toBeInTheDocument();
+    expect(screen.getByText("Stock Room Name")).toBeInTheDocument();
     expect(screen.queryByLabelText("Code")).not.toBeInTheDocument();
 
-    await pickSelectOption("Location", "Warehouse 1");
-    expect(screen.getByLabelText("Stock Point Code")).toHaveValue("STK-WH1");
-    expect(screen.getByLabelText("Stock Point Name")).toHaveValue("Stock Point - Warehouse 1");
+    await pickSelectOption("Place", "Warehouse 1");
+    expect(screen.getByLabelText("Stock Room Code")).toHaveValue("STK-WH1");
+    expect(screen.getByLabelText("Stock Room Name")).toHaveValue("Stock Room - Warehouse 1");
 
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith(
         "/asset-users",
-        expect.objectContaining({ code: "STK-WH1", name: "Stock Point - Warehouse 1", asset_user_type: "STOCK_POINT" }),
+        expect.objectContaining({ code: "STK-WH1", name: "Stock Room - Warehouse 1", asset_user_type: "STOCK_POINT" }),
       ),
     );
   });
@@ -386,27 +386,159 @@ describe("AssetUsersScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
 
     await pickSelectOption("Company", "CityKart HQ");
-    await pickSelectOption("Type", "STOCK_POINT");
-    fireEvent.change(screen.getByLabelText("Stock Point Code"), { target: { value: "MY-OWN-CODE" } });
-    fireEvent.change(screen.getByLabelText("Stock Point Name"), { target: { value: "My Own Name" } });
+    await pickSelectOption("Type", "Stock Room");
+    fireEvent.change(screen.getByLabelText("Stock Room Code"), { target: { value: "MY-OWN-CODE" } });
+    fireEvent.change(screen.getByLabelText("Stock Room Name"), { target: { value: "My Own Name" } });
 
-    await pickSelectOption("Location", "Warehouse 1");
-    expect(screen.getByLabelText("Stock Point Code")).toHaveValue("MY-OWN-CODE");
-    expect(screen.getByLabelText("Stock Point Name")).toHaveValue("My Own Name");
+    await pickSelectOption("Place", "Warehouse 1");
+    expect(screen.getByLabelText("Stock Room Code")).toHaveValue("MY-OWN-CODE");
+    expect(screen.getByLabelText("Stock Room Name")).toHaveValue("My Own Name");
   });
 
   it("shows a coverage checklist of which locations already have an IT_STOCK point for the chosen company", async () => {
-    const stockAtHo = { ...ASSET_USER, id: 5, code: "STK-HO", name: "Stock Point - Head Office", asset_user_type: "STOCK_POINT", location_id: 1 };
+    const stockAtHo = { ...ASSET_USER, id: 5, code: "STK-HO", name: "Stock Room - Head Office", asset_user_type: "STOCK_POINT", location_id: 1 };
     mockGets([ASSET_USER, stockAtHo], [COMPANY], [LOCATION, LOCATION_WH1]);
     renderWithClient(<AssetUsersScreen />);
     await waitFor(() => expect(screen.getByText("Ankur")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
 
     await pickSelectOption("Company", "CityKart HQ");
-    await pickSelectOption("Type", "STOCK_POINT");
+    await pickSelectOption("Type", "Stock Room");
 
-    expect(await screen.findByText(/coverage for this company/i)).toBeInTheDocument();
+    expect(await screen.findByText(/already have a Stock Room/i)).toBeInTheDocument();
     expect(screen.getByText("Head Office")).toBeInTheDocument();
     expect(screen.getByText("Warehouse 1")).toBeInTheDocument();
+  });
+});
+
+describe("People & Places lists (one type each)", () => {
+  const STORE = { ...ASSET_USER, id: 7, code: "LAM", name: "Lamington Road", asset_user_type: "STORE", login_enabled: false };
+  const STOCK = { ...ASSET_USER, id: 8, code: "STK-HO", name: "HO Stock", asset_user_type: "STOCK_POINT", login_enabled: false };
+  const ADMIN_EMP = { ...ASSET_USER_2, role: "OPERATOR", allowed_asset_domains: "IT", primary_asset_domain: "IT" };
+  const RAW = /\b(EMPLOYEE|STORE|STOCK_POINT|INSTALLED|SELF_SERVICE|OPERATOR|ADMIN|VIEWER|NON_IT)\b/;
+
+  function mockAll() {
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (path === "/asset-users") return Promise.resolve([ASSET_USER, ADMIN_EMP, STORE, STOCK]);
+      if (path === "/masters/companies") return Promise.resolve([COMPANY]);
+      if (path === "/masters/locations") return Promise.resolve([LOCATION]);
+      if (path.startsWith("/masters/locations")) return Promise.resolve([LOCATION]);
+      if (path === "/masters/departments") return Promise.resolve([{ id: 1, name: "IT" }]);
+      return Promise.resolve([]);
+    });
+  }
+
+  it("Employees: only employees, plain-word columns and access words, Add Employee with no type to pick", async () => {
+    mockAll();
+    renderWithClient(<AssetUsersScreen fixedType="EMPLOYEE" />);
+    expect(await screen.findByRole("heading", { name: "Employees" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Ankur")).toBeInTheDocument());
+    expect(screen.getByText("Priya")).toBeInTheDocument();
+    expect(screen.queryByText("Lamington Road")).not.toBeInTheDocument();
+    expect(screen.queryByText("HO Stock")).not.toBeInTheDocument();
+
+    for (const header of ["Employee Code", "Name", "Place", "Department", "Login", "Work area", "Company"]) {
+      expect(screen.getByRole("columnheader", { name: header })).toBeInTheDocument();
+    }
+    expect(await screen.findAllByText("Head Office")).not.toHaveLength(0);
+    expect(screen.getByText("Own Assets Only")).toBeInTheDocument();
+    expect(screen.getByText("Can Add & Move Assets")).toBeInTheDocument();
+    expect(screen.getByText("IT Team")).toBeInTheDocument();
+    expect(screen.getByRole("table").textContent ?? "").not.toMatch(RAW);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Employee" }));
+    expect(await screen.findByRole("dialog", { name: "Add Employee" })).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Type" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Employee Code")).toBeInTheDocument();
+  });
+
+  it("Employees: saving a new employee sends the fixed type", async () => {
+    mockAll();
+    (apiClient.post as any).mockResolvedValue({ ...ASSET_USER, id: 9 });
+    renderWithClient(<AssetUsersScreen fixedType="EMPLOYEE" />);
+    await waitFor(() => expect(screen.getByText("Ankur")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Add Employee" }));
+    fireEvent.change(screen.getByLabelText("Employee Code"), { target: { value: "CS1" } });
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Ravi" } });
+    await pickSelectOption("Company", "CityKart HQ");
+    // The Place list is the chosen company's own: wait for it before opening it.
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/masters/locations?company_id=1"));
+    await pickSelectOption("Place", "Head Office");
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith("/asset-users", expect.objectContaining({ asset_user_type: "EMPLOYEE", code: "CS1" })),
+    );
+  });
+
+  it("access levels are offered in plain words", async () => {
+    mockAll();
+    renderWithClient(<AssetUsersScreen fixedType="EMPLOYEE" />);
+    await waitFor(() => expect(screen.getByText("Priya")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /^edit priya$/i }));
+    expect(screen.getByText(/current access: can add & move assets/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("combobox", { name: "Access Role" }));
+    for (const name of ["Full Admin", "Can Add & Move Assets", "View Only", "Own Assets Only"]) {
+      expect(await screen.findByRole("option", { name })).toBeInTheDocument();
+    }
+    fireEvent.click(screen.getByRole("option", { name: "View Only" }));
+    expect(await screen.findByText(/from can add & move assets to view only/i)).toBeInTheDocument();
+  });
+
+  it("editing keeps the person's work area exactly as it was (never cleared by Save)", async () => {
+    mockAll();
+    (apiClient.put as any).mockResolvedValue(ADMIN_EMP);
+    renderWithClient(<AssetUsersScreen fixedType="EMPLOYEE" />);
+    await waitFor(() => expect(screen.getByText("Priya")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /^edit priya$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() =>
+      expect(apiClient.put).toHaveBeenCalledWith(
+        "/asset-users/2",
+        expect.objectContaining({ allowed_asset_domains: "IT", primary_asset_domain: "IT", role: "OPERATOR" }),
+      ),
+    );
+  });
+
+  it("Stores: only stores, Add Store, and Stores from ERP for the head-office admin", async () => {
+    mockAll();
+    useAuthStore.getState().setAuth({ accessToken: "t", role: "ADMIN", companyId: null, isPrimaryOwner: true, mustChangePassword: false });
+    renderWithClient(<AssetUsersScreen fixedType="STORE" />);
+    expect(await screen.findByRole("heading", { name: "Stores" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Lamington Road")).toBeInTheDocument());
+    expect(screen.queryByText("Ankur")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Store" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Stores from ERP" })).toBeInTheDocument();
+    expect(screen.getByText("No login")).toBeInTheDocument();
+    useAuthStore.getState().logout();
+  });
+
+  it("Stock Rooms and Install Points: places, not people -- no login columns, no Stores from ERP", async () => {
+    mockAll();
+    useAuthStore.getState().setAuth({ accessToken: "t", role: "ADMIN", companyId: null, isPrimaryOwner: true, mustChangePassword: false });
+    const { unmount } = renderWithClient(<AssetUsersScreen fixedType="STOCK_POINT" />);
+    expect(await screen.findByRole("heading", { name: "Stock Rooms" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("HO Stock")).toBeInTheDocument());
+    expect(screen.queryByRole("columnheader", { name: "Login" })).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Stock Room" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Stores from ERP" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Add Stock Room" }));
+    expect(await screen.findByLabelText("Stock Room Code")).toBeInTheDocument();
+    unmount();
+
+    renderWithClient(<AssetUsersScreen fixedType="INSTALLED" />);
+    expect(await screen.findByRole("heading", { name: "Install Points" })).toBeInTheDocument();
+    expect(await screen.findByText(/no install points yet/i)).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Add Install Point" }).length).toBeGreaterThan(0);
+    useAuthStore.getState().logout();
+  });
+
+  it("deactivation never promises a restore that does not exist", async () => {
+    mockAll();
+    renderWithClient(<AssetUsersScreen fixedType="EMPLOYEE" />);
+    await waitFor(() => expect(screen.getByText("Ankur")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /^deactivate ankur$/i }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent(/history is kept/i);
+    expect(dialog.textContent ?? "").not.toMatch(/restored|reversed/i);
   });
 });

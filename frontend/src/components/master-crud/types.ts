@@ -31,6 +31,9 @@ export interface FormField {
    * into this field once it exists. Leave it out when the user may not create it. */
   onCreateNew?: (select: (value: string) => void) => void;
   createLabel?: string;
+  /** Render a select as a type-to-filter dropdown (Company, Category...) instead
+   * of a plain list. The field keeps its id and label either way. */
+  searchable?: boolean;
 }
 
 export interface MasterConfig<T> {

@@ -1,17 +1,17 @@
-﻿import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { createAppRouter } from "../../router";
 import { apiClient } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
+import { buildAttentionRows, type DashboardData } from "./Dashboard";
 
 vi.mock("../../lib/api-client");
 
-// Dashboard now links into the Asset Register (AM-12 §6, Exceptions) and
-// Asset 360 (Recent Activity), so it needs a real RouterProvider ancestor --
-// same pattern AssetRegister.test.tsx already uses.
-function renderDashboard(url = "/dashboard") {
+// Home links into Assets, Receive, Serial Pending and Asset 360, so it needs a
+// real RouterProvider ancestor (the actual route tree at /dashboard).
+function renderHome(url = "/dashboard") {
   const router = createAppRouter(createMemoryHistory({ initialEntries: [url] }));
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -22,7 +22,7 @@ function renderDashboard(url = "/dashboard") {
   return router;
 }
 
-const baseDashboardData = {
+const baseDashboardData: DashboardData = {
   status_counts: { IN_STOCK: 5, ALLOTTED: 3 },
   stock_by_location: [{ location: "HO", count: 5 }],
   warranty_alerts: [{ asset_id: 1, asset_code: "FA/HO01/IT/LAP/CK_1", warranty_upto: "2026-10-01" }],
@@ -33,103 +33,133 @@ const baseDashboardData = {
   open_purchase_orders: [],
 };
 
-function mockApiGet(dashboardData: unknown, vendors: { id: number; name: string }[] = []) {
+interface ErpMocks {
+  configured?: boolean;
+  changes?: unknown;
+  reminders?: unknown;
+  /** Make the ERP endpoints fail like a 503. */
+  fail?: boolean;
+}
+
+function mockApiGet(dashboardData: unknown, erp: ErpMocks = {}) {
   (apiClient.get as any).mockImplementation((path: string) => {
-    if (path.startsWith("/masters/vendors")) return Promise.resolve(vendors);
+    if (path.startsWith("/erp/")) {
+      if (erp.fail) return Promise.reject(new Error("503 Service Unavailable"));
+      if (path === "/erp/status") return Promise.resolve({ configured: erp.configured ?? false });
+      if (path === "/erp/changes/summary") return Promise.resolve(erp.changes ?? { available: true, items: [] });
+      if (path.startsWith("/erp/reminders")) return Promise.resolve(erp.reminders ?? []);
+    }
+    if (path.startsWith("/masters/")) return Promise.resolve([]);
     return Promise.resolve(dashboardData);
   });
 }
 
+function loginAs(role: string, isPrimaryOwner = false) {
+  useAuthStore.getState().setAuth({ accessToken: "tok", role, companyId: 1, isPrimaryOwner, mustChangePassword: false });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
-  useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: false, mustChangePassword: false });
+  loginAs("ADMIN");
 });
 
 afterEach(() => useAuthStore.getState().logout());
 
-describe("Dashboard", () => {
-  it("shows KPI tiles and warranty alerts", async () => {
+const quickActions = () => within(screen.getByRole("navigation", { name: "Quick actions" }));
+
+describe("Home", () => {
+  it("is titled Home and offers every quick action to someone who can add and move assets", async () => {
     mockApiGet(baseDashboardData);
-    renderDashboard();
-
-    await waitFor(() => expect(screen.getByText("5")).toBeInTheDocument());
-    expect(screen.getByText(/FA\/HO01\/IT\/LAP\/CK_1/)).toBeInTheDocument();
-    // KPI tile labels render through StatusBadge, not raw text.
-    expect(screen.getByText("IN STOCK")).toBeInTheDocument();
+    renderHome();
+    expect(await screen.findByRole("heading", { name: "Home" })).toBeInTheDocument();
+    const names = quickActions().getAllByRole("link").map((l) => l.textContent?.trim());
+    expect(names).toEqual(["Create PO", "Receive Delivery", "Add Assets", "Move Assets", "Find Asset"]);
+    expect(quickActions().getByRole("link", { name: "Create PO" })).toHaveAttribute("href", "/purchase-orders/new");
+    expect(quickActions().getByRole("link", { name: "Receive Delivery" })).toHaveAttribute("href", "/receive");
+    expect(quickActions().getByRole("link", { name: "Add Assets" })).toHaveAttribute("href", "/assets/new");
+    expect(quickActions().getByRole("link", { name: "Move Assets" })).toHaveAttribute("href", "/asset-movement");
+    expect(quickActions().getByRole("link", { name: "Find Asset" })).toHaveAttribute("href", expect.stringContaining("/assets?find=true"));
   });
 
-  it("shows how many serial numbers are still to be added, linking to the Serial Pending list", async () => {
-    mockApiGet({ ...baseDashboardData, serial_pending_count: 7 });
-    renderDashboard();
-    expect(await screen.findByTestId("serial-pending-count")).toHaveTextContent("7");
-    expect(screen.getByRole("link", { name: /open the list/i })).toHaveAttribute("href", "/serial-pending");
+  it("gives an OPERATOR the same quick actions as an ADMIN", async () => {
+    loginAs("OPERATOR");
+    mockApiGet(baseDashboardData);
+    renderHome();
+    await screen.findByRole("heading", { name: "Home" });
+    expect(quickActions().getAllByRole("link")).toHaveLength(5);
   });
 
-  it("shows no Serial Pending card when nothing is waiting", async () => {
-    mockApiGet({ ...baseDashboardData, serial_pending_count: 0 });
-    renderDashboard();
-    await waitFor(() => expect(screen.getByText("5")).toBeInTheDocument());
-    expect(screen.queryByTestId("serial-pending-count")).not.toBeInTheDocument();
+  it("gives a VIEWER only Find Asset", async () => {
+    loginAs("VIEWER");
+    mockApiGet(baseDashboardData);
+    renderHome();
+    await screen.findByRole("heading", { name: "Home" });
+    expect(quickActions().getAllByRole("link").map((l) => l.textContent?.trim())).toEqual(["Find Asset"]);
   });
 
-  it("shows a real empty state, not just blank cards, when there is genuinely no data", async () => {
+  it("lists what needs attention, each row opening the right screen", async () => {
+    mockApiGet(
+      {
+        ...baseDashboardData,
+        serial_pending_count: 7,
+        pending_po_summary: { count: 12, value: 2360 },
+        exception_counts: { UNDER_REPAIR: 2, LOST: 1, DISPOSED: 0, SOLD: 0, SCRAPPED: 0 },
+      },
+      { configured: true, changes: { available: true, items: [{ po_id: 3, po_number: "SPO/1", changes: 2, cancelled: false }] }, reminders: [{ po_id: 4, to_deliver: 5 }] },
+    );
+    renderHome();
+    const list = await screen.findByRole("list", { name: "Needs attention" });
+    await waitFor(() => expect(within(list).getByText(/the erp changed 1 purchase order/i)).toBeInTheDocument());
+
+    const row = (text: RegExp) => within(list).getByText(text).closest("li") as HTMLElement;
+    expect(within(row(/12 units on purchase orders are waiting for goods/i)).getByRole("link")).toHaveAttribute("href", "/receive");
+    expect(within(row(/7 assets waiting for a serial number/i)).getByRole("link")).toHaveAttribute("href", "/serial-pending");
+    expect(within(row(/the erp changed 1 purchase order/i)).getByRole("link")).toHaveAttribute("href", "/purchase-orders");
+    expect(within(row(/goods arrived for 1 purchase order/i)).getByRole("link")).toHaveAttribute("href", "/receive");
+    expect(within(row(/2 assets under repair/i)).getByRole("link")).toHaveAttribute("href", "/assets?status=UNDER_REPAIR");
+    expect(within(row(/1 asset reported lost/i)).getByRole("link")).toHaveAttribute("href", "/assets?status=LOST");
+  });
+
+  it("says nothing needs attention when nothing does", async () => {
+    mockApiGet(baseDashboardData);
+    renderHome();
+    expect(await screen.findByText(/nothing needs your attention right now/i)).toBeInTheDocument();
+  });
+
+  it("tolerates the ERP being down (503): no ERP rows, no alarming error", async () => {
+    mockApiGet({ ...baseDashboardData, serial_pending_count: 2 }, { fail: true });
+    renderHome();
+    expect(await screen.findByText(/2 assets waiting for a serial number/i)).toBeInTheDocument();
+    expect(screen.queryByText(/erp/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("does not show purchase-order or serial rows to a VIEWER, only repair/lost", async () => {
+    loginAs("VIEWER");
     mockApiGet({
       ...baseDashboardData,
-      status_counts: {},
-      stock_by_location: [],
-      warranty_alerts: [],
+      serial_pending_count: 7,
+      pending_po_summary: { count: 12, value: 1 },
+      exception_counts: { UNDER_REPAIR: 2, LOST: 0, DISPOSED: 0, SOLD: 0, SCRAPPED: 0 },
     });
-    renderDashboard();
-
-    await waitFor(() => expect(screen.getByText("No assets yet.")).toBeInTheDocument());
-    expect(screen.getByText("No stock on hand.")).toBeInTheDocument();
-    expect(screen.getByText("Nothing expiring soon.")).toBeInTheDocument();
-    expect(screen.getByText("Nothing overdue.")).toBeInTheDocument();
+    renderHome();
+    expect(await screen.findByText(/2 assets under repair/i)).toBeInTheDocument();
+    expect(screen.queryByText(/serial number/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/waiting for goods/i)).not.toBeInTheDocument();
+    expect(apiClient.get).not.toHaveBeenCalledWith("/erp/status");
   });
 
-  it("shows an error state with a retry action instead of getting stuck on Loading forever when the fetch fails", async () => {
-    (apiClient.get as any).mockRejectedValue(new Error("network down"));
-    renderDashboard();
-
-    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
-    expect(screen.getByText(/couldn't load the dashboard/i)).toBeInTheDocument();
-    expect(screen.queryByText(/^loading/i)).not.toBeInTheDocument();
-
+  it("no longer shows status tiles or an Exceptions table, but keeps counts per status as plain-word links", async () => {
     mockApiGet(baseDashboardData);
-    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
-    await waitFor(() => expect(screen.getByText("5")).toBeInTheDocument());
+    renderHome();
+    const counts = await screen.findByLabelText("Assets by status");
+    expect(within(counts).getByRole("link", { name: /in stock 5/i })).toHaveAttribute("href", "/assets?status=IN_STOCK");
+    expect(within(counts).getByRole("link", { name: /with employee \/ store 3/i })).toHaveAttribute("href", "/assets?status=ALLOTTED");
+    expect(screen.queryByText("Exceptions")).not.toBeInTheDocument();
+    expect(document.body.textContent ?? "").not.toMatch(/IN_STOCK|IN STOCK|ALLOTTED|UNDER_REPAIR/);
   });
 
-  it("shows every exception status explicitly at 0, never hidden, when nothing is in that state (AM-12)", async () => {
-    mockApiGet(baseDashboardData);
-    renderDashboard();
-
-    // "Exceptions" (the CardTitle) is static and renders before data loads --
-    // wait for a real loaded KPI value first so the table below it is past
-    // its own loading skeleton.
-    await waitFor(() => expect(screen.getByText("5")).toBeInTheDocument());
-    for (const label of ["UNDER REPAIR", "LOST", "DISPOSED", "SOLD", "SCRAPPED"]) {
-      expect(screen.getByText(label)).toBeInTheDocument();
-    }
-  });
-
-  it("shows real repair/lost/disposal counts, each linking to the matching Asset Register filter (AM-12)", async () => {
-    mockApiGet({
-      ...baseDashboardData,
-      exception_counts: { UNDER_REPAIR: 2, LOST: 1, DISPOSED: 3, SOLD: 0, SCRAPPED: 0 },
-    });
-    renderDashboard();
-
-    await waitFor(() => expect(screen.getByRole("link", { name: "2" })).toBeInTheDocument());
-    const repairLink = screen.getByRole("link", { name: "2" });
-    expect(repairLink).toHaveAttribute("href", expect.stringContaining("status=UNDER_REPAIR"));
-    const lostLink = screen.getByRole("link", { name: "1" });
-    expect(lostLink).toHaveAttribute("href", expect.stringContaining("status=LOST"));
-    const disposedLink = screen.getByRole("link", { name: "3" });
-    expect(disposedLink).toHaveAttribute("href", expect.stringContaining("status=DISPOSED"));
-  });
-
-  it("shows recent activity with asset code, action, time and actor, most-recent evidence intact", async () => {
+  it("shows Recent changes and Stock by Place, and keeps the warranty / long-allotment lists in a collapsed Watch list", async () => {
     mockApiGet({
       ...baseDashboardData,
       recent_activity: [
@@ -138,66 +168,68 @@ describe("Dashboard", () => {
           event_date: "2026-09-25T10:00:00Z", label: "Allotted to Jane Doe", recorded_by_name: "Admin User",
         },
       ],
+      long_allocation_alerts: [{ asset_id: 9, asset_code: "FA/CK_9", days_allotted: 200 }],
     });
-    renderDashboard();
+    renderHome();
+    expect(await screen.findByText("Allotted to Jane Doe")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "FA/HO01/IT/LAP/CK_99" })).toHaveAttribute("href", "/assets/42");
+    expect(screen.getByText("HO")).toBeInTheDocument();
 
-    await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK_99")).toBeInTheDocument());
-    expect(screen.getByText("Allotted to Jane Doe")).toBeInTheDocument();
-    expect(screen.getByText("Admin User")).toBeInTheDocument();
+    const watch = screen.getByTestId("watch-list");
+    expect(watch).not.toHaveAttribute("open");
+    // SPA links (no full page reloads) to Asset 360.
+    expect(within(watch).getByRole("link", { name: "FA/HO01/IT/LAP/CK_1" })).toHaveAttribute("href", "/assets/1");
+    expect(within(watch).getByRole("link", { name: "FA/CK_9" })).toHaveAttribute("href", "/assets/9");
+    expect(within(watch).getByText("200 days")).toBeInTheDocument();
   });
 
-  it("shows a clear empty state for Recent Activity, not blank space", async () => {
+  it("shows empty states when there is genuinely no data", async () => {
+    mockApiGet({ ...baseDashboardData, status_counts: {}, stock_by_location: [], warranty_alerts: [] });
+    renderHome();
+    expect(await screen.findByText("No stock on hand.")).toBeInTheDocument();
+    expect(screen.getByText("No recent asset activity.")).toBeInTheDocument();
+    expect(screen.getByText("Nothing expiring soon.")).toBeInTheDocument();
+    expect(screen.getByText("Nothing overdue.")).toBeInTheDocument();
+  });
+
+  it("filters by work area with plain words and re-asks the server", async () => {
     mockApiGet(baseDashboardData);
-    renderDashboard();
-
-    await waitFor(() => expect(screen.getByText("No recent asset activity.")).toBeInTheDocument());
+    renderHome();
+    fireEvent.click(await screen.findByRole("combobox", { name: "Work area" }));
+    expect(await screen.findByRole("option", { name: "IT Team" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: "Admin / Non-IT Team" }));
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/reports/dashboard?domain=NON_IT"));
   });
 
-  it("falls back to an em dash when an activity row has no resolvable actor name", async () => {
-    mockApiGet({
-      ...baseDashboardData,
-      recent_activity: [
-        {
-          id: 1, asset_id: 42, asset_code: "FA/HO01/IT/LAP/CK_99", event_type: "PROCURED",
-          event_date: "2026-09-25T10:00:00Z", label: "Procured", recorded_by_name: null,
-        },
-      ],
+  it("shows an error state with a retry action when Home's numbers fail to load", async () => {
+    (apiClient.get as any).mockRejectedValue(new Error("network down"));
+    renderHome();
+    expect(await screen.findByText(/couldn't load home/i)).toBeInTheDocument();
+    mockApiGet(baseDashboardData);
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+    expect(await screen.findByText(/nothing needs your attention/i)).toBeInTheDocument();
+  });
+});
+
+describe("buildAttentionRows", () => {
+  it("only offers work rows to people who can do the work", () => {
+    const data = { ...baseDashboardData, serial_pending_count: 3, pending_po_summary: { count: 1, value: 0 } };
+    const forWorker = buildAttentionRows({ data, canWork: true, erpChangedPos: 0, erpArrivedPos: 0 }).map((r) => r.key);
+    const forViewer = buildAttentionRows({ data, canWork: false, erpChangedPos: 4, erpArrivedPos: 4 }).map((r) => r.key);
+    expect(forWorker).toEqual(["receive", "serial"]);
+    expect(forViewer).toEqual([]);
+  });
+
+  it("uses singular and plural words correctly", () => {
+    const rows = buildAttentionRows({
+      data: { ...baseDashboardData, pending_po_summary: { count: 1, value: 0 }, exception_counts: { UNDER_REPAIR: 1, LOST: 2 } },
+      canWork: true, erpChangedPos: 1, erpArrivedPos: 0,
     });
-    renderDashboard();
-
-    await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK_99")).toBeInTheDocument());
-    const row = screen.getByText("FA/HO01/IT/LAP/CK_99").closest("tr");
-    expect(row ? within(row).getByText("—") : null).toBeInTheDocument();
-  });
-
-  it("shows the Purchase Orders card with pending count/value and links into open POs (ADMIN/IT_TEAM only)", async () => {
-    mockApiGet(
-      {
-        ...baseDashboardData,
-        pending_po_summary: { count: 2, value: 2360 },
-        open_purchase_orders: [
-          { id: 7, po_number: "PO-2026-007", po_date: "2026-09-20", vendor_id: 9, pending_line_count: 2 },
-        ],
-      },
-      [{ id: 9, name: "Acme Traders" }],
-    );
-    renderDashboard();
-
-    await waitFor(() => expect(screen.getByText("Assets on order, not yet delivered.")).toBeInTheDocument());
-    await waitFor(() => expect(screen.getByText("PO-2026-007")).toBeInTheDocument());
-    expect(screen.getByText("Acme Traders")).toBeInTheDocument();
-    const poLink = screen.getByRole("link", { name: "PO-2026-007" });
-    expect(poLink).toHaveAttribute("href", "/purchase-orders/7");
-    const summaryLink = screen.getByRole("link", { name: /2.*pending/is });
-    expect(summaryLink).toHaveAttribute("href", "/purchase-orders");
-  });
-
-  it("hides the Purchase Orders card for a VIEWER, who cannot access the module itself", async () => {
-    useAuthStore.getState().setAuth({ accessToken: "tok", role: "VIEWER", companyId: 1, isPrimaryOwner: false, mustChangePassword: false });
-    mockApiGet(baseDashboardData);
-    renderDashboard();
-
-    await waitFor(() => expect(screen.getByText("5")).toBeInTheDocument());
-    expect(screen.queryByText("Purchase Orders")).not.toBeInTheDocument();
+    expect(rows.map((r) => r.text)).toEqual([
+      "1 unit on purchase orders is waiting for goods",
+      "The ERP changed 1 purchase order",
+      "1 asset under repair",
+      "2 assets reported lost",
+    ]);
   });
 });

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
+import { companyOptions } from "@/lib/option-labels";
 
 interface Company {
   id: number;
@@ -94,7 +95,7 @@ export function ErpVendorsDialog() {
               <div className="w-64">
                 <SearchableSelect
                   id="erp-vendor-company" aria-label="Company" value={companyId} onValueChange={(v) => { setPickedCompany(v); setSearch(""); }}
-                  options={companies.map((c) => ({ value: String(c.id), label: c.name }))}
+                  options={companyOptions(companies)}
                 />
               </div>
             )}

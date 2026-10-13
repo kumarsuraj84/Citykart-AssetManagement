@@ -12,8 +12,16 @@ interface AssetRow {
   asset_code: string;
   description: string;
   status: string;
+  status_since?: string | null;
+  current_asset_user_type?: string | null;
 }
 
+/**
+ * My Assets: the self-service login's own page (an employee or store login).
+ * The server only ever returns the assets currently with the person who is
+ * signed in, so this is "what is with you", never the whole register. Staff
+ * do not use this page: /my-assets sends them to Assets with "Mine" on.
+ */
 export function MyAssets() {
   const {
     data,
@@ -26,24 +34,30 @@ export function MyAssets() {
     queryFn: () => apiClient.get<{ items: AssetRow[]; total: number }>("/assets"),
   });
   const items = data?.items ?? [];
+  const total = data?.total ?? items.length;
 
   const columns: DataTableColumn<AssetRow>[] = [
     {
       key: "code",
-      header: "Code",
+      header: "Asset Code",
       cellClassName: "font-mono text-sm",
-      // A real, independently keyboard-focusable link, not the hardcoded
-      // text-blue-600 the pre-AM-06 version used -- same unstyled/inherited
-      // link treatment AssetRegister's own Code column already uses.
       cell: (a) => <Link to="/assets/$id" params={{ id: String(a.id) }}>{a.asset_code}</Link>,
     },
     { key: "description", header: "Description", cell: (a) => a.description },
-    { key: "status", header: "Status", cell: (a) => <StatusBadge status={a.status} compact /> },
+    {
+      key: "status",
+      header: "Status",
+      cell: (a) => <StatusBadge status={a.status} holderType={a.current_asset_user_type} compact />,
+    },
+    { key: "since", header: "With You Since", cell: (a) => a.status_since ?? "—" },
   ];
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="My Assets" description="Assets currently in your custody." />
+      <PageHeader
+        title="My Assets"
+        description="The assets that are with you right now. Tell your admin if something here is not with you."
+      />
 
       <DataTable
         columns={columns}
@@ -56,11 +70,16 @@ export function MyAssets() {
         emptyState={
           <EmptyState
             icon={Boxes}
-            title="No assets in your custody"
-            description="Assets allotted or installed to you will appear here."
+            title="No assets are with you"
+            description="Assets given to you will appear here."
           />
         }
       />
+      {total > items.length && (
+        <p className="text-xs text-muted-foreground">
+          Showing the first {items.length} of the {total} assets with you.
+        </p>
+      )}
     </div>
   );
 }

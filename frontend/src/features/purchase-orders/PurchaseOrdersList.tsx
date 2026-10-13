@@ -84,7 +84,8 @@ const columns = (
     cell: (po) => (po.cost_center_id ? (costCenterNames[po.cost_center_id] ?? "—") : "—"),
   },
   {
-    key: "pi_status", header: "PI Status", sortable: true,
+    // PI is spelled out once on the screen, in its first column.
+    key: "pi_status", header: "Purchase Invoice (PI) Status", sortable: true,
     cell: (po) => <PiStatusBadge status={po.pi_status} />,
   },
   { key: "pi_number", header: "PI No", sortable: true, cell: (po) => po.pi_number ?? "—" },

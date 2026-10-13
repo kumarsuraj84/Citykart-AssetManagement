@@ -179,7 +179,8 @@ describe("ERP changes on a purchase order", () => {
     const panel = await screen.findByLabelText("ERP changes");
     expect(within(panel).getByRole("button", { name: "Move this PO to the new vendor" })).toBeDisabled();
     expect(panel).toHaveTextContent("not linked to a vendor here yet");
-    expect(panel).toHaveTextContent("Setup > Vendors");
+    expect(panel).toHaveTextContent("The head-office admin can link it in Settings › Vendors");
+    expect(panel).not.toHaveTextContent(/Primary Owner|Setup/);
     fireEvent.click(within(panel).getByRole("button", { name: "Keep the vendor: VENDOR_CHANGED" }));
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith("/erp/purchase-orders/7/changes/apply", { items: [{ id: "VENDOR_CHANGED", mode: "keep" }] }),
@@ -250,18 +251,18 @@ describe("ERP changes in the Purchase Orders list and on the dashboard", () => {
     expect(screen.queryByLabelText("Purchase orders changed in the ERP")).not.toBeInTheDocument();
   });
 
-  it("the dashboard counts them and links to the list", async () => {
+  it("Home counts them under Needs attention and links to the list", async () => {
     mockApi(report(), SUMMARY);
     await renderAt("/dashboard");
-    expect(await screen.findByTestId("erp-changed-po-count")).toHaveTextContent("1");
-    expect(screen.getByRole("link", { name: /open purchase orders/i })).toHaveAttribute("href", "/purchase-orders");
+    const row = (await screen.findByText(/the erp changed 1 purchase order/i)).closest("li") as HTMLElement;
+    expect(within(row).getByRole("link", { name: /review/i })).toHaveAttribute("href", "/purchase-orders");
   });
 
-  it("the dashboard shows no such card when nothing changed", async () => {
+  it("Home shows no such row when nothing changed", async () => {
     mockApi(report(), { available: true, items: [] });
     await renderAt("/dashboard");
-    await screen.findByRole("heading", { name: "Dashboard" });
+    await screen.findByRole("heading", { name: "Home" });
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/erp/changes/summary"));
-    expect(screen.queryByTestId("erp-changed-po-count")).not.toBeInTheDocument();
+    expect(screen.queryByText(/the erp changed/i)).not.toBeInTheDocument();
   });
 });

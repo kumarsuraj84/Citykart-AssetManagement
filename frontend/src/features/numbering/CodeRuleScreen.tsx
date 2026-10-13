@@ -92,7 +92,7 @@ export function CodeRuleScreen() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title="Asset Code Rule"
+        title="Asset Code Format"
         description={
           isLoading
             ? undefined

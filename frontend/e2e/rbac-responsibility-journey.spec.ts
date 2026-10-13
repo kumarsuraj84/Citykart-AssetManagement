@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { newSeedRegistry, seedTestCompany, teardownTestCompany, fillAddAssetProcurementFields, type SeedRegistry } from "./fixtures";
+import { optionMatcher, newSeedRegistry, seedTestCompany, teardownTestCompany, fillAddAssetProcurementFields, type SeedRegistry } from "./fixtures";
 
 // Asset User / RBAC / Responsibility rebuild, permanent E2E coverage (spec §60):
 // an ADMIN logs in, IT and NON_IT categories exist side by side, a fresh asset
@@ -21,7 +21,7 @@ async function loginAs(page: Page, empCode: string, password: string) {
 // native <select> -- same convention every other spec in this suite uses.
 async function selectRadix(page: Page, label: string, optionText: string) {
   await page.getByLabel(label, { exact: true }).click();
-  await page.getByRole("option", { name: optionText, exact: true }).click();
+  await page.getByRole("option", { name: optionMatcher(optionText) }).click();
 }
 
 async function api<T>(baseURL: string, method: string, urlPath: string, token: string | undefined, body?: unknown): Promise<T | { status: number }> {
@@ -136,26 +136,26 @@ test("Asset User RBAC / Responsibility rebuild: IT vs NON_IT domain scoping end 
   });
   expect(importAttempt.status).toBe(403);
 
-  // ---- The same ordinary ADMIN, in the real UI: Masters and Import are absent
+  // ---- The same ordinary ADMIN, in the real UI: Settings (incl. Bulk Import) is absent
   // from the sidebar entirely (UX only -- the 403s above are the real gate). ----
   await loginAs(page, `ORDADM${ts}`, ordinaryPassword);
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole("link", { name: "Import", exact: true })).not.toBeVisible();
-  await expect(page.getByText("Masters", { exact: true })).not.toBeVisible();
+  await expect(page.getByRole("button", { name: "Settings", exact: true })).not.toBeVisible();
   await page.getByRole("button", { name: "Log out", exact: true }).click();
   await expect(page).toHaveURL(/\/login$/);
 
   // ---- Back to SEEDADMIN (Primary Owner): procure one IT asset and one NON_IT
-  // asset, verifying the read-only Responsibility preview on Add Asset for each. ----
+  // asset, verifying the read-only Work area preview on Add Asset for each. ----
   await loginAs(page, ctx.admin.empCode, ctx.admin.password);
   await expect(page).toHaveURL(/\/dashboard$/);
 
   await page.goto("/assets/new");
   await selectRadix(page, "Item", ctx.item.name);
-  await expect(page.getByLabel("Responsibility", { exact: true })).toHaveValue("IT");
+  await expect(page.getByLabel("Work area", { exact: true })).toHaveValue("IT Team");
   await page.getByLabel("Description", { exact: true }).fill(`E2E RBAC IT Asset ${ts}`);
   await selectRadix(page, "Cost Centre", ctx.costCenter.name);
-  await selectRadix(page, "Goes Into", ctx.stock.name);
+  await selectRadix(page, "Received Into", ctx.stock.name);
   await fillAddAssetProcurementFields(page, ctx.vendor.name);
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page).toHaveURL(/\/assets\/\d+$/);
@@ -165,10 +165,10 @@ test("Asset User RBAC / Responsibility rebuild: IT vs NON_IT domain scoping end 
 
   await page.goto("/assets/new");
   await selectRadix(page, "Item", nonItItem.name);
-  await expect(page.getByLabel("Responsibility", { exact: true })).toHaveValue("Admin / Non-IT");
+  await expect(page.getByLabel("Work area", { exact: true })).toHaveValue("Admin / Non-IT Team");
   await page.getByLabel("Description", { exact: true }).fill(`E2E RBAC Non-IT Asset ${ts}`);
   await selectRadix(page, "Cost Centre", ctx.costCenter.name);
-  await selectRadix(page, "Goes Into", ctx.stock.name);
+  await selectRadix(page, "Received Into", ctx.stock.name);
   await fillAddAssetProcurementFields(page, ctx.vendor.name);
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page).toHaveURL(/\/assets\/\d+$/);
@@ -177,10 +177,10 @@ test("Asset User RBAC / Responsibility rebuild: IT vs NON_IT domain scoping end 
   const nonItAssetCode = (await nonItHeading.textContent())!.trim();
   expect(nonItAssetCode).not.toBe(itAssetCode);
 
-  // ---- Asset 360 (Custody tab): each asset's own Responsibility, server-derived
+  // ---- Asset 360 (Custody tab): each asset's own Work area, server-derived
   // from Category at procurement time -- never client-trusted. ----
   await page.getByRole("tab", { name: "Custody", exact: true }).click();
-  await expect(page.getByRole("tabpanel", { name: "Custody" }).getByText("Admin / Non-IT", { exact: true })).toBeVisible();
+  await expect(page.getByRole("tabpanel", { name: "Custody" }).getByText("Admin / Non-IT Team", { exact: true })).toBeVisible();
 
   await page.goto("/assets");
   await page.getByLabel("Search", { exact: true }).fill(itAssetCode);
@@ -188,28 +188,28 @@ test("Asset User RBAC / Responsibility rebuild: IT vs NON_IT domain scoping end 
   await expect(page).toHaveURL(/\/assets\/\d+$/);
   await page.getByRole("tab", { name: "Custody", exact: true }).click();
   const itCustody = page.getByRole("tabpanel", { name: "Custody" });
-  await expect(itCustody.getByText("IT", { exact: true })).toBeVisible();
+  await expect(itCustody.getByText("IT Team", { exact: true })).toBeVisible();
 
-  // ---- Asset Register: the Responsibility filter narrows to exactly the
+  // ---- Asset Register: the Work area filter narrows to exactly the
   // matching asset, never the other one. ----
   await page.goto("/assets");
   await page.getByLabel("Search", { exact: true }).fill(`E2E RBAC`);
-  await selectRadix(page, "Responsibility", "IT");
+  await selectRadix(page, "Work area", "IT Team");
   const itRow = page.locator("tr", { hasText: itAssetCode });
   const nonItRow = page.locator("tr", { hasText: nonItAssetCode });
   await expect(itRow).toBeVisible();
   await expect(nonItRow).not.toBeVisible();
 
-  await selectRadix(page, "Responsibility", "Admin / Non-IT");
+  await selectRadix(page, "Work area", "Admin / Non-IT Team");
   await expect(nonItRow).toBeVisible();
   await expect(itRow).not.toBeVisible();
 
-  // ---- Dashboard: the "My Responsibility" selector narrows every figure
+  // ---- Dashboard: the Home "Work area" selector narrows every figure
   // server-side (spec §37/§67) -- confirmed here by watching the request itself
   // carry the chosen domain and resolve successfully, same proof used for the
   // Asset Register filter above via the UI's own narrowing. ----
   await page.goto("/dashboard");
   const dashboardDomainRequest = page.waitForResponse((r) => r.url().includes("/api/reports/dashboard?domain=IT") && r.ok());
-  await selectRadix(page, "My Responsibility", "IT");
+  await selectRadix(page, "Work area", "IT Team");
   await dashboardDomainRequest;
 });

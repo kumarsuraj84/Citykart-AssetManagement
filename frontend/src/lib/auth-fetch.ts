@@ -16,6 +16,9 @@ export interface SessionPayload {
   role: string;
   company_id: number | null;
   is_primary_owner: boolean;
+  /** Not sent by the server yet (backend request); when absent the id is read
+   * from the access token's `sub` claim instead. */
+  asset_user_id?: number | null;
 }
 
 /**
@@ -38,6 +41,7 @@ export function applySession(data: SessionPayload): void {
     companyId: data.company_id,
     isPrimaryOwner: data.is_primary_owner,
     mustChangePassword: data.must_change_password,
+    assetUserId: data.asset_user_id ?? null,
   });
 }
 

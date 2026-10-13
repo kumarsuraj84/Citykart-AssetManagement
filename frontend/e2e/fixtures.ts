@@ -325,8 +325,18 @@ export async function teardownTestCompany(baseURL: string, reg: SeedRegistry): P
 }
 
 /**
+ * Dropdown options show context since S1 ("CODE · Name · Place · Company",
+ * "Laptop · IT Fixed Assets", "Acme · GSTIN"), so an option is matched by one
+ * whole " · "-separated part of its text instead of the exact full text.
+ */
+export function optionMatcher(text: string): RegExp {
+  const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|· )${escaped}( ·|$)`);
+}
+
+/**
  * Fills the Add Asset form's mandatory procurement fields other than
- * Item/Cost Centre/Description/Goes Into, which each spec
+ * Item/Cost Centre/Description/Received Into, which each spec
  * already picks in its own way (docs/ai/DECISIONS.md -- Vendor/PO No+Date/
  * Invoice No+Date/PI No+Date/Serial Number are all mandatory now, and
  * Purchase Date is no longer a field at all, since it's auto-derived from
@@ -344,12 +354,12 @@ export async function teardownTestCompany(baseURL: string, reg: SeedRegistry): P
 export async function fillAddAssetProcurementFields(page: Page, vendorName: string): Promise<void> {
   const ts = Date.now().toString(36);
   await page.getByLabel("Vendor", { exact: true }).click();
-  await page.getByRole("option", { name: vendorName, exact: true }).click();
+  await page.getByRole("option", { name: optionMatcher(vendorName) }).click();
   await page.getByLabel("PO Number", { exact: true }).fill("E2E-PO-1");
   await page.getByLabel("PO Date", { exact: true }).fill("2025-06-01");
   await page.getByLabel("Invoice Number", { exact: true }).fill("E2E-INV-1");
   await page.getByLabel("Invoice Date", { exact: true }).fill("2025-06-02");
-  await page.getByLabel("PI Number", { exact: true }).fill("E2E-PI-1");
+  await page.getByLabel("Purchase Invoice (PI) Number", { exact: true }).fill("E2E-PI-1");
   await page.getByLabel("PI Date", { exact: true }).fill("2025-06-03");
   await page.getByLabel("Serial Number", { exact: true }).fill(`E2E-SN-${ts}`);
   await page.getByLabel("Barcode", { exact: true }).fill(`E2E-BC-${ts}`);
