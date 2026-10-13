@@ -18,8 +18,9 @@ from app.assets.service import compute_tax
 from app.bundles.models import Bundle, BundlePart
 from app.bundles.service import add_bundle_lines, split_amounts
 from app.core.deps import scoped_company_ids
-from app.erp.service import derive_tax
+from app.erp.service import derive_tax, linked_vendors
 from app.erp.source import ErpPo, ErpSource
+from app.masters.models import Vendor
 from app.purchase_orders.models import PendingAsset, PurchaseOrder, PurchaseOrderErpBaseline, PurchaseOrderErpChange
 from app.purchase_orders.service import add_pending_asset_line, cancel_pending_asset_line
 
@@ -71,10 +72,15 @@ async def snapshot_baseline(session: AsyncSession, po: PurchaseOrder, erp: ErpPo
     await session.flush()
 
 
-def _stamp_header(po: PurchaseOrder, erp: ErpPo) -> None:
-    po.erp_status = erp.status
-    po.erp_supplier_code = erp.supplier_code
-    po.erp_delivery_location = erp.delivery_location
+def _stamp_header(po: PurchaseOrder, erp: ErpPo, fields: tuple[str, ...] = ("status", "supplier", "location")) -> None:
+    """Remembers what the ERP says about the PO header as agreed. Dealing with one header difference (the
+    status, the vendor, the delivery location) must not hide another, so each can be stamped alone."""
+    if "status" in fields:
+        po.erp_status = erp.status
+    if "supplier" in fields:
+        po.erp_supplier_code = erp.supplier_code
+    if "location" in fields:
+        po.erp_delivery_location = erp.delivery_location
     po.erp_synced_at = datetime.now(timezone.utc)
 
 
@@ -112,7 +118,10 @@ def _ckam_groups(lines: list[PendingAsset]) -> dict[str, dict]:
     }
 
 
-def compute_changes(po: PurchaseOrder, erp: ErpPo | None, baseline: dict[str, PurchaseOrderErpBaseline], lines: list[PendingAsset]) -> dict:
+def compute_changes(po: PurchaseOrder, erp: ErpPo | None, baseline: dict[str, PurchaseOrderErpBaseline], lines: list[PendingAsset],
+                    vendors_by_code: dict[str, Vendor] | None = None) -> dict:
+    """`vendors_by_code`: the CKAM vendors linked to this PO's company's ERP suppliers, by supplier code
+    (see app.erp.service.linked_vendors); it tells whether a vendor the ERP moved the PO to is known here."""
     report: dict = {
         "found": erp is not None, "watching": po.erp_synced_at is not None, "erp_status": erp.status if erp else None,
         "erp_as_of": erp.loaded_at.isoformat() if erp and erp.loaded_at else None, "changes": [], "info": [],
@@ -177,8 +186,14 @@ def compute_changes(po: PurchaseOrder, erp: ErpPo | None, baseline: dict[str, Pu
             report["info"].append("The ERP now shows this purchase order as closed (fully received there). Nothing to change here.")
         else:
             report["info"].append(f"The ERP status changed from {po.erp_status or 'unknown'} to {erp.status}.")
-    if po.erp_supplier_code and erp.supplier_code != po.erp_supplier_code:
-        report["info"].append(f"The ERP now shows a different vendor ({erp.supplier_name}).")
+    if po.erp_supplier_code and erp.supplier_code != po.erp_supplier_code and not _cancelled(erp.status):
+        linked = (vendors_by_code or {}).get(erp.supplier_code)
+        report["changes"].append({
+            "id": "VENDOR_CHANGED", "kind": "VENDOR_CHANGED", "item_code": None, "was_vendor": po.erp_supplier_code,
+            "now_code": erp.supplier_code, "now_name": erp.supplier_name,
+            "linked_vendor_id": linked.id if linked else None, "linked_vendor_name": linked.name if linked else None,
+            "message": f"The ERP now shows a different vendor ({erp.supplier_name}).",
+        })
     if po.erp_delivery_location and (erp.delivery_location or "") != po.erp_delivery_location:
         report["info"].append(f"The ERP now shows a different delivery location ({erp.delivery_location}).")
     if report["info"]:
@@ -198,7 +213,7 @@ async def _log(session: AsyncSession, po_id: int, actor: AssetUser, kind: str, i
 
 async def po_changes(session: AsyncSession, source: ErpSource, po: PurchaseOrder) -> dict:
     erp = await source.po(po.erp_po_code) if po.erp_po_code is not None else None
-    report = compute_changes(po, erp, await _baseline(session, po.id), await _lines(session, po.id))
+    report = compute_changes(po, erp, await _baseline(session, po.id), await _lines(session, po.id), await linked_vendors(session, po.company_id))
     report.update({"po_id": po.id, "po_number": po.po_number, "erp_po_code": po.erp_po_code})
     log_rows = (await session.execute(
         select(PurchaseOrderErpChange).where(PurchaseOrderErpChange.purchase_order_id == po.id)
@@ -232,9 +247,13 @@ async def changes_summary(session: AsyncSession, actor: AssetUser, source: ErpSo
     if not pos:
         return []
     erp_by_code = {e.po_code: e for e in await source.pos_with_lines([p.erp_po_code for p in pos])}
+    vendors_by_company: dict[int, dict] = {}
     out = []
     for p in pos:
-        report = compute_changes(p, erp_by_code.get(p.erp_po_code), await _baseline(session, p.id), await _lines(session, p.id))
+        if p.company_id not in vendors_by_company:
+            vendors_by_company[p.company_id] = await linked_vendors(session, p.company_id)
+        report = compute_changes(p, erp_by_code.get(p.erp_po_code), await _baseline(session, p.id), await _lines(session, p.id),
+                                 vendors_by_company[p.company_id])
         if report["changes"]:
             out.append({
                 "po_id": p.id, "po_number": p.po_number, "changes": len(report["changes"]),
@@ -341,7 +360,8 @@ async def apply_changes(session: AsyncSession, actor: AssetUser, source: ErpSour
     lines = await _lines(session, po.id)
     groups = _ckam_groups(lines)
     now = erp_now(erp)
-    report = compute_changes(po, erp, await _baseline(session, po.id), lines)
+    vendors = await linked_vendors(session, po.company_id)
+    report = compute_changes(po, erp, await _baseline(session, po.id), lines, vendors)
     current = {c["id"]: c for c in report["changes"]}
     for item in items:
         change = current.get(item["id"])
@@ -355,6 +375,7 @@ async def apply_changes(session: AsyncSession, actor: AssetUser, source: ErpSour
             summary = {
                 "PO_CANCELLED": "Kept this purchase order as it is although the ERP cancelled it.",
                 "HEADER": "Noted the ERP's header changes without changing anything here.",
+                "VENDOR_CHANGED": f"Kept the vendor as it is although the ERP now shows {erp.supplier_name}.",
                 "NEW_ITEM": f"Noted {code}, new in the ERP, as dealt with.",
             }.get(kind, f"Kept {code} as it is although the ERP changed it.")
         elif kind == "PO_CANCELLED":
@@ -377,6 +398,12 @@ async def apply_changes(session: AsyncSession, actor: AssetUser, source: ErpSour
             raise ValueError(f"{code} is new in the ERP: add it with + Add Line (or + Add Bundle), then choose Keep here.")
         elif kind == "HEADER":
             summary = "Noted the ERP's header changes."
+        elif kind == "VENDOR_CHANGED":
+            new_vendor = vendors.get(erp.supplier_code)
+            if new_vendor is None:
+                raise ValueError("The new vendor is not linked to a CKAM vendor yet. Link it in Setup > Vendors, then apply.")
+            po.vendor_id = new_vendor.id            # units already delivered keep the vendor they were delivered with
+            summary = f"The ERP moved this purchase order to {erp.supplier_name}: the vendor is now {new_vendor.name}."
         else:
             raise ValueError(f"unknown change {kind}")
 
@@ -387,8 +414,12 @@ async def apply_changes(session: AsyncSession, actor: AssetUser, source: ErpSour
                 await _set_baseline_item(session, po, c, now.get(c))
         elif code:
             await _set_baseline_item(session, po, code, now.get(code), "cost" if kind == "COST_CHANGED" else "all" if kind == "NEW_ITEM" else "qty")
-        if kind in ("PO_CANCELLED", "HEADER"):
+        if kind == "PO_CANCELLED":
             _stamp_header(po, erp)
+        elif kind == "HEADER":
+            _stamp_header(po, erp, ("status", "location"))
+        elif kind == "VENDOR_CHANGED":
+            _stamp_header(po, erp, ("supplier",))
         await _log(session, po.id, actor, f"{mode.upper()}_{kind}", code, summary)
     await session.flush()
     return await po_changes(session, source, po)

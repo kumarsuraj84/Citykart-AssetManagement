@@ -163,11 +163,13 @@ async def test_closed_and_header_changes_are_information_only(client, erp):
     h = await _headers(client, "OPR")
     po_id = await _create_desktop_po(client, ids, h)
     erp.pos[PO_CODE] = desktop_po(status="CLOSED", delivery_location="CKSPL-WH-FARUKHNAGAR", supplier_code="2264", supplier_name="JAGANNATH ENTERPRISES")
-    [c] = (await _changes(client, h, po_id))["changes"]
-    assert c["kind"] == "HEADER" and len(c["messages"]) == 3
-    assert any("closed" in m for m in c["messages"])
+    changes = {c["kind"]: c for c in (await _changes(client, h, po_id))["changes"]}
+    assert set(changes) == {"HEADER", "VENDOR_CHANGED"}               # the vendor is its own change now
+    c = changes["HEADER"]
+    assert len(c["messages"]) == 2 and any("closed" in m for m in c["messages"])
     assert await _statuses(po_id) == {"PENDING": 28}                                                  # nothing was changed
-    assert (await _apply(client, h, po_id, ("HEADER", "keep"))).json()["changes"] == []
+    left = (await _apply(client, h, po_id, ("HEADER", "keep"))).json()["changes"]
+    assert [x["kind"] for x in left] == ["VENDOR_CHANGED"]            # keeping the header note does not hide the vendor change
 
 
 async def test_only_changes_that_are_still_there_can_be_applied(client, erp):
@@ -240,3 +242,107 @@ async def test_roles_and_company_scope_apply(client, erp):
     assert (await _apply(client, viewer, po_id, ("HEADER", "keep"))).status_code == 403
     assert (await client.get("/api/erp/changes/summary", headers=viewer)).status_code == 403
     assert (await client.get("/api/erp/purchase-orders/999999/changes", headers=h)).status_code == 404
+
+
+# ---------- the ERP moves the PO to another vendor ----------
+
+async def _po_vendor(po_id):
+    async with SessionLocal() as session:
+        return (await session.get(PurchaseOrder, po_id)).vendor_id
+
+
+def _moved_to_jagannath(**over):
+    return desktop_po(supplier_code="2264", supplier_name="JAGANNATH ENTERPRISES", **over)
+
+
+async def _link(client, h, vendor_id, company_id, code):
+    resp = await client.post(f"/api/erp/vendors/{vendor_id}/link", headers=h, json={"company_id": company_id, "erp_vendor_code": code})
+    assert resp.status_code == 200, resp.text
+
+
+async def test_a_vendor_the_erp_moved_the_po_to_is_a_change_that_can_be_applied(client, erp):
+    ids = await _setup()
+    h = await _headers(client, "OPR")
+    owner = await _headers(client)
+    po_id = await _create_desktop_po(client, ids, h)
+    assert await _po_vendor(po_id) == ids["vansh"]
+    erp.pos[PO_CODE] = _moved_to_jagannath()
+
+    [c] = (await _changes(client, h, po_id))["changes"]
+    assert (c["kind"], c["was_vendor"], c["now_code"], c["now_name"], c["linked_vendor_id"]) == ("VENDOR_CHANGED", "11338", "2264", "JAGANNATH ENTERPRISES", None)
+
+    # not known here yet: applying is refused and nothing changes
+    refused = await _apply(client, h, po_id, ("VENDOR_CHANGED", "apply"))
+    assert refused.status_code == 422 and "not linked to a CKAM vendor yet" in refused.json()["detail"]
+    assert await _po_vendor(po_id) == ids["vansh"]
+
+    # once the owner links it, the change names the CKAM vendor and applying moves the PO
+    await _link(client, owner, ids["oldco"], ids["spl"], "2264")
+    [c] = (await _changes(client, h, po_id))["changes"]
+    assert c["linked_vendor_id"] == ids["oldco"] and c["linked_vendor_name"] == "Old Company"
+    done = await _apply(client, h, po_id, ("VENDOR_CHANGED", "apply"))
+    assert done.status_code == 200, done.text
+    assert done.json()["changes"] == []
+    assert await _po_vendor(po_id) == ids["oldco"]
+    assert done.json()["log"][0]["kind"] == "APPLY_VENDOR_CHANGED" and "Old Company" in done.json()["log"][0]["summary"]
+    assert await _statuses(po_id) == {"PENDING": 28}                              # lines are untouched
+
+
+async def test_keeping_the_vendor_stops_asking_and_changes_nothing(client, erp):
+    ids = await _setup()
+    h = await _headers(client, "OPR")
+    po_id = await _create_desktop_po(client, ids, h)
+    erp.pos[PO_CODE] = _moved_to_jagannath()
+    done = await _apply(client, h, po_id, ("VENDOR_CHANGED", "keep"))
+    assert done.status_code == 200 and done.json()["changes"] == []
+    assert await _po_vendor(po_id) == ids["vansh"]
+    assert done.json()["log"][0]["kind"] == "KEEP_VENDOR_CHANGED"
+
+
+async def test_a_link_made_in_the_other_company_does_not_count(client, erp):
+    from app.erp.source import ErpVendor
+    ids = await _setup()
+    h = await _headers(client, "OPR")
+    owner = await _headers(client)
+    po_id = await _create_desktop_po(client, ids, h)
+    erp.vendor_list.append(ErpVendor("2264", "A CKVPL SUPPLIER", company_code="CKVPL"))
+    await _link(client, owner, ids["oldco"], ids["vpl"], "2264")          # supplier 2264 of CKVPL, not of CKSPL
+    erp.pos[PO_CODE] = _moved_to_jagannath()
+    [c] = (await _changes(client, h, po_id))["changes"]
+    assert c["linked_vendor_id"] is None
+    assert (await _apply(client, h, po_id, ("VENDOR_CHANGED", "apply"))).status_code == 422
+
+
+async def test_applying_the_vendor_leaves_a_pending_location_change_showing(client, erp):
+    ids = await _setup()
+    h = await _headers(client, "OPR")
+    owner = await _headers(client)
+    po_id = await _create_desktop_po(client, ids, h)
+    await _link(client, owner, ids["oldco"], ids["spl"], "2264")
+    erp.pos[PO_CODE] = _moved_to_jagannath(delivery_location="CKSPL-WH-FARUKHNAGAR")
+    assert sorted(c["kind"] for c in (await _changes(client, h, po_id))["changes"]) == ["HEADER", "VENDOR_CHANGED"]
+    left = (await _apply(client, h, po_id, ("VENDOR_CHANGED", "apply"))).json()["changes"]
+    assert [c["kind"] for c in left] == ["HEADER"] and len(left[0]["messages"]) == 1
+
+
+async def test_units_already_delivered_keep_the_vendor_they_were_delivered_with(client, erp):
+    from app.assets.models import Asset
+    ids = await _setup()
+    h = await _headers(client, "OPR")
+    owner = await _headers(client)
+    po_id = await _create_desktop_po(client, ids, h)
+    await _deliver(client, h, po_id, 1, ids)
+    await _link(client, owner, ids["oldco"], ids["spl"], "2264")
+    erp.pos[PO_CODE] = _moved_to_jagannath()
+    assert (await _apply(client, h, po_id, ("VENDOR_CHANGED", "apply"))).status_code == 200
+    async with SessionLocal() as session:
+        vendors = {a.vendor_id for a in (await session.execute(select(Asset))).scalars().all()}
+    assert vendors == {ids["vansh"]} and await _po_vendor(po_id) == ids["oldco"]
+
+
+async def test_a_cancelled_po_does_not_also_ask_about_its_vendor(client, erp):
+    ids = await _setup()
+    h = await _headers(client, "OPR")
+    po_id = await _create_desktop_po(client, ids, h)
+    erp.pos[PO_CODE] = _moved_to_jagannath(status="CANCELLED", lines=[line(1, "CT324973", "DELL DESKTOP", 7, 20000, cancelled=7)])
+    assert [c["kind"] for c in (await _changes(client, h, po_id))["changes"]] == ["PO_CANCELLED"]
