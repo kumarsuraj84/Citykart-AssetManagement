@@ -84,6 +84,24 @@ class ErpVendorCopy(Base, _Seen):
     is_extinct: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
 
+class ErpSiteCopy(Base, _Seen):
+    """A site (store, warehouse, head office...) of one company's ERP. Site codes repeat across the two
+    companies, so the key is (company_code, site_code). `short_name` is the location code people use (LAM, SPR2)."""
+    __tablename__ = "erp_site"
+
+    company_code: Mapped[str] = mapped_column(String(20), primary_key=True)
+    site_code: Mapped[int] = mapped_column(Integer, primary_key=True)
+    short_name: Mapped[str | None] = mapped_column(String(100))
+    site_name: Mapped[str | None] = mapped_column(String(300))
+    store_name: Mapped[str | None] = mapped_column(String(300))
+    site_kind: Mapped[str | None] = mapped_column(String(30))
+    store_type: Mapped[str | None] = mapped_column(String(50))
+    store_status: Mapped[str | None] = mapped_column(String(30))
+    is_active_site: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    state: Mapped[str | None] = mapped_column(String(100))
+    city: Mapped[str | None] = mapped_column(String(100))
+
+
 class ErpItemCopy(Base, _Seen):
     """An ERP item code (item codes never repeat across the companies, so the code is the key)."""
     __tablename__ = "erp_item"

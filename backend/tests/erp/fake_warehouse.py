@@ -2,7 +2,7 @@
 from datetime import date, datetime, timezone
 
 from app.erp.source import ErpUnavailable
-from app.erp.warehouse import WhItem, WhPoLine, WhVendor
+from app.erp.warehouse import WhItem, WhPoLine, WhSite, WhVendor
 
 LOADED = datetime(2026, 10, 13, 5, 44, tzinfo=timezone.utc)
 
@@ -32,10 +32,18 @@ def wh_item(icode="CT371487", company="CKSPL", **over) -> WhItem:
     return WhItem(**base)
 
 
+def wh_site(company="CKSPL", site_code=2, short_name="LAM", store_status="ACTIVE", site_kind="STORE", **over) -> WhSite:
+    base = dict(company_code=company, site_code=site_code, short_name=short_name, site_name=f"CITYKART {short_name}", store_name=short_name,
+                site_kind=site_kind, store_type="OLD STORE", store_status=store_status, is_active_site=True, state="UP", city="LUCKNOW")
+    base.update(over)
+    return WhSite(**base)
+
+
 class FakeWarehouse:
-    """Implements WarehouseReader. Set `lines`, `vendor_list`, `item_list`, `stamp`; `down` makes every call fail."""
+    """Implements WarehouseReader. Set `lines`, `vendor_list`, `item_list`, `site_list`, `stamp`; `down` makes every call fail."""
 
     def __init__(self):
+        self.site_list: list[WhSite] = []
         self.lines: list[WhPoLine] = []
         self.vendor_list: list[WhVendor] = []
         self.item_list: list[WhItem] = []
@@ -60,6 +68,10 @@ class FakeWarehouse:
     async def items(self, icodes):
         self._check()
         return [i for i in self.item_list if i.icode in icodes]
+
+    async def sites(self):
+        self._check()
+        return list(self.site_list)
 
     async def source_stamp(self):
         self._check()

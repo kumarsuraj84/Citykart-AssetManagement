@@ -111,6 +111,22 @@ async def test_a_warehouse_problem_is_recorded_and_keeps_the_earlier_copy():
     assert (await latest_run(SessionLocal)).status == "failed"
 
 
+async def test_sites_of_both_companies_are_copied_and_the_same_site_code_stays_apart():
+    from app.erp.mirror_models import ErpSiteCopy
+    from tests.erp.fake_warehouse import wh_site
+    wh = seeded()
+    wh.site_list = [wh_site("CKSPL", 2, "LAM"), wh_site("CKVPL", 2, "CKVPL-WH-KHETAWAS", site_kind="WAREHOUSE", store_status=None)]
+    await run_sync(SessionLocal, wh, "manual")
+    sites = {(s.company_code, s.site_code): s for s in await rows(ErpSiteCopy)}
+    assert set(sites) == {("CKSPL", 2), ("CKVPL", 2)} and sites[("CKSPL", 2)].short_name == "LAM"
+    # a change is picked up, and a site the warehouse stops returning is marked not present (never deleted)
+    wh.site_list = [wh_site("CKSPL", 2, "LAM", store_status="CLOSED")]
+    await run_sync(SessionLocal, wh, "schedule")
+    sites = {(s.company_code, s.site_code): s for s in await rows(ErpSiteCopy)}
+    assert sites[("CKSPL", 2)].store_status == "CLOSED" and sites[("CKSPL", 2)].is_present is True
+    assert sites[("CKVPL", 2)].is_present is False
+
+
 async def test_a_second_copy_started_at_the_same_time_is_skipped():
     from sqlalchemy import text
     from app.erp.sync import LOCK_KEY

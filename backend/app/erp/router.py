@@ -4,11 +4,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import SessionLocal, get_session
 from app.core.deps import WRITE_ROLES, require_primary_owner, require_role, scoped_company_ids
 from app.erp import mirror_models  # noqa: F401  (registers the local ERP copy tables on the metadata)
+from app.erp import stores as erp_stores
 from app.erp import vendors as erp_vendors
 from app.erp.changes import apply_changes, changes_summary, po_changes, snapshot_baseline
 from app.erp.invoices import apply_pi, pi_preview
 from app.erp.reminders import delivery_reminders
-from app.erp.schemas import ChangesApplyIn, DraftCreateIn, ErpVendorLinkIn, PiApplyIn, SyncRunOut, SyncStatusOut
+from app.erp.schemas import ChangesApplyIn, DraftCreateIn, ErpVendorLinkIn, PiApplyIn, StoresCreateIn, SyncRunOut, SyncStatusOut
 from app.erp.service import build_draft, create_from_draft, list_available_pos
 from app.erp.source import ErpSource, ErpUnavailable, get_erp_source, is_configured
 from app.erp.sync import last_runs, run_sync
@@ -45,6 +46,33 @@ async def sync_now(reader: WarehouseReader = Depends(get_warehouse_reader), _act
     if not is_configured():
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "The ERP connection is not set up on this server.")
     return await run_sync(SessionLocal, reader, "manual")
+
+
+# ---- stores (users made from the ERP's site list) ------------------------
+
+@router.get("/stores")
+async def list_stores(
+    company_id: int, session: AsyncSession = Depends(get_session), _actor=Depends(require_primary_owner()),
+):
+    """The stores of one company's ERP, and which of them can be made into users here."""
+    try:
+        return await erp_stores.list_erp_stores(session, company_id)
+    except LookupError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
+
+
+@router.post("/stores/create")
+async def create_stores(
+    body: StoresCreateIn, session: AsyncSession = Depends(get_session), actor=Depends(require_primary_owner()),
+):
+    """Makes a Location and a STORE user (login email from the store's code) for each store asked for."""
+    try:
+        result = await erp_stores.create_erp_stores(session, actor, body.company_id, body.codes)
+        await session.commit()
+    except LookupError as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
+    return result
 
 
 # ---- vendors -----------------------------------------------------------

@@ -59,6 +59,11 @@ class ErpVendorLinkIn(BaseModel):
     erp_vendor_code: str = Field(min_length=1, max_length=50)
 
 
+class StoresCreateIn(BaseModel):
+    company_id: int
+    codes: list[str] = Field(min_length=1, max_length=500)
+
+
 class SyncRunOut(BaseModel):
     """One run of the copy of the ERP data (see app.erp.sync)."""
     model_config = ConfigDict(from_attributes=True)

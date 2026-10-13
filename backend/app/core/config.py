@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     po_source_password: str | None = None
     # Whether this server keeps its own copy of the ERP data up to date in the background
     # (app.erp.sync). It only runs when the ERP connection above is set up.
+    # The login email of a store user made from the ERP; {code} is the store's code in lower case
+    # (store LAM -> sm.lam@citykartstores.com).
+    store_email_pattern: str = "sm.{code}@citykartstores.com"
     erp_sync_enabled: bool = True
     erp_sync_check_minutes: int = 30
     model_config = SettingsConfigDict(env_file=".env")

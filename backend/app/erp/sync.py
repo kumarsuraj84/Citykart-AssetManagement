@@ -13,9 +13,9 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import select, text
 
 from app.core.config import settings
-from app.erp.mirror_models import ErpItemCopy, ErpPoLineCopy, ErpSyncRun, ErpVendorCopy
+from app.erp.mirror_models import ErpItemCopy, ErpPoLineCopy, ErpSiteCopy, ErpSyncRun, ErpVendorCopy
 from app.erp.source import ErpUnavailable
-from app.erp.warehouse import WarehouseReader, WhItem, WhPoLine, WhVendor
+from app.erp.warehouse import WarehouseReader, WhItem, WhPoLine, WhSite, WhVendor
 
 logger = logging.getLogger("ckam.erp.sync")
 
@@ -44,6 +44,10 @@ def vendor_hash(v: WhVendor) -> str:
     return _digest(v.name, v.gstin, v.city, v.is_extinct)
 
 
+def site_hash(s: WhSite) -> str:
+    return _digest(s.short_name, s.site_name, s.store_name, s.site_kind, s.store_type, s.store_status, s.is_active_site, s.state, s.city)
+
+
 def item_hash(i: WhItem) -> str:
     return _digest(i.company_code, i.article_name, i.section, i.department, i.division, i.cat1, i.cat2, i.cat3, i.cat4, i.cat5, i.cat6, i.hsn, i.unit)
 
@@ -52,6 +56,7 @@ LINE_FIELDS = ("po_code", "po_number", "po_date", "line_status", "delivery_locat
                "icode", "item_description", "group_code", "hsn", "unit", "ordqty", "rate", "tax_percent", "line_netamt", "rcqty", "cnlqty",
                "hdr_netamt", "hdr_chgamt", "erp_loaded_at")
 VENDOR_FIELDS = ("name", "gstin", "city", "is_extinct")
+SITE_FIELDS = ("short_name", "site_name", "store_name", "site_kind", "store_type", "store_status", "is_active_site", "state", "city")
 ITEM_FIELDS = ("company_code", "article_name", "section", "department", "division", "cat1", "cat2", "cat3", "cat4", "cat5", "cat6", "hsn", "unit")
 
 
@@ -155,6 +160,8 @@ async def _copy(session, reader: WarehouseReader, trigger: str, started: datetim
     logger.info("ERP copy: %d vendors (%.1fs)", vendors, time.monotonic() - clock)
     items = await _copy_items(session, reader, incoming, now)
     logger.info("ERP copy: %d items (%.1fs)", items, time.monotonic() - clock)
+    sites = await _copy_sites(session, reader, now)
+    logger.info("ERP copy: %d sites (%.1fs)", sites, time.monotonic() - clock)
     return ErpSyncRun(started_at=started, finished_at=datetime.now(timezone.utc), status="success", trigger=trigger, source_stamp=stamp,
                       po_lines_new=new, po_lines_changed=changed, po_lines_gone=gone, vendors=vendors, items=items)
 
@@ -177,6 +184,31 @@ async def _copy_vendors(session, reader: WarehouseReader, lines: list[WhPoLine],
                 setattr(row, f, getattr(v, f))
             row.row_hash = digest
         row.last_seen_at, row.is_present = now, True
+    return len(found)
+
+
+async def _copy_sites(session, reader: WarehouseReader, now: datetime) -> int:
+    """All sites of both companies. A site the warehouse stops returning is marked not present, never deleted."""
+    found = await reader.sites()
+    have = {(s.company_code, s.site_code): s for s in (await session.execute(select(ErpSiteCopy))).scalars().all()}
+    seen: set[tuple[str, int]] = set()
+    for s in found:
+        key = (s.company_code, s.site_code)
+        seen.add(key)
+        digest = site_hash(s)
+        row = have.get(key)
+        if row is None:
+            session.add(ErpSiteCopy(company_code=s.company_code, site_code=s.site_code, row_hash=digest, first_seen_at=now,
+                                    last_seen_at=now, is_present=True, **{f: getattr(s, f) for f in SITE_FIELDS}))
+            continue
+        if row.row_hash != digest:
+            for f in SITE_FIELDS:
+                setattr(row, f, getattr(s, f))
+            row.row_hash = digest
+        row.last_seen_at, row.is_present = now, True
+    for key, row in have.items():
+        if key not in seen:
+            row.is_present = False
     return len(found)
 
 

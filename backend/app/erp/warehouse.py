@@ -70,7 +70,24 @@ class WhItem:
     unit: str | None
 
 
+@dataclass
+class WhSite:
+    company_code: str
+    site_code: int
+    short_name: str | None
+    site_name: str | None
+    store_name: str | None
+    site_kind: str | None
+    store_type: str | None
+    store_status: str | None
+    is_active_site: bool
+    state: str | None
+    city: str | None
+
+
 class WarehouseReader(Protocol):
+    async def sites(self) -> list[WhSite]:
+        """Every site of both companies (a few hundred rows): stores, warehouses, head offices."""
     async def po_lines(self, since: date, also_po_codes: frozenset[int] = frozenset()) -> list[WhPoLine]:
         """Fixed-asset PO lines of both companies: every line of a PO dated `since` or later, plus every
         line of any PO that still has an open line (however old), plus the POs in `also_po_codes` (the
@@ -159,6 +176,17 @@ class PgWarehouseReader(PgReadOnly):
                    department=_text(r["department"]), division=_text(r["division"]), cat1=_text(r["cat1"]), cat2=_text(r["cat2"]),
                    cat3=_text(r["cat3"]), cat4=_text(r["cat4"]), cat5=_text(r["cat5"]), cat6=_text(r["cat6"]),
                    hsn=_text(r["hsn_code"]), unit=_text(r["unit"]))
+            for r in rows
+        ]
+
+    async def sites(self) -> list[WhSite]:
+        rows = await self._fetch(
+            f"""select company, site_code, short_name, site_name, store_name, site_kind, store_type, store_status, is_active_site, state, city
+                from {SCHEMA}.site order by company, site_code""")
+        return [
+            WhSite(company_code=r["company"], site_code=int(r["site_code"]), short_name=_text(r["short_name"]), site_name=_text(r["site_name"]),
+                   store_name=_text(r["store_name"]), site_kind=_text(r["site_kind"]), store_type=_text(r["store_type"]),
+                   store_status=_text(r["store_status"]), is_active_site=bool(r["is_active_site"]), state=_text(r["state"]), city=_text(r["city"]))
             for r in rows
         ]
 
