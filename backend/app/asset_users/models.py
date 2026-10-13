@@ -7,7 +7,9 @@ from app.core.models import AuditMixin, SoftDeleteMixin
 ASSET_USER_TYPES = ("EMPLOYEE", "STORE", "INSTALLED", "STOCK_POINT")
 ROLES = ("ADMIN", "OPERATOR", "VIEWER", "SELF_SERVICE")
 ASSET_DOMAINS = ("IT", "NON_IT")
-# primary_asset_domain: a login-enabled asset_user's own default reporting scope.
+# primary_asset_domain: a login-enabled asset_user's own default reporting scope. S6 note: no rule reads it
+# (authorization uses allowed_asset_domains only); it is still accepted, validated, stored and returned by
+# /api/asset-users because the People & Places form sends and shows it, so it is kept for API compatibility.
 PRIMARY_ASSET_DOMAINS = ("IT", "NON_IT", "ALL")
 # allowed_asset_domains: which domains an OPERATOR/VIEWER may actually work in
 # (ADMIN and the Primary Owner are always unrestricted regardless of this value).

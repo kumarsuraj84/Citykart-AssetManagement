@@ -28,6 +28,7 @@ from app.purchase_orders.router import router as purchase_orders_router
 from app.bundles.router import router as bundles_router
 from app.erp.router import router as erp_router
 from app.items.router import router as items_router
+from app.home.router import router as home_router
 
 logger = logging.getLogger("ckam.security")
 if not logger.handlers:
@@ -118,6 +119,7 @@ app.include_router(purchase_orders_router)
 app.include_router(bundles_router)
 app.include_router(erp_router)
 app.include_router(items_router)
+app.include_router(home_router)
 
 
 @app.get("/api/health")

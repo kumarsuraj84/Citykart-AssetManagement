@@ -4,11 +4,12 @@ head-office admin manage both; operators, viewers and self-service logins
 none. Moving a Category to the other work area needs someone who handles both,
 an explicit confirmation, and leaves an append-only audit trail."""
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.exc import DBAPIError
 
 from app.assets.models import Asset
 from app.core.db import SessionLocal
+from app.items.models import Item
 from app.masters.models import AssetCategory, MasterAudit
 from tests.core.s0_world import make_asset
 from tests.core.s3a1_world import ROLES, build_s3_world, login
@@ -36,15 +37,23 @@ async def test_who_may_manage_categories_and_sub_categories_of_each_work_area(cl
     allowed = may_manage(who, area)
     domain = "IT" if area == "it" else "NON_IT"
     cat_id, sub_id = w[area], w["lap" if area == "it" else "chair"]
+    # S6: a group that still has active Items / sub-categories cannot be deactivated -- take the world's
+    # Items out of the way so this test stays about who may do what.
+    async with SessionLocal() as s:
+        await s.execute(update(Item).values(is_active=False))
+        await s.commit()
 
+    new_sub = await client.post("/api/masters/subcategories", headers=h, json={"category_id": cat_id, "code": "NEWS", "name": "New kind"})
     calls = [
         await client.post("/api/masters/categories", headers=h, json={"code": "NEWC", "name": "New group", "asset_domain": domain}),
-        await client.post("/api/masters/subcategories", headers=h, json={"category_id": cat_id, "code": "NEWS", "name": "New kind"}),
+        new_sub,
         await client.put(f"/api/masters/categories/{cat_id}", headers=h, json={"name": "Renamed group", "asset_domain": domain}),
         await client.put(f"/api/masters/subcategories/{sub_id}", headers=h, json={"name": "Renamed kind"}),
         await client.delete(f"/api/masters/subcategories/{sub_id}", headers=h),
-        await client.delete(f"/api/masters/categories/{cat_id}", headers=h),
     ]
+    if new_sub.status_code == 201:
+        calls.append(await client.delete(f"/api/masters/subcategories/{new_sub.json()['id']}", headers=h))
+    calls.append(await client.delete(f"/api/masters/categories/{cat_id}", headers=h))
     for resp in calls:
         if allowed:
             assert resp.status_code in (200, 201, 204), resp.text
@@ -116,6 +125,9 @@ async def test_name_changes_and_deactivation_are_audited_and_no_change_writes_no
     assert renamed.status_code == 200
     sub = await client.put(f"/api/masters/subcategories/{w['chair']}", headers=h, json={"name": "Chairs"})
     assert sub.status_code == 200
+    async with SessionLocal() as s:                  # S6: its Item first (an active Item blocks deactivation)
+        await s.execute(update(Item).where(Item.id == w["item_nonit"]).values(is_active=False))
+        await s.commit()
     assert (await client.delete(f"/api/masters/subcategories/{w['chair']}", headers=h)).status_code == 204
     assert (await client.delete(f"/api/masters/categories/{w['nonit']}", headers=h)).status_code == 204
     cat_rows = await _audit_rows("category", w["nonit"])

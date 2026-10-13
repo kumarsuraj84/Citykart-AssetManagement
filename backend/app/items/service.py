@@ -150,6 +150,10 @@ async def list_items(session: AsyncSession) -> list[dict]:
         select(AssetCategory).where(AssetCategory.id.in_(category_ids)))).scalars().all()} if category_ids else {}
     subs = dict((await session.execute(
         select(AssetSubcategory.id, AssetSubcategory.name).where(AssetSubcategory.id.in_(sub_ids)))).all()) if sub_ids else {}
+    # S6 (additive): the set's name, one lookup per list.
+    bundle_ids = {i.bundle_id for i in items if i.bundle_id is not None}
+    bundles = dict((await session.execute(
+        select(Bundle.id, Bundle.name).where(Bundle.id.in_(bundle_ids)))).all()) if bundle_ids else {}
     return [
         {
             "id": i.id, "name": i.name, "category_id": i.category_id, "subcategory_id": i.subcategory_id,
@@ -159,6 +163,8 @@ async def list_items(session: AsyncSession) -> list[dict]:
             "work_area": categories.get(i.category_id, (None, None))[1],
             "category_name": categories.get(i.category_id, (None, None))[0],
             "subcategory_name": subs.get(i.subcategory_id),
+            "is_set": i.bundle_id is not None,
+            "bundle_name": bundles.get(i.bundle_id),
         }
         for i in items
     ]

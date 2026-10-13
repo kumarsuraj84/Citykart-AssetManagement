@@ -1,4 +1,12 @@
 from pydantic import BaseModel, ConfigDict, Field
+from app.core.validation import InModel
+
+
+class ItemSetPartIn(InModel):
+    """S6: one part of the set an Item is made of ("CPU", the Item CPU, 70%)."""
+    name: str = Field(max_length=100)
+    item_id: int
+    share_percent: float
 
 
 class ItemIn(BaseModel):
@@ -15,6 +23,10 @@ class ItemIn(BaseModel):
     # S3a-1, edit only: moving an Item to a category of the other work area
     # (IT <-> Non-IT) must be confirmed explicitly. Ignored on create.
     confirm_domain_change: bool = False
+    # S6 (optional): the Item IS a set made of these parts (shares add up to 100). Saved together with the
+    # Item in one transaction through the bundles service: a new set named after the Item, or the Item's own
+    # set updated. Left out: `bundle_id` decides, exactly as before.
+    set_parts: list[ItemSetPartIn] | None = Field(default=None, max_length=50)
 
 
 class ItemOut(BaseModel):
@@ -35,6 +47,9 @@ class ItemOut(BaseModel):
     work_area: str | None = None
     category_name: str | None = None
     subcategory_name: str | None = None
+    # S6 (additive): whether the Item is a set, and its set's name.
+    is_set: bool = False
+    bundle_name: str | None = None
 
 
 class ItemMapIn(BaseModel):

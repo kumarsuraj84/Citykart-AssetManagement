@@ -136,8 +136,11 @@ async def test_an_admin_limited_to_one_work_area_cannot_widen_someone_but_can_ed
     assert (await _user(w["op_it"])).allowed_asset_domains == "IT"
     phone = await client.put(f"/api/asset-users/{w['op_both']}", headers=h, json={"phone": "12345"})
     assert phone.status_code == 200                                             # already had both; not widened
+    # S6: someone whose current work area is wider than the editor's own keeps their login, access level
+    # and work area -- narrowing them is refused too (only the head-office admin or a both-area admin may).
     narrow = await client.put(f"/api/asset-users/{w['op_both']}", headers=h, json={"allowed_asset_domains": "IT"})
-    assert narrow.status_code == 200 and narrow.json()["allowed_asset_domains"] == "IT"
+    assert narrow.status_code == 403
+    assert (await _user(w["op_both"])).allowed_asset_domains is None
 
 
 async def test_an_admin_with_both_work_areas_may_give_both(client):

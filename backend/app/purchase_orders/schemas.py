@@ -26,6 +26,20 @@ class PurchaseOrderCreateIn(InModel):
         return not_in_future(value, "PO date")
 
 
+class PurchaseOrderUpdateIn(InModel):
+    """S6: PUT /api/purchase-orders/{id} -- only the fields sent change (see app.purchase_orders.header)."""
+    po_number: str | None = Field(default=None, max_length=100)
+    po_date: date | None = None
+    vendor_id: int | None = None
+    cost_center_id: int | None = None
+    delivery_asset_user_id: int | None = None
+
+    @field_validator("po_date")
+    @classmethod
+    def _po_date(cls, value: date | None) -> date | None:
+        return not_in_future(value, "PO date")
+
+
 MAX_PO_ENTRIES = 100
 
 
@@ -222,6 +236,9 @@ class SerialCheckIn(InModel):
 class SerialConflictOut(BaseModel):
     serial: str
     asset_code: str
+    # S6 (additive): true when the conflicting asset is outside the caller's companies or work area, so
+    # `asset_code` holds the wording "an asset outside your companies or work area" instead of a code.
+    masked: bool = False
 
 
 class SerialCheckOut(BaseModel):

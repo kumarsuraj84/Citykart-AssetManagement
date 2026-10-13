@@ -156,6 +156,36 @@ async def _refuse_wider_work_area(session: AsyncSession, actor: AssetUser, data:
     )
 
 
+ACCESS_FIELDS = ("login_enabled", "role", "allowed_asset_domains", "primary_asset_domain")
+
+
+async def _refuse_access_change_of_wider_user(session: AsyncSession, actor: AssetUser, target: AssetUser, sent: dict) -> None:
+    """S6 (S0 observation): an ADMIN limited to one work area may not change the login, access level or work
+    area of someone whose CURRENT work area is wider than their own (e.g. an IT-only admin and a both-area
+    admin) -- otherwise they could switch that person's login off or narrow them. Their other details (phone,
+    email, place) can still be corrected, and sending the stored values back unchanged is not a change."""
+    mine = await allowed_asset_domains(session, actor)
+    if mine is None:
+        return
+    current = _effective_work_area({f: getattr(target, f) for f in ("login_enabled", "role", "allowed_asset_domains")})
+    if current <= set(mine):
+        return
+    def same(field: str) -> bool:
+        old, new = getattr(target, field), sent[field]
+        if field == "allowed_asset_domains":          # unset and "BOTH" mean the same
+            return (old or "BOTH") == (new or "BOTH")
+        return old == new
+
+    if all(same(field) for field in ACCESS_FIELDS if field in sent):
+        return
+    words = " and ".join(work_area_words(d) for d in mine)
+    raise HTTPException(
+        status.HTTP_403_FORBIDDEN,
+        f"{target.name} works in a wider work area than yours (you handle only {words} work), so you cannot change "
+        "their login, access level or work area. Ask the head-office admin.",
+    )
+
+
 def _validate_asset_user_fields(data: dict, sent: dict | None = None) -> None:
     # AM-01 confirmed asset_user_type/role accepted any string with no validation at all --
     # AM-02 closes that gap, same pattern as documents/router.py's existing doc_type
@@ -398,6 +428,7 @@ async def update_asset_user(
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, message)
     if "login_enabled" in sent and sent["login_enabled"] is None:
         sent["login_enabled"] = False
+    await _refuse_access_change_of_wider_user(session, asset_user, target, sent)
     data = {field: getattr(target, field) for field in EDITABLE_FIELDS}
     data.update(sent)
     _validate_asset_user_fields(data, sent=sent)

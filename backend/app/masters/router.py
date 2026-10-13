@@ -76,6 +76,8 @@ class MasterPolicy:
     before_create: Callable[..., Awaitable[None]] | None = None    # (session, user, data)
     before_edit: Callable[..., Awaitable[None]] | None = None      # (session, user, existing, data)
     before_delete: Callable[..., Awaitable[None]] | None = None    # (session, user, existing)
+    # S6: adds read-only figures to the rows of GET (e.g. item_count) -- (session, rows) -> rows
+    annotate_list: Callable[..., Awaitable[list]] | None = None
 
 
 def build_master_router(
@@ -151,7 +153,10 @@ def build_master_router(
                     filters["company_id"] = company_id
             else:
                 filters["company_id"] = company_id if company_id in allowed else allowed[0]
-        return await MasterCRUDService(model, session).list_active(**filters)
+        rows = await MasterCRUDService(model, session).list_active(**filters)
+        if policy.annotate_list is not None:
+            return await policy.annotate_list(session, rows)
+        return rows
 
     @sub.post("", response_model=schema_out, status_code=201)
     async def create_item(
@@ -386,8 +391,72 @@ async def _category_before_edit(session: AsyncSession, user, existing, data: dic
     })
 
 
+BLOCKER_NAMES = 3
+
+
+def _blocker_phrase(names: list[str], total: int, one: str, many: str) -> str:
+    shown = ", ".join(names[:BLOCKER_NAMES])
+    if total > BLOCKER_NAMES:
+        shown += f" and {total - BLOCKER_NAMES} more"
+    return f"{total} active {one if total == 1 else many} ({shown})"
+
+
+async def _active_names(session: AsyncSession, model, column, value) -> tuple[list[str], int]:
+    """The first few names (by name) and the number of ACTIVE rows of `model` whose `column` is `value`."""
+    names = list((await session.execute(
+        select(model.name).where(column == value, model.is_active.is_(True)).order_by(model.name).limit(BLOCKER_NAMES)
+    )).scalars().all())
+    total = (await session.execute(
+        select(func.count()).select_from(model).where(column == value, model.is_active.is_(True))
+    )).scalar_one() if names else 0
+    return names, total
+
+
+def _refuse_deactivation(name: str, blockers: list[str], what: str) -> None:
+    if blockers:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"{name} cannot be deactivated because it still has {' and '.join(blockers)}. "
+            f"Deactivate them or move them to another {what} first. Assets already in the register keep their group.",
+        )
+
+
+async def _item_counts(session: AsyncSession, column, ids: list[int]) -> dict[int, int]:
+    """S6: active Items per Category / Sub-category -- one aggregate query for the whole list."""
+    from app.items.models import Item          # local: items imports masters
+    if not ids:
+        return {}
+    return dict((await session.execute(
+        select(column, func.count()).select_from(Item)
+        .where(Item.is_active.is_(True), column.in_(ids)).group_by(column)
+    )).all())
+
+
+async def _category_list_counts(session: AsyncSession, rows: list) -> list:
+    from app.items.models import Item          # local: items imports masters
+    counts = await _item_counts(session, Item.category_id, [r.id for r in rows])
+    return [schemas.AssetCategoryOut.model_validate(r).model_copy(update={"item_count": counts.get(r.id, 0)}) for r in rows]
+
+
+async def _subcategory_list_counts(session: AsyncSession, rows: list) -> list:
+    from app.items.models import Item          # local: items imports masters
+    counts = await _item_counts(session, Item.subcategory_id, [r.id for r in rows])
+    return [schemas.AssetSubcategoryOut.model_validate(r).model_copy(update={"item_count": counts.get(r.id, 0)}) for r in rows]
+
+
 async def _category_before_delete(session: AsyncSession, user, existing) -> None:
+    """S6: a Category that still has active Sub-categories or active Items is not deactivated (they would be
+    left under a group nobody can choose); the refusal names what blocks it."""
+    from app.items.models import Item          # local: items imports masters
     await ensure_domain_manage(session, user, existing.asset_domain)
+    blockers = []
+    subs, sub_total = await _active_names(session, models.AssetSubcategory, models.AssetSubcategory.category_id, existing.id)
+    if sub_total:
+        blockers.append(_blocker_phrase(subs, sub_total, "sub-category", "sub-categories"))
+    items, item_total = await _active_names(session, Item, Item.category_id, existing.id)
+    if item_total:
+        blockers.append(_blocker_phrase(items, item_total, "Item", "Items"))
+    _refuse_deactivation(existing.name, blockers, "group")
     audit.record(session, entity="category", entity_id=existing.id, actor_id=user.id,
                  changes={"active": (existing.is_active, False)})
 
@@ -415,7 +484,12 @@ async def _subcategory_before_edit(session: AsyncSession, user, existing, data: 
 
 
 async def _subcategory_before_delete(session: AsyncSession, user, existing) -> None:
+    """S6: a Sub-category that still has active Items is not deactivated; the refusal names them."""
+    from app.items.models import Item          # local: items imports masters
     await ensure_domain_manage(session, user, await _parent_domain(session, existing.category_id))
+    items, item_total = await _active_names(session, Item, Item.subcategory_id, existing.id)
+    _refuse_deactivation(existing.name, [_blocker_phrase(items, item_total, "Item", "Items")] if item_total else [],
+                         "sub-category")
     audit.record(session, entity="subcategory", entity_id=existing.id, actor_id=user.id,
                  changes={"active": (existing.is_active, False)})
 
@@ -424,12 +498,13 @@ CATEGORY_POLICY = MasterPolicy(
     create=require_domain_admin(DOMAIN_ADMIN_WHAT), edit=require_domain_admin(DOMAIN_ADMIN_WHAT),
     delete=require_domain_admin(DOMAIN_ADMIN_WHAT),
     before_create=_category_before_create, before_edit=_category_before_edit, before_delete=_category_before_delete,
+    annotate_list=_category_list_counts,
 )
 SUBCATEGORY_POLICY = MasterPolicy(
     create=require_domain_admin(DOMAIN_ADMIN_WHAT), edit=require_domain_admin(DOMAIN_ADMIN_WHAT),
     delete=require_domain_admin(DOMAIN_ADMIN_WHAT),
     before_create=_subcategory_before_create, before_edit=_subcategory_before_edit,
-    before_delete=_subcategory_before_delete,
+    before_delete=_subcategory_before_delete, annotate_list=_subcategory_list_counts,
 )
 
 

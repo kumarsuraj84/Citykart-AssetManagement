@@ -46,7 +46,9 @@ async def test_assets_can_be_listed_for_one_item_and_for_a_known_set_of_ids(clie
     assert {a["id"] for a in some["items"]} == {keys[0], keys[2], mice[0]}
 
     assert (await client.get("/api/assets?ids=1,x", headers=h)).status_code == 422
-    assert (await client.get("/api/assets?ids=" + ",".join(str(i) for i in range(201)), headers=h)).status_code == 422
+    # S6: up to 1,000 ids (a whole receipt's labels); more is refused
+    assert (await client.get("/api/assets?ids=" + ",".join(str(i) for i in range(201)), headers=h)).status_code == 200
+    assert (await client.get("/api/assets?ids=" + ",".join(str(i) for i in range(1001)), headers=h)).status_code == 422
 
 
 async def test_ids_never_widen_the_callers_company_scope(client):

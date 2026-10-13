@@ -36,6 +36,10 @@ from app.reports.export_service import asset_label_png, asset_qr_png
 router = APIRouter(prefix="/api/assets", tags=["assets"])
 
 
+MAX_PAGE = 200
+MAX_IDS_PAGE = 1000     # S6: `ids` (and then `limit`) up to the bulk limit, for a whole receipt's labels
+
+
 class AssetListOut(BaseModel):
     items: list[AssetOut]
     total: int
@@ -45,6 +49,11 @@ class BulkMoveIn(InModel):
     # S0.2: at most 1,000 assets per request.
     asset_ids: list[int] = Field(max_length=MAX_BULK_IDS)
     to_asset_user_id: int
+    # S6: optional, the same for every asset (as on the single-asset event): the day it happened (not in
+    # the future, not before an asset's last recorded movement -> that asset fails with the sentence) and
+    # a reference such as a gate pass number. Left out: now / none, exactly as before.
+    event_date: datetime | None = None
+    reference_no: str | None = Field(default=None, max_length=100)
 
 
 class BulkMoveOut(BaseModel):
@@ -65,6 +74,9 @@ class BulkActionIn(InModel):
     event_type: str = Field(max_length=30)
     to_asset_user_id: int | None = None
     remarks: str | None = Field(default=None, max_length=1000)
+    # S6: see BulkMoveIn -- one date and one reference for the whole batch, checked per asset.
+    event_date: datetime | None = None
+    reference_no: str | None = Field(default=None, max_length=100)
 
 
 class BulkActionOut(BaseModel):
@@ -123,10 +135,10 @@ async def list_assets(
     exact: bool = Query(False),
     serial_pending: bool = Query(False),
     item_id: int | None = Query(None),
-    ids: str | None = Query(None, description="comma-separated asset ids (at most 200), for printing labels of a known set"),
+    ids: str | None = Query(None, description="comma-separated asset ids (at most 1,000), for printing labels of a known set"),
     sort_by: str | None = Query(None),
     sort_dir: str = Query("asc"),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     holder_type: str | None = Query(None, max_length=30),
     holder_id: int | None = Query(None),
@@ -172,8 +184,12 @@ async def list_assets(
             id_list = [int(part) for part in ids.split(",") if part.strip()]
         except ValueError:
             raise HTTPException(422, "ids must be comma-separated numbers")
-        if len(id_list) > 200:
-            raise HTTPException(422, "at most 200 ids at a time")
+        if len(id_list) > MAX_IDS_PAGE:
+            raise HTTPException(422, f"You can open at most {MAX_IDS_PAGE:,} assets at a time.")
+    # S6: an ordinary page is at most 200 rows; up to 1,000 only for a known set of ids (labels / "Open
+    # assets" after a large receipt).
+    if limit > MAX_PAGE and id_list is None:
+        raise HTTPException(422, f"At most {MAX_PAGE} assets can be listed per page.")
     items, total = await search_assets(
         session, allowed, status, category_id, asset_user_id, company_id, q, sort_by, sort_dir, limit, offset,
         allowed_domains=domains, domain=wanted_domain, exact=exact, serial_pending=serial_pending or None,
@@ -186,7 +202,7 @@ async def list_assets(
 
 async def _bulk_apply_event(
     asset_ids: list[int], event_type: str, to_asset_user_id: int | None, remarks: str | None,
-    session: AsyncSession, actor,
+    session: AsyncSession, actor, event_date: datetime | None = None, reference_no: str | None = None,
 ) -> tuple[int, list[dict]]:
     """Shared by /bulk-move (MOVED only, kept for backward compatibility with
     the Asset Register's existing bulk-move) and /bulk-action (AM-20, any
@@ -210,7 +226,8 @@ async def _bulk_apply_event(
             # Each asset in its own savepoint: one refusal never leaves a
             # half-written event behind for the others' commit.
             async with session.begin_nested():
-                await apply_event(session, asset, event_type, to_asset_user_id=to_asset_user_id, actor=actor, remarks=remarks)
+                await apply_event(session, asset, event_type, to_asset_user_id=to_asset_user_id, actor=actor,
+                                  remarks=remarks, event_date=event_date, reference_no=reference_no)
             done += 1
         except LifecycleError as exc:
             failed.append({"asset_id": asset_id, "reason": str(exc)})
@@ -223,7 +240,8 @@ async def bulk_move(
     session: AsyncSession = Depends(get_session),
     actor=Depends(require_role(*WRITE_ROLES)),
 ):
-    moved, failed = await _bulk_apply_event(body.asset_ids, "MOVED", body.to_asset_user_id, None, session, actor)
+    moved, failed = await _bulk_apply_event(body.asset_ids, "MOVED", body.to_asset_user_id, None, session, actor,
+                                            event_date=body.event_date, reference_no=body.reference_no)
     await session.commit()
     return BulkMoveOut(moved=moved, failed=failed)
 
@@ -236,6 +254,7 @@ async def bulk_action(
 ):
     done, failed = await _bulk_apply_event(
         body.asset_ids, body.event_type, body.to_asset_user_id, body.remarks, session, actor,
+        event_date=body.event_date, reference_no=body.reference_no,
     )
     await session.commit()
     return BulkActionOut(done=done, failed=failed)

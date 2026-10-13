@@ -238,6 +238,8 @@ class AssetCategoryOut(BaseModel):
     code: str
     name: str
     asset_domain: str
+    # S6 (additive): active Items in this group -- filled on GET /api/masters/categories only (null elsewhere).
+    item_count: int | None = None
 
 
 class AssetSubcategoryIn(InModel):
@@ -266,6 +268,8 @@ class AssetSubcategoryOut(BaseModel):
     category_id: int
     code: str
     name: str
+    # S6 (additive): active Items of this sub-category -- filled on GET /api/masters/subcategories only.
+    item_count: int | None = None
 
 
 class CustomFieldIn(InModel):

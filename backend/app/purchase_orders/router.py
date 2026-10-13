@@ -12,9 +12,11 @@ from app.purchase_orders.models import PurchaseOrder, PendingAsset
 from app.purchase_orders.schemas import (
     CancelWaitingIn, CancelWaitingOut, DeliveryDoneIn, InvoiceSummaryOut, LineGroupOut, LineGroupUpdateIn,
     PendingAssetLineIn, PendingAssetLineUpdateIn, PendingAssetOut,
-    PurchaseOrderCreateIn, PurchaseOrderDeleteOut, PurchaseOrderOut, PurchaseOrderWithLinesIn, PurchaseOrderWithLinesOut,
+    PurchaseOrderCreateIn, PurchaseOrderDeleteOut, PurchaseOrderOut, PurchaseOrderUpdateIn, PurchaseOrderWithLinesIn,
+    PurchaseOrderWithLinesOut,
     ReceiveIn, ReceiveInfoOut, ReceiveOut, RecordPiIn, RecordPiOut, SerialCheckIn, SerialCheckOut, SerialConflictOut,
 )
+from app.purchase_orders.header import update_po_header
 from app.purchase_orders.receive import ReceiveRefused, receive_goods, receive_info
 from app.purchase_orders.with_lines import create_po_with_lines
 from app.assets.models import Asset
@@ -33,6 +35,7 @@ from app.purchase_orders.service import (
 router = APIRouter(prefix="/api/purchase-orders", tags=["purchase-orders"])
 
 PO_NOT_FOUND = "purchase order not found"
+OUTSIDE_SCOPE = "an asset outside your companies or work area"
 
 
 async def _get_scoped_po(po_id: int, session: AsyncSession, asset_user) -> PurchaseOrder:
@@ -134,7 +137,8 @@ async def check_serials(
         if (allowed is None or company_id in allowed) and (domains is None or domain in domains)
     }
     return SerialCheckOut(conflicts=[
-        SerialConflictOut(serial=s, asset_code=c if c in visible else "an asset outside your companies or work area")
+        SerialConflictOut(serial=s, asset_code=c, masked=False) if c in visible
+        else SerialConflictOut(serial=s, asset_code=OUTSIDE_SCOPE, masked=True)
         for s, c in found
     ])
 
@@ -189,6 +193,29 @@ async def _po_with_progress(session: AsyncSession, po: PurchaseOrder, asset_user
 async def get_po(po_id: int, session: AsyncSession = Depends(get_session), asset_user=Depends(require_role(*WRITE_ROLES))):
     po = await _get_scoped_po(po_id, session, asset_user)
     return await _po_with_progress(session, po, asset_user)
+
+
+@router.put("/{po_id}", response_model=PurchaseOrderOut)
+async def edit_po_header(
+    po_id: int, body: PurchaseOrderUpdateIn, session: AsyncSession = Depends(get_session),
+    actor=Depends(require_role(*WRITE_ROLES)),
+):
+    """S6: changes the PO's vendor, cost centre, delivery place, PO date and / or PO number (only the fields
+    sent). Vendor, cost centre, number and date are locked once anything is received; an ERP-made PO keeps
+    the ERP's number, date and supplier. Audited field by field. See app.purchase_orders.header."""
+    po = await _get_scoped_po(po_id, session, actor)
+    try:
+        await update_po_header(session, po, body.model_dump(exclude_unset=True), actor,
+                               await allowed_asset_domains(session, actor))
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    except HTTPException:
+        await session.rollback()
+        raise
+    await session.commit()
+    await session.refresh(po)
+    return await _po_with_progress(session, po, actor)
 
 
 # ---- S2.1: lines (groups of units sharing a line number) -------------------

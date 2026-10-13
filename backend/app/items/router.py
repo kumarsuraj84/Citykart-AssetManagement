@@ -11,7 +11,7 @@ from app.core.validation import parse_work_area
 from app.core.db import get_session
 from app.core.deps import WRITE_ROLES, require_primary_owner, require_role
 from app.erp.source import ErpSource, ErpUnavailable, get_erp_source
-from app.items import service
+from app.items import service, sets
 from app.items.models import Item, ItemMap
 from app.items.schemas import ItemIn, ItemMapIn, ItemMapOut, ItemOut
 from app.masters import audit as master_audit
@@ -95,11 +95,18 @@ async def _audit_item_edit(session: AsyncSession, item: Item, data: dict, actor,
 @router.post("", response_model=ItemOut, status_code=201)
 async def create(body: ItemIn, session: AsyncSession = Depends(get_session), actor=Depends(require_small_create("an Item"))):
     """S3a-1: ADMIN and OPERATOR may add an Item while working (e.g. reviewing
-    an ERP PO), but only under a Category of their own work area."""
+    an ERP PO), but only under a Category of their own work area. S6: with
+    `set_parts` the Item is a set, made in the same transaction (app.items.sets)."""
     data = body.model_dump()
+    data.pop("confirm_domain_change", None)
+    set_parts = data.pop("set_parts", None)
     for domain in await _request_domains(session, data):
         await ensure_item_create(session, actor, domain)
+    if set_parts is not None:
+        await sets.check_set_request(session, actor, set_parts, item=None, bundle_id=data.get("bundle_id"), creating=True)
     try:
+        if set_parts is not None:
+            data["bundle_id"] = await sets.save_set(session, actor, set_parts, item_name=data["name"], item=None)
         item = await service.create_item(session, data, actor)
         await session.commit()
     except (ValueError, IntegrityError) as exc:
@@ -121,6 +128,7 @@ async def update(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "This Item was not found.")
     data = body.model_dump()
     confirmed = bool(data.pop("confirm_domain_change", False))
+    set_parts = data.pop("set_parts", None)
     old_domain = await _category_domain(session, item.category_id)
     await ensure_domain_manage(session, actor, old_domain)
     for domain in await _request_domains(session, data):
@@ -135,7 +143,16 @@ async def update(
                 f"{TEAM_WORDS[new_domain]} will handle the assets added as {item.name} from now on (assets already in "
                 "the register keep their work area). Confirm the change to go ahead.",
             )
+    if set_parts is not None:
+        await sets.check_set_request(session, actor, set_parts, item=item, bundle_id=data.get("bundle_id"), creating=False)
     try:
+        if set_parts is not None:
+            before_parts = await sets.current_parts(session, item)
+            data["bundle_id"] = await sets.save_set(session, actor, set_parts, item_name=data["name"], item=item)
+            master_audit.record(session, entity="item", entity_id=item.id, actor_id=actor.id, changes={
+                "set_parts": (sets.parts_summary(before_parts),
+                              sets.parts_summary([(p["name"].strip(), p["share_percent"]) for p in set_parts])),
+            })
         await _audit_item_edit(session, item, data, actor, old_domain, new_domain or old_domain)
         await service.update_item(session, item, data, actor)
         await session.commit()

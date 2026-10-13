@@ -8,6 +8,7 @@ from app.asset_users.models import AssetUser
 from app.bundles.models import Bundle
 from app.bundles.service import add_bundle_lines
 from app.core.deps import allowed_asset_domains, check_work_area, ensure_company_in_scope, scoped_company_ids
+from app.core.validation import MAX_QUANTITY
 from app.erp.readiness import (
     article_names, live_lines, open_erp_pos, problems_for, resolution_of, suggested_scope,
 )
@@ -338,6 +339,35 @@ async def _vendor_context(
     }
 
 
+def erp_open_units(po: ErpPo) -> dict[str, int]:
+    """S0.8 / S6: the units the ERP still has open per item code (ordered - cancelled, summed over every line of
+    that code, whole units) -- exactly what `_revalidate_against_erp` lets a reviewed draft ask for."""
+    totals: dict[str, float] = {}
+    for ln in po.lines:
+        code = (ln.item_code or "").strip().upper()
+        units = ln.qty - ln.cancelled_qty
+        if code and units > 0:
+            totals[code] = totals.get(code, 0) + units
+    return {code: int(units) for code, units in totals.items()}
+
+
+def _add_open_units(po: ErpPo, lines: list[dict]) -> None:
+    """S6 (additive) on every draft line: `open_units` = the ERP's open units of the line's item code over the
+    whole PO (the S0.8 cap the create checks), `max_units` = the most this line may ask while the other lines
+    of the same code keep their drafted quantities (never above the 1,000 per-line limit)."""
+    open_units = erp_open_units(po)
+    drafted: dict[str, int] = {}
+    for ln in lines:
+        code = (ln["item_code"] or "").strip().upper()
+        drafted[code] = drafted.get(code, 0) + int(ln["quantity"])
+    for ln in lines:
+        code = (ln["item_code"] or "").strip().upper()
+        total = open_units.get(code, 0)
+        others = drafted.get(code, 0) - int(ln["quantity"])
+        ln["open_units"] = total
+        ln["max_units"] = max(0, min(total - others, MAX_QUANTITY))
+
+
 async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source: ErpSource) -> dict:
     allowed = await scoped_company_ids(session, actor)
     warnings: list[str] = []
@@ -460,6 +490,7 @@ async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source
             "suggested_scope": suggested_scope(erp, names_by_article),
         })
 
+    _add_open_units(po, lines)
     if untracked_lines and not lines:
         warnings.append("None of the lines of this purchase order are tracked in CKAM, so there is nothing to create from it.")
     problems = problems_for(vendor is not None, len(undecided))
@@ -554,14 +585,12 @@ async def _revalidate_against_erp(
     if data.get("vendor_id") is not None and data["vendor_id"] != vendor.id:
         raise ValueError(f"The vendor of this purchase order is {vendor.name} (the vendor linked to the ERP supplier); it cannot be changed here.")
 
-    open_units: dict[str, float] = {}
+    open_units = erp_open_units(erp_po)          # S6: the same numbers the draft shows as open_units
     rates: dict[str, list[float]] = {}
     for ln in erp_po.lines:
         code = (ln.item_code or "").strip().upper()
-        units = ln.qty - ln.cancelled_qty
-        if not code or units <= 0:
+        if not code or ln.qty - ln.cancelled_qty <= 0:
             continue
-        open_units[code] = open_units.get(code, 0) + units
         rates.setdefault(code, []).append(ln.rate)
     asked: dict[str, int] = {}
     for position, ln in enumerate(data["lines"], start=1):
@@ -577,7 +606,7 @@ async def _revalidate_against_erp(
                 "(it may be between half and double the ERP rate)."
             )
     for code, units in asked.items():
-        allowed = int(open_units[code])
+        allowed = open_units[code]
         if units > allowed:
             raise ValueError(f"{code}: {units} units asked, but the ERP purchase order has only {allowed} open.")
     return erp_po, company, vendor
