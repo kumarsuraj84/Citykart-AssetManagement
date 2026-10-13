@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import type { Item } from "./types";
 import { CodeStatus, type CodeDecisionRow } from "./CodeDecisionRows";
+import { useErpCodes } from "./useErpCodes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -25,25 +26,20 @@ const ALL_DEPARTMENTS = "__all__";
  * (from any Article or Department) and link them to one Item, or mark them not tracked. Each decision is made for the
  * code itself; "also for new codes of these Articles" is an explicit extra, off unless ticked.
  */
-export function ErpCodesView({ companyId, items }: { companyId?: string; items: Item[] }) {
+export function ErpCodesView({ companyId, items, fixedItem }: { companyId?: string; items: Item[]; fixedItem?: Item }) {
   const qc = useQueryClient();
   const canCreate = useCanCreateMasters();
   const [tab, setTab] = useState<Tab>("undecided");
   const [search, setSearch] = useState("");
   const [department, setDepartment] = useState<string>(ALL_DEPARTMENTS);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [bulkItem, setBulkItem] = useState<string | undefined>();
+  const [pickedItem, setBulkItem] = useState<string | undefined>();
+  // Opened from an Item ("Add codes"): every ticked code goes to that Item, so there is nothing to choose.
+  const bulkItem = fixedItem ? String(fixedItem.id) : pickedItem;
   const [alsoArticles, setAlsoArticles] = useState(false);
   const [newItem, setNewItem] = useState(false);
 
-  const codesQ = useQuery({
-    queryKey: ["items", "codes", "all", companyId],
-    queryFn: async () =>
-      (await apiClient.get<CodeDecisionRow[]>(`/items/codes${companyId ? `?company_id=${companyId}` : ""}`)).map((c) => ({
-        ...c, not_tracked: c.not_tracked ?? false, not_tracked_by: c.not_tracked_by ?? null, map_id: c.map_id ?? null,
-      })),
-    retry: false,
-  });
+  const codesQ = useErpCodes(companyId);
   const all = codesQ.data ?? [];
   const itemOptions = items.map((i) => ({ value: String(i.id), label: i.name }));
 
@@ -178,18 +174,22 @@ export function ErpCodesView({ companyId, items }: { companyId?: string; items: 
         <div className="flex flex-col gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm" role="region" aria-label="Selected codes">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-medium">{selected.size} code{selected.size === 1 ? "" : "s"} selected</span>
-            <div className="w-60">
-              <SearchableSelect
-                id="codes-bulk-item" aria-label="Item for the selected codes" value={bulkItem} onValueChange={setBulkItem} options={itemOptions} placeholder="Choose the Item"
-                onCreateNew={canCreate ? () => setNewItem(true) : undefined} createLabel="New Item…"
-              />
-            </div>
+            {!fixedItem && (
+              <div className="w-60">
+                <SearchableSelect
+                  id="codes-bulk-item" aria-label="Item for the selected codes" value={bulkItem} onValueChange={setBulkItem} options={itemOptions} placeholder="Choose the Item"
+                  onCreateNew={canCreate ? () => setNewItem(true) : undefined} createLabel="New Item…"
+                />
+              </div>
+            )}
             <Button size="sm" disabled={!bulkItem || decide.isPending} onClick={() => decide.mutate({ rows: chosen, itemId: Number(bulkItem), withArticles: alsoArticles })}>
-              Link {selected.size} to this Item
+              {fixedItem ? `Link ${selected.size} to ${fixedItem.name}` : `Link ${selected.size} to this Item`}
             </Button>
-            <Button size="sm" variant="outline" disabled={decide.isPending} onClick={() => decide.mutate({ rows: chosen, itemId: null, withArticles: alsoArticles })}>
-              Mark {selected.size} not tracked
-            </Button>
+            {!fixedItem && (
+              <Button size="sm" variant="outline" disabled={decide.isPending} onClick={() => decide.mutate({ rows: chosen, itemId: null, withArticles: alsoArticles })}>
+                Mark {selected.size} not tracked
+              </Button>
+            )}
             <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
           </div>
           <label className="flex items-center gap-2 text-xs text-muted-foreground">

@@ -6,6 +6,7 @@ import { apiClient } from "../../lib/api-client";
 import type { Bundle } from "../bundles/BundlesScreen";
 import type { Item } from "./types";
 import { ItemFormDialog } from "./ItemFormDialog";
+import { ItemLinksDialog } from "./ItemLinksDialog";
 import { yesNo } from "../../lib/serial-rule";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -35,6 +36,7 @@ export function ItemsScreen() {
   const bundles = bundlesQ.data ?? [];
 
   const [editing, setEditing] = useState<Item | "new" | null>(null);
+  const [linking, setLinking] = useState<Item | null>(null);
   const [deleting, setDeleting] = useState<Item | null>(null);
   const [seeded, setSeeded] = useState<number | null>(null);
 
@@ -67,7 +69,14 @@ export function ItemsScreen() {
       cell: (i) => (i.serial_required && i.serial_later ? "Yes (read later)" : yesNo(i.serial_required)),
     },
     { key: "bundle", header: "Bundle", cell: (i) => bundles.find((b) => b.id === i.bundle_id)?.name ?? "—" },
-    { key: "maps", header: "ERP links", cellClassName: "tabular-nums", cell: (i) => (i.map_count === 0 ? "—" : i.map_count) },
+    {
+      key: "maps", header: "ERP links", cellClassName: "tabular-nums",
+      cell: (i) => (
+        <Button size="sm" variant="ghost" className="tabular-nums underline" aria-label={`ERP links of ${i.name}`} onClick={() => setLinking(i)}>
+          {i.map_count === 0 ? "Link…" : i.map_count}
+        </Button>
+      ),
+    },
     {
       key: "actions", header: "",
       cell: (i) => (
@@ -113,6 +122,8 @@ export function ItemsScreen() {
         columns={columns} rows={items} rowKey={(i) => i.id} isLoading={itemsQ.isLoading}
         emptyState={<EmptyState title="No Items yet." description="Use Create from Sub-Categories to start from today's classification, or add one by hand." />}
       />
+
+      {linking && <ItemLinksDialog item={linking} onClose={() => setLinking(null)} />}
 
       <ItemFormDialog
         open={editing !== null}

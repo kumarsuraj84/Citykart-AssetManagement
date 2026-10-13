@@ -126,6 +126,11 @@ can say **"not tracked"** instead of naming an Item (`item_map.not_tracked`, `it
   CKSPL and 2 CKVPL Articles of "Indoor Camera": the Item is shared, each company links its own Articles); Codes... decides one code or
   one product name; **Groups...** marks a whole Department / Section / Division. On a PO review the Primary Owner can mark an
   undecided line not tracked with the reach chosen (this code, product name, Article, Department, Section, Division).
+- **From the Item side (owner feedback 2026-10-13):** Setup > Items, the "ERP links" column is a button (count, or "Link…" when 0)
+  opening **ERP codes of {Item}**: tab *Linked* shows what points at the Item per company, grouped by the rule that links it
+  (whole Article / product name / single code, with the codes under it and an Unlink button; an Article link is one card, so
+  unlinking it frees every code of the Article), tab *Add codes* is the Codes view with the Item fixed (tick codes, "Link N to
+  {Item}"; no Item choice, no Not tracked). Frontend only: it reuses `GET /items/codes` and `DELETE /items/maps/{id}`.
 - Undoing a rule only deactivates it (`is_active = false`). Real data (dev): CKSPL 146 Articles in 80 Departments and 6 Sections,
   CKVPL 58 Articles in 45 Departments, one Division each ("FIXED ASSETS").
 
