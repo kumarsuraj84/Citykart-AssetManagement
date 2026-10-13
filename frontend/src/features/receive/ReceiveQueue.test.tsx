@@ -77,12 +77,12 @@ describe("Receive queue (S2: built on GET /purchase-orders?waiting=true)", () =>
     expect(screen.queryByText(/may not show here yet/i)).not.toBeInTheDocument();
   });
 
-  it("Receive opens the PO at its lines", async () => {
+  it("Receive goes straight to the Receive screen of that PO (S4); the row itself opens the PO", async () => {
     mockApi([PO(4)]);
     const router = renderAt();
     fireEvent.click(await screen.findByRole("button", { name: "Receive PO-4" }));
-    await waitFor(() => expect(router.state.location.pathname).toBe("/purchase-orders/4"));
-    expect(router.state.location.hash).toBe("po-lines");
+    await waitFor(() => expect(router.state.location.pathname).toBe("/receive/4"));
+    expect(router.state.location.search).toEqual({});
   });
 
   it("searches (server q) and filters Waiting / Partly Received", async () => {

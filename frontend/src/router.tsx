@@ -59,6 +59,7 @@ import { ErpInboxScreen, type InboxSection } from "./features/erp/ErpInbox";
 import { SetupWizard } from "./features/settings/SetupWizard";
 import { SETUP_TOTAL } from "./features/settings/setup-progress";
 import ReceiveRoute from "./routes/receive";
+import ReceivePoRoute from "./routes/receive-po";
 import {
   EmployeesRoute,
   InstallPointsRoute,
@@ -315,6 +316,8 @@ export interface AssetsSearch {
   mine?: boolean;
   q?: string;
   find?: boolean;
+  /** S4: comma-separated asset ids -- only these assets (Receive's "Open assets"). */
+  ids?: string;
 }
 
 const truthyParam = (v: unknown) => v === true || v === 1 || v === "1" || v === "true";
@@ -325,6 +328,7 @@ function validateAssetsSearch(search: Record<string, unknown>): AssetsSearch {
     mine: truthyParam(search.mine) ? true : undefined,
     q: typeof search.q === "string" && search.q !== "" ? search.q : undefined,
     find: truthyParam(search.find) ? true : undefined,
+    ids: searchText(search.ids),
   };
 }
 
@@ -399,6 +403,27 @@ export const receiveRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/receive",
   component: guarded("work", ReceiveRoute),
+});
+
+/** A whole number from a search parameter ("3" or 3), else undefined. */
+function searchWholeNumber(v: unknown): number | undefined {
+  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+  return Number.isInteger(n) && n > 0 ? n : undefined;
+}
+
+// S4: the Receive screen of one purchase order. `line` (from a PO line's
+// Receive) starts with only that line's quantity filled in and the cursor on it.
+export const receivePoRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/receive/$poId",
+  validateSearch: (search: Record<string, unknown>): { line?: number } => ({
+    line: searchWholeNumber(search.line),
+  }),
+  component: guarded("work", function ReceivePoComponent() {
+    const { poId } = receivePoRoute.useParams();
+    const { line } = receivePoRoute.useSearch();
+    return <ReceivePoRoute poId={poId} line={line} />;
+  }),
 });
 
 // Dispatch is now part of Move / Dispatch (one screen); the old address keeps working.
@@ -786,6 +811,7 @@ const routeTree = rootRoute.addChildren([
     assetMovementRoute,
     printLabelsRoute,
     receiveRoute,
+    receivePoRoute,
     dispatchRoute,
     purchaseOrdersIndexRoute,
     purchaseOrdersNewRoute,

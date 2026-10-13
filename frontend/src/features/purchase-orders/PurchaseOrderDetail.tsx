@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { apiClient } from "../../lib/api-client";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import type { Item } from "../items/types";
@@ -16,7 +15,7 @@ import { ErrorState } from "@/components/shared/ErrorState";
 import { FormField } from "@/components/shared/FormField";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { AddBundleDialog } from "./AddBundleDialog";
-import { DeliveryDoneDialog } from "./DeliveryDoneDialog";
+import { InvoicesCard, type InvoiceSummary } from "./InvoicesCard";
 import { LineEditDialog, type EditTarget } from "./LineEditDialog";
 import { CancelWaitingDialog, type CancelTarget } from "./CancelWaitingDialog";
 import { PoLinesTable } from "./PoLinesTable";
@@ -26,11 +25,8 @@ import { clearPoFlash, peekPoFlash } from "./po-flash";
 import { MAX_QUANTITY, quantityHint, quantityProblem } from "@/lib/limits";
 import { DeliveryReminderBanner } from "../erp/DeliveryReminders";
 import { ErpChangesPanel } from "../erp/ErpChanges";
-import { ErpPiDialog } from "../erp/ErpPiDialog";
-import { PrintLabelsAction } from "../labels/PrintLabelsAction";
 import { workAreaLabel } from "@/lib/labels";
-import { brandOptions, itemOptions, namesById, placeOption } from "@/lib/option-labels";
-import { usePlaceLookups } from "@/lib/lookups";
+import { brandOptions, itemOptions, namesById } from "@/lib/option-labels";
 
 interface PurchaseOrderOut {
   id: number;
@@ -55,14 +51,7 @@ function SummaryTile({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
-interface RecordPiResult {
-  invoice_number: string;
-  updated: string[];
-  skipped: string[];
-}
-
-// A person or place a delivery can be Received Into. placeOptions keeps its
-// code/email searchable and shows its Place beside the name.
+// A person or place (the PO's delivery place is named in the header).
 interface PlaceOption extends Option {
   asset_user_type?: string | null;
   company_id?: number | null;
@@ -83,9 +72,10 @@ const plural = (n: number, one: string) => `${n.toLocaleString("en-IN")} ${one}$
 
 /**
  * A purchase order, by LINE (S2): one row per line with Ordered / Received /
- * Waiting units, whatever the quantity. Receiving opens the existing Mark
- * Delivery Done dialog with every waiting unit of the line (or of the PO);
- * unit-level detail is behind each line's "View units".
+ * Waiting units, whatever the quantity. Receiving happens on the Receive
+ * screen (S4: /receive/$poId, `?line=N` for one line); unit-level detail is
+ * behind each line's "View units"; the invoices received come from one small
+ * request (GET …/invoices), never from the unit list.
  */
 export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const qc = useQueryClient();
@@ -105,11 +95,10 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     queryKey: ["purchase-order", poId, "line-groups"],
     queryFn: () => apiClient.get<LineGroup[]>(`/purchase-orders/${poId}/line-groups`),
   });
-  // Every unit, never rendered as rows: only read for the invoices received
-  // under this PO and the labels of its received units.
-  const linesQ = useQuery({
-    queryKey: ["purchase-order", poId, "lines"],
-    queryFn: () => apiClient.get<PendingAssetRow[]>(`/purchase-orders/${poId}/lines`),
+  // S4: the invoices received under this PO -- one small request; no unit list is loaded.
+  const invoicesQ = useQuery({
+    queryKey: ["purchase-order", poId, "invoices"],
+    queryFn: () => apiClient.get<InvoiceSummary[]>(`/purchase-orders/${poId}/invoices`),
   });
   const categoriesQ = useQuery({ queryKey: ["masters", "categories"], queryFn: () => apiClient.get<CategoryOption[]>("/masters/categories") });
   const subcategoriesQ = useQuery({
@@ -130,7 +119,6 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const brandsQ = useQuery({ queryKey: ["masters", "brands"], queryFn: () => apiClient.get<Option[]>("/masters/brands") });
   const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => apiClient.get<Item[]>("/items") });
   const { caps } = useCapabilities();
-  const placeLookups = usePlaceLookups();
   const [newItemForAdd, setNewItemForAdd] = useState(false);
   const [newBrandForAdd, setNewBrandForAdd] = useState(false);
 
@@ -142,15 +130,12 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const vendors = vendorsQ.data ?? [];
   const brands = brandsQ.data ?? [];
   const groups = Array.isArray(groupsQ.data) ? groupsQ.data : [];
-  const units = Array.isArray(linesQ.data) ? linesQ.data : [];
+  const invoices = Array.isArray(invoicesQ.data) ? invoicesQ.data : [];
   const costCenterName = (id: number | null) => (id == null ? "—" : costCenters.find((c) => c.id === id)?.name ?? String(id));
   const vendorName = (id: number | null) =>
     id == null ? "—" : vendors.find((v) => v.id === id)?.name ?? poQ.data?.vendor_name ?? String(id);
   const itemSelectOptions = itemOptions(items, { categories: namesById(categories), subcategories: namesById(subcategories) });
   const brandSelectOptions = brandOptions(brands);
-  // The PO's own delivery place stays choosable when receiving, even if it is not a stock room.
-  const poDelivery = asset_users.find((u) => u.id === poQ.data?.delivery_asset_user_id);
-  const deliveryExtra = poDelivery ? [placeOption(poDelivery, placeLookups)] : [];
 
   // Summary: units, counted by the server per line (the caller's work area).
   const totals = groups.reduce(
@@ -169,40 +154,6 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     const el = document.getElementById("po-lines");
     if (el && typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "start" });
   }, [hash, groupsReady]);
-
-  // --- Invoices received and their Purchase Invoice (PI) (AM-19) ---
-  // PI arrives from Finance per Invoice, not per PO -- a PO received across
-  // several partial deliveries can have several invoices, each getting its
-  // own PI later.
-  const receivedUnits = units.filter((l) => l.status === "DELIVERED");
-  const deliveredInvoiceNumbers = Array.from(new Set(
-    receivedUnits.filter((l) => l.invoice_number).map((l) => l.invoice_number as string),
-  ));
-  const deliveredAssetIds = receivedUnits.filter((l) => l.delivered_asset_id != null).map((l) => l.delivered_asset_id as number);
-  const [recordPiInvoice, setRecordPiInvoice] = useState<string | null>(null);
-  const [recordPiForm, setRecordPiForm] = useState({ piNumber: "", piDate: "", overwrite: false });
-  const [recordPiResult, setRecordPiResult] = useState<RecordPiResult | null>(null);
-
-  function openRecordPi(invoiceNumber: string) {
-    setRecordPiInvoice(invoiceNumber);
-    setRecordPiForm({ piNumber: "", piDate: "", overwrite: false });
-    setRecordPiResult(null);
-  }
-
-  const recordPiMutation = useMutation({
-    mutationFn: () =>
-      apiClient.post<RecordPiResult>(`/purchase-orders/${poId}/record-pi`, {
-        invoice_number: recordPiInvoice,
-        pi_number: recordPiForm.piNumber,
-        pi_date: recordPiForm.piDate,
-        overwrite: recordPiForm.overwrite,
-      }),
-    onSuccess: (result) => {
-      setRecordPiResult(result);
-      qc.invalidateQueries({ queryKey: ["purchase-order", poId, "lines"] });
-    },
-  });
-  const canRecordPi = recordPiForm.piNumber.trim() !== "" && recordPiForm.piDate !== "";
 
   // --- Add Line form (collapsed by default) ---
   const [showAddLine, setShowAddLine] = useState(false);
@@ -297,56 +248,12 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     },
   });
 
-  // --- Receive (the existing Mark Delivery Done dialog) ---
-  const [deliverUnits, setDeliverUnits] = useState<PendingAssetRow[]>([]);
-  const [deliverOpen, setDeliverOpen] = useState(false);
-  const [deliverKey, setDeliverKey] = useState(0);
-  // Which line's waiting units are being fetched ("all" = the whole PO).
-  const [receiving, setReceiving] = useState<number | "all" | null>(null);
-  const [receiveError, setReceiveError] = useState<string | null>(null);
-  const [justDelivered, setJustDelivered] = useState<number[]>([]);
-
-  function startReceiving(waitingUnits: PendingAssetRow[]) {
-    const waiting = waitingUnits.filter((u) => u.status === "PENDING");
-    if (waiting.length === 0) {
-      setReceiveError("Nothing is waiting to be received.");
-      return;
-    }
-    setDeliverUnits(waiting);
-    setDeliverKey((k) => k + 1);
-    setDeliverOpen(true);
+  // --- Receive: the Receive screen, for the whole PO or one line (?line=N) ---
+  function receiveLine(line: LineGroup) {
+    navigate({ to: "/receive/$poId", params: { poId: String(poId) }, search: { line: line.line_no } });
   }
-
-  async function receiveLine(line: LineGroup) {
-    setReceiveError(null);
-    setReceiving(line.line_no);
-    try {
-      const got = await apiClient.get<PendingAssetRow[]>(`/purchase-orders/${poId}/line-groups/${line.line_no}/units?status=WAITING`);
-      startReceiving(Array.isArray(got) ? got : []);
-    } catch (e) {
-      setReceiveError(e instanceof Error ? e.message : "Couldn't load the waiting units of this line.");
-    } finally {
-      setReceiving(null);
-    }
-  }
-
-  async function receiveAll() {
-    setReceiveError(null);
-    setReceiving("all");
-    try {
-      const got = await apiClient.get<PendingAssetRow[]>(`/purchase-orders/${poId}/lines`);
-      startReceiving(Array.isArray(got) ? got : []);
-    } catch (e) {
-      setReceiveError(e instanceof Error ? e.message : "Couldn't load the waiting units of this purchase order.");
-    } finally {
-      setReceiving(null);
-    }
-  }
-
-  function onDelivered(result: PendingAssetRow[]) {
-    refreshPo();
-    setDeliverOpen(false);
-    setJustDelivered(result.map((l) => l.delivered_asset_id).filter((id): id is number => id != null));
+  function receiveAll() {
+    navigate({ to: "/receive/$poId", params: { poId: String(poId) }, search: {} });
   }
 
   if (poQ.isError) return <ErrorState message="Couldn't load this purchase order." onRetry={() => poQ.refetch()} />;
@@ -376,14 +283,9 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
                 Cancel waiting items
               </Button>
             )}
-            <AsyncButton
-              onClick={receiveAll}
-              disabled={!groupsReady || totals.waiting === 0 || (receiving !== null && receiving !== "all")}
-              pending={receiving === "all"}
-              pendingLabel="Opening…"
-            >
+            <Button onClick={receiveAll} disabled={!groupsReady || totals.waiting === 0}>
               Receive all waiting{groupsReady && totals.waiting > 0 ? ` (${totals.waiting})` : ""}
-            </AsyncButton>
+            </Button>
           </>
         }
       />
@@ -399,13 +301,6 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
         <SummaryTile label="Waiting units" value={totals.waiting} />
         <SummaryTile label="Value" value={money(totals.value)} />
       </div>
-
-      {justDelivered.length > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-success-soft/60 p-2 text-sm" role="status">
-          <span>{plural(justDelivered.length, "unit")} received and now in the register.</span>
-          <PrintLabelsAction assetIds={justDelivered} variant="default">Print their labels now</PrintLabelsAction>
-        </div>
-      )}
 
       <section id="po-lines" className="flex scroll-mt-4 flex-col gap-2 rounded-md border p-3" aria-label="Lines">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -424,9 +319,6 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
 
         {notice && (
           <p className="rounded-md border bg-muted/40 px-2 py-1.5 text-sm" role="status">{notice}</p>
-        )}
-        {receiveError && (
-          <p className="text-sm text-destructive" role="alert">{receiveError}</p>
         )}
         {cancelUnitMutation.isError && (
           <p className="text-sm text-destructive" role="alert">
@@ -516,7 +408,6 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
             poId={poId}
             lines={groups}
             isLoading={groupsQ.isLoading}
-            receivingLine={typeof receiving === "number" ? receiving : null}
             onReceive={receiveLine}
             onEdit={(line) => openEdit({ kind: "line", line })}
             onCancelWaiting={(line) => openCancel({ kind: "line", line })}
@@ -526,38 +417,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
         )}
       </section>
 
-      {(deliveredInvoiceNumbers.length > 0 || deliveredAssetIds.length > 0) && (
-        <section className="rounded-md border p-3" aria-label="Invoices received">
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold">Invoices received under this PO</h2>
-            <div className="flex flex-wrap gap-2">
-              {deliveredAssetIds.length > 0 && (
-                <PrintLabelsAction assetIds={deliveredAssetIds}>Print labels for the received units</PrintLabelsAction>
-              )}
-              {po?.erp_po_code != null && deliveredInvoiceNumbers.length > 0 && <ErpPiDialog poId={poId} />}
-            </div>
-          </div>
-          {deliveredInvoiceNumbers.length > 0 && (
-            <>
-              <p className="mb-2 text-xs text-muted-foreground">
-                Purchase Invoice (PI) Number/Date arrive from Finance per invoice, not per PO -- a partial delivery on a
-                different invoice gets its own PI, recorded separately.
-                {po?.erp_po_code != null ? " Fetch PI from ERP fills them in from the ERP; Record PI types one in." : ""}
-              </p>
-              <ul className="flex flex-col gap-1.5">
-                {deliveredInvoiceNumbers.map((invoiceNumber) => (
-                  <li key={invoiceNumber} className="flex items-center justify-between gap-2 rounded-sm border bg-muted/40 px-2 py-1.5 text-sm">
-                    <span className="font-medium">{invoiceNumber}</span>
-                    <Button size="sm" variant="outline" onClick={() => openRecordPi(invoiceNumber)}>
-                      Record PI
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </section>
-      )}
+      {invoices.length > 0 && <InvoicesCard poId={poId} invoices={invoices} fromErp={po?.erp_po_code != null} />}
 
       {/* De-emphasised and only offered while nothing has been received: once
           anything is received the server refuses (409) and the waiting items
@@ -598,84 +458,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
         onCreated={(row) => setLineForm((f) => ({ ...f, brandId: String(row.id) }))}
       />
 
-      <Dialog open={recordPiInvoice !== null} onOpenChange={(open) => !open && setRecordPiInvoice(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Record PI for invoice {recordPiInvoice}</DialogTitle>
-          </DialogHeader>
-          {recordPiResult ? (
-            <div className="flex flex-col gap-2 text-sm">
-              <p>
-                Updated <span className="font-semibold tabular-nums">{recordPiResult.updated.length}</span> asset(s).
-              </p>
-              {recordPiResult.skipped.length > 0 && (
-                <p className="text-muted-foreground">
-                  Skipped <span className="font-semibold tabular-nums">{recordPiResult.skipped.length}</span> asset(s)
-                  that already had a PI Number (tick "Overwrite existing values" and run it again to force-correct them).
-                </p>
-              )}
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              <FormField htmlFor="record-pi-number" label="PI Number" required>
-                <Input
-                  id="record-pi-number" aria-label="PI Number" value={recordPiForm.piNumber}
-                  onChange={(e) => setRecordPiForm((f) => ({ ...f, piNumber: e.target.value }))}
-                />
-              </FormField>
-              <FormField htmlFor="record-pi-date" label="PI Date" required>
-                <Input
-                  id="record-pi-date" aria-label="PI Date" type="date" value={recordPiForm.piDate}
-                  onChange={(e) => setRecordPiForm((f) => ({ ...f, piDate: e.target.value }))}
-                />
-              </FormField>
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox
-                  aria-label="Overwrite existing values"
-                  checked={recordPiForm.overwrite}
-                  onCheckedChange={(checked) => setRecordPiForm((f) => ({ ...f, overwrite: checked === true }))}
-                />
-                Overwrite existing values
-              </label>
-              <p className="text-xs text-muted-foreground">
-                Off (default): only fills in assets from this invoice that don't have a PI yet.
-                On: replaces the PI on every asset from this invoice, even ones already set -- use this to fix a typo.
-              </p>
-              {recordPiMutation.isError && (
-                <p className="text-sm text-destructive" role="alert">
-                  {recordPiMutation.error instanceof Error ? recordPiMutation.error.message : "Failed to record PI."}
-                </p>
-              )}
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRecordPiInvoice(null)}>
-              {recordPiResult ? "Close" : "Cancel"}
-            </Button>
-            {!recordPiResult && (
-              <AsyncButton onClick={() => recordPiMutation.mutate()} disabled={!canRecordPi} pending={recordPiMutation.isPending} pendingLabel="Saving…">
-                Save
-              </AsyncButton>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <AddBundleDialog poId={poId} open={bundleOpen} onOpenChange={setBundleOpen} onAdded={(made) => announceAdded(made, "Set added")} />
-
-      {deliverOpen && (
-        <DeliveryDoneDialog
-          key={deliverKey}
-          poId={poId}
-          units={deliverUnits}
-          open={deliverOpen}
-          onOpenChange={setDeliverOpen}
-          companyId={po?.company_id ?? null}
-          defaultReceivedIntoId={po?.delivery_asset_user_id}
-          extraReceivedInto={deliveryExtra}
-          onDelivered={onDelivered}
-        />
-      )}
 
       <Dialog open={deleteOpen} onOpenChange={(open) => { setDeleteOpen(open); if (!open) deleteMutation.reset(); }}>
         <DialogContent>

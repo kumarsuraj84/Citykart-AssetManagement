@@ -125,7 +125,7 @@ function mockApi({ configured = true, rows = [ROW] as unknown[], posError = null
     return Promise.resolve([]);
   });
   (apiClient.post as any).mockImplementation((path: string) => {
-    if (path === "/erp/pos/create") return Promise.resolve({ po_id: 42, po_number: "SPO/012994/26-27", lines_created: 28 });
+    if (path === "/erp/pos/create") return Promise.resolve({ po_id: 42, po_number: "SPO/012994/26-27", lines_created: 4, units_created: 28 });
     return Promise.resolve({});
   });
 }
@@ -320,6 +320,28 @@ describe("ERP review: matched lines folded, exceptions open", () => {
     expect(posted("/erp/pos/create")).not.toHaveProperty("vendor_choice");
     expect(await screen.findByRole("link", { name: "Open SPO/012994/26-27" })).toHaveAttribute("href", "/purchase-orders/42");
     expect(screen.getByText(/PO created: 4 lines, 28 units waiting\./)).toBeInTheDocument();
+  });
+
+  it("S4: the created banner uses the server's lines_created (lines) and units_created (units)", async () => {
+    mockApi();
+    (apiClient.post as any).mockImplementation((path: string) =>
+      Promise.resolve(path === "/erp/pos/create" ? { po_id: 42, po_number: "SPO/012994/26-27", lines_created: 5, units_created: 30 } : {}));
+    renderScreen();
+    const create = await openDraft();
+    await waitFor(() => expect(create).not.toBeDisabled());
+    fireEvent.click(create);
+    expect(await screen.findByText(/PO created: 5 lines, 30 units waiting\./)).toBeInTheDocument();
+  });
+
+  it("S4: an older server (lines_created only, holding the units) still reads right: lines from the draft", async () => {
+    mockApi();
+    (apiClient.post as any).mockImplementation((path: string) =>
+      Promise.resolve(path === "/erp/pos/create" ? { po_id: 42, po_number: "SPO/012994/26-27", lines_created: 28 } : {}));
+    renderScreen();
+    const create = await openDraft();
+    await waitFor(() => expect(create).not.toBeDisabled());
+    fireEvent.click(create);
+    expect(await screen.findByText(/PO created: 4 lines, 28 units waiting\./)).toBeInTheDocument();
   });
 
   it("an exception line is open: ERP words, the suggestion in one click, Remember defaulting to the server's reach", async () => {

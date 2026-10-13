@@ -347,7 +347,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
 
   const createMutation = useMutation({
     mutationFn: () =>
-      apiClient.post<{ po_id: number; po_number: string; lines_created: number }>("/erp/pos/create", {
+      apiClient.post<{ po_id: number; po_number: string; lines_created: number; units_created?: number }>("/erp/pos/create", {
         // erp_po_code is always sent: the server re-reads this ERP purchase order and takes the number and date from it.
         erp_po_code: draft.erp_po_code, company_id: Number(companyId), po_number: poNumber.trim(), po_date: poDate,
         // A supplier not matched yet sends how to match it instead of a vendor (done in the same create).
@@ -429,8 +429,15 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
 
   const created = createMutation.data;
   const locked = !!created;
-  // The server numbers one line per draft line, or one per part of a set; it reports the units it made.
-  const createdLineCount = lines.reduce((n, l) => n + (bundleOf(l.itemId)?.parts.length ?? 1), 0);
+  // S4: the server answers lines_created (lines: one per draft line, one per part of a set) and
+  // units_created. An older server sent only lines_created, holding the UNIT count; then the lines
+  // are counted from the draft as before.
+  const createdLines = created
+    ? typeof created.units_created === "number"
+      ? created.lines_created
+      : lines.reduce((n, l) => n + (bundleOf(l.itemId)?.parts.length ?? 1), 0)
+    : 0;
+  const createdUnits = created ? (typeof created.units_created === "number" ? created.units_created : created.lines_created) : 0;
   // The server checks the draft against the ERP again; when it refuses one line its sentence is shown under that line.
   const createMessage = createMutation.isError
     ? createMutation.error instanceof Error ? createMutation.error.message : "Failed to create the purchase order."
@@ -564,7 +571,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
         </h2>
         {created && (
           <p className="text-sm text-success" role="status">
-            PO created: {linesAndUnitsSentence(createdLineCount, created.lines_created)}.{" "}
+            PO created: {linesAndUnitsSentence(createdLines, createdUnits)}.{" "}
             <Link className="underline" to="/purchase-orders/$id" params={{ id: String(created.po_id) }}>Open {created.po_number}</Link>
           </p>
         )}

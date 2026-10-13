@@ -6,7 +6,7 @@ import { createAppRouter } from "../../router";
 import { apiClient } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
 import type { Capabilities } from "../../lib/capabilities";
-import { KINDS, OPERATOR_IT, VIEWER, withCapabilities } from "../../test-capabilities";
+import { KINDS, withCapabilities } from "../../test-capabilities";
 
 vi.mock("../../lib/api-client");
 
@@ -71,12 +71,13 @@ function groupsFrom(units: Unit[]) {
 
 const UNIT_STATUS: Record<string, string> = { WAITING: "PENDING", RECEIVED: "DELIVERED", CANCELLED: "CANCELLED" };
 
-function mockGets(units: Unit[], opts: { po?: unknown; groups?: unknown[] } = {}) {
+function mockGets(units: Unit[], opts: { po?: unknown; groups?: unknown[]; invoices?: unknown[] } = {}) {
   const groups = opts.groups ?? groupsFrom(units);
   (apiClient.get as any).mockImplementation((path: string) => {
     if (path === "/purchase-orders/1") return Promise.resolve(opts.po ?? PO);
     if (path === "/purchase-orders/1/line-groups") return Promise.resolve(groups);
     if (path === "/purchase-orders/1/lines") return Promise.resolve(units);
+    if (path === "/purchase-orders/1/invoices") return Promise.resolve(opts.invoices ?? []);
     const m = path.match(/^\/purchase-orders\/1\/line-groups\/(\d+)\/units\?status=(\w+)$/);
     if (m) return Promise.resolve(units.filter((u) => (u.line_no ?? 1) === Number(m[1]) && u.status === UNIT_STATUS[m[2]]));
     if (path === "/items") {
@@ -99,7 +100,7 @@ function mockGets(units: Unit[], opts: { po?: unknown; groups?: unknown[] } = {}
 const linesTable = () => screen.getByRole("table", { name: "Purchase order lines" });
 const lineRows = () => within(linesTable()).getAllByRole("row", { name: /^Line \d+:/ });
 const unitCalls = () => (apiClient.get as any).mock.calls.filter(([p]: [string]) => /\/line-groups\/\d+\/units/.test(p));
-const deliverCall = () => (apiClient.post as any).mock.calls.find(([p]: [string]) => p === "/purchase-orders/1/deliver");
+const allUnitsCalls = () => (apiClient.get as any).mock.calls.filter(([p]: [string]) => p === "/purchase-orders/1/lines");
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -152,6 +153,9 @@ describe("PurchaseOrderDetail: lines, not units (S2)", () => {
     expect(screen.getByText("Received units").nextSibling).toHaveTextContent("0");
     expect(screen.getByRole("button", { name: "Receive all waiting (104)" })).toBeInTheDocument();
     expect(unitCalls()).toHaveLength(0);
+    // S4: the page no longer loads every unit (the invoices card has its own small request).
+    expect(allUnitsCalls()).toHaveLength(0);
+    expect(apiClient.get).toHaveBeenCalledWith("/purchase-orders/1/invoices");
   });
 
   it("partly received, fully received and cancelled lines show their counts and status in words, with only the actions that apply", async () => {
@@ -177,40 +181,31 @@ describe("PurchaseOrderDetail: lines, not units (S2)", () => {
     expect(screen.getByText("Waiting units").nextSibling).toHaveTextContent("3");
   });
 
-  it("Receive on a line feeds the delivery dialog with exactly that line's waiting units", async () => {
+  it("Receive on a line opens the Receive screen for this PO with only that line (?line=N), loading no units", async () => {
     const line1 = [PENDING_LINE, { ...PENDING_LINE, id: 13 }];
     const line2 = [20, 21, 22].map((id) => ({ ...PENDING_LINE, id, line_no: 2, description: "Logitech Mouse" }));
-    const done = { ...PENDING_LINE, id: 23, line_no: 2, description: "Logitech Mouse", status: "DELIVERED", serial_number: "M0", delivered_asset_id: 70 };
-    mockGets([...line1, ...line2, done]);
-    (apiClient.post as any).mockResolvedValue([]);
-    renderDetailAt();
+    mockGets([...line1, ...line2]);
+    const router = renderDetailAt();
     await waitFor(() => expect(lineRows()).toHaveLength(2));
 
     fireEvent.click(screen.getByRole("button", { name: /receive line 2/i }));
-    const dialog = await screen.findByRole("dialog", { name: "Receive 3 units" });
-    expect(apiClient.get).toHaveBeenCalledWith("/purchase-orders/1/line-groups/2/units?status=WAITING");
-    fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-2" } });
-    fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "300" } });
-    fireEvent.click(within(dialog).getByLabelText(/received into/i));
-    fireEvent.click(await screen.findByText("IT Stock-HO"));
-    fireEvent.change(within(dialog).getByLabelText(/^serial numbers\*?$/i), { target: { value: "M1\nM2\nM3" } });
-    await waitFor(() => expect(within(dialog).getByRole("button", { name: /confirm/i })).not.toBeDisabled());
-    fireEvent.click(within(dialog).getByRole("button", { name: /confirm/i }));
-
-    await waitFor(() => expect(deliverCall()).toBeTruthy());
-    const ids = deliverCall()[1].lines.map((l: { pending_asset_id: number }) => l.pending_asset_id);
-    expect(ids).toEqual([20, 21, 22]);
+    await waitFor(() => expect(router.state.location.pathname).toBe("/receive/1"));
+    expect(router.state.location.search).toEqual({ line: 2 });
+    expect(unitCalls()).toHaveLength(0);
+    expect(allUnitsCalls()).toHaveLength(0);
+    // The old tick-rows dialog is gone.
+    expect(screen.queryByRole("dialog", { name: /receive \d+ units?/i })).not.toBeInTheDocument();
   });
 
-  it("Receive all waiting (header) opens the dialog with every waiting unit of every line", async () => {
+  it("Receive all waiting (header) opens the Receive screen for the whole PO", async () => {
     mockGets([PENDING_LINE, PENDING_LINE_2, DELIVERED_LINE]);
-    renderDetailAt();
+    const router = renderDetailAt();
     const all = await screen.findByRole("button", { name: "Receive all waiting (2)" });
     await waitFor(() => expect(all).not.toBeDisabled());
     fireEvent.click(all);
-    const dialog = await screen.findByRole("dialog", { name: "Receive 2 units" });
-    expect(apiClient.get).toHaveBeenCalledWith("/purchase-orders/1/lines");
-    expect(within(dialog).getAllByLabelText(/^serial number\*?$/i)).toHaveLength(2);
+    await waitFor(() => expect(router.state.location.pathname).toBe("/receive/1"));
+    expect(router.state.location.search).toEqual({});
+    expect(allUnitsCalls()).toHaveLength(0);
   });
 
   it("a PO with nothing waiting cannot be received", async () => {
@@ -221,18 +216,6 @@ describe("PurchaseOrderDetail: lines, not units (S2)", () => {
     expect(screen.queryByRole("button", { name: /cancel waiting items/i })).not.toBeInTheDocument();
   });
 
-  it("shows the server's sentence when a line's waiting units cannot be loaded", async () => {
-    mockGets([PENDING_LINE]);
-    renderDetailAt();
-    await waitFor(() => expect(lineRows()).toHaveLength(1));
-    const realGet = (apiClient.get as any).getMockImplementation();
-    (apiClient.get as any).mockImplementation((path: string) =>
-      path.includes("/units?") ? Promise.reject(new Error("This PO line was not found.")) : realGet(path),
-    );
-    fireEvent.click(screen.getByRole("button", { name: /receive line 1/i }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("This PO line was not found.");
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  });
 });
 
 describe("PurchaseOrderDetail: editing a line (S2)", () => {
@@ -574,465 +557,138 @@ describe("PurchaseOrderDetail: adding lines and sets", () => {
   });
 });
 
-// --- The delivery dialog itself is unchanged; it is now fed a line's (or the PO's) waiting units. ---
-describe("PurchaseOrderDetail: the Receive (Mark Delivery Done) dialog", () => {
-  async function receiveLine(units: Unit[], lineNo = 1, opts: { po?: unknown } = {}) {
-    mockGets(units, opts);
-    renderDetailAt();
-    await waitFor(() => expect(lineRows().length).toBeGreaterThan(0));
-    fireEvent.click(screen.getByRole("button", { name: new RegExp(`receive line ${lineNo}\\b`, "i") }));
-    return screen.findByRole("dialog");
-  }
-
-  async function openDeliveryFor(pending: Unit[]) {
-    mockGets(pending);
-    (apiClient.post as any).mockResolvedValue([]);
-    renderDetailAt();
-    const all = await screen.findByRole("button", { name: /receive all waiting/i });
-    await waitFor(() => expect(all).not.toBeDisabled());
-    fireEvent.click(all);
-    const dialog = await screen.findByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-9" } });
-    fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "900" } });
-    fireEvent.click(within(dialog).getByLabelText(/received into/i));
-    fireEvent.click(await screen.findByText("IT Stock-HO"));
-    return dialog;
-  }
-  const confirmBtn = (d: HTMLElement) => within(d).getByRole("button", { name: /confirm/i });
-  const LAPTOP_2 = { ...PENDING_LINE, id: 13 };
-  const LAPTOP_3 = { ...PENDING_LINE, id: 14 };
-
-  it("receiving one unit submits the same payload as before", async () => {
-    (apiClient.post as any).mockResolvedValue([{ ...PENDING_LINE, status: "DELIVERED" }]);
-    const dialog = await receiveLine([PENDING_LINE]);
-    expect(dialog).toHaveAccessibleName("Receive 1 unit");
-    expect(confirmBtn(dialog)).toBeDisabled();
-
-    fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-1" } });
-    fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "1180" } });
-    fireEvent.change(within(dialog).getByLabelText(/^serial number\*?$/i), { target: { value: "SN-001" } });
-    // Radix Select isn't a native <select>; pick the place via its trigger.
-    fireEvent.click(within(dialog).getByLabelText(/received into/i));
-    fireEvent.click(await screen.findByText("IT Stock-HO"));
-
-    await waitFor(() => expect(confirmBtn(dialog)).not.toBeDisabled());
-    fireEvent.click(confirmBtn(dialog));
-    await waitFor(() =>
-      expect(apiClient.post).toHaveBeenCalledWith(
-        "/purchase-orders/1/deliver",
-        expect.objectContaining({
-          invoice_number: "INV-1",
-          invoice_amount: 1180,
-          lines: [{ pending_asset_id: 10, serial_number: "SN-001", initial_asset_user_id: 5 }],
-        }),
-      ),
-    );
-  });
-
-  it("asks where it is Received Into once, above the invoice fields, and sends it with every unit", async () => {
-    const dialog = await openDeliveryFor([PENDING_LINE, PENDING_LINE_2]);
-    expect(within(dialog).getAllByLabelText(/received into/i)).toHaveLength(1);
-    expect(within(dialog).queryByText(/initial asset user|holder/i)).not.toBeInTheDocument();
-    const assetUserLabel = dialog.querySelector('label[for="initial-asset-user"]')!;
-    const invoiceLabel = dialog.querySelector('label[for="invoice-number"]')!;
-    expect(assetUserLabel.compareDocumentPosition(invoiceLabel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-
-    const serials = within(dialog).getAllByLabelText(/^serial number\*?$/i);
-    fireEvent.change(serials[0], { target: { value: "SN-A" } });
-    fireEvent.change(serials[1], { target: { value: "SN-B" } });
-    await waitFor(() => expect(confirmBtn(dialog)).not.toBeDisabled());
-    fireEvent.click(confirmBtn(dialog));
-    await waitFor(() =>
-      expect(apiClient.post).toHaveBeenCalledWith(
-        "/purchase-orders/1/deliver",
-        expect.objectContaining({
-          lines: [
-            { pending_asset_id: 10, serial_number: "SN-A", initial_asset_user_id: 5 },
-            { pending_asset_id: 12, serial_number: "SN-B", initial_asset_user_id: 5 },
-          ],
-        }),
-      ),
-    );
-  });
-
-  it("a PO with a delivery location shows it in the header and starts receiving with it as Received Into", async () => {
-    (apiClient.post as any).mockResolvedValue([]);
-    const dialog = await receiveLine([PENDING_LINE], 1, { po: { ...PO, delivery_asset_user_id: 5, warehouse_code: "CKSPL-WH-TAJNAGAR" } });
-    await waitFor(() => expect(screen.getByText(/Received Into: IT Stock-HO/)).toBeInTheDocument());
-    await waitFor(() => expect(within(dialog).getByLabelText(/received into/i)).toHaveTextContent("IT Stock-HO"));
-
-    fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-3" } });
-    fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "500" } });
-    fireEvent.change(within(dialog).getByLabelText(/^serial number\*?$/i), { target: { value: "SN-Z" } });
-    await waitFor(() => expect(confirmBtn(dialog)).not.toBeDisabled());
-    fireEvent.click(confirmBtn(dialog));
-    await waitFor(() =>
-      expect(apiClient.post).toHaveBeenCalledWith(
-        "/purchase-orders/1/deliver",
-        expect.objectContaining({ lines: [{ pending_asset_id: 10, serial_number: "SN-Z", initial_asset_user_id: 5 }] }),
-      ),
-    );
-  });
-
-  it("units of the same line share one block with one list box, and a pasted list is handed out in order", async () => {
-    const dialog = await openDeliveryFor([PENDING_LINE, LAPTOP_2, LAPTOP_3]);
-    expect(within(dialog).getByText("3 units")).toBeInTheDocument();
-    const box = within(dialog).getByLabelText(/^serial numbers\*?$/i);
-    expect(within(dialog).getAllByRole("textbox").filter((el) => el.tagName === "TEXTAREA")).toHaveLength(1);
-
-    fireEvent.change(box, { target: { value: "SN-1\nSN-2\n" } });
-    expect(within(dialog).getByText(/2 of 3 entered/)).toBeInTheDocument();
-    expect(confirmBtn(dialog)).toBeDisabled();
-
-    fireEvent.change(box, { target: { value: "SN-1\r\nSN-2\r\n SN-3 \r\n\r\n" } });
-    expect(within(dialog).getByText(/3 of 3 entered/)).toBeInTheDocument();
-    await waitFor(() => expect(confirmBtn(dialog)).not.toBeDisabled());
-    fireEvent.click(confirmBtn(dialog));
-    await waitFor(() =>
-      expect(apiClient.post).toHaveBeenCalledWith(
-        "/purchase-orders/1/deliver",
-        expect.objectContaining({
-          lines: [
-            { pending_asset_id: 10, serial_number: "SN-1", initial_asset_user_id: 5 },
-            { pending_asset_id: 13, serial_number: "SN-2", initial_asset_user_id: 5 },
-            { pending_asset_id: 14, serial_number: "SN-3", initial_asset_user_id: 5 },
-          ],
-        }),
-      ),
-    );
-  });
-
-  it("No serial number on a multi-unit block sets N/A for every unit in it, while another block takes a list", async () => {
-    const dialog = await openDeliveryFor([PENDING_LINE, LAPTOP_2, PENDING_LINE_2]);
-    fireEvent.click(within(dialog).getByRole("checkbox", { name: /no serial number for dell laptop/i }));
-    expect(within(dialog).getByLabelText(/^serial numbers\*?$/i)).toBeDisabled();
-    expect(confirmBtn(dialog)).toBeDisabled(); // the Logitech Mouse block still needs its serial
-    fireEvent.change(within(dialog).getByLabelText(/^serial number\*?$/i), { target: { value: "MS-1" } });
-    await waitFor(() => expect(confirmBtn(dialog)).not.toBeDisabled());
-    fireEvent.click(confirmBtn(dialog));
-    await waitFor(() =>
-      expect(apiClient.post).toHaveBeenCalledWith(
-        "/purchase-orders/1/deliver",
-        expect.objectContaining({
-          lines: [
-            { pending_asset_id: 10, serial_number: "N/A", initial_asset_user_id: 5 },
-            { pending_asset_id: 13, serial_number: "N/A", initial_asset_user_id: 5 },
-            { pending_asset_id: 12, serial_number: "MS-1", initial_asset_user_id: 5 },
-          ],
-        }),
-      ),
-    );
-  });
-
-  it("too many serials or a duplicate (even across blocks, ignoring case) keeps Confirm disabled and says why", async () => {
-    const dialog = await openDeliveryFor([PENDING_LINE, LAPTOP_2, PENDING_LINE_2]);
-    const box = within(dialog).getByLabelText(/^serial numbers\*?$/i);
-    const mouse = within(dialog).getByLabelText(/^serial number\*?$/i);
-
-    fireEvent.change(box, { target: { value: "A1\nA2\nA3" } });
-    expect(within(dialog).getByText(/3 of 2 entered -- 1 too many/)).toBeInTheDocument();
-    fireEvent.change(mouse, { target: { value: "M1" } });
-    expect(confirmBtn(dialog)).toBeDisabled();
-
-    fireEvent.change(box, { target: { value: "A1\na1" } });
-    expect(within(dialog).getByText(/duplicate: A1, a1|duplicate: A1/)).toBeInTheDocument();
-    expect(confirmBtn(dialog)).toBeDisabled();
-
-    fireEvent.change(box, { target: { value: "A1\nA2" } });
-    fireEvent.change(mouse, { target: { value: "a2" } });
-    expect(within(dialog).getByText(/Duplicate serial: a2/)).toBeInTheDocument();
-    expect(confirmBtn(dialog)).toBeDisabled();
-
-    fireEvent.change(mouse, { target: { value: "M1" } });
-    await waitFor(() => expect(confirmBtn(dialog)).not.toBeDisabled());
-  });
-
-  it("fewer serials than units: Confirm stays blocked until the user ticks 'leave the rest waiting', then only the units with serials are sent", async () => {
-    const units = [PENDING_LINE, LAPTOP_2, LAPTOP_3, { ...PENDING_LINE, id: 15 }, { ...PENDING_LINE, id: 16 }];
-    const dialog = await openDeliveryFor(units);
-    const box = within(dialog).getByLabelText(/^serial numbers\*?$/i);
-
-    fireEvent.change(box, { target: { value: "S1\nS2\nS3\nS4" } });
-    expect(within(dialog).getByText(/4 of 5 entered/)).toBeInTheDocument();
-    expect(within(dialog).getByText(/1 unit has no serial yet/)).toBeInTheDocument();
-    expect(confirmBtn(dialog)).toBeDisabled();
-
-    fireEvent.click(within(dialog).getByRole("checkbox", { name: /leave the remaining units waiting/i }));
-    expect(within(dialog).getByText(/1 will stay waiting/)).toBeInTheDocument();
-    await waitFor(() => expect(confirmBtn(dialog)).not.toBeDisabled());
-    fireEvent.click(confirmBtn(dialog));
-    await waitFor(() =>
-      expect(apiClient.post).toHaveBeenCalledWith(
-        "/purchase-orders/1/deliver",
-        expect.objectContaining({
-          lines: [
-            { pending_asset_id: 10, serial_number: "S1", initial_asset_user_id: 5 },
-            { pending_asset_id: 13, serial_number: "S2", initial_asset_user_id: 5 },
-            { pending_asset_id: 14, serial_number: "S3", initial_asset_user_id: 5 },
-            { pending_asset_id: 15, serial_number: "S4", initial_asset_user_id: 5 },
-          ],
-        }),
-      ),
-    );
-  });
-
-  it("the 'leave waiting' option never appears for a complete list, and an empty dialog cannot be confirmed even with it ticked", async () => {
-    const dialog = await openDeliveryFor([PENDING_LINE, LAPTOP_2]);
-    fireEvent.click(within(dialog).getByRole("checkbox", { name: /leave the remaining units waiting/i }));
-    expect(confirmBtn(dialog)).toBeDisabled();
-
-    fireEvent.change(within(dialog).getByLabelText(/^serial numbers\*?$/i), { target: { value: "X1\nX2" } });
-    expect(within(dialog).queryByRole("checkbox", { name: /leave the remaining units waiting/i })).not.toBeInTheDocument();
-    await waitFor(() => expect(confirmBtn(dialog)).not.toBeDisabled());
-  });
-
-  it("serials CKAM already has are flagged as you type, naming the asset, and block Confirm until removed", async () => {
-    const dialog = await openDeliveryFor([PENDING_LINE, LAPTOP_2]);
-    (apiClient.post as any).mockImplementation((path: string, body: { serials?: string[] }) =>
-      path === "/purchase-orders/check-serials"
-        ? Promise.resolve({ conflicts: (body.serials ?? []).filter((s) => s === "111").map((s) => ({ serial: s, asset_code: "FA/CKSPL/ITSW/MSWINDOWS/CKAM1" })) })
-        : Promise.resolve([]),
-    );
-    const box = within(dialog).getByLabelText(/^serial numbers\*?$/i);
-
-    fireEvent.change(box, { target: { value: "111\n222" } });
-    expect(await within(dialog).findByText(/Serial "111" is already used by asset FA\/CKSPL\/ITSW\/MSWINDOWS\/CKAM1/)).toBeInTheDocument();
-    expect(confirmBtn(dialog)).toBeDisabled();
-    expect(apiClient.post).toHaveBeenCalledWith("/purchase-orders/check-serials", { serials: ["111", "222"] });
-
-    fireEvent.change(box, { target: { value: "333\n222" } });
-    await waitFor(() => expect(within(dialog).queryByText(/is already used by asset/)).not.toBeInTheDocument());
-    await waitFor(() => expect(confirmBtn(dialog)).not.toBeDisabled());
-  });
-
-  it("a conflict whose asset code the server masks is shown as the server worded it, still blocking Confirm", async () => {
-    const dialog = await openDeliveryFor([PENDING_LINE, LAPTOP_2]);
-    (apiClient.post as any).mockImplementation((path: string, body: { serials?: string[] }) =>
-      path === "/purchase-orders/check-serials"
-        ? Promise.resolve({ conflicts: (body.serials ?? []).filter((s) => s === "111").map((s) => ({ serial: s, asset_code: "an asset outside your companies or work area" })) })
-        : Promise.resolve([]),
-    );
-    fireEvent.change(within(dialog).getByLabelText(/^serial numbers\*?$/i), { target: { value: "111\n222" } });
-    const alert = await within(dialog).findByText(/Serial "111" is already used by/);
-    expect(alert).toHaveTextContent('Serial "111" is already used by an asset outside your companies or work area.');
-    expect(alert.textContent).not.toMatch(/by asset an asset/);
-    expect(confirmBtn(dialog)).toBeDisabled();
-  });
-
-  it("set (bundle) lines show their set tag, and a part that never carries a serial starts with 'No serial number' ticked", async () => {
-    const cpu = (id: number) => ({ ...PENDING_LINE, id, line_no: 1, description: "Dell Desktop - CPU", bundle_label: "Desktop", serial_required: true });
-    const mouse = (id: number) => ({ ...PENDING_LINE, id, line_no: 2, description: "Dell Desktop - Mouse", bundle_label: "Desktop", serial_required: false });
-    mockGets([cpu(20), cpu(21), mouse(22), mouse(23)]);
-    (apiClient.post as any).mockResolvedValue([]);
-    renderDetailAt();
-    await waitFor(() => expect(lineRows()).toHaveLength(2));
-    expect(within(linesTable()).getAllByText("Desktop")).toHaveLength(2); // the tag on each line
-    expect(within(lineRows()[1]).getByText(/No serial number/)).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /receive all waiting/i }));
-    const dialog = await screen.findByRole("dialog", { name: "Receive 4 units" });
-    fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-D" } });
-    fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "5000" } });
-    fireEvent.click(within(dialog).getByLabelText(/received into/i));
-    fireEvent.click(await screen.findByText("IT Stock-HO"));
-
-    expect(within(dialog).getByRole("checkbox", { name: /no serial number for dell desktop - mouse/i })).toBeChecked();
-    expect(within(dialog).getByRole("checkbox", { name: /no serial number for dell desktop - cpu/i })).not.toBeChecked();
-    expect(confirmBtn(dialog)).toBeDisabled();
-    const [cpuBox, mouseBox] = within(dialog).getAllByLabelText(/^serial numbers\*?$/i);
-    expect(mouseBox).toBeDisabled();
-    fireEvent.change(cpuBox, { target: { value: "CPU-1\nCPU-2" } });
-    await waitFor(() => expect(confirmBtn(dialog)).not.toBeDisabled());
-    fireEvent.click(confirmBtn(dialog));
-    await waitFor(() =>
-      expect(apiClient.post).toHaveBeenCalledWith(
-        "/purchase-orders/1/deliver",
-        expect.objectContaining({
-          lines: [
-            { pending_asset_id: 20, serial_number: "CPU-1", initial_asset_user_id: 5 },
-            { pending_asset_id: 21, serial_number: "CPU-2", initial_asset_user_id: 5 },
-            { pending_asset_id: 22, serial_number: "N/A", initial_asset_user_id: 5 },
-            { pending_asset_id: 23, serial_number: "N/A", initial_asset_user_id: 5 },
-          ],
-        }),
-      ),
-    );
-  });
-
-  it("AM-22 UAT: Invoice No/Date/Amount are visibly marked required", async () => {
-    const dialog = await receiveLine([PENDING_LINE]);
-    for (const id of ["invoice-number", "invoice-date", "invoice-amount"]) {
-      const labelEl = dialog.querySelector(`label[for="${id}"]`);
-      expect(labelEl).not.toBeNull();
-      expect(labelEl!.querySelector('[aria-hidden="true"]')?.textContent).toBe("*");
-    }
-  });
-
-  it("right after receiving, offers to print the labels of the units just received", async () => {
-    (apiClient.post as any).mockResolvedValue([{ ...PENDING_LINE, status: "DELIVERED", delivered_asset_id: 77 }]);
-    const dialog = await receiveLine([PENDING_LINE]);
-    fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-1" } });
-    fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "1180" } });
-    fireEvent.click(within(dialog).getByLabelText(/received into/i));
-    fireEvent.click(await screen.findByText("IT Stock-HO"));
-    fireEvent.click(within(dialog).getByRole("checkbox", { name: /no serial number for dell laptop/i }));
-    fireEvent.click(confirmBtn(dialog));
-
-    expect(await screen.findByText(/1 unit received and now in the register/i)).toBeInTheDocument();
-    // S5a: the shared print-labels action, right here (no trip to another page).
-    fireEvent.click(screen.getByRole("button", { name: /print their labels now/i }));
-    const printDialog = await screen.findByRole("dialog", { name: /print 1 label/i });
-    expect(within(printDialog).getByRole("button", { name: /label settings/i })).toBeInTheDocument();
-    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/assets?ids=77&limit=200"));
-  });
-
-  it("a line whose Item's serial is read later starts with 'add it later' ticked, and delivers without a serial", async () => {
-    (apiClient.post as any).mockResolvedValue([{ ...PENDING_LINE, status: "DELIVERED" }]);
-    const dialog = await receiveLine([{ ...PENDING_LINE, serial_later: true }]);
-    // (the page behind the open dialog is aria-hidden, hence `hidden: true`)
-    expect(within(screen.getByRole("table", { name: "Purchase order lines", hidden: true })).getByText(/Serial will be entered later/)).toBeInTheDocument();
-    fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-1" } });
-    fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "1180" } });
-    fireEvent.click(within(dialog).getByLabelText(/received into/i));
-    fireEvent.click(await screen.findByText("IT Stock-HO"));
-
-    const later = within(dialog).getByRole("checkbox", { name: /add the serial later for dell laptop/i });
-    expect(later).toBeChecked();
-    expect(within(dialog).getByLabelText(/^serial number\*?$/i)).toBeDisabled();
-    expect(within(dialog).getByRole("checkbox", { name: /no serial number for dell laptop/i })).not.toBeChecked();
-    await waitFor(() => expect(confirmBtn(dialog)).not.toBeDisabled());
-    fireEvent.click(confirmBtn(dialog));
-    await waitFor(() =>
-      expect(apiClient.post).toHaveBeenCalledWith(
-        "/purchase-orders/1/deliver",
-        expect.objectContaining({ lines: [{ pending_asset_id: 10, serial_pending: true, initial_asset_user_id: 5 }] }),
-      ),
-    );
-  });
-
-  it("'add it later' and 'no serial number' exclude each other, and either can be unticked to type serials", async () => {
-    const dialog = await receiveLine([{ ...PENDING_LINE, serial_later: true }]);
-    const later = () => within(dialog).getByRole("checkbox", { name: /add the serial later/i });
-    const none = () => within(dialog).getByRole("checkbox", { name: /no serial number for/i });
-    fireEvent.click(none());
-    expect(none()).toBeChecked();
-    expect(later()).not.toBeChecked();
-    fireEvent.click(later());
-    expect(later()).toBeChecked();
-    expect(none()).not.toBeChecked();
-    fireEvent.click(later());
-    expect(within(dialog).getByLabelText(/^serial number\*?$/i)).toBeEnabled();
-  });
-
-  it("checking \"No serial number\" disables the input and submits N/A", async () => {
-    (apiClient.post as any).mockResolvedValue([{ ...PENDING_LINE, status: "DELIVERED" }]);
-    const dialog = await receiveLine([PENDING_LINE]);
-    fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-1" } });
-    fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "1180" } });
-    fireEvent.click(within(dialog).getByLabelText(/received into/i));
-    fireEvent.click(await screen.findByText("IT Stock-HO"));
-
-    const serialInput = within(dialog).getByLabelText(/^serial number\*?$/i);
-    expect(confirmBtn(dialog)).toBeDisabled();
-    fireEvent.click(within(dialog).getByRole("checkbox", { name: /no serial number for dell laptop/i }));
-    expect(serialInput).toBeDisabled();
-    expect(serialInput).toHaveValue("N/A");
-    await waitFor(() => expect(confirmBtn(dialog)).not.toBeDisabled());
-    fireEvent.click(confirmBtn(dialog));
-    await waitFor(() =>
-      expect(apiClient.post).toHaveBeenCalledWith(
-        "/purchase-orders/1/deliver",
-        expect.objectContaining({ lines: [{ pending_asset_id: 10, serial_number: "N/A", initial_asset_user_id: 5 }] }),
-      ),
-    );
-  });
-
-  it("shows a server-side error inline on a failed receive and keeps the dialog open", async () => {
-    (apiClient.post as any).mockImplementation((path: string) => {
-      if (path === "/purchase-orders/1/deliver") return Promise.reject(new Error("This unit has already been received."));
-      return Promise.resolve([]);
-    });
-    const dialog = await receiveLine([PENDING_LINE]);
-    fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-1" } });
-    fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "1180" } });
-    fireEvent.change(within(dialog).getByLabelText(/^serial number\*?$/i), { target: { value: "SN-001" } });
-    fireEvent.click(within(dialog).getByLabelText(/received into/i));
-    fireEvent.click(await screen.findByText("IT Stock-HO"));
-    await waitFor(() => expect(confirmBtn(dialog)).not.toBeDisabled());
-    fireEvent.click(confirmBtn(dialog));
-    await waitFor(() => expect(within(dialog).getByRole("alert")).toHaveTextContent("This unit has already been received."));
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-  });
-});
+// The old Mark Delivery Done dialog's behaviour (invoice once, received into, serial lists, N/A,
+// serial later, duplicates, check-serials, partial receipt, sets, labels, server errors) is now the
+// Receive screen's: see features/receive/ReceiveScreen.test.tsx.
 
 describe("PurchaseOrderDetail: invoices received and their Purchase Invoice (PI)", () => {
-  it("AM-19: lists each distinct received Invoice Number with its own Record PI action", async () => {
-    mockGets([PENDING_LINE, DELIVERED_LINE]);
+  const INVOICE = {
+    invoice_number: "INV-777", invoice_date: "2026-02-01", invoice_amount: 2360, units: 2, asset_ids: [99, 98],
+    asset_count: 2, asset_ids_truncated: false, pi_number: null, pi_date: null, pi_status: "PENDING",
+  };
+  const RECORDED = { ...INVOICE, invoice_number: "INV-778", invoice_date: "2026-02-05", units: 1, asset_ids: [97], pi_number: "PI-9", pi_date: "2026-03-05", pi_status: "RECORDED" };
+  const invoicesCard = () => screen.getByRole("region", { name: "Invoices received" });
+
+  it("lists each invoice from GET /invoices (no., date, amount, units, PI) without loading any unit", async () => {
+    mockGets([PENDING_LINE], { invoices: [INVOICE, RECORDED] });
     renderDetailAt();
     expect(await screen.findByText("INV-777")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /record pi/i })).toBeInTheDocument();
+    const card = invoicesCard();
+    expect(card).toHaveTextContent("Invoices received (2)");
+    const rows = within(within(card).getByRole("list", { name: "Invoices" })).getAllByRole("listitem");
+    expect(rows[0]).toHaveTextContent(/INV-777.*2026-02-01.*2,360\.00.*2 units.*PI pending/);
+    expect(rows[1]).toHaveTextContent(/INV-778.*1 unit.*PI PI-9 · 2026-03-05/);
+    expect(apiClient.get).toHaveBeenCalledWith("/purchase-orders/1/invoices");
+    expect(allUnitsCalls()).toHaveLength(0);
     // PI is spelled out once on the screen.
-    expect(screen.getByText(/Purchase Invoice \(PI\) Number\/Date/)).toBeInTheDocument();
     expect(screen.getAllByText(/Purchase Invoice \(PI\)/)).toHaveLength(1);
+    // ONE entry point for the PI.
+    expect(within(card).getAllByRole("button", { name: /PI/ })).toHaveLength(1);
   });
 
-  it("offers the labels of every received unit of the PO", async () => {
-    mockGets([DELIVERED_LINE]);
+  it("no invoices yet: no card", async () => {
+    mockGets([PENDING_LINE]);
+    renderDetailAt();
+    await waitFor(() => expect(lineRows()).toHaveLength(1));
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/purchase-orders/1/invoices"));
+    expect(screen.queryByRole("region", { name: "Invoices received" })).not.toBeInTheDocument();
+  });
+
+  it("offers the labels of every received unit (the invoices' asset ids)", async () => {
+    mockGets([DELIVERED_LINE], { invoices: [INVOICE, RECORDED] });
     renderDetailAt();
     fireEvent.click(await screen.findByRole("button", { name: /print labels for the received units/i }));
-    expect(await screen.findByRole("dialog", { name: /print 1 label/i })).toBeInTheDocument();
-    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/assets?ids=99&limit=200"));
+    expect(await screen.findByRole("dialog", { name: /print 3 labels/i })).toBeInTheDocument();
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/assets?ids=99%2C98%2C97&limit=200"));
   });
 
-  it("a PO created from the ERP offers Fetch PI from ERP next to its received invoices", async () => {
-    mockGets([DELIVERED_LINE], { po: { ...PO, erp_po_code: 1133610106 } });
+  it("a PO created from the ERP: the one Record PI dialog starts on Fetch from ERP, and can switch to typing it in", async () => {
+    mockGets([DELIVERED_LINE], { po: { ...PO, erp_po_code: 1133610106 }, invoices: [INVOICE] });
+    const base = (apiClient.get as any).getMockImplementation();
+    (apiClient.get as any).mockImplementation((path: string) =>
+      path === "/erp/purchase-orders/1/pi"
+        ? Promise.resolve({ po_id: 1, po_number: "PO-2026-001", rows: [], not_booked: 0, ckam_invoices: ["INV-777"], delivered_assets: 2 })
+        : base(path));
     renderDetailAt();
-    expect(await screen.findByRole("button", { name: "Fetch PI from ERP" })).toBeInTheDocument();
-  });
-
-  it("a PO made by hand does not offer Fetch PI from ERP", async () => {
-    mockGets([DELIVERED_LINE]);
-    renderDetailAt();
-    await screen.findByText("INV-777");
+    fireEvent.click(await screen.findByRole("button", { name: "Record PI" }));
+    const dialog = await screen.findByRole("dialog", { name: "Record PI" });
+    expect(within(dialog).getByRole("radio", { name: "Fetch from ERP" })).toHaveAttribute("aria-checked", "true");
+    expect(await within(dialog).findByText(/The ERP has no PI for this purchase order yet/)).toBeInTheDocument();
+    expect(apiClient.get).toHaveBeenCalledWith("/erp/purchase-orders/1/pi");
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Type it in" }));
+    expect(within(dialog).getByLabelText("PI Number")).toBeInTheDocument();
+    // No separate "Fetch PI from ERP" button any more: one entry point.
     expect(screen.queryByRole("button", { name: "Fetch PI from ERP" })).not.toBeInTheDocument();
   });
 
-  it("AM-19: Record PI posts to the record-pi endpoint and shows the result", async () => {
-    mockGets([DELIVERED_LINE]);
-    (apiClient.post as any).mockResolvedValue({ invoice_number: "INV-777", updated: ["FA/1"], skipped: [] });
+  it("a PO made by hand: Record PI types it in (no ERP choice)", async () => {
+    mockGets([DELIVERED_LINE], { invoices: [INVOICE] });
     renderDetailAt();
-    await waitFor(() => expect(screen.getByText("INV-777")).toBeInTheDocument());
+    fireEvent.click(await screen.findByRole("button", { name: "Record PI" }));
+    const dialog = await screen.findByRole("dialog", { name: "Record PI" });
+    expect(within(dialog).queryByRole("radio", { name: "Fetch from ERP" })).not.toBeInTheDocument();
+    expect(within(dialog).getByLabelText("PI Number")).toBeInTheDocument();
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: /record pi/i }));
-    const dialog = screen.getByRole("dialog");
+  it("AM-19: Record PI for the chosen invoice posts to record-pi and shows the result", async () => {
+    mockGets([DELIVERED_LINE], { invoices: [RECORDED, INVOICE] });
+    (apiClient.post as any).mockResolvedValue({ invoice_number: "INV-777", updated: ["FA/1", "FA/2"], skipped: [] });
+    renderDetailAt();
+    fireEvent.click(await screen.findByRole("button", { name: "Record PI" }));
+    const dialog = await screen.findByRole("dialog", { name: "Record PI" });
+    // The invoice still waiting for its PI is chosen first; existing PIs are shown.
+    expect(within(dialog).getByRole("radio", { name: "Invoice INV-777" })).toBeChecked();
+    expect(within(dialog).getByText(/PI PI-9 · 2026-03-05/)).toBeInTheDocument();
+    const save = within(dialog).getByRole("button", { name: /^save$/i });
+    expect(save).toBeDisabled();
     fireEvent.change(within(dialog).getByLabelText(/pi number/i), { target: { value: "PI-2001" } });
     fireEvent.change(within(dialog).getByLabelText(/pi date/i), { target: { value: "2026-02-15" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: /^save$/i }));
-
+    fireEvent.click(save);
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith("/purchase-orders/1/record-pi", {
         invoice_number: "INV-777", pi_number: "PI-2001", pi_date: "2026-02-15", overwrite: false,
       }),
     );
-    expect(await within(dialog).findByText(/updated/i)).toBeInTheDocument();
+    expect(await within(dialog).findByText(/PI recorded for invoice INV-777: 2 assets updated/)).toBeInTheDocument();
   });
 
-  it("AM-19: Overwrite existing values checkbox is sent through to the request", async () => {
-    mockGets([DELIVERED_LINE]);
-    (apiClient.post as any).mockResolvedValue({ invoice_number: "INV-777", updated: ["FA/1"], skipped: [] });
+  it("AM-19: another invoice can be chosen, and Overwrite existing values is sent through", async () => {
+    mockGets([DELIVERED_LINE], { invoices: [INVOICE, RECORDED] });
+    (apiClient.post as any).mockResolvedValue({ invoice_number: "INV-778", updated: [], skipped: ["FA/3"] });
     renderDetailAt();
-    await waitFor(() => expect(screen.getByText("INV-777")).toBeInTheDocument());
-
-    fireEvent.click(screen.getByRole("button", { name: /record pi/i }));
-    const dialog = screen.getByRole("dialog");
+    fireEvent.click(await screen.findByRole("button", { name: "Record PI" }));
+    const dialog = await screen.findByRole("dialog", { name: "Record PI" });
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Invoice INV-778" }));
     fireEvent.change(within(dialog).getByLabelText(/pi number/i), { target: { value: "PI-CORRECTED" } });
     fireEvent.change(within(dialog).getByLabelText(/pi date/i), { target: { value: "2026-02-15" } });
     fireEvent.click(within(dialog).getByLabelText(/overwrite existing values/i));
     fireEvent.click(within(dialog).getByRole("button", { name: /^save$/i }));
-
     await waitFor(() =>
-      expect(apiClient.post).toHaveBeenCalledWith("/purchase-orders/1/record-pi", expect.objectContaining({ overwrite: true })),
+      expect(apiClient.post).toHaveBeenCalledWith("/purchase-orders/1/record-pi", expect.objectContaining({ invoice_number: "INV-778", overwrite: true })),
     );
+    expect(await within(dialog).findByText(/1 asset already had a PI/)).toBeInTheDocument();
+  });
+
+  it("a refused PI shows the server's sentence and keeps the dialog open", async () => {
+    mockGets([DELIVERED_LINE], { invoices: [INVOICE] });
+    (apiClient.post as any).mockRejectedValue(new Error("PI date cannot be in the future."));
+    renderDetailAt();
+    fireEvent.click(await screen.findByRole("button", { name: "Record PI" }));
+    const dialog = await screen.findByRole("dialog", { name: "Record PI" });
+    fireEvent.change(within(dialog).getByLabelText(/pi number/i), { target: { value: "PI-1" } });
+    fireEvent.change(within(dialog).getByLabelText(/pi date/i), { target: { value: "2099-01-01" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: /^save$/i }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("PI date cannot be in the future.");
+  });
+
+  it("a received unit links to its asset by code (delivered_asset_code)", async () => {
+    const received = { ...PENDING_LINE, id: 11, status: "DELIVERED", serial_number: "SN-1", invoice_number: "INV-777", delivered_asset_id: 99, delivered_asset_code: "FA/CKSPL/IT/0099" };
+    mockGets([received]);
+    renderDetailAt();
+    await waitFor(() => expect(lineRows()).toHaveLength(1));
+    fireEvent.click(screen.getByRole("button", { name: /view units of line 1/i }));
+    const table = await screen.findByRole("table", { name: /units of line 1/i });
+    expect(await within(table).findByRole("link", { name: "FA/CKSPL/IT/0099" })).toHaveAttribute("href", "/assets/99");
   });
 
   it("Close navigates back to the Purchase Orders list", async () => {
@@ -1096,56 +752,6 @@ describe("S3b-1: inline creation on the PO page", () => {
     expect(await offered(/^brand$/i, /new brand/i, dialog)).toBe(caps.can_create.brand === true);
   });
 
-  async function openReceive(caps: Capabilities, po: unknown = PO) {
-    mockGets([PENDING_LINE], { po });
-    withCaps(caps);
-    renderDetailAt();
-    await waitFor(() => expect(lineRows().length).toBeGreaterThan(0));
-    fireEvent.click(screen.getByRole("button", { name: /receive line 1\b/i }));
-    return screen.findByRole("dialog");
-  }
-
-  it("Receive lists the PO company's stock rooms from /stock-rooms, and a new one is added and picked right there", async () => {
-    const dialog = await openReceive(OPERATOR_IT);
-    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/stock-rooms?company_id=1"));
-    (apiClient.post as any).mockImplementation((path: string, body: Record<string, unknown>) =>
-      Promise.resolve(path === "/stock-rooms" ? { id: 77, name: body.name } : []));
-    const base = (apiClient.get as any).getMockImplementation();
-    let created = false;
-    (apiClient.get as any).mockImplementation((path: string) => {
-      if (path.startsWith("/stock-rooms?company_id=") && created) return Promise.resolve([{ id: 5, name: "IT Stock-HO" }, { id: 77, name: "Gate Stock" }]);
-      if (path === "/masters/locations?company_id=1") return Promise.resolve([{ id: 50, name: "Head Office" }]);
-      return base(path);
-    });
-    fireEvent.click(within(dialog).getByLabelText(/received into/i));
-    fireEvent.click(await screen.findByRole("option", { name: /new stock room/i }));
-    const add = await screen.findByRole("dialog", { name: /new stock room/i });
-    fireEvent.change(within(add).getByLabelText(/^name/i), { target: { value: "Gate Stock" } });
-    fireEvent.click(within(add).getByLabelText(/^place/i));
-    fireEvent.click(await screen.findByRole("option", { name: "Head Office" }));
-    created = true;
-    fireEvent.click(within(add).getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/stock-rooms", { name: "Gate Stock", company_id: 1, location_id: 50 }));
-    await waitFor(() => expect(within(dialog).getByLabelText(/received into/i)).toHaveTextContent("Gate Stock"));
-    expect(screen.getByRole("dialog", { name: /receive 1 unit/i })).toBeInTheDocument();     // still receiving
-  });
-
-  it("a viewer-like login (capabilities say no) gets no New Stock Room in Receive", async () => {
-    const dialog = await openReceive(VIEWER);
-    await settle();
-    expect(await offered(/received into/i, /new stock room/i, dialog)).toBe(false);
-  });
-
-  it("with no delivery place on the PO, Receive starts with the stock room this person received into last, and remembers the new choice", async () => {
-    window.localStorage.setItem("ckam:last-used:5:1", JSON.stringify({ stock_room: "5" }));
-    (apiClient.post as any).mockResolvedValue([]);
-    const dialog = await openReceive(OPERATOR_IT);
-    await waitFor(() => expect(within(dialog).getByLabelText(/received into/i)).toHaveTextContent("IT Stock-HO"));
-    fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-1" } });
-    fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "100" } });
-    fireEvent.change(within(dialog).getByLabelText(/^serial number\*?$/i), { target: { value: "SN-1" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: /confirm/i }));
-    await waitFor(() => expect(deliverCall()?.[1].lines[0]).toEqual(expect.objectContaining({ initial_asset_user_id: 5 })));
-    expect(JSON.parse(window.localStorage.getItem("ckam:last-used:5:1")!)).toEqual({ stock_room: "5" });
-  });
+  // Received Into (stock rooms, + New Stock Room, remembered choice) now lives on the Receive
+  // screen: see features/receive/ReceiveScreen.test.tsx.
 });

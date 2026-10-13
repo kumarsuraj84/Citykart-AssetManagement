@@ -244,9 +244,11 @@ interface AssetRegisterProps {
   initialQuery?: string;
   /** Put the cursor in the search box (Home's "Find Asset"). */
   focusSearch?: boolean;
+  /** S4: comma-separated asset ids -- show only these (Receive's "Open assets"). */
+  initialIds?: string;
 }
 
-export function AssetRegister({ initialStatus, initialMine, initialQuery, focusSearch }: AssetRegisterProps = {}) {
+export function AssetRegister({ initialStatus, initialMine, initialQuery, focusSearch, initialIds }: AssetRegisterProps = {}) {
   const navigate = useNavigate();
   const { can, isPrimaryOwner } = useAccess();
   const canWork = can("work");
@@ -262,6 +264,9 @@ export function AssetRegister({ initialStatus, initialMine, initialQuery, focusS
   const [assetUserId, setAssetUserIdRaw] = useState(initialMine && canFilterMine ? String(myId) : "");
   const mine = canFilterMine && assetUserId === String(myId);
   const [companyId, setCompanyIdRaw] = useState("");
+  // Only these assets (just received); cleared by "Show all assets".
+  const [onlyIds, setOnlyIdsRaw] = useState(() => (initialIds ?? "").split(",").map((x) => x.trim()).filter((x) => /^\d+$/.test(x)).slice(0, 200).join(","));
+  const onlyCount = onlyIds === "" ? 0 : onlyIds.split(",").length;
   const [page, setPageRaw] = useState(0);
   const [sortBy, setSortByRaw] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -326,13 +331,14 @@ export function AssetRegister({ initialStatus, initialMine, initialQuery, focusS
     ...(categoryId ? { category_id: categoryId } : {}),
     ...(assetUserId ? { asset_user_id: assetUserId } : {}),
     ...(companyId ? { company_id: companyId } : {}),
+    ...(onlyIds ? { ids: onlyIds } : {}),
     ...(sortBy ? { sort_by: sortBy, sort_dir: sortDir } : {}),
     limit: String(PAGE_SIZE),
     offset: String(page * PAGE_SIZE),
   }).toString();
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["assets", "register", q, exact, status, domain, categoryId, assetUserId, companyId, sortBy, sortDir, page],
+    queryKey: ["assets", "register", q, exact, status, domain, categoryId, assetUserId, companyId, onlyIds, sortBy, sortDir, page],
     queryFn: () => apiClient.get<{ items: AssetRow[]; total: number }>(`/assets?${queryString}`),
   });
   const items = data?.items ?? [];
@@ -608,6 +614,15 @@ export function AssetRegister({ initialStatus, initialMine, initialQuery, focusS
         </DropdownMenu>
         </div>
       </PageHeader>
+
+      {onlyCount > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground" role="status">
+          <span>Showing only the {onlyCount} asset{onlyCount === 1 ? "" : "s"} just received.</span>
+          <Button size="sm" variant="outline" className="h-7" onClick={() => { setOnlyIdsRaw(""); setPage(0); }}>
+            Show all assets
+          </Button>
+        </div>
+      )}
 
       {mine && (
         <p className="text-sm text-muted-foreground" role="status">

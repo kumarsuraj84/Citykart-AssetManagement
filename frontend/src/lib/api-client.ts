@@ -7,10 +7,14 @@ import { authFetch } from "./auth-fetch";
  * handles errors. */
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  /** The parsed response body (S4: a refused receipt's structured `problems`
+   * live here), or null when the body was not JSON. Additive, like `status`. */
+  body: unknown;
+  constructor(message: string, status: number, body: unknown = null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.body = body;
   }
 }
 
@@ -75,7 +79,7 @@ async function send(method: string, path: string, body?: unknown): Promise<Respo
   });
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    throw new ApiError(errorMessageFrom(body, res.status), res.status);
+    throw new ApiError(errorMessageFrom(body, res.status), res.status, body);
   }
   return res;
 }

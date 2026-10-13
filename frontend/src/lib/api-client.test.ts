@@ -31,6 +31,16 @@ describe("apiClient errors (S0 contract)", () => {
     expect(e.message).toBe("PO number is required. Line 3: Quantity must be at least 1.");
   });
 
+  it("S4: the parsed body rides along on the error (a refused receipt's structured problems)", async () => {
+    const problems = [{ line_no: 1, unit_index: 2, serial: "B", message: "Serial number B is typed more than once." }];
+    respond(422, { detail: "Nothing was received: 1 problem needs fixing.", errors: ["Line 1: …"], problems });
+    const e = await failure();
+    expect(e.message).toBe("Nothing was received: 1 problem needs fixing.");
+    expect((e.body as { problems: unknown }).problems).toEqual(problems);
+    respond(500, null, "not json");
+    expect((await failure()).body).toBeNull();
+  });
+
   it.each([
     [409, "A record with this code already exists."],
     [422, "The vendor you chose does not exist."],

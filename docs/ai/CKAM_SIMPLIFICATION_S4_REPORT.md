@@ -189,3 +189,89 @@ Changed: `app/assets/service.py` (engine: `ProcureContext`, `build_procure_conte
 
 ## Frontend
 
+| | |
+|---|---|
+| Starting HEAD | `a7a718b` (feat(web): S5a Asset 360 in four sections, one Move screen …) |
+| Scope | Brief items 1–7: the Receive screen `/receive/$poId`, everything linked to it, the PO invoices / Purchase Invoice (PI) card on `GET …/invoices`, the ERP create banner, bulk Serial Pending entry, 100-unit scale, tests |
+| Backend | not touched (requests in §F8) |
+| Commit | none (the controller commits) |
+| Tests | `npx tsc -b` clean · `npx vitest run` **906 → 955 passed** (70 → 72 files, 0 failed) · `npm run build` OK (the existing > 500 kB chunk warning only) · e2e specs updated and type-checked, Playwright not run |
+
+### F1. What changed, by brief item
+
+| # | Item | What was done |
+|---|---|---|
+| 1 | Receive screen | New route **`/receive/$poId`** (guard "work" = ADMIN/OPERATOR, like `/receive`; `?line=N` optional). One `GET …/receive-info`. Header "Receive PO <no>" with vendor · company · PO date, "← Back to Receive", "Open PO". **Receipt details, once**: Received Into (`StockRoomSelect`, default `received_into_*`, else the remembered last-used stock room, "+ New Stock Room…" by capabilities; the PO's own delivery place stays choosable even when not a stock room), Invoice No\*, Invoice Date\* (today; no future), Invoice Amount\* ("The invoice total."). **Lines** (one block per line, a table-like header from 1024 px, stacked single column below): Item + description (muted) + work-area chip + "Set: …" tag, Ordered · Received before · Waiting, **Receiving now** (number box with − / +, default = waiting, 0 skips, max = waiting; "N units will stay waiting on this PO." / "Skipped: all N stay waiting"), the serial rule as three plain-word buttons (Has serial number / No serial number / Serial will be entered later; default = the Item's; a change says "Changed for this receipt only; the Item says …" and is sent as `serial_mode` only when changed). A **serial box only** for "Has serial number" with quantity > 0: one multi-line box (paste or scan, Enter = new row), a row-number gutter that marks the exact bad rows, live "k of n entered", in-box duplicates ("A1 is typed more than once in this box (rows 1 and 3).") and cross-line duplicates ("… is also typed for line 3."), the debounced `POST /purchase-orders/check-serials` hint ("Row 2: Serial "111" is already used by asset FA/…", masked wording kept; a failed check = no information). No serial / later lines show one sentence instead. **Needed for every asset received** (from `required_custom_fields`): text / number / date / dropdown / tick box with required markers and one sentence why; values go to every line as `custom_fields`; **"Different values per asset"** opens one box per field per line (one value per row, aligned with the serials; blank row = the common value) → `unit_custom_fields`. **"Why can't I receive?"**: always one line beside the button (server `blockers` first, then quantities, Received Into, invoice fields, per-line quantity / serial count / duplicates / used serials, extra fields; "(N more things to fix)"). **Sticky bottom action bar** with **[Receive N units]**, also **Ctrl+Enter** (only when valid; Enter alone never submits; there is no `<form>`). **422** → `problems` mapped back: common ones under the receipt details, line ones in that line, `unit_index` / `serial` to the exact gutter row, one summary sentence "Nothing was received: N problems need fixing, marked below. Everything you typed is still here."; nothing typed is lost; editing a line clears only that line's refusal. Other failures show the server's sentence. **Result panel**: "N assets created", "N serial numbers pending — enter them later from Assets > Serial Pending.", "Labels ready.", [Print labels (N)] (the shared S5a action with `label_asset_ids`), [Open assets] (`/assets?ids=…`), [Receive more] (same PO with a fresh form while units still wait, else the Receive queue), first 20 new asset codes as links + "and N more". |
+| 2 | Linked to it | PO page: line **Receive** → `/receive/$poId?line=N` (that line filled in, the others 0, cursor on it); header **Receive all waiting (N)** → `/receive/$poId`. Receive queue **Receive** → `/receive/$poId`. Home's waiting row already pointed to `/receive` (kept, tested). Sidebar "Receive" stays highlighted on `/receive/…`. **`DeliveryDoneDialog.tsx` deleted** (every capability now on the Receive screen: partial receipt by quantity instead of "leave the rest waiting", N/A by rule, serial later by rule, duplicates + check-serials, invoice once, Received Into, print labels in the result). |
+| 3 | Invoices card | `GET /purchase-orders/{id}/invoices` (no `GET …/lines` any more — the PO page fetches **no unit list by default**). One compact card "Invoices received (n)": invoice no · date · amount · units · PI ("PI PI-9 · 2026-03-05" / "PI pending"), "Purchase Invoice (PI)" spelled out once, "Print labels for the received units" (the invoices' `asset_ids`). **One entry point [Record PI]** → one dialog: for an ERP PO it opens on **Fetch from ERP** (the old ERP preview / tick / replace / record, as a panel) with a switch to **Type it in**; for a hand-made PO only Type it in: choose the invoice (the first still pending is chosen; existing PIs shown), PI Number, PI Date, Overwrite existing values (with the explanation), Save → `POST …/record-pi` (body unchanged), result + "Record another". Units expander: received units link to Asset 360 by `delivered_asset_code`. |
+| 4 | ERP banner | `PoDraftCard`: "PO created: {lines_created} lines, {units_created} units waiting."; an older server that sends only `lines_created` (= units) still reads right (lines counted from the draft). |
+| 5 | Serial Pending | Kept: per-row serial + Save + No serial. New: row tick boxes (select all), **"Paste serials for N selected assets"** (the same serial box with the row gutter), applied in **list order** with a **preview table** "asset → serial" (extra serials shown as "No asset for this one"), live count ("2 serials needed, 1 pasted."), duplicates with rows, the check-serials hint; **Save N serials** → `PUT /api/assets/serials` (all or nothing); a 422 maps `problems` (by `asset_id`) to the asset's row and the paste row ("Nothing was saved: … marked below."). **Mark N as no serial** (asks once) → same endpoint with `no_serial: true`. Filters **Item** and **PO** (from the rows' `item_name` / `po_number`; shown when there is a choice), search also matches the PO number, PO column added; a filter change clears the selection. |
+| 6 | Scale | No per-unit rows anywhere: a 100-unit line is one quantity box and one serial box. Serial text is checked once typing settles (150 ms) with Maps/Sets (no pairwise compare); the button re-checks the latest text before sending. Measured in a unit test: checking 1,000 serials < 100 ms (in practice a few ms). |
+| 7 | Tests | §F5. |
+
+Also: `ApiError` gained an additive `body` (the parsed response) so the `problems` of a 422 reach the screen; `/assets?ids=` opens the register narrowed to those assets ("Showing only the N assets just received." + Show all assets).
+
+### F2. Files
+
+New: `src/features/receive/{ReceiveScreen.tsx, receive-model.ts, SerialBox.tsx, useSerialConflicts.ts}`, `src/features/purchase-orders/InvoicesCard.tsx`, `src/routes/receive-po.tsx`; tests `src/features/receive/{ReceiveScreen.test.tsx, receive-model.test.ts}`.
+Changed: `src/router.tsx` (`receivePoRoute`, `ids` on `/assets`), `src/routes/assets/index.tsx`, `src/features/assets/{AssetRegister,SerialPendingScreen}.tsx`, `src/features/purchase-orders/{PurchaseOrderDetail,PoLinesTable,PoDraftCard}.tsx`, `po-detail-types.ts`, `src/features/erp/ErpPiDialog.tsx` (`ErpPiPanel` + the old dialog as a thin wrapper), `src/features/receive/ReceiveQueue.tsx`, `src/components/app-shell/AppNav.tsx`, `src/lib/api-client.ts`.
+Deleted: `src/features/purchase-orders/DeliveryDoneDialog.tsx`.
+Tests changed: `PurchaseOrderDetail.test.tsx`, `SerialPendingScreen.test.tsx`, `ReceiveQueue.test.tsx`, `PoFromErp.test.tsx`, `lib/api-client.test.ts`. E2E (static, type-checked with `tsc --ignoreConfig`, not run): `e2e/purchase-order-delivery-journey.spec.ts` (Receive line → `/receive/…?line=1`, quantity 2 of 3, serial box, result panel, invoices card, duplicate flagged with Receive disabled), `e2e/bundle-journey.spec.ts` (Receive all waiting → screen, no box for Keyboard/Mouse, two serial boxes, "8 assets created").
+
+### F3. UX before / after (counted as the audit: a button or tick = 1 click, a dropdown = 3, typed fields separately; Received Into already chosen when the PO has a delivery place or a remembered stock room — the figure in brackets is when it has to be picked)
+
+| Task | Audit (before S2) | S2–S5a (tick-free dialog) | **S4 Receive screen** |
+|---|---|---|---|
+| 10 serial units (one line) | ~14 clicks, 4 fields + 10 serials | 3 clicks (6): Receive on line, (place), Confirm; 2 fields + 10 serials in one box | **2 clicks (5)**: Receive, Receive 10 units (or Ctrl+Enter); 2 fields (invoice no, amount) + 10 serials pasted in one box |
+| 50 non-serial units | ~53 clicks, 4 fields | 3 clicks (6) if the Item says no serial, else +1 tick | **2 clicks (5)**; 2 fields; nothing per unit |
+| 10 serial-later, serials entered later | ~24 clicks, 14 fields | receive 3 (6); later 1 + 10 Saves, 10 typed | **receive 2 (5)**; later on Serial Pending: open 1 + select all 1 + Save 1 = **3 clicks**, 10 serials in one paste (was 10 Saves) |
+| 100 mixed (50 serial + 46 no-serial + 4 later, 3 lines) | unusable (104 rows, ~110 ticks) | 3 clicks (6), one dialog with 3 blocks | **2 clicks (5)**; 2 fields + 50 serials in one box; the 50 / 46 / 4 split is the lines' rules, not ticks |
+| Partial receipt (2 of 3) | ticks per unit | type 2 serials + tick "leave the rest waiting" | type **2** in Receiving now (or − once) — the screen says "1 unit will stay waiting" |
+| PI for one invoice | Record PI per invoice row; separate Fetch PI from ERP | same | **one [Record PI]**: ERP fetch first (ERP POs) or Type it in, invoice chosen inside |
+
+Screens: PO page → (dialog) became PO page / Receive queue → Receive screen, with the action bar always on screen (sticky) at 1280, 768 and 390 px (checked in a browser against a mocked API: no horizontal scroll at 390/753 px, the Receive button inside the viewport, `?line=2` focuses line 2's quantity).
+
+### F4. Decisions
+
+1. **The deliver dialog is retired**, not kept as a fallback: every capability it had is on the Receive screen (partial → quantity; "No serial" / "later" → the line's rule switch; duplicates / check-serials; invoice once; Received Into; labels). Its tests were ported (§F5).
+2. **Received Into is required on the screen** even though the server would default it to the delivery place: the person always sees where the goods go (it is pre-filled whenever there is a default).
+3. **`serial_mode` is sent only when changed** from the line's own rule; serial numbers only for "Has serial number" lines (the server refuses serials on the other two rules).
+4. **Per-asset extra-field values** are one box per field per line, row i = asset i (no per-unit rows); tick-box fields take one value for all.
+5. **Problems mapping**: `line_no: null` → under Receipt details; `unit_index` → the row of the i-th non-blank serial; `serial` → every row holding it. A refusal stays shown until that part (common fields / that line) is edited.
+6. **Line layout**: table-like header row from 1024 px (with the sidebar open, 768 px left too little room for five columns); stacked counts + full-width quantity below that.
+7. **Debounce**: serial text checked 150 ms after typing stops; check-serials 400 ms (as before); quantities and rule changes immediately.
+8. **One PI entry point** labelled "Record PI"; an ERP PO opens on "Fetch from ERP" (less typing), "Type it in" one click away. The ERP preview is the same component (`ErpPiPanel`), so its behaviour and tests are unchanged.
+9. **Open assets** narrows the register with `?ids=` (first 200 — the server's `ids` limit; the panel says so when there are more).
+10. **Serial Pending selection follows the filters** (a filter change clears it) so a hidden row is never filled by a paste; serials go to the ticked rows in the list's order (oldest first), and the preview shows exactly who gets what.
+
+### F5. Tests (906 → 955, +49 net; 0 failing)
+
+| File | Tests | What |
+|---|---|---|
+| `features/receive/ReceiveScreen.test.tsx` (new) | 46 | layout + plain words + no tick boxes / tables; common fields once + exact payload; required markers; Received Into default, chosen + remembered, remembered when no delivery place, missing → reason; + New Stock Room (allowed / not); steppers 0..waiting, 0 skips (line left out); partial; over-waiting / fractional; `?line=2` (others 0, focus) and fallback; rule override (payload `serial_mode`), serial-later line, set lines; count short / long / CRLF-trim; in-box duplicates with rows + gutter; cross-line duplicates; N/A; check-serials conflict (row named), masked wording, failed check = no info; extra fields of every type + payload, per-asset values (`unit_custom_fields`), too many rows; 7 disabled reasons (it.each), blockers, "N more"; Ctrl+Enter / Enter; 422 mapping (common, line, unit row, summary, nothing lost, per-line clearing); other failure; result panel (counts, 20 codes + "and 5 more"), Print labels, Open assets → register narrowed + Show all, Receive more (same PO / queue); 100 + 100 units (one paste, no unit rows, payload); load error; viewer guard; nav highlight |
+| `features/receive/receive-model.test.ts` (new) | 10 | serial rows, initial lines, reasons order, body, duplicates, problem rows, `problemsFrom`, 1,000-serial timing |
+| `PurchaseOrderDetail.test.tsx` | 62 → 44 | line Receive → `/receive/1?line=2` and header → `/receive/1` (no unit / `GET /lines` requests); 104 units: no `GET /lines`, `GET /invoices` once; invoices card rows from the endpoint, PI spelled once, one PI button; no invoices → no card; labels from invoices' ids; ERP PO dialog opens on Fetch from ERP + switch; hand PO type-in only; Record PI (pending invoice pre-chosen, existing PI shown, body), another invoice + overwrite, refusal; unit link by `delivered_asset_code`. The 20 old dialog tests and 3 Receive-dialog capability tests moved (as intents) to the Receive screen file. |
+| `SerialPendingScreen.test.tsx` | 6 → 14 | selection → paste box, list-order preview + exact `PUT /assets/serials` body; count short / long; duplicates + used serial with gutter rows; 422 → asset row + paste row, nothing lost; Mark N as no serial (asks once); Item + PO filters clear the selection; search by PO; 100 assets in one request |
+| `PoFromErp.test.tsx` | +2 | banner from `lines_created` + `units_created`; older-server fallback |
+| `ReceiveQueue.test.tsx` | (changed) | Receive → `/receive/4` |
+| `lib/api-client.test.ts` | +1 | `ApiError.body` carries `problems`; null for a non-JSON body |
+
+### F6. Deferred / not done
+
+* **No check against the real dev API**: the containers were not rebuilt (brief). The screen was checked in a browser through a throw-away dev server with a mocked API client (scratch files, outside the repo) at 1280 / 768 / 390 px. Recommended after `docker compose up -d --build web`: receive a 3-line PO at 390 px, a 422 (duplicate serial typed in two browser tabs), Serial Pending bulk paste, Record PI on an ERP PO.
+* Playwright not run (specs updated statically).
+* The ERP delivery-reminder banner still points to the PO page (whose line Receive opens the screen); it could link straight to `/receive/$poId`.
+* Per-asset values for tick-box extra fields are not offered (one value for all).
+* Serial Pending lists at most 200 assets (the existing `limit=200`); bulk entry works within what is listed.
+
+### F7. Words
+
+"Received Into", "Stock Room", "Cost Centre", "Set: …", "Purchase Invoice (PI)" once per screen (PO page card note), statuses from `lib/labels.ts` (`serialModeLabel`, `workAreaLabel`); no "Holder", no raw enums, no "pending asset" / "converted" (asserted in tests).
+
+### F8. Backend requests
+
+1. **`/assets?ids=` above 200** (or a POST) — "Open assets" after a receipt of more than 200 shows the first 200 (same as S5a request 4).
+2. **Serial Pending paging**: `GET /assets?serial_pending=true` with `X-Total-Count` + offset in the UI, or a higher limit, so more than 200 waiting serials can be listed and bulk-filled.
+3. Optional: a `masked: true` flag on check-serials conflicts and on receive `problems` (the UI recognises the masked wording by its leading "an").
+4. Optional: `POST /purchase-orders/{id}/deliver` is no longer called by the frontend; it can be retired once nothing else uses it.
+

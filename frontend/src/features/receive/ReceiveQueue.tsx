@@ -18,9 +18,8 @@ import { type PoListRow, loadedAndTotal, useDebounced, usePoPages } from "../pur
  * Receive: the purchase orders that still have units waiting for goods
  * (GET /purchase-orders?waiting=true), each with Open and Receive.
  *
- * Kept self-contained in features/receive/: stage S4 replaces this page's
- * body with the real Receive screen. Until then Receive opens the PO at its
- * lines, where each line (or every line) is received.
+ * Receive opens the Receive screen of that PO (/receive/$poId, S4): the
+ * receipt details once, a quantity per line, serials only where needed.
  */
 
 interface Reminder {
@@ -63,8 +62,8 @@ export function ReceiveQueue() {
   const { loaded, total } = loadedAndTotal(posQ.data?.pages);
   const showErp = rows.some((r) => erpArrived.has(r.id));
 
-  const openPo = (po: PoListRow, atLines = false) =>
-    navigate({ to: "/purchase-orders/$id", params: { id: String(po.id) }, ...(atLines ? { hash: "po-lines" } : {}) });
+  const openPo = (po: PoListRow) => navigate({ to: "/purchase-orders/$id", params: { id: String(po.id) } });
+  const receivePo = (po: PoListRow) => navigate({ to: "/receive/$poId", params: { poId: String(po.id) }, search: {} });
 
   const columns: DataTableColumn<PoListRow>[] = [
     {
@@ -121,7 +120,7 @@ export function ReceiveQueue() {
             aria-label={`Receive ${po.po_number}`}
             onClick={(e) => {
               e.stopPropagation();
-              openPo(po, true);
+              receivePo(po);
             }}
           >
             Receive
@@ -137,7 +136,7 @@ export function ReceiveQueue() {
     <div className="flex flex-col gap-4">
       <PageHeader
         title="Receive"
-        description="Purchase orders with units still waiting for goods. Receive opens the PO at its lines."
+        description="Purchase orders with units still waiting for goods. Receive opens one screen: receipt details once, a quantity per line."
         actions={
           <Button asChild variant="outline">
             <Link to="/purchase-orders">All Purchase Orders</Link>

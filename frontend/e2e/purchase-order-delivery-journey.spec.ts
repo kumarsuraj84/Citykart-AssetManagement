@@ -102,49 +102,46 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   await expect(lineRow.getByRole("cell").nth(4)).toHaveText("3");
   await expect(lineRow.getByText("Waiting", { exact: true })).toBeVisible();
 
-  // ---- Receive the line: the dialog gets all 3 waiting units ----
+  // ---- S4: Receive the line on the Receive screen (no unit rows, nothing to tick) ----
   await lineRow.getByRole("button", { name: /^Receive line 1\b/ }).click();
-  // Named, not a bare "dialog": the Received Into dropdown's popup also
-  // has role=dialog and can still be in the DOM while this dialog closes.
-  const deliverDialog = page.getByRole("dialog", { name: /^Receive \d+ units?$/ });
-  await expect(deliverDialog.getByRole("heading", { name: "Receive 3 units" })).toBeVisible();
+  await expect(page).toHaveURL(/\/receive\/\d+\?line=1$/);
+  await expect(page.getByRole("heading", { name: `Receive PO ${poNumber}`, level: 1 })).toBeVisible();
+  const receiveLine = page.getByRole("group", { name: /^Line 1:/ });
+  await expect(receiveLine.getByLabel("Waiting: 3")).toBeVisible();
 
-  // ---- Shared Invoice fields, filled once ----
+  // ---- Receipt details, entered once ----
   const invoiceNumber = `E2E-INV-${ts}`;
-  await deliverDialog.locator("#invoice-number").fill(invoiceNumber);
+  await page.locator("#invoice-number").fill(invoiceNumber);
   const invoiceDate = "2026-01-15";
-  await deliverDialog.locator("#invoice-date").fill(invoiceDate);
-  await deliverDialog.locator("#invoice-amount").fill("2100");
-
-  // ---- Received Into: chosen once for the whole delivery (a PO goes to
-  // one location only), not per unit ----
-  await expect(deliverDialog.locator('[id^="asset-user-"]')).toHaveCount(0);
-  await deliverDialog.locator("#initial-asset-user").click();
+  await page.locator("#invoice-date").fill(invoiceDate);
+  await page.locator("#invoice-amount").fill("2100");
+  // Received Into: once for the whole receipt (a stock room of the PO's company).
+  await page.locator("#received-into").click();
   await page.getByRole("option", { name: optionMatcher(ctx.stock.name) }).click();
 
-  // ---- Distinct Serial Number for 2 of the 3 units ----
-  // The 3 units are identical units of one line, so the dialog groups them
-  // into ONE block with a single list box (one serial per line). (id is
-  // "serials-<first pending id>", unknown ahead of time -- select by prefix.)
-  await expect(deliverDialog.getByText("3 units", { exact: true })).toBeVisible();
-  const serialsBox = deliverDialog.locator('textarea[id^="serials-"]');
-  await expect(serialsBox).toHaveCount(1);
-
+  // ---- Receive 2 of the 3: the quantity says so, the 3rd stays waiting ----
+  await page.locator("#qty-line-1").fill("2");
+  await expect(receiveLine.getByText("1 unit will stay waiting on this PO.")).toBeVisible();
+  const serialsBox = page.locator("#serials-line-1");
+  await expect(page.locator('textarea[id^="serials-line-"]')).toHaveCount(1);
   const serialA = `E2E-SN-${ts}-A`;
   const serialB = `E2E-SN-${ts}-B`;
   await serialsBox.fill(`${serialA}\n${serialB}`);
-  await expect(deliverDialog.getByText(/^2 of 3 entered/)).toBeVisible();
-  // Receive only these 2; the 3rd stays waiting on the PO.
-  await deliverDialog.getByRole("checkbox", { name: "Leave the remaining units waiting" }).click();
+  await expect(receiveLine.getByText("2 of 2 entered", { exact: true })).toBeVisible();
 
-  // ---- Confirm the delivery ----
-  await deliverDialog.getByRole("button", { name: "Confirm", exact: true }).click();
-  await expect(deliverDialog).not.toBeVisible();
+  // ---- Receive ----
+  await page.getByRole("button", { name: "Receive 2 units", exact: true }).click();
+  const received = page.getByRole("region", { name: "Received" });
+  await expect(received.getByText("2 assets created", { exact: true })).toBeVisible();
+  await expect(received.getByRole("button", { name: "Print labels (2)" })).toBeVisible();
 
   // ---- Exactly 2 units received, the 3rd still waiting: the line's counts ----
+  await page.goto(poPath);
   await expect(lineRow.getByRole("cell").nth(3)).toHaveText("2");
   await expect(lineRow.getByRole("cell").nth(4)).toHaveText("1");
   await expect(lineRow.getByText("Partly Received", { exact: true })).toBeVisible();
+  // The invoices card (GET /invoices) lists the invoice with its units.
+  await expect(page.getByRole("region", { name: "Invoices received" }).getByText(invoiceNumber, { exact: true })).toBeVisible();
 
   // ---- 2 new Assets now exist -- verified via the Asset Register, since
   // PurchaseOrderDetail has no link to the delivered asset -- searching by
@@ -203,25 +200,22 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   await expect(lineAgain.getByRole("cell").nth(4)).toHaveText("1");
 
   await lineAgain.getByRole("button", { name: /^Receive line 1\b/ }).click();
+  await expect(page).toHaveURL(/\/receive\/\d+\?line=1$/);
+  const lineOnce = page.getByRole("group", { name: /^Line 1:/ });
+  await expect(page.locator("#qty-line-1")).toHaveValue("1");
+  await page.locator("#invoice-number").fill(`E2E-INV-DUP-${ts}`);
+  await page.locator("#invoice-date").fill("2026-01-16");
+  await page.locator("#invoice-amount").fill("1050");
+  await page.locator("#serials-line-1").fill(serialA); // duplicate, real value -- not "N/A"
 
-  const dupDialog = page.getByRole("dialog", { name: /^Receive \d+ units?$/ });
-  await expect(dupDialog.getByRole("heading", { name: "Receive 1 unit" })).toBeVisible();
-  await dupDialog.locator("#invoice-number").fill(`E2E-INV-DUP-${ts}`);
-  await dupDialog.locator("#invoice-date").fill("2026-01-16");
-  await dupDialog.locator("#invoice-amount").fill("1050");
-  await dupDialog.locator('input[id^="serial-"]').fill(serialA); // duplicate, real value -- not "N/A"
-  await dupDialog.locator("#initial-asset-user").click();
-  await page.getByRole("option", { name: optionMatcher(ctx.store.name) }).click();
-
-  // The dialog now asks the server while the serial is being typed, so the
-  // clash is shown right away -- naming the asset that already has it -- and
-  // Confirm is disabled, instead of failing only after Confirm. (The server's
-  // own rejection of a duplicate on delivery is covered by the backend tests.)
-  await expect(dupDialog.getByText(/is already used by asset/i)).toBeVisible();
-  await expect(dupDialog.getByRole("button", { name: "Confirm", exact: true })).toBeDisabled();
-  await expect(dupDialog).toBeVisible();
-  await dupDialog.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(dupDialog).not.toBeVisible();
+  // The screen asks the server while the serial is being typed, so the clash
+  // is shown right away -- naming the asset that already has it, on its row --
+  // and Receive stays disabled with the reason beside it. (The server's own
+  // refusal of a duplicate on receipt is covered by the backend tests.)
+  await expect(lineOnce.getByText(/is already used by asset/i)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Receive 1 unit", exact: true })).toBeDisabled();
+  await expect(page.locator("#receive-why")).toContainText("Line 1:");
+  await page.getByRole("link", { name: "Open PO" }).click();
   await expect(lineAgain.getByRole("cell").nth(3)).toHaveText("2");
   await expect(lineAgain.getByRole("cell").nth(4)).toHaveText("1");
 });

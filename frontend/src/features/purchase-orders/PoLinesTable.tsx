@@ -6,7 +6,6 @@ import { apiClient } from "../../lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AsyncButton } from "@/components/shared/AsyncButton";
 import { cn } from "@/lib/utils";
 import { serialModeLabel, workAreaLabel } from "@/lib/labels";
 import { PoStatusBadge } from "./PoStatusBadge";
@@ -31,8 +30,6 @@ interface Props {
   poId: number;
   lines: LineGroup[];
   isLoading: boolean;
-  /** The line whose waiting units are being fetched for receiving. */
-  receivingLine: number | null;
   onReceive: (line: LineGroup) => void;
   onEdit: (line: LineGroup) => void;
   onCancelWaiting: (line: LineGroup) => void;
@@ -42,7 +39,7 @@ interface Props {
 
 const COLS = 9;
 
-export function PoLinesTable({ poId, lines, isLoading, receivingLine, onReceive, onEdit, onCancelWaiting, onEditUnit, onCancelUnit }: Props) {
+export function PoLinesTable({ poId, lines, isLoading, onReceive, onEdit, onCancelWaiting, onEditUnit, onCancelUnit }: Props) {
   const [open, setOpen] = useState<Record<number, boolean>>({});
 
   return (
@@ -114,16 +111,13 @@ export function PoLinesTable({ poId, lines, isLoading, receivingLine, onReceive,
                     <TableCell>
                       <div className="flex flex-wrap justify-end gap-1.5">
                         {l.waiting > 0 && (
-                          <AsyncButton
+                          <Button
                             size="sm"
                             onClick={() => onReceive(l)}
-                            pending={receivingLine === l.line_no}
-                            pendingLabel="Opening…"
-                            disabled={receivingLine !== null && receivingLine !== l.line_no}
                             aria-label={`Receive line ${l.line_no} (${title})`}
                           >
                             Receive
-                          </AsyncButton>
+                          </Button>
                         )}
                         <Button size="sm" variant="outline" onClick={() => onEdit(l)} aria-label={`Edit line ${l.line_no} (${title})`}>
                           Edit

@@ -3,7 +3,7 @@ import { optionMatcher, newSeedRegistry, seedTestCompany, teardownTestCompany, t
 
 // Desktop bundles end to end: define the bundle on the Bundles screen (/setup/bundles, a direct link since
 // S6a; new sets are usually made on the Item: "Comes as a set"), add 2 Desktops to a
-// PO (16000 each, 18% tax), see them become 8 ordinary lines, then deliver them
+// PO (16000 each, 18% tax), see them become 8 ordinary lines, then receive them
 // -- the mouse and keyboard parts (their sub-category is set to "No serial
 // number" in Setup) must start with "No serial number" ticked,
 // CPU and TFT take pasted serial lists -- and finally deactivate the bundle.
@@ -88,25 +88,29 @@ test("Desktop bundle journey: define it, add 2 to a PO, deliver with no-serial d
   await expect(page.getByRole("status").filter({ hasText: "PO created: 4 lines, 8 units waiting." })).toBeVisible();
   await expect(page.getByRole("row", { name: /^Line \d+:/ })).toHaveCount(4);
 
-  // ---- Receive all 8: serials only for the CPUs and TFTs ----
+  // ---- S4: Receive all 8 on the Receive screen: serial boxes only for the CPUs and TFTs ----
   await page.getByRole("button", { name: "Receive all waiting (8)", exact: true }).click();
-  const deliver = page.getByRole("dialog", { name: /^Receive \d+ units?$/ });
-  await deliver.locator("#invoice-number").fill(`E2E-INV-${ts}`);
-  await deliver.locator("#invoice-amount").fill("37760");
-  await selectRadixById(page, "initial-asset-user", ctx.stock.name);
+  await expect(page).toHaveURL(/\/receive\/\d+$/);
+  await page.locator("#invoice-number").fill(`E2E-INV-${ts}`);
+  await page.locator("#invoice-amount").fill("37760");
+  await selectRadixById(page, "received-into", ctx.stock.name);
 
-  await expect(deliver.getByRole("checkbox", { name: `No serial number for E2E Dell Desktop ${ts} - Mouse` })).toBeChecked();
-  await expect(deliver.getByRole("checkbox", { name: `No serial number for E2E Dell Desktop ${ts} - Keyboard` })).toBeChecked();
-  await expect(deliver.getByRole("checkbox", { name: `No serial number for E2E Dell Desktop ${ts} - CPU` })).not.toBeChecked();
-  await expect(deliver.getByRole("button", { name: "Confirm", exact: true })).toBeDisabled();
+  // Keyboard and Mouse never carry a serial (their Item's rule): no box, N/A said in words.
+  const mouseGroup = page.getByRole("group", { name: /^Line \d+: .*Mouse/ });
+  const keyboardGroup = page.getByRole("group", { name: /^Line \d+: .*Keyboard/ });
+  await expect(mouseGroup.getByText("No serial number: each asset is saved with N/A.")).toBeVisible();
+  await expect(keyboardGroup.getByText("No serial number: each asset is saved with N/A.")).toBeVisible();
+  await expect(mouseGroup.locator("textarea")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Receive 8 units", exact: true })).toBeDisabled();
 
-  const boxes = deliver.locator('textarea[id^="serials-"]'); // CPU, TFT, Keyboard, Mouse in that order
+  const boxes = page.locator('textarea[id^="serials-line-"]'); // CPU, TFT in line order
+  await expect(boxes).toHaveCount(2);
   await boxes.nth(0).fill(`E2E-C-${ts}-1\nE2E-C-${ts}-2`);
   await boxes.nth(1).fill(`E2E-T-${ts}-1\nE2E-T-${ts}-2`);
-  await deliver.getByRole("button", { name: "Confirm", exact: true }).click();
-  await expect(deliver).not.toBeVisible();
+  await page.getByRole("button", { name: "Receive 8 units", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Received" }).getByText("8 assets created", { exact: true })).toBeVisible();
 
-  await expect(page.getByText("8 units received and now in the register.")).toBeVisible();
+  await page.getByRole("link", { name: "Open PO" }).click();
   await expect(page.getByRole("button", { name: /^Receive all waiting/ })).toBeDisabled();
   // The mouse/keyboard assets took N/A; the CPUs their own serials (seen in each line's units).
   const mouseLine = page.getByRole("row", { name: /^Line \d+: .*Mouse/ });

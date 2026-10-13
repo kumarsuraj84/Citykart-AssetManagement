@@ -63,7 +63,7 @@ const ASSETS: NavLinkDef = {
 const PURCHASE_ORDERS: NavLinkDef = {
   to: "/purchase-orders", label: "Purchase Orders", icon: ClipboardList, activePrefixes: ["/purchase-orders/"],
 };
-const RECEIVE: NavLinkDef = { to: "/receive", label: "Receive", icon: PackageCheck };
+const RECEIVE: NavLinkDef = { to: "/receive", label: "Receive", icon: PackageCheck, activePrefixes: ["/receive/"] };
 const MOVE: NavLinkDef = { to: "/asset-movement", label: "Move", icon: ScanBarcode };
 
 export const PEOPLE_LINKS: NavLinkDef[] = [

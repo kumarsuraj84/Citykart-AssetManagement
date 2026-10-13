@@ -26,7 +26,7 @@ export interface PendingAssetRow {
   serial_number: string | null;
   invoice_number: string | null;
   delivered_asset_id: number | null;
-  /** Not sent by the server yet (backend request); shown when present. */
+  /** S4: the code of the asset this received unit became (null while waiting / cancelled). */
   delivered_asset_code?: string | null;
 }
 
