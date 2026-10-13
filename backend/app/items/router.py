@@ -79,6 +79,20 @@ async def articles(
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc))
 
 
+@router.get("/articles/groups")
+async def article_groups(
+    level: str, company_id: int | None = None, session: AsyncSession = Depends(get_session),
+    source: ErpSource = Depends(get_erp_source), _actor=Depends(require_primary_owner()),
+):
+    """The Departments / Sections / Divisions (`level`) one company has bought from, to mark a whole group not tracked."""
+    try:
+        return await service.group_overview(session, source, level.upper(), company_id)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    except ErpUnavailable as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc))
+
+
 @router.get("/articles/codes")
 async def article_codes(
     article_key: str, company_id: int | None = None, session: AsyncSession = Depends(get_session),

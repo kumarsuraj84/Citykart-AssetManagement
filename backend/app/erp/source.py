@@ -160,6 +160,7 @@ class ErpArticle:
     # few samples it shows.
     icodes: list[str] = field(default_factory=list)
     names: list[str] = field(default_factory=list)
+    division: str = "FIXED ASSETS"
 
 
 @dataclass
@@ -309,7 +310,7 @@ class PgErpSource(PgReadOnly):
         rel = await self._item_relation()
         rows = await self._fetch(
             f"""select coalesce(i.article_code::text, i.article_name) article_key, max(i.article_name) article_name,
-                       max(i.section) section, max(i.department) department, count(distinct l.icode) codes,
+                       max(i.section) section, max(i.department) department, max(i.division) division, count(distinct l.icode) codes,
                        sum(l.ordqty) units, count(*) lines,
                        (array_agg(distinct left(i.cat1, 40)) filter (where i.cat1 is not null))[1:4] samples,
                        array_agg(distinct l.icode) icodes,
@@ -321,7 +322,8 @@ class PgErpSource(PgReadOnly):
             ErpArticle(article_key=r["article_key"], article_name=(r["article_name"] or "").strip(), section=(r["section"] or "").strip(),
                        department=(r["department"] or "").strip(), codes=int(r["codes"]), units=float(r["units"] or 0),
                        lines=int(r["lines"]), samples=[s for s in (clean_name(x) for x in (r["samples"] or [])) if s],
-                       icodes=sorted(r["icodes"] or []), names=[s for s in (clean_name(x) for x in (r["names"] or [])) if s])
+                       icodes=sorted(r["icodes"] or []), names=[s for s in (clean_name(x) for x in (r["names"] or [])) if s],
+                       division=(r["division"] or "").strip())
             for r in rows
         ])
 

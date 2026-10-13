@@ -1,9 +1,12 @@
-from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, String
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.db import Base
 from app.core.models import AuditMixin, SoftDeleteMixin
 
-MATCH_TYPES = ("CODE", "NAME", "ARTICLE")
+MATCH_TYPES = ("CODE", "NAME", "ARTICLE", "DEPARTMENT", "SECTION", "DIVISION")
+# The broad levels (a whole Department / Section / Division) can only say "not tracked": one department is
+# not one Item. Most specific first when a code is resolved.
+LEVEL_TYPES = ("DEPARTMENT", "SECTION", "DIVISION")
 
 
 class Item(Base, AuditMixin, SoftDeleteMixin):
@@ -33,16 +36,22 @@ class Item(Base, AuditMixin, SoftDeleteMixin):
 
 
 class ItemMap(Base, AuditMixin, SoftDeleteMixin):
-    """Which Item an ERP item code belongs to. Looked up most specific first:
+    """Which Item an ERP item code belongs to, or that it is **not tracked** in CKAM (cables, hangers,
+    sensor tags: material the ERP capitalises but CKAM does not manage). Looked up most specific first:
     CODE (one ERP item code) > NAME (a product name inside one Article, for
     catch-all Articles such as FA_IT_OTHERS) > ARTICLE (every code of the
     Article, the normal case, so a new vendor code lands on the right Item by
-    itself). Section / Department / Article names are stored as a snapshot so
+    itself) > DEPARTMENT > SECTION > DIVISION (these three: not tracked only, `level_key` is the name).
+    Section / Department / Article names are stored as a snapshot so
     an ERP rename never changes history."""
     __tablename__ = "item_map"
+    __table_args__ = (CheckConstraint("item_id IS NOT NULL OR not_tracked", name="ck_item_map_item_or_not_tracked"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    item_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("item.id"))
+    item_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("item.id"))
+    not_tracked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    # DEPARTMENT / SECTION / DIVISION rules: the ERP name of that level.
+    level_key: Mapped[str | None] = mapped_column(String(300))
     # Whose ERP master the rule is for (CKSPL's and CVSPL's masters differ: same
     # product, different codes / Articles). None = every company; a company's own
     # rule beats an every-company rule.

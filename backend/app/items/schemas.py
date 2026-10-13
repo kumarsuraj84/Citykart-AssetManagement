@@ -30,10 +30,16 @@ class ItemOut(BaseModel):
 
 
 class ItemMapIn(BaseModel):
-    item_id: int
+    # The Item the ERP code(s) are. Left out when `not_tracked` is true.
+    item_id: int | None = None
+    # This is not something CKAM tracks (cables, hangers, sensor tags): such PO lines are left out.
+    not_tracked: bool = False
     # Whose ERP master this rule is for; null = every company.
     company_id: int | None = None
+    # CODE, NAME, ARTICLE, or (not tracked only) DEPARTMENT, SECTION, DIVISION.
     match_type: str
+    # For DEPARTMENT / SECTION / DIVISION: that level's name in the ERP.
+    level_key: str | None = None
     article_key: str | None = None
     name_key: str | None = None
     erp_item_code: str | None = None
@@ -46,7 +52,9 @@ class ItemMapIn(BaseModel):
 class ItemMapOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
-    item_id: int
+    item_id: int | None = None
+    not_tracked: bool = False
+    level_key: str | None = None
     company_id: int | None = None
     match_type: str
     article_key: str | None

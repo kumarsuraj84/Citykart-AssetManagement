@@ -2,12 +2,12 @@
 Item an ERP item code belongs to. See docs/ai/ITEM_MODEL.md."""
 import re
 from dataclasses import dataclass
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.asset_users.models import AssetUser
 from app.bundles.models import Bundle, BundlePart
 from app.erp.source import ErpItem, ErpSource
-from app.items.models import Item, ItemMap, MATCH_TYPES
+from app.items.models import Item, ItemMap, LEVEL_TYPES, MATCH_TYPES
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company
 
 
@@ -26,6 +26,15 @@ class Resolution:
     item: Item | None
     matched_by: str | None = None
     map_id: int | None = None
+    # The rule that matched says this code is not something CKAM tracks (then `item` is None).
+    not_tracked: bool = False
+    level_key: str | None = None            # the Department / Section / Division name, for a level rule
+
+    @property
+    def why_not_tracked(self) -> str | None:
+        if not self.not_tracked:
+            return None
+        return f"{self.matched_by.title()} {self.level_key}" if self.level_key else (self.matched_by or "").title()
 
 
 # ---------- Items ----------
@@ -99,7 +108,7 @@ async def deactivate_item(session: AsyncSession, item: Item, actor: AssetUser) -
 async def list_items(session: AsyncSession) -> list[dict]:
     items = (await session.execute(select(Item).where(Item.is_active.is_(True)).order_by(Item.name))).scalars().all()
     counts = dict((await session.execute(
-        select(ItemMap.item_id, func.count()).where(ItemMap.is_active.is_(True)).group_by(ItemMap.item_id)
+        select(ItemMap.item_id, func.count()).where(ItemMap.is_active.is_(True), ItemMap.item_id.is_not(None)).group_by(ItemMap.item_id)
     )).all())
     return [
         {
@@ -142,52 +151,97 @@ async def seed_from_subcategories(session: AsyncSession, actor: AssetUser) -> in
 
 # ---------- mapping rules ----------
 
-async def _active_maps(session: AsyncSession) -> list[tuple[ItemMap, Item]]:
+async def _active_maps(session: AsyncSession) -> list[tuple[ItemMap, Item | None]]:
+    """The rules in force: an Item rule whose Item is active, and every "not tracked" rule (it has no Item)."""
     return list((await session.execute(
-        select(ItemMap, Item).join(Item, Item.id == ItemMap.item_id).where(ItemMap.is_active.is_(True), Item.is_active.is_(True))
+        select(ItemMap, Item).outerjoin(Item, Item.id == ItemMap.item_id)
+        .where(ItemMap.is_active.is_(True), or_(ItemMap.not_tracked.is_(True), Item.is_active.is_(True)))
     )).all())
 
 
-async def resolve_items(session: AsyncSession, erp_items: list[ErpItem], company_id: int | None = None) -> dict[str, Resolution]:
-    """For each ERP item: the Item it belongs to, found most specific first --
-    its own code, then its product name inside its Article, then its Article.
-    Rules are per company (each company's ERP master is its own): at every step
-    the company's own rule wins over an every-company rule, and another
-    company's rule is never used."""
-    maps = [(m, i) for m, i in await _active_maps(session) if m.company_id in (None, company_id)]
+class _Rules:
+    """The rules in force for one company, indexed by what they match."""
 
-    def index(match_type: str, key):
-        table: dict = {}
-        for m, i in sorted(maps, key=lambda mi: mi[0].company_id is not None):   # every-company first, so a company's rule overwrites it
-            if m.match_type == match_type:
-                table[key(m)] = (m, i)
-        return table
+    def __init__(self, maps: list[tuple[ItemMap, Item | None]], company_id: int | None):
+        mine = [(m, i) for m, i in maps if m.company_id in (None, company_id)]
 
-    by_code = index("CODE", lambda m: (m.erp_item_code or "").lower())
-    by_name = index("NAME", lambda m: (m.article_key, m.name_key))
-    by_article = index("ARTICLE", lambda m: m.article_key)
-    out: dict[str, Resolution] = {}
-    for e in erp_items:
-        hit, how = by_code.get(e.icode.lower()), "CODE"
+        def index(match_type: str, key):
+            table: dict = {}
+            for m, i in sorted(mine, key=lambda mi: mi[0].company_id is not None):   # every-company first, so a company's rule overwrites it
+                if m.match_type == match_type:
+                    table[key(m)] = (m, i)
+            return table
+
+        self.code = index("CODE", lambda m: (m.erp_item_code or "").lower())
+        self.name = index("NAME", lambda m: (m.article_key, m.name_key))
+        self.article = index("ARTICLE", lambda m: m.article_key)
+        self.department = index("DEPARTMENT", lambda m: norm(m.level_key))
+        self.section = index("SECTION", lambda m: norm(m.level_key))
+        self.division = index("DIVISION", lambda m: norm(m.level_key))
+
+    @staticmethod
+    def _resolution(hit: tuple[ItemMap, Item | None], how: str) -> Resolution:
+        m, i = hit
+        if m.not_tracked:
+            return Resolution(item=None, matched_by=how, map_id=m.id, not_tracked=True, level_key=m.level_key)
+        return Resolution(item=i, matched_by=how, map_id=m.id)
+
+    def resolve(self, e: ErpItem) -> Resolution:
+        """Most specific first: its own code, its product name inside its Article, its Article, then its
+        Department, Section and Division (those three can only say "not tracked")."""
+        hit, how = self.code.get(e.icode.lower()), "CODE"
         if hit is None and norm(e.name):
-            hit, how = by_name.get((e.article_key, norm(e.name))), "NAME"
+            hit, how = self.name.get((e.article_key, norm(e.name))), "NAME"
         if hit is None:
-            hit, how = by_article.get(e.article_key), "ARTICLE"
-        out[e.icode] = Resolution(item=hit[1], matched_by=how, map_id=hit[0].id) if hit else Resolution(item=None)
-    return out
+            hit, how = self.article.get(e.article_key), "ARTICLE"
+        if hit is None and norm(e.department):
+            hit, how = self.department.get(norm(e.department)), "DEPARTMENT"
+        if hit is None and norm(e.section):
+            hit, how = self.section.get(norm(e.section)), "SECTION"
+        if hit is None and norm(e.division):
+            hit, how = self.division.get(norm(e.division)), "DIVISION"
+        return self._resolution(hit, how) if hit else Resolution(item=None)
+
+    def resolve_article(self, article_key: str, department: str, section: str, division: str) -> Resolution:
+        """What the Article as a whole resolves to (its own rule, else its Department, Section, Division)."""
+        hit, how = self.article.get(article_key), "ARTICLE"
+        if hit is None and norm(department):
+            hit, how = self.department.get(norm(department)), "DEPARTMENT"
+        if hit is None and norm(section):
+            hit, how = self.section.get(norm(section)), "SECTION"
+        if hit is None and norm(division):
+            hit, how = self.division.get(norm(division)), "DIVISION"
+        return self._resolution(hit, how) if hit else Resolution(item=None)
+
+
+async def resolve_items(session: AsyncSession, erp_items: list[ErpItem], company_id: int | None = None) -> dict[str, Resolution]:
+    """For each ERP item: the Item it belongs to, or that it is not tracked, found most specific first --
+    its own code, then its product name inside its Article, then its Article, then its Department, Section
+    and Division. Rules are per company (each company's ERP master is its own): at every step the company's
+    own rule wins over an every-company rule, and another company's rule is never used."""
+    rules = _Rules(await _active_maps(session), company_id)
+    return {e.icode: rules.resolve(e) for e in erp_items}
 
 
 async def upsert_map(session: AsyncSession, actor: AssetUser, data: dict) -> ItemMap:
     """Creates (or re-points) one rule. A rule is identified by what it matches,
-    so mapping the same Article / name / code again just changes its Item."""
-    item = await session.get(Item, data["item_id"])
-    if item is None or not item.is_active:
-        raise ValueError("Item not found")
+    so mapping the same Article / name / code again just changes its Item, or
+    turns it into (or back from) "not tracked". A Department / Section / Division
+    rule can only be "not tracked"."""
     mt = data["match_type"]
     if mt not in MATCH_TYPES:
         raise ValueError(f"match_type must be one of {MATCH_TYPES}")
+    not_tracked = bool(data.get("not_tracked"))
+    item = None
+    if not not_tracked:
+        if mt in LEVEL_TYPES:
+            raise ValueError(f"a {mt.title()} rule can only say \"not tracked\": one {mt.title()} is not one Item")
+        item = await session.get(Item, data.get("item_id")) if data.get("item_id") is not None else None
+        if item is None or not item.is_active:
+            raise ValueError("Item not found")
     article_key = (data.get("article_key") or "").strip() or None
     name_key = norm(data.get("name_key")) or None
+    level_key = (data.get("level_key") or "").strip() or None
     code = (data.get("erp_item_code") or "").strip() or None
     if mt == "CODE" and not code:
         raise ValueError("a code rule needs the ERP item code")
@@ -195,6 +249,8 @@ async def upsert_map(session: AsyncSession, actor: AssetUser, data: dict) -> Ite
         raise ValueError("this rule needs the Article")
     if mt == "NAME" and not name_key:
         raise ValueError("a product-name rule needs the product name")
+    if mt in LEVEL_TYPES and not level_key:
+        raise ValueError(f"a {mt.title()} rule needs the {mt.title()} name")
     company_id = data.get("company_id")
     if company_id is not None and await session.get(Company, company_id) is None:
         raise ValueError("company not found")
@@ -204,14 +260,19 @@ async def upsert_map(session: AsyncSession, actor: AssetUser, data: dict) -> Ite
         stmt = stmt.where(func.lower(ItemMap.erp_item_code) == code.lower())
     elif mt == "ARTICLE":
         stmt = stmt.where(ItemMap.article_key == article_key)
+    elif mt in LEVEL_TYPES:
+        stmt = stmt.where(func.lower(ItemMap.level_key) == level_key.lower())
     else:
         stmt = stmt.where(ItemMap.article_key == article_key, ItemMap.name_key == name_key)
     rule = (await session.execute(stmt.limit(1))).scalar_one_or_none()
     if rule is None:
-        rule = ItemMap(match_type=mt, created_by=actor.id, company_id=company_id, article_key=article_key if mt != "CODE" else None,
-                       name_key=name_key if mt == "NAME" else None, erp_item_code=code if mt == "CODE" else None)
+        rule = ItemMap(match_type=mt, created_by=actor.id, company_id=company_id,
+                       article_key=article_key if mt not in ("CODE",) + LEVEL_TYPES else None,
+                       name_key=name_key if mt == "NAME" else None, erp_item_code=code if mt == "CODE" else None,
+                       level_key=level_key if mt in LEVEL_TYPES else None)
         session.add(rule)
-    rule.item_id = item.id
+    rule.not_tracked = not_tracked
+    rule.item_id = None if not_tracked else item.id
     for field in ("section", "department", "article_name", "note"):
         if data.get(field):
             setattr(rule, field, data[field])
@@ -240,27 +301,28 @@ async def article_overview(session: AsyncSession, source: ErpSource, company_id:
     company and a suggested Item (the existing Item whose name shares the most
     words with the Article's name, department and sample product names)."""
     articles = await source.bought_articles(await _company_code(session, company_id))
-    maps = [(m, i) for m, i in await _active_maps(session) if m.company_id in (None, company_id)]
-    # the company's own rule wins over an every-company one
-    article_item: dict[str, Item] = {}
-    for m, i in sorted(maps, key=lambda mi: mi[0].company_id is not None):
-        if m.match_type == "ARTICLE":
-            article_item[m.article_key] = i
+    all_maps = await _active_maps(session)
+    maps = [(m, i) for m, i in all_maps if m.company_id in (None, company_id)]
+    rules = _Rules(all_maps, company_id)
     name_rules: dict[str, int] = {}
     code_rules: dict[str, int] = {}
+    untracked_rules: dict[str, int] = {}          # code / product-name rules inside the Article that say "not tracked"
     for m, _ in maps:
         if m.match_type == "NAME" and m.article_key:
             name_rules[m.article_key] = name_rules.get(m.article_key, 0) + 1
         if m.match_type == "CODE" and m.article_key:
             code_rules[m.article_key] = code_rules.get(m.article_key, 0) + 1
+        if m.not_tracked and m.match_type in ("NAME", "CODE") and m.article_key:
+            untracked_rules[m.article_key] = untracked_rules.get(m.article_key, 0) + 1
     items = (await session.execute(select(Item).where(Item.is_active.is_(True)))).scalars().all()
     item_words = {i.id: _words(i.name) for i in items}
     out = []
     for a in articles:
-        mapped = article_item.get(a.article_key)
+        res = rules.resolve_article(a.article_key, a.department, a.section, a.division)
+        mapped = res.item
         text_words = _words(" ".join([a.article_name, a.department, *a.samples]))
         suggestion, best = None, 0.0
-        if mapped is None:
+        if mapped is None and not res.not_tracked:
             for i in items:
                 words = item_words[i.id]
                 score = len(words & text_words) / len(words) if words else 0
@@ -268,13 +330,45 @@ async def article_overview(session: AsyncSession, source: ErpSource, company_id:
                     suggestion, best = i, score
         out.append({
             "article_key": a.article_key, "article_name": a.article_name, "section": a.section, "department": a.department,
-            "codes": a.codes, "units": a.units, "lines": a.lines, "samples": a.samples,
+            "division": a.division, "codes": a.codes, "units": a.units, "lines": a.lines, "samples": a.samples,
             "icodes": a.icodes, "names": a.names,
             "item_id": mapped.id if mapped else None, "item_name": mapped.name if mapped else None,
+            # "ITEM" (linked to an Item), "NOT_TRACKED" (the Article, or its Department / Section / Division, is not tracked), or null
+            "decision": "ITEM" if mapped else ("NOT_TRACKED" if res.not_tracked else None),
+            "not_tracked_by": res.why_not_tracked, "not_tracked_level": res.matched_by if res.not_tracked else None,
+            "decision_map_id": res.map_id,
             "name_rules": name_rules.get(a.article_key, 0), "code_rules": code_rules.get(a.article_key, 0),
+            "untracked_rules": untracked_rules.get(a.article_key, 0),
             "suggested_item_id": suggestion.id if suggestion and best >= 0.5 else None,
             "suggested_item_name": suggestion.name if suggestion and best >= 0.5 else None,
         })
+    return out
+
+
+async def group_overview(session: AsyncSession, source: ErpSource, level: str, company_id: int | None = None) -> list[dict]:
+    """The Departments, Sections or Divisions that company has bought from, with how many Articles, codes and
+    units each holds and whether the whole group is marked not tracked (so one click can clear a department)."""
+    if level not in LEVEL_TYPES:
+        raise ValueError(f"level must be one of {LEVEL_TYPES}")
+    articles = await source.bought_articles(await _company_code(session, company_id))
+    rules = _Rules(await _active_maps(session), company_id)
+    table = getattr(rules, level.lower())
+    field = level.lower()
+    groups: dict[str, dict] = {}
+    for a in articles:
+        value = (getattr(a, field) or "").strip()
+        if not value:
+            continue
+        g = groups.setdefault(norm(value), {"value": value, "articles": 0, "codes": 0, "units": 0.0, "section": a.section, "samples": []})
+        g["articles"] += 1
+        g["codes"] += a.codes
+        g["units"] += a.units
+        if len(g["samples"]) < 3:
+            g["samples"].append(a.article_name)
+    out = []
+    for key, g in sorted(groups.items(), key=lambda kv: -kv[1]["codes"]):
+        hit = table.get(key)
+        out.append({**g, "level": level, "not_tracked": hit is not None and hit[0].not_tracked, "map_id": hit[0].id if hit else None})
     return out
 
 
@@ -292,5 +386,6 @@ async def article_code_overview(
         out.append({
             "icode": c.icode, "name": c.name, "name_key": norm(c.name), "description": c.description, "units": c.units, "lines": c.lines,
             "item_id": r.item.id if r.item else None, "item_name": r.item.name if r.item else None, "matched_by": r.matched_by,
+            "not_tracked": r.not_tracked, "not_tracked_by": r.why_not_tracked, "map_id": r.map_id,
         })
     return out

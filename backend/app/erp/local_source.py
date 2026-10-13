@@ -155,7 +155,7 @@ class LocalErpSource:
         return [
             ErpArticle(article_key=key, article_name=key, section=(g["item"].section or "").strip(), department=(g["item"].department or "").strip(),
                        codes=len(g["codes"]), units=g["units"], lines=g["lines"], samples=[n[:40] for n in sorted(g["names"])][:4],
-                       icodes=sorted(g["codes"]), names=sorted(g["names"]))
+                       icodes=sorted(g["codes"]), names=sorted(g["names"]), division=(g["item"].division or "").strip())
             for key, g in ordered
         ]
 
