@@ -74,7 +74,7 @@ async def test_lines_must_be_on_the_erp_po_and_within_its_open_quantity_and_rate
     # fewer units and a small rate correction are legitimate edits
     ok = await client.post("/api/erp/pos/create", headers=h, json=with_line(quantity=3, rate=110, description="Patch cable"))
     assert ok.status_code == 201, ok.text
-    assert ok.json()["lines_created"] == 3
+    assert (ok.json()["lines_created"], ok.json()["units_created"]) == (1, 3)
 
 
 async def test_the_vendor_must_be_the_one_linked_to_the_erp_supplier(client, erp):

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
@@ -8,11 +9,12 @@ from app.core.deps import (
 from app.masters.models import AssetCategory
 from app.purchase_orders.models import PurchaseOrder, PendingAsset
 from app.purchase_orders.schemas import (
-    CancelWaitingIn, CancelWaitingOut, DeliveryDoneIn, LineGroupOut, LineGroupUpdateIn,
+    CancelWaitingIn, CancelWaitingOut, DeliveryDoneIn, InvoiceSummaryOut, LineGroupOut, LineGroupUpdateIn,
     PendingAssetLineIn, PendingAssetLineUpdateIn, PendingAssetOut,
     PurchaseOrderCreateIn, PurchaseOrderDeleteOut, PurchaseOrderOut, PurchaseOrderWithLinesIn, PurchaseOrderWithLinesOut,
-    RecordPiIn, RecordPiOut, SerialCheckIn, SerialCheckOut, SerialConflictOut,
+    ReceiveIn, ReceiveInfoOut, ReceiveOut, RecordPiIn, RecordPiOut, SerialCheckIn, SerialCheckOut, SerialConflictOut,
 )
+from app.purchase_orders.receive import ReceiveRefused, receive_goods, receive_info
 from app.purchase_orders.with_lines import create_po_with_lines
 from app.assets.models import Asset
 from app.assets.service import find_serials_in_use
@@ -21,10 +23,10 @@ from app.bundles.service import add_bundle_lines
 from app.lifecycle.state_machine import LifecycleError
 from app.purchase_orders.service import (
     PO_STATUSES, UNIT_STATUS_FILTER,
-    add_pending_asset_line, cancel_pending_asset_line, cancel_waiting_units, compute_pi_status, create_purchase_order,
-    delete_purchase_order, deliver_pending_assets, ensure_po_open, line_area, line_area_of, line_group_units,
-    line_groups, list_purchase_orders, number_unnumbered_units, po_is_visible, record_pi_for_invoice,
-    update_line_group, update_pending_asset_line,
+    add_pending_asset_line, attach_asset_codes, cancel_pending_asset_line, cancel_waiting_units, compute_pi_status,
+    create_purchase_order, delete_purchase_order, deliver_pending_assets, ensure_po_open, invoice_summaries, line_area,
+    line_area_of, line_group_units, line_groups, list_purchase_orders, number_unnumbered_units, po_is_visible,
+    record_pi_for_invoice, update_line_group, update_pending_asset_line,
 )
 
 router = APIRouter(prefix="/api/purchase-orders", tags=["purchase-orders"])
@@ -224,7 +226,8 @@ async def list_line_group_units(
         if stored is None:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose a status: waiting, received or cancelled.")
     await _get_scoped_group(session, po_id, line_no, asset_user)
-    return await line_group_units(session, po_id, line_no, await allowed_asset_domains(session, asset_user), stored)
+    units = await line_group_units(session, po_id, line_no, await allowed_asset_domains(session, asset_user), stored)
+    return await attach_asset_codes(session, units)
 
 
 @router.put("/{po_id}/line-groups/{line_no}", response_model=LineGroupOut)
@@ -303,7 +306,7 @@ async def list_lines(po_id: int, session: AsyncSession = Depends(get_session), a
     if domains is not None:
         stmt = (stmt.join(AssetCategory, AssetCategory.id == PendingAsset.category_id)
                 .where(line_area_of().in_(domains)))
-    return (await session.execute(stmt)).scalars().all()
+    return await attach_asset_codes(session, list((await session.execute(stmt)).scalars().all()))
 
 
 @router.post("/{po_id}/lines", response_model=list[PendingAssetOut], status_code=201)
@@ -400,7 +403,12 @@ async def deliver(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             f"The invoice date cannot be before the PO date ({po.po_date.strftime('%d-%m-%Y')}).",
         )
-    stmt = select(PendingAsset).where(PendingAsset.id.in_(line_ids), PendingAsset.purchase_order_id == po_id)
+    # S4: the units are locked for this transaction (and read fresh), so two deliveries of the same
+    # unit at the same moment can never make two assets of it -- the second one sees it delivered.
+    stmt = (
+        select(PendingAsset).where(PendingAsset.id.in_(line_ids), PendingAsset.purchase_order_id == po_id)
+        .with_for_update().execution_options(populate_existing=True)
+    )
     lines = (await session.execute(stmt)).scalars().all()
     if len(lines) != len(line_ids):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "One or more selected lines do not belong to this purchase order.")
@@ -423,10 +431,71 @@ async def deliver(
         # as a bare 500 here; it is a problem with the request like any other.
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    except Exception:
+        await session.rollback()
+        raise
     await session.commit()
-    for line in delivered:
-        await session.refresh(line)
-    return delivered
+    # One read of every delivered unit (was one refresh per unit).
+    fresh = (await session.execute(
+        select(PendingAsset).where(PendingAsset.id.in_([line.id for line in delivered]))
+        .order_by(PendingAsset.id).execution_options(populate_existing=True)
+    )).scalars().all()
+    by_id = {line.id: line for line in fresh}
+    return await attach_asset_codes(session, [by_id[line.id] for line in delivered])
+
+
+@router.get("/{po_id}/receive-info", response_model=ReceiveInfoOut)
+async def get_receive_info(
+    po_id: int, session: AsyncSession = Depends(get_session), actor=Depends(require_role(*WRITE_ROLES)),
+):
+    """S4: everything the Receive screen needs in one call -- the PO header, its lines (the caller's
+    work area) with ordered / received before / waiting and each line's serial rule, the default place
+    goods are received into, the required extra fields of the PO's company, and `blockers` (why nothing
+    can be received right now, in plain sentences; empty when it can)."""
+    po = await _get_scoped_po(po_id, session, actor)
+    await _numbered(session, po_id)
+    return await receive_info(session, po, await allowed_asset_domains(session, actor))
+
+
+@router.post("/{po_id}/receive", response_model=ReceiveOut)
+async def receive(
+    po_id: int, body: ReceiveIn, session: AsyncSession = Depends(get_session),
+    actor=Depends(require_role(*WRITE_ROLES)),
+):
+    """S4: receive goods against the PO by line: the common fields once, a quantity per line (the
+    oldest waiting units of the line are taken), serials only where the line has them. The WHOLE
+    receipt is checked first; any problem -> 422 `{detail, errors, problems: [{line_no, unit_index?,
+    serial?, message}]}` and nothing is written. Otherwise it is written in one transaction (all of it
+    or, on an unexpected failure, none of it). See app.purchase_orders.receive."""
+    po = await _get_scoped_po(po_id, session, actor)
+    await _numbered(session, po_id)
+    domains = await allowed_asset_domains(session, actor)
+    try:
+        result = await receive_goods(
+            session, po, body.model_dump(), actor, domains, await scoped_company_ids(session, actor),
+        )
+    except ReceiveRefused as refused:
+        await session.rollback()
+        return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=refused.body())
+    except (ValueError, LifecycleError) as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    except Exception:
+        # Anything unexpected after the checks: the whole receipt is rolled back (nothing half-written).
+        await session.rollback()
+        raise
+    await session.commit()
+    return result
+
+
+@router.get("/{po_id}/invoices", response_model=list[InvoiceSummaryOut])
+async def list_invoices(
+    po_id: int, session: AsyncSession = Depends(get_session), actor=Depends(require_role(*WRITE_ROLES)),
+):
+    """S4: the invoices received under this PO (the caller's work area), each with its units, asset ids
+    (at most 200, for labels) and PI state -- so the PO page need not load every unit."""
+    await _get_scoped_po(po_id, session, actor)
+    return await invoice_summaries(session, po_id, await allowed_asset_domains(session, actor))
 
 
 @router.post("/{po_id}/record-pi", response_model=RecordPiOut)

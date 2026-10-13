@@ -112,8 +112,36 @@ def validate_rule(prefix_template: str, suffix_template: str, start_number: int,
 
 
 async def generate_code(session: AsyncSession, rule: CodeRule, tokens: dict[str, str]) -> str:
-    resolved_prefix = resolve_prefix(rule, tokens)
+    [code] = await reserve_codes(session, rule, resolve_prefix(rule, tokens), 1)
+    return code
 
+
+async def generate_codes(session: AsyncSession, rule: CodeRule, prefixes: list[str]) -> list[str]:
+    """S4: the codes for a whole batch of new assets (one resolved prefix per asset, in order) with ONE
+    atomic counter update per distinct prefix -- a 100-unit receipt of one line is one statement, not 100.
+    Prefixes are reserved in sorted order so two concurrent batches always lock the counter rows in the same
+    order (no deadlock). Same guarantees as generate_code: numbers are unique and gap-free (the counter
+    moves inside the caller's transaction, so a rolled-back receipt gives its numbers back)."""
+    wanted: dict[str, int] = {}
+    for prefix in prefixes:
+        wanted[prefix] = wanted.get(prefix, 0) + 1
+    reserved: dict[str, list[str]] = {}
+    for prefix in sorted(wanted):
+        reserved[prefix] = await reserve_codes(session, rule, prefix, wanted[prefix])
+    out: list[str] = []
+    taken: dict[str, int] = {}
+    for prefix in prefixes:
+        position = taken.get(prefix, 0)
+        out.append(reserved[prefix][position])
+        taken[prefix] = position + 1
+    return out
+
+
+async def reserve_codes(session: AsyncSession, rule: CodeRule, resolved_prefix: str, count: int) -> list[str]:
+    """Reserves `count` consecutive numbers of one resolved prefix in a single statement and returns the
+    finished codes, lowest first."""
+    if count < 1:
+        return []
     # Atomic allocate-and-increment: INSERT ... ON CONFLICT ... DO UPDATE ...
     # RETURNING performs the read-increment-write as a single statement at the
     # database level. Postgres takes a row lock on the target row (existing or
@@ -124,22 +152,27 @@ async def generate_code(session: AsyncSession, rule: CodeRule, tokens: dict[str,
     # now-updated row. This is NOT an application-level read-then-write (which
     # would be vulnerable to a lost-update race); the increment happens inside
     # the single atomic UPSERT statement, so no two callers can ever observe
-    # and act on the same next_value.
+    # and act on the same next_value. S4: the increment is `count` (a whole
+    # batch at once) -- the block [new_next_value - count, new_next_value) is
+    # this caller's alone.
     stmt = (
         insert(CodeCounter)
-        .values(resolved_prefix=resolved_prefix, next_value=rule.start_number + 1)
+        .values(resolved_prefix=resolved_prefix, next_value=rule.start_number + count)
         .on_conflict_do_update(
             index_elements=[CodeCounter.resolved_prefix],
-            set_={"next_value": CodeCounter.next_value + 1},
+            set_={"next_value": CodeCounter.next_value + count},
         )
         .returning(CodeCounter.next_value)
     )
     result = await session.execute(stmt)
     new_next_value = result.scalar_one()
-    allocated_number = new_next_value - 1
+    first = new_next_value - count
 
-    number_str = str(allocated_number).zfill(rule.pad_width) if rule.pad_width else str(allocated_number)
-    return f"{resolved_prefix}{number_str}{rule.suffix_template}"
+    def code(number: int) -> str:
+        number_str = str(number).zfill(rule.pad_width) if rule.pad_width else str(number)
+        return f"{resolved_prefix}{number_str}{rule.suffix_template}"
+
+    return [code(n) for n in range(first, new_next_value)]
 
 
 async def get_active_rule(session: AsyncSession, company_id: int) -> CodeRule:

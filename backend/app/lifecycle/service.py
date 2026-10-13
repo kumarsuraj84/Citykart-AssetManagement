@@ -62,7 +62,36 @@ async def apply_event(
     IMPORTED event created by app.assets.service.procure_assets — must go through here so
     the ledger (asset_event) and the asset's denormalized current-state columns never
     drift apart.
+
+    S4: this is `apply_events` for one asset -- the same code, so the single and the batch
+    path can never apply different rules.
     """
+    [event] = await apply_events(
+        session, [(asset, to_asset_user_id)], event_type, actor,
+        event_date=event_date, remarks=remarks, reference_no=reference_no,
+    )
+    return event
+
+
+async def apply_events(
+    session: AsyncSession,
+    moves: list[tuple[Asset, int | None]],
+    event_type: str,
+    actor: AssetUser,
+    event_date: datetime | None = None,
+    remarks: str | None = None,
+    reference_no: str | None = None,
+) -> list[AssetEvent]:
+    """S4: the batch entry point of the ledger -- `apply_event`'s rules, validations and name
+    snapshots applied to many assets at once, for the receipt of a whole delivery (each new asset
+    still gets its own PROCURED event). Together with `apply_event` (which IS this function for one
+    asset) it is the only writer of asset.status / current_asset_user_id / status_since and of
+    asset_event.
+
+    `moves` = (asset, destination id) pairs; one event type, actor, date, remarks and reference for
+    all of them. Constant work per batch instead of per asset: one query for the assets' last
+    events, one for every holder involved, one INSERT for the events. All-or-nothing: every asset is
+    checked first and the first refusal raises LifecycleError before anything is written."""
     event_date = event_date or datetime.now(timezone.utc)
     # AM-09: a caller-supplied event_date with no offset (Pydantic parses a
     # bare "2025-06-01" or "2025-06-01T00:00:00" into a naive datetime,
@@ -84,80 +113,103 @@ async def apply_event(
     # disposed, sold, scrapped, a correction note) must never change who holds
     # the asset -- refused rather than silently ignored, so a caller that sent
     # one learns that it had no effect.
-    if event_type in NO_DESTINATION_EVENTS and to_asset_user_id is not None:
+    if event_type in NO_DESTINATION_EVENTS and any(to_id is not None for _, to_id in moves):
         raise LifecycleError("This action does not send the asset anywhere, so do not choose a destination.")
     # (A destination event without a destination is refused by `transition`
     # with "Choose where the asset is going." after the status checks.)
+    if not moves:
+        return []
+    if any(asset.id is None for asset, _ in moves):
+        await session.flush()
+    asset_ids = [asset.id for asset, _ in moves]
+    if len(set(asset_ids)) != len(asset_ids):
+        raise LifecycleError("The same asset was chosen twice.")
 
-    last_event_stmt = (
-        select(AssetEvent)
-        .where(AssetEvent.asset_id == asset.id)
-        .order_by(AssetEvent.event_date.desc(), AssetEvent.id.desc())
-    )
-    last_event = (await session.execute(last_event_stmt)).scalars().first()
-    if last_event and event_date < last_event.event_date:
-        if event_date.date() < last_event.event_date.date():
-            raise LifecycleError(
-                "The date cannot be before the asset's last recorded movement "
-                f"({last_event.event_date.date().strftime('%d-%m-%Y')})."
-            )
-        # Same day, earlier clock time (a date picked without a time is
-        # midnight): record it at the last event's own time so the ledger
-        # order stays right, instead of refusing today's date.
-        event_date = last_event.event_date
+    # Each asset's last recorded event -- one query for the whole batch.
+    last_events: dict[int, AssetEvent] = {
+        e.asset_id: e for e in (await session.execute(
+            select(AssetEvent)
+            .where(AssetEvent.asset_id.in_(asset_ids))
+            .distinct(AssetEvent.asset_id)
+            .order_by(AssetEvent.asset_id, AssetEvent.event_date.desc(), AssetEvent.id.desc())
+        )).scalars().all()
+    }
+    # Every destination, and every current holder (loaded purely for the display-snapshot below --
+    # see AssetEvent.from_asset_user_name_snapshot's docstring: asset.current_asset_user_id itself is
+    # what gets written as from_asset_user_id; this only resolves its *name at this point in time*),
+    # in one query.
+    holder_ids = {to_id for _, to_id in moves if to_id is not None}
+    holder_ids |= {asset.current_asset_user_id for asset, _ in moves if asset.current_asset_user_id is not None}
+    holders: dict[int, AssetUser] = {}
+    if holder_ids:
+        holders = {u.id: u for u in (await session.execute(
+            select(AssetUser).where(AssetUser.id.in_(holder_ids))
+        )).scalars().all()}
 
-    to_asset_user_type = None
-    to_asset_user = None
-    if to_asset_user_id is not None:
-        to_asset_user = await session.get(AssetUser, to_asset_user_id)
-        if to_asset_user is None:
-            raise LifecycleError("The destination you chose does not exist.")
-        if not to_asset_user.is_active:
-            raise LifecycleError(f"{to_asset_user.name} is no longer active, so assets cannot be sent there.")
-        if to_asset_user.company_id != asset.company_id:
-            raise LifecycleError("Assets can only move within their own company.")
-        to_asset_user_type = to_asset_user.asset_user_type
+    planned: list[tuple[Asset, int | None, AssetEvent, str, datetime]] = []
+    for asset, to_asset_user_id in moves:
+        when = event_date
+        last_event = last_events.get(asset.id)
+        if last_event and when < last_event.event_date:
+            if when.date() < last_event.event_date.date():
+                raise LifecycleError(
+                    "The date cannot be before the asset's last recorded movement "
+                    f"({last_event.event_date.date().strftime('%d-%m-%Y')})."
+                )
+            # Same day, earlier clock time (a date picked without a time is
+            # midnight): record it at the last event's own time so the ledger
+            # order stays right, instead of refusing today's date.
+            when = last_event.event_date
 
-    # Loaded purely for the display-snapshot below (see AssetEvent.from_asset_user_name_snapshot's
-    # docstring) -- asset.current_asset_user_id itself is already known and is what gets written
-    # as from_asset_user_id; this fetch only resolves its *name at this point in time*.
-    from_asset_user = (
-        await session.get(AssetUser, asset.current_asset_user_id)
-        if asset.current_asset_user_id is not None else None
-    )
+        to_asset_user_type = None
+        to_asset_user = None
+        if to_asset_user_id is not None:
+            to_asset_user = holders.get(to_asset_user_id)
+            if to_asset_user is None:
+                raise LifecycleError("The destination you chose does not exist.")
+            if not to_asset_user.is_active:
+                raise LifecycleError(f"{to_asset_user.name} is no longer active, so assets cannot be sent there.")
+            if to_asset_user.company_id != asset.company_id:
+                raise LifecycleError("Assets can only move within their own company.")
+            to_asset_user_type = to_asset_user.asset_user_type
 
-    new_status = transition(asset.status, event_type, to_asset_user_type, actor.role)
+        from_asset_user = holders.get(asset.current_asset_user_id) if asset.current_asset_user_id is not None else None
 
-    event = AssetEvent(
-        asset_id=asset.id,
-        event_type=event_type,
-        event_date=event_date,
-        from_asset_user_id=asset.current_asset_user_id,
-        to_asset_user_id=to_asset_user_id,
-        from_asset_user_name_snapshot=from_asset_user.name if from_asset_user else None,
-        to_asset_user_name_snapshot=to_asset_user.name if to_asset_user else None,
-        status_after=new_status,
-        remarks=remarks,
-        reference_no=reference_no,
-        recorded_by=actor.id,
-        recorded_at=now,
-    )
-    session.add(event)
+        new_status = transition(asset.status, event_type, to_asset_user_type, actor.role)
 
-    # S0.4: status_since only moves on a real change -- a new status or a new
-    # holder. A correction note (and any event that changes neither) leaves it
-    # exactly as it was.
-    really_changed = new_status != asset.status or (
-        to_asset_user_id is not None and to_asset_user_id != asset.current_asset_user_id
-    )
-    asset.status = new_status
-    if to_asset_user_id is not None and event_type != "CORRECTION":
-        asset.current_asset_user_id = to_asset_user_id
-    # asset.status_since is a Date column (the custody/status change is dated, not
-    # timestamped) while event_date is a timezone-aware datetime; store just the date
-    # part so the assigned value's type actually matches the column.
-    if really_changed and event_type != "CORRECTION":
-        asset.status_since = event_date.date()
+        event = AssetEvent(
+            asset_id=asset.id,
+            event_type=event_type,
+            event_date=when,
+            from_asset_user_id=asset.current_asset_user_id,
+            to_asset_user_id=to_asset_user_id,
+            from_asset_user_name_snapshot=from_asset_user.name if from_asset_user else None,
+            to_asset_user_name_snapshot=to_asset_user.name if to_asset_user else None,
+            status_after=new_status,
+            remarks=remarks,
+            reference_no=reference_no,
+            recorded_by=actor.id,
+            recorded_at=now,
+        )
+        planned.append((asset, to_asset_user_id, event, new_status, when))
+
+    # Every asset passed: write the events and the assets' current state.
+    session.add_all([event for _, _, event, _, _ in planned])
+    for asset, to_asset_user_id, _event, new_status, when in planned:
+        # S0.4: status_since only moves on a real change -- a new status or a new
+        # holder. A correction note (and any event that changes neither) leaves it
+        # exactly as it was.
+        really_changed = new_status != asset.status or (
+            to_asset_user_id is not None and to_asset_user_id != asset.current_asset_user_id
+        )
+        asset.status = new_status
+        if to_asset_user_id is not None and event_type != "CORRECTION":
+            asset.current_asset_user_id = to_asset_user_id
+        # asset.status_since is a Date column (the custody/status change is dated, not
+        # timestamped) while event_date is a timezone-aware datetime; store just the date
+        # part so the assigned value's type actually matches the column.
+        if really_changed and event_type != "CORRECTION":
+            asset.status_since = when.date()
 
     await session.flush()
-    return event
+    return [event for _, _, event, _, _ in planned]

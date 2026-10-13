@@ -193,22 +193,45 @@ async def erp_po_rows(
     erp_items = _index_items(await source.items(codes)) if codes else {}
     rules = await active_rule_sets(session, [c.id for c in companies])
     needle = (q or "").strip().casefold()
-    out: list[dict] = []
+    # S4: work area. A login limited to IT or Non-IT does not see an ERP PO whose lines are ALL decided
+    # and all belong to the other work area (by their Items' categories). A PO with any undecided line
+    # stays visible: its work area is not known until an Item is chosen.
+    domains = await allowed_asset_domains(session, actor)
+    resolved: list[tuple] = []
+    category_ids: set[int] = set()
     for p in pos:
         company = by_erp[p.company_code.lower()]
         engine = rules[company.id]
-        live = live_lines(p)
-        untracked = 0
-        undecided: set[str] = set()
-        for ln in live:
+        decisions = []
+        for ln in live_lines(p):
             erp = erp_items.get(ln.item_code) or erp_items.get((ln.item_code or "").upper())
             res = engine.resolve(erp) if erp is not None else None
+            decisions.append((ln, res))
+            if res is not None and res.item is not None and not res.not_tracked:
+                category_ids.add(res.item.category_id)
+        resolved.append((p, company, decisions))
+    area_of_category: dict[int, str] = {}
+    if domains is not None and category_ids:
+        area_of_category = dict((await session.execute(
+            select(AssetCategory.id, AssetCategory.asset_domain).where(AssetCategory.id.in_(category_ids))
+        )).all())
+    out: list[dict] = []
+    for p, company, decisions in resolved:
+        live = [ln for ln, _res in decisions]
+        untracked = 0
+        undecided: set[str] = set()
+        areas: set[str] = set()
+        for ln, res in decisions:
             if res is not None and res.not_tracked:
                 untracked += 1
             elif res is None or res.item is None:
                 undecided.add((ln.item_code or "").upper())
+            elif area_of_category.get(res.item.category_id):
+                areas.add(area_of_category[res.item.category_id])
         if live and untracked == len(live):
             continue                     # nothing on it that CKAM tracks
+        if domains is not None and not undecided and areas and not (areas & set(domains)):
+            continue                     # every decided line belongs to the other work area
         vendor = links.get((company.id, p.supplier_code))
         problems = problems_for(vendor is not None, len(undecided))
         row = {
@@ -561,6 +584,7 @@ async def create_from_draft(session: AsyncSession, actor: AssetUser, data: dict,
             names_by_article = await article_names(source, [e.article_key for e in erp_items.values()], company.erp_code)
 
     created = 0
+    line_nos: set[int] = set()
     for position, ln in enumerate(data["lines"], start=1):
         label = f"Line {position} ({ln['item_code'] or ln['description'][:30]})"
         if not ln["barcode"].strip():
@@ -588,11 +612,14 @@ async def create_from_draft(session: AsyncSession, actor: AssetUser, data: dict,
                 "item_id": item.id, "erp_item_code": ln.get("item_code"),
             }, actor, allowed_domains=domains)
         created += len(lines)
+        line_nos.update(unit.line_no for unit in lines)
         if ln.get("map_scope") or ln.get("remember"):
             erp = erp_items.get(ln.get("item_code") or "") or erp_items.get((ln.get("item_code") or "").upper())
             scope = ln.get("map_scope") or suggested_scope(erp, names_by_article)
             await _remember_mapping(session, actor, item, ln, company.id, scope, erp, label)
-    return {"po_id": po.id, "po_number": po.po_number, "lines_created": created}
+    # S4: same meaning as POST /purchase-orders/with-lines -- lines = PO line numbers made (a set counts one
+    # per part), units = waiting units made. (Before S4 `lines_created` held the unit count.)
+    return {"po_id": po.id, "po_number": po.po_number, "lines_created": len(line_nos), "units_created": created}
 
 
 async def _remember_mapping(

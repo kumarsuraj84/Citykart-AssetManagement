@@ -4,7 +4,7 @@ from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 from app.assets.models import Asset, AssetFieldChange
-from app.assets.service import compute_tax, procure_assets
+from app.assets.service import ProcureContext, compute_tax, procure_units
 from app.asset_users.models import AssetUser
 from app.core.deps import check_work_area
 from app.core.validation import MAX_QUANTITY, escape_like
@@ -381,12 +381,10 @@ DELETE_REFUSED_RECEIVED = (
 async def deliver_pending_assets(
     session: AsyncSession, lines: list[PendingAsset], deliveries: dict[int, dict],
     po_number: str, po_date, vendor_id: int | None, invoice_number: str, invoice_date, invoice_amount: float,
-    actor: AssetUser,
+    actor: AssetUser, *, context: ProcureContext | None = None,
 ) -> list[PendingAsset]:
-    """One procure_assets(..., quantity=1, ...) call per line -- each
-    PendingAsset already represents exactly one physical unit with its own
-    serial number, so quantity is always 1 here (never batched), unlike
-    Add Asset's own "buying 20 identical mice" quantity case. purchase_date
+    """One new asset per waiting unit -- each PendingAsset already represents
+    exactly one physical unit with its own serial number. purchase_date
     is set to invoice_date: the PO design's own point that the two are the
     same thing in this flow, since there is no earlier date to use.
     po_number/po_date/vendor_id come from the parent PurchaseOrder (the
@@ -396,46 +394,76 @@ async def deliver_pending_assets(
     omitted here, so every PO-delivered asset silently got vendor_id=NULL
     even though the PO itself has a vendor.
 
-    Each line is delivered inside its own savepoint (nested transaction) --
-    one line's failure must not corrupt or partially commit any other
-    already-succeeded line in the same batch."""
-    delivered: list[PendingAsset] = []
+    S4: all-or-nothing, on the batch engine. Every unit is checked first
+    (status, then every procure_assets rule, serials across the whole batch);
+    the first problem raises ValueError / LifecycleError before anything is
+    written, and the caller rolls the whole call back (this was already the
+    real behaviour: the old per-unit savepoints never gave partial success).
+    The lookups are made once for the whole delivery (app.assets.service.
+    procure_units), so 100 units cost a handful of statements, not ~1,000.
+    `deliveries[id]` may also carry `custom_fields` (the Receive screen's
+    values for that unit). `context`: a procurement context already built
+    for exactly these units (the Receive pre-validation's), reused."""
+    delivered, _assets = await deliver_units(
+        session, lines, deliveries, po_number, po_date, vendor_id, invoice_number, invoice_date, invoice_amount,
+        actor, context=context,
+    )
+    return delivered
+
+
+async def deliver_units(
+    session: AsyncSession, lines: list[PendingAsset], deliveries: dict[int, dict],
+    po_number: str, po_date, vendor_id: int | None, invoice_number: str, invoice_date, invoice_amount: float,
+    actor: AssetUser, *, context: ProcureContext | None = None,
+) -> tuple[list[PendingAsset], list]:
+    """deliver_pending_assets, also answering the new assets (in the units' order)."""
     for line in lines:
         if line.status != "PENDING":
             what = {"DELIVERED": "already delivered", "CANCELLED": "cancelled"}.get(line.status, "not waiting for delivery")
             raise ValueError(f"One of the selected units ({line.description}) is {what}, so it cannot be delivered.")
+    specs = [
+        delivery_unit_spec(line, deliveries[line.id], po_number, po_date, vendor_id, invoice_number, invoice_date, invoice_amount)
+        for line in lines
+    ]
+    assets = await procure_units(session, specs, actor, context=context)
+    now = datetime.now(timezone.utc)
+    for line, asset in zip(lines, assets):
         delivery = deliveries[line.id]
-        async with session.begin_nested():
-            [asset] = await procure_assets(
-                session,
-                {
-                    "company_id": line.company_id, "cost_center_id": line.cost_center_id,
-                    "category_id": line.category_id, "subcategory_id": line.subcategory_id,
-                    "item_id": line.item_id, "erp_item_code": line.erp_item_code,
-                    "description": line.description, "barcode": line.barcode, "purchase_cost": line.purchase_cost,
-                    "tax_percent": line.tax_percent, "purchase_date": invoice_date,
-                    "brand_id": line.brand_id, "model": line.model, "warranty_years": line.warranty_years,
-                    "serial_number": delivery["serial_number"],
-                    "serial_pending": bool(delivery.get("serial_pending")),
-                    "initial_asset_user_id": delivery["initial_asset_user_id"],
-                    "po_number": po_number, "po_date": po_date, "vendor_id": vendor_id,
-                    "invoice_number": invoice_number, "invoice_date": invoice_date,
-                    "invoice_amount": invoice_amount,
-                },
-                quantity=1, actor=actor,
-            )
-            line.status = "DELIVERED"
-            line.serial_number = delivery["serial_number"]
-            line.initial_asset_user_id = delivery["initial_asset_user_id"]
-            line.invoice_number = invoice_number
-            line.invoice_date = invoice_date
-            line.invoice_amount = invoice_amount
-            line.delivered_asset_id = asset.id
-            line.delivered_at = datetime.now(timezone.utc)
-            line.delivered_by = actor.id
-        delivered.append(line)
+        line.status = "DELIVERED"
+        line.serial_number = delivery["serial_number"]
+        line.initial_asset_user_id = delivery["initial_asset_user_id"]
+        line.invoice_number = invoice_number
+        line.invoice_date = invoice_date
+        line.invoice_amount = invoice_amount
+        line.delivered_asset_id = asset.id
+        line.delivered_at = now
+        line.delivered_by = actor.id
     await session.flush()
-    return delivered
+    return list(lines), assets
+
+
+def delivery_unit_spec(
+    line: PendingAsset, delivery: dict, po_number: str, po_date, vendor_id: int | None,
+    invoice_number: str, invoice_date, invoice_amount,
+) -> dict:
+    """The asset a waiting unit becomes: everything from the PO line, the PO header's number / date /
+    vendor, the receipt's invoice; purchase date = invoice date; the serial (or pending) and the place it
+    is received into from `delivery`."""
+    return {
+        "company_id": line.company_id, "cost_center_id": line.cost_center_id,
+        "category_id": line.category_id, "subcategory_id": line.subcategory_id,
+        "item_id": line.item_id, "erp_item_code": line.erp_item_code,
+        "description": line.description, "barcode": line.barcode, "purchase_cost": line.purchase_cost,
+        "tax_percent": line.tax_percent, "purchase_date": invoice_date,
+        "brand_id": line.brand_id, "model": line.model, "warranty_years": line.warranty_years,
+        "serial_number": delivery["serial_number"],
+        "serial_pending": bool(delivery.get("serial_pending")),
+        "initial_asset_user_id": delivery["initial_asset_user_id"],
+        "po_number": po_number, "po_date": po_date, "vendor_id": vendor_id,
+        "invoice_number": invoice_number, "invoice_date": invoice_date,
+        "invoice_amount": invoice_amount,
+        "custom_fields": delivery.get("custom_fields"),
+    }
 
 
 async def record_pi_for_invoice(
@@ -811,8 +839,19 @@ async def list_purchase_orders(
         stmt = stmt.where(waiting_units == 0)
     if q and q.strip():
         pattern = f"%{escape_like(q.strip())}%"
+        # S4: also an invoice number received under the PO, or a PI number recorded on one of its assets.
+        unit = aliased(PendingAsset)
+        by_invoice = select(unit.id).where(
+            unit.purchase_order_id == PurchaseOrder.id, unit.invoice_number.ilike(pattern, escape="\\"),
+        ).exists()
+        by_pi = (
+            select(unit.id).join(Asset, Asset.id == unit.delivered_asset_id)
+            .where(unit.purchase_order_id == PurchaseOrder.id, Asset.pi_number.ilike(pattern, escape="\\"))
+            .exists()
+        )
         stmt = stmt.where(or_(
             PurchaseOrder.po_number.ilike(pattern, escape="\\"), Vendor.name.ilike(pattern, escape="\\"),
+            by_invoice, by_pi,
         ))
     total = (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
     rows = (await session.execute(
@@ -826,3 +865,63 @@ async def list_purchase_orders(
         }
         for row in rows
     ], total
+
+
+# ---- S4: small read helpers for the PO page -------------------------------
+
+async def attach_asset_codes(session: AsyncSession, units: list[PendingAsset]) -> list[PendingAsset]:
+    """Fills `delivered_asset_code` on received units (one query for the whole list)."""
+    ids = {u.delivered_asset_id for u in units if u.delivered_asset_id is not None}
+    codes: dict[int, str] = {}
+    if ids:
+        codes = dict((await session.execute(select(Asset.id, Asset.asset_code).where(Asset.id.in_(ids)))).all())
+    for unit in units:
+        unit.delivered_asset_code = codes.get(unit.delivered_asset_id) if unit.delivered_asset_id is not None else None
+    return units
+
+
+MAX_INVOICE_ASSET_IDS = 200
+
+
+async def invoice_summaries(session: AsyncSession, po_id: int, domains: tuple[str, ...] | None) -> list[dict]:
+    """GET /purchase-orders/{id}/invoices: one row per invoice received under the PO (in the order they
+    were received), over the units the caller may see: its date and amount (the latest receipt's, when
+    one invoice number was received twice), how many units, the asset ids (at most 200, for labels), and
+    its PI: RECORDED with the number and date when every asset of the invoice shares one, RECORDED
+    without a number when they differ, PENDING while any asset has none. One query."""
+    stmt = (
+        select(PendingAsset.id, PendingAsset.invoice_number, PendingAsset.invoice_date, PendingAsset.invoice_amount,
+               Asset.id, Asset.pi_number, Asset.pi_date, Asset.deleted_at)
+        .join(AssetCategory, AssetCategory.id == PendingAsset.category_id)
+        .outerjoin(Asset, Asset.id == PendingAsset.delivered_asset_id)
+        .where(PendingAsset.purchase_order_id == po_id, PendingAsset.status == "DELIVERED")
+        .order_by(PendingAsset.id)
+    )
+    groups: dict[str, dict] = {}
+    for _unit_id, number, inv_date, amount, asset_id, pi_number, pi_date, deleted_at in (
+        await session.execute(_in_area(stmt, domains))
+    ).all():
+        key = (number or "").strip()
+        group = groups.setdefault(key, {"invoice_number": number, "units": 0, "asset_ids": [], "pis": []})
+        group["invoice_date"] = inv_date
+        group["invoice_amount"] = float(amount) if amount is not None else None
+        group["units"] += 1
+        if asset_id is not None and deleted_at is None:
+            group["asset_ids"].append(asset_id)
+            group["pis"].append((pi_number if (pi_number or "").strip() else None, pi_date))
+    out = []
+    for group in groups.values():
+        pis = group.pop("pis")
+        ids = group.pop("asset_ids")
+        if not pis or any(pi is None for pi, _ in pis):
+            pi_status, pi_number, pi_date = "PENDING", None, None
+        elif len(set(pis)) == 1:
+            pi_status, (pi_number, pi_date) = "RECORDED", pis[0]
+        else:
+            pi_status, pi_number, pi_date = "RECORDED", None, None
+        out.append({
+            **group, "asset_ids": ids[:MAX_INVOICE_ASSET_IDS], "asset_count": len(ids),
+            "asset_ids_truncated": len(ids) > MAX_INVOICE_ASSET_IDS,
+            "pi_number": pi_number, "pi_date": pi_date, "pi_status": pi_status,
+        })
+    return out

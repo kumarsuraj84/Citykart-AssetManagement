@@ -401,7 +401,7 @@ async def test_creating_from_the_draft_makes_ordinary_lines_and_remembers_the_er
                                          "warranty_years", "item_id")}]
     resp = await client.post("/api/erp/pos/create", headers=h, json=body)
     assert resp.status_code == 201, resp.text
-    assert resp.json()["lines_created"] == 28
+    assert (resp.json()["lines_created"], resp.json()["units_created"]) == (4, 28)   # a Desktop set: one line per part
     po = (await client.get(f"/api/purchase-orders/{resp.json()['po_id']}", headers=h)).json()
     assert po["erp_po_code"] == 1133610106 and po["delivery_asset_user_id"] == ids["taj"]
 

@@ -1,6 +1,6 @@
 ﻿from datetime import date, datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,9 +16,14 @@ from app.assets.audit_service import AUDITED_SCALAR_FIELDS, record_field_changes
 from app.assets.correction_service import correct_asset, UNSET as CORRECTION_UNSET
 from app.assets.custom_field_values import validate_custom_field_values
 from app.assets.models import Asset, AssetFieldChange
-from app.assets.schemas import SerialFillIn, AssetCorrectionIn, AssetCreateIn, AssetDetailOut, AssetFieldChangeOut, AssetOut, AssetUpdateIn
+from app.assets.schemas import (
+    SerialFillIn, AssetCorrectionIn, AssetCreateIn, AssetDetailOut, AssetFieldChangeOut, AssetOut, AssetUpdateIn,
+    SerialBulkIn, SerialBulkOut, SerialFilledOut,
+)
 from app.assets.search_service import search_assets
-from app.assets.service import check_serial_number_unique, compute_tax, compute_warranty_upto, procure_assets
+from app.assets.service import (
+    check_serial_number_unique, compute_tax, compute_warranty_upto, find_serials_in_use, procure_assets, serial_key,
+)
 from app.items.lookup import fill_from_item
 from app.asset_users.models import AssetUser
 from app.items.models import Item
@@ -445,6 +450,104 @@ async def _check_edit_values(session: AsyncSession, asset: Asset, data: dict) ->
                 refuse(f"The {what} you chose does not exist.")
             if not obj.is_active:
                 refuse(f"The {what} {obj.name} is no longer active; choose another.")
+
+
+@router.put("/serials", response_model=SerialBulkOut)
+async def fill_pending_serials(
+    body: SerialBulkIn,
+    session: AsyncSession = Depends(get_session),
+    actor=Depends(require_role(*WRITE_ROLES)),
+):
+    """S4: settles the pending serials of many assets at once (the Serial Pending screen after a
+    receipt of 50 amplifiers): each entry a real serial, or `no_serial` (saved as N/A). Same rules as
+    PUT /{id}/serial -- company and work-area scope, the asset's serial must be pending, global
+    uniqueness (also among the entries themselves, any letter case; N/A never clashes), the same
+    field-change audit. Everything is checked first: any problem -> 422 `{detail, errors, problems:
+    [{entry_index, asset_id, serial?, message}]}` and nothing is saved; otherwise all are saved."""
+    entries = body.entries
+    assets = {a.id: a for a in (await session.execute(
+        select(Asset).where(Asset.id.in_({e.asset_id for e in entries}))
+    )).scalars().all()}
+    allowed = await scoped_company_ids(session, actor)
+    domains = await allowed_asset_domains(session, actor)
+
+    def reachable(asset: Asset | None) -> bool:
+        return (asset is not None and asset.deleted_at is None
+                and (allowed is None or asset.company_id in allowed)
+                and (domains is None or asset.asset_domain in domains))
+
+    problems: list[dict] = []
+    seen_ids: set[int] = set()
+    seen_serials: dict[str, int] = {}
+    planned: list[tuple[int, Asset, str]] = []
+    for index, entry in enumerate(entries, start=1):
+        def refuse(message: str, serial: str | None = None):
+            row = {"entry_index": index, "asset_id": entry.asset_id, "message": message}
+            if serial is not None:
+                row["serial"] = serial
+            problems.append(row)
+        if entry.asset_id in seen_ids:
+            refuse("This asset appears more than once; enter it once.")
+            continue
+        seen_ids.add(entry.asset_id)
+        asset = assets.get(entry.asset_id)
+        if not reachable(asset):
+            refuse("This asset was not found.")
+            continue
+        if not asset.serial_pending:
+            refuse(f"The serial number of {asset.asset_code} is not waiting to be entered.")
+            continue
+        serial = "N/A" if entry.no_serial else (entry.serial_number or "").strip()
+        if not serial:
+            refuse(f"Enter the serial number of {asset.asset_code}, or choose no serial number.")
+            continue
+        key = serial_key(serial)
+        if key is not None:
+            if key in seen_serials:
+                refuse(f"Serial number {serial} is typed more than once (entries {seen_serials[key]} and {index}).", serial)
+                continue
+            seen_serials[key] = index
+        planned.append((index, asset, serial))
+
+    in_use = {serial_key(s): code for s, code in await find_serials_in_use(session, [s for _, _, s in planned])}
+    if in_use:
+        rows = (await session.execute(
+            select(Asset.asset_code, Asset.company_id, Asset.asset_domain).where(Asset.asset_code.in_(set(in_use.values())))
+        )).all()
+        visible = {code for code, company_id, domain in rows
+                   if (allowed is None or company_id in allowed) and (domains is None or domain in domains)}
+        for index, asset, serial in planned:
+            code = in_use.get(serial_key(serial))
+            if code is not None:
+                holder = f"asset {code}" if code in visible else "an asset outside your companies or work area"
+                problems.append({"entry_index": index, "asset_id": asset.id, "serial": serial,
+                                 "message": f"Serial number {serial} is already used by {holder}."})
+    if problems:
+        problems.sort(key=lambda p: p["entry_index"])
+        sentences = [f"Entry {p['entry_index']}: {p['message']}" for p in problems]
+        detail = sentences[0] if len(sentences) == 1 else (
+            f"Nothing was saved: {len(sentences)} problems need fixing. {sentences[0]}"
+        )
+        return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            content={"detail": detail, "errors": sentences, "problems": problems})
+
+    results: list[SerialFilledOut] = []
+    for _index, asset, serial in planned:
+        before = {field: getattr(asset, field) for field in AUDITED_SCALAR_FIELDS}
+        before["custom_fields"] = dict(asset.custom_fields)
+        asset.serial_number = serial
+        asset.serial_pending = False
+        asset.updated_by = actor.id
+        after = {field: getattr(asset, field) for field in AUDITED_SCALAR_FIELDS}
+        after["custom_fields"] = dict(asset.custom_fields)
+        await record_field_changes(session, asset_id=asset.id, actor_id=actor.id, before=before, after=after)
+        results.append(SerialFilledOut(asset_id=asset.id, asset_code=asset.asset_code, serial_number=serial))
+    try:
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+    return SerialBulkOut(updated=len(results), results=results)
 
 
 @router.put("/{asset_id}", response_model=AssetDetailOut)

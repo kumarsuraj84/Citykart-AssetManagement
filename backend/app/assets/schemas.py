@@ -258,3 +258,27 @@ class SerialFillIn(InModel):
     or no_serial=true when it turns out to have none (saved as N/A)."""
     serial_number: str | None = Field(default=None, max_length=200)
     no_serial: bool = False
+
+
+MAX_SERIAL_ENTRIES = 1000
+
+
+class SerialEntryIn(SerialFillIn):
+    """S4: one entry of a bulk serial fill -- the asset, and its serial (or no_serial)."""
+    asset_id: int
+
+
+class SerialBulkIn(InModel):
+    """S4: PUT /api/assets/serials -- fill the pending serials of many assets at once, all or nothing."""
+    entries: list[SerialEntryIn] = Field(min_length=1, max_length=MAX_SERIAL_ENTRIES)
+
+
+class SerialFilledOut(BaseModel):
+    asset_id: int
+    asset_code: str
+    serial_number: str
+
+
+class SerialBulkOut(BaseModel):
+    updated: int
+    results: list[SerialFilledOut]

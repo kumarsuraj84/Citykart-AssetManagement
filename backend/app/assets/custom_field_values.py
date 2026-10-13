@@ -77,9 +77,15 @@ async def validate_custom_field_values(
     the caller decides when that check applies (always on create; only when
     `custom_fields` was explicitly part of the request, on update).
     """
-    values = values or {}
-    defs = await applicable_custom_fields(session, company_id)
+    check_custom_field_values(
+        await applicable_custom_fields(session, company_id), values, enforce_required=enforce_required,
+    )
 
+
+def check_custom_field_values(defs: dict[str, CustomField], values: dict | None, *, enforce_required: bool = False) -> None:
+    """The checks of `validate_custom_field_values` against definitions already loaded (S4: a receipt
+    loads them once, then checks every unit without another query). Same rules, same messages."""
+    values = values or {}
     for key, value in values.items():
         field = defs.get(key)
         if field is None:
@@ -119,3 +125,46 @@ async def validate_custom_field_values(
         missing = [key for key, field in defs.items() if field.is_required and values.get(key) is None]
         if missing:
             raise ValueError(f"missing required custom field(s): {', '.join(sorted(missing))}")
+
+
+def _is_iso_date(value) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
+def custom_field_problems(defs: dict[str, CustomField], values: dict | None) -> list[str]:
+    """S4 (Receive): the same rules as `check_custom_field_values(..., enforce_required=True)`, but every
+    problem at once and in plain words with the field's label ("Warranty card number is required."), so a
+    required field is asked for on the Receive screen instead of silently blocking the receipt."""
+    values = values or {}
+    out: list[str] = []
+    for key, value in values.items():
+        field = defs.get(key)
+        if field is None:
+            out.append(f"The extra field {key} is not used for this company.")
+            continue
+        if value is None:
+            continue
+        label = field.label
+        kind = field.field_type
+        if kind in ("text", "dropdown") and not isinstance(value, str):
+            out.append(f"{label} must be text.")
+        elif kind == "number" and (isinstance(value, bool) or not isinstance(value, (int, float))):
+            out.append(f"{label} must be a number.")
+        elif kind == "checkbox" and not isinstance(value, bool):
+            out.append(f"{label} must be yes or no.")
+        elif kind == "date" and not _is_iso_date(value):
+            out.append(f"{label} must be a valid date.")
+        elif kind == "dropdown":
+            choices = (field.options or {}).get("choices") if isinstance(field.options, dict) else None
+            if choices and value not in choices:
+                out.append(f"{label} must be one of: {', '.join(str(c) for c in choices)}.")
+    for key, field in sorted(defs.items(), key=lambda kv: (kv[1].sort_order, kv[1].label)):
+        if field.is_required and values.get(key) is None:
+            out.append(f"{field.label} is required.")
+    return out

@@ -171,7 +171,7 @@ async def test_a_lifecycle_refusal_during_delivery_is_a_422_not_a_500(client, mo
 
     async def refuse(*_args, **_kwargs):
         raise state_machine.LifecycleError("The date cannot be in the future.")
-    monkeypatch.setattr(po_service, "procure_assets", refuse)
+    monkeypatch.setattr(po_service, "procure_units", refuse)
     resp = await client.post(f"/api/purchase-orders/{po['id']}/deliver", headers=h, json={
         "invoice_number": "INV-1", "invoice_date": "2026-02-01", "invoice_amount": 100,
         "lines": [{"pending_asset_id": line["id"], "serial_number": "SN-1", "initial_asset_user_id": w["stock"]}]})

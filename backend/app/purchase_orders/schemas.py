@@ -174,6 +174,8 @@ class PendingAssetOut(BaseModel):
     invoice_amount: float | None
     initial_asset_user_id: int | None
     delivered_asset_id: int | None
+    # S4 (additive): the received unit's asset code (None while waiting / cancelled).
+    delivered_asset_code: str | None = None
 
 
 class DeliveryLineIn(InModel):
@@ -312,6 +314,118 @@ class LineGroupUpdateIn(InModel):
     @classmethod
     def _description(cls, value: str | None) -> str:
         return require_text(value, "Description")
+
+
+MAX_RECEIVE_LINES = 1000
+
+
+class ReceiveLineIn(InModel):
+    """One line of a receipt: how many of its waiting units arrive now (the server takes the oldest
+    waiting ones), and their serials when the line has them."""
+    line_no: int
+    quantity: int = Field(ge=1, le=MAX_QUANTITY)
+    # Leave out to use the line's own rule (from its Item); send to override it for this receipt.
+    # HAS_SERIAL | NO_SERIAL | SERIAL_LATER (any letter case; checked by the service in plain words).
+    serial_mode: str | None = Field(default=None, max_length=20)
+    # HAS_SERIAL: exactly `quantity` serials (blank entries ignored, each trimmed), in unit order.
+    serial_numbers: list[str] | None = Field(default=None, max_length=2 * MAX_QUANTITY)
+    # Extra (custom) field values for every unit of the line ...
+    custom_fields: dict | None = None
+    # ... and optional per-unit values (aligned with the units / serials; they win for that unit).
+    unit_custom_fields: list[dict | None] | None = Field(default=None, max_length=MAX_QUANTITY)
+
+
+class ReceiveIn(InModel):
+    """S4: a receipt against a purchase order. The common fields are entered once; the PO's delivery
+    place is used when `received_into_asset_user_id` is left out."""
+    received_into_asset_user_id: int | None = None
+    invoice_number: str | None = Field(default=None, max_length=100)
+    invoice_date: date | None = None
+    invoice_amount: float | None = Field(default=None, le=MAX_AMOUNT)
+    lines: list[ReceiveLineIn] = Field(min_length=1, max_length=MAX_RECEIVE_LINES)
+
+
+class ReceivedAssetOut(BaseModel):
+    asset_id: int
+    asset_code: str
+    line_no: int | None = None
+    serial_number: str | None = None
+    serial_pending: bool = False
+
+
+class ReceiveOut(BaseModel):
+    po_id: int
+    invoice_number: str
+    assets_created: int
+    serial_pending: int
+    assets: list[ReceivedAssetOut]
+    label_asset_ids: list[int]
+    # The PO's status and waiting units after the receipt (over the caller's work area).
+    po_status: str | None = None
+    waiting_units: int | None = None
+
+
+class ReceiveInfoLineOut(BaseModel):
+    line_no: int
+    item_id: int | None = None
+    item_name: str | None = None
+    description: str
+    ordered: int
+    received_before: int
+    waiting: int
+    cancelled: int
+    serial_mode: str
+    work_area: str | None = None
+    rate: float | None = None
+    tax_percent: float | None = None
+    unit_total: float | None = None
+    erp_item_code: str | None = None
+    brand_name: str | None = None
+    model: str | None = None
+    bundle_label: str | None = None
+    status: str
+
+
+class RequiredCustomFieldOut(BaseModel):
+    id: int
+    key: str
+    label: str
+    type: str
+    options: dict | None = None
+    sort_order: int = 0
+
+
+class ReceiveInfoOut(BaseModel):
+    po_id: int
+    po_number: str
+    po_date: date
+    is_active: bool
+    company_id: int
+    company_name: str | None = None
+    company_code: str | None = None
+    vendor_id: int | None = None
+    vendor_name: str | None = None
+    received_into_asset_user_id: int | None = None
+    received_into_name: str | None = None
+    ordered_units: int
+    received_units: int
+    waiting_units: int
+    lines: list[ReceiveInfoLineOut]
+    required_custom_fields: list[RequiredCustomFieldOut]
+    blockers: list[str]
+
+
+class InvoiceSummaryOut(BaseModel):
+    invoice_number: str | None
+    invoice_date: date | None = None
+    invoice_amount: float | None = None
+    units: int
+    asset_ids: list[int]
+    asset_count: int
+    asset_ids_truncated: bool = False
+    pi_number: str | None = None
+    pi_date: date | None = None
+    pi_status: str
 
 
 class CancelWaitingIn(InModel):

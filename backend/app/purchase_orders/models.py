@@ -130,3 +130,7 @@ class PendingAsset(Base, AuditMixin):
     delivered_asset_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("asset.id"))
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     delivered_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("asset_user.id"))
+
+    # S4: not a column -- the delivered asset's code, filled in for responses by
+    # app.purchase_orders.service.attach_asset_codes (one query per list).
+    delivered_asset_code = None
