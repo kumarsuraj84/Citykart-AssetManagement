@@ -101,6 +101,11 @@ interface Asset {
   location_name: string | null;
   department_name: string | null;
   company_name?: string | null;
+  /** S5 (additive): the holder in words, from one server lookup. */
+  holder_type?: string | null;
+  holder_kind_label?: string | null;
+  holder_name?: string | null;
+  holder_location_name?: string | null;
 }
 
 interface CustomFieldDef {
@@ -576,6 +581,8 @@ export function AssetDetail({ assetId }: { assetId: number }) {
   // The same rule the Move screen uses to decide what an asset can do next.
   const choices = choicesFor(asset.status, { isAdmin: role === "ADMIN" });
   const customFieldEntries = Object.entries(asset.custom_fields ?? {});
+  // S5: who holds it comes with the asset, in words (no extra lookups).
+  const holderType = asset.holder_type ?? asset.current_asset_user_type;
 
   return (
     <div className="flex flex-col gap-4">
@@ -589,7 +596,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
             <div className="flex flex-col gap-1">
               <h1 className="font-mono text-xl font-semibold text-foreground">{asset.asset_code}</h1>
               <div className="flex flex-wrap items-center gap-2">
-                <StatusBadge status={asset.status} holderType={asset.current_asset_user_type} />
+                <StatusBadge status={asset.status} holderType={holderType} />
                 {asset.asset_domain && (
                   <Badge variant="outline" className="font-normal" title="Work area" data-testid="work-area-chip">
                     <span className="sr-only">Work area: </span>
@@ -634,9 +641,11 @@ export function AssetDetail({ assetId }: { assetId: number }) {
             label="With"
             value={
               <>
-                <span className="font-medium">{asset.current_asset_user_name ?? "—"}</span>
-                {asset.current_asset_user_type && ` (${placeTypeLabel(asset.current_asset_user_type)})`}
-                {asset.location_name && <span className="text-muted-foreground"> · {asset.location_name}</span>}
+                <span className="font-medium">{asset.holder_name ?? asset.current_asset_user_name ?? "—"}</span>
+                {(asset.holder_kind_label ?? placeTypeLabel(holderType)) && ` (${asset.holder_kind_label ?? placeTypeLabel(holderType)})`}
+                {(asset.holder_location_name ?? asset.location_name) && (
+                  <span className="text-muted-foreground"> · {asset.holder_location_name ?? asset.location_name}</span>
+                )}
               </>
             }
           />

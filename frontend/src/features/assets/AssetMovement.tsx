@@ -289,33 +289,40 @@ export function AssetMovement({ preloadIds, initialChoice }: AssetMovementProps 
     enqueue([asset]);
   }
 
-  // Add by Item: the sender's own stock of that Item, one label each.
+  // Add by Item: the oldest N in stock of that Item at that stock room, one label each.
+  // S5b-1: one GET /assets/pick (X-Total-Count = how many are there), then the picked
+  // assets' full rows for the batch and the labels.
   const byItemMutation = useMutation({
     mutationFn: async (v: { itemId: string; fromId: string; count: number }) => {
-      // The server returns at most 200 assets a request, so a bigger count is read page by page
-      // (enough to cover the count plus whatever is already in this batch).
-      const base = `/assets?item_id=${v.itemId}&asset_user_id=${v.fromId}&status=IN_STOCK&limit=${PAGE_SIZE}`;
-      const wanted = v.count + queue.length;
-      let page = await apiClient.get<{ items: AssetSearchResult[]; total: number }>(base);
-      const items = [...page.items];
-      while (items.length < wanted && page.items.length > 0 && items.length < page.total) {
-        page = await apiClient.get<{ items: AssetSearchResult[]; total: number }>(`${base}&offset=${items.length}`);
-        items.push(...page.items);
-      }
-      return { items, total: page.total };
+      // Ask for enough to cover the ones already in this batch too.
+      const want = Math.min(MAX_QUANTITY, v.count + queue.length);
+      const picked = await apiClient.getPage<{ asset_id: number; asset_code: string; serial_number: string | null }[]>(
+        `/assets/pick?item_id=${v.itemId}&asset_user_id=${v.fromId}&quantity=${want}`,
+      );
+      const rows = Array.isArray(picked?.data) ? picked.data : [];
+      const have = new Set(queue.map((a) => a.id));
+      const freeIds = rows.map((r) => r.asset_id).filter((id) => !have.has(id));
+      const inStock = picked?.total ?? rows.length;
+      if (freeIds.length < v.count) return { assets: [] as AssetSearchResult[], inStock, free: freeIds.length };
+      const assets = await fetchAssetsByIds<AssetSearchResult>(freeIds.slice(0, v.count));
+      return { assets, inStock, free: freeIds.length };
     },
     onSuccess: (result, v) => {
-      const have = new Set(queue.map((a) => a.id));
-      const free = result.items.filter((a) => !have.has(a.id));
-      if (free.length < v.count) {
-        setItemError(`Only ${free.length} of that Item ${free.length === 1 ? "is" : "are"} in stock there${have.size ? " (not counting the ones already in this batch)" : ""}.`);
+      if (result.free < v.count) {
+        const room = stockRoomsQ.rows.find((r) => String(r.id) === v.fromId)?.name ?? "that stock room";
+        const inBatch = result.inStock - result.free;
+        setItemError(
+          `Only ${result.inStock} in stock at ${room}` +
+            (inBatch > 0 ? ` (${inBatch} already in this batch)` : "") +
+            ` — you asked for ${v.count}. Nothing was added.`,
+        );
         return;
       }
       setItemError(null);
       setBulkSummary(null);
-      enqueue(free.slice(0, v.count));
+      enqueue(result.assets);
     },
-    onError: () => setItemError("Search failed -- try again."),
+    onError: (err) => setItemError(err instanceof Error ? err.message : "Could not take them from stock -- try again."),
   });
 
   function removeFromQueue(id: number) {

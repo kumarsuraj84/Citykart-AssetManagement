@@ -82,6 +82,18 @@ describe("Items screen", () => {
     expect(await screen.findByText("Accessories › Mouse Unit")).toBeInTheDocument();
   });
 
+  it("S5b-1: each Item shows its work area as a chip (the server's, else its group's)", async () => {
+    mockApi();
+    (apiClient.get as any).mockImplementation(((prev) => (path: string) =>
+      path === "/items" ? Promise.resolve([{ ...ITEMS[0], work_area: "IT" }, ITEMS[1]]) : prev(path))((apiClient.get as any).getMockImplementation()));
+    renderAt("/settings/catalogue/items");
+    const desktop = (await screen.findByText("Desktop")).closest("tr")!;
+    expect(within(desktop).getByTestId("work-area-chip")).toHaveTextContent("IT Team");
+    const mouse = screen.getByText("Mouse").closest("tr")!;
+    await waitFor(() => expect(within(mouse).getByTestId("work-area-chip")).toHaveTextContent("Admin / Non-IT Team"));
+    expect(screen.getByRole("link", { name: "Link existing assets" })).toHaveAttribute("href", "/settings/catalogue/link-assets");
+  });
+
   it("creates an Item with a name, ONE type-of-asset pick and a serial choice (Category and Sub-category are never asked separately)", async () => {
     mockApi();
     renderAt("/settings/catalogue/items");

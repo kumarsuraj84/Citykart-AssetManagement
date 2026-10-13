@@ -48,21 +48,14 @@ describe("AssetRegister", () => {
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("q=CK_1")));
   });
 
-  it("the Exact match checkbox adds exact=true to the search request, only while there is search text", async () => {
+  it("S5b-1: exact matches come first from the server, so there is no Exact match box; an old ?exact=true link still works as a removable chip", async () => {
     (apiClient.get as any).mockResolvedValue({ items: [{ id: 1, asset_code: "FA/HO01/IT/LAP/CK1", description: "Laptop", status: "IN_STOCK" }], total: 1 });
-
-    renderRegisterAt();
+    const router = renderRegisterAt("/assets?q=ck1&exact=true");
     await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK1")).toBeInTheDocument());
-
-    fireEvent.change(screen.getByLabelText(/search/i), { target: { value: "ck1" } });
-    await waitFor(() => expect(apiClient.get).toHaveBeenLastCalledWith(expect.stringMatching(/q=ck1/)));
-    expect(apiClient.get).toHaveBeenLastCalledWith(expect.not.stringContaining("exact="));
-
-    fireEvent.click(screen.getByRole("checkbox", { name: /exact match/i }));
-    await waitFor(() => expect(apiClient.get).toHaveBeenLastCalledWith(expect.stringContaining("exact=true")));
-    expect(apiClient.get).toHaveBeenLastCalledWith(expect.stringContaining("q=ck1"));
-
-    fireEvent.click(screen.getByRole("checkbox", { name: /exact match/i }));
+    expect(screen.queryByRole("checkbox", { name: /exact match/i })).not.toBeInTheDocument();
+    expect(apiClient.get).toHaveBeenCalledWith(expect.stringMatching(/^\/assets\?q=ck1&exact=true&/));
+    fireEvent.click(screen.getByRole("button", { name: "Remove filter Exact match" }));
+    await waitFor(() => expect(router.state.location.search).toEqual({ q: "ck1" }));
     await waitFor(() => expect(apiClient.get).toHaveBeenLastCalledWith(expect.not.stringContaining("exact=")));
   });
 
@@ -82,17 +75,21 @@ describe("AssetRegister", () => {
   });
 
   it("shows the current asset_user and company the backend resolved for each row (AM-11)", async () => {
-    (apiClient.get as any).mockResolvedValue({
-      items: [
-        { id: 1, asset_code: "FA/HO01/IT/LAP/CK_1", description: "Laptop", status: "ALLOTTED", current_asset_user_name: "Jane Doe", company_name: "Citykart Stores" },
-        { id: 2, asset_code: "FA/HO01/IT/LAP/CK_2", description: "Printer", status: "IN_STOCK", current_asset_user_name: null, company_name: null },
-      ],
-      total: 2,
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (path === "/masters/companies") return Promise.resolve([{ id: 1, code: "CKSPL", name: "Citykart Stores" }, { id: 2, code: "CKV", name: "Citykart Ventures" }]);
+      if (!path.startsWith("/assets")) return Promise.resolve([]);
+      return Promise.resolve({
+        items: [
+          { id: 1, asset_code: "FA/HO01/IT/LAP/CK_1", description: "Laptop", status: "ALLOTTED", current_asset_user_name: "Jane Doe", company_name: "Citykart Stores" },
+          { id: 2, asset_code: "FA/HO01/IT/LAP/CK_2", description: "Printer", status: "IN_STOCK", current_asset_user_name: null, company_name: null },
+        ],
+        total: 2,
+      });
     });
 
     renderRegisterAt();
     await waitFor(() => expect(screen.getByText("Jane Doe")).toBeInTheDocument());
-    expect(screen.getByText("Citykart Stores")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Citykart Stores")).toBeInTheDocument());
     // A row with no resolved name (defensive fallback, should not happen in practice) renders an em dash, not blank/undefined.
     expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
   });
@@ -109,12 +106,17 @@ describe("AssetRegister", () => {
       return Promise.resolve([]);
     });
 
-    renderRegisterAt();
+    const router = renderRegisterAt();
     await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK_1")).toBeInTheDocument());
 
-    await pickSelectOption(/status/i, /in stock/i);
+    fireEvent.click(screen.getByRole("button", { name: /more filters/i }));
+    await pickSelectOption(/^status$/i, /in stock/i);
 
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("status=IN_STOCK")));
+    // The filter is in the address bar (shareable, Back-safe) and shows as a removable chip.
+    expect(router.state.location.search).toEqual({ status: "IN_STOCK" });
+    expect(screen.getByRole("button", { name: "Remove filter Status: In Stock" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /more filters \(1\)/i })).toBeInTheDocument();
   });
 
   it("a Custom Field gets its own Columns entry and shows its stored value once toggled on", async () => {
@@ -358,14 +360,14 @@ describe("AssetRegister: S1 navigation and plain words", () => {
     loginAs("OPERATOR", 5);
     mockRegister();
     renderRegisterAt();
-    const mine = await screen.findByRole("button", { name: /mine/i });
+    const mine = await screen.findByRole("button", { name: "Mine" });
     expect(mine).toHaveAttribute("aria-pressed", "false");
     fireEvent.click(mine);
     await waitFor(() => expect(apiClient.get).toHaveBeenLastCalledWith(expect.stringContaining("asset_user_id=5")));
-    expect(screen.getByRole("button", { name: /mine/i })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Mine" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText(/showing only the assets with you/i)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /mine/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Mine" }));
     await waitFor(() => expect(apiClient.get).toHaveBeenLastCalledWith(expect.not.stringContaining("asset_user_id=")));
   });
 
@@ -374,7 +376,7 @@ describe("AssetRegister: S1 navigation and plain words", () => {
     mockRegister();
     renderRegisterAt("/assets?mine=true");
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("asset_user_id=5")));
-    expect(await screen.findByRole("button", { name: /mine/i })).toHaveAttribute("aria-pressed", "true");
+    expect(await screen.findByRole("button", { name: "Mine" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("hides Mine for the head-office admin account (not a person who holds assets) and when the id is unknown", async () => {
@@ -384,7 +386,7 @@ describe("AssetRegister: S1 navigation and plain words", () => {
     unmount();
     renderRegisterAt();
     await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK_1")).toBeInTheDocument());
-    expect(screen.queryByRole("button", { name: /mine/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mine" })).not.toBeInTheDocument();
   });
 
   it("Find Asset (?find=true) puts the cursor in the search box", async () => {
@@ -395,29 +397,30 @@ describe("AssetRegister: S1 navigation and plain words", () => {
     await waitFor(() => expect(search).toHaveFocus());
   });
 
-  it("shows statuses, work area and the With column in plain words -- never a raw code", async () => {
+  it("shows statuses and the With column in plain words -- never a raw code", async () => {
     loginAs("OPERATOR");
     mockRegister();
     renderRegisterAt();
     await waitFor(() => expect(screen.getByText("Jane Doe")).toBeInTheDocument());
     expect(screen.getByText("With Employee")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "With" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Work area" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("combobox", { name: /status/i }));
+    fireEvent.click(screen.getByRole("button", { name: /more filters/i }));
+    fireEvent.click(screen.getByRole("combobox", { name: /^status$/i }));
     const options = (await screen.findAllByRole("option")).map((o) => o.textContent);
     expect(options).toEqual([
-      "All statuses", "In Stock", "With Employee / Store", "Installed", "Under Repair", "Lost", "Sold", "Scrapped", "Disposed",
+      "All statuses", "In Stock", "With Employee", "With Store", "Installed", "Under Repair", "Lost", "Sold", "Scrapped", "Disposed",
     ]);
     fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
 
-    expect(document.body.textContent ?? "").not.toMatch(/IN_STOCK|ALLOTTED|asset_users|Responsibility|Asset User/);
+    expect(document.body.textContent ?? "").not.toMatch(/IN_STOCK|ALLOTTED|STOCK_POINT|asset_users|Responsibility|Asset User|Holder/);
   });
 
   it("the With filter starts at Everyone and shows code, name, place and company for each person or place", async () => {
     loginAs("OPERATOR");
     mockRegister();
     renderRegisterAt();
+    fireEvent.click(await screen.findByRole("button", { name: /more filters/i }));
     const withFilter = await screen.findByRole("combobox", { name: "With" });
     expect(withFilter).toHaveTextContent("Everyone");
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/masters/locations"));
@@ -426,13 +429,227 @@ describe("AssetRegister: S1 navigation and plain words", () => {
     expect(screen.getByRole("option", { name: "HO Stock · Head Office · CKV" })).toBeInTheDocument();
   });
 
-  it("Category and Company filters are searchable", async () => {
+  it("Asset group and Company filters are searchable", async () => {
     loginAs("OPERATOR");
     mockRegister();
     renderRegisterAt();
+    fireEvent.click(await screen.findByRole("button", { name: /more filters/i }));
     fireEvent.click(await screen.findByRole("combobox", { name: "Company" }));
     expect(await screen.findByPlaceholderText("Search…")).toBeInTheDocument();
     fireEvent.click(await screen.findByRole("option", { name: "CityKart Ventures" }));
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("company_id=2")));
+    expect(screen.getByRole("combobox", { name: "Asset group" })).toBeInTheDocument();
+  });
+});
+
+describe("AssetRegister: S5b-1 one search box, more filters in the address bar", () => {
+  const ROWS = [
+    {
+      id: 1, asset_code: "FA/CK/IT/0001", item_name: "Laptop", description: "Dell Latitude 5440", serial_number: "SN-1", po_number: "PO-77",
+      status: "ALLOTTED", holder_type: "STORE", holder_kind_label: "Store", holder_name: "Lucknow Aminabad", holder_location_name: "Lucknow",
+      company_code: "CKSPL", company_name: "Citykart Stores", current_asset_user_type: "STORE", current_asset_user_name: "Lucknow Aminabad",
+    },
+    {
+      id: 2, asset_code: "FA/CK/IT/0002", item_name: "Camera", description: "Indoor camera", serial_number: null, serial_pending: true, po_number: null,
+      status: "INSTALLED", holder_type: "INSTALLED", holder_kind_label: "Install Point", holder_name: "HO Server Room", holder_location_name: "Head Office",
+      company_code: "CKSPL", company_name: "Citykart Stores",
+    },
+    {
+      id: 3, asset_code: "FA/CK/IT/0003", item_name: null, description: "Old printer", serial_number: "PR-9", po_number: null,
+      status: "IN_STOCK", holder_type: "STOCK_POINT", holder_kind_label: "Stock Room", holder_name: "HO Stock", holder_location_name: "Head Office",
+      company_code: "CKSPL", company_name: "Citykart Stores",
+    },
+  ];
+  const PEOPLE = [
+    { id: 5, code: "CS5", name: "Me Myself", asset_user_type: "EMPLOYEE", company_id: 1 },
+    { id: 6, code: "LAM", name: "Lucknow Aminabad", asset_user_type: "STORE", company_id: 1 },
+    { id: 7, code: "STK-HO", name: "HO Stock", asset_user_type: "STOCK_POINT", company_id: 1 },
+  ];
+
+  function mockApi(companies: unknown[] = [{ id: 1, code: "CKSPL", name: "Citykart Stores" }]) {
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (path.startsWith("/assets?serial_pending=true")) return Promise.resolve({ items: [], total: 0 });
+      if (path.startsWith("/assets")) return Promise.resolve({ items: ROWS, total: ROWS.length });
+      if (path === "/asset-users") return Promise.resolve(PEOPLE);
+      if (path === "/masters/companies") return Promise.resolve(companies);
+      if (path === "/masters/categories") return Promise.resolve([{ id: 3, name: "Computers" }]);
+      if (path === "/masters/vendors") return Promise.resolve([{ id: 9, name: "Acme Traders" }]);
+      if (path === "/items") return Promise.resolve([{ id: 11, name: "Laptop", category_id: 3, subcategory_id: null }]);
+      return Promise.resolve([]);
+    });
+  }
+
+  const registerCalls = () =>
+    (apiClient.get as any).mock.calls.map(([p]: [string]) => p).filter((p: string) => p.startsWith("/assets?") && !p.includes("serial_pending"));
+
+  beforeEach(() => {
+    try { window.localStorage.clear(); } catch { /* no storage */ }
+    useAuthStore.getState().setAuth({ accessToken: "tok", role: "OPERATOR", companyId: 1, isPrimaryOwner: false, mustChangePassword: false, assetUserId: 5 });
+  });
+
+  it("default columns: Code, Item, Description, Serial, With, PO, Status (Company only for more than one company)", async () => {
+    mockApi();
+    renderRegisterAt();
+    await screen.findByText("FA/CK/IT/0001");
+    const headers = screen.getAllByRole("columnheader").map((h) => h.textContent?.trim()).filter(Boolean);
+    expect(headers).toEqual(["Code", "Item", "Description", "Serial", "With", "PO", "Status"]);
+    for (const old of ["Category", "Brand", "Model", "Work area"]) {
+      expect(screen.queryByRole("columnheader", { name: old })).not.toBeInTheDocument();
+    }
+  });
+
+  it("with two companies the Company column and filter appear", async () => {
+    mockApi([{ id: 1, code: "CKSPL", name: "Citykart Stores" }, { id: 2, code: "CKV", name: "Citykart Ventures" }]);
+    renderRegisterAt();
+    await waitFor(() => expect(screen.getByRole("columnheader", { name: "Company" })).toBeInTheDocument());
+    expect(screen.getAllByText("CKSPL").length).toBe(3);
+  });
+
+  it("With reads name · kind · place, and the status word follows who holds it", async () => {
+    mockApi();
+    renderRegisterAt();
+    await screen.findByText("FA/CK/IT/0001");
+    const row1 = screen.getByText("FA/CK/IT/0001").closest("tr")!;
+    expect(row1).toHaveTextContent("Lucknow Aminabad · Store · Lucknow");
+    expect(row1).toHaveTextContent("With Store");
+    const row2 = screen.getByText("FA/CK/IT/0002").closest("tr")!;
+    expect(row2).toHaveTextContent("HO Server Room · Install Point · Head Office");
+    expect(row2).toHaveTextContent("Installed");
+    expect(row2).toHaveTextContent("Pending");
+    const row3 = screen.getByText("FA/CK/IT/0003").closest("tr")!;
+    expect(row3).toHaveTextContent("HO Stock · Stock Room · Head Office");
+    expect(row3).toHaveTextContent("In Stock");
+  });
+
+  it("one search box: the asked-for placeholder, sent once typing settles (not per key), Enter searches at once; the text is in the address bar", async () => {
+    mockApi();
+    const router = renderRegisterAt();
+    const box = await screen.findByLabelText("Search");
+    expect(box).toHaveAttribute("placeholder", "Search asset code, serial, barcode, ERP code, item, vendor, PO number or person…");
+    await screen.findByText("FA/CK/IT/0001");
+    const before = registerCalls().length;
+    fireEvent.change(box, { target: { value: "l" } });
+    fireEvent.change(box, { target: { value: "la" } });
+    fireEvent.change(box, { target: { value: "lap" } });
+    await waitFor(() => expect(router.state.location.search).toEqual({ q: "lap" }));
+    await waitFor(() => expect(registerCalls().length).toBe(before + 1));
+    expect(registerCalls().pop()).toMatch(/^\/assets\?q=lap&limit=50&offset=0$/);
+
+    fireEvent.change(box, { target: { value: "PO-77" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(router.state.location.search).toEqual({ q: "PO-77" });
+  });
+
+  it("\"With Store\" is the status plus the holder; its chip removes both", async () => {
+    mockApi();
+    const router = renderRegisterAt();
+    await screen.findByText("FA/CK/IT/0001");
+    fireEvent.click(screen.getByRole("button", { name: /more filters/i }));
+    await pickSelectOption(/^status$/i, "With Store");
+    await waitFor(() => expect(router.state.location.search).toEqual({ status: "ALLOTTED", holder: "store" }));
+    await waitFor(() => expect(registerCalls().pop()).toContain("status=ALLOTTED&holder_type=STORE"));
+    const chip = screen.getByRole("button", { name: "Remove filter Status: With Store" });
+    expect(screen.queryByRole("button", { name: /Remove filter With: any/ })).not.toBeInTheDocument();
+    fireEvent.click(chip);
+    await waitFor(() => expect(router.state.location.search).toEqual({}));
+  });
+
+  it("Home's \"With Employee / Store\" link still works and reads in words", async () => {
+    mockApi();
+    renderRegisterAt("/assets?status=ALLOTTED");
+    await screen.findByText("FA/CK/IT/0001");
+    expect(screen.getByRole("button", { name: "Remove filter Status: With Employee / Store" })).toBeInTheDocument();
+    expect(registerCalls()[0]).toContain("status=ALLOTTED");
+  });
+
+  it("kind chips narrow to Employees / Stores / Stock Rooms / Install Points, and the picker to that kind", async () => {
+    mockApi();
+    const router = renderRegisterAt();
+    await screen.findByText("FA/CK/IT/0001");
+    fireEvent.click(screen.getByRole("button", { name: /more filters/i }));
+    const kinds = within(screen.getByRole("group", { name: "Currently with" }));
+    expect(kinds.getAllByRole("button").map((b) => b.textContent)).toEqual(["Employee", "Store", "Stock Room", "Install Point"]);
+    fireEvent.click(kinds.getByRole("button", { name: "Store" }));
+    await waitFor(() => expect(router.state.location.search).toEqual({ holder: "store" }));
+    await waitFor(() => expect(registerCalls().pop()).toContain("holder_type=STORE"));
+    expect(screen.getByRole("button", { name: "Remove filter With: any Store" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("combobox", { name: "With" }));
+    expect(await screen.findByRole("option", { name: /Lucknow Aminabad/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Me Myself/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: /Lucknow Aminabad/ }));
+    await waitFor(() => expect(router.state.location.search).toEqual({ holder: "store", with: "6" }));
+    await waitFor(() => expect(registerCalls().pop()).toContain("asset_user_id=6"));
+  });
+
+  it("a shared link opens with all its filters applied, each as a named chip; Clear all keeps nothing", async () => {
+    mockApi();
+    const router = renderRegisterAt("/assets?q=dell&item=11&vendor=9&po=PO-77&area=NON_IT&group=3&with=7");
+    await screen.findByText("FA/CK/IT/0001");
+    const call = registerCalls()[0];
+    expect(call).toBe("/assets?q=dell&asset_user_id=7&item_id=11&vendor_id=9&po_number=PO-77&work_area=NON_IT&category_id=3&limit=50&offset=0");
+    expect(screen.getByLabelText("Search")).toHaveValue("dell");
+    const chips = screen.getByLabelText("Active filters");
+    await waitFor(() => expect(chips).toHaveTextContent("Item: Laptop"));
+    expect(chips).toHaveTextContent("Vendor: Acme Traders");
+    expect(chips).toHaveTextContent("PO: PO-77");
+    expect(chips).toHaveTextContent("Work area: Admin / Non-IT Team");
+    expect(chips).toHaveTextContent("Asset group: Computers");
+    expect(chips).toHaveTextContent("With: HO Stock");
+    expect(screen.getByRole("button", { name: /more filters \(6\)/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
+    await waitFor(() => expect(router.state.location.search).toEqual({}));
+    expect(screen.getByLabelText("Search")).toHaveValue("");
+  });
+
+  it("Back returns to the previous view", async () => {
+    mockApi();
+    const router = renderRegisterAt("/assets?status=LOST");
+    await screen.findByText("FA/CK/IT/0001");
+    fireEvent.click(screen.getByRole("button", { name: "Remove filter Status: Lost" }));
+    await waitFor(() => expect(router.state.location.search).toEqual({}));
+    router.history.back();
+    await waitFor(() => expect(router.state.location.search).toEqual({ status: "LOST" }));
+    expect(await screen.findByRole("button", { name: "Remove filter Status: Lost" })).toBeInTheDocument();
+  });
+
+  it("a PO number filter is applied once typing settles", async () => {
+    mockApi();
+    const router = renderRegisterAt();
+    await screen.findByText("FA/CK/IT/0001");
+    fireEvent.click(screen.getByRole("button", { name: /more filters/i }));
+    fireEvent.change(screen.getByLabelText("PO number"), { target: { value: " PO-77 " } });
+    await waitFor(() => expect(router.state.location.search).toEqual({ po: "PO-77" }));
+    await waitFor(() => expect(registerCalls().pop()).toContain("po_number=PO-77"));
+  });
+
+  it("Item, Vendor and Work area filters go to the server", async () => {
+    mockApi();
+    renderRegisterAt();
+    await screen.findByText("FA/CK/IT/0001");
+    fireEvent.click(screen.getByRole("button", { name: /more filters/i }));
+    await pickSelectOption("Item", /^Laptop/);
+    await waitFor(() => expect(registerCalls().pop()).toContain("item_id=11"));
+    await pickSelectOption("Vendor", "Acme Traders");
+    await waitFor(() => expect(registerCalls().pop()).toContain("vendor_id=9"));
+    await pickSelectOption("Work area", "IT Team");
+    await waitFor(() => expect(registerCalls().pop()).toContain("work_area=IT"));
+  });
+
+  it("nothing found: says so and offers to clear the search and filters", async () => {
+    (apiClient.get as any).mockImplementation((path: string) =>
+      path.startsWith("/assets") ? Promise.resolve({ items: [], total: 0 }) : Promise.resolve([]));
+    const router = renderRegisterAt("/assets?q=zzz&status=LOST");
+    expect(await screen.findByText("No assets found.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Clear search and filters" }));
+    await waitFor(() => expect(router.state.location.search).toEqual({}));
+  });
+
+  it("the column choice is remembered in this browser", async () => {
+    mockApi();
+    renderRegisterAt();
+    await screen.findByText("FA/CK/IT/0001");
+    fireEvent.pointerDown(screen.getByRole("button", { name: /^columns$/i }));
+    fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Brand" }));
+    expect(JSON.parse(window.localStorage.getItem("ckam.assetRegister.columns.v2") ?? "[]")).toContain("brand");
   });
 });

@@ -20,6 +20,8 @@ export type Area =
   | "people"
   /** Settings (companies, catalogue, vendors, ERP mapping, advanced, bulk import). */
   | "settings"
+  /** Admin tools any ADMIN may use (head-office admin included): Link existing assets to Items. */
+  | "admin"
   /** The self-service "My Assets" page. */
   | "self";
 
@@ -38,6 +40,8 @@ export function canUse(area: Area, s: AccessState): boolean {
       return role === "ADMIN";
     case "settings":
       return role === "ADMIN" && s.isPrimaryOwner;
+    case "admin":
+      return role === "ADMIN";
     case "self":
       return role === "SELF_SERVICE";
   }

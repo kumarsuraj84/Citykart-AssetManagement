@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { optionMatcher, newSeedRegistry, seedTestCompany, teardownTestCompany, fillAddAssetProcurementFields, type SeedRegistry } from "./fixtures";
+import { optionMatcher, newSeedRegistry, seedTestCompany, teardownTestCompany, fillAddAssetProcurementFields, addAssetsAndOpenFirst, type SeedRegistry } from "./fixtures";
 
 async function loginAs(page: Page, empCode: string, password: string) {
   await page.goto("/login");
@@ -78,12 +78,11 @@ test("Add Asset offers only this company's own Cost Centres, and asset creation 
   await expect(page.getByRole("option", { name: optionMatcher(costCenterB.name) })).not.toBeVisible();
   await page.getByRole("option", { name: optionMatcher(ctx.costCenter.name) }).click();
 
-  await page.getByLabel("Description", { exact: true }).fill("AM08 Company-Scoped Cost Centre Test Laptop");
   await pickSelectOption(page, "Item", ctx.item.name);
   await pickSelectOption(page, "Received Into", ctx.stock.name);
-  await fillAddAssetProcurementFields(page, ctx.vendor.name);
+  await fillAddAssetProcurementFields(page, ctx.vendor.name, "AM08 Company-Scoped Cost Centre Test Laptop");
 
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await addAssetsAndOpenFirst(page, 1);
   await expect(page).toHaveURL(/\/assets\/\d+$/);
   await expect(page.getByRole("region", { name: "Identity" }).getByText("AM08 Company-Scoped Cost Centre Test Laptop")).toBeVisible();
 });

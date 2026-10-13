@@ -691,10 +691,10 @@ describe("Receive screen: after receiving", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open assets" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/assets"));
     expect(router.state.location.search).toEqual({ ids: "500,501,502" });
-    expect(await screen.findByText("Showing only the 3 assets just received.")).toBeInTheDocument();
+    expect(await screen.findByText("Showing only the 3 new assets.")).toBeInTheDocument();
     await waitFor(() => expect((apiClient.get as any).mock.calls.some(([p]: [string]) => p.startsWith("/assets?ids=500%2C501%2C502&"))).toBe(true));
     fireEvent.click(screen.getByRole("button", { name: "Show all assets" }));
-    await waitFor(() => expect(screen.queryByText(/just received/)).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText(/Showing only the 3 new assets/)).not.toBeInTheDocument());
   });
 
   it("Receive more: back to this PO's fresh form while units still wait", async () => {

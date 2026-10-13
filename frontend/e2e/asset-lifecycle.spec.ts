@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { optionMatcher, newSeedRegistry, seedTestCompany, teardownTestCompany, fillAddAssetProcurementFields, type SeedRegistry } from "./fixtures";
+import { optionMatcher, newSeedRegistry, seedTestCompany, teardownTestCompany, fillAddAssetProcurementFields, addAssetsAndOpenFirst, type SeedRegistry } from "./fixtures";
 
 async function loginAs(page: Page, empCode: string, password: string) {
   await page.goto("/login");
@@ -43,20 +43,19 @@ test("full custody journey: procure, allot, return, allot again", async ({ page,
   await loginAs(page, ctx.admin.empCode, ctx.admin.password);
   await expect(page).toHaveURL(/\/dashboard$/);
 
+  // S5b-1: Add Assets -- Item, quantity 1, Received Into, Cost Centre; the
+  // serial box (the Item has serials); purchase details and the description
+  // under their folds. The result panel links each new asset code.
   await page.goto("/assets/new");
   await selectRadix(page, "Item", ctx.item.name);
-  await page.getByLabel("Description", { exact: true }).fill("E2E Test Laptop");
-  await selectRadix(page, "Cost Centre", ctx.costCenter.name);
   await selectRadix(page, "Received Into", ctx.stock.name);
-  await fillAddAssetProcurementFields(page, ctx.vendor.name);
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await selectRadix(page, "Cost Centre", ctx.costCenter.name);
+  await fillAddAssetProcurementFields(page, ctx.vendor.name, "E2E Test Laptop");
+  await addAssetsAndOpenFirst(page, 1);
 
-  // AM-04: creating exactly one asset navigates straight to its Asset 360
-  // page (Asset Code is always server-generated -- read it back from there,
-  // not guessed or parsed out of a client-side list). Match on the real code
-  // pattern, not just heading level 1 -- Asset 360's own loading skeleton
-  // renders a placeholder "Asset" heading first, and the real one only
-  // appears once the asset itself has loaded.
+  // Asset Code is always server-generated -- read it back from Asset 360.
+  // Match on the real code pattern, not just heading level 1 -- Asset 360's
+  // own loading skeleton renders a placeholder "Asset" heading first.
   await expect(page).toHaveURL(/\/assets\/\d+$/);
   const heading = page.getByRole("heading", { level: 1, name: /^E2E\// });
   await expect(heading).toBeVisible();

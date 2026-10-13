@@ -89,8 +89,10 @@ export function buildAttentionRows(input: {
   erpArrivedPos: number;
   /** POs with units waiting (the PO list's total), when known; else the unit count is used. */
   waitingPos?: number | null;
+  /** S5b-1 (admins): assets with no Item yet, when known. */
+  unlinkedAssets?: number | null;
 }): AttentionRow[] {
-  const { data, canWork, erpChangedPos, erpArrivedPos, waitingPos } = input;
+  const { data, canWork, erpChangedPos, erpArrivedPos, waitingPos, unlinkedAssets } = input;
   const rows: AttentionRow[] = [];
   if (canWork) {
     const waitingUnits = data?.pending_po_summary?.count ?? 0;
@@ -157,6 +159,14 @@ export function buildAttentionRows(input: {
       to: "/assets",
       search: { status: "LOST" },
       action: "See them",
+    });
+  }
+  if (typeof unlinkedAssets === "number" && unlinkedAssets > 0) {
+    rows.push({
+      key: "link-items",
+      text: `${plural(unlinkedAssets, "asset")} ${unlinkedAssets === 1 ? "has" : "have"} no Item yet`,
+      to: "/settings/catalogue/link-assets",
+      action: "Link to Items",
     });
   }
   return rows;
@@ -307,7 +317,20 @@ export function Dashboard({ headOfficeSection }: DashboardProps = {}) {
   });
   const waitingPos = domain === "ALL" && typeof waitingPosQ.data === "number" ? waitingPosQ.data : null;
 
-  const attention = buildAttentionRows({ data, canWork, erpChangedPos, erpArrivedPos, waitingPos });
+  // S5b-1: admins see how many assets still have no Item (one cheap count: limit=1, X-Total-Count).
+  const canLink = can("admin");
+  const unlinkedQ = useQuery({
+    queryKey: ["assets", "unlinked-items", "count"],
+    queryFn: async () => {
+      const page = await apiClient.getPage<unknown[]>("/assets/unlinked-items?limit=1");
+      return typeof page?.total === "number" ? page.total : null;
+    },
+    enabled: canLink,
+    retry: false,
+  });
+  const unlinkedAssets = canLink && typeof unlinkedQ.data === "number" ? unlinkedQ.data : null;
+
+  const attention = buildAttentionRows({ data, canWork, erpChangedPos, erpArrivedPos, waitingPos, unlinkedAssets });
   const statusCounts = ASSET_STATUSES.filter((s) => (data?.status_counts?.[s] ?? 0) > 0).map((s) => ({
     status: s,
     count: data?.status_counts?.[s] ?? 0,

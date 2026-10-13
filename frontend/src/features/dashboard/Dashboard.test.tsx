@@ -245,6 +245,15 @@ describe("buildAttentionRows", () => {
     expect(buildAttentionRows({ ...base, waitingPos: null })[0].text).toBe("5 units on purchase orders are waiting for goods");
   });
 
+  it("S5b-1: admins are told how many assets have no Item yet, linking to the tool (only when there are some)", () => {
+    const base = { data: baseDashboardData, canWork: true, erpChangedPos: 0, erpArrivedPos: 0 };
+    const row = buildAttentionRows({ ...base, unlinkedAssets: 12 }).find((r) => r.key === "link-items")!;
+    expect(row).toMatchObject({ text: "12 assets have no Item yet", to: "/settings/catalogue/link-assets", action: "Link to Items" });
+    expect(buildAttentionRows({ ...base, unlinkedAssets: 1 }).find((r) => r.key === "link-items")!.text).toBe("1 asset has no Item yet");
+    expect(buildAttentionRows({ ...base, unlinkedAssets: 0 }).some((r) => r.key === "link-items")).toBe(false);
+    expect(buildAttentionRows({ ...base, unlinkedAssets: null }).some((r) => r.key === "link-items")).toBe(false);
+  });
+
   it("uses singular and plural words correctly", () => {
     const rows = buildAttentionRows({
       data: { ...baseDashboardData, pending_po_summary: { count: 1, value: 0 }, exception_counts: { UNDER_REPAIR: 1, LOST: 2 } },

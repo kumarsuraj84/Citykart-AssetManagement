@@ -15,6 +15,10 @@ export interface Item {
   default_warranty_years: number | null;
   is_active: boolean;
   map_count: number;
+  /** "IT" / "NON_IT": the work area of the Item's Category (server, S3a-1). */
+  work_area?: string | null;
+  category_name?: string | null;
+  subcategory_name?: string | null;
 }
 
 export type MatchType = "CODE" | "NAME" | "ARTICLE" | "DEPARTMENT" | "SECTION" | "DIVISION";

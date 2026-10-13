@@ -366,6 +366,20 @@ describe("AssetDetail (Asset 360)", () => {
     expect(screen.getByText(/\(Employee\)/)).toBeInTheDocument();
   });
 
+  it("S5b-1: With uses the holder fields that come with the asset (name, kind, place) -- no extra lookups", async () => {
+    mockGets({
+      asset: {
+        ...FULL_ASSET, status: "ALLOTTED", current_asset_user_name: "old name", current_asset_user_type: null, location_name: null,
+        holder_type: "STORE", holder_kind_label: "Store", holder_name: "Lucknow Aminabad", holder_location_name: "Lucknow",
+      },
+    });
+    await openPage();
+    const summary = screen.getByTestId("asset-summary");
+    expect(summary).toHaveTextContent("Lucknow Aminabad (Store) · Lucknow");
+    expect(within(summary).getByText("With Store")).toBeInTheDocument();
+    expect(summary).not.toHaveTextContent("old name");
+  });
+
   it("keeps Documents (the first area under More)", async () => {
     mockGets();
     await openPage();

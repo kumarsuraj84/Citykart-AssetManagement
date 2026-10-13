@@ -27,17 +27,32 @@ const USERS = [
 ];
 const ITEMS = [{ id: 31, name: "Mouse", category_id: 1, subcategory_id: 2, serial_required: false, serial_later: false, bundle_id: null, default_brand_id: null, default_warranty_years: null, is_active: true, map_count: 0 }];
 
-function mockGets(found: Record<string, unknown[]> = {}) {
+/** Move's "Add by Item": GET /assets/pick answers the oldest `quantity` in stock and X-Total-Count. */
+function mockPick(stock: { id: number; asset_code: string; serial_number: string | null }[]) {
+  (apiClient.getPage as any).mockImplementation((path: string) => {
+    if (!path.startsWith("/assets/pick?")) return Promise.resolve({ data: [], total: 0 });
+    const quantity = Number(/[?&]quantity=(\d+)/.exec(path)?.[1] ?? 0);
+    const rows = stock.slice(0, quantity).map((a) => ({ asset_id: a.id, asset_code: a.asset_code, serial_number: a.serial_number }));
+    return Promise.resolve({ data: rows, total: stock.length });
+  });
+}
+
+function mockGets(found: Record<string, unknown[]> = {}, pool: { id: number }[] = MICE) {
+  mockPick(MICE);
   (apiClient.get as any).mockImplementation((path: string) => {
     if (path === "/asset-users") return Promise.resolve(USERS);
     // "Currently in stock at" lists stock rooms from GET /stock-rooms (S3b-1).
     if (path === "/stock-rooms") return Promise.resolve(USERS.filter((u) => u.asset_user_type === "STOCK_POINT"));
     if (path === "/items") return Promise.resolve(ITEMS);
-    if (path.startsWith("/assets?item_id=31")) return Promise.resolve({ items: MICE, total: MICE.length });
     if (path.startsWith("/assets?")) {
       const q = /[?&]q=([^&]*)/.exec(path);
       const ids = /[?&]ids=([^&]*)/.exec(path);
       const key = decodeURIComponent(ids ? `ids:${ids[1]}` : q ? q[1] : "");
+      if (ids && !(key in found)) {
+        const wanted = decodeURIComponent(ids[1]).split(",").map(Number);
+        const items = pool.filter((a) => wanted.includes(a.id));
+        return Promise.resolve({ items, total: items.length });
+      }
       const items = found[key] ?? [];
       return Promise.resolve({ items, total: items.length });
     }
@@ -225,7 +240,9 @@ describe("Move: Send to Store prints labels as assets are scanned", () => {
     fireEvent.click(screen.getByRole("button", { name: /add 7 to this batch/i }));
 
     expect(await screen.findByText(/Queued \(7\)/)).toBeInTheDocument();
-    expect(apiClient.get).toHaveBeenCalledWith("/assets?item_id=31&asset_user_id=5&status=IN_STOCK&limit=200");
+    // One pick (oldest first, server-side) instead of searching page by page.
+    expect(apiClient.getPage).toHaveBeenCalledWith("/assets/pick?item_id=31&asset_user_id=5&quantity=7");
+    expect(apiClient.get).not.toHaveBeenCalledWith(expect.stringContaining("/assets?item_id="));
     await waitFor(() => expect(window.print).toHaveBeenCalledTimes(1));            // one print job, seven labels
     expect(labelsOnThePage).toEqual([7]);
     await waitFor(() => expect(screen.getAllByText("Printed")).toHaveLength(7));
@@ -241,7 +258,7 @@ describe("Move: Send to Store prints labels as assets are scanned", () => {
     fireEvent.click(await screen.findByRole("option", { name: "WH Stock" }));
     fireEvent.change(screen.getByLabelText("How many"), { target: { value: "9" } });
     fireEvent.click(screen.getByRole("button", { name: /add 9 to this batch/i }));
-    expect(await screen.findByText(/Only 7 of that Item are in stock there/)).toBeInTheDocument();
+    expect(await screen.findByText("Only 7 in stock at WH Stock — you asked for 9. Nothing was added.")).toBeInTheDocument();
     expect(screen.getByText(/Queued \(0\)/)).toBeInTheDocument();
     expect(window.print).not.toHaveBeenCalled();
   });
@@ -404,18 +421,10 @@ describe("S0: quantities are 1 to 1,000", () => {
     expect(screen.getByRole("button", { name: /add 1000 to this batch/i })).toBeEnabled();
   });
 
-  it("a count above the server's 200-per-request limit is read page by page", async () => {
+  it("S5b-1: 450 by Item is one pick (the server picks the oldest), then their rows by id", async () => {
     const MANY = Array.from({ length: 450 }, (_, i) => asset(1000 + i, `FA/IT/MSE/${1000 + i}`, { serial_number: null, item_name: "Mouse", erp_item_code: null }));
-    (apiClient.get as any).mockImplementation((path: string) => {
-      if (path === "/asset-users") return Promise.resolve(USERS);
-      if (path === "/stock-rooms") return Promise.resolve(USERS.filter((u) => u.asset_user_type === "STOCK_POINT"));
-      if (path === "/items") return Promise.resolve(ITEMS);
-      if (path.startsWith("/assets?item_id=31")) {
-        const offset = Number(/[&]offset=(\d+)/.exec(path)?.[1] ?? 0);
-        return Promise.resolve({ items: MANY.slice(offset, offset + 200), total: MANY.length });
-      }
-      return Promise.resolve([]);
-    });
+    mockGets({}, MANY);
+    mockPick(MANY);
     await renderMovement();
     choose("Send for Repair");                                       // no labels to print
     fireEvent.click(screen.getByRole("combobox", { name: "Item" }));
@@ -425,9 +434,25 @@ describe("S0: quantities are 1 to 1,000", () => {
     fireEvent.change(screen.getByLabelText("How many"), { target: { value: "450" } });
     fireEvent.click(screen.getByRole("button", { name: /add 450 to this batch/i }));
     expect(await screen.findByText(/Queued \(450\)/)).toBeInTheDocument();
-    expect(apiClient.get).toHaveBeenCalledWith("/assets?item_id=31&asset_user_id=5&status=IN_STOCK&limit=200");
-    expect(apiClient.get).toHaveBeenCalledWith("/assets?item_id=31&asset_user_id=5&status=IN_STOCK&limit=200&offset=200");
-    expect(apiClient.get).toHaveBeenCalledWith("/assets?item_id=31&asset_user_id=5&status=IN_STOCK&limit=200&offset=400");
+    expect(apiClient.getPage).toHaveBeenCalledTimes(1);
+    expect(apiClient.getPage).toHaveBeenCalledWith("/assets/pick?item_id=31&asset_user_id=5&quantity=450");
+  });
+
+  it("S5b-1: the ones already in this batch are not counted twice: it asks for more and says how many are in the batch", async () => {
+    mockGets();
+    await renderMovement();
+    choose("Send for Repair");
+    fireEvent.click(screen.getByRole("combobox", { name: "Item" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Mouse" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Currently in stock at" }));
+    fireEvent.click(await screen.findByRole("option", { name: "WH Stock" }));
+    fireEvent.change(screen.getByLabelText("How many"), { target: { value: "5" } });
+    fireEvent.click(screen.getByRole("button", { name: /add 5 to this batch/i }));
+    expect(await screen.findByText(/Queued \(5\)/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /add 5 to this batch/i }));
+    await waitFor(() => expect(apiClient.getPage).toHaveBeenLastCalledWith("/assets/pick?item_id=31&asset_user_id=5&quantity=10"));
+    expect(await screen.findByText("Only 7 in stock at WH Stock (5 already in this batch) — you asked for 5. Nothing was added.")).toBeInTheDocument();
+    expect(screen.getByText(/Queued \(5\)/)).toBeInTheDocument();
   });
 });
 

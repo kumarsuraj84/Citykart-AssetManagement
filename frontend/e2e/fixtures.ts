@@ -335,32 +335,43 @@ export function optionMatcher(text: string): RegExp {
 }
 
 /**
- * Fills the Add Asset form's mandatory procurement fields other than
- * Item/Cost Centre/Description/Received Into, which each spec
- * already picks in its own way (docs/ai/DECISIONS.md -- Vendor/PO No+Date/
- * Invoice No+Date/PI No+Date/Serial Number are all mandatory now, and
- * Purchase Date is no longer a field at all, since it's auto-derived from
- * Invoice Date). Call this after navigating to /assets/new and before
- * clicking Save.
+ * S5b-1 Add Assets (one batch form): after the Item, Cost Centre and Received
+ * Into are picked, fills one serial number (for an Item that has serials and a
+ * quantity of 1), opens the folded "Purchase details" (vendor, PO No + Date,
+ * invoice No + Date) and the folded "Advanced" (description, barcode). The PI
+ * is recorded later (Asset 360 / Record PI), never on Add Assets.
  *
- * Serial Number is now globally unique across every asset ever created in
- * whatever database this suite runs against (docs/ai/DECISIONS.md) -- teardown
- * deactivates the company/masters/asset-users a spec creates but never the asset
- * itself (assets are never deleted, by design), so a literal serial would
- * collide with a previous run's leftover asset. Timestamp-suffixed, same
- * collision-avoidance convention this file already uses for company/category
- * codes.
+ * Serial numbers are unique across every asset ever created in the database
+ * this suite runs against, and teardown never deletes assets, so the serial is
+ * timestamp-suffixed.
  */
-export async function fillAddAssetProcurementFields(page: Page, vendorName: string): Promise<void> {
+export async function fillAddAssetProcurementFields(page: Page, vendorName: string, description?: string): Promise<void> {
   const ts = Date.now().toString(36);
+  // Only an Item with serial numbers shows the serial box.
+  const serials = page.getByLabel("Serial numbers", { exact: true });
+  if (await serials.count()) await serials.fill(`E2E-SN-${ts}`);
+  await page.getByRole("button", { name: /Purchase details/ }).click();
   await page.getByLabel("Vendor", { exact: true }).click();
   await page.getByRole("option", { name: optionMatcher(vendorName) }).click();
-  await page.getByLabel("PO Number", { exact: true }).fill("E2E-PO-1");
+  await page.getByLabel("PO No", { exact: true }).fill("E2E-PO-1");
   await page.getByLabel("PO Date", { exact: true }).fill("2025-06-01");
-  await page.getByLabel("Invoice Number", { exact: true }).fill("E2E-INV-1");
+  await page.getByLabel("Invoice No", { exact: true }).fill("E2E-INV-1");
   await page.getByLabel("Invoice Date", { exact: true }).fill("2025-06-02");
-  await page.getByLabel("Purchase Invoice (PI) Number", { exact: true }).fill("E2E-PI-1");
-  await page.getByLabel("PI Date", { exact: true }).fill("2025-06-03");
-  await page.getByLabel("Serial Number", { exact: true }).fill(`E2E-SN-${ts}`);
+  await page.getByRole("button", { name: /Advanced/ }).click();
+  if (description) await page.getByLabel("Description", { exact: true }).fill(description);
   await page.getByLabel("Barcode", { exact: true }).fill(`E2E-BC-${ts}`);
+}
+
+/**
+ * Presses "Add 1 asset" (or "Add N assets"), waits for the result panel and
+ * opens the first new asset's Asset 360 from its code link. Returns the code.
+ */
+export async function addAssetsAndOpenFirst(page: Page, count = 1): Promise<string> {
+  await page.getByRole("button", { name: `Add ${count} asset${count === 1 ? "" : "s"}`, exact: true }).click();
+  const panel = page.getByRole("region", { name: "Added" });
+  await panel.getByText(`${count} asset${count === 1 ? "" : "s"} created`, { exact: true }).waitFor();
+  const first = panel.getByRole("list", { name: "New asset codes" }).getByRole("link").first();
+  const code = (await first.textContent())!.trim();
+  await first.click();
+  return code;
 }

@@ -48,6 +48,11 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
         line: "What an asset is: its type, serial number rule and whether it comes as a set.",
         activePrefixes: ["/setup/bundles"],
       },
+      {
+        to: "/settings/catalogue/link-assets",
+        label: "Link Assets to Items",
+        line: "Give older assets their Item, from suggestions; nothing changes until you confirm.",
+      },
       { to: "/settings/catalogue/asset-groups", label: "Asset Groups", line: "Groups and their Sub-categories, each group with its work area." },
       { to: "/settings/catalogue/brands", label: "Brands", line: "Makers, offered as an Item's default brand." },
     ],

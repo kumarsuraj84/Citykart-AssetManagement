@@ -269,3 +269,92 @@ Changed: `app/main.py` (2 routers); `app/assets/router.py` (labels, filters, det
 
 ## Frontend
 
+### Frontend — S5b-1
+
+| | |
+|---|---|
+| Starting HEAD | `c880045` (feat(web): S4 Receive screen …); the S5 backend commit `2c4d574` landed on top during the stage — the contract above was read from it |
+| Scope | Brief items 1–6: batch-first **Add Assets**, the one-search-box **Assets register**, **Link existing assets to Items**, Move's **Take N from a Stock Room** on `GET /assets/pick`, small items (Items work-area chip, Asset 360 "With" from the holder fields, old Add Asset form removed), tests. Backend asks (§11) items 1, 5, 6, 7, 13 are done here; 2–4, 8–12, 14, 15 are later frontend stages |
+| Backend | not touched (requests in §F8) |
+| Commit | none (the controller commits) |
+| Tests | `npx tsc -b` clean · `npx vitest run` **955 → 1013 passed** (72 → 75 files, 0 failed) · `npm run build` OK (the existing > 500 kB chunk warning only) · e2e specs updated and type-checked (`tsc --ignoreConfig`), Playwright not run |
+
+#### F1. What changed
+
+| # | Item | What was done |
+|---|---|---|
+| 1 | Add Assets (`/assets/new`, "Add Assets") | One batch form → `POST /api/assets/batch` (the single `POST /api/assets` is no longer called by the UI). **What and where**: Company (only when the person works in more than one; it scopes the lists — the company itself is **not sent**, the server takes it from the cost centre), **Item\*** (searchable, `GET /items?work_area=mine`, options with their group, **+ New Item** by capabilities; once chosen, read-only chips: type of asset, work area, serial rule in words), **Quantity\*** (1–1,000, default 1, − / +), **Received Into\*** (`StockRoomSelect`, remembered default, + New Stock Room), **Cost Centre\*** (remembered default, + New Cost Centre). **Identification** (after the Item): the serial rule as three plain-word buttons (default = the Item's; a change says "Changed for these assets only; the Item says …" and is sent as `serial_mode`); *Has serial number* → the Receive `SerialBox` (paste / scan N, row gutter, "k of n entered", duplicates with rows, debounced `check-serials` hint, refused rows); *No serial number* → nothing; *Serial will be entered later* → one line. **Needed for every asset** (required custom fields of this company, never folded, one line why) with **Different values per asset** (one box per field, row i = asset i → `unit_custom_fields`). **Purchase details** (folded, "n filled in"): Vendor (+ New), PO No, PO Date, Invoice No, Invoice Date, Invoice Amount, Cost per asset, Tax % (+ per-asset tax / total preview). **Advanced** (folded): Brand (starts as the Item's), Model, Warranty years (starts as the Item's, "warranty until" preview), Description (placeholder = Item + brand + model, sent only when typed), Barcode ("Labels use the Asset Code unless a barcode is given here."), Old asset code (only when quantity = 1), optional extra fields. **Action bar** (sticky, single column at 390/768): "Why can't I add?" line (most important first, "(n more things to fix)"), **[Add N assets]**, Ctrl+Enter when ready (Enter alone never). **422** → `problems` placed by what they are about (serial rows by `unit_index` / `serial`; cost centre, received into, quantity, Item, purchase, advanced, extra fields by their words — that fold opens; the rest under the button), one summary "Nothing was added: N problems need fixing, marked below. Everything you typed is still here."; editing a part clears only its marks. Other refusals (403 work area / company) show the server's sentence. **Result**: "N assets created", "N serial numbers pending — …", "Labels ready.", [Print labels (N)] (shared action, `label_asset_ids`), [Open assets] (`/assets?ids=`), [Add more] (fresh form, remembered place / cost centre), first 20 codes as links + "and N more". |
+| 2 | Assets register (`/assets`) | **One search box** (placeholder as asked; 300 ms debounce, Enter at once; server ranks exact → starts-with → contains, so the old "Exact match" box is gone — an `exact=true` link still works and shows as a removable chip). **More filters** (inline panel, count on the button): Status in words (In Stock · With Employee · With Store · Installed · Under Repair · Lost · Sold · Scrapped · Disposed — "With Employee/Store" = `status=ALLOTTED` + `holder_type`; Home's `status=ALLOTTED` link still reads "With Employee / Store"), Work area, Company (only when > 1), Item (searchable), Asset group, **Currently with**: kind chips Employee / Store / Stock Room / Install Point (`holder_type`) + a searchable person/place picker narrowed to that kind, Vendor, PO number (whole, debounced). **Mine** kept. Active filters are **removable chips** with names + Clear all. **Everything is in the URL** (`q, exact, status, holder, with, mine, item, vendor, po, area, company, group, ids, find`), typing replaces history, filter changes push it (Back returns to the previous view). **Default columns**: Code · Item · Description (muted) · Serial · With ("name · kind · place" from the holder fields) · Company (only when > 1) · PO · Status (badge words from `holder_type`). Column chooser kept with every other column + custom fields, remembered per browser under a new key (`…columns.v2`, so the new defaults show). Server sort / 50 per page / selection (Print labels (n), Move (n)) unchanged; the selection and page reset when the view changes. Empty: "No assets found." + [Clear search and filters]. |
+| 3 | Link existing assets to Items (`/settings/catalogue/link-assets`) | Guarded for **every ADMIN** (new access area `admin`; head-office admin included) like the server. Entries: Settings › Catalogue "Link Assets to Items", Items header "Link existing assets", and a **Home attention row** for admins ("12 assets have no Item yet → Link to Items", from `GET /assets/unlinked-items?limit=1` `X-Total-Count`; hidden at 0 / unknown). Screen: search (debounced) + paging (50); each asset: code (→ Asset 360), serial, description, group; its **suggestions as chips** "Laptop — same ERP code · 100%" / "— similar description" / "— same group"; [Use <top suggestion>] [Choose another Item…] (Items of the same asset group only). Bulk: tick rows → [Link N to their suggested Item] (rows without one are named) / [Link N to one Item…]. **Nothing auto-applies**: choices are staged ("→ Laptop", Undo), a sticky "N links ready" bar → **confirmation** "Link 12 assets to Items. This does not change their group, status or place." (list of the first 10) → `POST /assets/link-items`. 422 → each refusal **word for word on its row** (`asset_id` / `entry_index`), "Nothing was linked: …", the links stay staged to fix or undo. Empty: "Every asset is linked to an Item." |
+| 4 | Move "Add by Item" | One `GET /assets/pick?item_id&asset_user_id&quantity` (asks for N + what is already in the batch, `X-Total-Count`), then the picked rows by id for the batch and labels — no more page-by-page searching. Short: "Only 8 in stock at HO Stock (2 already in this batch) — you asked for 10. Nothing was added." Everything else on Move unchanged. |
+| 5 | Small | Items list: **Work area** chip column (Item's `work_area`, else its group's). Asset 360: "With" and the status badge from `holder_name / holder_kind_label / holder_location_name / holder_type` (older fields as fallback, no extra lookups). Old `AddAssetForm.tsx` + its tests **deleted** after every intent was ported (§F5). `Item` type gains the optional server fields `work_area`, `category_name`, `subcategory_name`. "Showing only the N new assets." (shared by Receive and Add Assets). |
+
+#### F2. Files
+
+New: `src/features/assets/{AddAssetsForm.tsx, add-assets-model.ts, register-filters.ts}`, `src/features/items/LinkAssetsScreen.tsx`; tests `src/features/assets/{AddAssetsForm.test.tsx, add-assets-model.test.ts, register-filters.test.ts}`, `src/features/items/LinkAssetsScreen.test.tsx`.
+Changed: `src/router.tsx` (register search params, link-assets route), `src/routes/assets/{index,new}.tsx`, `src/features/assets/{AssetRegister,AssetMovement,AssetDetail}.tsx`, `src/features/items/{ItemsScreen.tsx,types.ts}`, `src/features/dashboard/Dashboard.tsx`, `src/features/settings/settings-structure.ts`, `src/lib/access.ts`.
+Deleted: `src/features/assets/AddAssetForm.tsx`, `AddAssetForm.test.tsx`.
+Tests changed: `AssetRegister.test.tsx`, `MoveDispatchLabels.test.tsx`, `AssetDetail.test.tsx`, `items-screens.test.tsx`, `Dashboard.test.tsx`, `access.test.ts`, `router.test.tsx` (Settings list), `ReceiveScreen.test.tsx` (one sentence). E2E (static): `e2e/fixtures.ts` (`fillAddAssetProcurementFields` now fills the serial box when shown, opens Purchase details and Advanced; new `addAssetsAndOpenFirst`), `asset-lifecycle.spec.ts`, `add-asset-company-scoping.spec.ts`, `multi-company-udf.spec.ts`, `rbac-responsibility-journey.spec.ts` (work area chip on Add Assets; register Work area under More filters).
+
+#### F3. UX before / after (a button or tick = 1 click, a dropdown pick = 3; Received Into and Cost Centre remembered after the first time)
+
+| Task | Before (single Add Asset) | **After (Add Assets)** |
+|---|---|---|
+| Fields on the form | 22 (+ custom fields), all on one page | **4 essential** (Item, Quantity, Received Into, Cost Centre) + the serial box only when the Item has serials + required extra fields; 8 purchase and 6 advanced fields folded |
+| 20 identical no-serial assets (e.g. mice) | 20 forms × (Item 3 + cost centre 3 + vendor 3 + place 3 + "No serial" 1 + Save 1 = ~14 clicks) + description and barcode typed 20× → **≈ 280 clicks, 40 fields** (≈ 200 with the old smart defaults) | **4 clicks** (Item 3 + Add 1), 1 field (quantity "20"); first time +6 for place and cost centre |
+| 10 serial assets | 10 forms, ≈ 140 clicks, 10 serials + 20 other fields typed | **4 clicks**, quantity + 10 serials in one paste |
+| 10 whose serial comes later | 10 forms + "add later" tick each | **4 clicks**, quantity only (the Item says "later") |
+| Find an asset by PO / vendor / person / ERP code | not searchable (code, serial, barcode, PO / invoice only) + 6 filters always open | one box finds all of them; filters folded under More filters |
+| Move 7 mice from a stock room | 1–N search requests | 1 pick + 1 read |
+| Link 50 old assets to their suggested Item | impossible (no screen, no API) | tick all 1 + Link 1 + confirm 1 = **3 clicks** |
+
+Checked in a browser at 390 px and 768 px (throw-away dev server with a mocked API client, scratch files outside the repo): no page-level horizontal scroll on Add Assets, the register (with More filters open) and the link tool; Add Assets' action bar stays on screen; the register table scrolls inside its own frame at 768 with the sidebar open.
+
+#### F4. Decisions
+
+1. **Company** is a picker only for people in more than one company (it scopes cost centres and stock rooms); the request never carries `company_id` — the server derives it from the cost centre, so the two can never disagree.
+2. **Received Into** offers stock rooms (the brief); the server would also accept a person / store / install point (S5 §9.2) — giving straight to a person stays on Move.
+3. **Serial rule** is sent only when changed from the Item's; serials only for "Has serial number". Serial checks start only once an Item is chosen.
+4. **Only typed optional values are sent** (brand / warranty start from the Item but are sent as shown; description only when typed, so the server's "Item + brand + model" applies). PI number / date are not on Add Assets (the batch has no PI fields — recorded later, as with Receive).
+5. **Required extra fields** are never folded; an empty one is not painted red (the asterisk and the why-line say it); wrong values are.
+6. **422 placement** is by `unit_index` / `serial`, then by the sentence's words (cost centre, stock room, quantity, purchase words, advanced words, a custom-field label, Item); anything else sits above the button. A refusal never blocks a retry.
+7. **Register "Exact match"** removed from the UI (the server ranks exact first); `exact=true` links still work.
+8. **Status words**: "With Employee" / "With Store" are `ALLOTTED` + `holder_type`; Stock Room → "In Stock", Install Point → "Installed" come from the status itself. The generic "With Employee / Store" appears only when a link asks for it.
+9. **URL history**: typing in the search box replaces the entry; every filter / chip change adds one (Back works view by view). Page and sort stay local and restart when the view changes.
+10. **Column preferences** moved to a new storage key so everyone gets the new defaults once.
+11. **Link tool**: staged choices + one confirmation for everything (rows, chips and both bulk actions); the server's refusal sentences are shown verbatim; "Choose another Item…" lists only Items of the asset's group (several rows: Items fitting all of them).
+12. **Link tool access** = any ADMIN (new `admin` area), matching the server; the Settings sidebar stays head-office only, so an ordinary admin reaches it from Home's attention row.
+13. **Move pick shortage** adds nothing (as before) and says how many there are, at which stock room, and how many are already in the batch.
+
+#### F5. Tests (955 → 1013, +58 net; 0 failing)
+
+| File | Tests | What |
+|---|---|---|
+| `features/assets/AddAssetsForm.test.tsx` (new; replaces `AddAssetForm.test.tsx`, 34 tests, every intent ported) | 48 | essentials only + folds closed + no group / work-area pickers + no company picker for one company; Item chips (type, work area, serial rule) and options with group; 3 pasted serials → exact body; short / long / typed-twice with gutter rows; known serial from check-serials; 50 no-serial; 10 serial-later + result line; override → `serial_mode`; later Item given a serial now; Item brand / warranty defaults + description placeholder + barcode line; advanced values sent, old code only for 1; purchase details body + tax preview + "8 filled in"; future / before-PO dates; quantity 0 / 1001 / 2.5 / empty (it.each) + − / + bounds; disabled reasons in order; Ctrl+Enter / Enter / Ctrl+Enter while incomplete; required extra fields prominent, other company's hidden, optional under Advanced; every field type in the body; per-asset values → `unit_custom_fields`; too many per-asset values; 422 mapping (cost centre + serial row, summary, nothing lost, per-part clearing); purchase refusal opens its fold; 403 sentence; result panel (25 created, Print labels (25), 20 codes + "and 5 more", Add more with remembered place); Open assets → `/assets?ids=`; scoped lists + `work_area=mine` + no `company_id`; two companies re-scope; head-office first company; remembered defaults; forgotten stale defaults; no cost centre / stock room (may add / ask someone); + New entries by capabilities (5 kinds); no New Item when capabilities fail; New Item picked with its rule; New Vendor by name only; New Stock Room; load error; viewer guard |
+| `features/assets/add-assets-model.test.ts` (new) | 10 | Item rule, applicable fields, minimal / optional / extra-field bodies, serial checks, 1,000-serial timing, reasons, problem placement, default description |
+| `features/assets/register-filters.test.ts` (new) | 4 | URL → query, holder words, status + holder choices, filter key / count |
+| `features/items/LinkAssetsScreen.test.tsx` (new) | 12 | suggestion chips in words + %, Use stages only + confirm sentence + payload, Undo, bulk suggested (rows without one named), bulk one Item limited to the group, choose for one row, refusal on its row verbatim + still staged, search + paging, empty state, ADMIN allowed, operator no access, helpers |
+| `features/assets/AssetRegister.test.tsx` | 23 → 36 | old tests moved to More filters / chips; new: default columns, Company only for > 1, With "name · kind · place" + holder_type status words, debounced single request + Enter + URL, With Store = status + holder and its chip, Home's ALLOTTED link, kind chips + narrowed picker, shared link with 7 filters + named chips + Clear all, Back, PO number, Item / Vendor / Work area to the server, empty state clear, remembered columns |
+| `MoveDispatchLabels.test.tsx` | +1 | 7 mice by one pick; shortage sentence; 450 = one pick; already-in-batch counted |
+| `AssetDetail.test.tsx`, `items-screens.test.tsx`, `Dashboard.test.tsx`, `access.test.ts` | +1 each | With from holder fields; Items work-area chip + Link existing assets link; unlinked attention row; `admin` area |
+
+#### F6. Deferred / not done
+
+* **No check against the real dev API** (containers not rebuilt, per brief); browser check was with a mocked API. Recommended after `docker compose up -d --build web`: add 20 mice, 10 serial laptops with one duplicate (422 marks), the register's shared links, the link tool on the 53 dev assets, Move by Item.
+* Playwright not run (specs updated statically).
+* "Asset group" filter is Category only (the register has no sub-category filter — §F8).
+* Not done here (other stages): People & Places screens, issue passwords, ERP store rooms result, report previews, manual PO `problems` per line, ERP inbox counts tile, suggested vendor, vendors paging, `capabilities.companies`, category code drop (§11 items 2–4, 8–12, 14, 15).
+* The register's person/place picker still loads `GET /asset-users` (all); `GET /api/people` paging could replace it later.
+
+#### F7. Words
+
+"Add Assets", "Received Into", "Stock Room", "Install Point", "Cost Centre", "Item", "Asset group", "With", statuses from `lib/labels.ts` (With Employee / With Store / In Stock / Installed …), work areas "IT Team" / "Admin / Non-IT Team"; no "Holder", no raw codes (asserted in tests).
+
+#### F8. Backend requests
+
+1. **Register sub-category filter** (`subcategory_id` on `GET /api/assets`) for "Asset group › Sub-category".
+2. **`/assets?ids=` above 200** (repeat of S4/S5a): Open assets after a batch of more than 200 shows the first 200.
+3. Optional: a `field` / `place` key on batch `problems` (e.g. `"cost_center"`, `"custom_fields.<key>"`) so the screen need not place sentences by their words.
+4. Optional: `GET /api/assets/unlinked-items/count` (no suggestions, no ERP read) for the Home row — today `limit=1` still computes one row's suggestions.
+5. Optional: `GET /api/assets/pick` returning the register row shape (status, holder, item name), saving the follow-up `ids=` read on Move.
+

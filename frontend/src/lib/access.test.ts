@@ -19,6 +19,12 @@ describe("access: who may open which area (UX only; the server decides)", () => 
     expect(AREAS.filter((a) => canUse(a, { role: null, isPrimaryOwner: false }))).toEqual([]);
   });
 
+  it("S5b-1: the admin tools (Link existing assets to Items) are for every ADMIN, like the server", () => {
+    expect(canUse("admin", { role: "ADMIN", isPrimaryOwner: true })).toBe(true);
+    expect(canUse("admin", { role: "ADMIN", isPrimaryOwner: false })).toBe(true);
+    for (const role of ["OPERATOR", "VIEWER", "SELF_SERVICE"]) expect(canUse("admin", { role, isPrimaryOwner: false })).toBe(false);
+  });
+
   it("lands self-service logins on My Assets and everyone else on Home", () => {
     expect(homePathFor("SELF_SERVICE")).toBe("/my-assets");
     expect(homePathFor("VIEWER")).toBe("/dashboard");

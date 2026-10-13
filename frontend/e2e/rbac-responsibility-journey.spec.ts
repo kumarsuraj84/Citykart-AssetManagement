@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { optionMatcher, newSeedRegistry, seedTestCompany, teardownTestCompany, fillAddAssetProcurementFields, type SeedRegistry } from "./fixtures";
+import { optionMatcher, newSeedRegistry, seedTestCompany, teardownTestCompany, fillAddAssetProcurementFields, addAssetsAndOpenFirst, type SeedRegistry } from "./fixtures";
 
 // Asset User / RBAC / Responsibility rebuild, permanent E2E coverage (spec §60):
 // an ADMIN logs in, IT and NON_IT categories exist side by side, a fresh asset
@@ -150,14 +150,14 @@ test("Asset User RBAC / Responsibility rebuild: IT vs NON_IT domain scoping end 
   await loginAs(page, ctx.admin.empCode, ctx.admin.password);
   await expect(page).toHaveURL(/\/dashboard$/);
 
+  // S5b-1: the Item's work area is shown as a chip on Add Assets (never asked).
   await page.goto("/assets/new");
   await selectRadix(page, "Item", ctx.item.name);
-  await expect(page.getByLabel("Work area", { exact: true })).toHaveValue("IT Team");
-  await page.getByLabel("Description", { exact: true }).fill(`E2E RBAC IT Asset ${ts}`);
-  await selectRadix(page, "Cost Centre", ctx.costCenter.name);
+  await expect(page.getByLabel("What the Item decides")).toContainText("IT Team");
   await selectRadix(page, "Received Into", ctx.stock.name);
-  await fillAddAssetProcurementFields(page, ctx.vendor.name);
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await selectRadix(page, "Cost Centre", ctx.costCenter.name);
+  await fillAddAssetProcurementFields(page, ctx.vendor.name, `E2E RBAC IT Asset ${ts}`);
+  await addAssetsAndOpenFirst(page, 1);
   await expect(page).toHaveURL(/\/assets\/\d+$/);
   const itHeading = page.getByRole("heading", { level: 1, name: /^E2E\// });
   await expect(itHeading).toBeVisible();
@@ -165,12 +165,11 @@ test("Asset User RBAC / Responsibility rebuild: IT vs NON_IT domain scoping end 
 
   await page.goto("/assets/new");
   await selectRadix(page, "Item", nonItItem.name);
-  await expect(page.getByLabel("Work area", { exact: true })).toHaveValue("Admin / Non-IT Team");
-  await page.getByLabel("Description", { exact: true }).fill(`E2E RBAC Non-IT Asset ${ts}`);
-  await selectRadix(page, "Cost Centre", ctx.costCenter.name);
+  await expect(page.getByLabel("What the Item decides")).toContainText("Admin / Non-IT Team");
   await selectRadix(page, "Received Into", ctx.stock.name);
-  await fillAddAssetProcurementFields(page, ctx.vendor.name);
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await selectRadix(page, "Cost Centre", ctx.costCenter.name);
+  await fillAddAssetProcurementFields(page, ctx.vendor.name, `E2E RBAC Non-IT Asset ${ts}`);
+  await addAssetsAndOpenFirst(page, 1);
   await expect(page).toHaveURL(/\/assets\/\d+$/);
   const nonItHeading = page.getByRole("heading", { level: 1, name: /^E2E\// });
   await expect(nonItHeading).toBeVisible();
@@ -191,6 +190,8 @@ test("Asset User RBAC / Responsibility rebuild: IT vs NON_IT domain scoping end 
   // matching asset, never the other one. ----
   await page.goto("/assets");
   await page.getByLabel("Search", { exact: true }).fill(`E2E RBAC`);
+  // S5b-1: Work area sits under "More filters".
+  await page.getByRole("button", { name: /More filters/ }).click();
   await selectRadix(page, "Work area", "IT Team");
   const itRow = page.locator("tr", { hasText: itAssetCode });
   const nonItRow = page.locator("tr", { hasText: nonItAssetCode });

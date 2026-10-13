@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { optionMatcher, newSeedRegistry, seedTestCompany, teardownTestCompany, fillAddAssetProcurementFields, type SeedRegistry } from "./fixtures";
+import { optionMatcher, newSeedRegistry, seedTestCompany, teardownTestCompany, fillAddAssetProcurementFields, addAssetsAndOpenFirst, type SeedRegistry } from "./fixtures";
 
 async function loginAs(page: Page, empCode: string, password: string) {
   await page.goto("/login");
@@ -112,11 +112,12 @@ test("a required custom field scoped to company B never blocks asset creation fo
   await expect(page.getByText("Company B Required Field")).not.toBeVisible();
 
   await selectRadix(page, "Item", ctxA.item.name);
-  await page.getByLabel("Description", { exact: true }).fill("Multi-Company UDF Test Laptop");
   await selectRadix(page, "Cost Centre", ctxA.costCenter.name);
   await selectRadix(page, "Received Into", ctxA.stock.name);
-  await fillAddAssetProcurementFields(page, ctxA.vendor.name);
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await fillAddAssetProcurementFields(page, ctxA.vendor.name, "Multi-Company UDF Test Laptop");
+  // Not even under Advanced (where optional extra fields live).
+  await expect(page.getByText("Company B Required Field")).not.toBeVisible();
+  await addAssetsAndOpenFirst(page, 1);
 
   await expect(page).toHaveURL(/\/assets\/\d+$/);
   await expect(page.getByRole("heading", { level: 1, name: /^E2E\// })).toBeVisible();

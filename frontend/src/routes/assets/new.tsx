@@ -1,10 +1,9 @@
-import { AddAssetForm } from "../../features/assets/AddAssetForm";
+import { AddAssetsScreen } from "../../features/assets/AddAssetsForm";
 import { useAuthStore } from "../../lib/auth-store";
 
 export default function NewAssetRoute() {
-  // null for the Primary Owner -- a company-less bootstrap account (see
-  // AddAssetForm, which picks the first of the caller's companies once
-  // loaded rather than assuming a home company).
+  // null for the head-office admin (a company-less account): the form then
+  // starts with the first of the person's companies once they have loaded.
   const companyId = useAuthStore((s) => s.companyId);
-  return <AddAssetForm companyId={companyId} />;
+  return <AddAssetsScreen companyId={companyId} />;
 }

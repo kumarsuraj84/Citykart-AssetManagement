@@ -8,6 +8,7 @@ import type { Item } from "./types";
 import { ItemFormDialog } from "./ItemFormDialog";
 import { ItemLinksDialog } from "./ItemLinksDialog";
 import { yesNo } from "../../lib/serial-rule";
+import { workAreaLabel } from "../../lib/labels";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -18,6 +19,7 @@ import { AsyncButton } from "@/components/shared/AsyncButton";
 interface Named {
   id: number;
   name: string;
+  asset_domain?: string | null;
 }
 interface Sub extends Named {
   category_id: number;
@@ -62,7 +64,18 @@ export function ItemsScreen({ embedded = false }: { embedded?: boolean } = {}) {
     { key: "name", header: "Item", cellClassName: "font-medium", cell: (i) => i.name },
     {
       key: "class", header: "Type of asset",
-      cell: (i) => [catName(i.category_id), subName(i.subcategory_id)].filter(Boolean).join(" › "),
+      cell: (i) => [i.category_name ?? catName(i.category_id), i.subcategory_name ?? subName(i.subcategory_id)].filter(Boolean).join(" › "),
+    },
+    {
+      key: "area", header: "Work area",
+      cell: (i) => {
+        const area = i.work_area ?? categories.find((c) => c.id === i.category_id)?.asset_domain;
+        return area ? (
+          <span className="rounded border bg-muted/40 px-1.5 py-0.5 text-[11px] text-muted-foreground" data-testid="work-area-chip">
+            {workAreaLabel(area)}
+          </span>
+        ) : "—";
+      },
     },
     {
       key: "serial", header: "Serial number",
@@ -100,6 +113,7 @@ export function ItemsScreen({ embedded = false }: { embedded?: boolean } = {}) {
         description="An Item is what an asset is, in CityKart's own words (for example Ceiling Fan, PoE Switch, UPS). People pick the Item; its type of asset (Asset Group › Sub-category), its serial number rule and whether it comes as a set live here. Many ERP item codes can point to one Item (ERP links)."
         actions={
           <>
+            <Button asChild variant="outline"><Link to="/settings/catalogue/link-assets">Link existing assets</Link></Button>
             <Button asChild variant="outline"><Link to="/settings/erp/mapping">ERP Mapping</Link></Button>
             <Button variant="outline" onClick={() => seedMutation.mutate()} disabled={seedMutation.isPending}>
               Create from Sub-categories

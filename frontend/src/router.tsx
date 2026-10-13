@@ -26,6 +26,7 @@ import { applySession, logoutSession, safeNextPath, type SessionPayload } from "
 import { useAuthStore } from "./lib/auth-store";
 import { canUse, currentAccess, homePathFor } from "./lib/access";
 import { roleLabel } from "./lib/labels";
+import type { RegisterSearch } from "./features/assets/register-filters";
 import { LoginForm } from "./routes/login";
 import { ChangePasswordForm, type ChangePasswordValues } from "./routes/change-password";
 
@@ -51,6 +52,7 @@ import ErpArticlesSetup from "./routes/setup/erp-articles";
 import CustomFieldsSetup from "./routes/setup/custom-fields";
 import CodeRuleSetup from "./routes/setup/code-rule";
 import { AssetGroupsScreen } from "./features/asset-groups/AssetGroupsScreen";
+import { LinkAssetsScreen } from "./features/items/LinkAssetsScreen";
 import { SettingsLanding } from "./features/settings/SettingsLanding";
 import { OrganisationScreen, isOrganisationTab, type OrganisationTab } from "./features/settings/OrganisationScreen";
 import { UsersAccessScreen } from "./features/settings/UsersAccessScreen";
@@ -306,30 +308,34 @@ export const dashboardRoute = createRoute({
   component: guarded("staff", DashboardRoute),
 });
 
-/** Search params of the Assets list:
- * `status` -- a status filter (Home's "N under repair" rows link here);
- * `mine` -- start with the "Mine" filter on (/my-assets sends staff here);
- * `q` -- start with this search text; `find` -- put the cursor in the search
- * box (Home's "Find Asset"). */
-export interface AssetsSearch {
-  status?: string;
-  mine?: boolean;
-  q?: string;
-  find?: boolean;
-  /** S4: comma-separated asset ids -- only these assets (Receive's "Open assets"). */
-  ids?: string;
-}
+/** Search params of the Assets list (S5b-1: every filter lives here, so a view
+ * can be shared and Back works) -- see features/assets/register-filters.ts.
+ * `status` (Home's "N under repair" rows link here), `mine` (/my-assets sends
+ * staff here), `q`, `find` (Home's "Find Asset"), `ids` (Receive / Add Assets
+ * "Open assets"), and the "More filters". */
+export type AssetsSearch = RegisterSearch;
 
 const truthyParam = (v: unknown) => v === true || v === 1 || v === "1" || v === "true";
 
 function validateAssetsSearch(search: Record<string, unknown>): AssetsSearch {
-  return {
-    status: typeof search.status === "string" ? search.status : undefined,
+  const out: AssetsSearch = {
+    q: searchText(search.q),
+    exact: truthyParam(search.exact) ? true : undefined,
+    status: searchText(search.status),
+    holder: searchText(search.holder),
+    with: searchText(search.with),
     mine: truthyParam(search.mine) ? true : undefined,
-    q: typeof search.q === "string" && search.q !== "" ? search.q : undefined,
-    find: truthyParam(search.find) ? true : undefined,
+    item: searchText(search.item),
+    vendor: searchText(search.vendor),
+    po: searchText(search.po),
+    area: searchText(search.area),
+    company: searchText(search.company),
+    group: searchText(search.group),
     ids: searchText(search.ids),
+    find: truthyParam(search.find) ? true : undefined,
   };
+  // Only what is set, so links and the address bar stay short.
+  return Object.fromEntries(Object.entries(out).filter(([, v]) => v !== undefined)) as AssetsSearch;
 }
 
 export const assetsIndexRoute = createRoute({
@@ -338,7 +344,13 @@ export const assetsIndexRoute = createRoute({
   validateSearch: validateAssetsSearch,
   component: guarded("staff", function AssetsIndexComponent() {
     const search = assetsIndexRoute.useSearch();
-    return <AssetsIndexRoute search={search} />;
+    const navigate = useNavigate();
+    return (
+      <AssetsIndexRoute
+        search={search}
+        onSearchChange={(next, opts) => void navigate({ to: "/assets", search: next, replace: opts?.replace })}
+      />
+    );
   }),
 });
 
@@ -577,6 +589,13 @@ export const settingsItemsRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/settings/catalogue/items",
   component: guarded("settings", ItemsSetup),
+});
+
+// S5b-1: Link existing assets to Items -- any ADMIN (the head-office admin too), like the server.
+export const settingsLinkAssetsRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/settings/catalogue/link-assets",
+  component: guarded("admin", LinkAssetsScreen),
 });
 
 export const settingsAssetGroupsRoute = createRoute({
@@ -828,6 +847,7 @@ const routeTree = rootRoute.addChildren([
     settingsSetupRoute,
     settingsOrganisationRoute,
     settingsItemsRoute,
+    settingsLinkAssetsRoute,
     settingsAssetGroupsRoute,
     settingsBrandsRoute,
     settingsVendorsRoute,

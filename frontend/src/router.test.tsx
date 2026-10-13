@@ -151,7 +151,7 @@ const OPERATOR_MENU = ["Home", "Assets", "Purchase Orders", "Receive", "Move", "
 const PEOPLE_MENU = ["Employees", "Stores", "Stock Rooms", "Install Points"];
 const SETTINGS_LINKS = [
   "All Settings", "Organisation",
-  "Items", "Asset Groups", "Brands",
+  "Items", "Link Assets to Items", "Asset Groups", "Brands",
   "Vendors", "Users & Access", "ERP Inbox", "ERP Mapping", "ERP Data Sync",
   "Custom Fields", "Asset Code Format", "Bulk Import",
 ];

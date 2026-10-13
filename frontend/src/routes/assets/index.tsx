@@ -1,21 +1,12 @@
 import { AssetRegister } from "../../features/assets/AssetRegister";
+import type { RegisterSearch } from "../../features/assets/register-filters";
 
 interface AssetsIndexRouteProps {
-  search?: { status?: string; mine?: boolean; q?: string; find?: boolean; ids?: string };
+  search?: RegisterSearch;
+  onSearchChange?: (next: RegisterSearch, opts?: { replace?: boolean }) => void;
 }
 
-export default function AssetsIndexRoute({ search }: AssetsIndexRouteProps) {
-  // The URL only seeds the filters; a new link (Home's "N under repair", the
-  // My Assets redirect, Receive's "Open assets") must start again from what it asks for.
-  const seedKey = `${search?.status ?? ""}|${search?.mine ? 1 : 0}|${search?.q ?? ""}|${search?.find ? 1 : 0}|${search?.ids ?? ""}`;
-  return (
-    <AssetRegister
-      key={seedKey}
-      initialStatus={search?.status}
-      initialMine={search?.mine}
-      initialQuery={search?.q}
-      focusSearch={search?.find}
-      initialIds={search?.ids}
-    />
-  );
+/** The Assets register: its view (search text and filters) is the address bar's. */
+export default function AssetsIndexRoute({ search, onSearchChange }: AssetsIndexRouteProps) {
+  return <AssetRegister search={search ?? {}} onSearchChange={onSearchChange} />;
 }
