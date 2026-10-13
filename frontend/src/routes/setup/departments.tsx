@@ -5,9 +5,10 @@ interface Department {
   name: string;
 }
 
-export default function DepartmentsSetup() {
+export default function DepartmentsSetup({ embedded = false }: { embedded?: boolean } = {}) {
   return (
     <MasterCrudScreen<Department>
+      embedded={embedded}
       config={{
         resource: "departments",
         title: "Departments",

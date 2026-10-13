@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
-import type { Bundle } from "../bundles/BundlesScreen";
+import { splitAmounts, type Bundle } from "../bundles/bundle-parts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -9,20 +9,9 @@ import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField } from "@/components/shared/FormField";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 
-/** Each part's amount = price x share%, to the paisa; leftover paise go to the
- * biggest share so the parts add up to the price exactly (mirrors
- * app.bundles.service.split_amounts, which re-checks the total on the server). */
-export function splitAmounts(price: number, shares: number[]): number[] {
-  const priceP = Math.round(price * 100);
-  const amounts = shares.map((s) => Math.round((priceP * s) / 100));
-  const diff = priceP - amounts.reduce((a, b) => a + b, 0);
-  if (diff !== 0 && amounts.length > 0) {
-    let biggest = 0;
-    shares.forEach((s, i) => { if (s > shares[biggest]) biggest = i; });
-    amounts[biggest] += diff;
-  }
-  return amounts.map((a) => a / 100);
-}
+// The split itself lives in ../bundles/bundle-parts (one copy for the whole app);
+// re-exported here for existing imports.
+export { splitAmounts };
 
 const money = (n: number) => n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -108,7 +97,7 @@ export function AddBundleDialog({ poId, open, onOpenChange }: Props) {
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
           {!bundlesQ.isLoading && bundles.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No bundles are set up yet. The head-office admin can create one under Settings › Catalogue › Bundles.
+              No bundles are set up yet. The head-office admin can make one on an Item (Settings › Catalogue › Items, “Comes as a set”).
             </p>
           ) : (
             <>

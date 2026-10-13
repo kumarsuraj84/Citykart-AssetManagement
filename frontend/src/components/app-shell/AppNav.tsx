@@ -29,6 +29,9 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { canUse, type AccessState } from "@/lib/access";
+import {
+  SETTINGS_HOME, SETTINGS_SECTIONS, SETUP_WIZARD_PATH, isSettingsLinkActive, isSettingsPath,
+} from "@/features/settings/settings-structure";
 
 export interface NavLinkDef {
   to: string;
@@ -70,47 +73,18 @@ export const PEOPLE_LINKS: NavLinkDef[] = [
   { to: "/people/install-points", label: "Install Points", icon: Wrench },
 ];
 
-/** Settings: one collapsed group for the head-office admin. Only regroups the
- * existing screens -- every /setup/* address keeps working. */
+/** Settings: one collapsed group for the head-office admin, built from the one
+ * Settings description (features/settings/settings-structure.ts) that the
+ * Settings landing page also uses. "All Settings" opens that landing page. */
 export const SETTINGS_GROUPS: SettingsGroup[] = [
-  {
-    label: "Organisation",
-    links: [
-      { to: "/setup/companies", label: "Companies" },
-      { to: "/setup/locations", label: "Places" },
-      { to: "/setup/cost-centers", label: "Cost Centres" },
-      { to: "/setup/departments", label: "Departments" },
-    ],
-  },
-  {
-    label: "Catalogue",
-    links: [
-      { to: "/setup/items", label: "Items" },
-      // Asset Groups = Categories; Sub-categories sit beside it until a later
-      // stage merges the two screens into one nested "Asset Groups" screen.
-      { to: "/setup/categories", label: "Asset Groups" },
-      { to: "/setup/subcategories", label: "Sub-categories" },
-      { to: "/setup/brands", label: "Brands" },
-      { to: "/setup/bundles", label: "Bundles" },
-    ],
-  },
-  { label: "Vendors", links: [{ to: "/setup/vendors", label: "Vendors" }] },
-  { label: "Users & Access", links: [{ to: "/people/employees", label: "People & Logins" }] },
-  { label: "ERP", links: [{ to: "/setup/erp-articles", label: "ERP Mapping" }] },
-  {
-    label: "Advanced",
-    links: [
-      { to: "/setup/custom-fields", label: "Custom Fields" },
-      { to: "/setup/code-rule", label: "Asset Code Format" },
-      { to: "/import", label: "Bulk Import" },
-    ],
-  },
+  { label: "All Settings", links: [{ to: SETTINGS_HOME, label: "All Settings", activePrefixes: [SETUP_WIZARD_PATH] }] },
+  ...SETTINGS_SECTIONS.map((s) => ({
+    label: s.label,
+    links: s.links.map((l) => ({ to: l.to, label: l.label, activePrefixes: l.activePrefixes })),
+  })),
 ];
 
-/** A path that belongs to Settings (opens the Settings group on arrival). */
-export function isSettingsPath(pathname: string): boolean {
-  return pathname.startsWith("/setup/") || pathname === "/import";
-}
+export { isSettingsPath };
 
 /** The main (non-Settings) sidebar sections a person sees, in order. */
 export function navSectionsFor(s: AccessState): NavSection[] {
@@ -162,7 +136,7 @@ function SettingsNav() {
     return (
       <SidebarMenuItem>
         <SidebarMenuButton asChild isActive={inSettings} tooltip="Settings">
-          <Link to="/setup/companies">
+          <Link to={SETTINGS_HOME}>
             <Settings className="h-4 w-4" />
             <span>Settings</span>
           </Link>
@@ -211,7 +185,13 @@ function SettingsGroupItems({ group, pathname }: { group: SettingsGroup; pathnam
       )}
       {group.links.map((l) => (
         <SidebarMenuSubItem key={`${group.label}-${l.to}`}>
-          <SidebarMenuSubButton asChild size="sm" isActive={pathname === l.to}>
+          <SidebarMenuSubButton
+            asChild
+            size="sm"
+            isActive={l.to === SETTINGS_HOME
+              ? pathname === SETTINGS_HOME || (l.activePrefixes ?? []).some((p) => pathname.startsWith(p))
+              : isSettingsLinkActive(l, pathname)}
+          >
             <Link to={l.to}>
               <span>{l.label}</span>
             </Link>

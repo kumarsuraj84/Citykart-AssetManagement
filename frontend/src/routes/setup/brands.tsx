@@ -6,9 +6,10 @@ interface Brand {
   name: string;
 }
 
-export default function BrandsSetup() {
+export default function BrandsSetup({ embedded = false }: { embedded?: boolean } = {}) {
   return (
     <MasterCrudScreen<Brand>
+      embedded={embedded}
       config={{
         resource: "brands",
         title: "Brands",

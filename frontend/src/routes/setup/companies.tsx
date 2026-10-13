@@ -18,9 +18,10 @@ const ERP_CODE_FIELD: FormField = {
   toPayload: (raw) => (String(raw ?? "").trim() === "" ? null : String(raw).trim()),
 };
 
-export default function CompaniesSetup() {
+export default function CompaniesSetup({ embedded = false }: { embedded?: boolean } = {}) {
   return (
     <MasterCrudScreen<Company>
+      embedded={embedded}
       config={{
         resource: "companies",
         title: "Companies",

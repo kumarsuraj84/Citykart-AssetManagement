@@ -150,9 +150,9 @@ const navLinkNames = (nav: HTMLElement) => within(nav).getAllByRole("link").map(
 const OPERATOR_MENU = ["Home", "Assets", "Purchase Orders", "Receive", "Move", "Reports"];
 const PEOPLE_MENU = ["Employees", "Stores", "Stock Rooms", "Install Points"];
 const SETTINGS_LINKS = [
-  "Companies", "Places", "Cost Centres", "Departments",
-  "Items", "Asset Groups", "Sub-categories", "Brands", "Bundles",
-  "Vendors", "People & Logins", "ERP Mapping",
+  "All Settings", "Organisation",
+  "Items", "Asset Groups", "Brands",
+  "Vendors", "Users & Access", "ERP Mapping", "ERP Data Sync",
   "Custom Fields", "Asset Code Format", "Bulk Import",
 ];
 
@@ -166,26 +166,34 @@ describe("AppShell navigation (role-aware sidebar)", () => {
     // Settings starts collapsed: none of its screens are listed until it is opened.
     const settings = within(nav).getByRole("button", { name: /settings/i });
     expect(settings).toHaveAttribute("aria-expanded", "false");
-    expect(within(nav).queryByRole("link", { name: "Companies" })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Organisation" })).not.toBeInTheDocument();
 
     fireEvent.click(settings);
-    await waitFor(() => expect(within(nav).getByRole("link", { name: "Companies" })).toBeInTheDocument());
-    for (const name of SETTINGS_LINKS) {
-      expect(within(nav).getByRole("link", { name })).toBeInTheDocument();
+    await waitFor(() => expect(within(nav).getByRole("link", { name: "Organisation" })).toBeInTheDocument());
+    // Exactly the new structure, in order: no Sub-categories, Bundles or separate Companies/Places entries.
+    const settingsList = within(nav).getByRole("list", { name: "Settings" });
+    expect(within(settingsList).getAllByRole("link").map((l) => l.textContent?.trim())).toEqual(SETTINGS_LINKS);
+    for (const gone of ["Bundles", "Sub-categories", "Companies", "People & Logins"]) {
+      expect(within(nav).queryByRole("link", { name: gone })).not.toBeInTheDocument();
     }
-    // Only the menu moved: every Settings link still opens its old address.
-    expect(within(nav).getByRole("link", { name: "Asset Code Format" })).toHaveAttribute("href", "/setup/code-rule");
-    expect(within(nav).getByRole("link", { name: "ERP Mapping" })).toHaveAttribute("href", "/setup/erp-articles");
-    expect(within(nav).getByRole("link", { name: "Bulk Import" })).toHaveAttribute("href", "/import");
-    expect(within(nav).getByRole("link", { name: "Places" })).toHaveAttribute("href", "/setup/locations");
+    expect(within(nav).getByRole("link", { name: "All Settings" })).toHaveAttribute("href", "/settings");
+    expect(within(nav).getByRole("link", { name: "Organisation" })).toHaveAttribute("href", "/settings/organisation");
+    expect(within(nav).getByRole("link", { name: "Asset Groups" })).toHaveAttribute("href", "/settings/catalogue/asset-groups");
+    expect(within(nav).getByRole("link", { name: "Asset Code Format" })).toHaveAttribute("href", "/settings/advanced/code-format");
+    expect(within(nav).getByRole("link", { name: "ERP Mapping" })).toHaveAttribute("href", "/settings/erp/mapping");
+    expect(within(nav).getByRole("link", { name: "ERP Data Sync" })).toHaveAttribute("href", "/settings/erp/sync");
+    expect(within(nav).getByRole("link", { name: "Bulk Import" })).toHaveAttribute("href", "/settings/advanced/import");
+    expect(within(nav).getByRole("link", { name: "Users & Access" })).toHaveAttribute("href", "/settings/users-access");
   });
 
-  it("opens the Settings group by itself when the current page is one of its screens", async () => {
+  it("opens the Settings group by itself, and highlights the entry, when the current page is one of its screens", async () => {
     loginAs("ADMIN", false, true);
-    renderAt("/setup/companies");
+    renderAt("/setup/companies"); // an old address: lands on Organisation › Companies
     const nav = await screen.findByRole("navigation", { name: "Main" });
-    expect(await within(nav).findByRole("link", { name: "Companies" })).toBeInTheDocument();
+    const org = await within(nav).findByRole("link", { name: "Organisation" });
     expect(within(nav).getByRole("button", { name: /settings/i })).toHaveAttribute("aria-expanded", "true");
+    await waitFor(() => expect(org).toHaveAttribute("data-active", "true"));
+    expect(within(nav).getByRole("link", { name: "Items" })).toHaveAttribute("data-active", "false");
   });
 
   it("gives an ordinary ADMIN the operator menu plus People & Places, but no Settings", async () => {
@@ -255,7 +263,11 @@ describe("route guards by area", () => {
   afterEach(() => cleanupDom());
 
   it("Settings screens and Bulk Import: head-office admin only", async () => {
-    for (const url of ["/setup/companies", "/setup/custom-fields", "/setup/code-rule", "/setup/erp-articles", "/import"]) {
+    for (const url of [
+      "/setup/companies", "/setup/custom-fields", "/setup/code-rule", "/setup/erp-articles", "/import",
+      "/settings", "/settings/setup", "/settings/organisation", "/settings/catalogue/asset-groups",
+      "/settings/users-access", "/settings/erp/sync", "/setup/bundles",
+    ]) {
       loginAs("ADMIN", false, true);
       await expectAllowed(url);
       cleanupDom();

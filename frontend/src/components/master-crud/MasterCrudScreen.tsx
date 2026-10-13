@@ -137,10 +137,13 @@ function MasterFormField({
 export function MasterCrudScreen<T extends object>({
   config,
   extraActions,
+  embedded = false,
 }: {
   config: MasterConfig<T>;
   /** Extra buttons in the page header, before "Add <singular>" (e.g. Vendors' "Add from ERP"). */
   extraActions?: ReactNode;
+  /** Shown inside another page (a Settings tab, a Set up CKAM step): smaller heading. */
+  embedded?: boolean;
 }) {
   const qc = useQueryClient();
   const singular = config.singular ?? config.title;
@@ -321,6 +324,7 @@ export function MasterCrudScreen<T extends object>({
     <div className="flex flex-col gap-4">
       <PageHeader
         title={config.title}
+        as={embedded ? "h2" : "h1"}
         actions={
           <>
             <BulkImportExport

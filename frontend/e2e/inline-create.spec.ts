@@ -1,9 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
 import { api, loginAdmin, newSeedRegistry, seedTestCompany, teardownTestCompany, type SeedRegistry } from "./fixtures";
 
-// "Create it right here": a Primary Owner adding an Item whose Category and
-// Sub-Category do not exist yet makes both from the Item form itself (no trip to
-// Setup > Categories / Sub-Categories and back), and the Item lands under them.
+// "Create it right here": the head-office admin adding an Item whose type of asset
+// (Asset Group › Sub-category) does not exist yet makes both from the Item form's
+// "New type…" (no trip to Settings › Catalogue › Asset Groups and back), and the
+// Item lands under them.
 
 async function loginAs(page: Page, empCode: string, password: string) {
   await page.goto("/login");
@@ -34,31 +35,31 @@ test("a new Item brings its own new Category and Sub-Category with it, all from 
   await loginAs(page, ctx.admin.empCode, ctx.admin.password);
   await expect(page).toHaveURL(/\/dashboard$/);
 
-  await page.goto("/setup/items");
+  await page.goto("/settings/catalogue/items");
   await page.getByRole("button", { name: "New Item", exact: true }).click();
   const itemDialog = page.getByRole("dialog", { name: "New Item" });
   await itemDialog.locator("#item-name").fill(itemName);
 
-  // ---- no Category yet: make it from here ----
-  await itemDialog.locator("#item-category").click();
+  // ---- no type of asset yet: "New type…" makes the Sub-category ----
+  await itemDialog.locator("#item-type").click();
+  await page.getByRole("option", { name: "New type…" }).click();
+  const subDialog = page.getByRole("dialog", { name: "New Sub-category" });
+
+  // ---- and, from there, its group (Category) ----
+  await subDialog.locator("#qc-category_id").click();
   await page.getByRole("option", { name: "New Category…" }).click();
   const categoryDialog = page.getByRole("dialog", { name: "New Category" });
-  await categoryDialog.locator("#qc-name").fill(categoryName);
-  await categoryDialog.locator("#qc-code").fill(`E2EC${ts}`);
-  await categoryDialog.locator("#qc-asset_domain").click();
+  await categoryDialog.locator("#qc-cat-name").fill(categoryName);
+  await categoryDialog.locator("#qc-cat-code").fill(`E2EC${ts}`);
+  await categoryDialog.locator("#qc-cat-asset_domain").click();
   await page.getByRole("option", { name: "Admin / Non-IT Team", exact: true }).click();
   await categoryDialog.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(itemDialog.locator("#item-category")).toHaveText(categoryName);       // picked for us
+  await expect(subDialog.locator("#qc-category_id")).toHaveText(categoryName);       // picked for us
 
-  // ---- and its Sub-category, with that Category already chosen ----
-  await itemDialog.locator("#item-subcategory").click();
-  await page.getByRole("option", { name: "New Sub-category…" }).click();
-  const subDialog = page.getByRole("dialog", { name: "New Sub-category" });
-  await expect(subDialog.locator("#qc-category_id")).toHaveText(categoryName);
   await subDialog.locator("#qc-name").fill(subName);
   await subDialog.locator("#qc-code").fill(`E2ES${ts}`);
   await subDialog.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(itemDialog.locator("#item-subcategory")).toHaveText(subName);
+  await expect(itemDialog.locator("#item-type")).toContainText(`${categoryName} › ${subName}`);
 
   await itemDialog.getByRole("button", { name: "Save", exact: true }).click();
   const row = page.getByRole("row", { name: new RegExp(itemName) });

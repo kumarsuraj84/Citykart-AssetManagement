@@ -52,12 +52,14 @@ const ERROR_COLUMNS: DataTableColumn<RowError>[] = [
  * doesn't live under /masters at all, so AssetUsersScreen passes an explicit
  * basePath="/asset-users" instead. */
 export function BulkImportExport({
-  resource, label, onImported, basePath,
+  resource, label, onImported, basePath, buttonLabel = "Import / Export",
 }: {
   resource: string;
   label: string;
   onImported?: () => void;
   basePath?: string;
+  /** The button's text, when a screen has more than one import (Asset Groups: groups and Sub-categories). */
+  buttonLabel?: string;
 }) {
   const base = basePath ?? `/masters/${resource}`;
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -176,7 +178,7 @@ export function BulkImportExport({
     <>
       <Button variant="outline" size="sm" onClick={openDialog}>
         <Upload className="h-4 w-4" aria-hidden="true" />
-        Import / Export
+        {buttonLabel}
       </Button>
 
       <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetDialogState(); }}>

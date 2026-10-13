@@ -36,7 +36,9 @@ function mockApi(articlesError: Error | null = null) {
     if (path === "/items") return Promise.resolve(ITEMS);
     if (path === "/items/articles") return articlesError ? Promise.reject(articlesError) : Promise.resolve(ARTICLES);
     if (path.startsWith("/items/articles/codes")) return Promise.resolve(CODES);
-    if (path === "/masters/categories") return Promise.resolve([{ id: 1, name: "Computers" }, { id: 3, name: "Accessories" }]);
+    if (path === "/masters/categories") {
+      return Promise.resolve([{ id: 1, code: "COMP", name: "Computers", asset_domain: "IT" }, { id: 3, code: "ACC", name: "Accessories", asset_domain: "NON_IT" }]);
+    }
     if (path === "/masters/subcategories") return Promise.resolve([{ id: 10, category_id: 1, name: "CPU" }, { id: 31, category_id: 3, name: "Mouse Unit" }, { id: 32, category_id: 3, name: "UPS Unit" }]);
     if (path === "/bundles") return Promise.resolve([{ id: 1, name: "Desktop Set", is_active: true, parts: [] }]);
     if (path === "/masters/brands") return Promise.resolve([{ id: 4, name: "Dell" }]);
@@ -67,7 +69,7 @@ afterEach(() => useAuthStore.getState().logout());
 describe("Items screen", () => {
   it("lists each Item with its classification, serial default, bundle and ERP links", async () => {
     mockApi();
-    renderAt("/setup/items");
+    renderAt("/settings/catalogue/items");
     const desktop = (await screen.findByText("Desktop")).closest("tr")!;
     await waitFor(() => expect(within(desktop).getByText("Computers › CPU")).toBeInTheDocument());
     expect(within(desktop).getByText("Yes")).toBeInTheDocument();
@@ -78,19 +80,23 @@ describe("Items screen", () => {
     expect(await screen.findByText("Accessories › Mouse Unit")).toBeInTheDocument();
   });
 
-  it("creates an Item with its category, sub-category and serial setting", async () => {
+  it("creates an Item with a name, ONE type-of-asset pick and a serial choice (Category and Sub-category are never asked separately)", async () => {
     mockApi();
-    renderAt("/setup/items");
+    renderAt("/settings/catalogue/items");
     fireEvent.click(await screen.findByRole("button", { name: "New Item" }));
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(within(dialog).queryByRole("combobox", { name: /^category$/i })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("combobox", { name: /^sub-category$/i })).not.toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText(/^item name/i), { target: { value: "Cassette AC" } });
-    fireEvent.click(within(dialog).getByLabelText(/^category/i));
-    fireEvent.click(await screen.findByRole("option", { name: "Computers" }));
-    fireEvent.click(within(dialog).getByLabelText(/^sub-category/i));
-    fireEvent.click(await screen.findByRole("option", { name: "CPU" }));
-    fireEvent.click(within(dialog).getByLabelText(/^serial number/i));
-    fireEvent.click(await screen.findByRole("option", { name: "No serial number" }));
+    fireEvent.click(within(dialog).getByRole("combobox", { name: /type of asset/i }));
+    // Each entry is "Group › Sub-category" with the group's work area as a chip.
+    const option = await screen.findByRole("option", { name: /^Computers › CPU/ });
+    expect(option).toHaveTextContent("IT Team");
+    fireEvent.click(option);
+    expect(within(dialog).getByText(/work area: it team/i)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("radio", { name: "No serial number" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /^more$/i }));
     fireEvent.change(within(dialog).getByLabelText(/default warranty/i), { target: { value: "2" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await waitFor(() =>
@@ -101,76 +107,66 @@ describe("Items screen", () => {
     );
   });
 
-  it("an Item whose serial is read later (an amplifier) says so, and the list shows it", async () => {
+  it("\"Serial will be entered later\" (an amplifier) is saved as a serial read later", async () => {
     mockApi();
-    renderAt("/setup/items");
+    renderAt("/settings/catalogue/items");
     fireEvent.click(await screen.findByRole("button", { name: "New Item" }));
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText(/^item name/i), { target: { value: "Amplifier" } });
-    fireEvent.click(within(dialog).getByLabelText(/^category/i));
-    fireEvent.click(await screen.findByRole("option", { name: "Computers" }));
-    fireEvent.click(within(dialog).getByLabelText(/^sub-category/i));
-    fireEvent.click(await screen.findByRole("option", { name: "CPU" }));
-    fireEvent.click(within(dialog).getByLabelText(/when do we get the serial/i));
-    fireEvent.click(await screen.findByRole("option", { name: /later, when the box is opened/i }));
+    fireEvent.click(within(dialog).getByRole("combobox", { name: /type of asset/i }));
+    fireEvent.click(await screen.findByRole("option", { name: /^Computers › CPU/ }));
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Serial will be entered later" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith("/items", expect.objectContaining({ name: "Amplifier", serial_required: true, serial_later: true })),
     );
   });
 
-  it("no question about when the serial comes is asked for an Item with no serial", async () => {
-    mockApi();
-    renderAt("/setup/items");
-    fireEvent.click(await screen.findByRole("button", { name: "Edit Mouse" }));
-    const dialog = screen.getByRole("dialog");
-    expect(within(dialog).queryByLabelText(/when do we get the serial/i)).not.toBeInTheDocument();
-  });
-
-  it("an Item's list entry spells out that its serial is read later", async () => {
+  it("an Item's list entry spells out that its serial is entered later", async () => {
     (apiClient.get as any).mockImplementation((path: string) => {
       if (path === "/items") return Promise.resolve([item(9, "Amplifier", { serial_later: true })]);
       return Promise.resolve([]);
     });
-    renderAt("/setup/items");
+    renderAt("/settings/catalogue/items");
     const row = (await screen.findByText("Amplifier")).closest("tr")!;
-    expect(within(row).getByText("Yes (read later)")).toBeInTheDocument();
+    expect(within(row).getByText("Yes (entered later)")).toBeInTheDocument();
   });
 
-  it("an Item needs a sub-category: Save stays off without one", async () => {
+  it("Save stays off until there is a name and a type of asset, and says what is still needed", async () => {
     mockApi();
-    renderAt("/setup/items");
+    renderAt("/settings/catalogue/items");
     fireEvent.click(await screen.findByRole("button", { name: "New Item" }));
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText(/^item name/i), { target: { value: "Ceiling Fan" } });
-    fireEvent.click(within(dialog).getByLabelText(/^category/i));
-    fireEvent.click(await screen.findByRole("option", { name: "Computers" }));
     expect(within(dialog).getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(within(dialog).getByText(/still needed: the type of asset/i)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("combobox", { name: /type of asset/i }));
+    fireEvent.click(await screen.findByRole("option", { name: /^Accessories › Mouse Unit/ }));
+    expect(within(dialog).getByRole("button", { name: "Save" })).toBeEnabled();
   });
 
-  it("a missing Sub-Category is created from the Item form itself and picked", async () => {
+  it("\"New type…\" creates a Sub-category from the Item form and picks it, with its Code suggested", async () => {
     mockApi();
     (apiClient.post as any).mockImplementation((path: string, body: any) =>
       Promise.resolve(path === "/masters/subcategories" ? { id: 40, ...body } : {}));
-    renderAt("/setup/items");
+    renderAt("/settings/catalogue/items");
     fireEvent.click(await screen.findByRole("button", { name: "New Item" }));
     const itemDialog = screen.getByRole("dialog");
     fireEvent.change(within(itemDialog).getByLabelText(/^item name/i), { target: { value: "PoE Switch" } });
-    fireEvent.click(within(itemDialog).getByLabelText(/^category/i));
-    fireEvent.click(await screen.findByRole("option", { name: "Computers" }));
-    fireEvent.click(within(itemDialog).getByLabelText(/^sub-category/i));
-    fireEvent.click(await screen.findByRole("option", { name: /new sub-category/i }));
+    fireEvent.click(within(itemDialog).getByRole("combobox", { name: /type of asset/i }));
+    fireEvent.click(await screen.findByRole("option", { name: /new type/i }));
 
     const subDialog = await screen.findByRole("dialog", { name: /new sub-category/i });
-    expect(within(subDialog).getByLabelText(/^category/i)).toHaveTextContent("Computers");        // the Category already chosen carries over
+    fireEvent.click(within(subDialog).getByLabelText(/^category/i));
+    fireEvent.click(await screen.findByRole("option", { name: "Computers" }));
     fireEvent.change(within(subDialog).getByLabelText(/^name/i), { target: { value: "Network Switch" } });
-    fireEvent.change(within(subDialog).getByLabelText(/^code/i), { target: { value: "SWT" } });
+    expect(within(subDialog).getByLabelText(/^code/i)).toHaveValue("NS");      // suggested, still editable
     fireEvent.click(within(subDialog).getByRole("button", { name: "Save" }));
     await waitFor(() =>
-      expect(apiClient.post).toHaveBeenCalledWith("/masters/subcategories", { category_id: 1, name: "Network Switch", code: "SWT" }),
+      expect(apiClient.post).toHaveBeenCalledWith("/masters/subcategories", { category_id: 1, name: "Network Switch", code: "NS" }),
     );
 
-    // back on the Item form with the new Sub-Category chosen: it can be saved straight away
+    // back on the Item form with the new type chosen: it can be saved straight away
     const back = await screen.findByRole("dialog", { name: /new item/i });
     await waitFor(() => expect(within(back).getByRole("button", { name: "Save" })).toBeEnabled());
     fireEvent.click(within(back).getByRole("button", { name: "Save" }));
@@ -179,36 +175,34 @@ describe("Items screen", () => {
     );
   });
 
-  it("a missing Category is created from the Sub-Category form, which is itself opened from the Item form", async () => {
+  it("\"New type…\" can make a new group (Category) too, from the Sub-category dialog", async () => {
     mockApi();
     (apiClient.post as any).mockImplementation((path: string, body: any) =>
       Promise.resolve(path === "/masters/categories" ? { id: 50, ...body } : path === "/masters/subcategories" ? { id: 41, ...body } : {}));
-    renderAt("/setup/items");
+    renderAt("/settings/catalogue/items");
     fireEvent.click(await screen.findByRole("button", { name: "New Item" }));
     const itemDialog = screen.getByRole("dialog");
     fireEvent.change(within(itemDialog).getByLabelText(/^item name/i), { target: { value: "Ceiling Fan" } });
-    fireEvent.click(within(itemDialog).getByLabelText(/^category/i));
+    fireEvent.click(within(itemDialog).getByRole("combobox", { name: /type of asset/i }));
+    fireEvent.click(await screen.findByRole("option", { name: /new type/i }));
+    const subDialog = await screen.findByRole("dialog", { name: /new sub-category/i });
+    fireEvent.click(within(subDialog).getByLabelText(/^category/i));
     fireEvent.click(await screen.findByRole("option", { name: /new category/i }));
 
     const catDialog = await screen.findByRole("dialog", { name: /new category/i });
     fireEvent.change(within(catDialog).getByLabelText(/^name/i), { target: { value: "Admin Fixed Assets" } });
-    fireEvent.change(within(catDialog).getByLabelText(/^code/i), { target: { value: "ADMFA" } });
+    expect(within(catDialog).getByLabelText(/^code/i)).toHaveValue("AFA");
     fireEvent.click(within(catDialog).getByLabelText(/^work area/i));
-    expect(await screen.findByRole("option", { name: "IT Team" })).toBeInTheDocument();
     fireEvent.click(await screen.findByRole("option", { name: "Admin / Non-IT Team" }));
     fireEvent.click(within(catDialog).getByRole("button", { name: "Save" }));
     await waitFor(() =>
-      expect(apiClient.post).toHaveBeenCalledWith("/masters/categories", { name: "Admin Fixed Assets", code: "ADMFA", asset_domain: "NON_IT" }),
+      expect(apiClient.post).toHaveBeenCalledWith("/masters/categories", { name: "Admin Fixed Assets", code: "AFA", asset_domain: "NON_IT" }),
     );
 
-    // The new Category is chosen on the Item form; now its Sub-Category, also created on the spot.
-    const back = await screen.findByRole("dialog", { name: /new item/i });
-    fireEvent.click(within(back).getByLabelText(/^sub-category/i));
-    fireEvent.click(await screen.findByRole("option", { name: /new sub-category/i }));
-    const subDialog = await screen.findByRole("dialog", { name: /new sub-category/i });
-    fireEvent.change(within(subDialog).getByLabelText(/^name/i), { target: { value: "Fan" } });
-    fireEvent.change(within(subDialog).getByLabelText(/^code/i), { target: { value: "FAN" } });
-    fireEvent.click(within(subDialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /new category/i })).not.toBeInTheDocument());
+    const back = await screen.findByRole("dialog", { name: /new sub-category/i });
+    fireEvent.change(within(back).getByLabelText(/^name/i), { target: { value: "Fan" } });
+    fireEvent.click(within(back).getByRole("button", { name: "Save" }));
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith("/masters/subcategories", { category_id: 50, name: "Fan", code: "FAN" }),
     );
@@ -216,11 +210,12 @@ describe("Items screen", () => {
 
   it("editing opens with the stored values and PUTs the change", async () => {
     mockApi();
-    renderAt("/setup/items");
+    renderAt("/settings/catalogue/items");
     fireEvent.click(await screen.findByRole("button", { name: "Edit Mouse" }));
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByLabelText(/^item name/i)).toHaveValue("Mouse");
-    expect(within(dialog).getByLabelText(/^serial number/i)).toHaveTextContent("No serial number");
+    expect(within(dialog).getByRole("radio", { name: "No serial number" })).toBeChecked();
+    expect(within(dialog).getByRole("combobox", { name: /type of asset/i })).toHaveTextContent("Accessories › Mouse Unit");
     fireEvent.change(within(dialog).getByLabelText(/^item name/i), { target: { value: "Wireless Mouse" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await waitFor(() =>
@@ -230,7 +225,7 @@ describe("Items screen", () => {
 
   it("deactivating asks first, then calls DELETE", async () => {
     mockApi();
-    renderAt("/setup/items");
+    renderAt("/settings/catalogue/items");
     fireEvent.click(await screen.findByRole("button", { name: "Deactivate UPS" }));
     expect(screen.getByRole("dialog")).toHaveTextContent("Deactivate UPS?");
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Deactivate" }));
@@ -240,7 +235,7 @@ describe("Items screen", () => {
   it("Create from Sub-categories reports how many Items were made", async () => {
     mockApi();
     (apiClient.post as any).mockResolvedValue({ created: 3 });
-    renderAt("/setup/items");
+    renderAt("/settings/catalogue/items");
     fireEvent.click(await screen.findByRole("button", { name: "Create from Sub-categories" }));
     expect(await screen.findByRole("status")).toHaveTextContent("Created 3 Items from Sub-categories.");
     expect(apiClient.post).toHaveBeenCalledWith("/items/seed-from-subcategories", {});

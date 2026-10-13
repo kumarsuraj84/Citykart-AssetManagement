@@ -186,9 +186,11 @@ interface AssetUsersScreenProps {
    * Install Points): the list is filtered to it, new records get it, and the
    * type selector is hidden. Without it, every type is listed together. */
   fixedType?: PlaceType;
+  /** Shown inside another page (a Set up CKAM step): smaller heading. */
+  embedded?: boolean;
 }
 
-export function AssetUsersScreen({ fixedType }: AssetUsersScreenProps = {}) {
+export function AssetUsersScreen({ fixedType, embedded = false }: AssetUsersScreenProps = {}) {
   const qc = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -548,6 +550,7 @@ export function AssetUsersScreen({ fixedType }: AssetUsersScreenProps = {}) {
     <div className="flex flex-col gap-4">
       <PageHeader
         title={title}
+        as={embedded ? "h2" : "h1"}
         description={fixedType ? TYPE_DESCRIPTIONS[fixedType] : "Employees, stores, stock rooms and install points that can hold assets."}
         actions={
           <>

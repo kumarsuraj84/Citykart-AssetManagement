@@ -15,7 +15,7 @@ interface Company {
   name: string;
 }
 
-export default function LocationsSetup() {
+export default function LocationsSetup({ embedded = false }: { embedded?: boolean } = {}) {
   const { data: companies = [] } = useQuery({
     queryKey: ["masters", "companies"],
     queryFn: () => apiClient.get<Company[]>("/masters/companies"),
@@ -24,6 +24,7 @@ export default function LocationsSetup() {
 
   return (
     <MasterCrudScreen<Location>
+      embedded={embedded}
       config={{
         resource: "locations",
         // Settings › Organisation › Places (backend: locations).

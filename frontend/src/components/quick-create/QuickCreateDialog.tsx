@@ -25,6 +25,9 @@ export interface QuickField {
   /** A select can offer its own "+ New ..." (for example the Category inside a new Sub-category). */
   onCreateNew?: () => void;
   createLabel?: string;
+  /** Fills this field from another one while the person has not typed in it
+   * themselves (a Code suggested from the Name). `from` is the source field's key. */
+  suggest?: { from: string; make: (source: string) => string };
 }
 
 /** Props every quick-create wrapper (New Category, New Brand, ...) shares. */
@@ -43,8 +46,10 @@ export interface QuickCreateProps {
  */
 export function QuickCreateDialog({
   open, onOpenChange, onCreated, title, endpoint, fields, initial, toBody, refresh, submitLabel = "Save",
-  values: controlledValues, onValuesChange,
+  values: controlledValues, onValuesChange, idPrefix = "qc",
 }: QuickCreateProps & {
+  /** Prefix of the field ids (qc-name, qc-code...); a dialog opened from another one needs its own. */
+  idPrefix?: string;
   title: string;
   endpoint: string;
   fields: QuickField[];
@@ -63,9 +68,26 @@ export function QuickCreateDialog({
   const [ownValues, setOwnValues] = useState<Record<string, string>>({});
   const values = controlledValues ?? ownValues;
   const setValues = onValuesChange ?? setOwnValues;
+  // Fields the person typed in themselves: a suggestion never overwrites those.
+  const [touched, setTouched] = useState<Set<string>>(new Set());
+
+  function changeField(key: string, value: string) {
+    const next = new Set(touched).add(key);
+    setTouched(next);
+    setValues((s) => {
+      const out = { ...s, [key]: value };
+      for (const f of fields) {
+        if (f.suggest && f.suggest.from === key && !next.has(f.key)) out[f.key] = f.suggest.make(value);
+      }
+      return out;
+    });
+  }
 
   useEffect(() => {
-    if (open) setValues(() => ({ ...(initial ?? {}) }));
+    if (open) {
+      setTouched(new Set());
+      setValues(() => ({ ...(initial ?? {}) }));
+    }
     // Starts fresh each time it opens, with the values the caller knows already.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -97,12 +119,12 @@ export function QuickCreateDialog({
           onSubmit={(e) => { e.preventDefault(); if (canSave && !mutation.isPending) mutation.mutate(); }}
         >
           {fields.map((f) => (
-            <FormField key={f.key} htmlFor={`qc-${f.key}`} label={f.label} required={f.required} helperText={f.helperText}>
+            <FormField key={f.key} htmlFor={`${idPrefix}-${f.key}`} label={f.label} required={f.required} helperText={f.helperText}>
               {f.kind === "select" ? (
                 <SearchableSelect
-                  id={`qc-${f.key}`}
+                  id={`${idPrefix}-${f.key}`}
                   value={values[f.key] || undefined}
-                  onValueChange={(v) => setValues((s) => ({ ...s, [f.key]: v }))}
+                  onValueChange={(v) => changeField(f.key, v)}
                   options={f.options ?? []}
                   placeholder={f.placeholder}
                   onCreateNew={f.onCreateNew}
@@ -110,10 +132,10 @@ export function QuickCreateDialog({
                 />
               ) : (
                 <Input
-                  id={`qc-${f.key}`}
+                  id={`${idPrefix}-${f.key}`}
                   value={values[f.key] ?? ""}
                   placeholder={f.placeholder}
-                  onChange={(e) => setValues((s) => ({ ...s, [f.key]: e.target.value }))}
+                  onChange={(e) => changeField(f.key, e.target.value)}
                 />
               )}
             </FormField>

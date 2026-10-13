@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import {
   Link,
   Outlet,
@@ -42,12 +43,6 @@ import PoFromErpRoute from "./routes/purchase-orders/from-erp";
 import PurchaseOrderDetailRoute from "./routes/purchase-orders/$id";
 import ImportRoute from "./routes/import";
 import ReportsRoute from "./routes/reports";
-import CompaniesSetup from "./routes/setup/companies";
-import LocationsSetup from "./routes/setup/locations";
-import DepartmentsSetup from "./routes/setup/departments";
-import CostCentersSetup from "./routes/setup/cost-centers";
-import CategoriesSetup from "./routes/setup/categories";
-import SubcategoriesSetup from "./routes/setup/subcategories";
 import VendorsSetup from "./routes/setup/vendors";
 import BrandsSetup from "./routes/setup/brands";
 import BundlesSetup from "./routes/setup/bundles";
@@ -55,6 +50,13 @@ import ItemsSetup from "./routes/setup/items";
 import ErpArticlesSetup from "./routes/setup/erp-articles";
 import CustomFieldsSetup from "./routes/setup/custom-fields";
 import CodeRuleSetup from "./routes/setup/code-rule";
+import { AssetGroupsScreen } from "./features/asset-groups/AssetGroupsScreen";
+import { SettingsLanding } from "./features/settings/SettingsLanding";
+import { OrganisationScreen, isOrganisationTab, type OrganisationTab } from "./features/settings/OrganisationScreen";
+import { UsersAccessScreen } from "./features/settings/UsersAccessScreen";
+import { ErpSyncScreen } from "./features/settings/ErpSyncScreen";
+import { SetupWizard } from "./features/settings/SetupWizard";
+import { SETUP_TOTAL } from "./features/settings/setup-progress";
 import ReceiveRoute from "./routes/receive";
 import {
   EmployeesRoute,
@@ -432,10 +434,13 @@ export const myAssetsRoute = createRoute({
   component: guarded("self", MyAssetsRoute),
 });
 
+// Bulk Import now lives at Settings › Advanced › Bulk Import; the old address still works.
 export const importRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/import",
-  component: guarded("settings", ImportRoute),
+  beforeLoad: () => {
+    throw redirect({ to: "/settings/advanced/import" });
+  },
 });
 
 export const reportsRoute = createRoute({
@@ -469,54 +474,223 @@ export const peopleInstallPointsRoute = createRoute({
   component: guarded("people", InstallPointsRoute),
 });
 
-// Settings (head-office admin). The /setup/* addresses are unchanged; only the
-// menu around them moved.
+// ---------------------------------------------------------------------------
+// Settings (head-office admin): /settings/*. The structure (and the sidebar's
+// Settings group) comes from features/settings/settings-structure.ts.
+// ---------------------------------------------------------------------------
+
+export const settingsRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/settings",
+  component: guarded("settings", SettingsLanding),
+});
+
+/** `?step=1..7` -- the open step of Set up CKAM (none: the first step not done yet). */
+export interface SetupSearch {
+  step?: number;
+}
+
+export const settingsSetupRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/settings/setup",
+  validateSearch: (search: Record<string, unknown>): SetupSearch => {
+    const n = Number(search.step);
+    return { step: Number.isInteger(n) && n >= 1 && n <= SETUP_TOTAL ? n : undefined };
+  },
+  component: guarded("settings", function SetupWizardComponent() {
+    const { step } = settingsSetupRoute.useSearch();
+    const navigate = useNavigate();
+    const onStepChange = useCallback(
+      (n: number, opts?: { replace?: boolean }) =>
+        void navigate({ to: "/settings/setup", search: { step: n }, replace: opts?.replace }),
+      [navigate],
+    );
+    return <SetupWizard step={step} onStepChange={onStepChange} />;
+  }),
+});
+
+/** `?tab=companies|places|cost-centres|departments` -- the open Organisation tab. */
+export interface OrganisationSearch {
+  tab?: OrganisationTab;
+}
+
+export const settingsOrganisationRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/settings/organisation",
+  validateSearch: (search: Record<string, unknown>): OrganisationSearch => ({
+    tab: isOrganisationTab(search.tab) ? search.tab : undefined,
+  }),
+  component: guarded("settings", function OrganisationComponent() {
+    const { tab } = settingsOrganisationRoute.useSearch();
+    const navigate = useNavigate();
+    return (
+      <OrganisationScreen
+        tab={tab ?? "companies"}
+        onTabChange={(t) => void navigate({ to: "/settings/organisation", search: { tab: t }, replace: true })}
+      />
+    );
+  }),
+});
+
+export const settingsItemsRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/settings/catalogue/items",
+  component: guarded("settings", ItemsSetup),
+});
+
+export const settingsAssetGroupsRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/settings/catalogue/asset-groups",
+  component: guarded("settings", function AssetGroupsComponent() {
+    return <AssetGroupsScreen />;
+  }),
+});
+
+export const settingsBrandsRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/settings/catalogue/brands",
+  component: guarded("settings", function BrandsComponent() {
+    return <BrandsSetup />;
+  }),
+});
+
+export const settingsVendorsRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/settings/vendors",
+  component: guarded("settings", function VendorsComponent() {
+    return <VendorsSetup />;
+  }),
+});
+
+export const settingsUsersAccessRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/settings/users-access",
+  component: guarded("settings", UsersAccessScreen),
+});
+
+export const settingsErpMappingRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/settings/erp/mapping",
+  component: guarded("settings", ErpArticlesSetup),
+});
+
+export const settingsErpSyncRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/settings/erp/sync",
+  component: guarded("settings", ErpSyncScreen),
+});
+
+export const settingsCustomFieldsRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/settings/advanced/custom-fields",
+  component: guarded("settings", CustomFieldsSetup),
+});
+
+export const settingsCodeFormatRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/settings/advanced/code-format",
+  component: guarded("settings", CodeRuleSetup),
+});
+
+export const settingsImportRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/settings/advanced/import",
+  component: guarded("settings", ImportRoute),
+});
+
+// A group's own address (no screen of its own) opens the Settings landing page.
+export const settingsCatalogueRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/settings/catalogue",
+  beforeLoad: () => {
+    throw redirect({ to: "/settings" });
+  },
+});
+
+export const settingsErpRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/settings/erp",
+  beforeLoad: () => {
+    throw redirect({ to: "/settings" });
+  },
+});
+
+export const settingsAdvancedRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/settings/advanced",
+  beforeLoad: () => {
+    throw redirect({ to: "/settings" });
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Old /setup/* addresses: every one still works (bookmarks, e2e, old links).
+// Each redirects to its place in Settings; Bundles still opens its own screen
+// (a direct link only: sets are now made on the Item, "Comes as a set").
+// ---------------------------------------------------------------------------
+
 export const setupCompaniesRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/companies",
-  component: guarded("settings", CompaniesSetup),
+  beforeLoad: () => {
+    throw redirect({ to: "/settings/organisation", search: { tab: "companies" } });
+  },
 });
 
 export const setupLocationsRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/locations",
-  component: guarded("settings", LocationsSetup),
+  beforeLoad: () => {
+    throw redirect({ to: "/settings/organisation", search: { tab: "places" } });
+  },
 });
 
 export const setupDepartmentsRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/departments",
-  component: guarded("settings", DepartmentsSetup),
+  beforeLoad: () => {
+    throw redirect({ to: "/settings/organisation", search: { tab: "departments" } });
+  },
 });
 
 export const setupCostCentersRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/cost-centers",
-  component: guarded("settings", CostCentersSetup),
+  beforeLoad: () => {
+    throw redirect({ to: "/settings/organisation", search: { tab: "cost-centres" } });
+  },
 });
 
 export const setupCategoriesRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/categories",
-  component: guarded("settings", CategoriesSetup),
+  beforeLoad: () => {
+    throw redirect({ to: "/settings/catalogue/asset-groups" });
+  },
 });
 
 export const setupSubcategoriesRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/subcategories",
-  component: guarded("settings", SubcategoriesSetup),
+  beforeLoad: () => {
+    throw redirect({ to: "/settings/catalogue/asset-groups" });
+  },
 });
 
 export const setupVendorsRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/vendors",
-  component: guarded("settings", VendorsSetup),
+  beforeLoad: () => {
+    throw redirect({ to: "/settings/vendors" });
+  },
 });
 
 export const setupBrandsRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/brands",
-  component: guarded("settings", BrandsSetup),
+  beforeLoad: () => {
+    throw redirect({ to: "/settings/catalogue/brands" });
+  },
 });
 
 export const setupBundlesRoute = createRoute({
@@ -528,19 +702,25 @@ export const setupBundlesRoute = createRoute({
 export const setupItemsRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/items",
-  component: guarded("settings", ItemsSetup),
+  beforeLoad: () => {
+    throw redirect({ to: "/settings/catalogue/items" });
+  },
 });
 
 export const setupErpArticlesRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/erp-articles",
-  component: guarded("settings", ErpArticlesSetup),
+  beforeLoad: () => {
+    throw redirect({ to: "/settings/erp/mapping" });
+  },
 });
 
 export const setupCustomFieldsRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/custom-fields",
-  component: guarded("settings", CustomFieldsSetup),
+  beforeLoad: () => {
+    throw redirect({ to: "/settings/advanced/custom-fields" });
+  },
 });
 
 // The old Asset Users address now opens People & Places > Employees.
@@ -555,7 +735,9 @@ export const setupAssetUsersRoute = createRoute({
 export const setupCodeRuleRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/setup/code-rule",
-  component: guarded("settings", CodeRuleSetup),
+  beforeLoad: () => {
+    throw redirect({ to: "/settings/advanced/code-format" });
+  },
 });
 
 const routeTree = rootRoute.addChildren([
@@ -583,6 +765,22 @@ const routeTree = rootRoute.addChildren([
     peopleStoresRoute,
     peopleStockRoomsRoute,
     peopleInstallPointsRoute,
+    settingsRoute,
+    settingsSetupRoute,
+    settingsOrganisationRoute,
+    settingsItemsRoute,
+    settingsAssetGroupsRoute,
+    settingsBrandsRoute,
+    settingsVendorsRoute,
+    settingsUsersAccessRoute,
+    settingsErpMappingRoute,
+    settingsErpSyncRoute,
+    settingsCustomFieldsRoute,
+    settingsCodeFormatRoute,
+    settingsImportRoute,
+    settingsCatalogueRoute,
+    settingsErpRoute,
+    settingsAdvancedRoute,
     setupCompaniesRoute,
     setupLocationsRoute,
     setupDepartmentsRoute,

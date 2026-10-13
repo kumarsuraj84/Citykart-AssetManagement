@@ -34,7 +34,7 @@ interface CodeRule {
   pad_width: number;
 }
 
-export function CodeRuleScreen() {
+export function CodeRuleScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const qc = useQueryClient();
   const [form, setForm] = useState({ prefixTemplate: "", suffixTemplate: "", startNumber: 1, padWidth: 0 });
 
@@ -93,6 +93,7 @@ export function CodeRuleScreen() {
     <div className="flex flex-col gap-4">
       <PageHeader
         title="Asset Code Format"
+        as={embedded ? "h2" : "h1"}
         description={
           isLoading
             ? undefined

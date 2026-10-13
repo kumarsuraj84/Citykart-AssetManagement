@@ -14,7 +14,7 @@ interface Company {
   name: string;
 }
 
-export default function CostCentersSetup() {
+export default function CostCentersSetup({ embedded = false }: { embedded?: boolean } = {}) {
   const { data: companies = [] } = useQuery({
     queryKey: ["masters", "companies"],
     queryFn: () => apiClient.get<Company[]>("/masters/companies"),
@@ -23,6 +23,7 @@ export default function CostCentersSetup() {
 
   return (
     <MasterCrudScreen<CostCenter>
+      embedded={embedded}
       config={{
         resource: "cost-centers",
         title: "Cost Centres",

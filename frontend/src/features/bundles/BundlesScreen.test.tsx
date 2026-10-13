@@ -141,10 +141,12 @@ describe("BundlesScreen", () => {
 
     dialog = await screen.findByRole("dialog", { name: /new item/i });
     expect(within(dialog).getByLabelText(/item name/i)).toHaveValue("Speaker");     // starts from the part's name
-    fireEvent.click(within(dialog).getByRole("combobox", { name: /^category$/i }));
-    fireEvent.click(await screen.findByRole("option", { name: "Computers" }));
-    fireEvent.click(within(dialog).getByRole("combobox", { name: /sub-category/i }));
-    fireEvent.click(await screen.findByRole("option", { name: "CPU Unit" }));
+    fireEvent.click(within(dialog).getByRole("combobox", { name: /type of asset/i }));
+    fireEvent.click(await screen.findByRole("option", { name: /^Computers › CPU Unit/ }));
+    // A part is a single thing: the Item made here is not offered "Comes as a set".
+    fireEvent.click(within(dialog).getByRole("button", { name: /^more$/i }));
+    expect(within(dialog).getByLabelText(/default warranty/i)).toBeInTheDocument();
+    expect(within(dialog).queryByRole("switch", { name: /comes as a set/i })).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: /^save$/i }));
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith("/items", expect.objectContaining({ name: "Speaker", category_id: 1, subcategory_id: 10 })),

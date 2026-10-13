@@ -23,6 +23,18 @@ export interface SearchableSelectOption {
    * never displayed, only `label` is shown. Lets someone find "Ankur Pahwa"
    * by typing his code (CS6872) or email, not just his name. */
   keywords?: string[];
+  /** A small chip shown at the end of the option and of the chosen value
+   * (for example a Category's work area, "IT Team"). Also searchable. */
+  badge?: string;
+}
+
+function OptionBadge({ text }: { text?: string }) {
+  if (!text) return null;
+  return (
+    <span className="ml-auto shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+      {text}
+    </span>
+  );
 }
 
 interface SearchableSelectProps {
@@ -131,7 +143,7 @@ export function SearchableSelect({
                 <CommandItem
                   key={option.value}
                   value={optionText(option)}
-                  keywords={option.keywords}
+                  keywords={option.badge ? [...(option.keywords ?? []), option.badge] : option.keywords}
                   onSelect={() => {
                     onValueChange(option.value);
                     setOpen(false);
@@ -150,6 +162,7 @@ export function SearchableSelect({
                       </>
                     )}
                   </span>
+                  <OptionBadge text={option.badge} />
                 </CommandItem>
               ))}
             </CommandGroup>

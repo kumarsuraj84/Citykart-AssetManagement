@@ -24,7 +24,7 @@ interface Sub extends Named {
 }
 
 /** Settings › Catalogue › Items: CityKart's own names for what an asset is. */
-export function ItemsScreen() {
+export function ItemsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const qc = useQueryClient();
   const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => apiClient.get<Item[]>("/items") });
   const categoriesQ = useQuery({ queryKey: ["masters", "categories"], queryFn: () => apiClient.get<Named[]>("/masters/categories") });
@@ -61,14 +61,14 @@ export function ItemsScreen() {
   const columns: DataTableColumn<Item>[] = [
     { key: "name", header: "Item", cellClassName: "font-medium", cell: (i) => i.name },
     {
-      key: "class", header: "Category › Sub-category",
+      key: "class", header: "Type of asset",
       cell: (i) => [catName(i.category_id), subName(i.subcategory_id)].filter(Boolean).join(" › "),
     },
     {
       key: "serial", header: "Serial number",
-      cell: (i) => (i.serial_required && i.serial_later ? "Yes (read later)" : yesNo(i.serial_required)),
+      cell: (i) => (i.serial_required && i.serial_later ? "Yes (entered later)" : yesNo(i.serial_required)),
     },
-    { key: "bundle", header: "Bundle", cell: (i) => bundles.find((b) => b.id === i.bundle_id)?.name ?? "—" },
+    { key: "bundle", header: "Comes as a set", cell: (i) => bundles.find((b) => b.id === i.bundle_id)?.name ?? "—" },
     {
       key: "maps", header: "ERP links", cellClassName: "tabular-nums",
       cell: (i) => (
@@ -96,10 +96,11 @@ export function ItemsScreen() {
     <div className="flex flex-col gap-4">
       <PageHeader
         title="Items"
-        description="An Item is what an asset is, in CityKart's own words (for example Ceiling Fan, PoE Switch, UPS). It sits under a Category and a Sub-category, and it is the only place that says whether the thing has a serial number. Many ERP item codes can point to one Item; link them under ERP Mapping."
+        as={embedded ? "h2" : "h1"}
+        description="An Item is what an asset is, in CityKart's own words (for example Ceiling Fan, PoE Switch, UPS). People pick the Item; its type of asset (Asset Group › Sub-category), its serial number rule and whether it comes as a set live here. Many ERP item codes can point to one Item (ERP links)."
         actions={
           <>
-            <Button asChild variant="outline"><Link to="/setup/erp-articles">ERP Mapping</Link></Button>
+            <Button asChild variant="outline"><Link to="/settings/erp/mapping">ERP Mapping</Link></Button>
             <Button variant="outline" onClick={() => seedMutation.mutate()} disabled={seedMutation.isPending}>
               Create from Sub-categories
             </Button>

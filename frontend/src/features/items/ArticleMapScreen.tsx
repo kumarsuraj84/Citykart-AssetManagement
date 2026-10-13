@@ -47,11 +47,11 @@ export function ArticleMapScreen() {
     <div className="flex flex-col gap-4">
       <PageHeader
         title="ERP Mapping"
-        description="Decide what CKAM does with every ERP item code (barcode): link it to an Item, or mark it Not tracked (cables, hangers, sensor tags: purchase orders leave those lines out). In Codes, every barcode is its own row: tick the ones you want and link them to one Item. Each company has its own ERP master, so decide per company. Articles is a shortcut for a whole family at once; Groups… clears a whole Department, Section or Division."
+        description="Advanced mapping rules. Decide what CKAM does with every ERP item code (barcode): link it to an Item, or mark it Not tracked (cables, hangers, sensor tags: purchase orders leave those lines out). In Codes, every barcode is its own row: tick the ones you want and link them to one Item. Each company has its own ERP master, so decide per company. Articles is a shortcut for a whole family at once; Groups… clears a whole Department, Section or Division."
         actions={
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setShowGroups(true)}>Groups…</Button>
-            <Button asChild variant="outline"><Link to="/setup/items">Items</Link></Button>
+            <Button asChild variant="outline"><Link to="/settings/catalogue/items">Items</Link></Button>
           </div>
         }
       />

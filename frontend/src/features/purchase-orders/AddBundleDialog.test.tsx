@@ -114,7 +114,7 @@ describe("AddBundleDialog", () => {
     (apiClient.get as any).mockResolvedValue([]);
     renderDialog();
     expect(await screen.findByText(/No bundles are set up yet/)).toHaveTextContent(
-      "The head-office admin can create one under Settings › Catalogue › Bundles.",
+      "The head-office admin can make one on an Item (Settings › Catalogue › Items, “Comes as a set”).",
     );
     expect(screen.queryByText(/Primary Owner|Masters/)).not.toBeInTheDocument();
     expect(within(screen.getByRole("dialog")).queryByLabelText(/^description/i)).not.toBeInTheDocument();

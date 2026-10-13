@@ -1,7 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
 import { optionMatcher, newSeedRegistry, seedTestCompany, teardownTestCompany, type SeedRegistry } from "./fixtures";
 
-// Desktop bundles end to end: define the bundle in Settings › Catalogue › Bundles, add 2 Desktops to a
+// Desktop bundles end to end: define the bundle on the Bundles screen (/setup/bundles, a direct link since
+// S6a; new sets are usually made on the Item: "Comes as a set"), add 2 Desktops to a
 // PO (16000 each, 18% tax), see them become 8 ordinary lines, then deliver them
 // -- the mouse and keyboard parts (their sub-category is set to "No serial
 // number" in Setup) must start with "No serial number" ticked,

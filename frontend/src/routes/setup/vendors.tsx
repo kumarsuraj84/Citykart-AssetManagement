@@ -16,9 +16,10 @@ interface Vendor {
 const linksText = (value: unknown) =>
   (Array.isArray(value) ? (value as Vendor["erp_links"]) : []).map((l) => `${l.company_code} ${l.erp_vendor_code}`).join(" · ");
 
-export default function VendorsSetup() {
+export default function VendorsSetup({ embedded = false }: { embedded?: boolean } = {}) {
   return (
     <MasterCrudScreen<Vendor>
+      embedded={embedded}
       extraActions={<ErpVendorsDialog />}
       config={{
         resource: "vendors",

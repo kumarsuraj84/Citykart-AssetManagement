@@ -314,10 +314,9 @@ describe("AddAssetForm", () => {
     const dialog = await screen.findByRole("dialog", { name: /new item/i });
     expect(dialog).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/item name/i), { target: { value: "Ceiling Fan" } });
-    fireEvent.click(screen.getByRole("combobox", { name: /^category$/i }));
-    fireEvent.click(await screen.findByRole("option", { name: "IT Equipment" }));
-    fireEvent.click(screen.getByRole("combobox", { name: /sub-category/i }));
-    fireEvent.click(await screen.findByRole("option", { name: "Laptop" }));
+    // One "Type of asset" pick (group › Sub-category), not two dropdowns.
+    fireEvent.click(screen.getByRole("combobox", { name: /type of asset/i }));
+    fireEvent.click(await screen.findByRole("option", { name: /^IT Equipment › Laptop/ }));
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() =>
