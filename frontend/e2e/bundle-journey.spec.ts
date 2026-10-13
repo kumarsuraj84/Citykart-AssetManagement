@@ -4,9 +4,9 @@ import { optionMatcher, newSeedRegistry, seedTestCompany, teardownTestCompany, t
 // Desktop bundles end to end: define the bundle on the Bundles screen (/setup/bundles, a direct link since
 // S6a; new sets are usually made on the Item: "Comes as a set"), add 2 Desktops to a
 // PO (16000 each, 18% tax), see them become 8 ordinary lines, then receive them
-// -- the mouse and keyboard parts (their sub-category is set to "No serial
-// number" in Setup) must start with "No serial number" ticked,
-// CPU and TFT take pasted serial lists -- and finally deactivate the bundle.
+// -- the mouse and keyboard parts (their Item has "No serial number") get no
+// serial box at all, CPU and TFT take pasted serial lists -- and finally
+// deactivate the bundle.
 
 async function loginAs(page: Page, empCode: string, password: string) {
   await page.goto("/login");
@@ -17,9 +17,14 @@ async function loginAs(page: Page, empCode: string, password: string) {
 
 // Required fields on these forms are driven by input id (see the note in
 // purchase-order-delivery-journey.spec.ts).
+// After a pick the list must close (its options leave the page) before the next
+// picker opens: two pickers of the same Item list are briefly on the page while
+// the first one plays its closing animation, which made the next pick ambiguous.
 async function selectRadixById(page: Page, triggerId: string, optionText: string) {
   await page.locator(`#${triggerId}`).click();
-  await page.getByRole("option", { name: optionMatcher(optionText) }).click();
+  const option = page.getByRole("option", { name: optionMatcher(optionText) });
+  await option.click();
+  await expect(option).toHaveCount(0);
 }
 
 let registry: SeedRegistry | null = null;
@@ -58,7 +63,7 @@ test("Desktop bundle journey: define it, add 2 to a PO, deliver with no-serial d
   await expect(editor.getByText("Serial: No")).toHaveCount(2);
   await editor.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText(bundleName, { exact: true })).toBeVisible();
-  await expect(page.getByText("CPU 70%, TFT 26%, Keyboard 2%, Mouse 2%")).toBeVisible();
+  await expect(page.getByRole("row").filter({ hasText: bundleName }).getByText("CPU 70%, TFT 26%, Keyboard 2%, Mouse 2%")).toBeVisible();
 
   // ---- S3b-2: a PO with the bundle twice, made on the one-screen New Purchase Order ----
   await page.goto("/purchase-orders/new");
@@ -96,8 +101,15 @@ test("Desktop bundle journey: define it, add 2 to a PO, deliver with no-serial d
   await selectRadixById(page, "received-into", ctx.stock.name);
 
   // Keyboard and Mouse never carry a serial (their Item's rule): no box, N/A said in words.
-  const mouseGroup = page.getByRole("group", { name: /^Line \d+: .*Mouse/ });
-  const keyboardGroup = page.getByRole("group", { name: /^Line \d+: .*Keyboard/ });
+  // A line is named after its Item ("Line 4: E2E Mouse Item …"); Keyboard and Mouse are
+  // the same no-serial Item here, so each part's line is found by its description
+  // ("<set description> - Mouse"), shown under the Item name.
+  const partLine = (role: "group" | "row", part: string) =>
+    page.getByRole(role, { name: /^Line \d+:/ }).filter({ hasText: ` - ${part}` });
+  const mouseGroup = partLine("group", "Mouse");
+  const keyboardGroup = partLine("group", "Keyboard");
+  await expect(mouseGroup).toHaveCount(1);
+  await expect(keyboardGroup).toHaveCount(1);
   await expect(mouseGroup.getByText("No serial number: each asset is saved with N/A.")).toBeVisible();
   await expect(keyboardGroup.getByText("No serial number: each asset is saved with N/A.")).toBeVisible();
   await expect(mouseGroup.locator("textarea")).toHaveCount(0);
@@ -113,11 +125,11 @@ test("Desktop bundle journey: define it, add 2 to a PO, deliver with no-serial d
   await page.getByRole("link", { name: "Open PO" }).click();
   await expect(page.getByRole("button", { name: /^Receive all waiting/ })).toBeDisabled();
   // The mouse/keyboard assets took N/A; the CPUs their own serials (seen in each line's units).
-  const mouseLine = page.getByRole("row", { name: /^Line \d+: .*Mouse/ });
+  const mouseLine = partLine("row", "Mouse");
   await mouseLine.getByRole("button", { name: /^View units of line/ }).click();
   await expect(page.getByRole("table", { name: /^Units of line/ }).getByRole("cell", { name: "N/A", exact: true })).toHaveCount(2);
   await mouseLine.getByRole("button", { name: /^Hide units of line/ }).click();
-  const cpuLine = page.getByRole("row", { name: /^Line \d+: .*CPU/ });
+  const cpuLine = partLine("row", "CPU");
   await cpuLine.getByRole("button", { name: /^View units of line/ }).click();
   await expect(page.getByRole("table", { name: /^Units of line/ }).getByRole("cell", { name: `E2E-C-${ts}-1`, exact: true })).toBeVisible();
 

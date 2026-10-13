@@ -70,6 +70,9 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   await page.goto("/purchase-orders/new");
   const poNumber = `E2E-PO-${ts}`;
   await page.locator("#po-number").fill(poNumber); // required field -- see selectRadixById's comment
+  // S0.5: an invoice dated before its PO is refused on receipt, so the PO is
+  // dated before the invoices below (the PO Date starts as today).
+  await page.locator("#po-date").fill("2026-01-10");
   await selectRadix(page, "Vendor", ctx.vendor.name); // not required -- plain "Vendor" label, no asterisk
   await selectRadixById(page, "cost-center", ctx.costCenter.name);
 

@@ -167,3 +167,29 @@ export proves they exist in the raw master.
    Fixture, Plant & Machinery) and a register-vs-ERP reconciliation.
 5. PI link: for CKSPL, `ckp_pi_line.grc_line_key` -> `fact_grc_line.po_line_key` resolves most recent FA invoices to their PO line
    (bill no / date, GSTIN). CKVPL receipts are not in `fact_grc_line`, so its invoices can only be matched by vendor + item.
+
+## Simplification programme (2026-10-13/14) — what changed for Items
+
+As built at HEAD `c656f33` (local, not deployed). Where this section and the text above differ, this section is right: the menu names `Setup > …`,
+"only shown to the Primary Owner" and "Setup > ERP Articles" above are the pre-programme wording. See `CKAM_FINAL_OPERATING_MODEL.md` §4–§5 and `DECISIONS.md` (2026-10-14, entries 3, 4, 7, 11).
+
+* **The Item is the single source** of an asset's group (Category › Sub-category), its **work area** (the Category's IT / Non-IT), its **serial behaviour**
+  (*Has serial number* / *No serial number* / *Serial will be entered later* = `serial_required` + `serial_later`), default brand, default warranty and whether it
+  **comes as a set**. Every path that makes an asset or a PO line — manual PO (`POST /purchase-orders/with-lines`), the ERP review, Receive, Add Assets (`POST /assets/batch`) —
+  reads these from the Item; a serial rule can be overridden for one receipt or batch only. An Item must still have a Sub-category (the server rule is unchanged).
+* **Where it lives now:** Settings › Catalogue › **Items** (head-office admin). The form is short — Name, **Type of asset** (one pick "Group › Sub-category", work area shown as a chip),
+  **Serial** (three plain choices) — with default brand, default warranty, **Comes as a set** and ERP codes under *More*. A group with one Sub-category is used automatically; a group with none opens "New Sub-category".
+* **Item + set in one request.** `POST` / `PUT /api/items` accept `set_parts` (CPU 70 %, TFT 30 %, …; shares total 100). A new set is named after the Item; an Item's own set is updated in place (parts matched by name,
+  parts left out are deactivated, never deleted; one `master_audit` row `set_parts`); a set shared with other Items is not changed from one Item; creating or changing a set directly (`/api/bundles`) stays head-office only.
+  Item rows now carry `work_area`, `category_name`, `subcategory_name`, `is_set`, `bundle_name`; `GET /api/items?work_area=IT|NON_IT|mine` filters.
+* **Who may do what (server-enforced).** *Create* an Item: head-office admin, Full Admin and Can Add & Move Assets, **in their own work area** (also inline from any "+ New Item…"). *Edit / deactivate* an Item, and add / edit / deactivate a Category or Sub-category:
+  head-office admin and a Full Admin inside their own work area; an operator cannot. *Moving* a Category or Item to the other work area needs someone who handles both (or the head-office admin) **and an explicit confirmation**.
+  Every edit and deactivation is written to `master_audit`. The Item seed, ERP rules (`/items/maps*`), Articles and Codes screens remain head-office-admin only.
+  A Category with active Sub-categories or Items, or a Sub-category with active Items, **cannot be deactivated**; assets keep their group.
+* **Mapping an ERP code to an Item is now asked where it is needed.** In the PO review a line with no Item shows **Suggested: <Item> (50 % match) [Use suggestion]**, **Choose Item** / **+ New Item**, and **Remember**; the remembered reach (`CODE` / `NAME` / `ARTICLE`) defaults to the server's suggestion
+  (ARTICLE when the Article has at most five distinct product names, else NAME, else CODE). The rule's Article and product name come from the ERP item master, not the browser. The head-office admin can settle many at once in **Settings › ERP › ERP Inbox**. The old Codes / Articles / Groups screens remain as **ERP Mapping** (advanced rules for the rare cases).
+  Full Admin and Can Add & Move Assets may add a rule for an undecided key and mark a code, product name or ERP group **not tracked**; Department / Section / Division levels and changing a decision already in force are head-office only.
+  Precedence is unchanged: CODE > NAME > ARTICLE > DEPARTMENT > SECTION > DIVISION, a company's own rule over an every-company one, an Item-linking rule over a broader not-tracked rule.
+* **"Create it where you need it" now follows capabilities, not the owner flag.** "+ New Vendor / Brand / Cost Centre / Stock Room / Item / type of asset" is offered to whoever `GET /api/auth/capabilities` says may create it (nothing while the answer loads or fails).
+* **Existing assets without an Item** (all 53 in dev had none) are linked by **Settings › Catalogue › Link Assets to Items** (Full Admin and head-office admin): suggestions by ERP code (100 %), description (up to 95 %) or same group (40 % / 20 %); nothing is applied until the person confirms; the link changes only the Item (one audited `item_id` change per asset), never status, place or group; at most 500 per request, all or nothing.
+* **Words:** the Item's group is shown as **Asset Group** (Category) and **Sub-category**; in the Item form the pair is **Type of asset**.

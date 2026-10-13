@@ -125,6 +125,10 @@ test("import journey: fixture file -> preview -> commit -> find the asset -> PI 
   // search itself narrowed down to, not by the search term.
   await page.goto("/assets");
   await page.getByLabel("Search", { exact: true }).fill(legacyCode);
+  // The search applies once typing settles: wait for the narrowed list (earlier
+  // runs' imported assets carry the same description, but never this run's
+  // legacy code), then exactly this one asset remains.
+  await expect(page.getByText("Showing 1–1 of 1 asset", { exact: true })).toBeVisible();
   const descriptionCell = page.getByText("E2E Import Journey Laptop", { exact: true });
   await expect(descriptionCell).toBeVisible();
   await descriptionCell.click();

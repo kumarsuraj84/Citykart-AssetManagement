@@ -1,5 +1,83 @@
 # CKAM — Current Stage
 
+## Simplification programme (Level 3) — implemented locally
+
+| | |
+|---|---|
+| Written | 2026-10-14 |
+| Where | Worktree `D:\ANKUR AI PROJECTS\Asset Management\.claude\worktrees\ckam-build`, branch `worktree-ckam-build`, HEAD `c656f33` |
+| State | **Committed locally. NOT pushed. NOT deployed.** Development / UAT only. Production (10.0.1.98 / 10.0.0.205 / NAS) and the retired 10.0.1.12 were not touched |
+| Scope | The Level-3 programme of `CKAM_SIMPLIFICATION_IMPLEMENTATION_PLAN.md`: stages S0 to S6 built; S7 (full UAT) in progress by other agents |
+| As-built description | `CKAM_FINAL_OPERATING_MODEL.md`, `CKAM_FINAL_INFORMATION_ARCHITECTURE.md`, the eleven `DECISIONS.md` entries dated 2026-10-14, and the stage reports `CKAM_SIMPLIFICATION_S0 … S6BE`. The proposal documents (`CKAM_SIMPLIFIED_OPERATING_MODEL.md`, `CKAM_SIMPLIFIED_INFORMATION_ARCHITECTURE.md`) are superseded where they differ |
+| Alembic | single head `c1d3e5f7a9b0` |
+
+### What changed, in one paragraph
+
+Navigation is role-aware (Home · Work · People & Places · Reports · Settings; the head-office admin's 24 entries became 10 plus one collapsed Settings group, an operator's 9 became 6) with route guards; the PO page works by line; Receive is a screen with a quantity per line, serials only where needed, all-or-nothing; Add Assets is a batch form; Move is one screen with 11 plain-word choices; every ERP PO is visible and only its exceptions are asked (vendor matching by GSTIN / PAN / name, ERP Inbox);
+Full Admin and Can Add & Move Assets can create small records in the flow, with the work area as an authorization boundary for Category / Sub-category / Item; People & Places has four lists (a Store gets its Stock Room and Install Point); Settings is one head-office group with a seven-step Set up CKAM wizard; one labels module gives every code its words. Security and integrity holes found by an API sweep (S0) were closed first.
+
+### Commits (oldest first; all dated 2026-10-13)
+
+| Commit | Stage | One line |
+|---|---|---|
+| `6607757` | audit | docs: current architecture, friction audit, simplified model, IA, journeys, staged plan |
+| `2bf5dd9` | S1 | web: role-aware sidebar, route guards, task-based Home, plain-word labels (`lib/labels.ts`), dropdowns with context |
+| `49fdec9` | S0 | fix(security): head-office admin account protection, work-area enforcement, quantity limits, lifecycle destination integrity, validation, friendly errors, ERP create revalidation, code-rule validation |
+| `9e84a00` | S6a | web: Settings structure, merged Asset Groups, simple Item form with sets, Set up CKAM wizard |
+| `6e63150` | S2 backend | exact PO line identity (`line_no`, migration `b8d0f2a4c6e8`), line-group and PO-list APIs, safe PO delete, S0 leftovers |
+| `13e1354` | S0F | web: adapt to the S0 contract (readable server errors, code-format preview, owner-only controls, quantity limits) |
+| `bdd3256` | S3a-1 | in-flow creation of vendor / brand / cost centre / Item / stock room, work-area ownership of catalogue records, `GET /api/auth/capabilities`, `master_audit` (migration `c1d3e5f7a9b0`) |
+| `bdeb2ac` | S2 web | PO page by line, PO list status and paging, Receive queue, safe cancel / delete wording |
+| `5e5bc8b` | S3a-2 | no PO hidden (readiness), vendor matching by PAN, in-flow vendor / Item resolution, ERP Inbox, atomic manual PO with lines |
+| `4ee293d` | S3b-1 | web: capability-driven inline creation, stock-room pickers, remembered defaults |
+| `a741faf` | S3b-2 | web: ERP picker readiness, exceptions-only review, vendor matching, ERP Inbox, one-screen manual PO, simple vendor form |
+| `3ff8233` | S4 backend | Receive orchestration (`receive-info`, atomic `receive`), faster shared asset engine, bulk serial entry, invoices summary |
+| `a7a718b` | S5a | web: Asset 360 in four sections, one Move screen with plain-word choices, one label component |
+| `c880045` | S4 web | web: Receive screen, bulk Serial Pending entry, invoices and PI card |
+| `2c4d574` | S5 backend | batch Add Assets, typed People & Places with store rooms, bulk password issue, richer register search, link assets to Items, report previews |
+| `0adbf44` | S5b-1 | web: batch Add Assets, universal-search register with filters, Link Assets to Items, Move "take N" |
+| `dd254f6` | S6 backend | Move date / reference, Item + set in one call, group counts and safe deactivate, setup status, PO header edit, Home attention |
+| `c656f33` | S5b-2 | web: People & Places forms, bulk password issue, Reports with preview, Home from one call, wiring to the new endpoints |
+
+### Migrations added (both additive)
+
+| Revision | Name | What |
+|---|---|---|
+| `b8d0f2a4c6e8` | `pending_asset_line_no` | `pending_asset.line_no` (nullable integer) + index `(purchase_order_id, line_no)`; deterministic backfill (dev: 217 units to 9 lines). Down-revision `f6b8d0e2a4c5` |
+| `c1d3e5f7a9b0` | `master_audit` | append-only `master_audit` table with update / delete refused by trigger. Down-revision `b8d0f2a4c6e8` |
+
+No `create_all`, no table dropped, no data rewritten by any stage.
+
+### Tests at HEAD `c656f33` (as reported by the latest stage reports; not re-run when this section was written)
+
+| | Before the programme | At HEAD |
+|---|---|---|
+| Backend (`docker compose exec -T -e DATABASE_URL=…/ckam_test api python -m pytest -q`) | 689 | **1266 passed**, 0 failed (S0 748 · S2 813 · S3a-1 942 · S3a-2 1022 · S4 1107 · S5 1199 · S6 1266) |
+| Frontend (`npx tsc -b && npx vitest run`) | 454 | **1040 passed** in 75 files, 0 failed; `tsc -b` clean; `npm run build` succeeds (the old > 500 kB chunk warning only) |
+
+### NOT done / pending
+
+* **S7 full UAT** is the release gate and is **not finished**: `CKAM_SIMPLIFICATION_S7_REPORT.md` and the S7 end-to-end report (`S7_E2E_REPORT.md`) are being produced by other agents; this section does not claim their result.
+* **Playwright** end-to-end specs were updated for changed labels and type-checked, but **not run** in any S0–S6 stage. Several stages also recorded **no browser pass against the real dev API** (the containers do not live-mount source, and were not rebuilt for them); screens were checked against a mocked API at 390 / 768 / 1280 px. Before any release: `docker compose up -d --build api web`, then a browser pass per role.
+* **Production deployment and `git push` are NOT done** and each needs its own explicit request ("commit and push to git and main" means push only, never deploy). Nothing was changed on any server.
+* **Owner decision D6 is still open**: should an ordinary Full Admin be limited to chosen companies (today a Full Admin works in every company)?
+* **Cross-company allotment** (owner decision of 2026-10-13) is not built; the lifecycle engine still refuses a move to another company.
+* Known follow-ups recorded in the stage reports and still true in the source:
+  * The Items, Asset Groups, Brands and Vendors **screens** are head-office-only, although the server also lets a Full Admin manage Items, Categories and Sub-categories of their own work area (an ordinary Full Admin can only create them in the flow).
+  * A Full Admin limited to one work area can still deactivate, reset the password of, or change the company access of a non-owner account whose work area is wider (login, access level and work area edits are refused).
+  * `GET /api/people` can be read by Can Add & Move Assets and View Only logins (it shows emails and phones of their companies) although the menu offers People & Places to Full Admin only.
+  * The Excel asset import still creates assets row by row on its own path (not the shared engine); `bulk-move` / `bulk-action` still apply per asset with partial success.
+  * The generic `POST /api/asset-users` and the Excel people import can still create a Store without its Stock Room and Install Point (no screen calls them; `ensure-rooms` repairs).
+  * The register has no Sub-category filter; batch-add problem lines carry no `field` key; the login response carries `asset_user_id` but not the work areas (`GET /api/auth/capabilities` does); `master_audit` has no screen or endpoint that reads it; `primary_asset_domain` is stored but used by no rule.
+
+### Next
+
+Await the owner. When the S7 results are in and accepted: the owner decides separately (1) whether to push ("commit and push to git and main") and (2) whether to deploy to production, following `PRODUCTION_INFRASTRUCTURE.md`. Do not start another stage on your own.
+
+---
+
+## Earlier stages (history, unchanged below)
+
 **Stage:** Asset User / RBAC / Responsibility Rebuild — complete. See
 `ASSET_USER_RBAC_REBUILD_REPORT.md` for full detail and the formal verdict.
 Summary: roles `ADMIN/IT_TEAM/VIEWER/ASSET_USER(was HOLDER)` became

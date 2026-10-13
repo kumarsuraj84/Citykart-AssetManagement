@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // frontend/e2e -> frontend -> repo root (where docker-compose.yml lives).
@@ -61,6 +61,8 @@ export interface SeedRegistry {
   masters: [string, number][];
   /** Item ids (/api/items), deactivated before the masters they sit under. */
   items: number[];
+  /** The test stock room: teardown moves assets still with a person or store back here before retiring them. */
+  stockRoomId?: number;
 }
 
 export function newSeedRegistry(): SeedRegistry {
@@ -255,6 +257,7 @@ export async function seedTestCompany(baseURL: string, reg: SeedRegistry): Promi
     asset_user_type: "STOCK_POINT",
     role: "SELF_SERVICE",
   });
+  reg.stockRoomId = stock.id;
   const employee = await mkAssetUser({
     code: `EMP${ts}`,
     name: `E2E Test Employee ${ts}`,
@@ -290,13 +293,71 @@ export async function seedTestCompany(baseURL: string, reg: SeedRegistry): Promi
   };
 }
 
+interface AssetRow {
+  id: number;
+  status: string;
+}
+
+/**
+ * S0: a person or place that still holds assets cannot be deactivated
+ * ("… still holds 1 asset. Move them … first"). Disposed, sold, scrapped and
+ * lost assets do not count. So before the holders are deactivated, every asset
+ * of the test company is retired through the product's own legal moves (the
+ * ledger stays append-only; apply_event writes every step):
+ *   with a person / store / install point -> moved back to the test stock room,
+ *   in stock -> disposed of, under repair -> scrapped. Lost / terminal: nothing.
+ */
+async function retireCompanyAssets(baseURL: string, token: string, reg: SeedRegistry, failures: string[]): Promise<void> {
+  const rows: AssetRow[] = [];
+  try {
+    for (let offset = 0; ; offset += 200) {
+      const page = await api<{ items: AssetRow[]; total: number }>(
+        baseURL, "GET", `/api/assets?company_id=${reg.companyId}&limit=200&offset=${offset}`, token,
+      );
+      rows.push(...page.items);
+      if (page.items.length < 200 || rows.length >= page.total) break;
+    }
+  } catch (err) {
+    failures.push(`list assets: ${err instanceof Error ? err.message : String(err)}`);
+    return;
+  }
+  const ids = (statuses: string[]) => rows.filter((a) => statuses.includes(a.status)).map((a) => a.id);
+  const act = async (assetIds: number[], body: object) => {
+    for (let i = 0; i < assetIds.length; i += 1000) {
+      const chunk = assetIds.slice(i, i + 1000);
+      try {
+        const res = await api<{ done: number; failed: { asset_id: number; reason: string }[] }>(
+          baseURL, "POST", "/api/assets/bulk-action", token, { asset_ids: chunk, remarks: "E2E teardown", ...body },
+        );
+        for (const f of res.failed) failures.push(`asset ${f.asset_id}: ${f.reason}`);
+      } catch (err) {
+        failures.push(`bulk-action ${JSON.stringify(body)}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  };
+  const held = ids(["ALLOTTED", "INSTALLED"]);
+  if (held.length > 0) {
+    if (reg.stockRoomId === undefined) failures.push(`${held.length} asset(s) are held but no test stock room is known`);
+    else await act(held, { event_type: "MOVED", to_asset_user_id: reg.stockRoomId });
+  }
+  await act(ids(["UNDER_REPAIR"]), { event_type: "SCRAPPED" });
+  await act([...ids(["IN_STOCK"]), ...held], { event_type: "DISPOSED" });
+}
+
 /**
  * Deactivates (is_active = false -- this app never hard-deletes) everything
- * seedTestCompany recorded in `reg`, through the app's own ADMIN endpoints:
- * the test asset_users, the masters, the company, and finally the SEEDADMIN login
- * itself (last, since its token performs every step before it). Best-effort:
- * every step is attempted even if an earlier one fails, then any failures are
- * thrown together so a broken teardown is loud, not silent.
+ * seedTestCompany recorded in `reg`, through the app's own ADMIN endpoints, in
+ * the order the server's own rules require (S0 / S6):
+ *   1. the company's assets are retired (a holder of assets cannot be deactivated),
+ *   2. the test asset_users,
+ *   3. every active Item under a registered Category -- also Items a spec made
+ *      through the UI -- (a Sub-category with active Items cannot be deactivated),
+ *   4. every active Sub-category under a registered Category (a Category with
+ *      active Sub-categories cannot be deactivated),
+ *   5. the remaining masters in reverse creation order, the company, and finally
+ *      the SEEDADMIN login itself (last, since its token performs every step).
+ * Best-effort: every step is attempted even if an earlier one fails, then any
+ * failures are thrown together so a broken teardown is loud, not silent.
  */
 export async function teardownTestCompany(baseURL: string, reg: SeedRegistry): Promise<void> {
   if (reg.companyId === undefined || reg.adminAssetUserId === undefined) return; // nothing was created
@@ -311,9 +372,34 @@ export async function teardownTestCompany(baseURL: string, reg: SeedRegistry): P
     }
   };
 
+  await retireCompanyAssets(baseURL, token, reg, failures);
   for (const id of reg.asset_userIds) await attempt(`asset_user ${id}`, `/api/asset-users/${id}`);
-  for (const id of [...reg.items].reverse()) await attempt(`item ${id}`, `/api/items/${id}`);
+
+  const categoryIds = new Set(reg.masters.filter(([r]) => r === "categories").map(([, id]) => id));
+  const itemIds = new Set(reg.items);
+  const subcategoryIds = new Set<number>();
+  // Sets (bundles) a spec made from this run's Items -- e.g. a spec that failed before
+  // its own "deactivate the bundle" step -- so they never linger in later runs' lists.
+  try {
+    const bundles = await api<{ id: number; is_active: boolean; parts: { category_id: number }[] }[]>(baseURL, "GET", "/api/bundles", token);
+    for (const b of bundles) {
+      if (b.is_active && b.parts.some((p) => categoryIds.has(p.category_id))) await attempt(`bundle ${b.id}`, `/api/bundles/${b.id}`);
+    }
+  } catch (err) {
+    failures.push(`list bundles: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  try {
+    const items = await api<{ id: number; category_id: number; is_active?: boolean }[]>(baseURL, "GET", "/api/items", token);
+    for (const it of items) if (it.is_active !== false && categoryIds.has(it.category_id)) itemIds.add(it.id);
+    const subs = await api<{ id: number; category_id: number; is_active?: boolean }[]>(baseURL, "GET", "/api/masters/subcategories", token);
+    for (const s of subs) if (s.is_active !== false && categoryIds.has(s.category_id)) subcategoryIds.add(s.id);
+  } catch (err) {
+    failures.push(`list items / sub-categories: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  for (const id of [...itemIds].reverse()) await attempt(`item ${id}`, `/api/items/${id}`);
+  for (const id of subcategoryIds) await attempt(`subcategories ${id}`, `/api/masters/subcategories/${id}`);
   for (const [resource, id] of [...reg.masters].reverse()) {
+    if (resource === "subcategories" && subcategoryIds.has(id)) continue; // done above
     await attempt(`${resource} ${id}`, `/api/masters/${resource}/${id}`);
   }
   await attempt(`company ${reg.companyId}`, `/api/masters/companies/${reg.companyId}`);
@@ -324,6 +410,51 @@ export async function teardownTestCompany(baseURL: string, reg: SeedRegistry): P
   }
 }
 
+export interface TestLogin {
+  id: number;
+  code: string;
+  password: string;
+  token: string;
+}
+
+/**
+ * A genuinely ordinary login (never scripts.seed_admin's head-office bootstrap):
+ * created the way a real admin creates one (Asset User + reset password), its
+ * forced first password change done through the API, then logged in. Registered
+ * for teardown. `allowed_asset_domains` "IT" / "NON_IT" limits it to one work area.
+ */
+export async function createTestLogin(
+  baseURL: string, ownerToken: string, reg: SeedRegistry, ctx: SeedContext,
+  opts: { code: string; name: string; role: "ADMIN" | "OPERATOR" | "VIEWER"; allowed_asset_domains?: "IT" | "NON_IT" },
+): Promise<TestLogin> {
+  const companyAssetUsers = await api<AssetUserOut[]>(baseURL, "GET", `/api/asset-users?company_id=${ctx.company.id}`, ownerToken);
+  const stock = companyAssetUsers.find((h) => h.id === ctx.stock.id);
+  if (!stock) throw new Error(`stock room ${ctx.stock.id} not found`);
+  const created = await api<{ id: number }>(baseURL, "POST", "/api/asset-users", ownerToken, {
+    company_id: ctx.company.id,
+    location_id: stock.location_id,
+    code: opts.code,
+    name: opts.name,
+    asset_user_type: "EMPLOYEE",
+    role: opts.role,
+    login_enabled: true,
+    ...(opts.allowed_asset_domains ? { allowed_asset_domains: opts.allowed_asset_domains } : {}),
+  });
+  reg.asset_userIds.push(created.id);
+  const reset = await api<{ temp_password: string }>(baseURL, "POST", `/api/asset-users/${created.id}/reset-password`, ownerToken);
+  const password = `E2e-${opts.role}-${Date.now().toString(36)}!`;
+  const first = await api<{ access_token: string }>(baseURL, "POST", "/api/auth/login", undefined, {
+    company_id: ctx.company.id, login_id: opts.code, password: reset.temp_password,
+  });
+  await api(baseURL, "POST", "/api/auth/change-password", first.access_token, {
+    old_password: reset.temp_password, new_password: password,
+  });
+  const login = await api<{ access_token: string }>(baseURL, "POST", "/api/auth/login", undefined, {
+    company_id: ctx.company.id, login_id: opts.code, password,
+  });
+  return { id: created.id, code: opts.code, password, token: login.access_token };
+}
+
 /**
  * Dropdown options show context since S1 ("CODE · Name · Place · Company",
  * "Laptop · IT Fixed Assets", "Acme · GSTIN"), so an option is matched by one
@@ -332,6 +463,19 @@ export async function teardownTestCompany(baseURL: string, reg: SeedRegistry): P
 export function optionMatcher(text: string): RegExp {
   const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`(^|· )${escaped}( ·|$)`);
+}
+
+/**
+ * Opens a picker (SearchableSelect / Select trigger), clicks the option and waits
+ * until the list has closed. A closing list stays on the page for its short
+ * closing animation, so opening the NEXT picker of the same list (two PO lines,
+ * two set parts) at once would show every option twice and make the pick ambiguous.
+ */
+export async function pick(page: Page, trigger: Locator, option: string | RegExp): Promise<void> {
+  await trigger.click();
+  const name = typeof option === "string" ? optionMatcher(option) : option;
+  await page.getByRole("option", { name }).click();
+  await expect(page.getByRole("listbox")).toHaveCount(0);
 }
 
 /**

@@ -2,6 +2,155 @@
 
 Newest first. These override older spec/plan text where they conflict.
 
+> The eleven entries dated 2026-10-14 record the **Level-3 simplification programme** as built locally (HEAD `c656f33`; not pushed, not deployed).
+> They override the proposal documents `CKAM_SIMPLIFIED_OPERATING_MODEL.md` and `CKAM_SIMPLIFIED_INFORMATION_ARCHITECTURE.md` wherever they differ, and any older
+> entry below that describes Setup/Masters menus, Asset Users screens, Primary-Owner-only creation of small masters, per-unit delivery or the pre-2026-10-14 wording.
+> The as-built description is `CKAM_FINAL_OPERATING_MODEL.md` and `CKAM_FINAL_INFORMATION_ARCHITECTURE.md`.
+
+## 2026-10-14 — (1) The Level-3 simplification programme is approved, with these guardrails
+
+**Decision.** CKAM is simplified at "Level 3": a major frontend / information-architecture redesign plus a small number of orchestration endpoints, **backend and data model kept**
+(no database rebuild, no backend rebuild). It ran in stages: S0 security and integrity fixes → S1 navigation and wording → S2 PO by line → S3 in-flow creation and ERP exceptions →
+S4 Receive → S5 Add Assets / People & Places / Register / Move → S6 Home, Reports, Settings, Set up CKAM. A full UAT (S7) is the gate before any release. The guardrails that bind every stage:
+1. Backend authorization stays authoritative; the screen hides, the server refuses.
+2. The asset event ledger and the field-change audit stay append-only; `lifecycle/service.py` (`apply_event`, and the batch `apply_events`) is the only writer of an asset's status, who it is with, and `status_since`.
+3. No schema change without an Alembic migration. This programme added exactly two: `b8d0f2a4c6e8` (`pending_asset.line_no`) and `c1d3e5f7a9b0` (`master_audit`). No `create_all`, no data rewritten.
+4. No hard deletes of business records; deactivate only.
+5. Old endpoints stay until nothing uses them (`POST /purchase-orders/{id}/deliver`, `POST /assets`, `/asset-users`); the redesign changes where people click, not what the system guarantees.
+6. The ERP stays read-only; every asset still carries its Item, PO line, vendor and invoice snapshot.
+7. Each stage is tested before it is committed; commits stay local; **push only when the owner says so, deploy only when the owner asks** (and the owner types any server password).
+
+**Why.** The audit (`CKAM_COMPLEXITY_AND_FRICTION_AUDIT.md`) ranked 25 problems: 21 were screens / navigation / workflow, 3 master-data design or permissions, 1 ERP integration, **0 data model**. The first
+real-data API sweep also found security and integrity holes (a Full Admin could reset a head-office admin's password; unbounded quantities; work area not enforced) that had to be closed before any redesign.
+
+**How to apply.** New work follows the stage reports `CKAM_SIMPLIFICATION_S0 … S6BE` as the as-built record. Still open from the audit: decision **D6** (should an ordinary Full Admin be limited to chosen companies; today a Full Admin works in every company) and the owner's
+2026-10-13 cross-company allotment decision (the lifecycle engine still refuses a move to another company).
+
+## 2026-10-14 — (2) Terminology: the umbrella word "Holder" is rejected; "Asset User" stays internal; people see Employee / Store / Stock Room / Install Point
+
+**Decision.** The proposal documents used "Holder" as one word for whoever or wherever an asset is. The owner rejected it: it is **not used on any screen, label, message, menu or new document** (it appears here only to record the decision; older entries below still use it for the records they describe).
+"Asset User" stays the backend / domain concept (table, API `/asset-users`, permission code) and is **never shown**. People see:
+* **Employee · Store · Stock Room · Install Point** (lists: Employees, Stores, Stock Rooms, Install Points under the menu **People & Places**); an asset is shown as **With** an Employee / Store, and **Received Into** a Stock Room;
+  statuses **In Stock · With Employee · With Store · Installed · Under Repair · Lost · Sold · Scrapped · Disposed**.
+* Access levels **Full Admin · Can Add & Move Assets · View Only · Own Assets Only**; the owner's account (the Primary Owner flag) is **Head-office Admin**.
+* Work area **IT Team · Admin / Non-IT Team · Both** (never "Responsibility").
+* Also fixed: Stock Room (not Stock Point), Install Point (not Installed), Cost Centre, Sub-category, Place (not Location), Settings (not Setup / Masters / Administration), Purchase Invoice (PI) spelled out once.
+
+**Why.** The owner's own words; one word per idea; a third umbrella term would sit beside Employee / Store / Stock Room / Install Point without helping anyone.
+
+**How to apply.** Every backend code becomes words in **one module**, `frontend/src/lib/labels.ts` (with `lib/option-labels.ts` for dropdown text); a screen never prints a raw code (`IN_STOCK`, `STOCK_POINT`, `SELF_SERVICE`) and an unknown code is shown in sentence case. Payloads keep the raw codes.
+Identifiers that predate this decision (API field names, one address key on the Assets page, route file names) are not renamed and are never displayed. Tests assert that no raw code, "Asset User" or the rejected word reaches a screen.
+
+## 2026-10-14 — (3) In-flow creation of small records by Full Admin and Can Add & Move Assets, with server-side scope; what stays head-office-only
+
+**Decision.** A missing vendor, brand, cost centre, stock room or Item must never send a person away from the task. **Full Admin and Can Add & Move Assets** (and the head-office admin) may **create**:
+* a **vendor**, **brand**, **cost centre**, **stock room** (its Place is reused or created from a name) — a cost centre and a stock room only for the person's own companies;
+* an **Item**, only in the person's own work area(s) (and, with it, the Item's set parts in the same step);
+* a **Category / Sub-category** ("New type…") — Full Admin inside their own work area, not Can Add & Move Assets;
+* a vendor **link** or import from an ERP supplier, inside the person's companies (`link`, `link-many`, `import-group`);
+* "Not tracked" for an ERP **code, product name or ERP group** from a PO review.
+
+The `code` of a vendor, brand, cost centre, Category and Sub-category may be left out (made from the name; a duplicate gets a number); a new vendor or brand with the name of an active one is refused.
+**Stays head-office-admin only:** editing or deactivating a vendor, brand or cost centre; companies, Places, Departments; Custom Fields; Sets defined directly; Asset Code Format; Bulk Import; ERP Inbox, ERP Mapping, ERP sync, Stores from ERP, Create missing store rooms; unlinking an ERP supplier and listing ERP suppliers;
+marking a whole Department / Section / Division not tracked; changing a decision already in force; changing a head-office admin account.
+
+**Why.** The audit's largest dead end: only the head-office admin could create a vendor, brand or Item, so an operator receiving a PO with a new vendor was stuck. Operators and admins may make small records; heavy set-up and edits that affect history stay with one accountable role.
+
+**How to apply.** `backend/app/core/capabilities.py` is the **one place** for these decisions; every endpoint enforces with its functions and `GET /api/auth/capabilities` answers from the same ones, so the screen and the server cannot drift. The frontend reads the answer
+(`useCanCreate`, `useCanManage`; nothing is offered while it is loading or has failed) and **never** an owner flag. Every refusal is a plain sentence that says who can do it. A new "+ New …" control must use capabilities; after a duplicate-name refusal offer the existing record.
+
+## 2026-10-14 — (4) Work area (IT / Non-IT) is an authorization boundary for Category, Sub-category and Item; a Full Admin can be limited; crossing needs confirmation and is audited
+
+**Decision.** A Category's work area (IT or Non-IT) owns its Sub-categories and Items. A **Full Admin** manages (create, edit, deactivate) them only inside the work area(s) they handle; the head-office admin and a Full Admin who handles both manage both;
+Can Add & Move Assets may only create an Item in their own area. A **Full Admin can be limited** to IT or Non-IT (unset or Both = both): from then on they are limited like an operator everywhere — PO list, lines, delivery, Add Assets, ERP create, PI, register, exports, Home figures.
+On a PO that has lines in both areas each team works its own lines. A limited Full Admin cannot give anyone a wider work area than their own, and cannot change the login, access level or work area of a person whose area is wider.
+**Moving a Category or an Item to the other work area** needs someone who handles both (or the head-office admin) **and an explicit confirmation** (also for the head-office admin); it also moves the Category's Sub-categories and Items, while assets already in the register keep their own work area.
+Every edit or deactivation of a Category, Sub-category or Item, every change to an Item's set, and every edit of a PO header is written to `master_audit` (append-only; names, not ids), whoever makes it.
+
+**Why.** Before S0 the work area was only a filter on a few lists; an IT-only operator could read, edit and deliver Non-IT POs and add Non-IT assets. The owner approved ownership by work area for the catalogue (S3a-1).
+
+**How to apply.** Judge a record by the Category's work area (an Item's work area is its group's). Keep the confirmation (`confirm_domain_change`) on any screen that changes a work area. `master_audit` rows cannot be updated or deleted (database trigger).
+Today there is no screen that reads `master_audit`; it is written for later review.
+
+## 2026-10-14 — (5) A PO line has an exact identity (`line_no`); deleting a PO never removes received assets
+
+**Decision.** Every unit on a PO carries the number of its line (`pending_asset.line_no`, 1…n per PO). It is given by one helper under a lock on the PO row, by every creation path (manual line, set, ERP create, Excel import, "add units" from an ERP change); an edit or a cancel keeps it.
+The PO page and API work **by line** (ordered / received / waiting / cancelled counts, status Waiting / Partly Received / Received / Cancelled, edit a line, change its ordered quantity, cancel part of what waits); units sit behind "View units".
+**A PO that has received anything can never be deleted — by anyone, the head-office admin included**; the way out is **Cancel waiting items**. Deleting a PO with nothing received only cancels its lines; it never deletes assets. Quantity per line is 1 to 1,000.
+After a receipt only the delivery place of the PO can still be changed (PO number, date, vendor and cost centre are carried by the received assets).
+
+**Why.** The old PO page listed one row per unit (104 rows for 3 lines), a "104 lines added" message, and the head-office admin could delete a PO and soft-delete the received assets.
+
+**How to apply.** Group, count and edit by `line_no`; never by guessing from descriptions. Do not add a delete path that touches received assets. The migration `b8d0f2a4c6e8` numbered every existing unit deterministically (dev: 217 units → 9 lines) and is additive.
+
+## 2026-10-14 — (6) Receive is all-or-nothing and shares one asset engine with Add Assets
+
+**Decision.** `POST /purchase-orders/{id}/receive` takes the common data once (received-into Stock Room, invoice number, date, amount) and **a quantity per line**; it takes the oldest waiting units of each line (locked, so two people can never turn one unit into two assets).
+It **checks the whole receipt first** — common fields, the stock room, every line, serial counts and rules, duplicates inside the receipt and against CKAM, required extra fields, the asset engine's own per-unit checks — and if anything is wrong it answers 422 with **every** problem and writes **nothing** (not even a code counter). Otherwise it writes everything in **one transaction**; a late failure rolls the whole receipt back.
+There is no partial receipt and no savepoint: an early sketch of "the rest are saved" was superseded. Serial is asked only on lines whose rule is *Has serial number*; *No serial number* gives "N/A"; *Serial will be entered later* queues the asset on Serial Pending. A receipt holds at most 1,000 units.
+**Add Assets** (`POST /assets/batch`, 1–1,000 units of one Item) follows the same contract and runs through **the same engine** (`build_procure_context` → `prepare_unit` → `procure_units` / `write_units` → `apply_events`), as does the older `/deliver`; an asset made by any of them has the same fields and the same first history entry.
+
+**Why.** Delivering 100 units cost about 1,900 database statements and one bad serial left a half-delivered PO. Now a receipt costs a constant ~27 statements whatever its size, and a failed one leaves nothing to clean up.
+
+**How to apply.** Any new way of making assets must use the engine and the same check-then-write rule; do not add a path that writes assets row by row. Asset codes are reserved in blocks inside the transaction, so a rolled-back receipt leaves no gap. `apply_event` is now the one-asset case of `apply_events`; both live in `lifecycle/service.py`.
+The Excel asset import still has its own row-by-row path (head-office only; not moved onto the engine).
+
+## 2026-10-14 — (7) ERP exceptions only: no PO is hidden, readiness, the ERP Inbox, and vendor matching that never merges by itself
+
+**Decision.**
+* **No ERP PO is hidden.** Pick from ERP lists every open ERP PO of the person's companies, each **Ready** or **Needs your input** with reasons ("Vendor needs matching", "N items need a decision") and counts; only a PO made entirely of *not tracked* lines is left out. A one-area login does not see a PO whose decided lines are all of the other area.
+* **The review shows only exceptions.** Lines whose Item is known are one folded row; unknown ones are open with a one-click suggestion. **Create** does everything — PO, lines, vendor link or new vendor, remembered Item rules — in **one transaction**.
+* **Create re-reads the ERP copy** rather than trusting the browser: PO number and date are the ERP's, the vendor is the one linked to the ERP supplier, a line's units cannot exceed what the ERP still has open, the rate must be within half to double of the ERP rate. A remembered rule's Article / product name come from the ERP item master, not the browser.
+* **ERP Inbox** (head-office admin): new items (by ERP group), new vendors (by PAN), stores not yet created; counts on Home; each entry settled on its own with its own answer.
+* **Vendor matching** suggests, strongest first: the same **GSTIN**, the same **PAN** (characters 3–12 of the GSTIN, other registrations of the same company), a similar **name** (case, punctuation, LTD / PVT / LIMITED and "-CITY" qualifiers ignored). **Nothing is linked unless a person asks** — "Also link the other N registrations" starts unticked, there is no automatic merge, and a supplier whose GSTIN is already a vendor is linked to that vendor, never added twice. One CKAM vendor, one link per company and ERP supplier code.
+* **Remembering** is by reach — this code, this product name, this ERP group — defaulting to the server's suggested reach. A person who is not the head-office admin may only **add** a decision for an undecided key; changing a decision already in force is head-office work.
+* The ERP is **read-only**, always read through CKAM's own copy with "ERP data as of …"; an unreadable ERP means fewer rows, never an error screen.
+
+**Why.** 525 of 648 open dev POs belonged to unmatched suppliers and were invisible; the owner had to decide 850 ERP codes one by one on five screens.
+
+**How to apply.** Keep decisions tied to a real PO or the Inbox; never ask a person to pre-configure every code or supplier. Keep the readiness sentences on the server. The advanced `ERP Mapping` screen stays for rare cases and bulk rules.
+
+## 2026-10-14 — (8) Code rules (the asset code format) are head-office-admin only and validated
+
+**Decision.** Creating or changing a code rule (`POST` / `PUT /api/code-rules`) is **head-office admin only**; everyone can read the saved rule and its example. A rule is validated when saved: only the supported tokens
+(`{company.code} {location.code} {cost_center.code} {category.code} {subcategory.code} {yyyy} {yy} {mm}`), no stray braces, no tokens in the ending, a non-blank beginning, start 0–999,999,999, digits 0–20. `POST /api/code-rules/preview` (any signed-in person) returns the example and saves nothing.
+The Asset Code Format screen is editable for the head-office admin and read-only for everyone else, and shows the server's live example. Assets cannot be added until a rule exists (the last of the seven Set up CKAM steps).
+
+**Why.** Any Full Admin could replace the rule, and an invalid one (unknown token, negative start) only failed at the first asset. The owner decided the rule is head-office work.
+
+**How to apply.** Keep the validation on the server; the screen only previews. Do not widen the permission without a new decision.
+
+## 2026-10-14 — (9) A store always has its own Stock Room and Install Point
+
+**Decision.** Creating a Store creates **three records**: the Store, its Stock Room (`STK-<code>`) and its Install Point (`INS-<code>`), at the store's own Place. The store code is three letters plus at most one more letter or digit. The login email follows the owner's rule `sm.<code>@citykartstores.com`.
+It is **idempotent**: running it again reuses what exists and says so. This holds for **Add Store** (`POST /people/stores`), **Stores from ERP** (`POST /erp/stores/create`, which also completes an existing store) and the head-office **Create missing rooms for existing stores** (`POST /people/stores/ensure-rooms`).
+A room code taken by a record of another kind is reported, never renamed or reactivated; Add Store then refuses the whole store, while the ERP create and the backfill report it and carry on. A Store can sign in but has **no password** until the head-office admin or a Full Admin issues one; **Issue login passwords…** gives temporary passwords to many accounts at once, shown only once and never stored by the screen, and the person must change it at first sign-in. A person or place that still holds assets cannot be deactivated.
+
+**Why.** One store used to be three hand-made records (about 26 clicks) with codes kept consistent by hand; 212 stores needed 212 password resets.
+
+**How to apply.** Use the People & Places forms and the ERP create; do not create a Store through another path. The older generic `POST /api/asset-users` (and the Excel people import) can still create a Store without its rooms; no screen calls it, and `ensure-rooms` repairs such stores.
+
+## 2026-10-14 — (10) Move is one screen, and every label comes from one component
+
+**Decision.** There is one **Move** screen with 11 plain-word choices — Give to Employee · Return to Stock Room · Send to Store · Install · Send for Repair · Receive from Repair · Report Lost · Mark Found · Sell · Scrap · Dispose — defined once in `features/assets/actionRules.ts` (a mirror of the lifecycle state machine; the server stays the authority).
+The destination picker shows only the matching kind; a choice not valid for every asset in the batch is switched off with the reason; Mark Found is admin-only and goes to a Stock Room. Asset 360 and the Assets selection bar open Move pre-filled; the old Dispatch address redirects. Date, reference number and remarks sit under **More** and travel in the **one** batch request.
+**Labels:** one dialog and one settings area (`PrintLabelsAction`, `LabelSettingsDisclosure`, `useScanLabelPrefs`) serve the Assets selection, Asset 360, Move, Receive, Add Assets and the PO invoices card; it prints only the labels. The `/print-labels` page remains as a queue without a menu entry.
+**Words:** every backend code becomes words in `lib/labels.ts`; dropdown text comes from `lib/option-labels.ts`.
+
+**Why.** Asset 360 and Move each had their own lifecycle form, an "Action" dropdown mixed eight verbs with every kind of place, and there were five different print paths (one of which printed the whole page).
+
+**How to apply.** Add a lifecycle choice in `actionRules.ts` (and the state machine) only; add a new label entry point by using the shared action; add a new word in `labels.ts`, not in a screen.
+
+## 2026-10-14 — (11) The Item is the single source of what an asset is
+
+**Decision.** The **Item** decides an asset's group (Category › Sub-category), its **work area** (the group's), its **serial behaviour** (*Has serial number* / *No serial number* / *Serial will be entered later* — the only place that rule lives), its default brand and warranty, and whether it **comes as a set**.
+Every path that makes an asset or a PO line (manual PO, ERP review, Receive, Add Assets) takes these from the Item; a serial rule can be changed for one receipt or batch only, and the screen says so. An ERP item code is only a remembered pointer to an Item, never an identity. Item pickers show the group beside the name.
+The Item form is short — Name, Type of asset (one pick of "Group › Sub-category"), Serial — with brand, warranty, set and ERP codes under **More**; a set is saved together with its Item in one request. Existing assets without an Item are linked by the **Link Assets to Items** tool (suggestions by ERP code, description or group; nothing applied until confirmed; the link changes only the Item).
+
+**Why.** The Item rule already held (2026-10-10 / 2026-10-11); this records that the new screens and endpoints apply it **everywhere**, which the audit found they did not (manual PO lines and Add Asset ignored some Item defaults; all 53 dev assets had no Item and no way to link them).
+
+**How to apply.** Never copy category, serial rule or defaults into a screen; read the Item. Sub-category is still required by the server, so the Item form chooses the group's only Sub-category itself or offers "New Sub-category".
+
 ## 2026-10-13 — Not everything the ERP capitalises is tracked in CKAM: a "not tracked" decision
 
 The ERP's Fixed Assets division includes shop-fitting material (hangers, sensor tags, cables, brackets) and mixed Articles (cameras

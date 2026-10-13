@@ -1,14 +1,19 @@
 import { test, expect, type Page } from "@playwright/test";
-import { optionMatcher, newSeedRegistry, seedTestCompany, teardownTestCompany, fillAddAssetProcurementFields, addAssetsAndOpenFirst, type SeedRegistry } from "./fixtures";
+import {
+  optionMatcher, newSeedRegistry, seedTestCompany, teardownTestCompany, fillAddAssetProcurementFields, addAssetsAndOpenFirst,
+  createTestLogin, type SeedRegistry,
+} from "./fixtures";
 
 // Asset User / RBAC / Responsibility rebuild, permanent E2E coverage (spec §60):
 // an ADMIN logs in, IT and NON_IT categories exist side by side, a fresh asset
 // is procured into each, the Responsibility preview/filter/dashboard-selector/
 // Asset 360 display all agree on the derived domain -- and, separately, a
 // genuinely ordinary (non-Primary-Owner) ADMIN account is proven, end to end
-// through the real API, to have no master/Import write access at all (the
-// spec's own words: "admin role user can only have rights to create PO, mark
-// delivery, add asset, ... no master involvement").
+// through the real API, to have exactly the S3a-1 rights: it may add the small
+// masters its flows need (vendor, brand, cost centre, stock room, Item) and the
+// Asset Groups of its own work area, but never change / remove those masters or
+// touch companies, locations, departments, custom fields, sets, code rules,
+// imports or the ERP mapping; a one-work-area ADMIN never creates in the other area.
 
 async function loginAs(page: Page, empCode: string, password: string) {
   await page.goto("/login");
@@ -86,62 +91,111 @@ test("Asset User RBAC / Responsibility rebuild: IT vs NON_IT domain scoping end 
   })) as { id: number; name: string };
   registry.items.push(nonItItem.id);
 
-  // ---- A genuinely ordinary ADMIN (no is_primary_owner) -- provisioned the same
-  // way a real company admin is, via the ordinary Asset User create+reset-password
-  // flow, never scripts.seed_admin's elevated bootstrap path. ----
-  const companyAssetUsers = (await api<{ id: number; location_id: number }[]>(
-    baseURL!, "GET", `/api/asset-users?company_id=${ctx.company.id}`, ownerToken,
-  )) as { id: number; location_id: number }[];
-  const stockDetail = companyAssetUsers.find((h) => h.id === ctx.stock.id)!;
-  const ordinaryAdmin = (await api<{ id: number }>(baseURL!, "POST", "/api/asset-users", ownerToken, {
-    company_id: ctx.company.id,
-    location_id: stockDetail.location_id,
-    code: `ORDADM${ts}`,
-    name: `E2E Ordinary Admin ${ts}`,
-    asset_user_type: "EMPLOYEE",
-    role: "ADMIN",
-    login_enabled: true,
-  })) as { id: number };
-  registry.asset_userIds.push(ordinaryAdmin.id);
-  const ordinaryReset = (await api<{ temp_password: string }>(
-    baseURL!, "POST", `/api/asset-users/${ordinaryAdmin.id}/reset-password`, ownerToken,
-  )) as { temp_password: string };
-  const ordinaryPassword = "E2e-Ordinary-Passw0rd";
-  const ordinaryLogin = (await api<{ access_token: string }>(baseURL!, "POST", "/api/auth/login", undefined, {
-    company_id: ctx.company.id,
-    login_id: `ORDADM${ts}`,
-    password: ordinaryReset.temp_password,
-  })) as { access_token: string };
-  await api(baseURL!, "POST", "/api/auth/change-password", ordinaryLogin.access_token, {
-    old_password: ordinaryReset.temp_password,
-    new_password: ordinaryPassword,
+  // ---- A genuinely ordinary ADMIN (no is_primary_owner, both work areas) and an
+  // ADMIN limited to the IT work area -- provisioned the same way a real company
+  // admin is (Asset User create + reset password), never scripts.seed_admin's
+  // elevated bootstrap path. ----
+  const ordinary = await createTestLogin(baseURL!, ownerToken, registry, ctx, {
+    code: `ORDADM${ts}`, name: `E2E Ordinary Admin ${ts}`, role: "ADMIN",
   });
-  const ordinaryToken = (await api<{ access_token: string }>(baseURL!, "POST", "/api/auth/login", undefined, {
-    company_id: ctx.company.id,
-    login_id: `ORDADM${ts}`,
-    password: ordinaryPassword,
-  })) as { access_token: string };
+  const itAdmin = await createTestLogin(baseURL!, ownerToken, registry, ctx, {
+    code: `ITADM${ts}`, name: `E2E IT Admin ${ts}`, role: "ADMIN", allowed_asset_domains: "IT",
+  });
 
-  // ---- Backend authorization is authoritative (CLAUDE.md rule #1): a plain
-  // ADMIN gets 403 on both masters writes and Import, regardless of what the
-  // frontend nav shows. ----
-  const mastersAttempt = await fetch(`${baseURL}/api/masters/categories`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${ordinaryToken.access_token}` },
-    body: JSON.stringify({ code: `SHOULD-FAIL-${ts}`, name: "Should Never Be Created", asset_domain: "IT" }),
+  // ---- Backend authorization is authoritative (CLAUDE.md rule #1), with the S3a-1
+  // rules (docs/ai/CKAM_SIMPLIFICATION_S3A1_REPORT.md section 3): an ordinary ADMIN
+  // may ADD the small masters its flows need (vendor, brand, cost centre, stock
+  // room, Item) and the Asset Groups of its own work area; everything else stays
+  // with the head-office admin -- all checked here through the real API. ----
+  const call = (token: string, method: string, urlPath: string, body?: unknown) => fetch(`${baseURL}${urlPath}`, {
+    method,
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-  expect(mastersAttempt.status).toBe(403);
-  const importAttempt = await fetch(`${baseURL}/api/imports/assets/template`, {
-    headers: { Authorization: `Bearer ${ordinaryToken.access_token}` },
+  async function allowed(token: string, urlPath: string, body: unknown): Promise<{ id: number; name: string; location_id: number }> {
+    const res = await call(token, "POST", urlPath, body);
+    expect(res.status, `POST ${urlPath} must be allowed: ${await res.clone().text()}`).toBe(201);
+    return (await res.json()) as { id: number; name: string; location_id: number };
+  }
+  async function forbidden(token: string, method: string, urlPath: string, body?: unknown) {
+    const res = await call(token, method, urlPath, body);
+    expect(res.status, `${method} ${urlPath} must stay forbidden: ${await res.clone().text()}`).toBe(403);
+  }
+  const ordTok = ordinary.token;
+
+  // Allowed since S3a-1 (in-flow creation); a code is made from the name when none is sent.
+  const ordVendor = await allowed(ordTok, "/api/masters/vendors", { name: `E2E Ordinary Vendor ${ts}` });
+  registry.masters.push(["vendors", ordVendor.id]);
+  const ordBrand = await allowed(ordTok, "/api/masters/brands", { name: `E2E Ordinary Brand ${ts}` });
+  registry.masters.push(["brands", ordBrand.id]);
+  const ordCostCentre = await allowed(ordTok, "/api/masters/cost-centers", { company_id: ctx.company.id, name: `E2E Ordinary CC ${ts}` });
+  registry.masters.push(["cost-centers", ordCostCentre.id]);
+  // A both-area ADMIN looks after the Asset Groups of both work areas.
+  const ordItCategory = await allowed(ordTok, "/api/masters/categories", { name: `E2E Ordinary IT Group ${ts}`, asset_domain: "IT" });
+  registry.masters.push(["categories", ordItCategory.id]);
+  const ordNonItCategory = await allowed(ordTok, "/api/masters/categories", { name: `E2E Ordinary Non-IT Group ${ts}`, asset_domain: "NON_IT" });
+  registry.masters.push(["categories", ordNonItCategory.id]);
+  const ordSub = await allowed(ordTok, "/api/masters/subcategories", { category_id: ordItCategory.id, code: "ORD", name: `E2E Ordinary Sub ${ts}` });
+  registry.masters.push(["subcategories", ordSub.id]);
+  const ordItem = await allowed(ordTok, "/api/items", {
+    name: `E2E Ordinary Item ${ts}`, category_id: ordItCategory.id, subcategory_id: ordSub.id, serial_required: false,
   });
-  expect(importAttempt.status).toBe(403);
+  registry.items.push(ordItem.id);
+  // A stock room, with a new place made from its name.
+  const ordStockRoom = await allowed(ordTok, "/api/stock-rooms", {
+    name: `E2E Ordinary Stock ${ts}`, company_id: ctx.company.id, location_name: `E2E Ordinary Place ${ts}`,
+  });
+  registry.asset_userIds.push(ordStockRoom.id);
+  registry.masters.unshift(["locations", ordStockRoom.location_id]);
+
+  // Still head-office only: changing or removing those small masters, companies,
+  // locations, departments, custom fields, sets (bundles), the asset code rule,
+  // Excel imports and the ERP mapping.
+  await forbidden(ordTok, "PUT", `/api/masters/vendors/${ordVendor.id}`, { name: `E2E Renamed ${ts}` });
+  await forbidden(ordTok, "DELETE", `/api/masters/vendors/${ordVendor.id}`);
+  await forbidden(ordTok, "DELETE", `/api/masters/cost-centers/${ordCostCentre.id}`);
+  await forbidden(ordTok, "POST", "/api/masters/companies", { code: `NO${ts}`, name: `Should Never Be Created ${ts}` });
+  await forbidden(ordTok, "POST", "/api/masters/locations", { company_id: ctx.company.id, code: `NO${ts}`, name: "Should Never Be Created" });
+  await forbidden(ordTok, "POST", "/api/masters/departments", { name: `Should Never Be Created ${ts}` });
+  await forbidden(ordTok, "POST", "/api/masters/custom-fields", { field_key: `no_${ts}`, label: "Should Never Be Created", field_type: "text" });
+  await forbidden(ordTok, "POST", "/api/bundles", { name: `Should Never Be Created ${ts}`, parts: [] });
+  await forbidden(ordTok, "POST", "/api/code-rules", {
+    company_id: ctx.company.id, prefix_template: "NO/{category.code}/", suffix_template: "", start_number: 1, pad_width: 0,
+  });
+  await forbidden(ordTok, "GET", "/api/imports/assets/template");
+  await forbidden(ordTok, "POST", "/api/items/maps", { item_id: ordItem.id, company_id: ctx.company.id, erp_item_code: `NO${ts}` });
+  await forbidden(ordTok, "GET", "/api/erp/vendors");
+
+  // ---- One work area: the IT-only ADMIN works inside IT and is refused the
+  // Admin / Non-IT team's groups and Items (no cross-area creation or removal). ----
+  const itCategory = await allowed(itAdmin.token, "/api/masters/categories", { name: `E2E IT Admin Group ${ts}`, asset_domain: "IT" });
+  registry.masters.push(["categories", itCategory.id]);
+  await forbidden(itAdmin.token, "POST", "/api/masters/categories", { name: `Should Never Be Created ${ts}`, asset_domain: "NON_IT" });
+  await forbidden(itAdmin.token, "POST", "/api/masters/subcategories", { category_id: nonItCategory.id, code: "NO", name: `Should Never Be Created ${ts}` });
+  await forbidden(itAdmin.token, "POST", "/api/items", {
+    name: `Should Never Be Created ${ts}`, category_id: nonItCategory.id, subcategory_id: nonItSubcategory.id,
+  });
+  await forbidden(itAdmin.token, "DELETE", `/api/items/${nonItItem.id}`);
+
+  // What the server enforces is what it tells the screens (GET /api/auth/capabilities).
+  const caps = (await (await call(ordTok, "GET", "/api/auth/capabilities")).json()) as {
+    is_head_office_admin: boolean; can_create: Record<string, boolean>; can_manage: Record<string, boolean>;
+  };
+  expect(caps.is_head_office_admin).toBe(false);
+  expect(caps.can_create).toMatchObject({ vendor: true, brand: true, cost_centre: true, stock_room: true, item: true, category: true });
+  expect(caps.can_manage).toMatchObject({
+    vendor: false, company: false, location: false, department: false, custom_field: false, bundle: false, code_rule: false, imports: false,
+  });
 
   // ---- The same ordinary ADMIN, in the real UI: Settings (incl. Bulk Import) is absent
   // from the sidebar entirely (UX only -- the 403s above are the real gate). ----
-  await loginAs(page, `ORDADM${ts}`, ordinaryPassword);
+  await loginAs(page, ordinary.code, ordinary.password);
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole("link", { name: "Import", exact: true })).not.toBeVisible();
   await expect(page.getByRole("button", { name: "Settings", exact: true })).not.toBeVisible();
+  // ...and typing the address shows the route guard instead of the screen.
+  await page.goto("/settings");
+  await expect(page.getByText("You don't have access to this area.", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Log out", exact: true }).click();
   await expect(page).toHaveURL(/\/login$/);
 
