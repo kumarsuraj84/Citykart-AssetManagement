@@ -1,5 +1,5 @@
 ﻿import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { createAppRouter } from "../../router";
@@ -198,44 +198,29 @@ describe("AssetRegister", () => {
     await waitFor(() => expect(apiClient.get).toHaveBeenLastCalledWith(expect.stringMatching(/q=CK.*offset=0/)));
   });
 
-  it("keeps the bulk-move dialog open and shows per-asset reasons on a partial failure", async () => {
+  it("S5a: Move (n) opens the one Move screen with the selected assets already in the batch (no dialog here)", async () => {
+    const rows = [
+      { id: 1, asset_code: "FA/HO01/IT/LAP/CK_1", description: "Laptop 1", status: "IN_STOCK" },
+      { id: 2, asset_code: "FA/HO01/IT/LAP/CK_2", description: "Laptop 2", status: "IN_STOCK" },
+    ];
     (apiClient.get as any).mockImplementation((path: string) => {
-      if (path.startsWith("/assets")) {
-        return Promise.resolve({
-          items: [
-            { id: 1, asset_code: "FA/HO01/IT/LAP/CK_1", description: "Laptop 1", status: "IN_STOCK" },
-            { id: 2, asset_code: "FA/HO01/IT/LAP/CK_2", description: "Laptop 2", status: "IN_STOCK" },
-          ],
-          total: 2,
-        });
-      }
-      if (path.startsWith("/asset-users")) {
-        return Promise.resolve([{ id: 5, name: "Warehouse" }]);
-      }
+      if (path.startsWith("/assets?ids=")) return Promise.resolve({ items: rows, total: 2 });
+      if (path.startsWith("/assets")) return Promise.resolve({ items: rows, total: 2 });
+      if (path.startsWith("/asset-users")) return Promise.resolve([{ id: 5, name: "Warehouse", asset_user_type: "STOCK_POINT" }]);
       return Promise.resolve([]); // /masters/categories, /masters/companies
     });
-    (apiClient.post as any).mockResolvedValue({
-      moved: 1,
-      failed: [{ asset_id: 2, reason: "assets can only move within their own company" }],
-    });
 
-    renderRegisterAt();
+    const router = renderRegisterAt();
     await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK_1")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("checkbox", { name: "Select all" }));
-    fireEvent.click(screen.getByRole("button", { name: /move/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Move (2)" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
-    await pickSelectOption(/move to/i, "Warehouse");
-    fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
-
-    // The dialog must still be open with the failure detail visible -- not silently
-    // closed the instant the (partially-successful) response comes back.
-    await waitFor(() => expect(screen.getByText(/1 moved, 1 failed/i)).toBeInTheDocument());
-    expect(screen.getByText(/FA\/HO01\/IT\/LAP\/CK_2.*assets can only move within their own company/)).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: /move to/i })).toBeInTheDocument();
-    // Cancel became Done -- another signal the dialog is in its "review the failure"
-    // state rather than having auto-dismissed.
-    expect(screen.getByRole("button", { name: /^done$/i })).toBeInTheDocument();
+    await waitFor(() => expect(router.state.location.pathname).toBe("/asset-movement"));
+    expect(router.state.location.search).toEqual({ ids: "1,2" });
+    expect(await screen.findByText(/Queued \(2\)/)).toBeInTheDocument();
+    expect(apiClient.post).not.toHaveBeenCalled();
   });
 
   it("shows a real empty state, with filter-aware copy, when a search matches nothing", async () => {
@@ -343,17 +328,30 @@ describe("AssetRegister: S1 navigation and plain words", () => {
     expect(screen.queryByRole("checkbox", { name: /select/i })).not.toBeInTheDocument();
   });
 
-  it("offers Print labels next to Move for the selected assets", async () => {
+  it("S5a: offers Print labels (n) next to Move (n), printing the selected assets' labels right here", async () => {
     loginAs("ADMIN");
     mockRegister();
+    window.fetch = vi.fn().mockResolvedValue({ ok: false, status: 404 }) as any;    // label pictures
+    window.print = vi.fn();
     renderRegisterAt();
     await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK_1")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("checkbox", { name: "Select FA/HO01/IT/LAP/CK_1" }));
-    // The router JSON-quotes a numeric-looking string ("1" -> %221%22); Print
-    // Labels reads it back as the id list "1".
-    const href = screen.getByRole("link", { name: /print labels/i }).getAttribute("href") ?? "";
-    expect(href.startsWith("/print-labels?assets=")).toBe(true);
-    expect(decodeURIComponent(href)).toMatch(/assets="?1"?$/);
+    expect(screen.getByRole("button", { name: "Move (1)" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Print labels (1)" }));
+    const dialog = await screen.findByRole("dialog", { name: "Print 1 label" });
+    // The one shared Label settings disclosure, and a preview of this row's label.
+    expect(within(dialog).getByRole("button", { name: /label settings/i })).toBeInTheDocument();
+    expect(within(dialog).getByTestId("label-preview")).toHaveTextContent("FA/HO01/IT/LAP/CK_1");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Print 1 label" }));
+    await waitFor(() => expect(window.print).toHaveBeenCalledTimes(1));
+  });
+
+  it("S5a: a VIEWER is offered neither Print labels nor Move", async () => {
+    loginAs("VIEWER");
+    mockRegister();
+    renderRegisterAt();
+    await waitFor(() => expect(screen.getByText("FA/HO01/IT/LAP/CK_1")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /print labels|^move/i })).not.toBeInTheDocument();
   });
 
   it("the Mine toggle filters to the logged-in person's own assets, and turns off again", async () => {

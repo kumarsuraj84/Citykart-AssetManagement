@@ -177,18 +177,15 @@ test("Asset User RBAC / Responsibility rebuild: IT vs NON_IT domain scoping end 
   const nonItAssetCode = (await nonItHeading.textContent())!.trim();
   expect(nonItAssetCode).not.toBe(itAssetCode);
 
-  // ---- Asset 360 (Custody tab): each asset's own Work area, server-derived
-  // from Category at procurement time -- never client-trusted. ----
-  await page.getByRole("tab", { name: "Custody", exact: true }).click();
-  await expect(page.getByRole("tabpanel", { name: "Custody" }).getByText("Admin / Non-IT Team", { exact: true })).toBeVisible();
+  // ---- Asset 360 (the Work area chip in the summary): each asset's own Work
+  // area, server-derived from Category at procurement time -- never client-trusted. ----
+  await expect(page.getByTestId("work-area-chip").getByText("Admin / Non-IT Team", { exact: true })).toBeVisible();
 
   await page.goto("/assets");
   await page.getByLabel("Search", { exact: true }).fill(itAssetCode);
   await page.locator("tbody tr", { hasText: itAssetCode }).click();
   await expect(page).toHaveURL(/\/assets\/\d+$/);
-  await page.getByRole("tab", { name: "Custody", exact: true }).click();
-  const itCustody = page.getByRole("tabpanel", { name: "Custody" });
-  await expect(itCustody.getByText("IT Team", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("work-area-chip").getByText("IT Team", { exact: true })).toBeVisible();
 
   // ---- Asset Register: the Work area filter narrows to exactly the
   // matching asset, never the other one. ----

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { authFetch } from "../../lib/auth-fetch";
 
 /** What a label needs to know about an asset (a subset of what the asset list returns). */
@@ -39,6 +40,13 @@ export const LABEL_SIZE_PRESETS: { key: string; label: string; widthMm: number; 
   { key: "2x1in", label: "2\" × 1\" (50.8 × 25.4 mm)", widthMm: 50.8, heightMm: 25.4 },
 ];
 export const CUSTOM_SIZE_KEY = "custom";
+
+/** What each symbol choice is called on screen. */
+export const SYMBOL_WORDS: Record<LabelSymbol, string> = {
+  both: "Barcode + QR",
+  barcode: "Barcode",
+  qr: "QR Code",
+};
 const DEFAULT_CUSTOM_WIDTH_MM = 70;
 const DEFAULT_CUSTOM_HEIGHT_MM = 20;
 
@@ -97,6 +105,8 @@ export function useLabelSettings() {
   const preset = LABEL_SIZE_PRESETS.find((p) => p.key === size.sizeKey);
   return {
     symbol, setSymbol, size, setSize,
+    /** "Barcode + QR · 70 × 20 mm": what the closed Label settings disclosure shows. */
+    summary: `${SYMBOL_WORDS[symbol]} · ${preset ? preset.label : `${size.customWidthMm} × ${size.customHeightMm} mm`}`,
     widthMm: preset ? preset.widthMm : size.customWidthMm,
     heightMm: preset ? preset.heightMm : size.customHeightMm,
   };
@@ -233,7 +243,9 @@ export function AssetLabel({
  * Prints these labels straight away (the browser's print, one label per page): renders
  * them off-screen, waits for every barcode picture, calls window.print(), then
  * `onPrinted`. With the browser set to print silently to the label printer, this is one
- * scan = one label with nothing to click.
+ * scan = one label with nothing to click. The sheet (and the print-only stylesheet that
+ * hides the rest of the page) is mounted on <body> only while printing, so wherever it is
+ * used -- a page, a dialog -- only the labels print, never the page around them.
  */
 export function PrintNow({
   assets, symbol, widthMm, heightMm, onPrinted,
@@ -256,11 +268,15 @@ export function PrintNow({
     }
   }, [loaded, assets.length, symbol]);
 
-  return (
-    <div className="print-labels-sheet label-offscreen" aria-hidden="true">
-      {assets.map((a) => (
-        <AssetLabel key={a.id} asset={a} symbol={symbol} widthMm={widthMm} heightMm={heightMm} onImageDone={() => setLoaded((n) => n + 1)} />
-      ))}
-    </div>
+  return createPortal(
+    <>
+      <LabelPrintStyle widthMm={widthMm} heightMm={heightMm} />
+      <div className="print-labels-sheet label-offscreen" aria-hidden="true">
+        {assets.map((a) => (
+          <AssetLabel key={a.id} asset={a} symbol={symbol} widthMm={widthMm} heightMm={heightMm} onImageDone={() => setLoaded((n) => n + 1)} />
+        ))}
+      </div>
+    </>,
+    document.body,
   );
 }

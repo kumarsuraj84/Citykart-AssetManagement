@@ -1,7 +1,11 @@
-﻿import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  Outlet, RouterProvider, createMemoryHistory, createRootRoute, createRoute, createRouter,
+} from "@tanstack/react-router";
 import { AssetDetail } from "./AssetDetail";
+import { choicesFor } from "./actionRules";
 import { apiClient, ApiError } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
 import type { Capabilities } from "../../lib/capabilities";
@@ -17,9 +21,23 @@ vi.mock("../../lib/api-client", async (importOriginal) => {
 });
 vi.mock("../../lib/auth-store");
 
+// Asset 360 links back to Assets and opens Move, so it is rendered inside a small
+// router: /assets/1 is this screen, anything else lands on a stub page.
 function renderWithClient(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+  const rootRoute = createRootRoute({ component: () => <Outlet /> });
+  const assetRoute = createRoute({ getParentRoute: () => rootRoute, path: "/assets/$id", component: () => ui });
+  const elsewhere = createRoute({ getParentRoute: () => rootRoute, path: "$", component: () => <p>Another page</p> });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([assetRoute, elsewhere]),
+    history: createMemoryHistory({ initialEntries: ["/assets/1"] }),
+  });
+  const result = render(
+    <QueryClientProvider client={qc}>
+      <RouterProvider router={router as never} />
+    </QueryClientProvider>,
+  );
+  return { ...result, router };
 }
 
 const FULL_ASSET = {
@@ -31,11 +49,12 @@ const FULL_ASSET = {
   pi_number: "PI-3001", pi_date: "2025-05-22",
   purchase_cost: 60000, tax_percent: 18, tax_amount: 10800, total_cost: 70800,
   purchase_date: "2025-06-01", warranty_years: 3, warranty_upto: "2027-06-01",
-  current_asset_user_id: 5, status_since: "2025-06-01",
+  current_asset_user_id: 5, status_since: "2025-06-01", asset_domain: "IT",
   custom_fields: { asset_tag: "TAG-1", retired_field: "kept for history" },
   category_name: "IT Equipment", subcategory_name: "Laptop", cost_center_name: "Head Office",
   vendor_name: "Acme Traders", brand_name: "Dell", current_asset_user_name: "IT Stock-HO", current_asset_user_type: "STOCK_POINT",
-  location_name: "Head Office", department_name: "IT",
+  location_name: "Head Office", department_name: "IT", company_name: "CityKart Stores",
+  item_name: "Business Laptop", erp_item_code: "CT175673",
 };
 
 const CUSTOM_FIELD_DEFS = [
@@ -90,6 +109,26 @@ function clickTab(name: string) {
   tab.focus();
 }
 
+const region = (name: string) => screen.getByRole("region", { name });
+
+async function openPage() {
+  const r = renderWithClient(<AssetDetail assetId={1} />);
+  await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+  return r;
+}
+
+/** The "⋯" menu: lifecycle choices and Correct Classification. */
+async function openMoreActions() {
+  fireEvent.pointerDown(screen.getByRole("button", { name: "More actions" }), { button: 0, ctrlKey: false });
+  return await screen.findByRole("menu");
+}
+
+async function openCorrection() {
+  await openMoreActions();
+  fireEvent.click(screen.getByRole("menuitem", { name: /correct classification/i }));
+  return await screen.findByRole("dialog", { name: /correct classification/i });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockAuth("ADMIN");
@@ -98,13 +137,14 @@ beforeEach(() => {
   window.fetch = vi.fn().mockResolvedValue({ ok: false, status: 404 }) as any;
   window.URL.createObjectURL = vi.fn().mockReturnValue("blob:mock-qr");
   window.URL.revokeObjectURL = vi.fn();
+  window.print = vi.fn();
 });
 
 describe("AssetDetail (Asset 360)", () => {
-  it("shows a loading state, not a blank screen, before the asset arrives", () => {
+  it("shows a loading state, not a blank screen, before the asset arrives", async () => {
     (apiClient.get as any).mockImplementation(() => new Promise(() => {})); // never resolves
     const { container } = renderWithClient(<AssetDetail assetId={1} />);
-    expect(container.querySelector(".animate-pulse")).not.toBeNull();
+    await waitFor(() => expect(container.querySelector(".animate-pulse")).not.toBeNull());
   });
 
   it("shows an error state with a working retry action on a genuine fetch failure", async () => {
@@ -125,52 +165,110 @@ describe("AssetDetail (Asset 360)", () => {
     (apiClient.get as any).mockRejectedValue(new ApiError("Not Found", 404));
     renderWithClient(<AssetDetail assetId={1} />);
     expect(await screen.findByText(/asset not found/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /assets/i })).toHaveAttribute("href", "/assets");
   });
 
-  it("displays procurement fields including PI Number, and custody, on the real data", async () => {
+  it("S5a: a breadcrumb leads back to Assets", async () => {
     mockGets();
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
-
-    clickTab("Procurement");
-    const procurementPanel = await screen.findByRole("tabpanel", { name: "Procurement" });
-    expect(within(procurementPanel).getByText("PI-3001")).toBeInTheDocument();
-    expect(within(procurementPanel).getByText("Acme Traders")).toBeInTheDocument();
-    expect(within(procurementPanel).getByText("PO-1001")).toBeInTheDocument();
-    expect(within(procurementPanel).getByText("INV-2001")).toBeInTheDocument();
-    expect(within(procurementPanel).getByText("2027-06-01")).toBeInTheDocument();
-
-    clickTab("Custody");
-    const custodyPanel = await screen.findByRole("tabpanel", { name: "Custody" });
-    expect(within(custodyPanel).getByText("IT Stock-HO")).toBeInTheDocument();
-    // "Head Office" is legitimately both the location and the cost centre in this fixture.
-    expect(within(custodyPanel).getAllByText("Head Office")).toHaveLength(2);
+    const { router } = await openPage();
+    const back = within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByRole("link", { name: /assets/i });
+    expect(back).toHaveAttribute("href", "/assets");
+    fireEvent.click(back);
+    await waitFor(() => expect(router.state.location.pathname).toBe("/assets"));
   });
 
-  it("shows the Item the asset is and, under Procurement, the ERP item code it was bought under", async () => {
-    mockGets({ asset: { ...FULL_ASSET, item_name: "Cassette AC", erp_item_code: "CT175673" } });
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
-    const overview = await screen.findByRole("tabpanel", { name: "Overview" });
-    expect(within(overview).getByText("Item")).toBeInTheDocument();
-    expect(within(overview).getByText("Cassette AC")).toBeInTheDocument();
-    clickTab("Procurement");
-    const procurement = await screen.findByRole("tabpanel", { name: "Procurement" });
-    expect(within(procurement).getByText("ERP Item Code")).toBeInTheDocument();
-    expect(within(procurement).getByText("CT175673")).toBeInTheDocument();
-  });
-
-  it("displays custom field values, including a value whose definition was later retired", async () => {
+  it("S5a: four sections instead of seven tabs -- Identity, Procurement, Where it is & history, More", async () => {
     mockGets();
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    await openPage();
+    for (const name of ["Identity", "Procurement", "Where it is & history", "More"]) {
+      expect(region(name)).toBeInTheDocument();
+    }
+    // The old tabs are gone; More holds the four reference areas.
+    for (const old of ["Overview", "Custody", "History", "Changes"]) {
+      expect(screen.queryByRole("tab", { name: old })).not.toBeInTheDocument();
+    }
+    expect(within(region("More")).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Documents", "Field changes", "Custom fields", "Advanced"]);
+  });
 
-    clickTab("Custom Fields");
-    const panel = await screen.findByRole("tabpanel", { name: "Custom Fields" });
+  it("S5a: the summary says what it is, its status, who or where has it, its company and work area", async () => {
+    mockGets();
+    await openPage();
+    const summary = screen.getByTestId("asset-summary");
+    expect(within(summary).getByText("Business Laptop")).toBeInTheDocument();
+    expect(within(summary).getByText("In Stock")).toBeInTheDocument();
+    expect(within(summary).getByText("IT Stock-HO")).toBeInTheDocument();
+    expect(within(summary).getByText(/\(Stock Room\)/)).toBeInTheDocument();
+    expect(within(summary).getByText("Company")).toBeInTheDocument();
+    expect(within(summary).getByText("CityKart Stores")).toBeInTheDocument();
+    expect(within(screen.getByTestId("work-area-chip")).getByText("IT Team")).toBeInTheDocument();
+  });
+
+  it("S5a: every fact is shown once -- nothing repeated between the summary and the sections", async () => {
+    mockGets();
+    await openPage();
+    for (const value of ["SN-ABC123", "BC-XYZ789", "Acme Traders", "Latitude 5440", "Dell", "IT Stock-HO", "CityKart Stores", "Business Laptop", "CT175673"]) {
+      expect(screen.getAllByText(value)).toHaveLength(1);
+    }
+    expect(screen.getAllByText("In Stock")).toHaveLength(1);
+    expect(screen.getAllByText(/PO-1001/)).toHaveLength(1);
+    expect(screen.getAllByText(/INV-2001/)).toHaveLength(1);
+    expect(screen.getAllByText(/PI-3001/)).toHaveLength(1);
+    expect(screen.getAllByText("IT Team")).toHaveLength(1);
+  });
+
+  it("Identity holds serial, barcode, ERP code, brand, model, description and warranty", async () => {
+    mockGets();
+    await openPage();
+    const identity = region("Identity");
+    for (const text of ["SN-ABC123", "BC-XYZ789", "CT175673", "Dell", "Latitude 5440", "Laptop", "3 years · until 2027-06-01"]) {
+      expect(within(identity).getByText(text)).toBeInTheDocument();
+    }
+  });
+
+  it("a pending serial and a 'no serial' asset say so in plain words", async () => {
+    mockGets({ asset: { ...FULL_ASSET, serial_number: null, serial_pending: true } });
+    const { unmount } = await openPage();
+    expect(within(region("Identity")).getByText("Pending: still to be added")).toBeInTheDocument();
+    unmount();
+    mockGets({ asset: { ...FULL_ASSET, serial_number: "N/A" } });
+    await openPage();
+    expect(within(region("Identity")).getByText("None (N/A)")).toBeInTheDocument();
+  });
+
+  it("Procurement holds vendor, PO, invoice, Purchase Invoice (PI), purchase date, cost, tax and total", async () => {
+    mockGets();
+    await openPage();
+    const p = region("Procurement");
+    expect(within(p).getByText("Acme Traders")).toBeInTheDocument();
+    expect(within(p).getByText("PO-1001 · 2025-05-20")).toBeInTheDocument();
+    expect(within(p).getByText("INV-2001 · 2025-05-25")).toBeInTheDocument();
+    expect(within(p).getByText("Purchase Invoice (PI)")).toBeInTheDocument();
+    expect(within(p).getByText("PI-3001 · 2025-05-22")).toBeInTheDocument();
+    expect(within(p).getByText("2025-06-01")).toBeInTheDocument();
+    expect(within(p).getByText("60000.00")).toBeInTheDocument();
+    expect(within(p).getByText("18.00% · 10800.00")).toBeInTheDocument();
+    expect(within(p).getAllByText("70800.00")).toHaveLength(2);               // invoice amount and total
+    expect(within(p).getByText("Head Office")).toBeInTheDocument();          // cost centre
+  });
+
+  it("displays custom field values under More, including a value whose definition was later retired", async () => {
+    mockGets();
+    await openPage();
+    clickTab("Custom fields");
+    const panel = await screen.findByRole("tabpanel", { name: "Custom fields" });
     expect(within(panel).getByText("Asset Tag")).toBeInTheDocument();
     expect(within(panel).getByText("TAG-1")).toBeInTheDocument();
     // Not silently hidden just because no active definition matches it anymore.
     expect(within(panel).getByText("kept for history")).toBeInTheDocument();
+  });
+
+  it("Advanced (under More) keeps the legacy code and the category", async () => {
+    mockGets();
+    await openPage();
+    clickTab("Advanced");
+    const panel = await screen.findByRole("tabpanel", { name: "Advanced" });
+    expect(within(panel).getByText("OLD-001")).toBeInTheDocument();
+    expect(within(panel).getByText("IT Equipment")).toBeInTheDocument();
   });
 
   it("AM-05: only Global and this asset's own company's custom fields are editable -- another company's field never appears, and its stored value is still shown read-only", async () => {
@@ -189,12 +287,11 @@ describe("AssetDetail (Asset 360)", () => {
       { field_key: "other_company_field", label: "Other Company Field", field_type: "text", options: null, is_required: true, sort_order: 3, company_id: 2 },
     ];
     mockGets({ asset: scopedAsset, customFieldDefs: scopedDefs });
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    await openPage();
 
     // Read-only tab: the retained value under the other company's field key is still shown.
-    clickTab("Custom Fields");
-    const panel = await screen.findByRole("tabpanel", { name: "Custom Fields" });
+    clickTab("Custom fields");
+    const panel = await screen.findByRole("tabpanel", { name: "Custom fields" });
     expect(within(panel).getByText("kept for history")).toBeInTheDocument();
 
     // Edit mode: Global + own-company fields are editable; the other company's field is not offered at all.
@@ -211,31 +308,29 @@ describe("AssetDetail (Asset 360)", () => {
     expect(body.custom_fields.other_company_field).toBe("kept for history");
   });
 
-  it("displays the lifecycle timeline under History", async () => {
-    mockGets({ events: [{ id: 1, event_type: "PROCURED", event_date: "2025-06-01T00:00:00Z", status_after: "IN_STOCK", remarks: null, reference_no: null, label: "Procured" }] });
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
-
-    clickTab("History");
-    expect(await screen.findByText("Procured")).toBeInTheDocument();
+  it("shows the lifecycle timeline under Where it is & history, without a click", async () => {
+    mockGets({ events: [{ id: 1, event_type: "PROCURED", event_date: "2025-06-01T00:00:00Z", status_after: "IN_STOCK", remarks: null, reference_no: "GP-7", label: "Procured" }] });
+    await openPage();
+    const where = region("Where it is & history");
+    expect(await within(where).findByText("Procured")).toBeInTheDocument();
+    expect(within(where).getByText("Ref: GP-7")).toBeInTheDocument();
+    expect(within(where).getByText("Department")).toBeInTheDocument();
   });
 
-  it("displays the field-change audit under Changes, distinct from lifecycle History", async () => {
+  it("displays the field-change audit under More > Field changes, distinct from the history", async () => {
     mockGets({
       changes: [{ id: 1, field_name: "brand_id", old_value: "Dell (#9)", new_value: "HP (#10)", actor_id: 9, actor_name: "Admin", request_id: "r1", created_at: "2025-07-01T00:00:00Z" }],
     });
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
-
-    clickTab("Changes");
-    const panel = await screen.findByRole("tabpanel", { name: "Changes" });
+    await openPage();
+    clickTab("Field changes");
+    const panel = await screen.findByRole("tabpanel", { name: "Field changes" });
     expect(within(panel).getByText("Brand")).toBeInTheDocument();
     expect(within(panel).getByText("Dell (#9)")).toBeInTheDocument();
     expect(within(panel).getByText("HP (#10)")).toBeInTheDocument();
     expect(within(panel).getByText("Admin")).toBeInTheDocument();
   });
 
-  it("the Changes tab names each field in plain words, never its internal name", async () => {
+  it("Field changes names each field in plain words, never its internal name", async () => {
     mockGets({
       changes: [
         { id: 1, field_name: "serial_number", old_value: "SN-1", new_value: "SN-2", actor_id: 9, actor_name: "Admin", request_id: "r1", created_at: "2025-07-01T00:00:00Z", reason: null },
@@ -243,11 +338,9 @@ describe("AssetDetail (Asset 360)", () => {
         { id: 3, field_name: "pi_number", old_value: null, new_value: "PI-9", actor_id: 9, actor_name: "Admin", request_id: "r3", created_at: "2025-07-03T00:00:00Z", reason: null },
       ],
     });
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
-
-    clickTab("Changes");
-    const panel = await screen.findByRole("tabpanel", { name: "Changes" });
+    await openPage();
+    clickTab("Field changes");
+    const panel = await screen.findByRole("tabpanel", { name: "Field changes" });
     expect(within(panel).getByText("Serial number")).toBeInTheDocument();
     expect(within(panel).getByText("Asset Tag")).toBeInTheDocument();          // the custom field's own label
     expect(within(panel).getByText("Purchase Invoice (PI) number")).toBeInTheDocument();
@@ -257,56 +350,42 @@ describe("AssetDetail (Asset 360)", () => {
     expect(within(panel).queryByText("#9")).not.toBeInTheDocument();
   });
 
-  it("says who has the asset in plain words: Stock Room, Work area, never raw codes", async () => {
-    mockGets();
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+  it("says who has the asset in plain words: Stock Room, IT Team, never raw codes or 'Holder'", async () => {
+    mockGets({ asset: { ...FULL_ASSET, asset_domain: "NON_IT" } });
+    await openPage();
     expect(screen.getByText(/\(Stock Room\)/)).toBeInTheDocument();
-    expect(screen.getAllByText("In Stock").length).toBeGreaterThan(0);
-
-    clickTab("Custody");
-    const panel = await screen.findByRole("tabpanel", { name: "Custody" });
-    expect(within(panel).getByText("Currently With")).toBeInTheDocument();
-    expect(within(panel).getByText("Stock Room")).toBeInTheDocument();
-    expect(within(panel).getByText("Work area")).toBeInTheDocument();
-    expect(within(panel).queryByText(/STOCK.POINT|IN_STOCK|Asset User|Responsibility/i)).not.toBeInTheDocument();
-    expect(document.body.textContent).not.toMatch(/IN_STOCK|STOCK_POINT|Holder|stock point/i);
+    expect(screen.getByText("In Stock")).toBeInTheDocument();
+    expect(screen.getByText("Admin / Non-IT Team")).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/IN_STOCK|STOCK_POINT|NON_IT|Holder|stock point|Asset User|Responsibility/i);
   });
 
   it("an allotted asset's status says exactly who has it (With Employee)", async () => {
     mockGets({ asset: { ...FULL_ASSET, status: "ALLOTTED", current_asset_user_name: "Ankur", current_asset_user_type: "EMPLOYEE" } });
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    await openPage();
     expect(screen.getByText("With Employee")).toBeInTheDocument();
     expect(screen.getByText(/\(Employee\)/)).toBeInTheDocument();
   });
 
-  it("preserves the Documents tab", async () => {
+  it("keeps Documents (the first area under More)", async () => {
     mockGets();
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
-
-    clickTab("Documents");
-    expect(await screen.findByText(/no documents uploaded/i)).toBeInTheDocument();
+    await openPage();
+    expect(await within(region("More")).findByText(/no documents uploaded/i)).toBeInTheDocument();
   });
 
-  it("shows the Edit action for ADMIN/IT_TEAM but not for VIEWER or ASSET_USER", async () => {
+  it("shows the Edit action for ADMIN/OPERATOR but not for VIEWER", async () => {
     mockGets();
-    const { unmount } = renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    const { unmount } = await openPage();
     expect(screen.getByRole("button", { name: /^edit$/i })).toBeInTheDocument();
     unmount();
 
     mockAuth("VIEWER");
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    await openPage();
     expect(screen.queryByRole("button", { name: /^edit$/i })).not.toBeInTheDocument();
   });
 
   it("never renders an editable control for an immutable/lifecycle field while editing", async () => {
     mockGets();
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    await openPage();
 
     fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
     expect(await screen.findByRole("button", { name: /^save$/i })).toBeInTheDocument();
@@ -318,15 +397,13 @@ describe("AssetDetail (Asset 360)", () => {
     expect(screen.queryByDisplayValue("FA/HO01/IT/LAP/CK_1")).not.toBeInTheDocument();
   });
 
-  it("shows Barcode on Overview, distinct from Serial Number, and can edit it", async () => {
+  it("shows Barcode under Identity, distinct from Serial Number, and can edit it", async () => {
     mockGets();
     (apiClient.put as any).mockResolvedValue({ ...FULL_ASSET, barcode: "BC-NEW-000" });
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    await openPage();
 
-    const overviewPanel = await screen.findByRole("tabpanel", { name: "Overview" });
-    expect(within(overviewPanel).getByText("SN-ABC123")).toBeInTheDocument();
-    expect(within(overviewPanel).getByText("BC-XYZ789")).toBeInTheDocument();
+    expect(within(region("Identity")).getByText("SN-ABC123")).toBeInTheDocument();
+    expect(within(region("Identity")).getByText("BC-XYZ789")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
     const barcodeInput = await screen.findByLabelText(/^barcode$/i);
@@ -342,8 +419,7 @@ describe("AssetDetail (Asset 360)", () => {
   it("saves an edit through PUT /api/assets/{id} and refreshes the displayed data", async () => {
     mockGets();
     (apiClient.put as any).mockResolvedValue({ ...FULL_ASSET, brand_id: 10, brand_name: "HP" });
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    await openPage();
 
     fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
     await screen.findByLabelText(/^brand$/i);
@@ -355,15 +431,13 @@ describe("AssetDetail (Asset 360)", () => {
       expect.objectContaining({ description: "Laptop", pi_number: "PI-3001" }),
     ));
     // Back to the read view, showing the just-saved value.
-    fireEvent.click(await screen.findByRole("tab", { name: "Overview" }));
-    expect(screen.getByText("HP")).toBeInTheDocument();
+    expect(await within(await screen.findByRole("region", { name: "Identity" })).findByText("HP")).toBeInTheDocument();
   });
 
   it("shows a save-error message instead of losing the edit silently", async () => {
     mockGets();
     (apiClient.put as any).mockRejectedValue(new Error("missing required custom field(s): asset_tag"));
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    await openPage();
 
     fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
     fireEvent.click(await screen.findByRole("button", { name: /^save$/i }));
@@ -375,8 +449,7 @@ describe("AssetDetail (Asset 360)", () => {
     async function openEdit(asset: Record<string, unknown> = FULL_ASSET) {
       mockGets({ asset });
       (apiClient.put as any).mockResolvedValue(asset);
-      renderWithClient(<AssetDetail assetId={1} />);
-      await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+      await openPage();
       fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
       return await screen.findByLabelText("Serial Number");
     }
@@ -436,182 +509,130 @@ describe("AssetDetail (Asset 360)", () => {
     });
   });
 
-  describe("S0: the destination in the action dialog follows the server's rule", () => {
-    const NO_DESTINATION: [string, RegExp][] = [
-      ["Send for Repair", /send for repair/i],
-      ["Dispose", /^dispose$/i],
-      ["Sell", /^sell$/i],
-      ["Scrap", /^scrap$/i],
-      ["Report Lost", /report lost/i],
-    ];
-    it.each(NO_DESTINATION)("%s has no destination picker and sends none", async (_label, button) => {
-      mockGets();
-      (apiClient.post as any).mockResolvedValue({ id: 99 });
-      renderWithClient(<AssetDetail assetId={1} />);
-      await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
-      fireEvent.click(screen.getByRole("button", { name: button }));
-      const dialog = await screen.findByRole("dialog");
-      expect(within(dialog).queryByRole("combobox")).not.toBeInTheDocument();
-      expect(within(dialog).queryByText(/move to|received into/i)).not.toBeInTheDocument();
-      fireEvent.click(within(dialog).getByRole("button", { name: /confirm/i }));
-      await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/assets/1/events", expect.objectContaining({ to_asset_user_id: null })));
+  describe("S5a: lifecycle choices come from the shared rule and open the Move screen", () => {
+    const menuLabels = () => screen.getAllByRole("menuitem").map((m) => m.textContent);
+
+    it.each(["IN_STOCK", "ALLOTTED", "INSTALLED", "UNDER_REPAIR", "LOST"])(
+      "from %s the menu offers exactly choicesFor(status), then Correct Classification",
+      async (status) => {
+        mockGets({ asset: { ...FULL_ASSET, status } });
+        await openPage();
+        await openMoreActions();
+        expect(menuLabels()).toEqual([...choicesFor(status, { isAdmin: true }).map((c) => c.label), "Correct Classification"]);
+      },
+    );
+
+    it("an operator is not offered Mark Found (only an admin may)", async () => {
+      mockAuth("OPERATOR");
+      mockGets({ asset: { ...FULL_ASSET, status: "LOST" } });
+      await openPage();
+      await openMoreActions();
+      expect(menuLabels()).toEqual(["Correct Classification"]);
+      expect(screen.queryByRole("button", { name: "Move…" })).not.toBeInTheDocument();
     });
 
-    it.each([
-      ["IN_STOCK", /move \/ allot/i, "Move To"],
-      ["UNDER_REPAIR", /receive from repair/i, "Received Into"],
-      ["LOST", /mark found/i, "Received Into"],
-    ])("from %s the destination picker is shown, required, and sent", async (status, button, label) => {
-      mockGets({ asset: { ...FULL_ASSET, status } });
-      (apiClient.post as any).mockResolvedValue({ id: 99 });
-      renderWithClient(<AssetDetail assetId={1} />);
-      await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
-      fireEvent.click(screen.getByRole("button", { name: button }));
-      const dialog = await screen.findByRole("dialog");
-      expect(within(dialog).getByRole("combobox", { name: label })).toBeInTheDocument();
-      expect(within(dialog).getByRole("button", { name: /confirm/i })).toBeDisabled();
-      await pickSelectOption(label, "Ankur");
-      fireEvent.click(within(dialog).getByRole("button", { name: /confirm/i }));
-      await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/assets/1/events", expect.objectContaining({ to_asset_user_id: 5 })));
+    it("a final status (sold) offers no Move at all", async () => {
+      mockGets({ asset: { ...FULL_ASSET, status: "SOLD" } });
+      await openPage();
+      expect(screen.queryByRole("button", { name: "Move…" })).not.toBeInTheDocument();
+      await openMoreActions();
+      expect(menuLabels()).toEqual(["Correct Classification"]);
     });
 
-    it("the server's plain refusal (inactive or missing destination, illegal move) is shown inside the dialog", async () => {
+    it("Move… opens the Move screen with this asset already in the batch", async () => {
       mockGets();
-      renderWithClient(<AssetDetail assetId={1} />);
-      await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
-      for (const sentence of [
-        "Ankur is no longer active, so assets cannot be sent there.",
-        "Choose where the asset is going.",
-        "This action does not send the asset anywhere, so do not choose a destination.",
-        "The date cannot be before the asset's last recorded movement (01-06-2025).",
-      ]) {
-        (apiClient.post as any).mockRejectedValueOnce(new ApiError(sentence, 422));
-        fireEvent.click(screen.getByRole("button", { name: /move \/ allot/i }));
-        const dialog = await screen.findByRole("dialog");
-        await pickSelectOption(/^move to$/i, "Ankur");
-        fireEvent.click(within(dialog).getByRole("button", { name: /confirm/i }));
-        expect(await within(dialog).findByRole("alert")).toHaveTextContent(sentence);
-        fireEvent.click(within(dialog).getByRole("button", { name: /cancel/i }));
-        await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-      }
+      const { router } = await openPage();
+      fireEvent.click(screen.getByRole("button", { name: "Move…" }));
+      await waitFor(() => expect(router.state.location.pathname).toBe("/asset-movement"));
+      expect(router.state.location.search).toEqual({ ids: "1" });
+    });
+
+    it("picking a choice opens Move with the asset and that choice (no separate dialog here)", async () => {
+      mockGets({ asset: { ...FULL_ASSET, status: "UNDER_REPAIR" } });
+      const { router } = await openPage();
+      await openMoreActions();
+      fireEvent.click(screen.getByRole("menuitem", { name: "Receive from Repair" }));
+      await waitFor(() => expect(router.state.location.pathname).toBe("/asset-movement"));
+      expect(router.state.location.search).toEqual({ ids: "1", choice: "from-repair" });
+      expect(apiClient.post).not.toHaveBeenCalled();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
 
-  it("only shows actions valid for the current status and posts the chosen action", async () => {
-    mockGets();
-    (apiClient.post as any).mockResolvedValue({ id: 99, status_after: "ALLOTTED" });
-
-    renderWithClient(<AssetDetail assetId={1} />);
-
-    await waitFor(() => expect(screen.getByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" })).toBeInTheDocument());
-    expect(screen.getByRole("button", { name: /move \/ allot/i })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /receive from repair/i })).not.toBeInTheDocument();
-
-    // AssetUsers are scoped to the asset's own company, not fetched unscoped.
-    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/asset-users?company_id=1"));
-
-    fireEvent.click(screen.getByRole("button", { name: /move \/ allot/i }));
-    await pickSelectOption(/^move to$/i, "Ankur");
-    fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
-
-    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/assets/1/events", expect.objectContaining({
-      event_type: "MOVED", to_asset_user_id: 5,
-    })));
-  });
-
-  it("hides all lifecycle action buttons, and the Edit action, for ASSET_USER-role viewers", async () => {
+  it("hides every action -- Move, Print Label, Edit, the menu -- for a self-service login", async () => {
     mockAuth("SELF_SERVICE");
     mockGets();
-
-    renderWithClient(<AssetDetail assetId={1} />);
-
-    await waitFor(() => expect(screen.getByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" })).toBeInTheDocument());
-    expect(screen.queryByRole("button", { name: /move \/ allot/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^edit$/i })).not.toBeInTheDocument();
-    // Print Label is a read-only action available to every role.
-    expect(screen.getByRole("button", { name: /print label/i })).toBeInTheDocument();
+    await openPage();
+    for (const name of [/^move/i, /print label/i, /^edit$/i, /more actions/i]) {
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+    }
   });
 
-  it("hides the lifecycle action buttons for VIEWER too (they only look)", async () => {
+  it("S5a: a VIEWER sees no action buttons at all (they only look)", async () => {
     mockAuth("VIEWER");
     mockGets();
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
-    for (const label of [/move \/ allot/i, /send for repair/i, /dispose/i, /sell/i, /scrap/i, /report lost/i]) {
-      expect(screen.queryByRole("button", { name: label })).not.toBeInTheDocument();
+    await openPage();
+    for (const name of [/^move/i, /print label/i, /^edit$/i, /more actions/i, /send for repair/i, /correct classification/i]) {
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
     }
-    expect(screen.getByRole("button", { name: /print label/i })).toBeInTheDocument();
+    // The facts themselves are all there.
+    expect(region("Identity")).toBeInTheDocument();
   });
 
-  it("shows the lifecycle action buttons for OPERATOR", async () => {
-    mockAuth("OPERATOR");
-    mockGets();
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
-    expect(screen.getByRole("button", { name: /move \/ allot/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /send for repair/i })).toBeInTheDocument();
-  });
-
-  it("the move dialog asks where to Move To, listing people/places with their place", async () => {
-    mockGets({ asset_users: [{ id: 5, code: "CS6872", name: "Ankur", asset_user_type: "EMPLOYEE", location_id: 50, company_id: 1 }] });
-    (apiClient.get as any).mockImplementation(((base: (p: string) => unknown) => (path: string) =>
-      path === "/masters/locations" ? Promise.resolve([{ id: 50, name: "Head Office" }]) : base(path))(
-      (apiClient.get as any).getMockImplementation(),
-    ));
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
-    fireEvent.click(screen.getByRole("button", { name: /move \/ allot/i }));
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).queryByText(/asset user/i)).not.toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole("combobox", { name: /^move to$/i }));
-    expect(await screen.findByRole("option", { name: /^CS6872 · Ankur\s?· Head Office$/ })).toBeInTheDocument();
-  });
-
-  it("shows a QR code image and a working Print Label button", async () => {
+  it("shows the asset's QR code image", async () => {
     mockGets();
     (useAuthStore as any).getState = vi.fn().mockReturnValue({ role: "ADMIN", accessToken: "test-token" });
     const qrBlob = new Blob(["fake-png-bytes"]);
     window.fetch = vi.fn().mockResolvedValue({ ok: true, blob: () => Promise.resolve(qrBlob) }) as any;
-    const printSpy = vi.spyOn(window, "print").mockImplementation(() => {});
-
-    renderWithClient(<AssetDetail assetId={1} />);
-
-    await waitFor(() => expect(screen.getByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" })).toBeInTheDocument());
-
+    await openPage();
     await waitFor(() => expect(window.fetch).toHaveBeenCalledWith(
       expect.stringContaining("/assets/1/qr.png"),
       expect.objectContaining({ headers: { Authorization: "Bearer test-token" } }),
     ));
     await waitFor(() => expect(screen.getByAltText(/asset qr code/i)).toHaveAttribute("src", "blob:mock-qr"));
+  });
 
+  it("S5a: Print Label uses the shared print action and prints only this asset's label, not the page", async () => {
+    mockGets();
+    const sheets: number[] = [];
+    window.print = vi.fn(() => {
+      sheets.push(document.querySelectorAll(".print-labels-sheet .print-label").length);
+    });
+    await openPage();
     fireEvent.click(screen.getByRole("button", { name: /print label/i }));
-    expect(printSpy).toHaveBeenCalled();
+    const dialog = await screen.findByRole("dialog", { name: "Print 1 label" });
+    expect(within(dialog).getByRole("button", { name: /label settings/i })).toHaveAttribute("aria-expanded", "false");
+    expect(within(dialog).getByTestId("label-preview")).toHaveTextContent("FA/HO01/IT/LAP/CK_1");
+    expect(window.print).not.toHaveBeenCalled();                      // never the whole page straight away
+    fireEvent.click(within(dialog).getByRole("button", { name: "Print 1 label" }));
+    await waitFor(() => expect(window.print).toHaveBeenCalledTimes(1));
+    expect(sheets).toEqual([1]);                                      // exactly one label on the printed sheet
+    // The print-only stylesheet is there only while printing.
+    await waitFor(() => expect(document.querySelector(".print-labels-sheet")).toBeNull());
   });
 });
 
 describe("AssetDetail -- AM-07 asset correction", () => {
-  it("shows the Correct Classification action only for ADMIN/IT_TEAM, never VIEWER/ASSET_USER", async () => {
+  it("offers Correct Classification (in the ⋯ menu) to ADMIN/OPERATOR", async () => {
     mockGets();
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
-    expect(screen.getByRole("button", { name: /correct classification/i })).toBeInTheDocument();
+    await openPage();
+    await openMoreActions();
+    expect(screen.getByRole("menuitem", { name: /correct classification/i })).toBeInTheDocument();
   });
 
   it("is hidden for VIEWER", async () => {
     mockAuth("VIEWER");
     mockGets();
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
-    expect(screen.queryByRole("button", { name: /correct classification/i })).not.toBeInTheDocument();
+    await openPage();
+    expect(screen.queryByRole("button", { name: /more actions/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/correct classification/i)).not.toBeInTheDocument();
   });
 
   it("opens with current values prefilled, and Asset Code shown read-only", async () => {
     mockGets();
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    await openPage();
 
-    fireEvent.click(screen.getByRole("button", { name: /correct classification/i }));
-    const dialog = await screen.findByRole("dialog", { name: /correct classification/i });
+    const dialog = await openCorrection();
     expect(within(dialog).getByText("FA/HO01/IT/LAP/CK_1")).toBeInTheDocument();
     expect(within(dialog).getByText(/asset code will not change/i)).toBeInTheDocument();
     await waitFor(() => expect(within(dialog).getByRole("combobox", { name: "Category" })).toHaveTextContent("IT Equipment"));
@@ -621,8 +642,7 @@ describe("AssetDetail -- AM-07 asset correction", () => {
 
   it("ordinary Edit mode never shows Category/Subcategory/Purchase Date controls", async () => {
     mockGets();
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    await openPage();
     fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
     expect(screen.queryByLabelText("Category")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Sub-category")).not.toBeInTheDocument();
@@ -631,10 +651,8 @@ describe("AssetDetail -- AM-07 asset correction", () => {
 
   it("Category change updates the Sub-Category options and clears an invalid old selection", async () => {
     mockGets();
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
-    fireEvent.click(screen.getByRole("button", { name: /correct classification/i }));
-    await screen.findByRole("dialog", { name: /correct classification/i });
+    await openPage();
+    await openCorrection();
 
     await pickSelectOption("Category", "Furniture");
     const subcategoryTrigger = screen.getByRole("combobox", { name: "Sub-category" });
@@ -647,10 +665,8 @@ describe("AssetDetail -- AM-07 asset correction", () => {
 
   it("requires a reason and at least one real change before Confirm is enabled", async () => {
     mockGets();
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
-    fireEvent.click(screen.getByRole("button", { name: /correct classification/i }));
-    await screen.findByRole("dialog", { name: /correct classification/i });
+    await openPage();
+    await openCorrection();
 
     const confirm = screen.getByRole("button", { name: /confirm correction/i });
     expect(confirm).toBeDisabled(); // no change yet, no reason yet
@@ -665,10 +681,8 @@ describe("AssetDetail -- AM-07 asset correction", () => {
 
   it("shows an impact summary naming the old/new values and that Asset Code is unchanged", async () => {
     mockGets();
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
-    fireEvent.click(screen.getByRole("button", { name: /correct classification/i }));
-    await screen.findByRole("dialog", { name: /correct classification/i });
+    await openPage();
+    await openCorrection();
 
     await pickSelectOption("Category", "Furniture");
     await pickSelectOption("Sub-category", "Chair");
@@ -682,10 +696,8 @@ describe("AssetDetail -- AM-07 asset correction", () => {
   it("submits only the changed fields, refreshes Asset 360, and closes the dialog on success", async () => {
     mockGets();
     (apiClient.post as any).mockResolvedValue({ ...FULL_ASSET, category_id: 4, subcategory_id: 8, category_name: "Furniture", subcategory_name: "Chair" });
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
-    fireEvent.click(screen.getByRole("button", { name: /correct classification/i }));
-    await screen.findByRole("dialog", { name: /correct classification/i });
+    await openPage();
+    await openCorrection();
 
     await pickSelectOption("Category", "Furniture");
     await pickSelectOption("Sub-category", "Chair");
@@ -699,18 +711,16 @@ describe("AssetDetail -- AM-07 asset correction", () => {
     expect((apiClient.post as any).mock.calls[0][1]).not.toHaveProperty("purchase_date");
 
     await waitFor(() => expect(screen.queryByRole("dialog", { name: /correct classification/i })).not.toBeInTheDocument());
-    clickTab("Overview");
-    const overviewPanel = await screen.findByRole("tabpanel", { name: "Overview" });
-    expect(within(overviewPanel).getByText("Furniture")).toBeInTheDocument();
+    clickTab("Advanced");
+    const panel = await screen.findByRole("tabpanel", { name: "Advanced" });
+    expect(within(panel).getByText("Furniture")).toBeInTheDocument();
   });
 
   it("shows a server validation error inside the dialog without closing it", async () => {
     mockGets();
     (apiClient.post as any).mockRejectedValue(new Error("purchase date cannot be after the asset's earliest recorded event (2025-06-01)"));
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
-    fireEvent.click(screen.getByRole("button", { name: /correct classification/i }));
-    await screen.findByRole("dialog", { name: /correct classification/i });
+    await openPage();
+    await openCorrection();
 
     fireEvent.change(screen.getByLabelText("Purchase Date"), { target: { value: "2025-06-10" } });
     fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "trying to move it later" } });
@@ -720,7 +730,7 @@ describe("AssetDetail -- AM-07 asset correction", () => {
     expect(screen.getByRole("dialog", { name: /correct classification/i })).toBeInTheDocument();
   });
 
-  it("the Changes tab shows a correction entry distinctly, with its reason", async () => {
+  it("Field changes shows a correction entry distinctly, with its reason", async () => {
     mockGets({
       changes: [
         {
@@ -735,11 +745,10 @@ describe("AssetDetail -- AM-07 asset correction", () => {
         },
       ],
     });
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    await openPage();
 
-    clickTab("Changes");
-    const panel = await screen.findByRole("tabpanel", { name: "Changes" });
+    clickTab("Field changes");
+    const panel = await screen.findByRole("tabpanel", { name: "Field changes" });
     expect(within(panel).getByText("Correction")).toBeInTheDocument();
     expect(within(panel).getByText("Wrong category selected initially")).toBeInTheDocument();
     expect(within(panel).getByText("CAT-1 - IT Equipment (#1)")).toBeInTheDocument();
@@ -759,8 +768,7 @@ describe("AssetDetail -- S3b-1 brand / vendor added in Edit", () => {
   }
 
   async function openEdit() {
-    renderWithClient(<AssetDetail assetId={1} />);
-    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    await openPage();
     fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
     await screen.findByLabelText(/^brand$/i);
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/auth/capabilities"));

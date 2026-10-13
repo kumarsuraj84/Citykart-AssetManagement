@@ -160,21 +160,20 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   expect(assetCodeA.length).toBeGreaterThan(0);
 
   // ---- Asset 360 for unit A: PO/Invoice/Purchase Date/Barcode/Serial/AssetUser ----
-  const overview = page.getByRole("tabpanel", { name: "Overview" });
-  await expect(overview.getByText(serialA, { exact: true })).toBeVisible();
-  await expect(overview.getByText(barcode, { exact: true })).toBeVisible();
+  // S5a: Asset 360 is a summary plus sections (no tabs to open for these facts).
+  const identity = page.getByRole("region", { name: "Identity" });
+  await expect(identity.getByText(serialA, { exact: true })).toBeVisible();
+  await expect(identity.getByText(barcode, { exact: true })).toBeVisible();
+  // AM-18: the line's Warranty Years was left at its default of 0, so Warranty Upto == Purchase Date.
+  await expect(identity.getByText(`0 years · until ${invoiceDate}`, { exact: true })).toBeVisible();
 
-  await page.getByRole("tab", { name: "Procurement", exact: true }).click();
-  const procurement = page.getByRole("tabpanel", { name: "Procurement" });
-  await expect(procurement.getByText(poNumber, { exact: true })).toBeVisible();
-  await expect(procurement.getByText(invoiceNumber, { exact: true })).toBeVisible();
-  // Invoice Date, Purchase Date, and Warranty Upto (AM-18: the line's Warranty
-  // Years was left at its default of 0, so Warranty Upto == Purchase Date too).
-  await expect(procurement.getByText(invoiceDate, { exact: true })).toHaveCount(3);
+  const procurement = page.getByRole("region", { name: "Procurement" });
+  await expect(procurement.getByText(poNumber)).toBeVisible();
+  await expect(procurement.getByText(`${invoiceNumber} · ${invoiceDate}`, { exact: true })).toBeVisible();
+  // Purchase Date (derived from the Invoice Date).
+  await expect(procurement.getByText(invoiceDate, { exact: true })).toHaveCount(1);
 
-  await page.getByRole("tab", { name: "Custody", exact: true }).click();
-  const custody = page.getByRole("tabpanel", { name: "Custody" });
-  await expect(custody.getByText(ctx.stock.name, { exact: true })).toBeVisible();
+  await expect(page.getByTestId("asset-summary").getByText(ctx.stock.name, { exact: true })).toBeVisible();
 
   // ---- Unit B: same checks, via its own unique Serial Number -- proves the
   // two units were not accidentally merged during delivery, and that the one
@@ -188,13 +187,11 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   expect(assetCodeB.length).toBeGreaterThan(0);
   expect(assetCodeB).not.toBe(assetCodeA);
 
-  const overviewB = page.getByRole("tabpanel", { name: "Overview" });
-  await expect(overviewB.getByText(serialB, { exact: true })).toBeVisible();
-  await expect(overviewB.getByText(barcode, { exact: true })).toBeVisible();
+  const identityB = page.getByRole("region", { name: "Identity" });
+  await expect(identityB.getByText(serialB, { exact: true })).toBeVisible();
+  await expect(identityB.getByText(barcode, { exact: true })).toBeVisible();
 
-  await page.getByRole("tab", { name: "Custody", exact: true }).click();
-  const custodyB = page.getByRole("tabpanel", { name: "Custody" });
-  await expect(custodyB.getByText(ctx.stock.name, { exact: true })).toBeVisible();
+  await expect(page.getByTestId("asset-summary").getByText(ctx.stock.name, { exact: true })).toBeVisible();
 
   // ---- Revisit the PO detail: the 3rd, undelivered unit is still PENDING --
   // and (AM-17 Part B) attempting to deliver it with a REAL duplicate Serial

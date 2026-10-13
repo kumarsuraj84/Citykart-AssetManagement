@@ -8,8 +8,8 @@ import { useAuthStore } from "../../lib/auth-store";
 
 vi.mock("../../lib/api-client");
 
-// Move / Dispatch: the Asset Movement screen with labels that print as each asset is scanned
-// for a move, and "add by Item" for assets that have no serial to scan.
+// Move, sending to a store: labels print as each asset is scanned, and "add by Item"
+// covers assets that have no serial to scan.
 
 const asset = (id: number, code: string, over: Record<string, unknown> = {}) => ({
   id, asset_code: code, serial_number: `SN-${id}`, serial_pending: false, description: "Dell Laptop", item_name: "Laptop",
@@ -23,6 +23,7 @@ const MICE = [10, 11, 12, 13, 14, 15, 16].map((i) => asset(i, `FA/IT/MSE/${i}`, 
 const USERS = [
   { id: 5, name: "WH Stock", asset_user_type: "STOCK_POINT" },
   { id: 6, name: "Store Hisar", asset_user_type: "STORE" },
+  { id: 7, name: "Ravi Kumar", asset_user_type: "EMPLOYEE" },
 ];
 const ITEMS = [{ id: 31, name: "Mouse", category_id: 1, subcategory_id: 2, serial_required: false, serial_later: false, bundle_id: null, default_brand_id: null, default_warranty_years: null, is_active: true, map_count: 0 }];
 
@@ -58,12 +59,20 @@ function scan(value: string) {
   fireEvent.keyDown(input, { key: "Enter" });
 }
 
-async function chooseDestination(name = "Store Hisar") {
-  fireEvent.click(screen.getByRole("combobox", { name: "Move To" }));
+function choose(name: string) {
+  fireEvent.click(screen.getByRole("radio", { name }));
+}
+
+async function chooseDestination(picker = "Store", name = "Store Hisar") {
+  fireEvent.click(screen.getByRole("combobox", { name: picker }));
   fireEvent.click(await screen.findByRole("option", { name }));
 }
 
-const applyButton = (n: number) => screen.getByRole("button", { name: new RegExp(`^apply .*to ${n} asset`, "i") });
+function openLabelSettings() {
+  fireEvent.click(screen.getByRole("button", { name: /label settings/i }));
+}
+
+const applyButton = (label: string, n: number) => screen.getByRole("button", { name: `${label} (${n} asset${n === 1 ? "" : "s"})` });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -77,10 +86,11 @@ beforeEach(() => {
 });
 afterEach(() => useAuthStore.getState().logout());
 
-describe("Move / Dispatch: labels print as assets are scanned for a move", () => {
+describe("Move: Send to Store prints labels as assets are scanned", () => {
   it("scanning a serial finds the asset and prints its label straight away", async () => {
     mockGets({ "SN-1": [LAPTOP] });
     await renderMovement();
+    choose("Send to Store");
     scan("SN-1");
     expect(await screen.findByText(/FA\/IT\/LAP\/1/)).toBeInTheDocument();
     await waitFor(() => expect(window.print).toHaveBeenCalledTimes(1));
@@ -99,6 +109,7 @@ describe("Move / Dispatch: labels print as assets are scanned for a move", () =>
   it("says so when nothing matches, and when the asset is already in this batch", async () => {
     mockGets({ "SN-1": [LAPTOP] });
     await renderMovement();
+    choose("Send to Store");
     scan("NOPE");
     expect(await screen.findByRole("alert")).toHaveTextContent('No asset found matching "NOPE"');
     scan("SN-1");
@@ -123,10 +134,11 @@ describe("Move / Dispatch: labels print as assets are scanned for a move", () =>
     expect(await screen.findByText(/FA\/IT\/LAP\/9/)).toBeInTheDocument();
   });
 
-  it("with 'print as I scan' off nothing prints until asked, and unprinted labels can be printed together", async () => {
+  it("with 'print labels as I scan' off nothing prints until asked, and unprinted labels can be printed together", async () => {
     mockGets({ "SN-1": [LAPTOP], "FA/AV/AMP/2": [AMP] });
     await renderMovement();
-    fireEvent.click(screen.getByRole("checkbox", { name: /print the label as i scan/i }));
+    choose("Send to Store");
+    fireEvent.click(screen.getByRole("checkbox", { name: /print labels as i scan/i }));
     scan("SN-1");
     await screen.findByText(/FA\/IT\/LAP\/1/);
     scan("FA/AV/AMP/2");
@@ -138,9 +150,18 @@ describe("Move / Dispatch: labels print as assets are scanned for a move", () =>
     await waitFor(() => expect(screen.getAllByText("Printed")).toHaveLength(2));
   });
 
+  it("the 'print as I scan' choice is remembered in this browser", async () => {
+    mockGets();
+    await renderMovement();
+    choose("Send to Store");
+    fireEvent.click(screen.getByRole("checkbox", { name: /print labels as i scan/i }));
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem("ckam.movement.prefs") ?? "{}")).toMatchObject({ autoPrint: false }));
+  });
+
   it("a label can be reprinted, and an asset taken out again", async () => {
     mockGets({ "SN-1": [LAPTOP] });
     await renderMovement();
+    choose("Send to Store");
     scan("SN-1");
     await screen.findByText(/FA\/IT\/LAP\/1/);
     await waitFor(() => expect(window.print).toHaveBeenCalledTimes(1));
@@ -151,38 +172,42 @@ describe("Move / Dispatch: labels print as assets are scanned for a move", () =>
     expect(screen.getByText(/Queued \(0\)/)).toBeInTheDocument();
   });
 
-  it("moves everything scanned to the store in one click", async () => {
+  it("sends everything scanned to the store in one click", async () => {
     mockGets({ "SN-1": [LAPTOP], "FA/AV/AMP/2": [AMP] });
     await renderMovement();
+    choose("Send to Store");
     scan("SN-1");
     await screen.findByText(/FA\/IT\/LAP\/1/);
     scan("FA/AV/AMP/2");
     await screen.findByText(/FA\/AV\/AMP\/2/);
 
-    expect(applyButton(2)).toBeDisabled();                                   // no destination chosen yet
+    expect(applyButton("Send to Store", 2)).toBeDisabled();                  // no store chosen yet
+    expect(screen.getByText("Choose the store.")).toBeInTheDocument();
     await chooseDestination();
-    expect(applyButton(2)).toBeEnabled();
+    expect(applyButton("Send to Store", 2)).toBeEnabled();
     (apiClient.post as any).mockResolvedValue({ done: 2, failed: [] });
-    fireEvent.click(applyButton(2));
+    fireEvent.click(applyButton("Send to Store", 2));
     await waitFor(() =>
-      expect(apiClient.post).toHaveBeenCalledWith("/assets/bulk-action", expect.objectContaining({
-        asset_ids: [1, 2], event_type: "MOVED", to_asset_user_id: 6,
-      })),
+      expect(apiClient.post).toHaveBeenCalledWith("/assets/bulk-action", {
+        asset_ids: [1, 2], event_type: "MOVED", to_asset_user_id: 6, remarks: null,
+      }),
     );
     expect(await screen.findByTestId("bulk-action-done-count")).toHaveTextContent("2");
+    expect(screen.getByTestId("move-result")).toHaveTextContent("2 assets sent to the store.");
   });
 
-  it("an asset that could not be moved stays in the queue with the reason", async () => {
+  it("an asset that could not be moved stays in the queue with the reason, named by its code", async () => {
     mockGets({ "SN-1": [LAPTOP], "FA/AV/AMP/2": [AMP] });
     await renderMovement();
+    choose("Send to Store");
     scan("SN-1");
     await screen.findByText(/FA\/IT\/LAP\/1/);
     scan("FA/AV/AMP/2");
     await screen.findByText(/FA\/AV\/AMP\/2/);
     await chooseDestination();
-    (apiClient.post as any).mockResolvedValue({ done: 1, failed: [{ asset_id: 2, reason: "asset is already scrapped" }] });
-    fireEvent.click(applyButton(2));
-    expect(await screen.findByText(/Asset #2: asset is already scrapped/)).toBeInTheDocument();
+    (apiClient.post as any).mockResolvedValue({ done: 1, failed: [{ asset_id: 2, reason: "This asset is scrapped, so it cannot be moved." }] });
+    fireEvent.click(applyButton("Send to Store", 2));
+    expect(await screen.findByText("FA/AV/AMP/2: This asset is scrapped, so it cannot be moved.")).toBeInTheDocument();
     expect(screen.getByText(/Queued \(1\)/)).toBeInTheDocument();
   });
 
@@ -191,6 +216,7 @@ describe("Move / Dispatch: labels print as assets are scanned for a move", () =>
     const labelsOnThePage: number[] = [];
     window.print = vi.fn(() => { labelsOnThePage.push(document.querySelectorAll(".print-labels-sheet .print-label").length); });
     await renderMovement();
+    choose("Send to Store");
     fireEvent.click(screen.getByRole("combobox", { name: "Item" }));
     fireEvent.click(await screen.findByRole("option", { name: "Mouse" }));
     fireEvent.click(screen.getByRole("combobox", { name: "Currently in stock at" }));
@@ -208,6 +234,7 @@ describe("Move / Dispatch: labels print as assets are scanned for a move", () =>
   it("asking for more than are in stock adds nothing and says how many there are", async () => {
     mockGets();
     await renderMovement();
+    choose("Send to Store");
     fireEvent.click(screen.getByRole("combobox", { name: "Item" }));
     fireEvent.click(await screen.findByRole("option", { name: "Mouse" }));
     fireEvent.click(screen.getByRole("combobox", { name: "Currently in stock at" }));
@@ -219,65 +246,86 @@ describe("Move / Dispatch: labels print as assets are scanned for a move", () =>
     expect(window.print).not.toHaveBeenCalled();
   });
 
-  it("with confirm-by-scanning on, the move waits until each label has been scanned back", async () => {
+  it("with confirm-by-scanning on (inside Label settings), the move waits until each label has been scanned back", async () => {
     mockGets({ "SN-1": [LAPTOP] });
     await renderMovement();
+    choose("Send to Store");
+    expect(screen.queryByRole("checkbox", { name: /confirm each label by scanning it/i })).not.toBeInTheDocument();
+    openLabelSettings();
     fireEvent.click(screen.getByRole("checkbox", { name: /confirm each label by scanning it/i }));
     scan("SN-1");
     await screen.findByText(/FA\/IT\/LAP\/1/);
     await waitFor(() => expect(screen.getByText("Printed: scan the label")).toBeInTheDocument());
     await chooseDestination();
-    expect(applyButton(1)).toBeDisabled();
+    expect(applyButton("Send to Store", 1)).toBeDisabled();
     expect(screen.getByText(/1 label is not confirmed yet/)).toBeInTheDocument();
 
     scan("FA/IT/LAP/1");                                                // scanning the stuck-on label ticks it off
     await waitFor(() => expect(screen.getByText("Confirmed")).toBeInTheDocument());
-    expect(applyButton(1)).toBeEnabled();
+    expect(applyButton("Send to Store", 1)).toBeEnabled();
     expect(apiClient.get).not.toHaveBeenCalledWith(expect.stringContaining("q=FA%2FIT%2FLAP%2F1"));   // no second search needed
   });
 
-  it("the label controls belong to a move: another action neither prints nor asks about labels", async () => {
+  it("the label controls belong to sending to a store: any other choice neither prints nor shows them", async () => {
     mockGets({ "SN-1": [LAPTOP] });
     await renderMovement();
-    expect(screen.getByRole("checkbox", { name: /print the label as i scan/i })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("combobox", { name: "Action" }));
-    fireEvent.click(await screen.findByRole("option", { name: "Send for Repair" }));
-    expect(screen.queryByRole("checkbox", { name: /print the label as i scan/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /print labels as i scan/i })).not.toBeInTheDocument();
+    choose("Send to Store");
+    expect(screen.getByRole("checkbox", { name: /print labels as i scan/i })).toBeInTheDocument();
+    for (const other of ["Give to Employee", "Return to Stock Room", "Install", "Send for Repair"]) {
+      choose(other);
+      expect(screen.queryByRole("checkbox", { name: /print labels as i scan/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /label settings/i })).not.toBeInTheDocument();
+    }
     scan("SN-1");
     await screen.findByText(/FA\/IT\/LAP\/1/);
     expect(window.print).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: /print label for/i })).not.toBeInTheDocument();
   });
-});
 
-async function chooseAction(name: string) {
-  fireEvent.click(screen.getByRole("combobox", { name: "Action" }));
-  fireEvent.click(await screen.findByRole("option", { name }));
-}
+  it("S5a: all label settings sit in one closed 'Label settings' disclosure that shows the current setup", async () => {
+    mockGets();
+    await renderMovement();
+    choose("Send to Store");
+    const toggle = screen.getByRole("button", { name: /label settings/i });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle).toHaveTextContent("Barcode + QR · 70 × 20 mm");          // the defaults
+    expect(screen.queryByRole("combobox", { name: "Label Contains" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Label Size" })).not.toBeInTheDocument();
+    openLabelSettings();
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("combobox", { name: "Label Contains" })).toHaveTextContent(/Barcode \+ QR/);
+    expect(screen.getByRole("combobox", { name: "Label Size" })).toHaveTextContent("70 × 20 mm");
+    expect(screen.getAllByTestId("label-settings")).toHaveLength(1);
+  });
+});
 
 describe("S0: the destination follows the server's rule", () => {
   it.each([
-    ["Move / Allot / Transfer", "Move To"],
-    ["Receive from Repair", "Received Into"],
-    ["Mark Found", "Received Into"],
-  ])("%s asks for a destination (%s) and will not apply without one", async (action, label) => {
-    mockGets({ "SN-1": [LAPTOP] });
+    ["Give to Employee", "Employee"],
+    ["Return to Stock Room", "Stock Room"],
+    ["Send to Store", "Store"],
+    ["Install", "Install Point"],
+    ["Receive from Repair", "Received into"],
+  ])("%s asks for a destination (%s) and will not apply without one", async (choice, label) => {
+    mockGets();
     await renderMovement();
-    await chooseAction(action);
+    choose(choice);
     expect(screen.getByRole("combobox", { name: label })).toBeInTheDocument();
   });
 
   it.each(["Send for Repair", "Report Lost", "Dispose", "Sell", "Scrap"])(
     "%s has no destination picker, and a destination chosen earlier is not sent",
-    async (action) => {
+    async (choice) => {
       mockGets({ "SN-1": [LAPTOP] });
       await renderMovement();
       scan("SN-1");
       await screen.findByText(/FA\/IT\/LAP\/1/);
-      await chooseDestination();                                    // chosen while the action was "Move"
-      await chooseAction(action);
-      expect(screen.queryByRole("combobox", { name: /move to|received into/i })).not.toBeInTheDocument();
-      fireEvent.click(applyButton(1));
+      choose("Send to Store");
+      await chooseDestination();                                    // chosen while the choice was "Send to Store"
+      choose(choice);
+      expect(screen.queryByRole("combobox", { name: /^(employee|store|stock room|install point|received into)$/i })).not.toBeInTheDocument();
+      fireEvent.click(applyButton(choice, 1));
       await waitFor(() => expect(apiClient.post).toHaveBeenCalled());
       expect((apiClient.post as any).mock.calls.at(-1)[1]).toMatchObject({ to_asset_user_id: null });
     },
@@ -288,10 +336,11 @@ describe("S0: the destination follows the server's rule", () => {
     await renderMovement();
     scan("SN-1");
     await screen.findByText(/FA\/IT\/LAP\/1/);
+    choose("Send to Store");
     await chooseDestination();
     (apiClient.post as any).mockResolvedValue({ done: 0, failed: [{ asset_id: 1, reason: "Store Hisar is no longer active, so assets cannot be sent there." }] });
-    fireEvent.click(applyButton(1));
-    expect(await screen.findByText(/Asset #1: Store Hisar is no longer active, so assets cannot be sent there\./)).toBeInTheDocument();
+    fireEvent.click(applyButton("Send to Store", 1));
+    expect(await screen.findByText("FA/IT/LAP/1: Store Hisar is no longer active, so assets cannot be sent there.")).toBeInTheDocument();
   });
 
   it("a whole-request refusal (422 sentence) is shown", async () => {
@@ -299,9 +348,10 @@ describe("S0: the destination follows the server's rule", () => {
     await renderMovement();
     scan("SN-1");
     await screen.findByText(/FA\/IT\/LAP\/1/);
+    choose("Send to Store");
     await chooseDestination();
     (apiClient.post as any).mockRejectedValue(new Error("You can choose at most 1,000 assets at a time."));
-    fireEvent.click(applyButton(1));
+    fireEvent.click(applyButton("Send to Store", 1));
     expect(await screen.findByRole("alert")).toHaveTextContent("You can choose at most 1,000 assets at a time.");
   });
 });
@@ -367,7 +417,7 @@ describe("S0: quantities are 1 to 1,000", () => {
       return Promise.resolve([]);
     });
     await renderMovement();
-    await chooseAction("Send for Repair");                          // no labels to print
+    choose("Send for Repair");                                       // no labels to print
     fireEvent.click(screen.getByRole("combobox", { name: "Item" }));
     fireEvent.click(await screen.findByRole("option", { name: "Mouse" }));
     fireEvent.click(screen.getByRole("combobox", { name: "Currently in stock at" }));
@@ -381,7 +431,7 @@ describe("S0: quantities are 1 to 1,000", () => {
   });
 });
 
-describe("Move / Dispatch is one screen", () => {
+describe("Move is one screen", () => {
   it("is a single menu entry, and the old Dispatch address goes to it", async () => {
     mockGets();
     const router = await renderMovement("/dispatch");
@@ -390,6 +440,6 @@ describe("Move / Dispatch is one screen", () => {
     expect(within(nav).getByRole("link", { name: "Move" })).toHaveAttribute("href", "/asset-movement");
     expect(within(nav).queryByRole("link", { name: "Dispatch" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("link", { name: "Asset Movement" })).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Move Assets" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Move" })).toBeInTheDocument();
   });
 });

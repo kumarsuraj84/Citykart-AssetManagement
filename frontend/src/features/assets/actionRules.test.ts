@@ -1,38 +1,86 @@
 import { describe, it, expect } from "vitest";
-import { actionsFor, targetLabelFor } from "./actionRules";
+import { MOVE_CHOICES, allowedEvents, choiceAvailability, choicesFor, isChoiceAllowed, moveChoice } from "./actionRules";
 
-describe("targetLabelFor", () => {
-  it("says Move To for a move and Received Into for a return from repair or a found asset", () => {
-    expect(targetLabelFor("MOVED")).toBe("Move To");
-    expect(targetLabelFor("RECEIVED_FROM_REPAIR")).toBe("Received Into");
-    expect(targetLabelFor("FOUND")).toBe("Received Into");
-  });
+const labels = (status: string, isAdmin = true) => choicesFor(status, { isAdmin }).map((c) => c.label);
 
-  it("every action that needs a person/place has a plain label (never 'Asset User')", () => {
-    for (const status of ["IN_STOCK", "ALLOTTED", "INSTALLED", "UNDER_REPAIR", "LOST"]) {
-      for (const a of actionsFor(status).filter((x) => x.needsAssetUser)) {
-        expect(targetLabelFor(a.eventType)).not.toMatch(/asset user|holder/i);
-      }
-    }
+describe("allowedEvents (mirror of the server's state machine)", () => {
+  it("lists what each status may do, and nothing for a final status", () => {
+    expect(allowedEvents("IN_STOCK")).toEqual(["MOVED", "SENT_FOR_REPAIR", "DISPOSED", "SOLD", "SCRAPPED", "LOST"]);
+    expect(allowedEvents("UNDER_REPAIR")).toEqual(["RECEIVED_FROM_REPAIR", "SCRAPPED"]);
+    expect(allowedEvents("LOST")).toEqual(["FOUND"]);
+    for (const s of ["DISPOSED", "SOLD", "SCRAPPED", "SOMETHING_NEW", ""]) expect(allowedEvents(s)).toEqual([]);
   });
 });
 
-describe("actionsFor", () => {
-  it("offers Allot/Transfer, Send for Repair and Lost from IN_STOCK", () => {
-    const labels = actionsFor("IN_STOCK").map((a) => a.label);
-    expect(labels).toContain("Move / Allot");
-    expect(labels).toContain("Send for Repair");
-    expect(labels).toContain("Dispose");
-    expect(labels).not.toContain("Receive from Repair");
+describe("the plain-word choices", () => {
+  it("are the eleven the owner asked for, each mapped to an existing event and destination kind", () => {
+    expect(MOVE_CHOICES.map((c) => [c.label, c.eventType, c.destination])).toEqual([
+      ["Give to Employee", "MOVED", "EMPLOYEE"],
+      ["Return to Stock Room", "MOVED", "STOCK_POINT"],
+      ["Send to Store", "MOVED", "STORE"],
+      ["Install", "MOVED", "INSTALLED"],
+      ["Send for Repair", "SENT_FOR_REPAIR", null],
+      ["Receive from Repair", "RECEIVED_FROM_REPAIR", "ANY"],
+      ["Report Lost", "LOST", null],
+      ["Mark Found", "FOUND", "STOCK_POINT"],
+      ["Sell", "SOLD", null],
+      ["Scrap", "SCRAPPED", null],
+      ["Dispose", "DISPOSED", null],
+    ]);
   });
 
-  it("offers only Receive from Repair and Scrap from UNDER_REPAIR", () => {
-    const labels = actionsFor("UNDER_REPAIR").map((a) => a.label);
-    expect(labels).toEqual(expect.arrayContaining(["Receive from Repair", "Scrap"]));
-    expect(labels).not.toContain("Dispose");
+  it("never use a raw code, 'Holder' or 'Asset User' in what people read", () => {
+    for (const c of MOVE_CHOICES) {
+      for (const text of [c.label, c.destinationLabel ?? "", c.doneWord]) {
+        expect(text).not.toMatch(/[A-Z]{2,}_|holder|asset user/i);
+      }
+    }
   });
 
-  it("offers nothing from a terminal status", () => {
-    expect(actionsFor("DISPOSED")).toEqual([]);
+  it("an asset in stock can go anywhere, be repaired, reported lost or leave; not 'receive from repair'", () => {
+    expect(labels("IN_STOCK")).toEqual([
+      "Give to Employee", "Return to Stock Room", "Send to Store", "Install", "Send for Repair", "Report Lost", "Sell", "Scrap", "Dispose",
+    ]);
+  });
+
+  it("an asset with someone can be moved on, repaired or reported lost -- not sold or scrapped", () => {
+    expect(labels("ALLOTTED")).toEqual(["Give to Employee", "Return to Stock Room", "Send to Store", "Install", "Send for Repair", "Report Lost"]);
+    expect(labels("INSTALLED")).toEqual(labels("ALLOTTED"));
+  });
+
+  it("under repair: receive back or scrap; lost: mark found (admin only); final: nothing", () => {
+    expect(labels("UNDER_REPAIR")).toEqual(["Receive from Repair", "Scrap"]);
+    expect(labels("LOST", true)).toEqual(["Mark Found"]);
+    expect(labels("LOST", false)).toEqual([]);
+    expect(labels("SOLD")).toEqual([]);
+  });
+
+  it("moveChoice finds a choice by its URL key", () => {
+    expect(moveChoice("store")?.label).toBe("Send to Store");
+    expect(moveChoice("nope")).toBeUndefined();
+    expect(moveChoice(undefined)).toBeUndefined();
+    expect(isChoiceAllowed(moveChoice("from-repair")!, "UNDER_REPAIR")).toBe(true);
+  });
+});
+
+describe("choiceAvailability (a batch)", () => {
+  const on = (statuses: string[], isAdmin = false) =>
+    choiceAvailability(statuses, { isAdmin }).filter((s) => s.enabled).map((s) => s.choice.key);
+
+  it("an empty batch: everything except the admin-only choice is on", () => {
+    expect(on([])).toEqual(MOVE_CHOICES.filter((c) => !c.adminOnly).map((c) => c.key));
+    expect(on([], true)).toEqual(MOVE_CHOICES.map((c) => c.key));
+  });
+
+  it("a mixed batch: only what is possible for every asset", () => {
+    expect(on(["IN_STOCK", "ALLOTTED"])).toEqual(["employee", "stock-room", "store", "install", "repair", "lost"]);
+    expect(on(["IN_STOCK", "UNDER_REPAIR"])).toEqual(["scrap"]);
+    expect(on(["ALLOTTED", "UNDER_REPAIR"])).toEqual([]);
+  });
+
+  it("says why a choice is off", () => {
+    const states = choiceAvailability(["UNDER_REPAIR"], { isAdmin: false });
+    expect(states.find((s) => s.choice.key === "found")?.reason).toMatch(/only an admin/i);
+    expect(states.find((s) => s.choice.key === "store")?.reason).toMatch(/not possible for every asset/i);
   });
 });

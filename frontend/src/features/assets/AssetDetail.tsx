@@ -1,23 +1,25 @@
-﻿import { useEffect, useMemo, useState, type ReactNode } from "react";
+﻿import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, MoreHorizontal } from "lucide-react";
 import { apiClient, ApiError } from "../../lib/api-client";
 import { authFetch } from "../../lib/auth-fetch";
 import { useAuthStore } from "../../lib/auth-store";
 import { computeWarrantyUpto } from "../../lib/warranty";
-import { actionsFor, targetLabelFor, type ActionDef } from "./actionRules";
+import { choicesFor, type MoveChoice } from "./actionRules";
 import { fieldLabel, humanizeCode, placeTypeLabel, workAreaLabel } from "../../lib/labels";
-import { brandOptions, categoryOptions, nameOptions, placeOptions, vendorOptions } from "../../lib/option-labels";
-import { usePlaceLookups } from "../../lib/lookups";
+import { brandOptions, categoryOptions, nameOptions, vendorOptions } from "../../lib/option-labels";
 import { canCreate as may, useCapabilities } from "../../lib/capabilities";
 import { NewBrandDialog, NewVendorDialog } from "@/components/quick-create/masters";
 import { Timeline, type AssetEvent } from "./Timeline";
 import { DocumentsTab } from "./DocumentsTab";
+import { PrintLabelsAction } from "../labels/PrintLabelsAction";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -26,6 +28,14 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
@@ -90,6 +100,7 @@ interface Asset {
   current_asset_user_type: string | null;
   location_name: string | null;
   department_name: string | null;
+  company_name?: string | null;
 }
 
 interface CustomFieldDef {
@@ -120,17 +131,6 @@ interface FieldChange {
   reason: string | null;
 }
 
-// A person or place an asset can be moved to (backend: an asset user).
-interface AssetUserOption {
-  id: number;
-  code?: string | null;
-  email?: string | null;
-  name: string;
-  asset_user_type?: string | null;
-  company_id?: number | null;
-  location_id?: number | null;
-}
-
 interface MasterOption {
   id: number;
   name: string;
@@ -140,20 +140,6 @@ interface MasterOption {
 interface VendorOption extends MasterOption {
   gstin?: string | null;
 }
-
-interface ActionFormState {
-  assetUserId: string;
-  eventDate: string;
-  referenceNo: string;
-  remarks: string;
-}
-
-const emptyActionForm: ActionFormState = {
-  assetUserId: "",
-  eventDate: new Date().toISOString().slice(0, 10),
-  referenceNo: "",
-  remarks: "",
-};
 
 interface EditFormState {
   legacyAssetCode: string;
@@ -226,6 +212,34 @@ function ReadField({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
+/** One titled block of Asset 360 (a named region, so it can be found by its title). */
+function Section({ title, children, className }: { title: string; children: ReactNode; className?: string }) {
+  const id = useId();
+  return (
+    <section aria-labelledby={id} className={`flex flex-col gap-3 rounded-md border p-3 ${className ?? ""}`}>
+      <h2 id={id} className="text-sm font-semibold">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+const money = (v: number | null | undefined) => (v != null ? v.toFixed(2) : null);
+/** "PO-1 · 2025-05-20": a number and its date as one fact. */
+const withDate = (num: string | null, date: string | null) => [num, date].filter(Boolean).join(" · ") || null;
+
+/** The serial in plain words: the serial, "Pending: still to be added", or "None (N/A)". */
+function serialValue(asset: { serial_number: string | null; serial_pending?: boolean }): ReactNode {
+  if (asset.serial_pending) return <span className="text-warning-foreground">Pending: still to be added</span>;
+  if (asset.serial_number && asset.serial_number.trim().toUpperCase() === "N/A") return "None (N/A)";
+  return asset.serial_number;
+}
+
+function warrantyValue(years: number | null, upto: string | null): string | null {
+  if (years == null && !upto) return null;
+  const y = years != null ? `${years} year${years === 1 ? "" : "s"}` : null;
+  return [y, upto ? `until ${upto}` : null].filter(Boolean).join(" · ");
+}
+
 /** The Changes tab's columns; custom fields show the label the admin gave them. */
 function changeColumns(customFieldLabels: Record<string, string>): DataTableColumn<FieldChange>[] {
   return [
@@ -250,14 +264,25 @@ function changeColumns(customFieldLabels: Record<string, string>): DataTableColu
   ];
 }
 
+/** "← Assets": back to the register. */
+function BackToAssets() {
+  return (
+    <nav aria-label="Breadcrumb">
+      <Link to="/assets" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+        <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+        Assets
+      </Link>
+    </nav>
+  );
+}
+
 export function AssetDetail({ assetId }: { assetId: number }) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const role = useAuthStore((s) => s.role);
-  // Edit, Correct and every lifecycle action are for ADMIN/OPERATOR only
-  // (VIEWER and SELF_SERVICE just look). The server re-checks every write.
+  // Print, Move, Edit, Correct and every lifecycle choice are for ADMIN/OPERATOR
+  // only (VIEWER and SELF_SERVICE just look). The server re-checks every write.
   const canEdit = role === "ADMIN" || role === "OPERATOR";
-  const [activeAction, setActiveAction] = useState<ActionDef | null>(null);
-  const [form, setForm] = useState<ActionFormState>(emptyActionForm);
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState<EditFormState | null>(null);
@@ -297,14 +322,6 @@ export function AssetDetail({ assetId }: { assetId: number }) {
     queryFn: () => apiClient.get<FieldChange[]>(`/assets/${assetId}/changes`),
     enabled: !!asset,
   });
-  const { data: asset_users = [] } = useQuery({
-    queryKey: ["asset_users", asset?.company_id],
-    queryFn: () => apiClient.get<AssetUserOption[]>(`/asset-users?company_id=${asset!.company_id}`),
-    // Only the action dialog (ADMIN/OPERATOR) needs the list of people/places.
-    enabled: asset?.company_id != null && canEdit,
-  });
-  // Place names for the Move To / Received Into picker ("CS6872 · Ankur · Head Office").
-  const placeLookups = usePlaceLookups(activeAction !== null);
   const { data: vendors = [] } = useQuery({
     queryKey: ["masters", "vendors"],
     queryFn: () => apiClient.get<VendorOption[]>("/masters/vendors"),
@@ -350,38 +367,11 @@ export function AssetDetail({ assetId }: { assetId: number }) {
   }, [customFieldDefsRaw]);
   const changeCols = useMemo(() => changeColumns(customFieldLabelsByKey), [customFieldLabelsByKey]);
 
-  function setField<K extends keyof ActionFormState>(key: K, value: ActionFormState[K]) {
-    setForm((f) => ({ ...f, [key]: value }));
+  // Every lifecycle choice happens on the one Move screen, opened with this asset
+  // already in the batch (and the choice already made, when one was picked here).
+  function openMove(choice?: MoveChoice) {
+    navigate({ to: "/asset-movement", search: { ids: String(assetId), ...(choice ? { choice: choice.key } : {}) } });
   }
-
-  function openAction(action: ActionDef) {
-    actMutation.reset(); // a refusal shown for the last attempt must not greet the next one
-    setForm(emptyActionForm);
-    setActiveAction(action);
-  }
-
-  function closeAction() {
-    setActiveAction(null);
-    setForm(emptyActionForm);
-  }
-
-  const actMutation = useMutation({
-    mutationFn: () =>
-      apiClient.post(`/assets/${assetId}/events`, {
-        event_type: activeAction!.eventType,
-        to_asset_user_id: activeAction!.needsAssetUser && form.assetUserId ? Number(form.assetUserId) : null,
-        event_date: form.eventDate ? new Date(form.eventDate).toISOString() : undefined,
-        reference_no: form.referenceNo || null,
-        remarks: form.remarks || null,
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["assets", assetId] });
-      qc.invalidateQueries({ queryKey: ["assets", assetId, "events"] });
-      closeAction();
-    },
-  });
-
-  const canConfirm = !activeAction?.needsAssetUser || form.assetUserId !== "";
 
   function startEdit() {
     if (!asset) return;
@@ -552,6 +542,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
   if (assetQ.isError && assetQ.error instanceof ApiError && assetQ.error.status === 404) {
     return (
       <div className="flex flex-col gap-4">
+        <BackToAssets />
         <PageHeader title="Asset" />
         <EmptyState title="Asset not found." description="It may have been removed, or you may not have access to it." />
       </div>
@@ -561,6 +552,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
   if (assetQ.isError) {
     return (
       <div className="flex flex-col gap-4">
+        <BackToAssets />
         <PageHeader title="Asset" />
         <ErrorState message="Couldn't load this asset." onRetry={() => assetQ.refetch()} />
       </div>
@@ -570,6 +562,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
   if (assetQ.isLoading || !asset) {
     return (
       <div className="flex flex-col gap-4">
+        <BackToAssets />
         <PageHeader title="Asset" />
         <div className="flex flex-col gap-2">
           <Skeleton className="h-6 w-64" />
@@ -580,42 +573,76 @@ export function AssetDetail({ assetId }: { assetId: number }) {
     );
   }
 
-  const actions = actionsFor(asset.status);
+  // The same rule the Move screen uses to decide what an asset can do next.
+  const choices = choicesFor(asset.status, { isAdmin: role === "ADMIN" });
+  const customFieldEntries = Object.entries(asset.custom_fields ?? {});
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader
-        title={asset.asset_code}
-        description={asset.description}
-        actions={
-          <>
-            <StatusBadge status={asset.status} holderType={asset.current_asset_user_type} />
-            {qrUrl && <img src={qrUrl} alt="Asset QR code" width={64} height={64} />}
-            <Button variant="outline" size="sm" onClick={() => window.print()}>Print Label</Button>
-            {canEdit && !editing && (
-              <>
-                <Button variant="outline" size="sm" onClick={openCorrection}>Correct Classification</Button>
-                <Button variant="secondary" size="sm" onClick={startEdit}>Edit</Button>
-              </>
-            )}
-          </>
-        }
-      >
-        <p className="text-sm text-muted-foreground">
-          With <span className="font-medium text-foreground">{asset.current_asset_user_name ?? "—"}</span>
-          {asset.current_asset_user_type && ` (${placeTypeLabel(asset.current_asset_user_type)})`}
-          {asset.location_name && <> · {asset.location_name}</>}
-        </p>
-        {!editing && canEdit && actions.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {actions.map((a) => (
-              <Button key={a.eventType + a.label} variant="secondary" size="sm" onClick={() => openAction(a)}>
-                {a.label}
-              </Button>
-            ))}
+      <BackToAssets />
+
+      {/* Summary: what it is, where it is, whose it is -- and what can be done with it. */}
+      <div className="flex flex-col gap-3 rounded-md border bg-muted/30 p-3" data-testid="asset-summary">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            {qrUrl && <img src={qrUrl} alt="Asset QR code" width={56} height={56} className="shrink-0 rounded-sm border bg-white" />}
+            <div className="flex flex-col gap-1">
+              <h1 className="font-mono text-xl font-semibold text-foreground">{asset.asset_code}</h1>
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusBadge status={asset.status} holderType={asset.current_asset_user_type} />
+                {asset.asset_domain && (
+                  <Badge variant="outline" className="font-normal" title="Work area" data-testid="work-area-chip">
+                    <span className="sr-only">Work area: </span>
+                    <span>{workAreaLabel(asset.asset_domain)}</span>
+                  </Badge>
+                )}
+              </div>
+            </div>
           </div>
-        )}
-      </PageHeader>
+          {canEdit && !editing && (
+            <div className="flex flex-wrap items-center gap-2">
+              {choices.length > 0 && (
+                <Button size="sm" onClick={() => openMove()}>Move…</Button>
+              )}
+              <PrintLabelsAction assets={[asset]}>Print Label</PrintLabelsAction>
+              <Button variant="secondary" size="sm" onClick={startEdit}>Edit</Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" aria-label="More actions">
+                    <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {choices.length > 0 && (
+                    <>
+                      <DropdownMenuLabel>Move or change status</DropdownMenuLabel>
+                      {choices.map((c) => (
+                        <DropdownMenuItem key={c.key} onSelect={() => openMove(c)}>{c.label}</DropdownMenuItem>
+                      ))}
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+                  <DropdownMenuItem onSelect={openCorrection}>Correct Classification</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
+        </div>
+        <dl className="grid gap-3 sm:grid-cols-3">
+          <ReadField label="Item" value={asset.item_name} />
+          <ReadField
+            label="With"
+            value={
+              <>
+                <span className="font-medium">{asset.current_asset_user_name ?? "—"}</span>
+                {asset.current_asset_user_type && ` (${placeTypeLabel(asset.current_asset_user_type)})`}
+                {asset.location_name && <span className="text-muted-foreground"> · {asset.location_name}</span>}
+              </>
+            }
+          />
+          <ReadField label="Company" value={asset.company_name} />
+        </dl>
+      </div>
 
       {editing && editForm ? (
         <div className="flex flex-col gap-4 rounded-md border p-4">
@@ -775,179 +802,101 @@ export function AssetDetail({ assetId }: { assetId: number }) {
           </div>
         </div>
       ) : (
-        <Tabs defaultValue="overview">
-          {/* 7 tabs don't fit an inline-flex TabsList at narrow widths without
-              this -- without its own scroll container the list pushed the
-              whole page wider instead of scrolling itself (found in AM-04's
-              768px browser check). */}
-          <div className="overflow-x-auto">
-            <TabsList>
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="procurement">Procurement</TabsTrigger>
-              <TabsTrigger value="custody">Custody</TabsTrigger>
-              <TabsTrigger value="custom-fields">Custom Fields</TabsTrigger>
-              <TabsTrigger value="history">History</TabsTrigger>
-              <TabsTrigger value="changes">Changes</TabsTrigger>
-              <TabsTrigger value="documents">Documents</TabsTrigger>
-            </TabsList>
-          </div>
-
-          <TabsContent value="overview" className="pt-4">
-            <dl className="grid gap-4 lg:grid-cols-2">
-              <ReadField label="Asset Code" value={<span className="font-mono">{asset.asset_code}</span>} />
-              <ReadField label="Legacy Asset Code" value={asset.legacy_asset_code} />
-              <ReadField label="Description" value={asset.description} />
-              <ReadField label="Item" value={asset.item_name} />
-              <ReadField label="Category" value={asset.category_name} />
-              <ReadField label="Sub-category" value={asset.subcategory_name} />
-              <ReadField label="Brand" value={asset.brand_name} />
-              <ReadField label="Model" value={asset.model} />
-              <ReadField
-                label="Serial Number"
-                value={asset.serial_pending ? <span className="text-warning-foreground">Pending: still to be added</span> : asset.serial_number}
-              />
-              <ReadField label="Barcode" value={asset.barcode} />
-            </dl>
-          </TabsContent>
-
-          <TabsContent value="procurement" className="pt-4">
-            <dl className="grid gap-4 lg:grid-cols-2">
-              <ReadField label="Vendor" value={asset.vendor_name} />
-              <ReadField label="ERP Item Code" value={asset.erp_item_code ? <span className="font-mono">{asset.erp_item_code}</span> : null} />
-              <ReadField label="PO Number" value={asset.po_number} />
-              <ReadField label="PO Date" value={asset.po_date} />
-              <ReadField label="Invoice Number" value={asset.invoice_number} />
-              <ReadField label="Invoice Date" value={asset.invoice_date} />
-              <ReadField label="Invoice Amount" value={asset.invoice_amount != null ? asset.invoice_amount.toFixed(2) : null} />
-              <ReadField label="Purchase Invoice (PI) Number" value={asset.pi_number} />
-              <ReadField label="PI Date" value={asset.pi_date} />
-              <ReadField label="Purchase Date" value={asset.purchase_date} />
-              <ReadField label="Purchase Cost" value={asset.purchase_cost != null ? asset.purchase_cost.toFixed(2) : null} />
-              <ReadField label="Tax %" value={asset.tax_percent != null ? asset.tax_percent.toFixed(2) : null} />
-              <ReadField label="Tax Amount" value={asset.tax_amount != null ? asset.tax_amount.toFixed(2) : null} />
-              <ReadField label="Total Cost" value={asset.total_cost != null ? asset.total_cost.toFixed(2) : null} />
-              <ReadField label="Warranty Years" value={asset.warranty_years != null ? String(asset.warranty_years) : null} />
-              <ReadField label="Warranty Upto" value={asset.warranty_upto} />
-            </dl>
-          </TabsContent>
-
-          <TabsContent value="custody" className="pt-4">
-            <dl className="grid gap-4 lg:grid-cols-2">
-              <ReadField label="Work area" value={workAreaLabel(asset.asset_domain)} />
-              <ReadField label="Currently With" value={asset.current_asset_user_name} />
-              <ReadField label="Type" value={placeTypeLabel(asset.current_asset_user_type)} />
-              <ReadField label="Place" value={asset.location_name} />
-              <ReadField label="Department" value={asset.department_name} />
-              <ReadField label="Cost Centre" value={asset.cost_center_name} />
-              <ReadField label="Status" value={<StatusBadge status={asset.status} holderType={asset.current_asset_user_type} />} />
-              <ReadField label="Status Since" value={asset.status_since} />
-            </dl>
-          </TabsContent>
-
-          <TabsContent value="custom-fields" className="pt-4">
-            {Object.keys(asset.custom_fields).length === 0 ? (
-              <EmptyState title="No custom field values recorded for this asset." />
-            ) : (
-              <dl className="grid gap-4 lg:grid-cols-2">
-                {Object.entries(asset.custom_fields).map(([key, value]) => {
-                  const def = activeDefsByKey.get(key);
-                  const label = def?.label ?? `${customFieldLabelsByKey[key] ?? humanizeCode(key)} (retired field)`;
-                  const display = typeof value === "boolean" ? (value ? "Yes" : "No") : String(value ?? "—");
-                  return <ReadField key={key} label={label} value={display} />;
-                })}
+        <>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Section title="Identity">
+              <dl className="grid gap-3 sm:grid-cols-2">
+                <ReadField label="Serial Number" value={serialValue(asset)} />
+                <ReadField label="Barcode" value={asset.barcode} />
+                <ReadField label="ERP Item Code" value={asset.erp_item_code ? <span className="font-mono">{asset.erp_item_code}</span> : null} />
+                <ReadField label="Brand" value={asset.brand_name} />
+                <ReadField label="Model" value={asset.model} />
+                <ReadField label="Warranty" value={warrantyValue(asset.warranty_years, asset.warranty_upto)} />
+                <div className="sm:col-span-2">
+                  <ReadField label="Description" value={asset.description} />
+                </div>
               </dl>
-            )}
-          </TabsContent>
+            </Section>
 
-          <TabsContent value="history" className="pt-4">
-            <Timeline events={events} />
-          </TabsContent>
-
-          <TabsContent value="changes" className="pt-4">
-            <DataTable
-              columns={changeCols}
-              rows={changes}
-              rowKey={(c) => c.id}
-              emptyState={<EmptyState title="No descriptive/procurement edits yet." description="Lifecycle moves and other custody changes are shown under History, not here." />}
-            />
-          </TabsContent>
-
-          <TabsContent value="documents" className="pt-4">
-            <DocumentsTab assetId={assetId} />
-          </TabsContent>
-        </Tabs>
-      )}
-
-      <Dialog open={activeAction !== null} onOpenChange={(open) => !open && closeAction()}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{activeAction?.label}</DialogTitle>
-          </DialogHeader>
-
-          <div className="flex flex-col gap-4">
-            {activeAction?.needsAssetUser && (
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="asset-user-select">{targetLabelFor(activeAction.eventType)}</Label>
-                <SearchableSelect
-                  id="asset-user-select"
-                  aria-label={targetLabelFor(activeAction.eventType)}
-                  value={form.assetUserId || undefined}
-                  onValueChange={(v) => setField("assetUserId", v)}
-                  options={placeOptions(asset_users, placeLookups)}
-                  placeholder="Pick an employee, store or stock room…"
-                  searchPlaceholder="Search by name or code…"
+            <Section title="Procurement">
+              <dl className="grid gap-3 sm:grid-cols-2">
+                <ReadField label="Vendor" value={asset.vendor_name} />
+                <ReadField label="PO" value={withDate(asset.po_number, asset.po_date)} />
+                <ReadField label="Invoice" value={withDate(asset.invoice_number, asset.invoice_date)} />
+                <ReadField label="Invoice Amount" value={money(asset.invoice_amount)} />
+                <ReadField label="Purchase Invoice (PI)" value={withDate(asset.pi_number, asset.pi_date)} />
+                <ReadField label="Purchase Date" value={asset.purchase_date} />
+                <ReadField label="Cost" value={money(asset.purchase_cost)} />
+                <ReadField
+                  label="Tax"
+                  value={asset.tax_percent != null || asset.tax_amount != null
+                    ? [asset.tax_percent != null ? `${asset.tax_percent.toFixed(2)}%` : null, money(asset.tax_amount)].filter(Boolean).join(" · ")
+                    : null}
                 />
-              </div>
-            )}
-
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="event-date">Date</Label>
-              <Input
-                id="event-date"
-                aria-label="Date"
-                type="date"
-                value={form.eventDate}
-                onChange={(e) => setField("eventDate", e.target.value)}
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="reference-no">Reference No</Label>
-              <Input
-                id="reference-no"
-                aria-label="Reference No"
-                value={form.referenceNo}
-                onChange={(e) => setField("referenceNo", e.target.value)}
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="remarks">Remarks</Label>
-              <Textarea
-                id="remarks"
-                aria-label="Remarks"
-                value={form.remarks}
-                onChange={(e) => setField("remarks", e.target.value)}
-              />
-            </div>
-
-            {actMutation.isError && (
-              <p className="text-sm text-destructive" role="alert">
-                {actMutation.error instanceof Error ? actMutation.error.message : "Failed to record event."}
-              </p>
-            )}
+                <ReadField label="Total" value={money(asset.total_cost)} />
+                <ReadField label="Cost Centre" value={asset.cost_center_name} />
+              </dl>
+            </Section>
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={closeAction}>
-              Cancel
-            </Button>
-            <AsyncButton onClick={() => actMutation.mutate()} disabled={!canConfirm} pending={actMutation.isPending} pendingLabel="Saving…">
-              Confirm
-            </AsyncButton>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          <Section title="Where it is & history">
+            <dl className="grid gap-3 sm:grid-cols-3">
+              <ReadField label="Status and place since" value={asset.status_since} />
+              <ReadField label="Department" value={asset.department_name} />
+            </dl>
+            <Timeline events={events} />
+          </Section>
+
+          <Section title="More">
+            <Tabs defaultValue="documents">
+              <div className="overflow-x-auto">
+                <TabsList>
+                  <TabsTrigger value="documents">Documents</TabsTrigger>
+                  <TabsTrigger value="changes">Field changes</TabsTrigger>
+                  <TabsTrigger value="custom-fields">Custom fields</TabsTrigger>
+                  <TabsTrigger value="advanced">Advanced</TabsTrigger>
+                </TabsList>
+              </div>
+
+              <TabsContent value="documents" className="pt-3">
+                <DocumentsTab assetId={assetId} />
+              </TabsContent>
+
+              <TabsContent value="changes" className="pt-3">
+                <DataTable
+                  columns={changeCols}
+                  rows={changes}
+                  rowKey={(c) => c.id}
+                  emptyState={<EmptyState title="No edits yet." description="Moves and status changes are shown under Where it is & history, not here." />}
+                />
+              </TabsContent>
+
+              <TabsContent value="custom-fields" className="pt-3">
+                {customFieldEntries.length === 0 ? (
+                  <EmptyState title="No custom field values recorded for this asset." />
+                ) : (
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    {customFieldEntries.map(([key, value]) => {
+                      const def = activeDefsByKey.get(key);
+                      const label = def?.label ?? `${customFieldLabelsByKey[key] ?? humanizeCode(key)} (retired field)`;
+                      const display = typeof value === "boolean" ? (value ? "Yes" : "No") : String(value ?? "—");
+                      return <ReadField key={key} label={label} value={display} />;
+                    })}
+                  </dl>
+                )}
+              </TabsContent>
+
+              <TabsContent value="advanced" className="pt-3">
+                <dl className="grid gap-3 sm:grid-cols-2">
+                  <ReadField label="Legacy Asset Code" value={asset.legacy_asset_code} />
+                  <ReadField label="Category" value={asset.category_name} />
+                  <ReadField label="Sub-category" value={asset.subcategory_name} />
+                </dl>
+              </TabsContent>
+            </Tabs>
+          </Section>
+        </>
+      )}
 
       {/*
         AM-07: a deliberately separate dialog from ordinary Edit mode above

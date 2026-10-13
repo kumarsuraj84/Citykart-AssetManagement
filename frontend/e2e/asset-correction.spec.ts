@@ -89,13 +89,15 @@ test("asset correction journey: correct classification and purchase date, Asset 
   await page.goto(`/assets/${asset.id}`);
   await expect(page.getByRole("heading", { name: asset.asset_code })).toBeVisible();
 
-  // History before correcting: exactly the initial PROCURED event.
-  await page.getByRole("tab", { name: "History", exact: true }).click();
-  await expect(page.getByText("Procured into", { exact: false })).toBeVisible();
-  const historyItemsBefore = await page.locator("ol > li").count();
+  // History before correcting: exactly the initial PROCURED event (always shown on Asset 360).
+  const history = page.getByRole("region", { name: "Where it is & history" });
+  await expect(history.getByText("Procured into", { exact: false })).toBeVisible();
+  const historyItemsBefore = await history.locator("ol > li").count();
   expect(historyItemsBefore).toBe(1);
 
-  await page.getByRole("button", { name: "Correct Classification", exact: true }).click();
+  // S5a: Correct Classification lives in the "More actions" (⋯) menu.
+  await page.getByRole("button", { name: "More actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Correct Classification", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: /correct classification/i });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText(asset.asset_code)).toBeVisible();
@@ -116,24 +118,25 @@ test("asset correction journey: correct classification and purchase date, Asset 
   // Asset Code unchanged -- still the same heading, no navigation happened.
   await expect(page.getByRole("heading", { name: asset.asset_code })).toBeVisible();
 
-  await page.getByRole("tab", { name: "Overview", exact: true }).click();
-  await expect(page.getByText(category2.name, { exact: true })).toBeVisible();
-  await expect(page.getByText(subcategory2.name, { exact: true })).toBeVisible();
+  // Category / Sub-category now sit under More > Advanced.
+  await page.getByRole("tab", { name: "Advanced", exact: true }).click();
+  const advanced = page.getByRole("tabpanel", { name: "Advanced" });
+  await expect(advanced.getByText(category2.name, { exact: true })).toBeVisible();
+  await expect(advanced.getByText(subcategory2.name, { exact: true })).toBeVisible();
 
-  await page.getByRole("tab", { name: "Procurement", exact: true }).click();
-  await expect(page.getByText("2025-05-28", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Procurement" }).getByText("2025-05-28", { exact: true })).toBeVisible();
 
-  await page.getByRole("tab", { name: "Changes", exact: true }).click();
-  const changesPanel = page.getByRole("tabpanel", { name: "Changes" });
+  await page.getByRole("tab", { name: "Field changes", exact: true }).click();
+  const changesPanel = page.getByRole("tabpanel", { name: "Field changes" });
   await expect(changesPanel.getByText("Correction").first()).toBeVisible();
   await expect(changesPanel.getByText("Wrong category selected during initial entry").first()).toBeVisible();
-  await expect(changesPanel.getByText("category_id", { exact: true })).toBeVisible();
-  await expect(changesPanel.getByText("subcategory_id", { exact: true })).toBeVisible();
-  await expect(changesPanel.getByText("purchase_date", { exact: true })).toBeVisible();
+  // Field names in plain words (lib/labels.ts fieldLabel), never the column names.
+  await expect(changesPanel.getByText("Category", { exact: true })).toBeVisible();
+  await expect(changesPanel.getByText("Sub-category", { exact: true })).toBeVisible();
+  await expect(changesPanel.getByText("Purchase date", { exact: true })).toBeVisible();
 
   // History unchanged: still exactly the one original PROCURED event, same text.
-  await page.getByRole("tab", { name: "History", exact: true }).click();
-  await expect(page.getByText("Procured into", { exact: false })).toBeVisible();
-  const historyItemsAfter = await page.locator("ol > li").count();
+  await expect(history.getByText("Procured into", { exact: false })).toBeVisible();
+  const historyItemsAfter = await history.locator("ol > li").count();
   expect(historyItemsAfter).toBe(historyItemsBefore);
 });

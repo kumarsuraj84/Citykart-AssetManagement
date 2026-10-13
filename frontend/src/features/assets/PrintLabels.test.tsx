@@ -69,6 +69,17 @@ describe("PrintLabels label content and delivery preload", () => {
     expect(label.style.height).toBe("20mm");
   });
 
+  it("S5a: uses the one shared Label settings disclosure (closed, saying what will print)", async () => {
+    mockGets({});
+    await renderPrintLabels();
+    expect(screen.getAllByTestId("label-settings")).toHaveLength(1);
+    const toggle = screen.getByRole("button", { name: /label settings/i });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle).toHaveTextContent("Barcode + QR · 70 × 20 mm");
+    fireEvent.click(toggle);
+    expect(screen.getByRole("combobox", { name: "Label Size" })).toBeInTheDocument();
+  });
+
   it("links to Move Assets for labelling as you send", async () => {
     mockGets({});
     await renderPrintLabels();

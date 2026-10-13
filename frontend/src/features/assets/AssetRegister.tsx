@@ -1,7 +1,8 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { PackagePlus, Printer, Hash, UserRound } from "lucide-react";
+import { PackagePlus, Hash, ScanBarcode, UserRound } from "lucide-react";
+import { PrintLabelsAction } from "../labels/PrintLabelsAction";
 import { apiClient } from "../../lib/api-client";
 import { useAccess } from "../../lib/access";
 import { useMyAssetUserId } from "../../lib/auth-store";
@@ -20,13 +21,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
@@ -39,7 +33,6 @@ import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { AsyncButton } from "@/components/shared/AsyncButton";
 
 interface AssetRow {
   id: number;
@@ -50,6 +43,9 @@ interface AssetRow {
   model: string | null;
   serial_number: string | null;
   serial_pending?: boolean;
+  /** For the label: the Item's name and the ERP code it was bought under. */
+  item_name?: string | null;
+  erp_item_code?: string | null;
   barcode: string | null;
   po_number: string | null;
   po_date: string | null;
@@ -251,7 +247,6 @@ interface AssetRegisterProps {
 }
 
 export function AssetRegister({ initialStatus, initialMine, initialQuery, focusSearch }: AssetRegisterProps = {}) {
-  const qc = useQueryClient();
   const navigate = useNavigate();
   const { can, isPrimaryOwner } = useAccess();
   const canWork = can("work");
@@ -322,13 +317,6 @@ export function AssetRegister({ initialStatus, initialMine, initialQuery, focusS
     }
     setPage(0);
   }
-  const [moveOpen, setMoveOpen] = useState(false);
-  const [moveAssetUserId, setMoveAssetUserId] = useState("");
-  // A snapshot of the selected rows taken when the Move dialog opens, so that if the
-  // register's own list changes shape after a partial move (an asset that moved may drop
-  // out of the current filter/status view on refetch) the dialog can still show which
-  // asset codes the failures below belong to.
-  const [moveTargets, setMoveTargets] = useState<AssetRow[]>([]);
 
   const queryString = new URLSearchParams({
     ...(q ? { q } : {}),
@@ -427,41 +415,6 @@ export function AssetRegister({ initialStatus, initialMine, initialQuery, focusS
   function toggleOne(id: number, checked: boolean) {
     setSelected((s) => (checked ? [...s, id] : s.filter((existing) => existing !== id)));
   }
-
-  function openMove() {
-    bulkMoveMutation.reset();
-    setMoveTargets(items.filter((a) => selected.includes(a.id)));
-    setMoveAssetUserId("");
-    setMoveOpen(true);
-  }
-
-  function closeMove() {
-    setMoveOpen(false);
-    bulkMoveMutation.reset();
-  }
-
-  const bulkMoveMutation = useMutation({
-    mutationFn: () =>
-      apiClient.post<{ moved: number; failed: { asset_id: number; reason: string }[] }>("/assets/bulk-move", {
-        asset_ids: selected,
-        to_asset_user_id: Number(moveAssetUserId),
-      }),
-    onSuccess: (result) => {
-      qc.invalidateQueries({ queryKey: ["assets", "register"] });
-      if (result.failed.length === 0) {
-        // Full success -- nothing left needing the user's attention, so close up.
-        setSelected([]);
-        setMoveOpen(false);
-        setMoveAssetUserId("");
-      } else {
-        // Partial failure: keep the dialog open with the failure detail visible, and
-        // narrow the selection down to just the assets that still need attention (the
-        // ones that did move are done; re-selecting them would just re-attempt a move
-        // that already succeeded).
-        setSelected(result.failed.map((f) => f.asset_id));
-      }
-    },
-  });
 
   // "Code" is pinned: always shown first, not part of the Manage Columns picker --
   // it's the register's identity column into Asset 360, not an optional field.
@@ -666,14 +619,11 @@ export function AssetRegister({ initialStatus, initialMine, initialQuery, focusS
         <div className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2">
           <span className="text-sm">{selected.length} selected</span>
           <div className="flex gap-2">
-            <Button asChild size="sm" variant="outline">
-              <Link to="/print-labels" search={{ assets: selected.join(",") }}>
-                <Printer className="h-4 w-4" aria-hidden="true" />
-                Print labels
-              </Link>
-            </Button>
-            <Button size="sm" onClick={openMove}>
-              Move
+            <PrintLabelsAction assets={items.filter((a) => selected.includes(a.id))} />
+            {/* Moving happens on the one Move screen, with these assets already in the batch. */}
+            <Button size="sm" onClick={() => navigate({ to: "/asset-movement", search: { ids: selected.join(",") } })}>
+              <ScanBarcode className="h-4 w-4" aria-hidden="true" />
+              Move ({selected.length})
             </Button>
           </div>
         </div>
@@ -726,63 +676,6 @@ export function AssetRegister({ initialStatus, initialMine, initialQuery, focusS
           nextDisabled: page + 1 >= pageCount || isLoading,
         }}
       />
-
-      <Dialog open={moveOpen} onOpenChange={(open) => !open && closeMove()}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Move {selected.length} asset{selected.length === 1 ? "" : "s"}</DialogTitle>
-          </DialogHeader>
-
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="move-asset-user">Move to</Label>
-            <SearchableSelect
-              id="move-asset-user"
-              aria-label="Move to"
-              value={moveAssetUserId || undefined}
-              onValueChange={setMoveAssetUserId}
-              searchPlaceholder="Code, name, place…"
-              options={peopleAndPlaces}
-            />
-          </div>
-
-          {bulkMoveMutation.isError && (
-            <p className="text-sm text-destructive">
-              {bulkMoveMutation.error instanceof Error ? bulkMoveMutation.error.message : "Failed to move assets."}
-            </p>
-          )}
-          {bulkMoveMutation.isSuccess && bulkMoveMutation.data.failed.length > 0 && (
-            <div className="flex flex-col gap-1 text-sm">
-              <p className="text-destructive">
-                {bulkMoveMutation.data.moved} moved, {bulkMoveMutation.data.failed.length} failed:
-              </p>
-              <ul className="list-disc pl-5 text-destructive">
-                {bulkMoveMutation.data.failed.map((f) => {
-                  const target = moveTargets.find((t) => t.id === f.asset_id);
-                  return (
-                    <li key={f.asset_id}>
-                      {target?.asset_code ?? `Asset #${f.asset_id}`}: {f.reason}
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={closeMove}>
-              {bulkMoveMutation.isSuccess && bulkMoveMutation.data.failed.length > 0 ? "Done" : "Cancel"}
-            </Button>
-            <AsyncButton
-              onClick={() => bulkMoveMutation.mutate()}
-              disabled={!moveAssetUserId}
-              pending={bulkMoveMutation.isPending}
-              pendingLabel="Moving…"
-            >
-              Confirm
-            </AsyncButton>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

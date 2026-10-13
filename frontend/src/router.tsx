@@ -364,15 +364,30 @@ export const assetDetailRoute = createRoute({
 export const assetMovementRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/asset-movement",
-  component: guarded("work", AssetMovementRoute),
+  // Opened from Assets or Asset 360 with the batch already chosen:
+  // `ids` = comma-separated asset ids, `choice` = what to do (actionRules MOVE_CHOICES key).
+  validateSearch: (search: Record<string, unknown>): { ids?: string; choice?: string } => ({
+    ids: searchText(search.ids),
+    choice: searchText(search.choice),
+  }),
+  component: guarded("work", function AssetMovementComponent() {
+    const { ids, choice } = assetMovementRoute.useSearch();
+    return <AssetMovementRoute ids={ids} choice={choice} />;
+  }),
 });
+
+/** A search parameter as text: the router reads "1" back as the number 1. */
+function searchText(v: unknown): string | undefined {
+  if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  return typeof v === "string" && v !== "" ? v : undefined;
+}
 
 export const printLabelsRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/print-labels",
   // `assets`: comma-separated asset ids to start the queue with (a delivery's new assets).
   validateSearch: (search: Record<string, unknown>): { assets?: string } => ({
-    assets: typeof search.assets === "string" && search.assets !== "" ? search.assets : undefined,
+    assets: searchText(search.assets),
   }),
   component: guarded("work", function PrintLabelsComponent() {
     const { assets } = printLabelsRoute.useSearch();

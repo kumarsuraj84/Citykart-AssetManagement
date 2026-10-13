@@ -86,27 +86,35 @@ test("full custody journey: procure, allot, return, allot again", async ({ page,
   await expect(page).toHaveURL(/\/assets\/\d+$/);
   await expect(page.getByRole("heading", { name: assetCode })).toBeVisible();
 
-  // ---- Allot to the test EMPLOYEE asset_user ----
-  await page.getByRole("button", { name: "Move / Allot", exact: true }).click();
-  await selectRadix(page, "Move To", ctx.employee.name);
-  await page.getByRole("button", { name: "Confirm", exact: true }).click();
+  // S5a: Asset 360's "Move…" opens the one Move screen with this asset already queued;
+  // pick the plain-word choice and the destination, apply, then come back.
+  async function moveFromAsset360(choice: string, picker: string, destination: string) {
+    const assetUrl = page.url();
+    await page.getByRole("button", { name: "Move…", exact: true }).click();
+    await expect(page).toHaveURL(/\/asset-movement\?/);
+    await expect(page.getByText("Queued (1)")).toBeVisible();
+    await page.getByRole("radio", { name: choice, exact: true }).click();
+    await selectRadix(page, picker, destination);
+    await page.getByRole("button", { name: `${choice} (1 asset)`, exact: true }).click();
+    await expect(page.getByTestId("bulk-action-done-count")).toHaveText("1");
+    await page.goto(assetUrl);
+    await expect(page.getByRole("heading", { name: assetCode })).toBeVisible();
+  }
+
+  // ---- Give to the test EMPLOYEE ----
+  await moveFromAsset360("Give to Employee", "Employee", ctx.employee.name);
   await expect(page.getByText("With Employee", { exact: true }).first()).toBeVisible();
 
   // ---- Return to the Stock Room ----
-  await page.getByRole("button", { name: "Move / Transfer", exact: true }).click();
-  await selectRadix(page, "Move To", ctx.stock.name);
-  await page.getByRole("button", { name: "Confirm", exact: true }).click();
+  await moveFromAsset360("Return to Stock Room", "Stock Room", ctx.stock.name);
   await expect(page.getByText("In Stock", { exact: true }).first()).toBeVisible();
 
-  // ---- Allot to the test STORE asset_user ----
-  await page.getByRole("button", { name: "Move / Allot", exact: true }).click();
-  await selectRadix(page, "Move To", ctx.store.name);
-  await page.getByRole("button", { name: "Confirm", exact: true }).click();
+  // ---- Send to the test STORE ----
+  await moveFromAsset360("Send to Store", "Store", ctx.store.name);
   await expect(page.getByText("With Store", { exact: true }).first()).toBeVisible();
 
-  // ---- History tab: all four steps, in order ----
-  await page.getByRole("tab", { name: "History", exact: true }).click();
-  const timelineItems = page.locator("ol > li");
+  // ---- Where it is & history: all four steps, in order (no tab to open) ----
+  const timelineItems = page.getByRole("region", { name: "Where it is & history" }).locator("ol > li");
   await expect(timelineItems).toHaveCount(4);
   // Human-readable custody labels built server-side with the real asset_user names.
   await expect(timelineItems.nth(0)).toContainText(`Procured into ${ctx.stock.name}`);

@@ -11,8 +11,8 @@ import { KINDS, OPERATOR_IT, withCapabilities } from "../../test-capabilities";
 vi.mock("../../lib/api-client");
 
 // Rendered through the real route tree (the page links to Print Labels, so it needs a router).
-async function renderMovement() {
-  const router = createAppRouter(createMemoryHistory({ initialEntries: ["/asset-movement"] }));
+async function renderMovement(url = "/asset-movement") {
+  const router = createAppRouter(createMemoryHistory({ initialEntries: [url] }));
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
@@ -20,6 +20,7 @@ async function renderMovement() {
     </QueryClientProvider>,
   );
   await screen.findByLabelText(/scan or type/i);
+  return router;
 }
 
 const LAPTOP = {
@@ -30,10 +31,22 @@ const SCRAPPED_MOUSE = {
   id: 2, asset_code: "FA/HO01/IT/MOU/CK_2", serial_number: "SN-002", description: "Logitech Mouse",
   status: "SCRAPPED", current_asset_user_name: "IT Stock-HO",
 };
+const REPAIR_PRINTER = {
+  id: 3, asset_code: "FA/HO01/IT/PRN/CK_3", serial_number: "SN-003", description: "Printer",
+  status: "UNDER_REPAIR", current_asset_user_name: "IT Stock-HO",
+};
 
-function mockGets({ searchResults = {} as Record<string, typeof LAPTOP[]> } = {}) {
+const PEOPLE = [
+  { id: 9, name: "IT Stock-HO", asset_user_type: "STOCK_POINT" },
+  { id: 11, code: "E11", name: "Ankur", asset_user_type: "EMPLOYEE" },
+  { id: 12, code: "S12", name: "Lamington Store", asset_user_type: "STORE" },
+  { id: 13, name: "Lamington Install Point", asset_user_type: "INSTALLED" },
+];
+
+function mockGets({ searchResults = {} as Record<string, unknown[]>, byIds = [] as unknown[] } = {}) {
   (apiClient.get as any).mockImplementation((path: string) => {
-    if (path.startsWith("/asset-users")) return Promise.resolve([{ id: 9, name: "IT Stock-HO" }]);
+    if (path.startsWith("/asset-users")) return Promise.resolve(PEOPLE);
+    if (path.startsWith("/assets?ids=")) return Promise.resolve({ items: byIds, total: byIds.length });
     if (path.startsWith("/assets?q=")) {
       const q = decodeURIComponent(path.split("q=")[1].split("&")[0]);
       const items = searchResults[q] ?? [];
@@ -43,11 +56,24 @@ function mockGets({ searchResults = {} as Record<string, typeof LAPTOP[]> } = {}
   });
 }
 
+function scan(value: string) {
+  fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value } });
+  fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
+}
+
+const choose = (name: string) => fireEvent.click(screen.getByRole("radio", { name }));
+const applyButton = (label: string, n: number) => screen.getByRole("button", { name: `${label} (${n} asset${n === 1 ? "" : "s"})` });
+
+async function pick(combobox: string | RegExp, option: string | RegExp) {
+  fireEvent.click(screen.getByRole("combobox", { name: combobox }));
+  fireEvent.click(await screen.findByRole("option", { name: option }));
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   try { window.localStorage.clear(); } catch { /* no storage here */ }
   useAuthStore.getState().setAuth({ accessToken: "tok", role: "OPERATOR", companyId: 1, isPrimaryOwner: false, mustChangePassword: false });
-  // Labels print as assets are scanned for a Move; the label pictures themselves are not what these tests are about.
+  // Labels print as assets are scanned for a store; the label pictures themselves are not what these tests are about.
   window.fetch = vi.fn().mockResolvedValue({ ok: false, status: 404 }) as any;
   window.URL.createObjectURL = vi.fn().mockReturnValue("blob:x");
   window.URL.revokeObjectURL = vi.fn();
@@ -60,8 +86,7 @@ describe("AssetMovement", () => {
     mockGets({ searchResults: { "SN-001": [LAPTOP] } });
     await renderMovement();
 
-    fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "SN-001" } });
-    fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
+    scan("SN-001");
 
     await waitFor(() => expect(screen.getByText(/Dell Laptop/)).toBeInTheDocument());
     expect(screen.getByText(/Queued \(1\)/)).toBeInTheDocument();
@@ -72,8 +97,7 @@ describe("AssetMovement", () => {
     mockGets({ searchResults: {} });
     await renderMovement();
 
-    fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "NOPE" } });
-    fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
+    scan("NOPE");
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/no asset found/i);
     expect(screen.getByText(/Queued \(0\)/)).toBeInTheDocument();
@@ -83,8 +107,7 @@ describe("AssetMovement", () => {
     mockGets({ searchResults: { "SN-00": [LAPTOP, SCRAPPED_MOUSE] } });
     await renderMovement();
 
-    fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "SN-00" } });
-    fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
+    scan("SN-00");
 
     await waitFor(() => expect(screen.getByText(/more than one match/i)).toBeInTheDocument());
     fireEvent.click(screen.getByText(/Logitech Mouse/));
@@ -97,56 +120,51 @@ describe("AssetMovement", () => {
     mockGets({ searchResults: { "SN-001": [LAPTOP] } });
     await renderMovement();
 
-    fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "SN-001" } });
-    fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
+    scan("SN-001");
     await waitFor(() => expect(screen.getByText(/Queued \(1\)/)).toBeInTheDocument());
 
-    fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "SN-001" } });
-    fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
+    scan("SN-001");
     await waitFor(() => expect(screen.getByText(/Queued \(1\)/)).toBeInTheDocument());
   });
 
-  it("flags a scanned asset as not eligible for the chosen action, and excludes it from Apply's count", async () => {
-    mockGets({ searchResults: { "SN-002": [SCRAPPED_MOUSE] } });
+  it("flags a queued asset the chosen action cannot apply to, and leaves it out of the count", async () => {
+    mockGets({ searchResults: { "SN-001": [LAPTOP], "SN-002": [SCRAPPED_MOUSE] } });
     await renderMovement();
-
-    // Default action is Move, which SCRAPPED (terminal) can never do.
-    fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "SN-002" } });
-    fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
-
-    await waitFor(() => expect(screen.getByText(/not eligible/i)).toBeInTheDocument());
-    expect(screen.getByRole("button", { name: /apply ".*" to 0 assets/i })).toBeDisabled();
+    choose("Give to Employee");
+    scan("SN-001");
+    await waitFor(() => expect(screen.getByText(/Queued \(1\)/)).toBeInTheDocument());
+    scan("SN-002");
+    await waitFor(() => expect(screen.getByText(/not possible: Give to Employee \(it is Scrapped\)/)).toBeInTheDocument());
+    expect(screen.getByText(/Queued \(2\) — 1 can be done/)).toBeInTheDocument();
+    expect(applyButton("Give to Employee", 1)).toBeInTheDocument();
   });
 
-  it("Move requires a destination asset_user before Apply is enabled", async () => {
+  it("Give to Employee requires the employee before Apply is enabled", async () => {
     mockGets({ searchResults: { "SN-001": [LAPTOP] } });
     await renderMovement();
 
-    fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "SN-001" } });
-    fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
+    scan("SN-001");
     await waitFor(() => expect(screen.getByText(/Queued \(1\)/)).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Choose what to do" })).toBeDisabled();
+    choose("Give to Employee");
+    expect(applyButton("Give to Employee", 1)).toBeDisabled();
+    expect(screen.getByText("Choose the employee.")).toBeInTheDocument();
 
-    expect(screen.getByRole("button", { name: /apply/i })).toBeDisabled();
-
-    fireEvent.click(screen.getByRole("combobox", { name: /^move to$/i }));
-    fireEvent.click(await screen.findByRole("option", { name: "IT Stock-HO" }));
-
-    await waitFor(() => expect(screen.getByRole("button", { name: /apply/i })).toBeEnabled());
+    await pick("Employee", /Ankur/);
+    await waitFor(() => expect(applyButton("Give to Employee", 1)).toBeEnabled());
   });
 
-  it("applies the action to every eligible asset in the queue and reports the result", async () => {
+  it("applies the choice to every eligible asset in the queue and reports the result", async () => {
     mockGets({ searchResults: { "SN-001": [LAPTOP] } });
     (apiClient.post as any).mockResolvedValue({ done: 1, failed: [] });
     await renderMovement();
 
-    fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "SN-001" } });
-    fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
+    scan("SN-001");
     await waitFor(() => expect(screen.getByText(/Queued \(1\)/)).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("combobox", { name: /^move to$/i }));
-    fireEvent.click(await screen.findByRole("option", { name: "IT Stock-HO" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: /apply/i })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+    choose("Return to Stock Room");
+    await pick("Stock Room", "IT Stock-HO");
+    fireEvent.click(applyButton("Return to Stock Room", 1));
 
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith("/assets/bulk-action", {
@@ -154,6 +172,7 @@ describe("AssetMovement", () => {
       }),
     );
     expect(await screen.findByTestId("bulk-action-done-count")).toHaveTextContent("1");
+    expect(screen.getByTestId("move-result")).toHaveTextContent("1 asset returned to the stock room.");
   });
 
   it("Qty > 1 queues that many eligible matches in one go, without a pick-one-at-a-time list", async () => {
@@ -165,8 +184,7 @@ describe("AssetMovement", () => {
     await renderMovement();
 
     fireEvent.change(screen.getByLabelText(/^qty$/i), { target: { value: "3" } });
-    fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "keyboard" } });
-    fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
+    scan("keyboard");
 
     await waitFor(() => expect(screen.getByText(/Queued \(3\)/)).toBeInTheDocument());
     expect(screen.getByText(/added 3 of 3 requested/i)).toBeInTheDocument();
@@ -182,8 +200,7 @@ describe("AssetMovement", () => {
     await renderMovement();
 
     fireEvent.change(screen.getByLabelText(/^qty$/i), { target: { value: "10" } });
-    fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "keyboard" } });
-    fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
+    scan("keyboard");
 
     await waitFor(() => expect(screen.getByText(/Queued \(2\)/)).toBeInTheDocument());
     expect(screen.getByText(/added 2 of 10 requested/i)).toBeInTheDocument();
@@ -198,19 +215,17 @@ describe("AssetMovement", () => {
     await renderMovement();
 
     fireEvent.change(screen.getByLabelText(/^qty$/i), { target: { value: "3" } });
-    fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "keyboard" } });
-    fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
+    scan("keyboard");
     await waitFor(() => expect(screen.getByText(/Queued \(3\)/)).toBeInTheDocument());
 
     // Same 3 already queued -- searching again for the same 3 finds nothing new.
-    fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "keyboard" } });
-    fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
+    scan("keyboard");
 
     await waitFor(() => expect(screen.getByText(/added 0 of 3 requested/i)).toBeInTheDocument());
     expect(screen.getByText(/Queued \(3\)/)).toBeInTheDocument();
   });
 
-  it("\"Currently With\" browses everything a chosen asset_user holds, showing code/serial/status", async () => {
+  it("\"Currently With\" browses everything a chosen person or place holds, showing code/serial/status", async () => {
     const ankurLaptop = {
       id: 50, asset_code: "FA/HO01/IT/LAP/CK_50", serial_number: "SN-ANK-1", description: "Ankur's Laptop",
       status: "ALLOTTED", current_asset_user_name: "Ankur",
@@ -222,8 +237,7 @@ describe("AssetMovement", () => {
     });
     await renderMovement();
 
-    fireEvent.click(screen.getByRole("combobox", { name: /currently with/i }));
-    fireEvent.click(await screen.findByRole("option", { name: "Ankur" }));
+    await pick(/currently with/i, "Ankur");
 
     await waitFor(() => expect(screen.getByText(/FA\/HO01\/IT\/LAP\/CK_50/)).toBeInTheDocument());
     expect(screen.getByText(/assets with ankur \(1\)/i)).toBeInTheDocument();
@@ -242,8 +256,7 @@ describe("AssetMovement", () => {
     });
     await renderMovement();
 
-    fireEvent.click(screen.getByRole("combobox", { name: /currently with/i }));
-    fireEvent.click(await screen.findByRole("option", { name: "Ankur" }));
+    await pick(/currently with/i, "Ankur");
     await waitFor(() => expect(screen.getByText(/FA\/HO01\/IT\/LAP\/CK_51/)).toBeInTheDocument());
 
     expect(screen.getByRole("button", { name: /add selected to queue/i })).toBeDisabled();
@@ -259,10 +272,7 @@ describe("AssetMovement", () => {
     const withMeena = { ...LAPTOP, id: 63, asset_code: "FA/M/63", description: "Meena's Laptop", current_asset_user_name: "Meena" };
     mockGets({ searchResults: { z: [withZara], a: [withAmit], m: [withMeena] } });
     await renderMovement();
-    for (const q of ["z", "a", "m"]) {
-      fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: q } });
-      fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
-    }
+    for (const q of ["z", "a", "m"]) scan(q);
     await waitFor(() => expect(screen.getByText(/Queued \(3\)/)).toBeInTheDocument());
 
     const order = () => screen.getAllByText(/^With: /).map((el) => el.textContent?.match(/^With: (\w+)/)?.[1]);
@@ -280,8 +290,7 @@ describe("AssetMovement", () => {
     mockGets({ searchResults: { lap: [inStock, withEmployee] } });
     await renderMovement();
 
-    fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "lap" } });
-    fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
+    scan("lap");
     await waitFor(() => expect(screen.getByText(/more than one match/i)).toBeInTheDocument());
     expect(screen.getByText("With: HO Stock (Head Office) · In Stock")).toBeInTheDocument();
     expect(screen.getByText("With: Suraj (Head Office) · With Employee")).toBeInTheDocument();
@@ -292,7 +301,7 @@ describe("AssetMovement", () => {
     fireEvent.click(screen.getByText(/Suraj's Laptop/));
     await waitFor(() => expect(screen.getByText(/Queued \(1\)/)).toBeInTheDocument());
     expect(screen.getByText(/With: Suraj \(Head Office\) · With Employee/)).toBeInTheDocument();
-    expect(document.body.textContent).not.toMatch(/IN_STOCK|ALLOTTED|STOCK_POINT|AssetUser:|Not in IT Stock|Destination Asset User/);
+    expect(document.body.textContent).not.toMatch(/IN_STOCK|ALLOTTED|STOCK_POINT|AssetUser:|Not in IT Stock|Destination Asset User|Holder|Move \/ Allot/);
   });
 
   it("people and places in the pickers show their place, and the company when the list spans companies", async () => {
@@ -306,15 +315,19 @@ describe("AssetMovement", () => {
       return Promise.resolve([]);
     });
     await renderMovement();
-    fireEvent.click(screen.getByRole("combobox", { name: /^move to$/i }));
+    choose("Give to Employee");
+    fireEvent.click(screen.getByRole("combobox", { name: "Employee" }));
     expect(await screen.findByRole("option", { name: /^CS6872 · Ankur\s?· Head Office · CKSPL$/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("combobox", { name: "Employee" }));
+    choose("Return to Stock Room");
+    fireEvent.click(screen.getByRole("combobox", { name: "Stock Room" }));
     // A Stock Room reads by its name, not its machine code.
-    expect(screen.getByRole("option", { name: /^WH Stock\s?· Warehouse · CKRPL$/ })).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: /^WH Stock\s?· Warehouse · CKRPL$/ })).toBeInTheDocument();
   });
 
   it("checking \"Only assets currently in stock\" adds status=IN_STOCK to the search", async () => {
     (apiClient.get as any).mockImplementation((path: string) => {
-      if (path.startsWith("/asset-users")) return Promise.resolve([{ id: 9, name: "IT Stock-HO" }]);
+      if (path.startsWith("/asset-users")) return Promise.resolve(PEOPLE);
       if (path.startsWith("/assets?q=")) {
         expect(path).toContain("status=IN_STOCK");
         return Promise.resolve({ items: [LAPTOP], total: 1 });
@@ -324,10 +337,205 @@ describe("AssetMovement", () => {
     await renderMovement();
 
     fireEvent.click(screen.getByRole("checkbox", { name: /only assets currently in stock/i }));
-    fireEvent.change(screen.getByLabelText(/scan or type/i), { target: { value: "SN-001" } });
-    fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
+    scan("SN-001");
 
     await waitFor(() => expect(screen.getByText(/Queued \(1\)/)).toBeInTheDocument());
+  });
+});
+
+describe("S5a: one Move screen with plain-word choices", () => {
+  it("offers the eleven choices as one segmented list, none picked until the person picks one", async () => {
+    mockGets();
+    await renderMovement();
+    const group = screen.getByRole("radiogroup", { name: "What do you want to do?" });
+    expect(within(group).getAllByRole("radio").map((r) => r.textContent)).toEqual([
+      "Give to Employee", "Return to Stock Room", "Send to Store", "Install",
+      "Send for Repair", "Receive from Repair", "Report Lost", "Mark Found", "Sell", "Scrap", "Dispose",
+    ]);
+    expect(within(group).getAllByRole("radio").filter((r) => r.getAttribute("aria-checked") === "true")).toHaveLength(0);
+    choose("Send for Repair");
+    expect(screen.getByRole("radio", { name: "Send for Repair" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.queryByRole("combobox", { name: /action/i })).not.toBeInTheDocument();      // no "Action" dropdown any more
+  });
+
+  it.each([
+    ["Give to Employee", "Employee", ["E11 · Ankur"]],
+    ["Return to Stock Room", "Stock Room", ["IT Stock-HO"]],
+    ["Send to Store", "Store", ["S12 · Lamington Store"]],
+    ["Install", "Install Point", ["Lamington Install Point"]],
+    ["Mark Found", "Stock Room", ["IT Stock-HO"]],
+  ])("%s lists only the matching kind (%s)", async (choice, picker, expected) => {
+    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: false, mustChangePassword: false });
+    mockGets();
+    await renderMovement();
+    choose(choice);
+    fireEvent.click(screen.getByRole("combobox", { name: picker }));
+    await screen.findAllByRole("option");
+    const names = screen.getAllByRole("option").map((o) => o.textContent ?? "").filter((t) => !/new stock room/i.test(t));
+    expect(names.map((n) => n.trim())).toEqual(expected);
+  });
+
+  it("Receive from Repair may go back to anyone, and each entry says what it is", async () => {
+    mockGets();
+    await renderMovement();
+    choose("Receive from Repair");
+    fireEvent.click(screen.getByRole("combobox", { name: "Received into" }));
+    expect(await screen.findByRole("option", { name: /IT Stock-HO\s?· Stock Room/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Ankur\s?· Employee/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Lamington Store\s?· Store/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Lamington Install Point\s?· Install Point/ })).toBeInTheDocument();
+  });
+
+  it.each(["Send for Repair", "Report Lost", "Sell", "Scrap", "Dispose"])("%s shows no destination picker", async (choice) => {
+    mockGets();
+    await renderMovement();
+    choose(choice);
+    expect(screen.queryByRole("combobox", { name: /^(employee|store|stock room|install point|received into)$/i })).not.toBeInTheDocument();
+  });
+
+  it("switching to another kind clears a destination that does not fit it", async () => {
+    mockGets({ searchResults: { "SN-001": [LAPTOP] } });
+    await renderMovement();
+    scan("SN-001");
+    await screen.findByText(/Queued \(1\)/);
+    choose("Send to Store");
+    await pick("Store", /Lamington Store/);
+    expect(applyButton("Send to Store", 1)).toBeEnabled();
+    choose("Give to Employee");
+    expect(applyButton("Give to Employee", 1)).toBeDisabled();
+  });
+
+  it("a batch of mixed statuses offers only what fits all of them, and says why in one line", async () => {
+    mockGets({ searchResults: { "SN-001": [LAPTOP], "SN-003": [REPAIR_PRINTER] } });
+    await renderMovement();
+    scan("SN-001");
+    await screen.findByText(/Queued \(1\)/);
+    // with one asset (with a person): no "Receive from Repair", no "Sell"
+    expect(screen.getByRole("radio", { name: "Receive from Repair" })).toBeDisabled();
+    expect(screen.getByRole("radio", { name: "Sell" })).toBeDisabled();
+    expect(screen.getByRole("radio", { name: "Give to Employee" })).toBeEnabled();
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    scan("SN-003");
+    await screen.findByText(/Queued \(2\)/);
+    for (const r of screen.getAllByRole("radio")) expect(r).toBeDisabled();       // nothing fits both
+    expect(screen.getByRole("note")).toHaveTextContent("This batch has assets that are With Employee / Store, Under Repair: only what is possible for all of them is offered.");
+    expect(screen.getByRole("radio", { name: "Give to Employee" })).toHaveAttribute("title", "Not possible for every asset in this batch.");
+    fireEvent.click(screen.getByRole("button", { name: "Remove FA/HO01/IT/LAP/CK_1" }));
+    expect(screen.getByRole("radio", { name: "Receive from Repair" })).toBeEnabled();
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+  });
+
+  it("Mark Found is for an admin only", async () => {
+    mockGets();
+    await renderMovement();
+    expect(screen.getByRole("radio", { name: "Mark Found" })).toBeDisabled();
+    expect(screen.getByRole("radio", { name: "Mark Found" })).toHaveAttribute("title", "Only an admin can do this.");
+  });
+
+  it("opened from Assets / Asset 360 (?ids=&choice=) it starts with those assets and that choice", async () => {
+    const inStock = { ...LAPTOP, id: 4, asset_code: "FA/HO01/IT/LAP/CK_4", status: "IN_STOCK" };
+    mockGets({ byIds: [inStock, LAPTOP] });
+    await renderMovement("/asset-movement?ids=1,4&choice=store");
+    await waitFor(() => expect(screen.getByText(/Queued \(2\)/)).toBeInTheDocument());
+    expect(apiClient.get).toHaveBeenCalledWith("/assets?ids=1%2C4&limit=200");
+    expect(screen.getByRole("radio", { name: "Send to Store" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("combobox", { name: "Store" })).toBeInTheDocument();
+    // In the order they were sent, and nothing printed: nothing was scanned.
+    const codes = screen.getAllByText(/^FA\/HO01\/IT\/LAP\/CK_\d/).map((el) => el.textContent?.split(" ")[0]);
+    expect(codes).toEqual(["FA/HO01/IT/LAP/CK_1", "FA/HO01/IT/LAP/CK_4"]);
+    expect(window.print).not.toHaveBeenCalled();
+  });
+
+  it("an unknown ?choice= is ignored", async () => {
+    mockGets();
+    await renderMovement("/asset-movement?choice=teleport");
+    expect(screen.getAllByRole("radio").filter((r) => r.getAttribute("aria-checked") === "true")).toHaveLength(0);
+  });
+
+  it("the scan box has the cursor on arrival and gets it back after each add (scanner-friendly)", async () => {
+    mockGets({ searchResults: { "SN-001": [LAPTOP], "SN-00": [LAPTOP, SCRAPPED_MOUSE] } });
+    await renderMovement();
+    const box = screen.getByLabelText(/scan or type/i);
+    await waitFor(() => expect(document.activeElement).toBe(box));
+    choose("Send for Repair");                                        // focus moves to the button...
+    scan("SN-00");
+    fireEvent.click(await screen.findByText(/Logitech Mouse/));       // ...and to the pick list
+    await waitFor(() => expect(screen.getByText(/Queued \(1\)/)).toBeInTheDocument());
+    await waitFor(() => expect(document.activeElement).toBe(box));
+    expect(box).toHaveValue("");
+  });
+
+  it("date, reference number and remarks sit under More; remarks alone go with the batch request", async () => {
+    mockGets({ searchResults: { "SN-001": [LAPTOP] } });
+    (apiClient.post as any).mockResolvedValue({ done: 1, failed: [] });
+    await renderMovement();
+    expect(screen.queryByLabelText("Date")).not.toBeInTheDocument();
+    const more = screen.getByRole("button", { name: /^more/i });
+    expect(more).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(more);
+    expect(screen.getByLabelText("Date")).toHaveValue(new Date().toLocaleDateString("en-CA"));   // today
+    fireEvent.change(screen.getByLabelText("Remarks"), { target: { value: "handed over at reception" } });
+    scan("SN-001");
+    await screen.findByText(/Queued \(1\)/);
+    choose("Send for Repair");
+    fireEvent.click(applyButton("Send for Repair", 1));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/assets/bulk-action", {
+      asset_ids: [1], event_type: "SENT_FOR_REPAIR", to_asset_user_id: null, remarks: "handed over at reception",
+    }));
+  });
+
+  it("an earlier date or a reference number is recorded per asset with the date, reference and remarks", async () => {
+    const second = { ...LAPTOP, id: 5, asset_code: "FA/HO01/IT/LAP/CK_5" };
+    mockGets({ searchResults: { "SN-001": [LAPTOP], "SN-005": [second] } });
+    (apiClient.post as any).mockImplementation((path: string) =>
+      path === "/assets/5/events" ? Promise.reject(new Error("The date cannot be before the asset's last recorded movement (02-10-2026).")) : Promise.resolve({ id: 1 }),
+    );
+    await renderMovement();
+    scan("SN-001");
+    await screen.findByText(/Queued \(1\)/);
+    scan("SN-005");
+    await screen.findByText(/Queued \(2\)/);
+    choose("Give to Employee");
+    await pick("Employee", /Ankur/);
+    fireEvent.click(screen.getByRole("button", { name: /^more/i }));
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-10-01" } });
+    fireEvent.change(screen.getByLabelText("Reference number"), { target: { value: "GP-114" } });
+    fireEvent.change(screen.getByLabelText("Remarks"), { target: { value: "new joiner kit" } });
+    fireEvent.click(applyButton("Give to Employee", 2));
+
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledTimes(2));
+    expect(apiClient.post).toHaveBeenCalledWith("/assets/1/events", {
+      event_type: "MOVED", to_asset_user_id: 11, event_date: new Date("2026-10-01").toISOString(), reference_no: "GP-114", remarks: "new joiner kit",
+    });
+    expect(apiClient.post).not.toHaveBeenCalledWith("/assets/bulk-action", expect.anything());
+    const result = await screen.findByTestId("move-result");
+    expect(result).toHaveTextContent("1 asset given to the employee.");
+    expect(result).toHaveTextContent("FA/HO01/IT/LAP/CK_5: The date cannot be before the asset's last recorded movement (02-10-2026).");
+    expect(screen.getByText(/Queued \(1\)/)).toBeInTheDocument();          // the failed one stays
+  });
+
+  it("the result offers Print labels for what moved and Move more for the next batch", async () => {
+    mockGets({ searchResults: { "SN-001": [{ ...LAPTOP, item_name: "Laptop" }] } });
+    (apiClient.post as any).mockResolvedValue({ done: 1, failed: [] });
+    await renderMovement();
+    scan("SN-001");
+    await screen.findByText(/Queued \(1\)/);
+    choose("Install");
+    await pick("Install Point", /Lamington Install Point/);
+    fireEvent.click(applyButton("Install", 1));
+    const result = await screen.findByTestId("move-result");
+    expect(result).toHaveTextContent("1 asset installed.");
+
+    fireEvent.click(within(result).getByRole("button", { name: "Print labels (1)" }));
+    const dialog = await screen.findByRole("dialog", { name: "Print 1 label" });
+    expect(within(dialog).getByTestId("label-preview")).toHaveTextContent("FA/HO01/IT/LAP/CK_1");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Print 1 label" }));
+    await waitFor(() => expect(window.print).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    fireEvent.click(within(screen.getByTestId("move-result")).getByRole("button", { name: "Move more" }));
+    expect(screen.queryByTestId("move-result")).not.toBeInTheDocument();
+    expect(screen.getByText(/Queued \(0\)/)).toBeInTheDocument();
   });
 });
 
@@ -356,23 +564,29 @@ describe("S3b-1: stock rooms on Move", () => {
     expect(screen.queryByRole("option", { name: /new stock room/i })).not.toBeInTheDocument();
   });
 
-  it.each(KINDS)("%s: Move To offers New Stock Room only when allowed, and never a new person", async (_kind, caps) => {
+  it.each(KINDS)("%s: Return to Stock Room offers New Stock Room only when allowed; Give to Employee never offers a new person", async (_kind, caps) => {
     world(caps);
     await renderMovement();
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/auth/capabilities"));
     await new Promise((r) => setTimeout(r, 20));
-    const trigger = screen.getByRole("combobox", { name: /move to/i });
+    choose("Return to Stock Room");
+    const trigger = screen.getByRole("combobox", { name: "Stock Room" });
     fireEvent.click(trigger);
-    await screen.findByRole("option", { name: /Ankur/ });
+    await screen.findByRole("option", { name: /IT Stock-HO/ });
     expect(screen.queryByRole("option", { name: /new stock room/i }) !== null).toBe(caps.can_create.stock_room === true);
-    expect(screen.queryByRole("option", { name: /new (employee|store|person)/i })).not.toBeInTheDocument();
+    fireEvent.click(trigger);
+    choose("Give to Employee");
+    fireEvent.click(screen.getByRole("combobox", { name: "Employee" }));
+    await screen.findByRole("option", { name: /Ankur/ });
+    expect(screen.queryByRole("option", { name: /new (stock room|employee|store|person)/i })).not.toBeInTheDocument();
   });
 
-  it("a new destination stock room asks for the company only when there is a choice, then is picked as Move To", async () => {
+  it("a new destination stock room asks for the company only when there is a choice, then is picked", async () => {
     world(OPERATOR_IT);
     (apiClient.post as any).mockResolvedValue({ id: 70, name: "Hisar Stock" });
     await renderMovement();
-    fireEvent.click(screen.getByRole("combobox", { name: /move to/i }));
+    choose("Return to Stock Room");
+    fireEvent.click(screen.getByRole("combobox", { name: "Stock Room" }));
     fireEvent.click(await screen.findByRole("option", { name: /new stock room/i }));
     const dialog = await screen.findByRole("dialog", { name: /new stock room/i });
     await waitFor(() => expect(within(dialog).getByLabelText(/^company/i)).toHaveTextContent("Citykart Stores"));

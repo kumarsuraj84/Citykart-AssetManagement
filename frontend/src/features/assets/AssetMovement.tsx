@@ -1,13 +1,15 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
+import { useAuthStore } from "../../lib/auth-store";
 import type { Item } from "../items/types";
-import { actionsFor, targetLabelFor } from "./actionRules";
-import { statusLabel } from "../../lib/labels";
-import { itemOptions, placeOptions } from "../../lib/option-labels";
+import { choiceAvailability, isChoiceAllowed, moveChoice, type MoveChoice } from "./actionRules";
+import { placeTypeLabel, statusLabel } from "../../lib/labels";
+import { itemOptions, placeOptions, type Option as PickerOption } from "../../lib/option-labels";
 import { useCategoryLookups, usePlaceLookups } from "../../lib/lookups";
 import { useCanCreate } from "../../lib/capabilities";
+import { cn } from "@/lib/utils";
 import { NewStockRoomDialog } from "@/components/quick-create/masters";
 import { stockRoomPickerOptions, useStockRooms } from "@/components/quick-create/StockRoomSelect";
 import { MAX_QUANTITY, quantityHint, quantityProblem } from "../../lib/limits";
@@ -15,7 +17,6 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -23,10 +24,12 @@ import { FormField } from "@/components/shared/FormField";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { useTableSort } from "@/components/shared/useTableSort";
-import { ScanBarcode, ArrowUp, ArrowDown, ChevronsUpDown, Printer } from "lucide-react";
+import { ScanBarcode, ArrowUp, ArrowDown, ChevronsUpDown, ChevronDown, ChevronRight, Printer } from "lucide-react";
 import { assetScanQuery, isAssetLink } from "../../lib/scan";
-import { LabelPrintStyle, PrintNow, useLabelSettings, type LabelAsset } from "@/components/labels/AssetLabel";
-import { LabelSettingsFields } from "@/components/labels/LabelSettingsFields";
+import { PrintNow, useLabelSettings, type LabelAsset } from "@/components/labels/AssetLabel";
+import { LabelSettingsDisclosure } from "../labels/LabelSettingsDisclosure";
+import { useScanLabelPrefs } from "../labels/useScanLabelPrefs";
+import { PrintLabelsAction, fetchAssetsByIds, labelsWord, parseIdList } from "../labels/PrintLabelsAction";
 
 // A person or place (backend: an asset user).
 interface Option {
@@ -47,54 +50,34 @@ interface AssetSearchResult extends LabelAsset {
 }
 
 interface QueuedAsset extends AssetSearchResult {
-  eligible: boolean;
   /** The label has been printed (this session) / scanned back to confirm it was stuck on. */
   printed: boolean;
   confirmed: boolean;
 }
 
-const PREFS_KEY = "ckam.movement.prefs";
 /** The most assets the server returns for one search. */
 const PAGE_SIZE = 200;
-
-function loadPrefs(): { autoPrint: boolean; verify: boolean } {
-  try {
-    const raw = JSON.parse(window.localStorage.getItem(PREFS_KEY) ?? "null") as { autoPrint?: boolean; verify?: boolean } | null;
-    return { autoPrint: raw?.autoPrint !== false, verify: raw?.verify === true };
-  } catch {
-    return { autoPrint: true, verify: false };
-  }
-}
 
 interface BulkActionResult {
   done: number;
   failed: { asset_id: number; reason: string }[];
 }
 
-// AM-20: every lifecycle action the single-asset Asset 360 screen already
-// offers (actionRules.ts), reused here as a flat list -- this screen isn't
-// status-scoped like that one (a batch can mix assets starting in several
-// different statuses), so eligibility is checked per scanned asset instead
-// (via the same actionsFor() rule, not a duplicated one).
-const BULK_ACTIONS: { eventType: string; label: string; needsAssetUser: boolean }[] = [
-  { eventType: "MOVED", label: "Move / Allot / Transfer", needsAssetUser: true },
-  { eventType: "SENT_FOR_REPAIR", label: "Send for Repair", needsAssetUser: false },
-  { eventType: "RECEIVED_FROM_REPAIR", label: "Receive from Repair", needsAssetUser: true },
-  { eventType: "LOST", label: "Report Lost", needsAssetUser: false },
-  { eventType: "FOUND", label: "Mark Found", needsAssetUser: true },
-  { eventType: "DISPOSED", label: "Dispose", needsAssetUser: false },
-  { eventType: "SOLD", label: "Sell", needsAssetUser: false },
-  { eventType: "SCRAPPED", label: "Scrap", needsAssetUser: false },
-];
+interface ApplyOutcome extends BulkActionResult {
+  choice: MoveChoice;
+  /** The assets that were sent, so the result can name failures and print labels. */
+  sent: QueuedAsset[];
+}
 
-function isEligible(status: string, eventType: string): boolean {
-  return actionsFor(status).some((a) => a.eventType === eventType);
+function todayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 // An operator scanning a batch should be able to tell at a glance that an
 // asset is currently with a real person/store/install point, not sitting in
 // a Stock Room -- moving it means pulling it out of someone's hands, worth a
-// second look before it's bundled into a bulk action.
+// second look before it's bundled into a batch.
 function isNotInStockRoom(assetUserType: string | null | undefined): boolean {
   return assetUserType != null && assetUserType !== "STOCK_POINT";
 }
@@ -120,9 +103,39 @@ function selectValue(v: string): string | undefined {
   return v || undefined;
 }
 
-export function AssetMovement() {
-  const [eventType, setEventType] = useState(BULK_ACTIONS[0].eventType);
+function assetsWord(n: number): string {
+  return `${n} asset${n === 1 ? "" : "s"}`;
+}
+
+/** The choices in four small groups: moving, repair, lost/found, leaving CKAM. */
+const CHOICE_GROUPS: string[][] = [
+  ["employee", "stock-room", "store", "install"],
+  ["repair", "from-repair"],
+  ["lost", "found"],
+  ["sell", "scrap", "dispose"],
+];
+
+interface AssetMovementProps {
+  /** Asset ids to start the batch with (`?ids=1,2,3` from Assets or Asset 360). */
+  preloadIds?: string;
+  /** The choice to start with (`?choice=store`), see MOVE_CHOICES. */
+  initialChoice?: string;
+}
+
+/**
+ * Move: the one place an asset changes hands or status. Pick what to do in plain words
+ * (Give to Employee, Send to Store, Send for Repair, ...), add the assets (scan, search,
+ * by Item and quantity, or from whoever has them now), then apply once. Only choices the
+ * server would accept for every queued asset are offered (actionRules.ts, the same rule
+ * Asset 360 uses); the server re-checks each one.
+ */
+export function AssetMovement({ preloadIds, initialChoice }: AssetMovementProps = {}) {
+  const isAdmin = useAuthStore((s) => s.role) === "ADMIN";
+  const [choiceKey, setChoiceKey] = useState<string | null>(moveChoice(initialChoice)?.key ?? null);
   const [toAssetUserId, setToAssetUserId] = useState("");
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [eventDate, setEventDate] = useState(todayIso);
+  const [referenceNo, setReferenceNo] = useState("");
   const [remarks, setRemarks] = useState("");
   const [scanValue, setScanValue] = useState("");
   const [qty, setQty] = useState("1");
@@ -134,20 +147,23 @@ export function AssetMovement() {
   const [queueSearch, setQueueSearch] = useState("");
   const [currentlyWithId, setCurrentlyWithId] = useState("");
   const [browseSelected, setBrowseSelected] = useState<number[]>([]);
+  const [outcome, setOutcome] = useState<ApplyOutcome | null>(null);
+  const scanRef = useRef<HTMLInputElement>(null);
 
-  const action = BULK_ACTIONS.find((a) => a.eventType === eventType)!;
+  const choice = moveChoice(choiceKey);
+  const eligibleFor = (a: { status: string }) => !choice || isChoiceAllowed(choice, a.status);
 
-  // Labels: print each asset's label as it is scanned (the label that comes out is for the asset
-  // in hand), optionally scan it back to confirm it was stuck on the right asset.
+  /** The scan box gets the cursor back after every add, so a scanner can keep going. */
+  function focusScan() {
+    // after React has re-rendered (a just-closed pick list may have held the focus)
+    setTimeout(() => scanRef.current?.focus(), 0);
+  }
+
+  // Labels: for a move to a store, each asset's label prints as it is scanned (the label
+  // that comes out is for the asset in hand); optionally each is scanned back to confirm.
   const labelSettings = useLabelSettings();
-  const [prefs, setPrefs] = useState(loadPrefs);
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
-    } catch {
-      // best effort
-    }
-  }, [prefs]);
+  const scanPrefs = useScanLabelPrefs();
+  const labelsOn = choice?.destination === "STORE";
   const [printing, setPrinting] = useState<QueuedAsset[] | null>(null);
   // Add by Item: assets with no serial to scan ("7 mouse")
   const [itemId, setItemId] = useState("");
@@ -155,8 +171,6 @@ export function AssetMovement() {
   const [itemQty, setItemQty] = useState("1");
   const [itemError, setItemError] = useState<string | null>(null);
   const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => apiClient.get<Item[]>("/items") });
-  // Moving to a store is the case that labels are for.
-  const labelsOn = eventType === "MOVED";
 
   function printLabels(assets: QueuedAsset[]) {
     if (assets.length > 0) setPrinting(assets);
@@ -165,41 +179,78 @@ export function AssetMovement() {
     setQueue((q) => q.map((a) => (ids.includes(a.id) ? { ...a, printed: true } : a)));
     setPrinting(null);
   }
-  // The one way assets get onto the queue: skips what is already there, checks eligibility,
-  // and prints the new ones' labels when that is switched on.
-  function enqueue(assets: AssetSearchResult[], onlyEligible = false): QueuedAsset[] {
+  // The one way assets get onto the queue: skips what is already there, and prints the
+  // new ones' labels when that is switched on (not for a batch handed over from another
+  // screen: nothing was scanned, so nothing is in hand yet).
+  function enqueue(assets: AssetSearchResult[], opts: { autoPrint?: boolean } = {}): QueuedAsset[] {
     const have = new Set(queue.map((a) => a.id));
-    const fresh = assets
-      .filter((a) => !have.has(a.id))
-      .map((a) => ({ ...a, eligible: isEligible(a.status, eventType), printed: false, confirmed: false }))
-      .filter((a) => !onlyEligible || a.eligible);
+    const fresh = assets.filter((a) => !have.has(a.id)).map((a) => ({ ...a, printed: false, confirmed: false }));
     if (fresh.length > 0) {
       setQueue((q) => [...q, ...fresh]);
-      if (labelsOn && prefs.autoPrint) printLabels(fresh.filter((a) => a.eligible));
+      setOutcome(null);
+      if (labelsOn && scanPrefs.autoPrint && opts.autoPrint !== false) printLabels(fresh.filter(eligibleFor));
     }
+    focusScan();
     return fresh;
   }
 
+  // A batch handed over from Assets or Asset 360 (?ids=...).
+  const preloadQ = useQuery({
+    queryKey: ["assets", "move-preload", preloadIds],
+    queryFn: () => fetchAssetsByIds<AssetSearchResult>(parseIdList(preloadIds)),
+    enabled: !!preloadIds && parseIdList(preloadIds).length > 0,
+  });
+  const preloadedRef = useRef(false);
+  useEffect(() => {
+    if (!preloadQ.data || preloadedRef.current) return;
+    preloadedRef.current = true;
+    enqueue(preloadQ.data, { autoPrint: false });
+    // enqueue reads the current queue; this runs once, when the batch arrives
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preloadQ.data]);
+
   const asset_usersQ = useQuery({ queryKey: ["asset_users"], queryFn: () => apiClient.get<Option[]>("/asset-users") });
-  const asset_users = asset_usersQ.data ?? [];
+  const asset_users = useMemo(() => (Array.isArray(asset_usersQ.data) ? asset_usersQ.data : []), [asset_usersQ.data]);
   // Dropdown context: people/places show their place (and company when the
   // list spans companies); Items show their Category.
   const placeLookups = usePlaceLookups();
   const categoryLookups = useCategoryLookups();
   const peopleAndPlaces = placeOptions(asset_users, placeLookups);
+  // The destination list shows only the kind the choice sends to; "Receive from Repair"
+  // can go back to anyone, so there each entry also says what it is.
+  const destinationOptions: PickerOption[] = useMemo(() => {
+    const kind = choice?.destination;
+    if (!kind) return [];
+    if (kind === "ANY") {
+      return asset_users.map((u, i) => {
+        const opt = peopleAndPlaces[i];
+        const type = placeTypeLabel(u.asset_user_type);
+        return { ...opt, detail: [type, opt.detail].filter(Boolean).join(" · ") || undefined };
+      });
+    }
+    return peopleAndPlaces.filter((_, i) => asset_users[i].asset_user_type === kind);
+  }, [choice?.destination, asset_users, peopleAndPlaces]);
   // Stock rooms of every company this person works in (Add by Item's "where it is now").
   const stockRoomsQ = useStockRooms("all");
   // A destination stock room that does not exist yet is added right here (people and
   // stores are not: those belong to People & Places).
   const mayAddStockRoom = useCanCreate("stock_room");
   const [newStockRoom, setNewStockRoom] = useState(false);
+  const canAddDestination = mayAddStockRoom && (choice?.destination === "STOCK_POINT" || choice?.destination === "ANY");
+
+  function chooseChoice(next: MoveChoice) {
+    setChoiceKey(next.key);
+    setOutcome(null);
+    // A destination chosen for another kind of choice does not carry over.
+    const stillFits = next.destination != null && (next.destination === "ANY" ||
+      asset_users.some((u) => String(u.id) === toAssetUserId && u.asset_user_type === next.destination));
+    if (!stillFits) setToAssetUserId("");
+  }
 
   // "Currently With" browse: everything a specific person/store/point holds
   // right now, so an operator who knows WHO has something (but not its
   // serial/code) can find and select it instead of needing to already know
-  // a search term -- the same /api/assets list the Asset Register's own
-  // Asset User filter already uses, just capped at the endpoint's own
-  // max limit (200) since this is a browse-and-pick list, not a register.
+  // a search term -- capped at the endpoint's own max limit (200).
   const browseQ = useQuery({
     queryKey: ["assets", "movement-browse", currentlyWithId],
     queryFn: () => apiClient.get<{ items: AssetSearchResult[]; total: number }>(`/assets?asset_user_id=${currentlyWithId}&limit=200`),
@@ -227,16 +278,15 @@ export function AssetMovement() {
   }
 
   function addToQueue(asset: AssetSearchResult) {
+    setScanValue("");
+    setCandidates(null);
     if (queue.some((existing) => existing.id === asset.id)) {
       setScanError(`${asset.asset_code} is already in this batch.`);       // a repeat scan is ignored, and said so
-      setScanValue("");
-      setCandidates(null);
+      focusScan();
       return;
     }
-    enqueue([asset]);
-    setScanValue("");
     setScanError(null);
-    setCandidates(null);
+    enqueue([asset]);
   }
 
   // Add by Item: the sender's own stock of that Item, one label each.
@@ -313,7 +363,7 @@ export function AssetMovement() {
         // with the existing queue never silently shrinks how many genuinely
         // new assets get added.
         const queuedIds = new Set(queue.map((a) => a.id));
-        const eligibleNew = result.items.filter((a) => isEligible(a.status, eventType) && !queuedIds.has(a.id));
+        const eligibleNew = result.items.filter((a) => eligibleFor(a) && !queuedIds.has(a.id));
         const toAdd = eligibleNew.slice(0, vars.requestedQty);
         enqueue(toAdd);
         setBulkSummary(
@@ -331,6 +381,7 @@ export function AssetMovement() {
       if (result.items.length === 0) {
         setScanError(`No asset found matching "${vars.value}".`);
         setCandidates(null);
+        focusScan();
         return;
       }
       if (result.items.length === 1) {
@@ -352,7 +403,7 @@ export function AssetMovement() {
     const value = scanValue.trim();
     if (!value || qtyProblem) return;
     // Confirming a label that was stuck on: scanning the label itself ticks it off.
-    if (prefs.verify) {
+    if (scanPrefs.verify && labelsOn) {
       const match = queue.find((a) => a.printed && !a.confirmed && a.asset_code.toLowerCase() === value.toLowerCase());
       if (match) {
         setQueue((q) => q.map((a) => (a.id === match.id ? { ...a, confirmed: true } : a)));
@@ -370,18 +421,20 @@ export function AssetMovement() {
     });
   }
 
-  // Re-checks every already-queued asset's eligibility whenever the chosen
-  // action changes, instead of leaving a stale eligible/ineligible flag from
-  // a different action on screen.
-  function handleActionChange(next: string) {
-    setEventType(next);
-    setQueue((q) => q.map((a) => ({ ...a, eligible: isEligible(a.status, next) })));
-  }
+  // Which choices fit the whole batch (the same rule Asset 360 uses).
+  const queuedStatuses = useMemo(() => [...new Set(queue.map((a) => a.status))], [queue]);
+  const availability = choiceAvailability(queuedStatuses, { isAdmin });
+  const availabilityByKey = new Map(availability.map((s) => [s.choice.key, s]));
+  const someOffForBatch = availability.some((s) => !s.enabled && !s.choice.adminOnly);
+  const mixedLine =
+    queuedStatuses.length > 1 && someOffForBatch
+      ? `This batch has assets that are ${queuedStatuses.map((s) => statusLabel(s)).join(", ")}: only what is possible for all of them is offered.`
+      : null;
 
   // Apply always acts on the FULL queue's eligible assets, never the
   // filtered/sorted view below -- searching/sorting the queue only changes
   // what's displayed while scanning, never what gets submitted.
-  const eligibleQueue = queue.filter((a) => a.eligible);
+  const eligibleQueue = choice ? queue.filter(eligibleFor) : [];
 
   const queueSearchLower = queueSearch.trim().toLowerCase();
   const filteredQueue = queueSearchLower
@@ -411,43 +464,86 @@ export function AssetMovement() {
       </button>
     );
   }
-  const unprinted = eligibleQueue.filter((a) => !a.printed);
-  const unconfirmed = prefs.verify && labelsOn ? eligibleQueue.filter((a) => !a.confirmed).length : 0;
+  const unprinted = labelsOn ? eligibleQueue.filter((a) => !a.printed) : [];
+  const unconfirmed = scanPrefs.verify && labelsOn ? eligibleQueue.filter((a) => !a.confirmed).length : 0;
   const tooManyToApply = eligibleQueue.length > MAX_QUANTITY;
-  const canApply =
-    eligibleQueue.length > 0 &&
-    !tooManyToApply &&
-    (!action.needsAssetUser || toAssetUserId !== "") &&
-    unconfirmed === 0;
+  const needsDestination = choice?.destination != null && toAssetUserId === "";
+  const canApply = !!choice && eligibleQueue.length > 0 && !tooManyToApply && !needsDestination && unconfirmed === 0;
+  const applyHint = !choice
+    ? "Choose what to do."
+    : queue.length === 0
+      ? "Add the assets."
+      : eligibleQueue.length === 0
+        ? `None of these assets can be: ${choice.label}.`
+        : needsDestination
+          ? `Choose the ${choice.destinationLabel?.toLowerCase()}.`
+          : null;
 
+  // The batch goes in one request. A date other than today or a reference number is
+  // recorded per asset through the single-asset endpoint (the batch endpoint does not take
+  // them yet), each asset reported on its own exactly as the batch endpoint would.
   const applyMutation = useMutation({
-    mutationFn: () =>
-      apiClient.post<BulkActionResult>("/assets/bulk-action", {
-        asset_ids: eligibleQueue.map((a) => a.id),
-        event_type: eventType,
-        to_asset_user_id: action.needsAssetUser ? Number(toAssetUserId) : null,
-        remarks: remarks || null,
-      }),
+    mutationFn: async (): Promise<ApplyOutcome> => {
+      const c = choice!;
+      const sent = eligibleQueue;
+      const to = c.destination ? Number(toAssetUserId) : null;
+      const reference = referenceNo.trim();
+      const note = remarks.trim() || null;
+      const customDate = eventDate !== "" && eventDate !== todayIso();
+      if (!customDate && reference === "") {
+        const result = await apiClient.post<BulkActionResult>("/assets/bulk-action", {
+          asset_ids: sent.map((a) => a.id),
+          event_type: c.eventType,
+          to_asset_user_id: to,
+          remarks: note,
+        });
+        return { ...result, choice: c, sent };
+      }
+      const failed: BulkActionResult["failed"] = [];
+      let done = 0;
+      for (const a of sent) {
+        try {
+          await apiClient.post(`/assets/${a.id}/events`, {
+            event_type: c.eventType,
+            to_asset_user_id: to,
+            event_date: customDate ? new Date(eventDate).toISOString() : undefined,
+            reference_no: reference || null,
+            remarks: note,
+          });
+          done += 1;
+        } catch (err) {
+          failed.push({ asset_id: a.id, reason: err instanceof Error ? err.message : "Could not be recorded." });
+        }
+      }
+      return { done, failed, choice: c, sent };
+    },
     onSuccess: (result) => {
       const failedIds = new Set(result.failed.map((f) => f.asset_id));
       // Successful ones fall off the queue; a failure stays, so the operator
       // can see exactly which ones still need attention and why.
       setQueue((q) => q.filter((a) => failedIds.has(a.id)));
+      setOutcome(result);
     },
   });
 
   function resetAfterApply() {
     applyMutation.reset();
+    setOutcome(null);
     setQueue([]);
     setRemarks("");
+    setReferenceNo("");
+    setEventDate(todayIso());
     setToAssetUserId("");
     setCurrentlyWithId("");
     setBrowseSelected([]);
+    focusScan();
   }
+
+  const movedAssets = outcome ? outcome.sent.filter((a) => !outcome.failed.some((f) => f.asset_id === a.id)) : [];
+  const codeOf = (id: number) => outcome?.sent.find((a) => a.id === id)?.asset_code ?? `Asset #${id}`;
 
   return (
     <div className="flex flex-col gap-4">
-      <LabelPrintStyle widthMm={labelSettings.widthMm} heightMm={labelSettings.heightMm} />
       {printing && (
         <PrintNow
           assets={printing} symbol={labelSettings.symbol} widthMm={labelSettings.widthMm} heightMm={labelSettings.heightMm}
@@ -456,78 +552,62 @@ export function AssetMovement() {
       )}
 
       <PageHeader
-        title="Move Assets"
-        description="Move or dispatch assets in one batch: scan or type a Serial Number/Asset Code to queue them, then apply one action to the whole batch. For a move to a store, each asset's label prints as you scan it, so the label is for the asset in your hand."
-        actions={<Button asChild variant="outline"><Link to="/print-labels">Print Labels</Link></Button>}
+        title="Move"
+        description="Choose what to do, add the assets (scan, search, by Item, or from whoever has them), then apply once. Sending to a store prints each label as you scan, so the label is for the asset in your hand."
+        actions={<Button asChild variant="outline" size="sm"><Link to="/print-labels">Print Labels</Link></Button>}
       />
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <FormField htmlFor="movement-action" label="Action" required>
-          <Select value={eventType} onValueChange={handleActionChange}>
-            <SelectTrigger id="movement-action" aria-label="Action">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {BULK_ACTIONS.map((a) => (
-                <SelectItem key={a.eventType} value={a.eventType}>{a.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </FormField>
-
-        {action.needsAssetUser && (
-          <FormField htmlFor="movement-asset-user" label={targetLabelFor(eventType)} required>
-            <SearchableSelect
-              id="movement-asset-user"
-              aria-label={targetLabelFor(eventType)}
-              value={selectValue(toAssetUserId)}
-              onValueChange={setToAssetUserId}
-              options={peopleAndPlaces}
-              placeholder="Pick an employee, store or stock room…"
-              searchPlaceholder="Search by name or code…"
-              onCreateNew={mayAddStockRoom ? () => setNewStockRoom(true) : undefined}
-              createLabel="New Stock Room…"
-            />
-            <NewStockRoomDialog open={newStockRoom} onOpenChange={setNewStockRoom} onCreated={(row) => setToAssetUserId(String(row.id))} />
-          </FormField>
-        )}
+      <div className="flex flex-col gap-1.5">
+        <span className="text-sm font-medium" id="move-choice-label">What do you want to do?</span>
+        <div role="radiogroup" aria-labelledby="move-choice-label" className="flex flex-wrap gap-x-3 gap-y-1.5">
+          {CHOICE_GROUPS.map((group) => (
+            <div key={group.join()} className="flex flex-wrap gap-1.5">
+              {group.map((key) => {
+                const state = availabilityByKey.get(key)!;
+                const selected = choiceKey === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    disabled={!state.enabled}
+                    title={state.reason}
+                    onClick={() => chooseChoice(state.choice)}
+                    className={cn(
+                      "rounded-md border px-2.5 py-1 text-sm",
+                      selected ? "border-primary bg-primary text-primary-foreground" : "bg-background hover:bg-muted",
+                      "disabled:cursor-not-allowed disabled:opacity-50",
+                    )}
+                  >
+                    {state.choice.label}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+        {mixedLine && <p className="text-xs text-muted-foreground" role="note">{mixedLine}</p>}
       </div>
 
-      <FormField htmlFor="movement-remarks" label="Remarks" helperText="Optional. Applied to every asset in this batch.">
-        <Textarea id="movement-remarks" aria-label="Remarks" value={remarks} onChange={(e) => setRemarks(e.target.value)} rows={2} />
-      </FormField>
-
-      <label className="flex items-center gap-2 text-sm">
-        <Checkbox
-          aria-label="Only assets currently in stock"
-          checked={onlyInStock}
-          onCheckedChange={(checked) => setOnlyInStock(checked === true)}
-        />
-        Only assets currently in stock
-      </label>
-
-      {labelsOn && (
-        <div className="flex flex-col gap-3 rounded-md border p-3">
-          <h2 className="text-sm font-semibold">Labels</h2>
-          <div className="flex flex-col gap-2 text-sm sm:flex-row sm:gap-6">
-            <label className="flex items-center gap-2">
-              <Checkbox
-                aria-label="Print the label as I scan"
-                checked={prefs.autoPrint} onCheckedChange={(c) => setPrefs((p) => ({ ...p, autoPrint: c === true }))}
-              />
-              Print the label as I scan
-            </label>
-            <label className="flex items-center gap-2">
-              <Checkbox
-                aria-label="Confirm each label by scanning it"
-                checked={prefs.verify} onCheckedChange={(c) => setPrefs((p) => ({ ...p, verify: c === true }))}
-              />
-              Confirm each label by scanning it after sticking it on
-            </label>
-          </div>
-          <LabelSettingsFields settings={labelSettings} />
-        </div>
+      {choice?.destination && (
+        <FormField htmlFor="movement-asset-user" label={choice.destinationLabel ?? "To"} required className="sm:max-w-md">
+          <SearchableSelect
+            id="movement-asset-user"
+            aria-label={choice.destinationLabel}
+            value={selectValue(toAssetUserId)}
+            onValueChange={setToAssetUserId}
+            options={destinationOptions}
+            placeholder={`Choose the ${choice.destinationLabel?.toLowerCase()}…`}
+            searchPlaceholder="Search by name or code…"
+            onCreateNew={canAddDestination ? () => setNewStockRoom(true) : undefined}
+            createLabel="New Stock Room…"
+          />
+          <NewStockRoomDialog open={newStockRoom} onOpenChange={setNewStockRoom} onCreated={(row) => setToAssetUserId(String(row.id))} />
+        </FormField>
       )}
+
+      {labelsOn && <LabelSettingsDisclosure settings={labelSettings} scanPrefs={scanPrefs} />}
 
       <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
         <FormField
@@ -538,6 +618,7 @@ export function AssetMovement() {
           <div className="flex gap-2">
             <Input
               id="movement-scan" aria-label="Scan or type Serial Number, Asset Code, or Description" value={scanValue}
+              ref={scanRef}
               onChange={(e) => setScanValue(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
@@ -566,8 +647,17 @@ export function AssetMovement() {
           />
         </FormField>
       </div>
+      <label className="flex items-center gap-2 text-sm">
+        <Checkbox
+          aria-label="Only assets currently in stock"
+          checked={onlyInStock}
+          onCheckedChange={(checked) => setOnlyInStock(checked === true)}
+        />
+        Only assets currently in stock
+      </label>
       {scanError && <p className="text-sm text-destructive" role="alert">{scanError}</p>}
       {bulkSummary && <p className="text-sm text-muted-foreground" role="status">{bulkSummary}</p>}
+      {preloadQ.isError && <p className="text-sm text-destructive" role="alert">Couldn't load the assets that were sent here. Add them by scanning instead.</p>}
       {candidates && (
         <div className="rounded-md border p-2">
           <p className="mb-1 text-xs text-muted-foreground">More than one match -- pick the right one:</p>
@@ -590,8 +680,8 @@ export function AssetMovement() {
       <div className="rounded-md border p-3">
         <h2 className="mb-1 text-sm font-semibold">No serial to scan? Add by Item</h2>
         <p className="mb-2 text-xs text-muted-foreground">
-          For things such as mice and keyboards with no serial: choose the Item, where it is now and how many, and CKAM picks that many
-          from that stock{labelsOn ? ", with one label each" : ""}.
+          For things such as mice and keyboards with no serial: choose the Item, where it is now and how many, and CKAM takes that many
+          from that stock room{labelsOn ? ", with one label each" : ""}.
         </p>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <FormField htmlFor="movement-item" label="Item">
@@ -691,12 +781,12 @@ export function AssetMovement() {
       <div className="rounded-md border p-3">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold">
-            Queued ({queue.length}){eligibleQueue.length !== queue.length && ` — ${eligibleQueue.length} eligible`}
+            Queued ({queue.length}){choice && eligibleQueue.length !== queue.length && ` — ${eligibleQueue.length} can be done`}
           </h2>
-          {labelsOn && unprinted.length > 0 && (
+          {unprinted.length > 0 && (
             <Button type="button" variant="outline" size="sm" onClick={() => printLabels(unprinted)}>
               <Printer className="h-4 w-4" aria-hidden="true" />
-              Print {unprinted.length} label{unprinted.length === 1 ? "" : "s"} not printed yet
+              Print {labelsWord(unprinted.length)} not printed yet
             </Button>
           )}
           {queue.length > 1 && (
@@ -726,11 +816,12 @@ export function AssetMovement() {
           <ul className="flex flex-col gap-1.5">
             {sortedQueue.map((a) => {
               const notInStock = isNotInStockRoom(a.current_asset_user_type);
+              const eligible = eligibleFor(a);
               return (
               <li
                 key={a.id}
                 className={`flex items-center justify-between gap-2 rounded-sm border px-2 py-1.5 text-sm ${
-                  !a.eligible
+                  !eligible
                     ? "border-destructive/50 bg-destructive/5"
                     : notInStock
                       ? "border-warning/50 bg-warning-soft"
@@ -744,14 +835,14 @@ export function AssetMovement() {
                   </span>
                   <span className="text-xs text-muted-foreground">
                     {withLine(a)}
-                    {!a.eligible && ` · not eligible for "${action.label}" from this status`}
+                    {!eligible && choice && ` · not possible: ${choice.label} (it is ${statusLabel(a.status, a.current_asset_user_type)})`}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  {labelsOn && a.eligible && (
+                  {labelsOn && eligible && (
                     <>
                       <span className="text-xs text-muted-foreground">
-                        {a.confirmed ? "Confirmed" : a.printed ? (prefs.verify ? "Printed: scan the label" : "Printed") : "Label not printed"}
+                        {a.confirmed ? "Confirmed" : a.printed ? (scanPrefs.verify ? "Printed: scan the label" : "Printed") : "Label not printed"}
                       </span>
                       <Button type="button" variant="ghost" size="sm" aria-label={`Print label for ${a.asset_code}`} onClick={() => printLabels([a])}>
                         {a.printed ? "Reprint" : "Print"}
@@ -769,27 +860,62 @@ export function AssetMovement() {
         )}
       </div>
 
+      <div className="rounded-md border px-3 py-2">
+        <button
+          type="button"
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+          aria-expanded={moreOpen}
+          aria-controls="movement-more"
+          onClick={() => setMoreOpen((o) => !o)}
+        >
+          {moreOpen ? <ChevronDown className="h-4 w-4" aria-hidden="true" /> : <ChevronRight className="h-4 w-4" aria-hidden="true" />}
+          <span className="font-medium text-foreground">More</span>
+          <span className="text-xs">date, reference number, remarks</span>
+        </button>
+        {moreOpen && (
+          <div id="movement-more" className="mt-3 grid gap-4 border-t pt-3 sm:grid-cols-3">
+            <FormField htmlFor="movement-date" label="Date" helperText="Today unless it happened earlier.">
+              <Input id="movement-date" aria-label="Date" type="date" max={todayIso()} value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
+            </FormField>
+            <FormField htmlFor="movement-reference" label="Reference number" helperText="Optional: a gate pass, challan or ticket number.">
+              <Input id="movement-reference" aria-label="Reference number" value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} />
+            </FormField>
+            <FormField htmlFor="movement-remarks" label="Remarks" helperText="Optional. Applied to every asset in this batch.">
+              <Textarea id="movement-remarks" aria-label="Remarks" value={remarks} onChange={(e) => setRemarks(e.target.value)} rows={2} />
+            </FormField>
+          </div>
+        )}
+      </div>
+
       {tooManyToApply && (
         <p className="text-sm text-destructive" role="alert">
           You can move at most {MAX_QUANTITY.toLocaleString("en-IN")} assets at a time. Remove {eligibleQueue.length - MAX_QUANTITY} from the batch, then apply, and do the rest in a second batch.
         </p>
       )}
       {unconfirmed > 0 && <p className="text-xs text-muted-foreground">{unconfirmed} label{unconfirmed === 1 ? " is" : "s are"} not confirmed yet.</p>}
-      {applyMutation.isSuccess && (
-        <div className="rounded-md border bg-muted/40 p-3 text-sm">
+
+      {outcome && (
+        <div className="flex flex-col gap-2 rounded-md border bg-muted/40 p-3 text-sm" role="status" data-testid="move-result">
           <p>
-            <span className="font-semibold tabular-nums" data-testid="bulk-action-done-count">{applyMutation.data.done}</span> asset(s) updated.
+            <span className="font-semibold tabular-nums" data-testid="bulk-action-done-count">{outcome.done}</span>{" "}
+            {outcome.done === 1 ? "asset" : "assets"} {outcome.choice.doneWord}.
           </p>
-          {applyMutation.data.failed.length > 0 && (
-            <ul className="mt-1 flex flex-col gap-0.5 text-destructive">
-              {applyMutation.data.failed.map((f) => (
-                <li key={f.asset_id}>Asset #{f.asset_id}: {f.reason}</li>
-              ))}
-            </ul>
+          {outcome.failed.length > 0 && (
+            <div className="text-destructive">
+              <p>{assetsWord(outcome.failed.length)} could not be done (still in the batch above):</p>
+              <ul className="mt-1 flex flex-col gap-0.5">
+                {outcome.failed.map((f) => (
+                  <li key={f.asset_id}>{codeOf(f.asset_id)}: {f.reason}</li>
+                ))}
+              </ul>
+            </div>
           )}
-          <Button type="button" variant="outline" size="sm" className="mt-2" onClick={resetAfterApply}>
-            Start a new batch
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {movedAssets.length > 0 && <PrintLabelsAction assets={movedAssets} />}
+            <Button type="button" variant="outline" size="sm" onClick={resetAfterApply}>
+              Move more
+            </Button>
+          </div>
         </div>
       )}
       {applyMutation.isError && (
@@ -798,10 +924,11 @@ export function AssetMovement() {
         </p>
       )}
 
-      <div>
+      <div className="flex flex-wrap items-center gap-3">
         <AsyncButton onClick={() => applyMutation.mutate()} disabled={!canApply} pending={applyMutation.isPending} pendingLabel="Applying…">
-          Apply "{action.label}" to {eligibleQueue.length} asset{eligibleQueue.length === 1 ? "" : "s"}
+          {choice ? `${choice.label} (${assetsWord(eligibleQueue.length)})` : "Choose what to do"}
         </AsyncButton>
+        {applyHint && !applyMutation.isPending && <span className="text-xs text-muted-foreground">{applyHint}</span>}
       </div>
     </div>
   );

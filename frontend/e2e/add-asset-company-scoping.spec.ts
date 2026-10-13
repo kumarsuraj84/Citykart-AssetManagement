@@ -85,5 +85,5 @@ test("Add Asset offers only this company's own Cost Centres, and asset creation 
 
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page).toHaveURL(/\/assets\/\d+$/);
-  await expect(page.getByRole("tabpanel", { name: "Overview" }).getByText("AM08 Company-Scoped Cost Centre Test Laptop")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Identity" }).getByText("AM08 Company-Scoped Cost Centre Test Laptop")).toBeVisible();
 });

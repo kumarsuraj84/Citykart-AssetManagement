@@ -27,6 +27,7 @@ import { MAX_QUANTITY, quantityHint, quantityProblem } from "@/lib/limits";
 import { DeliveryReminderBanner } from "../erp/DeliveryReminders";
 import { ErpChangesPanel } from "../erp/ErpChanges";
 import { ErpPiDialog } from "../erp/ErpPiDialog";
+import { PrintLabelsAction } from "../labels/PrintLabelsAction";
 import { workAreaLabel } from "@/lib/labels";
 import { brandOptions, itemOptions, namesById, placeOption } from "@/lib/option-labels";
 import { usePlaceLookups } from "@/lib/lookups";
@@ -402,11 +403,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
       {justDelivered.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-success-soft/60 p-2 text-sm" role="status">
           <span>{plural(justDelivered.length, "unit")} received and now in the register.</span>
-          <Button asChild size="sm">
-            <Link to="/print-labels" search={{ assets: justDelivered.slice(0, 200).join(",") }}>
-              Print their labels now
-            </Link>
-          </Button>
+          <PrintLabelsAction assetIds={justDelivered} variant="default">Print their labels now</PrintLabelsAction>
         </div>
       )}
 
@@ -535,11 +532,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
             <h2 className="text-sm font-semibold">Invoices received under this PO</h2>
             <div className="flex flex-wrap gap-2">
               {deliveredAssetIds.length > 0 && (
-                <Button asChild size="sm" variant="outline">
-                  <Link to="/print-labels" search={{ assets: deliveredAssetIds.slice(0, 200).join(",") }}>
-                    Print labels for the received units
-                  </Link>
-                </Button>
+                <PrintLabelsAction assetIds={deliveredAssetIds}>Print labels for the received units</PrintLabelsAction>
               )}
               {po?.erp_po_code != null && deliveredInvoiceNumbers.length > 0 && <ErpPiDialog poId={poId} />}
             </div>

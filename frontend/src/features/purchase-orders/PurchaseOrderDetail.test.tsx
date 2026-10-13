@@ -879,7 +879,11 @@ describe("PurchaseOrderDetail: the Receive (Mark Delivery Done) dialog", () => {
     fireEvent.click(confirmBtn(dialog));
 
     expect(await screen.findByText(/1 unit received and now in the register/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /print their labels now/i })).toHaveAttribute("href", expect.stringMatching(/^\/print-labels\?assets=.*77/));
+    // S5a: the shared print-labels action, right here (no trip to another page).
+    fireEvent.click(screen.getByRole("button", { name: /print their labels now/i }));
+    const printDialog = await screen.findByRole("dialog", { name: /print 1 label/i });
+    expect(within(printDialog).getByRole("button", { name: /label settings/i })).toBeInTheDocument();
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/assets?ids=77&limit=200"));
   });
 
   it("a line whose Item's serial is read later starts with 'add it later' ticked, and delivers without a serial", async () => {
@@ -972,10 +976,12 @@ describe("PurchaseOrderDetail: invoices received and their Purchase Invoice (PI)
     expect(screen.getAllByText(/Purchase Invoice \(PI\)/)).toHaveLength(1);
   });
 
-  it("links to the labels of every received unit of the PO", async () => {
+  it("offers the labels of every received unit of the PO", async () => {
     mockGets([DELIVERED_LINE]);
     renderDetailAt();
-    expect(await screen.findByRole("link", { name: /print labels for the received units/i })).toHaveAttribute("href", expect.stringMatching(/^\/print-labels\?assets=.*99/));
+    fireEvent.click(await screen.findByRole("button", { name: /print labels for the received units/i }));
+    expect(await screen.findByRole("dialog", { name: /print 1 label/i })).toBeInTheDocument();
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/assets?ids=99&limit=200"));
   });
 
   it("a PO created from the ERP offers Fetch PI from ERP next to its received invoices", async () => {

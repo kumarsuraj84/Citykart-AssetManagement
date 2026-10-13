@@ -130,9 +130,8 @@ test("import journey: fixture file -> preview -> commit -> find the asset -> PI 
   await descriptionCell.click();
 
   await expect(page).toHaveURL(/\/assets\/\d+$/);
-  await page.getByRole("tab", { name: "Procurement", exact: true }).click();
-  await expect(page.getByText("PI-E2E-IMPORT")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Procurement" }).getByText("PI-E2E-IMPORT")).toBeVisible();
 
-  await page.getByRole("tab", { name: "Custom Fields", exact: true }).click();
+  await page.getByRole("tab", { name: "Custom fields", exact: true }).click();
   await expect(page.getByText("WARR-E2E-9")).toBeVisible();
 });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
@@ -7,18 +7,19 @@ import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { FormField } from "@/components/shared/FormField";
 import { EmptyState } from "@/components/shared/EmptyState";
-import { AssetLabel, LabelPrintStyle, useLabelSettings, type LabelAsset } from "@/components/labels/AssetLabel";
-import { LabelSettingsFields } from "@/components/labels/LabelSettingsFields";
+import { LabelPrintStyle, useLabelSettings, type LabelAsset } from "@/components/labels/AssetLabel";
+import { LabelSettingsDisclosure } from "../labels/LabelSettingsDisclosure";
+import { LabelSheet, fetchLabelAssets, labelsWord, parseIdList } from "../labels/PrintLabelsAction";
 import { assetScanQuery } from "../../lib/scan";
 import { ScanBarcode, Printer } from "lucide-react";
 
 type AssetSearchResult = LabelAsset;
 
 /**
- * Print Labels: labels for assets you already have in hand -- scan or type to queue them,
- * then print. Opened from a delivery ("Print labels for these"), it arrives with that
- * delivery's assets already queued, so every received unit can be tagged before it is
- * dispatched. (To label an asset at the moment it is sent, use Dispatch.)
+ * Print Labels: a queue of assets whose labels to print -- scan or type to add them, or
+ * arrive with a set already queued (`?assets=1,2,3`). It uses the same Label settings
+ * and label layout as every other "Print labels" action; here the preview IS the sheet
+ * that prints. (To label an asset as it is sent, use Move.)
  */
 export function PrintLabels({ preloadIds }: { preloadIds?: string }) {
   const [scanValue, setScanValue] = useState("");
@@ -26,28 +27,27 @@ export function PrintLabels({ preloadIds }: { preloadIds?: string }) {
   const [candidates, setCandidates] = useState<AssetSearchResult[] | null>(null);
   const [queue, setQueue] = useState<AssetSearchResult[]>([]);
   const settings = useLabelSettings();
-  const { symbol, widthMm, heightMm } = settings;
+  const scanRef = useRef<HTMLInputElement>(null);
 
   const preloadQ = useQuery({
     queryKey: ["assets", "labels-preload", preloadIds],
-    queryFn: () => apiClient.get<{ items: AssetSearchResult[]; total: number }>(`/assets?ids=${encodeURIComponent(preloadIds ?? "")}&limit=200`),
+    queryFn: () => fetchLabelAssets(parseIdList(preloadIds)),
     enabled: !!preloadIds,
   });
   useEffect(() => {
     if (!preloadQ.data) return;
     setQueue((q) => {
       const have = new Set(q.map((a) => a.id));
-      const order = (preloadIds ?? "").split(",").map(Number);
-      const loaded = [...preloadQ.data.items].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
-      return [...q, ...loaded.filter((a) => !have.has(a.id))];
+      return [...q, ...preloadQ.data.filter((a) => !have.has(a.id))];
     });
-  }, [preloadQ.data, preloadIds]);
+  }, [preloadQ.data]);
 
   function addToQueue(asset: AssetSearchResult) {
     setQueue((q) => (q.some((existing) => existing.id === asset.id) ? q : [...q, asset]));
     setScanValue("");
     setScanError(null);
     setCandidates(null);
+    scanRef.current?.focus();
   }
 
   function removeFromQueue(id: number) {
@@ -82,7 +82,7 @@ export function PrintLabels({ preloadIds }: { preloadIds?: string }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <LabelPrintStyle widthMm={widthMm} heightMm={heightMm} />
+      <LabelPrintStyle widthMm={settings.widthMm} heightMm={settings.heightMm} />
 
       <PageHeader
         title="Print Labels"
@@ -90,7 +90,7 @@ export function PrintLabels({ preloadIds }: { preloadIds?: string }) {
         actions={<Button asChild variant="outline"><Link to="/asset-movement">Move Assets (label as you send)</Link></Button>}
       />
 
-      <LabelSettingsFields settings={settings} />
+      <LabelSettingsDisclosure settings={settings} />
 
       <FormField
         htmlFor="print-labels-scan"
@@ -100,6 +100,7 @@ export function PrintLabels({ preloadIds }: { preloadIds?: string }) {
         <div className="flex gap-2">
           <Input
             id="print-labels-scan" aria-label="Scan or type Serial Number / Asset Code" value={scanValue}
+            ref={scanRef}
             onChange={(e) => setScanValue(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
@@ -153,26 +154,21 @@ export function PrintLabels({ preloadIds }: { preloadIds?: string }) {
         )}
       </div>
 
-      {/* Preview == what prints -- the same markup that the print-only
-          stylesheet isolates onto the page, shown inline so it doubles as an
-          on-screen preview before any label stock is used. */}
+      {/* Preview == what prints: the shared label sheet, marked as the one the print-only
+          stylesheet isolates onto the page. */}
       <div className="rounded-md border p-3">
         <h2 className="mb-2 text-sm font-semibold">Preview</h2>
         {queue.length === 0 ? (
           <EmptyState title="No labels to preview yet." description="Labels appear here as you queue assets above." />
         ) : (
-          <div className="print-labels-sheet flex flex-wrap gap-3">
-            {queue.map((a) => (
-              <AssetLabel key={a.id} asset={a} symbol={symbol} widthMm={widthMm} heightMm={heightMm} />
-            ))}
-          </div>
+          <LabelSheet assets={queue} settings={settings} printable />
         )}
       </div>
 
       <div>
         <Button type="button" onClick={() => window.print()} disabled={queue.length === 0}>
           <Printer className="h-4 w-4" aria-hidden="true" />
-          Print {queue.length} Label{queue.length === 1 ? "" : "s"}
+          Print {labelsWord(queue.length)}
         </Button>
       </div>
     </div>
