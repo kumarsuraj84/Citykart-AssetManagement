@@ -197,6 +197,11 @@ async def add_bundle_lines(
             raise ValueError(f"the part amounts add up to {total}, not the bundle price {price}")
         amounts = [given[p.id] for p in parts]
 
+    # S2.4: each part is its own PO line (one line number per part, shared by
+    # that part's units of every bundle added here). `line_nos` (part name ->
+    # line number) adds the units to a part's existing line instead -- used
+    # when the ERP raises the quantity of a bundle already on the PO.
+    line_nos: dict[str, int] = data.get("line_nos") or {}
     created: list[PendingAsset] = []
     for part, amount in zip(parts, amounts):
         created.extend(await add_pending_asset_line(session, po, {
@@ -213,5 +218,6 @@ async def add_bundle_lines(
             "quantity": data["quantity"],
             "bundle_label": bundle.name,
             "erp_item_code": data.get("erp_item_code"),
+            "line_no": line_nos.get(part.name),
         }, actor, allowed_domains=allowed_domains))
     return created

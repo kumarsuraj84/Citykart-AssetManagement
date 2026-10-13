@@ -7,7 +7,7 @@ from app.core.deps import WRITE_ROLES, allowed_asset_domains, require_primary_ow
 from app.erp import mirror_models  # noqa: F401  (registers the local ERP copy tables on the metadata)
 from app.erp import stores as erp_stores
 from app.erp import vendors as erp_vendors
-from app.erp.changes import apply_changes, changes_summary, po_changes, snapshot_baseline
+from app.erp.changes import OutsideWorkArea, apply_changes, changes_summary, po_changes, snapshot_baseline
 from app.erp.invoices import apply_pi, pi_preview
 from app.erp.reminders import delivery_reminders
 from app.erp.schemas import ChangesApplyIn, DraftCreateIn, ErpVendorLinkIn, PiApplyIn, StoresCreateIn, SyncRunOut, SyncStatusOut
@@ -206,7 +206,7 @@ async def erp_po_changes(
     if po.erp_po_code is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "this purchase order was not made from the ERP")
     try:
-        return await po_changes(session, source, po)
+        return await po_changes(session, source, po, await allowed_asset_domains(session, actor))
     except ErpUnavailable as exc:
         raise _unavailable(exc)
 
@@ -222,11 +222,15 @@ async def erp_po_changes_apply(
     if po.erp_po_code is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "this purchase order was not made from the ERP")
     try:
-        report = await apply_changes(session, actor, source, po, [i.model_dump() for i in body.items])
+        report = await apply_changes(session, actor, source, po, [i.model_dump() for i in body.items],
+                                     await allowed_asset_domains(session, actor))
         await session.commit()
     except ErpUnavailable as exc:
         await session.rollback()
         raise _unavailable(exc)
+    except OutsideWorkArea as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc))
     except ValueError as exc:
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))

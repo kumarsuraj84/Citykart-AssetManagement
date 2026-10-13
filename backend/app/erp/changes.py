@@ -17,12 +17,12 @@ from app.asset_users.models import AssetUser
 from app.assets.service import compute_tax
 from app.bundles.models import Bundle, BundlePart
 from app.bundles.service import add_bundle_lines, split_amounts
-from app.core.deps import scoped_company_ids
+from app.core.deps import allowed_asset_domains, scoped_company_ids, work_area_words
 from app.erp.service import derive_tax, linked_vendors, untracked_codes
 from app.erp.source import ErpPo, ErpSource
-from app.masters.models import Vendor
+from app.masters.models import AssetCategory, Vendor
 from app.purchase_orders.models import PendingAsset, PurchaseOrder, PurchaseOrderErpBaseline, PurchaseOrderErpChange
-from app.purchase_orders.service import add_pending_asset_line, cancel_pending_asset_line
+from app.purchase_orders.service import add_pending_asset_line, cancel_pending_asset_line, po_visible_clause
 
 RATE_TOLERANCE = 0.005
 
@@ -206,6 +206,49 @@ def compute_changes(po: PurchaseOrder, erp: ErpPo | None, baseline: dict[str, Pu
     return report
 
 
+# ---- S0 leftover: the work area on a PO that mixes IT and Non-IT lines ----
+# Someone limited to one work area sees only the per-item differences that
+# concern units of their own area (and the PO-level ones), and may apply or
+# keep only differences whose units are all in their area.
+
+class OutsideWorkArea(PermissionError):
+    """Applying this difference would change units outside the caller's work area (answered as 403)."""
+
+
+async def _line_areas(session: AsyncSession, lines: list[PendingAsset]) -> dict[int, str | None]:
+    missing = {ln.category_id for ln in lines if not ln.asset_domain}
+    categories = dict((await session.execute(
+        select(AssetCategory.id, AssetCategory.asset_domain).where(AssetCategory.id.in_(missing))
+    )).all()) if missing else {}
+    return {ln.id: ln.asset_domain or categories.get(ln.category_id) for ln in lines}
+
+
+def _code_areas(lines: list[PendingAsset], areas: dict[int, str | None]) -> dict[str, set[str]]:
+    out: dict[str, set[str]] = defaultdict(set)
+    for ln in lines:
+        code = (ln.erp_item_code or "").strip().upper()
+        if code and ln.status != "CANCELLED" and areas.get(ln.id):
+            out[code].add(areas[ln.id])
+    return out
+
+
+def _only_my_area(report: dict, code_areas: dict[str, set[str]], domains: tuple[str, ...] | None) -> dict:
+    """Drops the per-item differences whose units are all outside `domains`."""
+    if domains is None:
+        return report
+    report["changes"] = [
+        c for c in report["changes"]
+        if not (c.get("item_code") and code_areas.get(c["item_code"]) and not (code_areas[c["item_code"]] & set(domains)))
+    ]
+    return report
+
+
+def _outside_message(outside: set[str]) -> str:
+    words = " and ".join(sorted(work_area_words(a) for a in outside))
+    return (f"This change also affects {words} items of this purchase order, which are outside your work area. "
+            "Ask someone who handles both, or the head-office admin.")
+
+
 async def _baseline(session: AsyncSession, po_id: int) -> dict[str, PurchaseOrderErpBaseline]:
     rows = (await session.execute(select(PurchaseOrderErpBaseline).where(PurchaseOrderErpBaseline.purchase_order_id == po_id))).scalars().all()
     return {r.item_code.upper(): r for r in rows}
@@ -215,11 +258,17 @@ async def _log(session: AsyncSession, po_id: int, actor: AssetUser, kind: str, i
     session.add(PurchaseOrderErpChange(purchase_order_id=po_id, actor_id=actor.id, kind=kind, item_code=item_code, summary=summary[:500]))
 
 
-async def po_changes(session: AsyncSession, source: ErpSource, po: PurchaseOrder) -> dict:
+async def po_changes(session: AsyncSession, source: ErpSource, po: PurchaseOrder,
+                     domains: tuple[str, ...] | None = None) -> dict:
+    """`domains`: the caller's work area (None = both); differences that only
+    concern units of the other area are left out."""
     erp = await source.po(po.erp_po_code) if po.erp_po_code is not None else None
     untracked = await untracked_codes(session, source, po.company_id, [erp] if erp else [])
-    report = compute_changes(po, erp, await _baseline(session, po.id), await _lines(session, po.id),
+    lines = await _lines(session, po.id)
+    report = compute_changes(po, erp, await _baseline(session, po.id), lines,
                              await linked_vendors(session, po.company_id), untracked)
+    if domains is not None:
+        _only_my_area(report, _code_areas(lines, await _line_areas(session, lines)), domains)
     report.update({"po_id": po.id, "po_number": po.po_number, "erp_po_code": po.erp_po_code})
     log_rows = (await session.execute(
         select(PurchaseOrderErpChange).where(PurchaseOrderErpChange.purchase_order_id == po.id)
@@ -237,12 +286,17 @@ async def po_changes(session: AsyncSession, source: ErpSource, po: PurchaseOrder
 
 async def changes_summary(session: AsyncSession, actor: AssetUser, source: ErpSource) -> list[dict]:
     """POs made from the ERP that are still being watched and still have units pending, with how many
-    differences the ERP now shows. One ERP read for all of them."""
+    differences the ERP now shows. One ERP read for all of them. S0 leftover:
+    someone limited to one work area sees only the POs they may see, and only
+    the differences that concern their own area's units."""
     allowed = await scoped_company_ids(session, actor)
+    domains = await allowed_asset_domains(session, actor)
     stmt = select(PurchaseOrder).where(
         PurchaseOrder.erp_po_code.is_not(None), PurchaseOrder.erp_synced_at.is_not(None), PurchaseOrder.is_active.is_(True))
     if allowed is not None:
         stmt = stmt.where(PurchaseOrder.company_id.in_(allowed))
+    if domains is not None:
+        stmt = stmt.where(po_visible_clause(domains))
     pos = list((await session.execute(stmt)).scalars().all())
     if not pos:
         return []
@@ -261,8 +315,11 @@ async def changes_summary(session: AsyncSession, actor: AssetUser, source: ErpSo
             vendors_by_company[p.company_id] = await linked_vendors(session, p.company_id)
             company_pos = [erp_by_code[q.erp_po_code] for q in pos if q.company_id == p.company_id and q.erp_po_code in erp_by_code]
             untracked_by_company[p.company_id] = await untracked_codes(session, source, p.company_id, company_pos)
-        report = compute_changes(p, erp_by_code.get(p.erp_po_code), await _baseline(session, p.id), await _lines(session, p.id),
+        lines = await _lines(session, p.id)
+        report = compute_changes(p, erp_by_code.get(p.erp_po_code), await _baseline(session, p.id), lines,
                                  vendors_by_company[p.company_id], untracked_by_company[p.company_id])
+        if domains is not None:
+            _only_my_area(report, _code_areas(lines, await _line_areas(session, lines)), domains)
         if report["changes"]:
             out.append({
                 "po_id": p.id, "po_number": p.po_number, "changes": len(report["changes"]),
@@ -292,10 +349,15 @@ async def _add_units(session: AsyncSession, actor: AssetUser, po: PurchaseOrder,
         )).scalars().first()
         if bundle is None:
             raise ValueError(f"The bundle {template.bundle_label!r} is not available any more, so the extra units cannot be added automatically. Add them with + Add Bundle.")
+        # S2.4: the extra units join each part's existing PO line.
+        line_nos = {
+            description.rsplit(" - ", 1)[-1]: part["lines"][-1].line_no
+            for description, part in group["parts"].items() if part["lines"][-1].line_no is not None
+        }
         await add_bundle_lines(session, po, {
             "bundle_id": bundle.id, "description": template.description.rsplit(" - ", 1)[0], "barcode": template.barcode or template.erp_item_code or "",
             "quantity": count, "price": rate, "tax_percent": tax, "warranty_years": template.warranty_years or 0,
-            "erp_item_code": template.erp_item_code,
+            "erp_item_code": template.erp_item_code, "line_nos": line_nos,
         }, actor)
         return
     if len(group["parts"]) != 1:
@@ -305,6 +367,7 @@ async def _add_units(session: AsyncSession, actor: AssetUser, po: PurchaseOrder,
         "subcategory_id": template.subcategory_id, "brand_id": template.brand_id, "model": template.model,
         "warranty_years": template.warranty_years or 0, "purchase_cost": rate, "tax_percent": tax, "quantity": count,
         "item_id": template.item_id, "erp_item_code": template.erp_item_code,
+        "line_no": template.line_no,   # S2.4: more units of the same PO line
     }, actor)
 
 
@@ -354,10 +417,14 @@ async def _set_baseline_item(session: AsyncSession, po: PurchaseOrder, code: str
         row.rate, row.tax_percent = now["rate"], now["tax"]
 
 
-async def apply_changes(session: AsyncSession, actor: AssetUser, source: ErpSource, po: PurchaseOrder, items: list[dict]) -> dict:
+async def apply_changes(session: AsyncSession, actor: AssetUser, source: ErpSource, po: PurchaseOrder, items: list[dict],
+                        domains: tuple[str, ...] | None = None) -> dict:
     """`items`: [{"id": <change id from the report>, "mode": "apply" | "keep"}], or [{"id": "WATCH", "mode": "apply"}]
     to start watching a PO that has no baseline yet. The ERP is read again first, and only changes that are
-    still there can be applied. "keep" leaves the PO as it is and remembers the ERP's new state as agreed."""
+    still there can be applied. "keep" leaves the PO as it is and remembers the ERP's new state as agreed.
+    `domains` (the caller's work area; None = both): a difference whose units are not all in that area is
+    refused (OutsideWorkArea), as is applying the ERP's cancellation while units of the other area still
+    wait -- units outside the caller's work area are never changed."""
     erp = await source.po(po.erp_po_code) if po.erp_po_code is not None else None
     if erp is None:
         raise ValueError("The ERP no longer has this purchase order, so there is nothing to compare with.")
@@ -365,7 +432,7 @@ async def apply_changes(session: AsyncSession, actor: AssetUser, source: ErpSour
     if any(i["id"] == "WATCH" for i in items):
         await snapshot_baseline(session, po, erp, untracked)
         await _log(session, po.id, actor, "WATCH", None, "Started comparing this purchase order with the ERP.")
-        return await po_changes(session, source, po)
+        return await po_changes(session, source, po, domains)
 
     lines = await _lines(session, po.id)
     groups = _ckam_groups(lines)
@@ -373,6 +440,22 @@ async def apply_changes(session: AsyncSession, actor: AssetUser, source: ErpSour
     vendors = await linked_vendors(session, po.company_id)
     report = compute_changes(po, erp, await _baseline(session, po.id), lines, vendors, untracked)
     current = {c["id"]: c for c in report["changes"]}
+    if domains is not None:
+        areas = await _line_areas(session, lines)
+        code_areas = _code_areas(lines, areas)
+        for item in items:
+            change = current.get(item["id"])
+            if change is None:
+                continue
+            code = change.get("item_code")
+            if code:
+                outside = code_areas.get(code, set()) - set(domains)
+            elif change["kind"] == "PO_CANCELLED" and item["mode"] == "apply":
+                outside = {areas[ln.id] for ln in lines if ln.status == "PENDING" and areas.get(ln.id)} - set(domains)
+            else:
+                outside = set()
+            if outside:
+                raise OutsideWorkArea(_outside_message(outside))
     for item in items:
         change = current.get(item["id"])
         if change is None:
@@ -432,4 +515,4 @@ async def apply_changes(session: AsyncSession, actor: AssetUser, source: ErpSour
             _stamp_header(po, erp, ("supplier",))
         await _log(session, po.id, actor, f"{mode.upper()}_{kind}", code, summary)
     await session.flush()
-    return await po_changes(session, source, po)
+    return await po_changes(session, source, po, domains)

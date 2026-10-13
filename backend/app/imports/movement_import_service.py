@@ -18,11 +18,13 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.assets.models import Asset
 from app.asset_users.models import AssetUser
-from app.imports.asset_import_service import ImportScopeError, ImportTemplateError, _is_blank, _read_header
+from app.imports.asset_import_service import ImportScopeError, ImportTemplateError, _is_blank, _read_header, inactive_error
 from app.lifecycle.service import apply_event
 from app.lifecycle.state_machine import LifecycleError, transition
 
-MOVEMENT_TEMPLATE_COLUMNS = ["Serial Number or Asset Code", "Action", "Destination AssetUser Code", "Remarks"]
+DESTINATION_COLUMN = "Destination Code"
+LEGACY_DESTINATION_COLUMN = "Destination AssetUser Code"
+MOVEMENT_TEMPLATE_COLUMNS = ["Serial Number or Asset Code", "Action", DESTINATION_COLUMN, "Remarks"]
 MOVEMENT_REQUIRED_COLUMNS = ["Serial Number or Asset Code", "Action"]
 
 # Kept in sync by hand with Asset Movement's own BULK_ACTIONS
@@ -62,6 +64,9 @@ async def _validate_rows(
     missing = [c for c in MOVEMENT_REQUIRED_COLUMNS if c not in header]
     if missing:
         raise ImportTemplateError(f"missing required column(s): {', '.join(missing)} -- re-download the template")
+    # S1: the column is now "Destination Code"; files made from the old
+    # template ("Destination AssetUser Code") are still read.
+    dest_header = DESTINATION_COLUMN if DESTINATION_COLUMN in header else LEGACY_DESTINATION_COLUMN
 
     valid_rows: list[dict] = []
     errors: list[dict] = []
@@ -105,23 +110,27 @@ async def _validate_rows(
             })
             continue
 
-        dest_code = cell("Destination AssetUser Code")
+        dest_code = cell(dest_header)
         to_asset_user = None
         if action in ACTIONS_NEEDING_ASSET_USER:
             if _is_blank(dest_code):
                 errors.append({
-                    "row": row_idx, "field": "Destination AssetUser Code",
-                    "message": f"Destination AssetUser Code is required for action '{action}'",
+                    "row": row_idx, "field": dest_header,
+                    "message": f"{dest_header} is required for action '{action}'",
                 })
                 continue
             to_asset_user = (await session.execute(
                 select(AssetUser).where(AssetUser.company_id == asset.company_id, AssetUser.code == str(dest_code).strip())
+                .order_by(AssetUser.is_active.desc(), AssetUser.id)
             )).scalars().first()
             if to_asset_user is None:
                 errors.append({
-                    "row": row_idx, "field": "Destination AssetUser Code",
-                    "message": f"unknown Destination AssetUser Code '{dest_code}' for this asset's company",
+                    "row": row_idx, "field": dest_header,
+                    "message": f"unknown {dest_header} '{dest_code}' for this asset's company",
                 })
+                continue
+            if not to_asset_user.is_active:
+                errors.append(inactive_error(row_idx, dest_header, dest_code, to_asset_user.name))
                 continue
 
         try:

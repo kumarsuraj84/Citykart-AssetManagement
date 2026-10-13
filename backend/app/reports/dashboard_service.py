@@ -5,8 +5,9 @@ from app.assets.models import Asset
 from app.asset_users.models import AssetUser
 from app.lifecycle.models import AssetEvent
 from app.lifecycle.service import with_labels
-from app.masters.models import Location
+from app.masters.models import AssetCategory, Location
 from app.purchase_orders.models import PendingAsset, PurchaseOrder
+from app.purchase_orders.service import line_area_of
 
 # Kept as named constants (spec §7.2/§10.5) so the thresholds are easy to change later.
 WARRANTY_ALERT_DAYS = 30
@@ -162,28 +163,33 @@ async def dashboard_data(
     pending_po_summary = {"count": 0, "value": 0.0}
     open_purchase_orders: list[dict] = []
     if include_purchase_orders:
-        pending_stmt = select(func.count(), func.coalesce(func.sum(PendingAsset.total_cost), 0)).where(
-            PendingAsset.status == "PENDING"
+        # S0 leftover: both figures count only waiting units of the caller's
+        # work area (a unit's area is its snapshot, else its Category's), on
+        # POs that are not deleted, so a mixed PO shows each team its own part.
+        area = line_area_of()
+
+        def scoped(stmt):
+            stmt = stmt.join(AssetCategory, AssetCategory.id == PendingAsset.category_id).where(
+                PendingAsset.status == "PENDING", PurchaseOrder.is_active.is_(True))
+            if allowed_company_ids is not None:
+                stmt = stmt.where(PurchaseOrder.company_id.in_(allowed_company_ids))
+            if allowed_domains is not None:
+                stmt = stmt.where(area.in_(allowed_domains))
+            if domain is not None and (allowed_domains is None or domain in allowed_domains):
+                stmt = stmt.where(area == domain)
+            return stmt
+
+        pending_stmt = scoped(
+            select(func.count(), func.coalesce(func.sum(PendingAsset.total_cost), 0))
+            .select_from(PendingAsset).join(PurchaseOrder, PurchaseOrder.id == PendingAsset.purchase_order_id)
         )
-        if allowed_company_ids is not None:
-            pending_stmt = pending_stmt.where(PendingAsset.company_id.in_(allowed_company_ids))
-        if allowed_domains is not None:
-            pending_stmt = pending_stmt.where(PendingAsset.asset_domain.in_(allowed_domains))
-        if domain is not None and (allowed_domains is None or domain in allowed_domains):
-            pending_stmt = pending_stmt.where(PendingAsset.asset_domain == domain)
         pending_count, pending_value = (await session.execute(pending_stmt)).one()
         pending_po_summary = {"count": pending_count, "value": float(pending_value)}
 
-        open_po_stmt = (
+        open_po_stmt = scoped(
             select(PurchaseOrder.id, PurchaseOrder.po_number, PurchaseOrder.po_date, PurchaseOrder.vendor_id, func.count(PendingAsset.id))
             .join(PendingAsset, PendingAsset.purchase_order_id == PurchaseOrder.id)
-            .where(PendingAsset.status == "PENDING", PurchaseOrder.is_active.is_(True))
-            .group_by(PurchaseOrder.id)
-            .order_by(PurchaseOrder.po_date.desc(), PurchaseOrder.id.desc())
-            .limit(OPEN_PURCHASE_ORDERS_LIMIT)
-        )
-        if allowed_company_ids is not None:
-            open_po_stmt = open_po_stmt.where(PurchaseOrder.company_id.in_(allowed_company_ids))
+        ).group_by(PurchaseOrder.id).order_by(PurchaseOrder.po_date.desc(), PurchaseOrder.id.desc()).limit(OPEN_PURCHASE_ORDERS_LIMIT)
         open_purchase_orders = [
             {
                 "id": row[0], "po_number": row[1], "po_date": row[2].isoformat(),

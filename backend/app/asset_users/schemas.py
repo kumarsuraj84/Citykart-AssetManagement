@@ -39,6 +39,45 @@ class AssetUserIn(InModel):
         return (value or "").strip() or None
 
 
+class AssetUserUpdateIn(InModel):
+    """S1: PUT /asset-users/{id}. Every field is optional: a field LEFT OUT
+    keeps its stored value (so an edit form that does not show the work area
+    can no longer reset it); a field sent as null / blank clears it where that
+    is allowed (company, code, name, type and location can never be cleared)."""
+    company_id: int | None = None
+    code: str | None = Field(default=None, max_length=50)
+    name: str | None = Field(default=None, max_length=200)
+    asset_user_type: str | None = None
+    location_id: int | None = None
+    department_id: int | None = None
+    email: str | None = Field(default=None, max_length=200)
+    phone: str | None = Field(default=None, max_length=30)
+    role: str | None = None
+    login_enabled: bool | None = None
+    primary_asset_domain: str | None = None
+    allowed_asset_domains: str | None = None
+
+    @field_validator("code")
+    @classmethod
+    def _code(cls, value: str | None) -> str:
+        return require_text(value, "Code")
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, value: str | None) -> str:
+        return require_text(value, "Name")
+
+    @field_validator("email", "phone")
+    @classmethod
+    def _blank_is_none(cls, value: str | None) -> str | None:
+        return (value or "").strip() or None
+
+    @field_validator("primary_asset_domain", "allowed_asset_domains")
+    @classmethod
+    def _blank_domain_is_none(cls, value: str | None) -> str | None:
+        return (value or "").strip() or None
+
+
 class AssetUserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -61,6 +100,9 @@ class AssetUserOut(BaseModel):
     login_enabled: bool = False
     primary_asset_domain: str | None = None
     allowed_asset_domains: str | None = None
+    # S1 (additive, filled by GET /asset-users): names instead of ids.
+    location_name: str | None = None
+    company_code: str | None = None
 
 
 class ResetPasswordOut(BaseModel):

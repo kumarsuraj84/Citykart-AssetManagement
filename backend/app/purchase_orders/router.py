@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
@@ -8,7 +8,8 @@ from app.core.deps import (
 from app.masters.models import AssetCategory
 from app.purchase_orders.models import PurchaseOrder, PendingAsset
 from app.purchase_orders.schemas import (
-    DeliveryDoneIn, PendingAssetLineIn, PendingAssetLineUpdateIn, PendingAssetOut,
+    CancelWaitingIn, CancelWaitingOut, DeliveryDoneIn, LineGroupOut, LineGroupUpdateIn,
+    PendingAssetLineIn, PendingAssetLineUpdateIn, PendingAssetOut,
     PurchaseOrderCreateIn, PurchaseOrderDeleteOut, PurchaseOrderOut, RecordPiIn, RecordPiOut,
     SerialCheckIn, SerialCheckOut, SerialConflictOut,
 )
@@ -18,9 +19,11 @@ from app.bundles.schemas import BundleLinesIn
 from app.bundles.service import add_bundle_lines
 from app.lifecycle.state_machine import LifecycleError
 from app.purchase_orders.service import (
-    add_pending_asset_line, cancel_pending_asset_line, compute_pi_status, create_purchase_order,
-    delete_purchase_order, deliver_pending_assets, ensure_po_open, line_area, line_area_of, po_is_visible,
-    po_visible_clause, record_pi_for_invoice, update_pending_asset_line,
+    PO_STATUSES, UNIT_STATUS_FILTER,
+    add_pending_asset_line, cancel_pending_asset_line, cancel_waiting_units, compute_pi_status, create_purchase_order,
+    delete_purchase_order, deliver_pending_assets, ensure_po_open, line_area, line_area_of, line_group_units,
+    line_groups, list_purchase_orders, number_unnumbered_units, po_is_visible, record_pi_for_invoice,
+    update_line_group, update_pending_asset_line,
 )
 
 router = APIRouter(prefix="/api/purchase-orders", tags=["purchase-orders"])
@@ -71,7 +74,7 @@ async def create_po(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
     await session.commit()
     await session.refresh(po)
-    return po
+    return await _po_with_progress(session, po, actor)
 
 
 @router.post("/check-serials", response_model=SerialCheckOut)
@@ -104,28 +107,166 @@ async def check_serials(
     ])
 
 
+def _po_out(row: dict, pi: dict) -> PurchaseOrderOut:
+    extra = {key: value for key, value in row.items() if key != "po"}
+    return PurchaseOrderOut.model_validate(row["po"]).model_copy(update={**pi, **extra})
+
+
 @router.get("", response_model=list[PurchaseOrderOut])
-async def list_pos(session: AsyncSession = Depends(get_session), asset_user=Depends(require_role(*WRITE_ROLES))):
+async def list_pos(
+    response: Response,
+    status_filter: str | None = Query(None, alias="status"),
+    waiting: bool | None = Query(None),
+    q: str | None = Query(None, max_length=200),
+    limit: int = Query(200, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    session: AsyncSession = Depends(get_session), asset_user=Depends(require_role(*WRITE_ROLES)),
+):
+    """S2.3: every PO the caller may see, newest first, with company / vendor
+    names and ordered / received / waiting / cancelled unit counts and a
+    status -- all from one aggregated query. Optional filters: `status`
+    (WAITING, PARTLY_RECEIVED, RECEIVED, CANCELLED), `waiting=true` (only POs
+    with waiting units: the Receive queue), `q` (PO number or vendor name).
+    Paged by `limit` (default 200, max 500) / `offset`; the total before
+    paging is in the X-Total-Count header."""
+    if status_filter is not None and status_filter.upper() not in PO_STATUSES:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            "Choose a status: waiting, partly received, received or cancelled.")
     allowed = await scoped_company_ids(session, asset_user)
     domains = await allowed_asset_domains(session, asset_user)
-    stmt = select(PurchaseOrder).where(PurchaseOrder.is_active.is_(True))
-    if allowed is not None:
-        stmt = stmt.where(PurchaseOrder.company_id.in_(allowed))
-    if domains is not None:
-        stmt = stmt.where(po_visible_clause(domains))
-    pos = (await session.execute(stmt.order_by(PurchaseOrder.id.desc()))).scalars().all()
-    pi_by_po = await compute_pi_status(session, [po.id for po in pos])
-    return [
-        PurchaseOrderOut.model_validate(po).model_copy(update=pi_by_po.get(po.id, {}))
-        for po in pos
-    ]
+    rows, total = await list_purchase_orders(
+        session, allowed, domains, status=status_filter.upper() if status_filter else None,
+        waiting=waiting, q=q, limit=limit, offset=offset,
+    )
+    pi_by_po = await compute_pi_status(session, [row["po"].id for row in rows])
+    response.headers["X-Total-Count"] = str(total)
+    return [_po_out(row, pi_by_po.get(row["po"].id, {})) for row in rows]
+
+
+async def _po_with_progress(session: AsyncSession, po: PurchaseOrder, asset_user) -> PurchaseOrderOut:
+    rows, _ = await list_purchase_orders(
+        session, None, await allowed_asset_domains(session, asset_user), po_id=po.id,
+    )
+    pi_by_po = await compute_pi_status(session, [po.id])
+    if not rows:            # cannot happen for a PO that passed _get_scoped_po
+        return PurchaseOrderOut.model_validate(po).model_copy(update=pi_by_po.get(po.id, {}))
+    return _po_out(rows[0], pi_by_po.get(po.id, {}))
 
 
 @router.get("/{po_id}", response_model=PurchaseOrderOut)
 async def get_po(po_id: int, session: AsyncSession = Depends(get_session), asset_user=Depends(require_role(*WRITE_ROLES))):
     po = await _get_scoped_po(po_id, session, asset_user)
-    pi_by_po = await compute_pi_status(session, [po.id])
-    return PurchaseOrderOut.model_validate(po).model_copy(update=pi_by_po.get(po.id, {}))
+    return await _po_with_progress(session, po, asset_user)
+
+
+# ---- S2.1: lines (groups of units sharing a line number) -------------------
+
+async def _numbered(session: AsyncSession, po_id: int) -> None:
+    """Gives any unit without a line number one (normally nothing to do)."""
+    if await number_unnumbered_units(session, po_id):
+        await session.commit()
+
+
+@router.get("/{po_id}/line-groups", response_model=list[LineGroupOut])
+async def list_line_groups(
+    po_id: int, session: AsyncSession = Depends(get_session), asset_user=Depends(require_role(*WRITE_ROLES)),
+):
+    """The PO's lines in order, each with ordered / received / waiting /
+    cancelled counts, value and status (only the caller's work area)."""
+    await _get_scoped_po(po_id, session, asset_user)
+    await _numbered(session, po_id)
+    return await line_groups(session, po_id, await allowed_asset_domains(session, asset_user))
+
+
+async def _get_scoped_group(session: AsyncSession, po_id: int, line_no: int, asset_user) -> tuple[PurchaseOrder, dict]:
+    po = await _get_scoped_po(po_id, session, asset_user)
+    await _numbered(session, po_id)
+    groups = await line_groups(session, po_id, await allowed_asset_domains(session, asset_user), line_no)
+    if not groups:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "This PO line was not found.")
+    return po, groups[0]
+
+
+@router.get("/{po_id}/line-groups/{line_no}/units", response_model=list[PendingAssetOut])
+async def list_line_group_units(
+    po_id: int, line_no: int, status_filter: str | None = Query(None, alias="status"),
+    session: AsyncSession = Depends(get_session), asset_user=Depends(require_role(*WRITE_ROLES)),
+):
+    """The units of one line (optionally only WAITING / RECEIVED / CANCELLED)."""
+    stored = None
+    if status_filter is not None:
+        stored = UNIT_STATUS_FILTER.get(status_filter.upper())
+        if stored is None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose a status: waiting, received or cancelled.")
+    await _get_scoped_group(session, po_id, line_no, asset_user)
+    return await line_group_units(session, po_id, line_no, await allowed_asset_domains(session, asset_user), stored)
+
+
+@router.put("/{po_id}/line-groups/{line_no}", response_model=LineGroupOut)
+async def edit_line_group(
+    po_id: int, line_no: int, body: LineGroupUpdateIn, session: AsyncSession = Depends(get_session),
+    actor=Depends(require_role(*WRITE_ROLES)),
+):
+    """Edits a whole line: the fields sent apply to every still-waiting unit;
+    `quantity` (the new ordered total) adds units or cancels waiting ones.
+    Received and cancelled units never change."""
+    po, _ = await _get_scoped_group(session, po_id, line_no, actor)
+    _open_or_422(po)
+    domains = await allowed_asset_domains(session, actor)
+    try:
+        await update_line_group(session, po, line_no, body.model_dump(exclude_unset=True), actor, domains)
+    except LookupError as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    await session.commit()
+    [group] = await line_groups(session, po_id, domains, line_no)
+    return group
+
+
+@router.post("/{po_id}/line-groups/{line_no}/cancel-waiting", response_model=LineGroupOut)
+async def cancel_line_group_waiting(
+    po_id: int, line_no: int, body: CancelWaitingIn | None = None, session: AsyncSession = Depends(get_session),
+    actor=Depends(require_role(*WRITE_ROLES)),
+):
+    """Cancels `quantity` (default: all) waiting units of one line, the most
+    recently added first. Received units are never touched."""
+    po, group = await _get_scoped_group(session, po_id, line_no, actor)
+    _open_or_422(po)
+    quantity = body.quantity if body is not None else None
+    if group["waiting"] == 0:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Nothing on this line is still waiting.")
+    if quantity is not None and quantity > group["waiting"]:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Only {group['waiting']} of this line {'is' if group['waiting'] == 1 else 'are'} still waiting.",
+        )
+    domains = await allowed_asset_domains(session, actor)
+    await cancel_waiting_units(session, po, actor, domains, line_no, quantity)
+    await session.commit()
+    [group] = await line_groups(session, po_id, domains, line_no)
+    return group
+
+
+@router.post("/{po_id}/cancel-waiting", response_model=CancelWaitingOut)
+async def cancel_po_waiting(
+    po_id: int, session: AsyncSession = Depends(get_session), actor=Depends(require_role(*WRITE_ROLES)),
+):
+    """Cancels every waiting unit of the PO that the caller may see. The PO
+    stays (with its received items); its status becomes RECEIVED (something
+    was received) or CANCELLED (nothing was). This is what to do instead of
+    deleting a PO that already has received items."""
+    po = await _get_scoped_po(po_id, session, actor)
+    _open_or_422(po)
+    domains = await allowed_asset_domains(session, actor)
+    cancelled = await cancel_waiting_units(session, po, actor, domains)
+    if cancelled == 0:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Nothing on this purchase order is still waiting.")
+    await session.commit()
+    summary = await _po_with_progress(session, po, actor)
+    return CancelWaitingOut(cancelled_units=cancelled, status=summary.status)
 
 
 @router.get("/{po_id}/lines", response_model=list[PendingAssetOut])
@@ -285,11 +426,11 @@ async def delete_po(
     po_id: int, session: AsyncSession = Depends(get_session),
     actor=Depends(require_role(*WRITE_ROLES)),
 ):
-    """Deletes a wrongly-created PO -- an ordinary WRITE_ROLES actor may do
-    this only while every line is still PENDING/CANCELLED; the moment even
-    one line has been delivered (a real Asset now exists in the Fixed
-    Asset Register), only the Primary Owner may delete it, since doing so
-    also removes those delivered assets (see delete_purchase_order).
+    """Deletes a wrongly-created PO: its waiting units are cancelled and the
+    PO is deactivated. S2 (owner requirement): refused for EVERYONE --
+    including the head-office admin -- once any unit has been received,
+    because received items are real assets that must never be lost with the
+    PO (409, "Cancel the waiting items instead": POST /{id}/cancel-waiting).
     S0.3: someone limited to one work area may only delete a PO whose lines
     are all in their own area (deleting cancels every line)."""
     po = await _get_scoped_po(po_id, session, actor)
@@ -301,11 +442,6 @@ async def delete_po(
     domains = await allowed_asset_domains(session, actor)
     for line in lines:
         check_work_area(domains, await line_area(session, line))
-    if any(line.status == "DELIVERED" for line in lines) and not actor.is_primary_owner:
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            "Only the head-office admin can delete a purchase order that already has delivered items.",
-        )
     try:
         result = await delete_purchase_order(session, po, lines, actor)
     except ValueError as exc:

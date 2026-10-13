@@ -54,6 +54,7 @@ def _session_response(asset_user: AssetUser) -> LoginResponse:
         role=asset_user.role,
         company_id=asset_user.company_id,
         is_primary_owner=asset_user.is_primary_owner,
+        asset_user_id=asset_user.id,
     )
 
 

@@ -5,9 +5,14 @@ from sqlalchemy.exc import IntegrityError
 from app.core.validation import check_email
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
-from app.core.deps import READ_ROLES, get_current_asset_user, require_primary_owner, require_role, scoped_company_ids
+from app.core.deps import (
+    READ_ROLES, allowed_asset_domains, get_current_asset_user, require_primary_owner, require_role, scoped_company_ids,
+    work_area_words,
+)
 from app.asset_users.service import AssetUserService
-from app.asset_users.schemas import CompanyAccessIn, CompanyAccessOut, AssetUserIn, AssetUserOut, ResetPasswordOut
+from app.asset_users.schemas import (
+    CompanyAccessIn, CompanyAccessOut, AssetUserIn, AssetUserOut, AssetUserUpdateIn, ResetPasswordOut,
+)
 from app.asset_users.models import ALLOWED_ASSET_DOMAINS, ASSET_USER_TYPES, PRIMARY_ASSET_DOMAINS, ROLES, AssetUser
 from app.masters.bulk_import_export import (
     FieldSpec, ImportScopeError, ImportTemplateError,
@@ -117,7 +122,40 @@ async def my_companies(
     return (await session.execute(stmt)).scalars().all()
 
 
-def _validate_asset_user_fields(data: dict) -> None:
+def _effective_work_area(data: dict) -> set[str]:
+    """Which work areas this account would actually work in once saved: none
+    for an account that cannot log in or a self-service login (custody only),
+    else its allowed_asset_domains (BOTH / unset = both)."""
+    if not data.get("login_enabled") or data.get("role") not in ("ADMIN", "OPERATOR", "VIEWER"):
+        return set()
+    value = data.get("allowed_asset_domains") or "BOTH"
+    return {"IT", "NON_IT"} if value == "BOTH" else {value}
+
+
+async def _refuse_wider_work_area(session: AsyncSession, actor: AssetUser, data: dict, existing: AssetUser | None) -> None:
+    """S0 leftover: an ADMIN limited to one work area (IT or Non-IT) may not
+    give anyone -- new or existing -- a wider work area than their own (403).
+    Editing someone who already had a wider area is fine as long as the edit
+    does not widen it further (their phone number can still be corrected)."""
+    mine = await allowed_asset_domains(session, actor)
+    if mine is None:
+        return
+    after = _effective_work_area(data)
+    if after <= set(mine):
+        return
+    before = _effective_work_area({f: getattr(existing, f) for f in ("login_enabled", "role", "allowed_asset_domains")}) \
+        if existing is not None else set()
+    if after <= before:
+        return
+    words = " and ".join(work_area_words(d) for d in mine)
+    raise HTTPException(
+        status.HTTP_403_FORBIDDEN,
+        f"You handle only {words} work, so you cannot give anyone a wider work area than your own. "
+        f"Set their work area to {words}, or ask the head-office admin.",
+    )
+
+
+def _validate_asset_user_fields(data: dict, sent: dict | None = None) -> None:
     # AM-01 confirmed asset_user_type/role accepted any string with no validation at all --
     # AM-02 closes that gap, same pattern as documents/router.py's existing doc_type
     # check. ASSET_USER_TYPES/ROLES were already defined in app/asset_users/models.py and used
@@ -140,6 +178,12 @@ def _validate_asset_user_fields(data: dict) -> None:
     # silently store them on a STORE/INSTALLED/STOCK_POINT point-record or a
     # not-yet-activated EMPLOYEE. Email is deliberately NOT gated here: a
     # EMPLOYEE may have a contact email before login is ever enabled for them.
+    # S1: on an edit (`sent` = only what the request sent) the check applies to
+    # work-area values the request sends; a stored one that was left out stays
+    # as it is (it only ever narrows), so switching login off never fails.
+    if sent is not None:
+        domain = sent.get("primary_asset_domain")
+        allowed_domains = sent.get("allowed_asset_domains")
     if not data.get("login_enabled") and (domain or allowed_domains):
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -218,11 +262,27 @@ async def list_asset_users(
     # Staff only: the list carries every asset_user's email/phone, and a ASSET_USER may
     # only see their own currently-held assets (spec §6) -- 403 for them.
     allowed_company_ids = await scoped_company_ids(session, asset_user)
-    return await AssetUserService(session).list(
+    rows = await AssetUserService(session).list(
         asset_user_type=asset_user_type,
         allowed_company_ids=allowed_company_ids,
         requested_company_id=company_id,
     )
+    # S1 (additive): the location's name and the company's code with each row,
+    # from one lookup per list (never one per row).
+    location_ids = {r.location_id for r in rows if r.location_id is not None}
+    company_ids = {r.company_id for r in rows if r.company_id is not None}
+    locations = dict((await session.execute(
+        select(Location.id, Location.name).where(Location.id.in_(location_ids))
+    )).all()) if location_ids else {}
+    companies = dict((await session.execute(
+        select(Company.id, Company.code).where(Company.id.in_(company_ids))
+    )).all()) if company_ids else {}
+    return [
+        AssetUserOut.model_validate(r).model_copy(update={
+            "location_name": locations.get(r.location_id), "company_code": companies.get(r.company_id),
+        })
+        for r in rows
+    ]
 
 
 @router.post("", response_model=AssetUserOut, status_code=201)
@@ -235,6 +295,7 @@ async def create_asset_user(
     _validate_asset_user_fields(data)
     await _validate_asset_user_references(session, data)
     await _validate_new_values(session, data, None)
+    await _refuse_wider_work_area(session, asset_user, data, None)
     try:
         return await AssetUserService(session).create(data, asset_user.id)
     except IntegrityError:
@@ -255,18 +316,40 @@ async def _get_target(session: AsyncSession, asset_user_id: int, actor: AssetUse
     return target
 
 
+EDITABLE_FIELDS = (
+    "company_id", "code", "name", "asset_user_type", "location_id", "department_id", "email", "phone",
+    "role", "login_enabled", "primary_asset_domain", "allowed_asset_domains",
+)
+CANNOT_CLEAR = {
+    "company_id": "Choose the company.", "asset_user_type": "Choose a type: employee, store, installed at a store, or stock room.",
+    "location_id": "Choose the location.",
+}
+
+
 @router.put("/{asset_user_id}", response_model=AssetUserOut)
 async def update_asset_user(
     asset_user_id: int,
-    body: AssetUserIn,
+    body: AssetUserUpdateIn,
     session: AsyncSession = Depends(get_session),
     asset_user=Depends(require_role("ADMIN")),
 ):
+    """S1: only the fields the request sends change; a field left out keeps
+    its stored value (the work area, role, login and email used to be reset
+    by an edit form that did not send them). A field sent as null / blank is
+    cleared where that is allowed."""
     target = await _get_target(session, asset_user_id, asset_user)
-    data = body.model_dump()
-    _validate_asset_user_fields(data)
+    sent = body.model_dump(exclude_unset=True)
+    for field, message in CANNOT_CLEAR.items():
+        if field in sent and sent[field] is None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, message)
+    if "login_enabled" in sent and sent["login_enabled"] is None:
+        sent["login_enabled"] = False
+    data = {field: getattr(target, field) for field in EDITABLE_FIELDS}
+    data.update(sent)
+    _validate_asset_user_fields(data, sent=sent)
     await _validate_asset_user_references(session, data)
     await _validate_new_values(session, data, target)
+    await _refuse_wider_work_area(session, asset_user, data, target)
     try:
         obj = await AssetUserService(session).update(asset_user_id, data, asset_user.id)
     except IntegrityError:

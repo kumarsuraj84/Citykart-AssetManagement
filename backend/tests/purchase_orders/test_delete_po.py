@@ -1,11 +1,13 @@
 """Deleting a wrongly-created PO (spec: user-directed feature, 2026-09-30):
-an ordinary WRITE_ROLES actor (ADMIN/OPERATOR) may delete a PO only while
-every line is still PENDING/CANCELLED -- the PO is deactivated and its
-PENDING lines cancelled. The moment even one line has been DELIVERED (a
-real Asset now exists), only the Primary Owner may delete it, and doing so
-also soft-deletes the delivered asset(s) -- but only while each one still
-has just its original PROCURED event; if any has since moved, the whole
-deletion is refused and the blocking asset(s) are named."""
+an ordinary WRITE_ROLES actor (ADMIN/OPERATOR) may delete a PO while every
+line is still PENDING/CANCELLED -- the PO is deactivated and its PENDING
+lines cancelled.
+
+S2 (owner requirement, intended change): the moment even one line has been
+DELIVERED (a real Asset now exists), NOBODY may delete the PO -- not even the
+Primary Owner (who used to be able to, soft-deleting the delivered assets).
+The answer is 409 pointing to "Cancel the waiting items instead"; the
+delivered assets are never touched."""
 from datetime import date
 from app.core.db import SessionLocal
 from app.core.security import hash_password
@@ -105,14 +107,15 @@ async def test_operator_cannot_delete_a_po_that_has_a_delivered_line(client):
 
     headers = await _headers(client, ctx["operator_code"])
     resp = await client.delete(f"/api/purchase-orders/{ctx['po']}", headers=headers)
-    assert resp.status_code == 403
+    assert resp.status_code == 409
+    assert "Cancel the waiting items instead" in resp.json()["detail"]
 
     async with SessionLocal() as session:
         po = await session.get(PurchaseOrder, ctx["po"])
         assert po.is_active is True
 
 
-async def test_primary_owner_deletes_a_po_with_a_delivered_line_and_soft_deletes_the_asset(client):
+async def test_even_the_primary_owner_cannot_delete_a_po_with_a_delivered_line(client):
     ctx = await _setup("S3")
     async with SessionLocal() as session:
         po = await session.get(PurchaseOrder, ctx["po"])
@@ -131,22 +134,20 @@ async def test_primary_owner_deletes_a_po_with_a_delivered_line_and_soft_deletes
 
     headers = await _headers(client, ctx["owner_code"])
     resp = await client.delete(f"/api/purchase-orders/{ctx['po']}", headers=headers)
-    assert resp.status_code == 200
-    assert resp.json() == {"cancelled_lines": 0, "deleted_assets": 1}
+    assert resp.status_code == 409
+    assert "Cancel the waiting items instead" in resp.json()["detail"]
 
     async with SessionLocal() as session:
         po = await session.get(PurchaseOrder, ctx["po"])
-        assert po.is_active is False
+        assert po.is_active is True
         asset = await session.get(Asset, asset_id)
-        assert asset.deleted_at is not None
-        # The frozen traceability record itself is never touched -- its
-        # status stays DELIVERED, only the Asset it points to is gone.
+        assert asset.deleted_at is None
         line = await session.get(PendingAsset, delivered[0].id)
         assert line.status == "DELIVERED"
 
-    # Soft-deleted: no longer reachable through the ordinary Asset 360 GET.
+    # The received asset is still in the register.
     get_resp = await client.get(f"/api/assets/{asset_id}", headers=headers)
-    assert get_resp.status_code == 404
+    assert get_resp.status_code == 200
 
 
 async def test_primary_owner_cannot_delete_a_po_whose_delivered_asset_has_already_moved(client):
@@ -175,7 +176,7 @@ async def test_primary_owner_cannot_delete_a_po_whose_delivered_asset_has_alread
     headers = await _headers(client, ctx["owner_code"])
     resp = await client.delete(f"/api/purchase-orders/{ctx['po']}", headers=headers)
     assert resp.status_code == 409
-    assert "moved" in resp.json()["detail"].lower()
+    assert "received items" in resp.json()["detail"]
 
     async with SessionLocal() as session:
         po = await session.get(PurchaseOrder, ctx["po"])

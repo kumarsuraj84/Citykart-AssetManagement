@@ -6,10 +6,11 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.asset_users.models import AssetUser
-from app.core.deps import scoped_company_ids
+from app.core.deps import allowed_asset_domains, scoped_company_ids
 from app.erp.source import ErpSource
-from app.masters.models import Vendor
+from app.masters.models import AssetCategory, Vendor
 from app.purchase_orders.models import PendingAsset, PurchaseOrder
+from app.purchase_orders.service import line_area_of, po_visible_clause
 
 
 def _item_label(description: str, bundle_label: str | None) -> str:
@@ -24,17 +25,26 @@ async def delivery_reminders(
     session: AsyncSession, actor: AssetUser, source: ErpSource, po_id: int | None = None,
 ) -> list[dict]:
     allowed = await scoped_company_ids(session, actor)
+    # S0 leftover: someone limited to one work area is reminded only of the
+    # POs they may see, and only about their own area's units on a mixed PO.
+    domains = await allowed_asset_domains(session, actor)
     stmt = select(PurchaseOrder).where(PurchaseOrder.erp_po_code.is_not(None), PurchaseOrder.is_active.is_(True))
     if po_id is not None:
         stmt = stmt.where(PurchaseOrder.id == po_id)
     if allowed is not None:
         stmt = stmt.where(PurchaseOrder.company_id.in_(allowed))
+    if domains is not None:
+        stmt = stmt.where(po_visible_clause(domains))
     pos = {p.id: p for p in (await session.execute(stmt)).scalars().all()}
     if not pos:
         return []
-    lines = (await session.execute(
-        select(PendingAsset).where(PendingAsset.purchase_order_id.in_(list(pos)), PendingAsset.status != "CANCELLED")
-    )).scalars().all()
+    line_stmt = (
+        select(PendingAsset).join(AssetCategory, AssetCategory.id == PendingAsset.category_id)
+        .where(PendingAsset.purchase_order_id.in_(list(pos)), PendingAsset.status != "CANCELLED")
+    )
+    if domains is not None:
+        line_stmt = line_stmt.where(line_area_of().in_(domains))
+    lines = (await session.execute(line_stmt)).scalars().all()
 
     # Per PO and item code (the barcode we stored from the ERP item code): for
     # each description (a bundle has one per part) how many lines, how many

@@ -83,6 +83,8 @@ async def _lookup(session: AsyncSession, model, **filters):
     stmt = select(model)
     for key, value in filters.items():
         stmt = stmt.where(getattr(model, key) == value)
+    if hasattr(model, "is_active"):
+        stmt = stmt.order_by(model.is_active.desc(), model.id)   # an active record wins over a deactivated twin
     return (await session.execute(stmt)).scalars().first()
 
 
@@ -189,6 +191,14 @@ async def _validate_rows(
                 obj = await _lookup(session, lookup_model, **filters)
                 if obj is None:
                     errors.append({"row": row_idx, "field": f.header, "message": f"unknown {f.header} '{raw}'"})
+                    row_error = True
+                    break
+                if not getattr(obj, "is_active", True):
+                    # S0 leftover: a deactivated parent (company, category,
+                    # location, department...) is refused, like on the screens.
+                    named = f" ({obj.name})" if getattr(obj, "name", None) else ""
+                    errors.append({"row": row_idx, "field": f.header,
+                                   "message": f"{f.header} '{raw}'{named} is no longer active; use another."})
                     row_error = True
                     break
                 data[f.field] = obj.id

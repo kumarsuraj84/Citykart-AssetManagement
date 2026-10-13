@@ -1,14 +1,14 @@
 from datetime import date, datetime, timezone
 from uuid import uuid4
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 from app.assets.models import Asset, AssetFieldChange
 from app.assets.service import compute_tax, procure_assets
 from app.asset_users.models import AssetUser
-from app.lifecycle.models import AssetEvent
 from app.core.deps import check_work_area
-from app.core.validation import MAX_QUANTITY
+from app.core.validation import MAX_QUANTITY, escape_like
+from app.items.models import Item
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Vendor
 from app.items.lookup import fill_from_item
 from app.masters.serial_rule import serial_default
@@ -187,6 +187,47 @@ async def _validate_line_masters(
     return category, subcategory
 
 
+async def next_line_no(session: AsyncSession, po_id: int) -> int:
+    """S2.4: the number the next new line of this purchase order gets (1..n).
+    The single place every creation path takes a line number from (manual
+    line, bundle parts, ERP create, Excel PO import). The PO row is locked for
+    the rest of the transaction, so two people adding lines to the same PO at
+    the same moment never get the same number."""
+    await session.execute(select(PurchaseOrder.id).where(PurchaseOrder.id == po_id).with_for_update())
+    current = (await session.execute(
+        select(func.max(PendingAsset.line_no)).where(PendingAsset.purchase_order_id == po_id)
+    )).scalar_one_or_none()
+    return (current or 0) + 1
+
+
+LINE_NATURAL_KEY = (
+    "item_id", "erp_item_code", "description", "barcode", "category_id", "subcategory_id", "brand_id",
+    "model", "warranty_years", "purchase_cost", "tax_percent", "bundle_label",
+)
+
+
+async def number_unnumbered_units(session: AsyncSession, po_id: int) -> int:
+    """Forward-compat safety net: gives units that have no line number yet
+    (only possible for rows written outside the normal creation paths) one,
+    grouped by the same rule the migration used, after the PO's highest
+    number. Returns how many units were numbered (normally 0)."""
+    rows = (await session.execute(
+        select(PendingAsset).where(PendingAsset.purchase_order_id == po_id, PendingAsset.line_no.is_(None))
+        .order_by(PendingAsset.id)
+    )).scalars().all()
+    if not rows:
+        return 0
+    start = await next_line_no(session, po_id)
+    numbers: dict[tuple, int] = {}
+    for row in rows:
+        key = tuple(getattr(row, name) for name in LINE_NATURAL_KEY)
+        if key not in numbers:
+            numbers[key] = start + len(numbers)
+        row.line_no = numbers[key]
+    await session.flush()
+    return len(rows)
+
+
 async def add_pending_asset_line(
     session: AsyncSession, purchase_order: PurchaseOrder, data: dict, actor: AssetUser,
     allowed_domains: tuple[str, ...] | None = None,
@@ -195,7 +236,9 @@ async def add_pending_asset_line(
     its own distinct serial number at Delivery Done) -- mirrors
     procure_assets' own quantity handling, never one row with a count.
     `allowed_domains` (S0.3): the caller's work area; a line whose Category
-    belongs to the other work area is refused (403)."""
+    belongs to the other work area is refused (403).
+    S2.4: every unit of this call shares one line number -- `data["line_no"]`
+    when the caller adds units to an existing line, else the PO's next one."""
     ensure_po_open(purchase_order)
     if purchase_order.cost_center_id is None:
         raise ValueError("This purchase order has no cost centre set.")
@@ -216,6 +259,10 @@ async def add_pending_asset_line(
     serial_required = data.get("serial_required")
     if serial_required is None:
         serial_required = serial_default(item)
+    serial_later = data.get("serial_later")
+    if serial_later is None:
+        serial_later = bool(item and item.serial_later)
+    line_no = data.get("line_no") or await next_line_no(session, purchase_order.id)
 
     created: list[PendingAsset] = []
     for _ in range(quantity):
@@ -229,8 +276,8 @@ async def add_pending_asset_line(
             # Spec §19: derived server-side from the selected Category at
             # line-creation time, same discipline as Asset.asset_domain.
             asset_domain=category.asset_domain,
-            serial_required=serial_required, serial_later=bool(item and item.serial_later),
-            bundle_label=data.get("bundle_label"),
+            serial_required=serial_required, serial_later=serial_later,
+            bundle_label=data.get("bundle_label"), line_no=line_no,
             item_id=data.get("item_id"), erp_item_code=data.get("erp_item_code"),
             created_by=actor.id, updated_by=actor.id,
         )
@@ -240,37 +287,46 @@ async def add_pending_asset_line(
     return created
 
 
+async def _line_edit_values(
+    session: AsyncSession, current: PendingAsset, data: dict, allowed_domains: tuple[str, ...] | None,
+) -> dict:
+    """The column values an edit of a waiting line gives its units (shared by
+    the per-unit edit and the S2.1 whole-line edit, so both validate alike).
+    `current` is the unit (or, for a whole line, its template unit) the edit
+    starts from: choices it already has stay valid even if deactivated since."""
+    # Picking another Item changes the line's kind; otherwise it keeps its own.
+    changed_item = data.get("item_id") is not None and data["item_id"] != current.item_id
+    if data.get("item_id") is None and current.item_id is not None:
+        data = {**data, "item_id": current.item_id}
+    item = await fill_from_item(session, data, keep_inactive_id=current.item_id)
+    category, _subcategory = await _validate_line_masters(session, data, current=current)
+    check_work_area(allowed_domains, category.asset_domain)
+    tax_amount, total_cost = compute_tax(data.get("purchase_cost"), data.get("tax_percent"))
+    values = {
+        "description": data["description"], "barcode": data.get("barcode"),
+        "category_id": data["category_id"], "subcategory_id": data.get("subcategory_id"),
+        "asset_domain": category.asset_domain, "brand_id": data.get("brand_id"), "model": data.get("model"),
+        "warranty_years": data.get("warranty_years"), "purchase_cost": data.get("purchase_cost"),
+        "tax_percent": data.get("tax_percent"), "tax_amount": tax_amount, "total_cost": total_cost,
+    }
+    if changed_item:
+        values["serial_required"] = serial_default(item)
+        values["serial_later"] = bool(item and item.serial_later)
+    if item is not None:
+        values["item_id"] = item.id
+    return values
+
+
 async def update_pending_asset_line(
     session: AsyncSession, line: PendingAsset, data: dict, actor: AssetUser,
     allowed_domains: tuple[str, ...] | None = None,
 ) -> PendingAsset:
+    """Edits ONE waiting unit. It keeps its line number (S2.4)."""
     if line.status != "PENDING":
         raise ValueError(f"cannot edit a {line.status.lower()} line")
-    # Picking another Item changes the line's kind; otherwise it keeps its own.
-    changed_item = data.get("item_id") is not None and data["item_id"] != line.item_id
-    if data.get("item_id") is None and line.item_id is not None:
-        data = {**data, "item_id": line.item_id}
-    item = await fill_from_item(session, data, keep_inactive_id=line.item_id)
-    category, subcategory = await _validate_line_masters(session, data, current=line)
-    check_work_area(allowed_domains, category.asset_domain)
-    tax_amount, total_cost = compute_tax(data.get("purchase_cost"), data.get("tax_percent"))
-    if changed_item:
-        line.serial_required = serial_default(item)
-        line.serial_later = bool(item and item.serial_later)
-    if item is not None:
-        line.item_id = item.id
-    line.description = data["description"]
-    line.barcode = data.get("barcode")
-    line.category_id = data["category_id"]
-    line.subcategory_id = data.get("subcategory_id")
-    line.asset_domain = category.asset_domain
-    line.brand_id = data.get("brand_id")
-    line.model = data.get("model")
-    line.warranty_years = data.get("warranty_years")
-    line.purchase_cost = data.get("purchase_cost")
-    line.tax_percent = data.get("tax_percent")
-    line.tax_amount = tax_amount
-    line.total_cost = total_cost
+    values = await _line_edit_values(session, line, data, allowed_domains)
+    for name, value in values.items():
+        setattr(line, name, value)
     line.updated_by = actor.id
     await session.flush()
     return line
@@ -289,35 +345,17 @@ async def delete_purchase_order(
     session: AsyncSession, po: PurchaseOrder, lines: list[PendingAsset], actor: AssetUser,
 ) -> dict:
     """Soft-deletes a wrongly-created PO: every still-PENDING line is
-    cancelled, and the PO itself is deactivated. A DELIVERED line's own row
-    is never touched -- PendingAsset is "frozen and kept as the
-    traceability record" once delivered (see the model's own docstring) --
-    but the real Asset it produced is soft-deleted too, using the exact
-    same rule app.assets.router.delete_asset_entry_mistake already enforces
-    for a single asset: only while that asset still has just its original
-    PROCURED event. If ANY delivered asset has since moved/been repaired/
-    disposed, that history is real, so the WHOLE deletion is refused (never
-    a partial one) and the blocking asset(s) are named in the error, so the
-    caller can go handle them individually first. The router is
-    responsible for the actual authorization split (an ordinary
-    WRITE_ROLES actor may only reach here when no line has been delivered
-    yet; once one has, only the Primary Owner may)."""
-    asset_ids = [line.delivered_asset_id for line in lines if line.delivered_asset_id is not None]
-    assets: list[Asset] = []
-    if asset_ids:
-        assets = (await session.execute(select(Asset).where(Asset.id.in_(asset_ids)))).scalars().all()
-        event_counts = dict((await session.execute(
-            select(AssetEvent.asset_id, func.count())
-            .where(AssetEvent.asset_id.in_(asset_ids))
-            .group_by(AssetEvent.asset_id)
-        )).all())
-        moved = [a for a in assets if event_counts.get(a.id, 0) > 1]
-        if moved:
-            codes = ", ".join(a.asset_code for a in moved)
-            raise ValueError(
-                f"cannot delete: {len(moved)} delivered asset(s) have already moved beyond their original "
-                f"delivery and must be handled individually first ({codes})"
-            )
+    cancelled, and the PO itself is deactivated.
+
+    S2 (owner requirement): a PO that has ANY received (delivered) unit is
+    never deleted, by anyone -- not even the head-office admin -- because
+    its received items are real assets in the register and must never be
+    lost with it. The caller is told to cancel the waiting items instead
+    (POST /api/purchase-orders/{id}/cancel-waiting), which keeps the PO and
+    its assets. Assets are never soft-deleted from here any more;
+    `deleted_assets` stays in the response (always 0) for compatibility."""
+    if any(line.status == "DELIVERED" for line in lines):
+        raise ValueError(DELETE_REFUSED_RECEIVED)
 
     cancelled = 0
     for line in lines:
@@ -327,15 +365,17 @@ async def delete_purchase_order(
             cancelled += 1
 
     now = datetime.now(timezone.utc)
-    for asset in assets:
-        asset.deleted_at = now
-        asset.updated_by = actor.id
-
     po.is_active = False
     po.deleted_at = now
     po.updated_by = actor.id
     await session.flush()
-    return {"cancelled_lines": cancelled, "deleted_assets": len(assets)}
+    return {"cancelled_lines": cancelled, "deleted_assets": 0}
+
+
+DELETE_REFUSED_RECEIVED = (
+    "This purchase order already has received items, so it cannot be deleted; its received assets "
+    "must stay in the register. Cancel the waiting items instead."
+)
 
 
 async def deliver_pending_assets(
@@ -470,3 +510,319 @@ async def record_pi_for_invoice(
 
     await session.flush()
     return {"invoice_number": invoice_number, "updated": updated, "skipped": skipped}
+
+
+# ---- S2.1 / S2.3: a purchase order by LINE, and its progress ---------------
+# A line = every unit sharing one line_no (S2.4). Counts are always taken over
+# the units the caller may see (S0.3 work area): someone limited to IT sees,
+# counts, edits and cancels only the IT units of a mixed PO.
+
+PO_STATUSES = ("WAITING", "PARTLY_RECEIVED", "RECEIVED", "CANCELLED")
+# Business words accepted for a unit-status filter, and the stored values.
+UNIT_STATUS_FILTER = {
+    "WAITING": "PENDING", "PENDING": "PENDING", "RECEIVED": "DELIVERED", "DELIVERED": "DELIVERED",
+    "CANCELLED": "CANCELLED",
+}
+# The fields a line is entered with, that a whole-line edit may change.
+LINE_EDIT_FIELDS = (
+    "description", "barcode", "item_id", "category_id", "subcategory_id", "brand_id", "model",
+    "warranty_years", "purchase_cost", "tax_percent",
+)
+
+
+def derive_status(received: int, waiting: int, cancelled: int) -> str:
+    """WAITING / PARTLY_RECEIVED / RECEIVED / CANCELLED for a line or a PO:
+    everything cancelled = CANCELLED; nothing waiting = RECEIVED; something
+    received and something waiting = PARTLY_RECEIVED; otherwise WAITING (a
+    PO with no lines yet is WAITING)."""
+    if received == 0 and waiting == 0:
+        return "CANCELLED" if cancelled > 0 else "WAITING"
+    if waiting == 0:
+        return "RECEIVED"
+    if received > 0:
+        return "PARTLY_RECEIVED"
+    return "WAITING"
+
+
+def status_case(received, waiting, cancelled):
+    """The SQL twin of derive_status (used to filter the PO list in the database)."""
+    return case(
+        ((received + waiting == 0) & (cancelled > 0), "CANCELLED"),
+        (received + waiting == 0, "WAITING"),
+        (waiting == 0, "RECEIVED"),
+        (received > 0, "PARTLY_RECEIVED"),
+        else_="WAITING",
+    )
+
+
+def serial_mode_of(serial_required: bool, serial_later: bool) -> str:
+    if serial_later:
+        return "SERIAL_LATER"
+    return "HAS_SERIAL" if serial_required else "NO_SERIAL"
+
+
+def _in_area(stmt, domains: tuple[str, ...] | None):
+    """Adds the work-area filter to a select that already joins AssetCategory."""
+    return stmt if domains is None else stmt.where(line_area_of().in_(domains))
+
+
+async def _load_groups(
+    session: AsyncSession, po_id: int, domains: tuple[str, ...] | None, line_no: int | None = None,
+) -> list[dict]:
+    """Two aggregate queries per PO (never one per unit): the counts per line,
+    and one template unit per line (DISTINCT ON) with its names. The template
+    is the newest waiting unit, else the newest received, else the newest
+    cancelled one -- after a whole-line edit every waiting unit holds the
+    line's current values."""
+    counts_stmt = (
+        select(
+            PendingAsset.line_no,
+            func.count().filter(PendingAsset.status == "DELIVERED"),
+            func.count().filter(PendingAsset.status == "PENDING"),
+            func.count().filter(PendingAsset.status == "CANCELLED"),
+            func.coalesce(func.sum(PendingAsset.total_cost).filter(PendingAsset.status != "CANCELLED"), 0),
+        )
+        .join(AssetCategory, AssetCategory.id == PendingAsset.category_id)
+        .where(PendingAsset.purchase_order_id == po_id, PendingAsset.line_no.is_not(None))
+        .group_by(PendingAsset.line_no)
+    )
+    status_order = case((PendingAsset.status == "PENDING", 0), (PendingAsset.status == "DELIVERED", 1), else_=2)
+    template_stmt = (
+        select(PendingAsset, Item.name, AssetCategory.name, AssetSubcategory.name, Brand.name, line_area_of())
+        .join(AssetCategory, AssetCategory.id == PendingAsset.category_id)
+        .outerjoin(AssetSubcategory, AssetSubcategory.id == PendingAsset.subcategory_id)
+        .outerjoin(Item, Item.id == PendingAsset.item_id)
+        .outerjoin(Brand, Brand.id == PendingAsset.brand_id)
+        .where(PendingAsset.purchase_order_id == po_id, PendingAsset.line_no.is_not(None))
+        .distinct(PendingAsset.line_no)
+        .order_by(PendingAsset.line_no, status_order, PendingAsset.id.desc())
+        .execution_options(populate_existing=True)
+    )
+    if line_no is not None:
+        counts_stmt = counts_stmt.where(PendingAsset.line_no == line_no)
+        template_stmt = template_stmt.where(PendingAsset.line_no == line_no)
+    counts = {
+        row[0]: (row[1], row[2], row[3], row[4])
+        for row in (await session.execute(_in_area(counts_stmt, domains))).all()
+    }
+    groups = []
+    for unit, item_name, category_name, subcategory_name, brand_name, area in (
+        await session.execute(_in_area(template_stmt, domains))
+    ).all():
+        received, waiting, cancelled, value = counts.get(unit.line_no, (0, 0, 0, 0))
+        groups.append({
+            "template": unit, "item_name": item_name, "category_name": category_name,
+            "subcategory_name": subcategory_name, "brand_name": brand_name, "work_area": area,
+            "received": received, "waiting": waiting, "cancelled": cancelled, "value": value,
+        })
+    return groups
+
+
+def _group_out(group: dict) -> dict:
+    unit: PendingAsset = group["template"]
+    received, waiting, cancelled = group["received"], group["waiting"], group["cancelled"]
+    return {
+        "line_no": unit.line_no, "item_id": unit.item_id, "item_name": group["item_name"],
+        "description": unit.description, "barcode": unit.barcode, "erp_item_code": unit.erp_item_code,
+        "category_id": unit.category_id, "category_name": group["category_name"],
+        "subcategory_id": unit.subcategory_id, "subcategory_name": group["subcategory_name"],
+        "work_area": group["work_area"], "brand_id": unit.brand_id, "brand_name": group["brand_name"],
+        "model": unit.model, "warranty_years": unit.warranty_years,
+        "rate": float(unit.purchase_cost) if unit.purchase_cost is not None else None,
+        "tax_percent": float(unit.tax_percent) if unit.tax_percent is not None else None,
+        "unit_total": float(unit.total_cost) if unit.total_cost is not None else None,
+        "ordered": received + waiting, "received": received, "waiting": waiting, "cancelled": cancelled,
+        "line_value": round(float(group["value"] or 0), 2),
+        "status": derive_status(received, waiting, cancelled),
+        "serial_mode": serial_mode_of(unit.serial_required, unit.serial_later),
+        "bundle_label": unit.bundle_label, "waiting_unit_count": waiting,
+    }
+
+
+async def line_groups(
+    session: AsyncSession, po_id: int, domains: tuple[str, ...] | None, line_no: int | None = None,
+) -> list[dict]:
+    """GET /purchase-orders/{id}/line-groups: one entry per line, in line order."""
+    return [_group_out(g) for g in await _load_groups(session, po_id, domains, line_no)]
+
+
+async def line_group_units(
+    session: AsyncSession, po_id: int, line_no: int, domains: tuple[str, ...] | None, status: str | None = None,
+) -> list[PendingAsset]:
+    stmt = (
+        select(PendingAsset).join(AssetCategory, AssetCategory.id == PendingAsset.category_id)
+        .where(PendingAsset.purchase_order_id == po_id, PendingAsset.line_no == line_no)
+        .order_by(PendingAsset.id).execution_options(populate_existing=True)
+    )
+    if status is not None:
+        stmt = stmt.where(PendingAsset.status == status)
+    return list((await session.execute(_in_area(stmt, domains))).scalars().all())
+
+
+def _waiting_ids_stmt(po_id: int, domains: tuple[str, ...] | None, line_no: int | None = None):
+    stmt = (
+        select(PendingAsset.id).join(AssetCategory, AssetCategory.id == PendingAsset.category_id)
+        .where(PendingAsset.purchase_order_id == po_id, PendingAsset.status == "PENDING")
+    )
+    if line_no is not None:
+        stmt = stmt.where(PendingAsset.line_no == line_no)
+    return _in_area(stmt, domains)
+
+
+async def cancel_waiting_units(
+    session: AsyncSession, po: PurchaseOrder, actor: AssetUser, domains: tuple[str, ...] | None,
+    line_no: int | None = None, quantity: int | None = None,
+) -> int:
+    """Cancels `quantity` (default: all) waiting units of one line (or of the
+    whole PO when `line_no` is None) that the caller may see, the most
+    recently added first. Received and already-cancelled units are never
+    touched; the PO itself stays. Returns how many were cancelled."""
+    ensure_po_open(po)
+    stmt = _waiting_ids_stmt(po.id, domains, line_no).order_by(PendingAsset.id.desc())
+    if quantity is not None:
+        stmt = stmt.limit(quantity)
+    ids = list((await session.execute(stmt)).scalars().all())
+    if not ids:
+        return 0
+    await session.execute(
+        update(PendingAsset)
+        .where(PendingAsset.id.in_(ids), PendingAsset.status == "PENDING")
+        .values(status="CANCELLED", updated_by=actor.id)
+    )
+    await session.flush()
+    return len(ids)
+
+
+async def update_line_group(
+    session: AsyncSession, po: PurchaseOrder, line_no: int, fields: dict, actor: AssetUser,
+    domains: tuple[str, ...] | None,
+) -> None:
+    """S2.1 whole-line edit. `fields` holds only what the request sent.
+    Descriptive / price fields are applied (with the per-unit edit's own
+    validation) to EVERY still-waiting unit of the line; received and
+    cancelled units never change. `quantity` is the new ORDERED total
+    (received + waiting): more adds units copied from the line (same line
+    number); fewer cancels the surplus waiting units, newest first, never
+    below what has been received."""
+    ensure_po_open(po)
+    found = await _load_groups(session, po.id, domains, line_no)
+    if not found:
+        raise LookupError("This PO line was not found.")
+    group = found[0]
+    template: PendingAsset = group["template"]
+    received, waiting = group["received"], group["waiting"]
+    ordered = received + waiting
+    fields = dict(fields)
+    quantity = fields.pop("quantity", None)
+    if quantity is not None:
+        if quantity > MAX_QUANTITY:
+            raise ValueError(f"Quantity must be at most {MAX_QUANTITY}.")
+        if quantity < received:
+            raise ValueError(
+                f"{received} of this line {'has' if received == 1 else 'have'} already been received, "
+                f"so the quantity cannot be less than {received}."
+            )
+    if not fields and quantity is None:
+        raise ValueError("Nothing was changed.")
+
+    current = {name: getattr(template, name) for name in LINE_EDIT_FIELDS}
+    new_values: dict = {}
+    if fields:
+        adds_units = quantity is not None and quantity > ordered
+        if waiting == 0 and not adds_units:
+            raise ValueError("Nothing on this line is still waiting, so there is nothing to change.")
+        new_values = await _line_edit_values(session, template, {**current, **fields}, domains)
+        if waiting:
+            await session.execute(
+                update(PendingAsset)
+                .where(PendingAsset.id.in_(_waiting_ids_stmt(po.id, domains, line_no).scalar_subquery()))
+                .values(**new_values, updated_by=actor.id)
+                .execution_options(synchronize_session=False)
+            )
+            await session.flush()
+
+    if quantity is not None and quantity > ordered:
+        base = {**current, **new_values}
+        await add_pending_asset_line(session, po, {
+            **{name: base.get(name) for name in LINE_EDIT_FIELDS},
+            "warranty_years": base.get("warranty_years") or 0,
+            "quantity": quantity - ordered, "line_no": line_no,
+            "bundle_label": template.bundle_label, "erp_item_code": template.erp_item_code,
+            "serial_required": base.get("serial_required", template.serial_required),
+            "serial_later": base.get("serial_later", template.serial_later),
+        }, actor, allowed_domains=domains)
+    elif quantity is not None and quantity < ordered:
+        await cancel_waiting_units(session, po, actor, domains, line_no, ordered - quantity)
+
+
+# ---- S2.3: the purchase-order list with progress ---------------------------
+
+def _po_progress(domains: tuple[str, ...] | None):
+    stmt = (
+        select(
+            PendingAsset.purchase_order_id.label("po_id"),
+            func.count().filter(PendingAsset.status == "DELIVERED").label("received"),
+            func.count().filter(PendingAsset.status == "PENDING").label("waiting"),
+            func.count().filter(PendingAsset.status == "CANCELLED").label("cancelled"),
+        )
+        .join(AssetCategory, AssetCategory.id == PendingAsset.category_id)
+        .group_by(PendingAsset.purchase_order_id)
+    )
+    return _in_area(stmt, domains).subquery("po_progress")
+
+
+async def list_purchase_orders(
+    session: AsyncSession, allowed_companies: list[int] | None, domains: tuple[str, ...] | None, *,
+    status: str | None = None, waiting: bool | None = None, q: str | None = None,
+    limit: int = 200, offset: int = 0, po_id: int | None = None,
+) -> tuple[list[dict], int]:
+    """One aggregated query: each PO with its company and vendor names and
+    its ordered / received / waiting / cancelled unit counts and status, over
+    the units the caller may see. Returns (rows, total before paging).
+    `po_id` reads one PO (deleted ones included); otherwise only active POs."""
+    progress = _po_progress(domains)
+    received = func.coalesce(progress.c.received, 0)
+    waiting_units = func.coalesce(progress.c.waiting, 0)
+    cancelled = func.coalesce(progress.c.cancelled, 0)
+    status_expr = status_case(received, waiting_units, cancelled)
+    stmt = (
+        select(
+            PurchaseOrder, Company.name.label("company_name"), Vendor.name.label("vendor_name"),
+            received.label("received"), waiting_units.label("waiting"), cancelled.label("cancelled"),
+            status_expr.label("status"),
+        )
+        .join(Company, Company.id == PurchaseOrder.company_id)
+        .outerjoin(Vendor, Vendor.id == PurchaseOrder.vendor_id)
+        .outerjoin(progress, progress.c.po_id == PurchaseOrder.id)
+    )
+    if po_id is not None:
+        stmt = stmt.where(PurchaseOrder.id == po_id)
+    else:
+        stmt = stmt.where(PurchaseOrder.is_active.is_(True))
+    if allowed_companies is not None:
+        stmt = stmt.where(PurchaseOrder.company_id.in_(allowed_companies))
+    if domains is not None:
+        stmt = stmt.where(po_visible_clause(domains))
+    if status is not None:
+        stmt = stmt.where(status_expr == status)
+    if waiting is True:
+        stmt = stmt.where(waiting_units > 0)
+    elif waiting is False:
+        stmt = stmt.where(waiting_units == 0)
+    if q and q.strip():
+        pattern = f"%{escape_like(q.strip())}%"
+        stmt = stmt.where(or_(
+            PurchaseOrder.po_number.ilike(pattern, escape="\\"), Vendor.name.ilike(pattern, escape="\\"),
+        ))
+    total = (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+    rows = (await session.execute(
+        stmt.order_by(PurchaseOrder.id.desc()).limit(limit).offset(offset)
+    )).all()
+    return [
+        {
+            "po": row[0], "company_name": row.company_name, "vendor_name": row.vendor_name,
+            "ordered_units": row.received + row.waiting, "received_units": row.received,
+            "waiting_units": row.waiting, "cancelled_units": row.cancelled, "status": row.status,
+        }
+        for row in rows
+    ], total

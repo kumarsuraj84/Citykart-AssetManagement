@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.db import Base
 from app.core.models import AuditMixin, SoftDeleteMixin
@@ -67,9 +67,16 @@ class PendingAsset(Base, AuditMixin):
     unchanged) at Delivery Done; this row is then frozen and kept as the
     traceability record (delivered_asset_id), never deleted."""
     __tablename__ = "pending_asset"
+    __table_args__ = (Index("ix_pending_asset_po_line_no", "purchase_order_id", "line_no"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     purchase_order_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("purchase_order.id"))
+    # S2.4: the number (1..n within its PO) of the line this unit was ordered
+    # on; every unit of one line shares it, and it never changes afterwards
+    # (an edit keeps it). Nullable only for forward-compat; the migration
+    # b8d0f2a4c6e8 numbered every existing unit and every creation path
+    # assigns one (app.purchase_orders.service.next_line_no).
+    line_no: Mapped[int | None] = mapped_column(Integer)
     company_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("company.id"))
     description: Mapped[str] = mapped_column(String(500))
     barcode: Mapped[str | None] = mapped_column(String(200))

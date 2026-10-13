@@ -50,6 +50,16 @@ class PurchaseOrderOut(BaseModel):
     pi_status: str = "NOT_DELIVERED"
     pi_number: str | None = None
     pi_date: date | None = None
+    # S2.3 (additive): names, and progress over the units the caller may see
+    # (S0.3 work area). ordered = received + waiting (cancelled units are not
+    # ordered any more). status: WAITING | PARTLY_RECEIVED | RECEIVED | CANCELLED.
+    company_name: str | None = None
+    vendor_name: str | None = None
+    ordered_units: int = 0
+    received_units: int = 0
+    waiting_units: int = 0
+    cancelled_units: int = 0
+    status: str = "WAITING"
 
 
 class PendingAssetLineUpdateIn(InModel):
@@ -85,6 +95,8 @@ class PendingAssetOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     purchase_order_id: int
+    # S2.4 (additive): the PO line (1..n) this unit was ordered on.
+    line_no: int | None = None
     company_id: int
     description: str
     barcode: str | None
@@ -189,4 +201,74 @@ class RecordPiOut(BaseModel):
 
 class PurchaseOrderDeleteOut(BaseModel):
     cancelled_lines: int
+    # S2: always 0 now -- deleting a PO never removes assets (a PO with
+    # received items cannot be deleted at all). Kept for compatibility.
     deleted_assets: int
+
+
+# ---- S2.1: a purchase order by line ---------------------------------------
+
+class LineGroupOut(BaseModel):
+    """One PO line: every unit sharing a line number, counted over the units
+    the caller may see. ordered = received + waiting."""
+    line_no: int
+    item_id: int | None = None
+    item_name: str | None = None
+    description: str
+    barcode: str | None = None
+    erp_item_code: str | None = None
+    category_id: int | None = None
+    category_name: str | None = None
+    subcategory_id: int | None = None
+    subcategory_name: str | None = None
+    work_area: str | None = None
+    brand_id: int | None = None
+    brand_name: str | None = None
+    model: str | None = None
+    warranty_years: int | None = None
+    rate: float | None = None
+    tax_percent: float | None = None
+    unit_total: float | None = None
+    ordered: int
+    received: int
+    waiting: int
+    cancelled: int
+    line_value: float
+    status: str
+    serial_mode: str
+    bundle_label: str | None = None
+    waiting_unit_count: int
+
+
+class LineGroupUpdateIn(InModel):
+    """Edit a whole line. Only the fields sent are changed (the rest keep the
+    line's current values); the same limits as editing one unit apply.
+    `quantity` is the new ORDERED total (received + waiting)."""
+    description: str | None = Field(default=None, max_length=500)
+    barcode: str | None = Field(default=None, max_length=200)
+    item_id: int | None = None
+    category_id: int | None = None
+    subcategory_id: int | None = None
+    brand_id: int | None = None
+    model: str | None = Field(default=None, max_length=200)
+    warranty_years: int | None = Field(default=None, ge=0, le=MAX_WARRANTY_YEARS)
+    purchase_cost: float | None = Field(default=None, ge=0, le=MAX_AMOUNT)
+    tax_percent: float | None = Field(default=None, ge=0, le=100)
+    quantity: int | None = Field(default=None, ge=0, le=MAX_QUANTITY)
+
+    @field_validator("description")
+    @classmethod
+    def _description(cls, value: str | None) -> str:
+        return require_text(value, "Description")
+
+
+class CancelWaitingIn(InModel):
+    # How many waiting units to cancel (the most recently added first);
+    # leave out to cancel every waiting unit of the line.
+    quantity: int | None = Field(default=None, ge=1, le=MAX_QUANTITY)
+
+
+class CancelWaitingOut(BaseModel):
+    cancelled_units: int
+    # The PO's status afterwards (over the units the caller may see).
+    status: str

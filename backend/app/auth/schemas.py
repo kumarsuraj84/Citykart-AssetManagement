@@ -30,6 +30,9 @@ class LoginResponse(BaseModel):
     # The frontend needs this directly (not just `role`): master-data
     # management is Primary-Owner-only, stricter than the ADMIN role itself.
     is_primary_owner: bool
+    # S1 (additive): who is signed in, so the frontend can tell "my own
+    # account" apart without decoding the token.
+    asset_user_id: int | None = None
 
 
 class ChangePasswordRequest(BaseModel):

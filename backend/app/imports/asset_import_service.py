@@ -118,7 +118,20 @@ async def _lookup(session: AsyncSession, model, **filters):
     stmt = select(model)
     for key, value in filters.items():
         stmt = stmt.where(getattr(model, key) == value)
+    if hasattr(model, "is_active"):
+        # An active record wins over a deactivated one with the same code.
+        stmt = stmt.order_by(model.is_active.desc(), model.id)
     return (await session.execute(stmt)).scalars().first()
+
+
+def _inactive(obj) -> bool:
+    return not getattr(obj, "is_active", True)
+
+
+def inactive_error(row_idx: int, header: str, code, name: str | None = None) -> dict:
+    """S0 leftover: Excel imports refuse deactivated masters, like the screens do."""
+    named = f" ({name})" if name else ""
+    return {"row": row_idx, "field": header, "message": f"{header} '{code}'{named} is no longer active; use another."}
 
 
 def _is_blank(value) -> bool:
@@ -324,17 +337,26 @@ async def _validate_add_rows(
             errors.append(violation)
             scope_violations.append(violation)
             continue
+        if _inactive(company):
+            errors.append(inactive_error(row_idx, "Company Code", company_code, company.name))
+            continue
 
         cc_code = cell("Cost Centre Code")
         cost_center = await _lookup(session, CostCenter, company_id=company.id, code=cc_code)
         if cost_center is None:
             errors.append({"row": row_idx, "field": "Cost Centre Code", "message": f"unknown Cost Centre Code '{cc_code}'"})
             continue
+        if _inactive(cost_center):
+            errors.append(inactive_error(row_idx, "Cost Centre Code", cc_code, cost_center.name))
+            continue
 
         cat_code = cell("Category Code")
         category = await _lookup(session, AssetCategory, code=cat_code)
         if category is None:
             errors.append({"row": row_idx, "field": "Category Code", "message": f"unknown Category Code '{cat_code}'"})
+            continue
+        if _inactive(category):
+            errors.append(inactive_error(row_idx, "Category Code", cat_code, category.name))
             continue
 
         # AM-23: mandatory, matching AssetCreateIn.subcategory_id.
@@ -348,6 +370,9 @@ async def _validate_add_rows(
                 "row": row_idx, "field": "Subcategory Code",
                 "message": f"unknown Subcategory Code '{sub_code}' for category '{cat_code}'",
             })
+            continue
+        if _inactive(subcategory):
+            errors.append(inactive_error(row_idx, "Subcategory Code", sub_code, subcategory.name))
             continue
 
         description = cell("Description")
@@ -364,11 +389,17 @@ async def _validate_add_rows(
             if brand is None:
                 errors.append({"row": row_idx, "field": "Brand Code", "message": f"unknown Brand Code '{brand_code}'"})
                 continue
+            if _inactive(brand):
+                errors.append(inactive_error(row_idx, "Brand Code", brand_code, brand.name))
+                continue
 
         asset_user_code = cell("Initial AssetUser Code")
         asset_user = await _lookup(session, AssetUser, company_id=company.id, code=asset_user_code)
         if asset_user is None:
             errors.append({"row": row_idx, "field": "Initial AssetUser Code", "message": f"unknown Initial AssetUser Code '{asset_user_code}'"})
+            continue
+        if _inactive(asset_user):
+            errors.append(inactive_error(row_idx, "Initial AssetUser Code", asset_user_code, asset_user.name))
             continue
 
         try:
@@ -385,6 +416,9 @@ async def _validate_add_rows(
         vendor = await _lookup(session, Vendor, code=vendor_code)
         if vendor is None:
             errors.append({"row": row_idx, "field": "Vendor Code", "message": f"unknown Vendor Code '{vendor_code}'"})
+            continue
+        if _inactive(vendor):
+            errors.append(inactive_error(row_idx, "Vendor Code", vendor_code, vendor.name))
             continue
 
         # AM-23: mandatory, matching AssetCreateIn.serial_number ("N/A" is
@@ -559,6 +593,10 @@ async def _validate_edit_rows(
             if vendor is None:
                 errors.append({"row": row_idx, "field": "Vendor Code", "message": f"unknown Vendor Code '{vendor_code}'"})
                 continue
+            # Keeping the vendor the asset already has is not a new choice.
+            if _inactive(vendor) and vendor.id != asset.vendor_id:
+                errors.append(inactive_error(row_idx, "Vendor Code", vendor_code, vendor.name))
+                continue
             updates["vendor_id"] = vendor.id
 
         brand_code = cell("Brand Code")
@@ -566,6 +604,9 @@ async def _validate_edit_rows(
             brand = await _lookup(session, Brand, code=brand_code)
             if brand is None:
                 errors.append({"row": row_idx, "field": "Brand Code", "message": f"unknown Brand Code '{brand_code}'"})
+                continue
+            if _inactive(brand) and brand.id != asset.brand_id:
+                errors.append(inactive_error(row_idx, "Brand Code", brand_code, brand.name))
                 continue
             updates["brand_id"] = brand.id
 

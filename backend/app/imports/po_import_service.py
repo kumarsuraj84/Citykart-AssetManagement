@@ -22,8 +22,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.asset_users.models import AssetUser
 from app.imports.asset_import_service import (
-    ImportScopeError, ImportTemplateError,
-    _is_blank, _lookup, _out_of_scope_message, _parse_date_value, _parse_optional_number,
+    ImportScopeError, ImportTemplateError, inactive_error,
+    _inactive, _is_blank, _lookup, _out_of_scope_message, _parse_date_value, _parse_optional_number,
     _parse_quantity, _parse_warranty_years, _read_header,
 )
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Vendor
@@ -98,6 +98,9 @@ async def _validate_rows(
             errors.append(violation)
             scope_violations.append(violation)
             continue
+        if _inactive(company):
+            errors.append(inactive_error(row_idx, "Company Code", company_code, company.name))
+            continue
 
         po_number_raw = cell("PO Number")
         if _is_blank(po_number_raw):
@@ -118,11 +121,17 @@ async def _validate_rows(
             if vendor is None:
                 errors.append({"row": row_idx, "field": "Vendor Code", "message": f"unknown Vendor Code '{vendor_code}'"})
                 continue
+            if _inactive(vendor):
+                errors.append(inactive_error(row_idx, "Vendor Code", vendor_code, vendor.name))
+                continue
 
         cc_code = cell("Cost Centre Code")
         cost_center = await _lookup(session, CostCenter, company_id=company.id, code=cc_code)
         if cost_center is None:
             errors.append({"row": row_idx, "field": "Cost Centre Code", "message": f"unknown Cost Centre Code '{cc_code}'"})
+            continue
+        if _inactive(cost_center):
+            errors.append(inactive_error(row_idx, "Cost Centre Code", cc_code, cost_center.name))
             continue
 
         description = cell("Description")
@@ -140,6 +149,9 @@ async def _validate_rows(
         if category is None:
             errors.append({"row": row_idx, "field": "Category Code", "message": f"unknown Category Code '{cat_code}'"})
             continue
+        if _inactive(category):
+            errors.append(inactive_error(row_idx, "Category Code", cat_code, category.name))
+            continue
 
         subcategory = None
         sub_code = cell("Subcategory Code")
@@ -151,6 +163,9 @@ async def _validate_rows(
                     "message": f"unknown Subcategory Code '{sub_code}' for category '{cat_code}'",
                 })
                 continue
+            if _inactive(subcategory):
+                errors.append(inactive_error(row_idx, "Subcategory Code", sub_code, subcategory.name))
+                continue
 
         brand = None
         brand_code = cell("Brand Code")
@@ -158,6 +173,9 @@ async def _validate_rows(
             brand = await _lookup(session, Brand, code=brand_code)
             if brand is None:
                 errors.append({"row": row_idx, "field": "Brand Code", "message": f"unknown Brand Code '{brand_code}'"})
+                continue
+            if _inactive(brand):
+                errors.append(inactive_error(row_idx, "Brand Code", brand_code, brand.name))
                 continue
 
         try:
