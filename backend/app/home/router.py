@@ -7,7 +7,7 @@ from app.core.db import get_session
 from app.core.deps import READ_ROLES, require_role
 from app.core.validation import parse_work_area
 from app.erp.source import ErpSource, get_erp_source
-from app.home.service import home_attention, setup_status
+from app.home.service import SetupCompanyNotFound, home_attention, setup_status
 
 router = APIRouter(tags=["home"])
 
@@ -33,6 +33,10 @@ class SetupStatusOut(BaseModel):
     steps: list[SetupStepOut]
     done_count: int
     total_steps: int
+    # S7 (additive): which company the steps are for (null = every company together, the old answer).
+    company_id: int | None = None
+    company_name: str | None = None
+    company_code: str | None = None
 
 
 class InboxCountsOut(BaseModel):
@@ -53,15 +57,25 @@ class HomeAttentionOut(BaseModel):
     erp_changed_pos: int | None = None
     erp_arrived_pos: int | None = None
     erp_pos_needing_input: int | None = None
+    # S7 (additive): the ERP figures that could not be read this time (each is then null); the others are
+    # still given -- e.g. ["erp_arrived_pos"] while the ERP has no goods-receipt view.
+    erp_unavailable: list[str] = []
     inbox: InboxCountsOut | None = None
 
 
 @router.get("/api/setup/status", response_model=SetupStatusOut)
-async def get_setup_status(session: AsyncSession = Depends(get_session), actor=Depends(require_role("ADMIN"))):
+async def get_setup_status(
+    company_id: int | None = Query(None), session: AsyncSession = Depends(get_session),
+    actor=Depends(require_role("ADMIN")),
+):
     """The seven set-up steps of "Set up CKAM" (Company, Stock Room / Places, Cost Centre, Asset Groups and
     first Items, Vendors, People / Stores, Asset Code Format), each done or not, with the counts behind
-    them -- all from one query. Head-office admin and ADMIN (whose row role is ADMIN)."""
-    return await setup_status(session, actor)
+    them -- all from one query. Head-office admin and ADMIN (whose row role is ADMIN).
+    S7 (additive): `company_id` gives the steps of that one company (see app.home.service.setup_status)."""
+    try:
+        return await setup_status(session, actor, company_id)
+    except SetupCompanyNotFound as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
 
 
 @router.get("/api/home/attention", response_model=HomeAttentionOut)

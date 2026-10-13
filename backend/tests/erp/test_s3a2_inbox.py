@@ -64,7 +64,8 @@ async def test_new_items_are_only_undecided_codes_on_open_pos_grouped_by_article
     assert codes["CT500002"]["scopes"] == ["CODE", "NAME", "ARTICLE"]
     assert group["seen_on_pos"] == ["SPO/BS/5001", "SPO/BS/5002"] and group["po_count"] == 2
     assert group["suggested_scope"] == "ARTICLE"
-    assert (group["suggested_item_id"], group["suggested_item_name"]) == (ids["item_switch"], "Network Switch")
+    # S7 (P1-3, intended change): one of the two words of "Network Switch" is no longer a suggestion.
+    assert (group["suggested_item_id"], group["suggested_item_name"]) == (None, None)
     assert body["counts"]["items"] == 1 and body["counts"]["item_codes"] == 2
 
 

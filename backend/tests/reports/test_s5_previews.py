@@ -93,9 +93,11 @@ async def test_the_preview_follows_company_work_area_and_custody(client):
         ravi = await s.get(AssetUser, w["employee"])
         ravi.login_enabled, ravi.must_change_password, ravi.password_hash = True, False, hash_password("Passw0rd!")
         await s.commit()
-    mine = (await client.get("/api/reports/assets/preview", headers=await login(client, w, "employee"),
-                             params={"holder_id": w["stock"]})).json()
-    assert mine["total"] == 1 and mine["rows"][0]["Current AssetUser"] == "Ravi Kumar"
+    # S7 (P3-9, intended change): a self-service login gets no report preview at all (it has My Assets)
+    mine = await client.get("/api/reports/assets/preview", headers=await login(client, w, "employee"),
+                            params={"holder_id": w["stock"]})
+    assert mine.status_code == 403
+    assert mine.json()["detail"] == "Reports are for staff. The assets you hold are listed under My Assets."
     assert (await client.get("/api/reports/assets/preview", headers=h, params={"limit": 201})).status_code == 422
 
 

@@ -212,5 +212,9 @@ async def test_an_unreadable_erp_only_hides_the_erp_figures(client, erp, erp_on)
     resp = await client.get("/api/home/attention", headers=h)
     assert resp.status_code == 200
     a = resp.json()
-    assert a["erp_available"] is False and a["erp_pos_needing_input"] is None and a["inbox"] is None
+    # S7 (P1-1, intended change): each ERP figure stands on its own. With no PO made from the ERP yet, the
+    # changed / goods-arrived figures need no ERP read and are 0; only the figures that read it are null.
+    assert a["erp_pos_needing_input"] is None and a["inbox"] is None
+    assert a["erp_unavailable"] == ["erp_pos_needing_input", "inbox"]
+    assert (a["erp_changed_pos"], a["erp_arrived_pos"], a["erp_available"]) == (0, 0, True)
     assert a["serial_pending"] == 0 and a["waiting_pos"] == 0

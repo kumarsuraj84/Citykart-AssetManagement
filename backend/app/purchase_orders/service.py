@@ -70,6 +70,17 @@ async def active_or_error(session: AsyncSession, model, id_: int | None, what: s
     return obj
 
 
+PO_NUMBER_LOCK_NAMESPACE = "ckam:purchase_order_number"
+
+
+async def lock_po_number(session: AsyncSession, company_id: int, number: str) -> None:
+    """S7 (P1-2): a transaction-scoped PostgreSQL advisory lock on (company, PO number as compared: trimmed,
+    lower case). Held until the caller's transaction ends, so the duplicate check that follows it and the
+    INSERT / UPDATE are one step for every other save of the same number in the same company."""
+    key = f"{PO_NUMBER_LOCK_NAMESPACE}:{company_id}:{(number or '').strip().lower()}"
+    await session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(key, 0))))
+
+
 async def create_purchase_order(session: AsyncSession, data: dict, actor: AssetUser) -> PurchaseOrder:
     company = await session.get(Company, data["company_id"])
     if company is None or not company.is_active:
@@ -89,6 +100,10 @@ async def create_purchase_order(session: AsyncSession, data: dict, actor: AssetU
     number = (data.get("po_number") or "").strip()
     if not number:
         raise ValueError("PO number cannot be blank.")
+    # S7 (P1-2): two saves of the same number at the same moment are taken one after the other, so the
+    # second one sees the first and is refused (the database also has a unique index, see migration
+    # d2e4f6a8b0c2; this lock keeps the answer a plain sentence and works where the index could not be made).
+    await lock_po_number(session, data["company_id"], number)
     clash = (await session.execute(
         select(PurchaseOrder.id).where(
             PurchaseOrder.company_id == data["company_id"],
@@ -609,6 +624,7 @@ async def _load_groups(
             func.count().filter(PendingAsset.status == "PENDING"),
             func.count().filter(PendingAsset.status == "CANCELLED"),
             func.coalesce(func.sum(PendingAsset.total_cost).filter(PendingAsset.status != "CANCELLED"), 0),
+            func.coalesce(func.sum(PendingAsset.total_cost).filter(PendingAsset.status == "CANCELLED"), 0),
         )
         .join(AssetCategory, AssetCategory.id == PendingAsset.category_id)
         .where(PendingAsset.purchase_order_id == po_id, PendingAsset.line_no.is_not(None))
@@ -630,18 +646,19 @@ async def _load_groups(
         counts_stmt = counts_stmt.where(PendingAsset.line_no == line_no)
         template_stmt = template_stmt.where(PendingAsset.line_no == line_no)
     counts = {
-        row[0]: (row[1], row[2], row[3], row[4])
+        row[0]: (row[1], row[2], row[3], row[4], row[5])
         for row in (await session.execute(_in_area(counts_stmt, domains))).all()
     }
     groups = []
     for unit, item_name, category_name, subcategory_name, brand_name, area in (
         await session.execute(_in_area(template_stmt, domains))
     ).all():
-        received, waiting, cancelled, value = counts.get(unit.line_no, (0, 0, 0, 0))
+        received, waiting, cancelled, value, cancelled_value = counts.get(unit.line_no, (0, 0, 0, 0, 0))
         groups.append({
             "template": unit, "item_name": item_name, "category_name": category_name,
             "subcategory_name": subcategory_name, "brand_name": brand_name, "work_area": area,
             "received": received, "waiting": waiting, "cancelled": cancelled, "value": value,
+            "cancelled_value": cancelled_value,
         })
     return groups
 
@@ -664,6 +681,9 @@ def _group_out(group: dict) -> dict:
         "status": derive_status(received, waiting, cancelled),
         "serial_mode": serial_mode_of(unit.serial_required, unit.serial_later),
         "bundle_label": unit.bundle_label, "waiting_unit_count": waiting,
+        # S7 (P3-7, additive): what was ever ordered on the line, cancelled included, and the cancelled value
+        "originally_ordered": received + waiting + cancelled,
+        "cancelled_value": round(float(group.get("cancelled_value") or 0), 2),
     }
 
 
@@ -862,6 +882,10 @@ async def list_purchase_orders(
             "po": row[0], "company_name": row.company_name, "vendor_name": row.vendor_name,
             "ordered_units": row.received + row.waiting, "received_units": row.received,
             "waiting_units": row.waiting, "cancelled_units": row.cancelled, "status": row.status,
+            # S7 (P3-7, additive): everything ever ordered on the PO, cancelled units included -- what a
+            # cancelled PO shows as "15 ordered · 15 cancelled" (ordered_units stays received + waiting:
+            # the quantity edits are defined on it).
+            "originally_ordered_units": row.received + row.waiting + row.cancelled,
         }
         for row in rows
     ], total

@@ -18,7 +18,7 @@ from app.erp.vendors import (
 )
 from app.items.models import Item, LEVEL_TYPES
 from app.items.service import (
-    _words, active_rule_sets, find_rule, norm as norm_name, resolve_items, suggest_item, upsert_map,
+    ItemMatcher, active_rule_sets, find_rule, norm as norm_name, resolve_items, suggest_item_full, upsert_map,
 )
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Vendor, VendorErpLink
 from app.purchase_orders.models import PurchaseOrder
@@ -407,7 +407,7 @@ async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source
     # S3a-2: for a code that still needs an Item, a suggested Item (the same word-overlap suggestion as the
     # ERP Articles screen) and what "remember this choice" covers by default (see readiness.suggested_scope).
     active_items = list((await session.execute(select(Item).where(Item.is_active.is_(True)))).scalars().all())
-    item_words = {i.id: _words(i.name) for i in active_items}
+    matcher = ItemMatcher(active_items)          # S7 (P1-3): the one suggestion scoring, built once
     names_by_article = await article_names(source, [e.article_key for e in erp_items.values()],
                                            company.erp_code if company else None)
 
@@ -461,11 +461,11 @@ async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source
             line_warnings.append(f"No Item is linked to this ERP code yet{where}. Choose the Item below; it is remembered for the next PO.")
         category = cat_rows.get(item.category_id) if item else None
         subcategory = sub_rows.get(item.subcategory_id) if item and item.subcategory_id else None
-        suggestion, score = (None, 0.0)
+        suggestion = suggest_item_full(matcher, [])          # all null
         if item is None:
             undecided.add((ln.item_code or "").upper())
             texts = [erp.article_name, erp.department, erp.name, ln.description] if erp else [ln.description]
-            suggestion, score = suggest_item(active_items, texts, item_words)
+            suggestion = suggest_item_full(matcher, texts)
         lines.append({
             "item_code": ln.item_code, "description": ln.description[:500], "barcode": ln.item_code,
             "quantity": _whole(qty), "rate": ln.rate, "amount": round(ln.rate * qty, 2), "tax_percent": tax,
@@ -484,9 +484,9 @@ async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source
             "warnings": line_warnings,
             # S3a-2 (additive)
             "resolution": resolution_of(res),
-            "suggested_item_id": suggestion.id if suggestion else None,
-            "suggested_item_name": suggestion.name if suggestion else None,
-            "suggestion_score": round(score, 2) if suggestion else None,
+            # S7: suggested_item_id / _name / suggestion_score + (additive) suggestion_reason ("same name" /
+            # "similar name") and suggestion_reason_code, from app.items.suggest
+            **suggestion,
             "suggested_scope": suggested_scope(erp, names_by_article),
         })
 

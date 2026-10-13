@@ -66,7 +66,9 @@ async def test_each_draft_line_says_its_decision_suggestion_and_default_reach(cl
                                line(3, "CT777", "NOT IN THE MASTER", 1, 100)])
     switch, desktop, unknown = (await draft(client))["lines"]
     assert switch["resolution"] == {"state": "NEEDS_ITEM", "item_id": None, "item_name": None, "via": None}
-    assert (switch["suggested_item_id"], switch["suggested_item_name"], switch["suggestion_score"]) == (ids["item_switch"], "Network Switch", 0.5)
+    # S7 (P1-3, intended change): "48 PORT SWITCH" has only one of the two words of "Network Switch" (a 50% overlap)
+    # -- below the safe threshold now, so no suggestion (tests/erp/test_s7_item_suggestions.py has the positive cases).
+    assert (switch["suggested_item_id"], switch["suggested_item_name"], switch["suggestion_score"]) == (None, None, None)
     assert switch["suggested_scope"] == "ARTICLE"            # FA_IT_OTHERS has only 2 product names so far
     assert desktop["resolution"] == {"state": "MATCHED", "item_id": ids["item_desktop"], "item_name": "Desktop", "via": "ARTICLE"}
     assert desktop["suggested_item_id"] is None

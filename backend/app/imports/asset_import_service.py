@@ -44,6 +44,7 @@ from app.assets.service import check_serial_number_unique, compute_tax, compute_
 from app.asset_users.models import AssetUser
 from app.lifecycle.service import apply_event
 from app.lifecycle.state_machine import LifecycleError
+from app.items.models import Item
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Location, Vendor
 from app.numbering.models import CodeRule
 from app.numbering.service import build_code_tokens, generate_code, get_active_rule
@@ -58,24 +59,39 @@ from app.assets.models import Asset
 # directly. "Quantity" stays -- Import remains the tool for a genuine
 # multi-unit bulk add (Add Asset itself dropped Quantity in AM-19, since a
 # real Serial Number can never be shared across units anyway).
+# S7 (P2-10): an optional "Item" column (the Item's name, as on Add Assets: it decides Category, Sub-category
+# and work area, and Category Code / Subcategory Code may then stay empty), "Vendor Code" optional (as on Add
+# Assets), and "Received Into Code" is the new name of "Initial AssetUser Code" (the old heading is still
+# read, so a file made from the old template keeps working).
+RECEIVED_INTO = "Received Into Code"
+RECEIVED_INTO_OLD = "Initial AssetUser Code"
+ITEM_COLUMN = "Item"
+
 ADD_TEMPLATE_COLUMNS = [
-    "Company Code", "Cost Centre Code", "Category Code", "Subcategory Code",
+    "Company Code", "Cost Centre Code", ITEM_COLUMN, "Category Code", "Subcategory Code",
     "Description", "Legacy Asset Code",
     "Vendor Code", "PO Number", "PO Date", "Invoice Number", "Invoice Date", "Invoice Amount",
     "PI Number", "PI Date", "Purchase Cost", "Tax %",
     "Brand Code", "Model", "Serial Number", "Warranty Years",
-    "Initial AssetUser Code", "Quantity",
+    RECEIVED_INTO, "Quantity",
 ]
 
-# AM-23: Subcategory Code/Vendor Code/Serial Number moved here from optional
-# -- AssetCreateIn (Add Asset's own contract) has required subcategory_id/
-# vendor_id/serial_number; a genuinely serial-less unit still has a value to
-# enter ("N/A", case-insensitive-exempt from uniqueness -- see
-# check_serial_number_unique), the same escape hatch Add Asset itself relies on.
-ADD_REQUIRED_COLUMNS = [
-    "Company Code", "Cost Centre Code", "Category Code", "Subcategory Code",
-    "Description", "Vendor Code", "Serial Number", "Initial AssetUser Code",
-]
+# AM-23: Subcategory Code/Serial Number moved here from optional -- AssetCreateIn (Add Asset's own contract)
+# has required subcategory_id/serial_number; a genuinely serial-less unit still has a value to enter ("N/A",
+# case-insensitive-exempt from uniqueness -- see check_serial_number_unique), the same escape hatch Add Asset
+# itself relies on. S7: the columns every file must have; "Category Code" OR "Item", and "Received Into
+# Code" OR "Initial AssetUser Code", are checked separately (see _missing_add_columns). Per row, Category and
+# Sub-category are needed only when the row names no Item, and Description only when it names no Item.
+ADD_REQUIRED_COLUMNS = ["Company Code", "Cost Centre Code", "Serial Number"]
+
+
+def _missing_add_columns(header: dict[str, int]) -> list[str]:
+    missing = [c for c in ADD_REQUIRED_COLUMNS if c not in header]
+    if ITEM_COLUMN not in header:
+        missing += [c for c in ("Category Code", "Subcategory Code", "Description") if c not in header]
+    if RECEIVED_INTO not in header and RECEIVED_INTO_OLD not in header:
+        missing.append(RECEIVED_INTO)
+    return missing
 
 # AM-23: the bulk Edit-mode template -- Asset Code is the mandatory match
 # key; every other column is the ordinary-editable descriptive/procurement
@@ -296,18 +312,28 @@ def _read_header(ws) -> dict[str, int]:
     return {str(h).strip(): idx for idx, h in enumerate(header_row) if h is not None and str(h).strip() != ""}
 
 
+async def _active_items_by_name(session: AsyncSession) -> dict[str, list[Item]]:
+    """Every active Item by its name in lower case (one query per file)."""
+    found: dict[str, list[Item]] = {}
+    for item in (await session.execute(select(Item).where(Item.is_active.is_(True)).order_by(Item.id))).scalars().all():
+        found.setdefault((item.name or "").strip().lower(), []).append(item)
+    return found
+
+
 async def _validate_add_rows(
     session: AsyncSession, content: bytes, allowed_company_ids: list[int] | None = None,
+    domains: tuple[str, ...] | None = None,
 ) -> tuple[list[dict], list[dict], list[dict]]:
     """Returns (valid_rows, errors, scope_violations). `allowed_company_ids` is the
     actor's `scoped_company_ids` (None = ADMIN, unrestricted); a row whose company
     is outside it is never valid, and is also reported in `scope_violations` so
-    commit can refuse the whole file (403) rather than quietly skip it."""
+    commit can refuse the whole file (403) rather than quietly skip it.
+    `domains` (S7): the caller's work area (None = both); an Item outside it is a row error."""
     wb = open_workbook(content, ImportTemplateError)
     ws = wb.active
     header = _read_header(ws)
 
-    missing = [c for c in ADD_REQUIRED_COLUMNS if c not in header]
+    missing = _missing_add_columns(header)
     if missing:
         raise ImportTemplateError(
             f"missing required column(s): {', '.join(missing)} -- re-download the template",
@@ -318,6 +344,10 @@ async def _validate_add_rows(
     errors: list[dict] = []
     scope_violations: list[dict] = []
     applicable_cache: dict[int, dict] = {}
+    received_into = RECEIVED_INTO if RECEIVED_INTO in header else RECEIVED_INTO_OLD
+    items_by_name = await _active_items_by_name(session) if ITEM_COLUMN in header else {}
+    categories: dict[int, AssetCategory | None] = {}
+    subcategories: dict[int, AssetSubcategory | None] = {}
 
     for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
         if row is None or all(v is None for v in row):
@@ -350,33 +380,82 @@ async def _validate_add_rows(
             errors.append(inactive_error(row_idx, "Cost Centre Code", cc_code, cost_center.name))
             continue
 
-        cat_code = cell("Category Code")
-        category = await _lookup(session, AssetCategory, code=cat_code)
-        if category is None:
-            errors.append({"row": row_idx, "field": "Category Code", "message": f"unknown Category Code '{cat_code}'"})
-            continue
-        if _inactive(category):
-            errors.append(inactive_error(row_idx, "Category Code", cat_code, category.name))
-            continue
+        # S7 (P2-10): an Item named on the row decides Category, Sub-category and work area -- exactly like
+        # Add Assets (app.assets.batch); Category Code / Subcategory Code may then stay empty, and when they
+        # are filled they must be the Item's own.
+        item = None
+        item_name = cell(ITEM_COLUMN)
+        if not _is_blank(item_name):
+            matches = items_by_name.get(str(item_name).strip().lower(), [])
+            if not matches:
+                errors.append({"row": row_idx, "field": ITEM_COLUMN, "message":
+                               f"There is no active Item named '{str(item_name).strip()}'. Check the name, or add the "
+                               "Item under Settings > Items first."})
+                continue
+            item = matches[0]
+            if item.category_id not in categories:
+                categories[item.category_id] = await session.get(AssetCategory, item.category_id)
+            category = categories[item.category_id]
+            if category is None or _inactive(category):
+                errors.append({"row": row_idx, "field": ITEM_COLUMN, "message":
+                               f"The asset group of the Item '{item.name}' is no longer active; choose another Item."})
+                continue
+            if domains is not None and category.asset_domain not in domains:
+                errors.append({"row": row_idx, "field": ITEM_COLUMN, "message":
+                               f"The Item '{item.name}' is {'IT' if category.asset_domain == 'IT' else 'Non-IT'} work, "
+                               "which is outside your work area."})
+                continue
+            subcategory = None
+            if item.subcategory_id is not None:
+                if item.subcategory_id not in subcategories:
+                    subcategories[item.subcategory_id] = await session.get(AssetSubcategory, item.subcategory_id)
+                subcategory = subcategories[item.subcategory_id]
+                if subcategory is None or _inactive(subcategory):
+                    errors.append({"row": row_idx, "field": ITEM_COLUMN, "message":
+                                   f"The sub-category of the Item '{item.name}' is no longer active; choose another Item."})
+                    continue
+            cat_code, sub_code = cell("Category Code"), cell("Subcategory Code")
+            if not _is_blank(cat_code) and str(cat_code).strip().lower() != (category.code or "").lower():
+                errors.append({"row": row_idx, "field": "Category Code", "message":
+                               f"The Item '{item.name}' belongs to the category {category.name} ({category.code}), not "
+                               f"'{cat_code}'. Leave Category Code empty or correct it."})
+                continue
+            if not _is_blank(sub_code) and (subcategory is None or str(sub_code).strip().lower() != (subcategory.code or "").lower()):
+                errors.append({"row": row_idx, "field": "Subcategory Code", "message":
+                               f"The Item '{item.name}' belongs to the sub-category "
+                               f"{subcategory.name + ' (' + subcategory.code + ')' if subcategory else '(none)'}, not "
+                               f"'{sub_code}'. Leave Subcategory Code empty or correct it."})
+                continue
+        else:
+            cat_code = cell("Category Code")
+            category = await _lookup(session, AssetCategory, code=cat_code)
+            if category is None:
+                message = (f"unknown Category Code '{cat_code}'" if not _is_blank(cat_code)
+                           else "Give the Item (or the Category Code and Subcategory Code)")
+                errors.append({"row": row_idx, "field": "Category Code", "message": message})
+                continue
+            if _inactive(category):
+                errors.append(inactive_error(row_idx, "Category Code", cat_code, category.name))
+                continue
 
-        # AM-23: mandatory, matching AssetCreateIn.subcategory_id.
-        sub_code = cell("Subcategory Code")
-        if _is_blank(sub_code):
-            errors.append({"row": row_idx, "field": "Subcategory Code", "message": "Subcategory Code is required"})
-            continue
-        subcategory = await _lookup(session, AssetSubcategory, category_id=category.id, code=sub_code)
-        if subcategory is None:
-            errors.append({
-                "row": row_idx, "field": "Subcategory Code",
-                "message": f"unknown Subcategory Code '{sub_code}' for category '{cat_code}'",
-            })
-            continue
-        if _inactive(subcategory):
-            errors.append(inactive_error(row_idx, "Subcategory Code", sub_code, subcategory.name))
-            continue
+            # AM-23: mandatory, matching AssetCreateIn.subcategory_id.
+            sub_code = cell("Subcategory Code")
+            if _is_blank(sub_code):
+                errors.append({"row": row_idx, "field": "Subcategory Code", "message": "Subcategory Code is required"})
+                continue
+            subcategory = await _lookup(session, AssetSubcategory, category_id=category.id, code=sub_code)
+            if subcategory is None:
+                errors.append({
+                    "row": row_idx, "field": "Subcategory Code",
+                    "message": f"unknown Subcategory Code '{sub_code}' for category '{cat_code}'",
+                })
+                continue
+            if _inactive(subcategory):
+                errors.append(inactive_error(row_idx, "Subcategory Code", sub_code, subcategory.name))
+                continue
 
         description = cell("Description")
-        if _is_blank(description):
+        if _is_blank(description) and item is None:
             errors.append({"row": row_idx, "field": "Description", "message": "Description is required"})
             continue
 
@@ -392,14 +471,25 @@ async def _validate_add_rows(
             if _inactive(brand):
                 errors.append(inactive_error(row_idx, "Brand Code", brand_code, brand.name))
                 continue
+        elif item is not None and item.default_brand_id is not None:
+            # S7: the Item's default brand when none is given and it is still active (as on Add Assets).
+            default = await session.get(Brand, item.default_brand_id)
+            if default is not None and default.is_active:
+                brand = default
+        if _is_blank(description):
+            # S7: as on Add Assets -- the Item's name plus the brand and model.
+            model_text = cell("Model")
+            words = [item.name] + ([brand.name] if brand is not None else []) + \
+                ([str(model_text).strip()] if not _is_blank(model_text) else [])
+            description = " ".join(words)[:500]
 
-        asset_user_code = cell("Initial AssetUser Code")
+        asset_user_code = cell(received_into)
         asset_user = await _lookup(session, AssetUser, company_id=company.id, code=asset_user_code)
         if asset_user is None:
-            errors.append({"row": row_idx, "field": "Initial AssetUser Code", "message": f"unknown Initial AssetUser Code '{asset_user_code}'"})
+            errors.append({"row": row_idx, "field": received_into, "message": f"unknown {received_into} '{asset_user_code}'"})
             continue
         if _inactive(asset_user):
-            errors.append(inactive_error(row_idx, "Initial AssetUser Code", asset_user_code, asset_user.name))
+            errors.append(inactive_error(row_idx, received_into, asset_user_code, asset_user.name))
             continue
 
         try:
@@ -408,18 +498,17 @@ async def _validate_add_rows(
             errors.append({"row": row_idx, "field": "Quantity", "message": str(exc)})
             continue
 
-        # AM-23: mandatory, matching AssetCreateIn.vendor_id.
+        # S7 (P2-10): optional, as on Add Assets (AM-23 had made it mandatory); a filled one must exist.
         vendor_code = cell("Vendor Code")
-        if _is_blank(vendor_code):
-            errors.append({"row": row_idx, "field": "Vendor Code", "message": "Vendor Code is required"})
-            continue
-        vendor = await _lookup(session, Vendor, code=vendor_code)
-        if vendor is None:
-            errors.append({"row": row_idx, "field": "Vendor Code", "message": f"unknown Vendor Code '{vendor_code}'"})
-            continue
-        if _inactive(vendor):
-            errors.append(inactive_error(row_idx, "Vendor Code", vendor_code, vendor.name))
-            continue
+        vendor = None
+        if not _is_blank(vendor_code):
+            vendor = await _lookup(session, Vendor, code=vendor_code)
+            if vendor is None:
+                errors.append({"row": row_idx, "field": "Vendor Code", "message": f"unknown Vendor Code '{vendor_code}'"})
+                continue
+            if _inactive(vendor):
+                errors.append(inactive_error(row_idx, "Vendor Code", vendor_code, vendor.name))
+                continue
 
         # AM-23: mandatory, matching AssetCreateIn.serial_number ("N/A" is
         # the reserved, case-insensitive-exempt placeholder for a unit that
@@ -448,6 +537,8 @@ async def _validate_add_rows(
         except ValueError as exc:
             errors.append({"row": row_idx, "field": "Warranty Years", "message": str(exc)})
             continue
+        if item is not None and _is_blank(cell("Warranty Years")):
+            warranty_years = item.default_warranty_years or 0          # S7: the Item's default, as on Add Assets
 
         try:
             purchase_cost = _parse_optional_number(cell("Purchase Cost"), "Purchase Cost")
@@ -497,7 +588,7 @@ async def _validate_add_rows(
 
         valid_rows.append({
             "row": row_idx, "legacy_asset_code": cell("Legacy Asset Code"), "company": company,
-            "cost_center": cost_center, "category": category, "subcategory": subcategory,
+            "cost_center": cost_center, "category": category, "subcategory": subcategory, "item": item,
             "description": description, "purchase_date": purchase_date, "asset_user": asset_user,
             "quantity": quantity, "vendor": vendor,
             "po_number": cell("PO Number"), "po_date": po_date,
@@ -696,7 +787,10 @@ async def _validate_edit_rows(
     return valid_rows, errors, scope_violations
 
 
-async def preview_import(session: AsyncSession, content: bytes, allowed_company_ids: list[int] | None = None, mode: str = "add") -> dict:
+async def preview_import(
+    session: AsyncSession, content: bytes, allowed_company_ids: list[int] | None = None, mode: str = "add",
+    domains: tuple[str, ...] | None = None,
+) -> dict:
     if mode == "edit":
         valid_rows, errors, _ = await _validate_edit_rows(session, content, allowed_company_ids)
         return {
@@ -710,11 +804,12 @@ async def preview_import(session: AsyncSession, content: bytes, allowed_company_
             "errors": errors,
         }
 
-    valid_rows, errors, _ = await _validate_add_rows(session, content, allowed_company_ids)
+    valid_rows, errors, _ = await _validate_add_rows(session, content, allowed_company_ids, domains)
     return {
         "valid_rows": [
             {
                 "row": r["row"], "legacy_asset_code": r["legacy_asset_code"],
+                "item": r["item"].name if r["item"] is not None else None,          # S7 (additive)
                 "company": r["company"].name, "category": r["category"].name,
                 "subcategory": r["subcategory"].name if r["subcategory"] else None,
                 "description": r["description"], "asset_user": r["asset_user"].name, "quantity": r["quantity"],
@@ -784,6 +879,7 @@ async def _commit_edit(session: AsyncSession, content: bytes, actor: AssetUser, 
 
 async def _commit_add(
     session: AsyncSession, content: bytes, actor: AssetUser, allowed_company_ids: list[int] | None = None,
+    domains: tuple[str, ...] | None = None,
 ) -> dict:
     """Raises ImportScopeError (-> 403) if any row targets a company outside
     `allowed_company_ids`, before writing anything -- this part of the batch
@@ -797,7 +893,7 @@ async def _commit_add(
     units with no way to explain to the user which ones "count"), so a
     mid-row failure discards that whole row's units, not just the failed one.
     """
-    valid_rows, errors, scope_violations = await _validate_add_rows(session, content, allowed_company_ids)
+    valid_rows, errors, scope_violations = await _validate_add_rows(session, content, allowed_company_ids, domains)
     if scope_violations:
         raise ImportScopeError("; ".join(f"row {v['row']}: {v['message']}" for v in scope_violations))
 
@@ -851,6 +947,7 @@ async def _commit_add(
                         asset_code=code, legacy_asset_code=r["legacy_asset_code"], company_id=r["company"].id,
                         cost_center_id=r["cost_center"].id, category_id=r["category"].id,
                         subcategory_id=r["subcategory"].id if r["subcategory"] else None,
+                        item_id=r["item"].id if r["item"] is not None else None,          # S7 (P2-10)
                         brand_id=r["brand"].id if r["brand"] else None, model=r["model"], serial_number=r["serial_number"],
                         serial_pending=r["serial_pending"], description=r["description"],
                         vendor_id=r["vendor"].id if r["vendor"] else None,
@@ -895,7 +992,8 @@ async def _commit_add(
 
 async def commit_import(
     session: AsyncSession, content: bytes, actor: AssetUser, allowed_company_ids: list[int] | None = None, mode: str = "add",
+    domains: tuple[str, ...] | None = None,
 ) -> dict:
     if mode == "edit":
         return await _commit_edit(session, content, actor, allowed_company_ids)
-    return await _commit_add(session, content, actor, allowed_company_ids)
+    return await _commit_add(session, content, actor, allowed_company_ids, domains)

@@ -40,6 +40,8 @@ XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.s
 # limit of 10,000 rows quietly dropped everything past it).
 EXPORT_MAX_ROWS = 50_000
 
+SELF_SERVICE_REPORTS = "Reports are for staff. The assets you hold are listed under My Assets."
+
 
 async def _export_label_maps(session: AsyncSession) -> dict:
     """Batch id->name lookups for the asset-register export -- every master
@@ -110,10 +112,9 @@ async def _asset_report_args(
     if holder_id is not None and asset_user_id is None:
         asset_user_id = holder_id
     if is_self_service(asset_user):
-        asset_user_id = asset_user.id
-        allowed = None
-    else:
-        allowed = await scoped_company_ids(session, asset_user)
+        # S7 (P3-9): reports are for staff, like the movement log; a self-service login has My Assets.
+        raise HTTPException(http_status.HTTP_403_FORBIDDEN, SELF_SERVICE_REPORTS)
+    allowed = await scoped_company_ids(session, asset_user)
     try:
         wanted_domain = parse_work_area(work_area) or domain
     except ValueError as exc:

@@ -126,7 +126,9 @@ async def test_reminders_are_only_for_pos_made_from_the_erp_and_respect_roles_an
     assert (await client.get("/api/erp/reminders", headers=await _headers(client, "VWR"))).status_code == 403
     erp.down = "The ERP database could not be reached (OSError)."
     resp = await client.get("/api/erp/reminders", headers=op)
-    assert resp.status_code == 503 and "could not be reached" in resp.json()["detail"]
+    # S7 (P1-1, intended change): no 503 any more -- an empty list, and the reason in the headers.
+    assert resp.status_code == 200 and resp.json() == []
+    assert resp.headers["X-ERP-Available"] == "false" and "could not be reached" in resp.headers["X-ERP-Message"]
 
 
 # ---------- PI from the ERP ----------
@@ -223,4 +225,7 @@ async def test_pi_needs_an_erp_po_a_known_po_the_right_role_and_a_reachable_erp(
     assert (await client.get("/api/erp/purchase-orders/99999/pi", headers=h)).status_code == 404
     assert (await client.get(f"/api/erp/purchase-orders/{po_id}/pi", headers=await _headers(client, "VWR"))).status_code == 403
     erp.down = "The ERP database could not be reached (OSError)."
-    assert (await client.get(f"/api/erp/purchase-orders/{po_id}/pi", headers=h)).status_code == 503
+    # S7 (P1-1, intended change): 200 with available false and the reason, never a 503.
+    down = await client.get(f"/api/erp/purchase-orders/{po_id}/pi", headers=h)
+    assert down.status_code == 200
+    assert (down.json()["available"], down.json()["rows"]) == (False, []) and "could not be reached" in down.json()["message"]

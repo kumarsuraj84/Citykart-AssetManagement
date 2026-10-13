@@ -14,7 +14,9 @@ APP_DIR = Path(__file__).resolve().parents[2]
 
 def test_the_master_audit_migration_is_the_only_head():
     script = ScriptDirectory.from_config(Config(str(APP_DIR / "alembic.ini")))
-    assert script.get_heads() == ["c1d3e5f7a9b0"]
+    # S7 (intended change): d2e4f6a8b0c2 (idempotency_key + PO number index) now sits on top of it.
+    assert script.get_heads() == ["d2e4f6a8b0c2"]
+    assert script.get_revision("d2e4f6a8b0c2").down_revision == "c1d3e5f7a9b0"
     assert script.get_revision("c1d3e5f7a9b0").down_revision == "b8d0f2a4c6e8"
 
 

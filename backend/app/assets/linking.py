@@ -4,8 +4,8 @@
   only -- never applied by themselves:
     ERP_CODE     the Item the asset's ERP item code resolves to through the item rules (app.items.service,
                  the same CODE > NAME > ARTICLE resolution the ERP screens use, per company);
-    DESCRIPTION  Items of the same Category (and Sub-category, when the asset has one) whose name's words are
-                 mostly found in the asset's description (the shared word-overlap rule, >= half the name);
+    DESCRIPTION  Items of the same Category (and Sub-category, when the asset has one) whose name the asset's
+                 description most likely means (S7: the one name scoring of app.items.suggest);
     GROUP        the Item(s) of the asset's own Sub-category when there are only a few (one -> stronger).
   Only Items the asset could actually be linked to are suggested (active, same Category / Sub-category).
 * `link_assets` links many at once, all or nothing after checking every entry: the Item must be active, of
@@ -26,7 +26,8 @@ from app.core.problems import Refused
 from app.core.validation import escape_like
 from app.erp.source import ErpItem, ErpSource, ErpUnavailable
 from app.items.models import Item
-from app.items.service import SUGGESTION_THRESHOLD, _words, active_rule_sets
+from app.items.service import active_rule_sets
+from app.items.suggest import ItemMatcher
 from app.masters.models import AssetCategory
 
 MAX_SUGGESTIONS = 5
@@ -61,7 +62,7 @@ async def _erp_records(source: ErpSource | None, codes: list[str]) -> dict[str, 
     return {e.icode.upper(): e for e in found}
 
 
-def suggestions_for(asset: Asset, candidates: list[Item], words_of: dict[int, set[str]], erp_hit: Item | None) -> list[dict]:
+def suggestions_for(asset: Asset, candidates: list[Item], matcher: ItemMatcher, erp_hit: Item | None) -> list[dict]:
     out: dict[int, dict] = {}
 
     def add(item: Item, score: float, reason: str) -> None:
@@ -71,13 +72,10 @@ def suggestions_for(asset: Asset, candidates: list[Item], words_of: dict[int, se
     if erp_hit is not None and erp_hit.is_active and fits(asset, erp_hit):
         add(erp_hit, 1.0, "ERP_CODE")
     fitting = [i for i in candidates if fits(asset, i)]
-    description_words = _words(asset.description or "")
-    for item in fitting:
-        words = words_of.get(item.id) or set()
-        if words:
-            score = len(words & description_words) / len(words)
-            if score >= SUGGESTION_THRESHOLD:
-                add(item, min(score, 0.95), "DESCRIPTION")
+    # S7 (P1-3): the one name-scoring of app.items.suggest (rare words weighed, generic words ignored,
+    # nothing below its threshold) over the Items this asset could be linked to.
+    for found in matcher.candidates([asset.description], fitting):
+        add(found.item, min(found.score, 0.95), "DESCRIPTION")
     if asset.subcategory_id is not None:
         same_group = [i for i in fitting if i.subcategory_id == asset.subcategory_id]
         if 1 <= len(same_group) <= 3:
@@ -105,7 +103,7 @@ async def unlinked_assets(
     candidates = list((await session.execute(
         select(Item).where(Item.is_active.is_(True), Item.category_id.in_(categories)).order_by(Item.name)
     )).scalars().all())
-    words_of = {i.id: _words(i.name) for i in candidates}
+    matcher = ItemMatcher(candidates)
     codes = sorted({a.erp_item_code.strip() for a in assets if (a.erp_item_code or "").strip()})
     erp = await _erp_records(source, codes)
     rules = await active_rule_sets(session, sorted({a.company_id for a in assets})) if codes else {}
@@ -128,7 +126,7 @@ async def unlinked_assets(
             "brand_name": names.get("brand_name"), "holder_name": names.get("holder_name"),
             "holder_kind_label": names.get("holder_kind_label"),
             "work_area": a.asset_domain, "work_area_label": names.get("work_area_label"),
-            "suggestions": suggestions_for(a, candidates, words_of, hit),
+            "suggestions": suggestions_for(a, candidates, matcher, hit),
         })
     return rows, total
 

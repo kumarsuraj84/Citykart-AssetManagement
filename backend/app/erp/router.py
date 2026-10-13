@@ -18,7 +18,7 @@ from app.erp.schemas import (
     StoresCreateIn, SyncRunOut, SyncStatusOut, VendorCodesIn,
 )
 from app.erp.service import NotAllowed, build_draft, create_from_draft, erp_po_rows, mark_not_tracked, untracked_codes
-from app.erp.source import ErpSource, ErpUnavailable, get_erp_source, is_configured
+from app.erp.source import ErpSource, ErpUnavailable, ErpViewMissing, get_erp_source, is_configured
 from app.erp.sync import last_runs, run_sync
 from app.erp.warehouse import WarehouseReader, get_warehouse_reader
 from app.masters.schemas import VendorOut
@@ -314,17 +314,39 @@ async def _scoped_erp_po(session: AsyncSession, actor, po_id: int) -> PurchaseOr
     return po
 
 
+RECEIPTS_NOT_PROVIDED = "The ERP does not provide goods receipts yet, so goods-arrived reminders are not available."
+INVOICES_NOT_PROVIDED = "The ERP does not provide purchase invoices yet."
+
+
+def _erp_reason(exc: ErpUnavailable, not_provided: str) -> str:
+    """A plain sentence for an ERP read that could not be made: the view is missing in the ERP (it does not
+    provide this yet) or the ERP could not be read right now."""
+    return not_provided if isinstance(exc, ErpViewMissing) else str(exc)
+
+
 @router.get("/reminders")
 async def reminders(
-    po_id: int | None = None, session: AsyncSession = Depends(get_session),
+    response: Response, po_id: int | None = None, envelope: bool = False, session: AsyncSession = Depends(get_session),
     source: ErpSource = Depends(get_erp_source), actor=Depends(require_role(*WRITE_ROLES)),
 ):
     """POs created from the ERP where the ERP shows goods received that CKAM has
-    not marked delivered yet. A reminder only: delivery needs serial numbers."""
+    not marked delivered yet. A reminder only: delivery needs serial numbers.
+
+    S7 (P1-1): when the ERP cannot give goods receipts (the view is not created in the ERP, or the ERP is
+    down) this is NOT an error any more: 200 with an empty list and the headers `X-ERP-Available: false` and
+    `X-ERP-Message` (a plain sentence). `envelope=true` (additive) answers `{available, message, items}`
+    instead of the bare list."""
     try:
-        return await delivery_reminders(session, actor, source, po_id)
+        items = await delivery_reminders(session, actor, source, po_id)
+        available, message = True, None
     except ErpUnavailable as exc:
-        raise _unavailable(exc)
+        items, available, message = [], False, _erp_reason(exc, RECEIPTS_NOT_PROVIDED)
+    response.headers["X-ERP-Available"] = "true" if available else "false"
+    if message:
+        response.headers["X-ERP-Message"] = message
+    if envelope:
+        return {"available": available, "message": message, "items": items}
+    return items
 
 
 @router.get("/changes/summary")
@@ -390,12 +412,17 @@ async def pi_lookup(
     actor=Depends(require_role(*WRITE_ROLES)),
 ):
     """The PIs the ERP holds for this PO, matched to the invoices delivered here.
-    Preview only: nothing is recorded."""
+    Preview only: nothing is recorded.
+
+    S7 (P1-1, additive `available` / `message`): when the ERP cannot give purchase invoices (the view is not
+    created in the ERP: "The ERP does not provide purchase invoices yet."; or the ERP cannot be read) the
+    answer is 200 with `available: false`, the plain sentence in `message` and no rows -- never a 503."""
     po = await _scoped_erp_po(session, actor, po_id)
     try:
-        return await pi_preview(session, source, po)
+        return {**await pi_preview(session, source, po), "available": True, "message": None}
     except ErpUnavailable as exc:
-        raise _unavailable(exc)
+        return {"po_id": po.id, "po_number": po.po_number, "rows": [], "not_booked": 0, "ckam_invoices": [],
+                "delivered_assets": 0, "available": False, "message": _erp_reason(exc, INVOICES_NOT_PROVIDED)}
     except ValueError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
 
@@ -414,7 +441,8 @@ async def pi_apply(
         )
         await session.commit()
     except ErpUnavailable as exc:
-        raise _unavailable(exc)
+        await session.rollback()
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, _erp_reason(exc, INVOICES_NOT_PROVIDED))
     except ValueError as exc:
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))

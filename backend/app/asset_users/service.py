@@ -47,20 +47,28 @@ class AssetUserService:
     async def get(self, asset_user_id: int) -> AssetUser | None:
         return await self.session.get(AssetUser, asset_user_id)
 
-    async def create(self, data: dict, actor_id: int) -> AssetUser:
+    async def create(self, data: dict, actor_id: int, commit: bool = True) -> AssetUser:
+        """`commit=False` (S7): only flushes, so the caller can add more in the same transaction (a store's
+        rooms) and commit once."""
         asset_user = AssetUser(**data, created_by=actor_id, updated_by=actor_id)
         self.session.add(asset_user)
+        if not commit:
+            await self.session.flush()
+            return asset_user
         await self.session.commit()
         await self.session.refresh(asset_user)
         return asset_user
 
-    async def update(self, asset_user_id: int, data: dict, actor_id: int) -> AssetUser | None:
+    async def update(self, asset_user_id: int, data: dict, actor_id: int, commit: bool = True) -> AssetUser | None:
         asset_user = await self.get(asset_user_id)
         if asset_user is None:
             return None
         for key, value in data.items():
             setattr(asset_user, key, value)
         asset_user.updated_by = actor_id
+        if not commit:
+            await self.session.flush()
+            return asset_user
         await self.session.commit()
         await self.session.refresh(asset_user)
         return asset_user

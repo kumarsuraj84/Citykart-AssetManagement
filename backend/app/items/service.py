@@ -8,6 +8,7 @@ from app.asset_users.models import AssetUser
 from app.bundles.models import Bundle, BundlePart
 from app.erp.source import ErpItem, ErpSource
 from app.items.models import Item, ItemMap, LEVEL_TYPES, MATCH_TYPES
+from app.items.suggest import SUGGESTION_THRESHOLD, ItemMatcher  # noqa: F401  (S7: re-exported, one scoring)
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company
 
 
@@ -24,23 +25,28 @@ def _words(text: str) -> set[str]:
     return {w for w in norm(text).split() if len(w) >= 3}
 
 
-SUGGESTION_THRESHOLD = 0.5
+def suggest_item(items: list[Item], texts: list[str | None], item_words: dict[int, set[str]] | None = None,
+                 matcher: "ItemMatcher | None" = None) -> tuple[Item | None, float]:
+    """The existing Item these texts (an Article's name, department and product names) most likely mean, and
+    how sure: S7 -- delegates to the one scoring of app.items.suggest (exact normalised name = 1.0, whole
+    name inside = 0.95, rare words weighed, generic words ignored, nothing below 0.6). (None, 0) when there
+    is no safe suggestion. `item_words` is accepted for older callers and no longer used; pass a `matcher`
+    built once when calling this many times."""
+    found = (matcher or ItemMatcher(items)).best(texts, items if matcher is not None else None)
+    return (found.item, found.score) if found is not None else (None, 0.0)
 
 
-def suggest_item(items: list[Item], texts: list[str | None], item_words: dict[int, set[str]] | None = None) -> tuple[Item | None, float]:
-    """The existing Item whose name shares the most words with these texts (an Article's name, department
-    and product names): the share of the Item name's words found in them. Only a suggestion, and only when
-    at least half of the Item's name is there (else (None, 0)). The one suggestion engine of the ERP screens
-    (Articles screen, PO review, ERP inbox)."""
-    words_of = item_words if item_words is not None else {i.id: _words(i.name) for i in items}
-    text_words = _words(" ".join(t for t in texts if t))
-    best_item, best = None, 0.0
-    for i in items:
-        words = words_of.get(i.id) or set()
-        score = len(words & text_words) / len(words) if words else 0
-        if score > best:
-            best_item, best = i, score
-    return (best_item, best) if best_item is not None and best >= SUGGESTION_THRESHOLD else (None, 0.0)
+def suggest_item_full(matcher: "ItemMatcher", texts: list[str | None]) -> dict:
+    """The additive suggestion fields of the ERP screens, from the one scoring (S7):
+    {suggested_item_id, suggested_item_name, suggestion_score, suggestion_reason ("same name" / "similar
+    name"), suggestion_reason_code (SAME_NAME / SIMILAR_NAME)} -- all null when there is no safe suggestion."""
+    found = matcher.best(texts)
+    if found is None:
+        return {"suggested_item_id": None, "suggested_item_name": None, "suggestion_score": None,
+                "suggestion_reason": None, "suggestion_reason_code": None}
+    return {"suggested_item_id": found.item.id, "suggested_item_name": found.item.name,
+            "suggestion_score": round(found.score, 2), "suggestion_reason": found.reason_text,
+            "suggestion_reason_code": found.reason}
 
 
 @dataclass
@@ -379,14 +385,14 @@ async def article_overview(session: AsyncSession, source: ErpSource, company_id:
         if m.not_tracked and m.match_type in ("NAME", "CODE") and m.article_key:
             untracked_rules[m.article_key] = untracked_rules.get(m.article_key, 0) + 1
     items = (await session.execute(select(Item).where(Item.is_active.is_(True)))).scalars().all()
-    item_words = {i.id: _words(i.name) for i in items}
+    matcher = ItemMatcher(list(items))          # S7: the one suggestion scoring, built once for the screen
     out = []
     for a in articles:
         res = rules.resolve_article(a.article_key, a.department, a.section, a.division)
         mapped = res.item
-        suggestion, best = None, 0.0
+        suggestion = None
         if mapped is None and not res.not_tracked:
-            suggestion, best = suggest_item(items, [a.article_name, a.department, *a.samples], item_words)
+            suggestion = suggest_item_full(matcher, [a.article_name, a.department, *a.samples])
         out.append({
             "article_key": a.article_key, "article_name": a.article_name, "section": a.section, "department": a.department,
             "division": a.division, "codes": a.codes, "units": a.units, "lines": a.lines, "samples": a.samples,
@@ -398,8 +404,11 @@ async def article_overview(session: AsyncSession, source: ErpSource, company_id:
             "decision_map_id": res.map_id,
             "name_rules": name_rules.get(a.article_key, 0), "code_rules": code_rules.get(a.article_key, 0),
             "untracked_rules": untracked_rules.get(a.article_key, 0),
-            "suggested_item_id": suggestion.id if suggestion and best >= 0.5 else None,
-            "suggested_item_name": suggestion.name if suggestion and best >= 0.5 else None,
+            "suggested_item_id": suggestion["suggested_item_id"] if suggestion else None,
+            "suggested_item_name": suggestion["suggested_item_name"] if suggestion else None,
+            # S7 (additive): how sure, and why in words ("same name" / "similar name")
+            "suggestion_score": suggestion["suggestion_score"] if suggestion else None,
+            "suggestion_reason": suggestion["suggestion_reason"] if suggestion else None,
         })
     return out
 

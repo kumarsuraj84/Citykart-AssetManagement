@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.asset_users.kinds import INSTALL_POINT_PREFIX, STOCK_ROOM_PREFIX
 from app.asset_users.models import AssetUser
 
+CODE_MAX = 50                   # asset_user.code is VARCHAR(50)
+
 ROOM_KINDS = (
     ("stock_room", STOCK_ROOM_PREFIX, "STOCK_POINT", "Stock Room"),
     ("install_point", INSTALL_POINT_PREFIX, "INSTALLED", "Install Point"),
@@ -40,6 +42,11 @@ async def ensure_store_rooms(
     out: dict = {"stock_room": None, "install_point": None, "created": [], "reused": [], "problems": []}
     for key, prefix, type_, label in ROOM_KINDS:
         want = f"{prefix}{code}"
+        if len(want) > CODE_MAX:
+            # S7: stores made through the general form / Excel may have long codes; never a database error.
+            out["problems"].append(f"The store code {code} is too long to make the {label.lower()} code {want} "
+                                   f"(at most {CODE_MAX} characters). Use a shorter store code.")
+            continue
         row = known.get((store.company_id, want))
         if row is not None:
             if row.asset_user_type == type_ and row.is_active:

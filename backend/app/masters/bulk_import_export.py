@@ -277,8 +277,11 @@ async def preview_import(
 
 async def commit_import(
     session: AsyncSession, model, fields: list[FieldSpec], content: bytes, actor,
-    allowed_company_ids: list[int] | None, company_field: str | None,
+    allowed_company_ids: list[int] | None, company_field: str | None, after_create=None,
 ) -> dict:
+    """`after_create` (S7, optional): `async (obj) -> None`, run for each new record inside its own row's
+    savepoint (e.g. a new STORE gets its Stock Room and Install Point); a ValueError it raises undoes that
+    row and is reported as the row's error, the other rows still go in."""
     valid_rows, errors, scope_violations = await _validate_rows(session, fields, content, allowed_company_ids, company_field)
     if scope_violations:
         raise ImportScopeError(f"{len(scope_violations)} row(s) target a company outside your scope")
@@ -290,7 +293,11 @@ async def commit_import(
                 obj = model(**r["data"], created_by=actor.id, updated_by=actor.id)
                 session.add(obj)
                 await session.flush()
+                if after_create is not None:
+                    await after_create(obj)
             imported += 1
+        except ValueError as exc:
+            errors.append({"row": r["row"], "message": str(exc)})
         except IntegrityError:
             errors.append({"row": r["row"], "message": "a record with this code already exists"})
         except DataError:

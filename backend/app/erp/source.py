@@ -39,6 +39,12 @@ class ErpUnavailable(Exception):
     The message is written for the user."""
 
 
+class ErpViewMissing(ErpUnavailable):
+    """S7: the ERP database answered, but the view this read needs has not been created there (in production
+    the goods-receipt and purchase-invoice views do not exist yet). A screen can treat this as "the ERP does
+    not provide this yet" instead of an error."""
+
+
 @dataclass
 class ErpVendor:
     code: str
@@ -250,7 +256,7 @@ class PgReadOnly:
         try:
             return await conn.fetch(sql, *args)
         except asyncpg.UndefinedTableError as exc:
-            raise ErpUnavailable("The ERP view this screen reads does not exist yet.") from exc
+            raise ErpViewMissing("The ERP view this screen reads does not exist yet.") from exc
         except asyncpg.InsufficientPrivilegeError as exc:
             raise ErpUnavailable("CKAM is not allowed to read the ERP view (a database grant is missing).") from exc
         except asyncpg.PostgresError as exc:

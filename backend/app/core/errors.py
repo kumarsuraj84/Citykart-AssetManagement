@@ -182,6 +182,11 @@ def validation_messages(errors: list[dict]) -> list[str]:
     return out or ["Some of the values are not valid. Check them and try again."]
 
 
+# S7: unique indexes on expressions (their key text is not a plain column list) -> their own sentence.
+CONSTRAINT_MESSAGES = {
+    "uq_purchase_order_company_number_active": "A purchase order with this PO number already exists for this company.",
+}
+
 _FK_DETAIL_RE = re.compile(r"Key \((?P<col>[a-z_]+)\)=\((?P<val>[^)]*)\) is not present in table")
 _UNIQUE_DETAIL_RE = re.compile(r"Key \((?P<cols>[^)]*)\)=")
 
@@ -203,6 +208,9 @@ def integrity_message(exc: IntegrityError) -> tuple[int, str]:
             return status.HTTP_422_UNPROCESSABLE_ENTITY, f"The {field_label(m.group('col')).lower()} you chose does not exist."
         return status.HTTP_422_UNPROCESSABLE_ENTITY, "One of the records you chose does not exist (or is still in use)."
     if sqlstate == "23505":                                   # unique
+        constraint = getattr(pg, "constraint_name", None) or ""
+        if constraint in CONSTRAINT_MESSAGES:
+            return status.HTTP_409_CONFLICT, CONSTRAINT_MESSAGES[constraint]
         m = _UNIQUE_DETAIL_RE.search(detail or "")
         if m:
             cols = [c.strip() for c in m.group("cols").split(",")]

@@ -213,7 +213,15 @@ async def _bulk_apply_event(
     over one bad item would be far worse than reporting it and moving on."""
     done = 0
     failed: list[dict] = []
-    for asset_id in dict.fromkeys(asset_ids):
+    wanted = list(dict.fromkeys(asset_ids))
+    # S7 (P1-2): lock every chosen asset row up front, in id order (two overlapping bulk moves can then never
+    # deadlock, and a second identical request waits and is checked against what the first one wrote).
+    # apply_event re-reads each asset under the lock before checking the move.
+    if wanted:
+        await session.execute(
+            select(Asset.id).where(Asset.id.in_(sorted(wanted))).order_by(Asset.id).with_for_update()
+        )
+    for asset_id in wanted:
         try:
             asset = await _get_scoped_asset(asset_id, session, actor)
         except HTTPException:

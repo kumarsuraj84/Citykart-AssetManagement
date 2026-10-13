@@ -27,7 +27,7 @@ from app.core.deps import check_work_area
 from app.masters import audit
 from app.masters.models import CostCenter, Vendor
 from app.purchase_orders.models import PendingAsset, PurchaseOrder
-from app.purchase_orders.service import active_or_error, ensure_po_open, line_area
+from app.purchase_orders.service import active_or_error, ensure_po_open, line_area, lock_po_number
 
 LOCKED_AFTER_RECEIPT = ("vendor_id", "cost_center_id", "po_number", "po_date")
 FIELD_WORDS = {"vendor_id": "vendor", "cost_center_id": "cost centre", "po_number": "PO number", "po_date": "PO date"}
@@ -114,6 +114,7 @@ async def update_po_header(
         if delivery.company_id != po.company_id:
             raise ValueError("The delivery location must belong to the same company as the purchase order.")
     if "po_number" in changed:
+        await lock_po_number(session, po.company_id, sent["po_number"])      # S7: same lock as on create
         clash = (await session.execute(
             select(PurchaseOrder.id).where(
                 PurchaseOrder.company_id == po.company_id, PurchaseOrder.id != po.id,

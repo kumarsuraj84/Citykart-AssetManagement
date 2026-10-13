@@ -2,7 +2,7 @@
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
-from app.core.deps import require_primary_owner, scoped_company_ids
+from app.core.deps import allowed_asset_domains, require_primary_owner, scoped_company_ids
 from app.imports.asset_import_service import (
     ImportScopeError, ImportTemplateError, build_template, commit_import, preview_import,
 )
@@ -35,7 +35,8 @@ async def preview(
 ):
     content = await file.read()
     try:
-        return await preview_import(session, content, await scoped_company_ids(session, actor), mode)
+        return await preview_import(session, content, await scoped_company_ids(session, actor), mode,
+                                    await allowed_asset_domains(session, actor))
     except ImportTemplateError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
 
@@ -47,7 +48,8 @@ async def commit(
 ):
     content = await file.read()
     try:
-        result = await commit_import(session, content, actor, await scoped_company_ids(session, actor), mode)
+        result = await commit_import(session, content, actor, await scoped_company_ids(session, actor), mode,
+                                     await allowed_asset_domains(session, actor))
     except ImportScopeError as exc:
         # A write aimed at a company the actor can't access: refuse the whole file
         # (nothing written) with 403, same as POST /api/assets for another company.

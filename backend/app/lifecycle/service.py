@@ -119,11 +119,21 @@ async def apply_events(
     # with "Choose where the asset is going." after the status checks.)
     if not moves:
         return []
-    if any(asset.id is None for asset, _ in moves):
-        await session.flush()
+    # S7 (P1-2): everything pending is written first, so the locking read below can never overwrite it.
+    await session.flush()
     asset_ids = [asset.id for asset, _ in moves]
     if len(set(asset_ids)) != len(asset_ids):
         raise LifecycleError("The same asset was chosen twice.")
+
+    # S7 (P1-2): lock the assets' rows for this transaction (SELECT ... FOR UPDATE, in id order so two batches
+    # over the same assets can never deadlock) and re-read their CURRENT status and holder under the lock.
+    # Two requests that both read "in stock" a moment ago can then no longer both record "sent for repair":
+    # the second waits for the first to finish and is checked against what the first wrote.
+    locked = {a.id: a for a in (await session.execute(
+        select(Asset).where(Asset.id.in_(sorted(asset_ids))).order_by(Asset.id)
+        .with_for_update().execution_options(populate_existing=True)
+    )).scalars().all()}
+    moves = [(locked.get(asset.id, asset), to_id) for asset, to_id in moves]
 
     # Each asset's last recorded event -- one query for the whole batch.
     last_events: dict[int, AssetEvent] = {

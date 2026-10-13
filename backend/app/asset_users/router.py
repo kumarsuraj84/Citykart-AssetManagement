@@ -10,6 +10,7 @@ from app.core.deps import (
     work_area_words,
 )
 from app.asset_users.service import AssetUserService
+from app.asset_users.store_rooms import ensure_store_rooms
 from app.asset_users.schemas import (
     MAX_ISSUE_PASSWORDS, CompanyAccessIn, CompanyAccessOut, AssetUserIn, AssetUserOut, AssetUserUpdateIn,
     IssuedPasswordOut, IssuePasswordsIn, ResetPasswordOut,
@@ -91,8 +92,17 @@ async def asset_users_import_commit(
 ):
     content = await file.read()
     allowed = await scoped_company_ids(session, asset_user)
+
+    async def store_rooms(obj: AssetUser) -> None:
+        # S7: an imported STORE gets its Stock Room and Install Point like every other way a store is made.
+        if obj.asset_user_type == "STORE" and obj.is_active:
+            rooms = await ensure_store_rooms(session, asset_user, obj)
+            if rooms["problems"]:
+                raise ValueError(rooms["problems"][0])
+
     try:
-        result = await commit_import(session, AssetUser, ASSET_USER_IMPORT_FIELDS, content, asset_user, allowed, "company_id")
+        result = await commit_import(session, AssetUser, ASSET_USER_IMPORT_FIELDS, content, asset_user, allowed, "company_id",
+                                     after_create=store_rooms)
     except ImportScopeError as exc:
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc))
     except ImportTemplateError as exc:
@@ -328,7 +338,7 @@ async def create_asset_user(
     await _validate_new_values(session, data, None)
     await _refuse_wider_work_area(session, asset_user, data, None)
     try:
-        return await AssetUserService(session).create(data, asset_user.id)
+        obj = await AssetUserService(session).create(data, asset_user.id, commit=False)
     except IntegrityError:
         # AM-09: `code` is unique per company (AssetUser.__table_args__) -- reusing
         # one is an ordinary mistake, not malformed input, and previously hit an
@@ -337,6 +347,24 @@ async def create_asset_user(
         # again in this request (a failed INSERT leaves the transaction aborted).
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A person or place with this code already exists in this company.")
+    rooms = await _store_rooms_or_422(session, asset_user, obj)
+    await session.commit()
+    await session.refresh(obj)
+    return AssetUserOut.model_validate(obj).model_copy(update={"rooms_created": rooms})
+
+
+async def _store_rooms_or_422(session: AsyncSession, actor: AssetUser, obj: AssetUser) -> list[str]:
+    """S7: a STORE made or turned into a store here gets its Stock Room and Install Point exactly like
+    POST /api/people/stores (the one shared app.asset_users.store_rooms.ensure_store_rooms; whatever exists
+    is reused). Returns what was created ("stock_room" / "install_point"); a room code taken by something
+    else -> 422 with that sentence and nothing is saved."""
+    if obj.asset_user_type != "STORE" or not obj.is_active:
+        return []
+    rooms = await ensure_store_rooms(session, actor, obj)
+    if rooms["problems"]:
+        await session.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, rooms["problems"][0])
+    return rooms["created"]
 
 
 ISSUE_KINDS = {"stores": "STORE", "employees": "EMPLOYEE"}
@@ -435,14 +463,18 @@ async def update_asset_user(
     await _validate_asset_user_references(session, data)
     await _validate_new_values(session, data, target)
     await _refuse_wider_work_area(session, asset_user, data, target)
+    becomes_store = data.get("asset_user_type") == "STORE" and target.asset_user_type != "STORE"
     try:
-        obj = await AssetUserService(session).update(asset_user_id, data, asset_user.id)
+        obj = await AssetUserService(session).update(asset_user_id, data, asset_user.id, commit=False)
     except IntegrityError:
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A person or place with this code already exists in this company.")
     if obj is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
-    return obj
+    rooms = await _store_rooms_or_422(session, asset_user, obj) if becomes_store else []
+    await session.commit()
+    await session.refresh(obj)
+    return AssetUserOut.model_validate(obj).model_copy(update={"rooms_created": rooms})
 
 
 @router.delete("/{asset_user_id}", status_code=204)

@@ -8,6 +8,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from app.core.config import DEFAULT_DEV_JWT_SECRET, settings
 from app.core.errors import register_exception_handlers
+from app.core.idempotency import IdempotencyMiddleware
 from app.core.db import SessionLocal
 from app.erp.source import is_configured as erp_is_configured
 from app.erp.sync import sync_loop
@@ -100,6 +101,9 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="CityKart Asset Manager API", lifespan=lifespan)
 # S0.7: friendly 422/409 answers instead of bare 500s or raw validation arrays.
 register_exception_handlers(app)
+# S7 (P1-2): the Idempotency-Key header on create / receive / move requests (app.core.idempotency). Added
+# before the security-headers middleware below, so a replayed answer gets those headers too.
+app.add_middleware(IdempotencyMiddleware)
 app.include_router(auth_router)
 app.include_router(asset_users_router)
 app.include_router(stock_rooms_router)

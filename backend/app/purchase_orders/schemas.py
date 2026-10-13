@@ -119,6 +119,9 @@ class PurchaseOrderOut(BaseModel):
     waiting_units: int = 0
     cancelled_units: int = 0
     status: str = "WAITING"
+    # S7 (additive): received + waiting + cancelled -- all units ever ordered on this PO (a cancelled PO keeps
+    # showing what was ordered: "15 ordered · 15 cancelled").
+    originally_ordered_units: int = 0
 
 
 class PurchaseOrderWithLinesOut(PurchaseOrderOut):
@@ -309,6 +312,10 @@ class LineGroupOut(BaseModel):
     serial_mode: str
     bundle_label: str | None = None
     waiting_unit_count: int
+    # S7 (additive): received + waiting + cancelled, and the value of the cancelled units (line_value stays
+    # the value of what is still ordered).
+    originally_ordered: int = 0
+    cancelled_value: float = 0
 
 
 class LineGroupUpdateIn(InModel):

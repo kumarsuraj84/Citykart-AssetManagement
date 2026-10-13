@@ -103,6 +103,8 @@ class AssetUserOut(BaseModel):
     # S1 (additive, filled by GET /asset-users): names instead of ids.
     location_name: str | None = None
     company_code: str | None = None
+    # S7 (additive, POST / PUT /asset-users): the rooms made for a new store ("stock_room", "install_point").
+    rooms_created: list[str] = []
 
 
 class ResetPasswordOut(BaseModel):

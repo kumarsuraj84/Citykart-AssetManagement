@@ -28,6 +28,7 @@ import app.numbering.models  # noqa: F401
 import app.assets.models  # noqa: F401
 import app.lifecycle.models  # noqa: F401
 import app.documents.models  # noqa: F401
+import app.core.idempotency  # noqa: F401  (S7: idempotency_key)
 
 target_metadata = Base.metadata
 

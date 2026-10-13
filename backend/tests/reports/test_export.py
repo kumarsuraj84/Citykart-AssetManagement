@@ -205,14 +205,15 @@ async def test_export_assets_pins_asset_user_to_only_their_own_held_asset():
         resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": "HLDX-SC4", "password": "Passw0rd!"})
         headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
+        # S7 (P3-9, intended change): a self-service login gets no report at all (403 with a sentence) -- it
+        # has My Assets -- so it can never see another person's or company's asset through it either.
         export_resp = await client.get("/api/reports/export/assets", headers=headers)
-        assert export_resp.status_code == 200
-        wb = openpyxl.load_workbook(BytesIO(export_resp.content))
-        codes = [row[0] for row in wb.active.iter_rows(min_row=2, values_only=True)]
-
-        assert codes == [code_x]
-        assert code_y not in codes
-        assert code_other not in codes
+        assert export_resp.status_code == 403
+        assert export_resp.json()["detail"] == "Reports are for staff. The assets you hold are listed under My Assets."
+        for code in (code_x, code_y, code_other):
+            assert code.encode() not in export_resp.content
+        own = await client.get("/api/assets", headers=headers)
+        assert [a["asset_code"] for a in own.json()["items"]] == [code_x]          # what My Assets shows
 
 
 async def test_qr_png_404_for_asset_user_who_does_not_hold_the_asset():

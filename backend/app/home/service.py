@@ -10,7 +10,7 @@
 """
 from __future__ import annotations
 
-from sqlalchemy import distinct, exists, func, select
+from sqlalchemy import distinct, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.asset_users.models import AssetUser
@@ -45,13 +45,30 @@ def _count(model, *conditions, company_ids: list[int] | None = None, company_col
     return stmt.scalar_subquery()
 
 
-async def setup_status(session: AsyncSession, actor) -> dict:
+class SetupCompanyNotFound(LookupError):
+    pass
+
+
+async def setup_status(session: AsyncSession, actor, company_id: int | None = None) -> dict:
+    """S7 (P2-3, additive `company_id`): with a company, the company-owned steps are counted for THAT company
+    only -- its places and stock rooms, cost centres, employees and stores, and an asset code format that
+    applies to it (its own, or one for every company); Asset Groups / Items and Vendors are shared by every
+    company and stay global. Without it: the old global answer. The answer says which company it is for."""
     allowed = await scoped_company_ids(session, actor)           # None for an ADMIN / the head-office admin
+    company = None
+    if company_id is not None:
+        company = await session.get(Company, company_id)
+        if company is None or (allowed is not None and company_id not in allowed):
+            raise SetupCompanyNotFound("This company was not found.")
+        allowed = [company_id]
 
     def people(kind: str):
         return _count(AssetUser, AssetUser.asset_user_type == kind, AssetUser.is_primary_owner.is_(False),
                       company_ids=allowed, company_column=AssetUser.company_id)
 
+    rule_exists = exists().where(CodeRule.is_active.is_(True))
+    if company is not None:
+        rule_exists = rule_exists.where(or_(CodeRule.company_id == company.id, CodeRule.company_id.is_(None)))
     row = (await session.execute(select(
         _count(Company, company_ids=allowed, company_column=Company.id).label("company_count"),
         _count(Location, company_ids=allowed, company_column=Location.company_id).label("place_count"),
@@ -63,9 +80,12 @@ async def setup_status(session: AsyncSession, actor) -> dict:
         _count(Vendor).label("vendor_count"),
         people("EMPLOYEE").label("people_count"),
         people("STORE").label("store_count"),
-        exists().where(CodeRule.is_active.is_(True)).label("code_rule_configured"),
+        rule_exists.label("code_rule_configured"),
     ))).one()
     counts = dict(row._mapping)
+    counts["company_id"] = company.id if company is not None else None
+    counts["company_name"] = company.name if company is not None else None
+    counts["company_code"] = company.code if company is not None else None
     done = {
         "company": counts["company_count"] > 0,
         "stock-room": counts["place_count"] > 0 and counts["stock_room_count"] > 0,
@@ -120,19 +140,42 @@ async def _po_figures(session: AsyncSession, allowed, domains, work_area) -> tup
     return pos, units
 
 
+async def _one_erp_figure(compute) -> int | None:
+    """One ERP figure, or None when the ERP read it needs cannot be made (S7: never takes the others down)."""
+    try:
+        return await compute()
+    except ErpUnavailable:
+        return None
+
+
 async def _erp_figures(session: AsyncSession, actor, source: ErpSource) -> dict:
     """The existing ERP functions, unchanged (the same numbers as /erp/changes/summary, /erp/reminders and
-    /erp/pos?envelope=true). Any ERP read problem -> available false and no numbers."""
+    /erp/pos?envelope=true).
+
+    S7 (P1-1): each figure is read on its own. The goods-arrived figure needs the ERP's goods-receipt view,
+    which does not exist in production yet; before, that one failing read hid EVERY ERP row on Home. Now a
+    figure whose read fails is null and listed in `erp_unavailable`; the others are still given, and
+    `erp_available` is true as long as at least one ERP figure could be read (CKAM's copy of the ERP data)."""
     from app.erp.changes import changes_summary
     from app.erp.reminders import delivery_reminders
     from app.erp.service import erp_po_rows
-    try:
-        changed = len(await changes_summary(session, actor, source))
-        arrived = len(await delivery_reminders(session, actor, source))
-        needing = sum(1 for r in await erp_po_rows(session, actor, source) if r["readiness"] == "NEEDS_INPUT")
-    except ErpUnavailable:
-        return {"erp_available": False, "erp_changed_pos": None, "erp_arrived_pos": None, "erp_pos_needing_input": None}
-    return {"erp_available": True, "erp_changed_pos": changed, "erp_arrived_pos": arrived, "erp_pos_needing_input": needing}
+
+    async def changed():
+        return len(await changes_summary(session, actor, source))
+
+    async def arrived():
+        return len(await delivery_reminders(session, actor, source))
+
+    async def needing():
+        return sum(1 for r in await erp_po_rows(session, actor, source) if r["readiness"] == "NEEDS_INPUT")
+
+    figures = {
+        "erp_changed_pos": await _one_erp_figure(changed),
+        "erp_arrived_pos": await _one_erp_figure(arrived),
+        "erp_pos_needing_input": await _one_erp_figure(needing),
+    }
+    missing = [key for key, value in figures.items() if value is None]
+    return {**figures, "erp_available": len(missing) < len(figures), "erp_unavailable": missing}
 
 
 async def home_attention(
@@ -155,16 +198,19 @@ async def home_attention(
         "unlinked_assets": assets["unlinked"] if is_admin else None,
         "waiting_pos": None, "waiting_units": None,
         "erp_available": False, "erp_changed_pos": None, "erp_arrived_pos": None, "erp_pos_needing_input": None,
-        "inbox": None,
+        "erp_unavailable": [], "inbox": None,
     }
     if can_work:
         out["waiting_pos"], out["waiting_units"] = await _po_figures(session, allowed, domains, work_area)
     if include_erp and can_work and is_configured():
         out.update(await _erp_figures(session, actor, source))
-        if head_office and out["erp_available"]:
+        if head_office:
+            # S7: the inbox counts are read on their own too (they need no goods-receipt view).
             from app.erp.inbox import inbox_counts
             try:
                 out["inbox"] = await inbox_counts(session, source, None)
+                out["erp_available"] = True
             except ErpUnavailable:
                 out["inbox"] = None
+                out["erp_unavailable"] = [*out["erp_unavailable"], "inbox"]
     return out

@@ -24,7 +24,7 @@ from app.erp.vendors import (
     REASON_ORDER, _active_vendors, create_vendor_for_codes, group_key, known_gstins, link_codes, pan_of, suggest_vendors,
 )
 from app.items.models import Item
-from app.items.service import _words, active_rule_sets, create_item, norm, suggest_item, upsert_map
+from app.items.service import ItemMatcher, active_rule_sets, create_item, norm, suggest_item_full, upsert_map
 from app.masters.models import AssetSubcategory, Company
 
 NO_ARTICLE = ""
@@ -120,7 +120,7 @@ async def build_inbox(session: AsyncSession, source: ErpSource, company_id: int 
     state = await _open_state(session, source, companies)
     by_erp, links, pos = state["by_erp"], state["links"], state["pos"]
     active_items = list((await session.execute(select(Item).where(Item.is_active.is_(True)))).scalars().all())
-    item_words = {i.id: _words(i.name) for i in active_items}
+    matcher = ItemMatcher(active_items)          # S7 (P1-3): the one suggestion scoring, built once
 
     # ---- items: undecided codes on open POs, grouped by Article (per company) ----
     groups = _undecided_groups(state)
@@ -133,7 +133,7 @@ async def build_inbox(session: AsyncSession, source: ErpSource, company_id: int 
         erp: ErpItem | None = g["erp"]
         code_rows = sorted(g["codes"].values(), key=lambda c: c["icode"])
         texts = ([erp.article_name, erp.department] if erp is not None else []) + [c["name"] for c in code_rows]
-        suggestion, score = suggest_item(active_items, texts, item_words)
+        suggestion = suggest_item_full(matcher, texts)
         seen = sorted({n for c in code_rows for n in c["po_numbers"]})
         items_out.append({
             "company_id": cid, "company_code": g["company"].code,
@@ -144,9 +144,8 @@ async def build_inbox(session: AsyncSession, source: ErpSource, company_id: int 
             "suggested_scope": suggested_scope(erp, names_cache.get(cid, {})) if article_key else "CODE",
             "codes": [{"icode": c["icode"], "name": c["name"], "units": c["units"], "po_numbers": sorted(c["po_numbers"]),
                        "scopes": _scopes(c["erp"])} for c in code_rows],
-            "suggested_item_id": suggestion.id if suggestion else None,
-            "suggested_item_name": suggestion.name if suggestion else None,
-            "suggestion_score": round(score, 2) if suggestion else None,
+            # S7: + suggestion_reason ("same name" / "similar name") and suggestion_reason_code (additive)
+            **suggestion,
             "seen_on_pos": seen, "po_count": len(seen),
         })
 
