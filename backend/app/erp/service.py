@@ -8,9 +8,17 @@ from app.asset_users.models import AssetUser
 from app.bundles.models import Bundle
 from app.bundles.service import add_bundle_lines
 from app.core.deps import allowed_asset_domains, check_work_area, ensure_company_in_scope, scoped_company_ids
-from app.erp.source import ErpPo, ErpSource
-from app.items.models import Item
-from app.items.service import norm as norm_name, resolve_items, upsert_map
+from app.erp.readiness import (
+    article_names, live_lines, open_erp_pos, problems_for, resolution_of, suggested_scope,
+)
+from app.erp.source import ErpPo, ErpSource, ErpVendor
+from app.erp.vendors import (
+    _active_vendors, create_vendor_for_codes, group_key, known_gstins, link_codes, pan_of, suggest_vendors,
+)
+from app.items.models import Item, LEVEL_TYPES
+from app.items.service import (
+    _words, active_rule_sets, find_rule, norm as norm_name, resolve_items, suggest_item, upsert_map,
+)
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Vendor, VendorErpLink
 from app.purchase_orders.models import PurchaseOrder
 from app.purchase_orders.service import add_pending_asset_line, create_purchase_order
@@ -126,39 +134,150 @@ async def untracked_codes(session: AsyncSession, source: ErpSource, company_id: 
     return {code.upper() for code, r in resolutions.items() if r.not_tracked}
 
 
-async def list_available_pos(session: AsyncSession, actor: AssetUser, source: ErpSource) -> list[dict]:
-    """OPEN ERP POs, of every company the user may work in, whose vendor is linked in that company and
-    that have not been created in CKAM yet."""
+async def scoped_companies(session: AsyncSession, actor: AssetUser, company_id: int | None = None) -> list[Company]:
+    """The active companies this login works in (optionally just one of them)."""
     allowed = await scoped_company_ids(session, actor)
     stmt = select(Company).where(Company.is_active.is_(True)).order_by(Company.id)
     if allowed is not None:
         stmt = stmt.where(Company.id.in_(allowed))
-    created = set((await session.execute(
+    if company_id is not None:
+        stmt = stmt.where(Company.id == company_id)
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def created_erp_po_codes(session: AsyncSession) -> set[int]:
+    return set((await session.execute(
         select(PurchaseOrder.erp_po_code).where(PurchaseOrder.erp_po_code.is_not(None))
     )).scalars().all())
+
+
+async def links_of_companies(session: AsyncSession, company_ids: list[int]) -> dict[tuple[int, str], Vendor]:
+    """(company id, ERP supplier code) -> the active CKAM vendor linked to it, for several companies at once."""
+    if not company_ids:
+        return {}
+    rows = (await session.execute(
+        select(VendorErpLink.company_id, VendorErpLink.erp_vendor_code, Vendor)
+        .join(Vendor, Vendor.id == VendorErpLink.vendor_id)
+        .where(VendorErpLink.company_id.in_(company_ids), Vendor.is_active.is_(True))
+    )).all()
+    return {(cid, code): vendor for cid, code, vendor in rows}
+
+
+def _index_items(erp_items: list) -> dict:
+    out = {}
+    for e in erp_items:
+        out[e.icode] = e
+        out.setdefault(e.icode.upper(), e)
+    return out
+
+
+async def erp_po_rows(
+    session: AsyncSession, actor: AssetUser, source: ErpSource, *, q: str | None = None, company_id: int | None = None,
+) -> list[dict]:
+    """S3a-2: every OPEN ERP PO of the companies this login works in, of EVERY supplier (a PO of a supplier
+    not matched yet is listed with the problem "Vendor needs matching.", never left out), not yet created in
+    CKAM, each with its readiness. Only a PO made entirely of things CKAM does not track stays out (as
+    before). One pass: the POs with their lines in one read, the ERP items in one read, the item rules and
+    the vendor links once -- no query per PO or per line."""
+    companies = await scoped_companies(session, actor, company_id)
+    if not companies:
+        return []
+    by_erp: dict[str, Company] = {}
+    for c in companies:
+        by_erp.setdefault(c.erp_code.lower(), c)
+    created = await created_erp_po_codes(session)
+    links = await links_of_companies(session, [c.id for c in companies])
+    pos = [p for p in await open_erp_pos(source, [c.erp_code for c in companies])
+           if p.po_code not in created and (p.company_code or "").lower() in by_erp]
+    codes = sorted({ln.item_code for p in pos for ln in live_lines(p) if ln.item_code})
+    erp_items = _index_items(await source.items(codes)) if codes else {}
+    rules = await active_rule_sets(session, [c.id for c in companies])
+    needle = (q or "").strip().casefold()
     out: list[dict] = []
-    for company in (await session.execute(stmt)).scalars().all():
-        vendors = await linked_vendors(session, company.id)
-        if not vendors:
+    for p in pos:
+        company = by_erp[p.company_code.lower()]
+        engine = rules[company.id]
+        live = live_lines(p)
+        untracked = 0
+        undecided: set[str] = set()
+        for ln in live:
+            erp = erp_items.get(ln.item_code) or erp_items.get((ln.item_code or "").upper())
+            res = engine.resolve(erp) if erp is not None else None
+            if res is not None and res.not_tracked:
+                untracked += 1
+            elif res is None or res.item is None:
+                undecided.add((ln.item_code or "").upper())
+        if live and untracked == len(live):
+            continue                     # nothing on it that CKAM tracks
+        vendor = links.get((company.id, p.supplier_code))
+        problems = problems_for(vendor is not None, len(undecided))
+        row = {
+            "po_code": p.po_code, "po_number": p.po_number, "po_date": p.po_date.isoformat(),
+            "company_id": company.id, "company_code": p.company_code, "delivery_location": p.delivery_location,
+            "vendor_id": vendor.id if vendor else None, "vendor_name": vendor.name if vendor else p.supplier_name,
+            "line_count": p.line_count, "net_amount": p.header_net,
+            "tracked_lines": len(live) - untracked, "untracked_lines": untracked,
+            # S3a-2 (additive)
+            "erp_vendor_code": p.supplier_code, "erp_vendor_name": p.supplier_name, "vendor_linked": vendor is not None,
+            "undecided_item_count": len(undecided), "tracked_line_count": len(live) - untracked,
+            "untracked_line_count": untracked,
+            "readiness": "NEEDS_INPUT" if problems else "READY", "problems": problems,
+        }
+        if needle and not any(needle in (text or "").casefold() for text in (p.po_number, p.supplier_name, row["vendor_name"])):
             continue
-        candidates = [p for p in await source.open_pos(list(vendors), company.erp_code)
-                      if p.po_code not in created and p.supplier_code in vendors]
-        # How many lines of each PO CKAM tracks: a PO made only of things CKAM does not track is not offered.
-        full = {p.po_code: p for p in await source.pos_with_lines([p.po_code for p in candidates])}
-        untracked = await untracked_codes(session, source, company.id, list(full.values()))
-        for p in candidates:
-            live = [ln for ln in (full[p.po_code].lines if p.po_code in full else []) if ln.qty - ln.cancelled_qty > 0]
-            skipped = sum(1 for ln in live if (ln.item_code or "").upper() in untracked)
-            if live and skipped == len(live):
-                continue
-            out.append({
-                "po_code": p.po_code, "po_number": p.po_number, "po_date": p.po_date.isoformat(),
-                "company_id": company.id, "company_code": p.company_code, "delivery_location": p.delivery_location,
-                "vendor_id": vendors[p.supplier_code].id, "vendor_name": vendors[p.supplier_code].name,
-                "line_count": p.line_count, "net_amount": p.header_net,
-                "tracked_lines": len(live) - skipped, "untracked_lines": skipped,
-            })
+        out.append(row)
     return sorted(out, key=lambda r: (r["po_date"], r["po_code"]), reverse=True)
+
+
+async def list_available_pos(session: AsyncSession, actor: AssetUser, source: ErpSource) -> list[dict]:
+    """OPEN ERP POs of every company the user may work in that have not been created in CKAM yet. S3a-2:
+    every supplier's (see erp_po_rows), each with its readiness."""
+    return await erp_po_rows(session, actor, source)
+
+
+MAX_VENDOR_SUGGESTIONS = 5
+
+
+async def _vendor_context(
+    session: AsyncSession, source: ErpSource, company: Company | None, po: ErpPo, vendor: Vendor | None,
+    links: dict[str, Vendor],
+) -> dict:
+    """S3a-2: what the review needs to match an unmatched supplier in the flow: the ERP supplier itself
+    (code, name, GSTIN, PAN), the CKAM vendors that may be it (GSTIN, then PAN, then name; only suggestions),
+    and the supplier's other registrations in the same company (same PAN) with their link state, so all of
+    them can be linked in one go. Nothing about another company's suppliers is shown when the PO's company
+    is not one the user works in (company is None then)."""
+    if company is None:
+        return {"erp_vendor": {"code": po.supplier_code, "name": po.supplier_name, "gstin": None, "pan": None},
+                "vendor_suggestions": [], "vendor_registrations": []}
+    suppliers = await source.vendors(company.erp_code)
+    me = next((s for s in suppliers if s.code == po.supplier_code), None) or ErpVendor(po.supplier_code, po.supplier_name)
+    pan = pan_of(me.gstin)
+    registrations = []
+    for s in suppliers:
+        if pan and s.code != me.code and pan_of(s.gstin) == pan:
+            linked = links.get(s.code)
+            registrations.append({
+                "erp_code": s.code, "name": s.name, "gstin": s.gstin, "linked": linked is not None,
+                "linked_vendor_id": linked.id if linked else None, "linked_vendor_name": linked.name if linked else None,
+            })
+    suggestions: list[dict] = []
+    if vendor is None:
+        vendors = await _active_vendors(session)
+        by_id = {v.id: v for v in vendors}
+        found = suggest_vendors(me, vendors, await known_gstins(session, vendors))
+        sibling_ids = {r["linked_vendor_id"] for r in registrations if r["linked_vendor_id"]}
+        if len(sibling_ids) == 1 and next(iter(sibling_ids)) in by_id:
+            # the other registrations of this supplier are already linked to one vendor: that one first
+            sibling = by_id[next(iter(sibling_ids))]
+            found = [(sibling, "PAN")] + [(v, r) for v, r in found if v.id != sibling.id]
+        suggestions = [{"vendor_id": v.id, "name": v.name, "gstin": v.gstin, "reason": reason}
+                       for v, reason in found[:MAX_VENDOR_SUGGESTIONS]]
+    return {
+        "erp_vendor": {"code": me.code, "name": me.name, "gstin": me.gstin, "pan": pan,
+                       "group_key": group_key(company.erp_code, me.code, me.gstin)},
+        "vendor_suggestions": suggestions, "vendor_registrations": registrations,
+    }
 
 
 async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source: ErpSource) -> dict:
@@ -166,10 +285,13 @@ async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source
     warnings: list[str] = []
     company = await _match_company(session, po, allowed, warnings)
     cost_center = await _match_cost_center(session, company, warnings)
-    vendor = (await linked_vendors(session, company.id)).get(po.supplier_code) if company is not None else None
+    links = await linked_vendors(session, company.id) if company is not None else {}
+    vendor = links.get(po.supplier_code)
     if vendor is None:
         where = f" for {company.name}" if company is not None else ""
-        warnings.append(f"The vendor {po.supplier_name} is not linked to a CKAM vendor{where}. Add or link it in Vendors first.")
+        warnings.append(f"The vendor {po.supplier_name} is not linked to a CKAM vendor{where}. "
+                        "Link it to an existing vendor or create a new one.")
+    vendor_context = await _vendor_context(session, source, company, po, vendor, links)
     warehouse_code, warehouse = split_location(po)
     delivery_id, candidates = await _match_delivery(session, company, warehouse_code, warehouse, warnings)
 
@@ -191,13 +313,19 @@ async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source
     # the code and ask once for any code that has no Item yet.
     erp_items = {e.icode: e for e in await source.items([ln.item_code for ln in po.lines])}
     resolutions = await resolve_items(session, list(erp_items.values()), company.id if company else None)
-    item_ids = {r.item.id for r in resolutions.values() if r.item}
     cat_rows = {c.id: c for c in (await session.execute(select(AssetCategory))).scalars().all()}
     sub_rows = {s.id: s for s in (await session.execute(select(AssetSubcategory))).scalars().all()}
     bundles_by_id = {b.id: b for b in (await session.execute(select(Bundle).where(Bundle.is_active.is_(True)))).scalars().all()}
+    # S3a-2: for a code that still needs an Item, a suggested Item (the same word-overlap suggestion as the
+    # ERP Articles screen) and what "remember this choice" covers by default (see readiness.suggested_scope).
+    active_items = list((await session.execute(select(Item).where(Item.is_active.is_(True)))).scalars().all())
+    item_words = {i.id: _words(i.name) for i in active_items}
+    names_by_article = await article_names(source, [e.article_key for e in erp_items.values()],
+                                           company.erp_code if company else None)
 
     lines = []
     untracked_lines = []
+    undecided: set[str] = set()
     for ln in po.lines:
         line_warnings: list[str] = []
         qty = ln.qty - ln.cancelled_qty
@@ -208,7 +336,7 @@ async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source
             # Something CKAM does not track (a cable, a hanger): it never becomes a line here.
             untracked_lines.append({
                 "item_code": ln.item_code, "description": ln.description[:500], "quantity": _whole(qty), "rate": ln.rate,
-                "why": res.why_not_tracked, "map_id": res.map_id,
+                "why": res.why_not_tracked, "map_id": res.map_id, "resolution": resolution_of(res),
             })
             continue
         if not float(qty).is_integer():
@@ -245,6 +373,11 @@ async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source
             line_warnings.append(f"No Item is linked to this ERP code yet{where}. Choose the Item below; it is remembered for the next PO.")
         category = cat_rows.get(item.category_id) if item else None
         subcategory = sub_rows.get(item.subcategory_id) if item and item.subcategory_id else None
+        suggestion, score = (None, 0.0)
+        if item is None:
+            undecided.add((ln.item_code or "").upper())
+            texts = [erp.article_name, erp.department, erp.name, ln.description] if erp else [ln.description]
+            suggestion, score = suggest_item(active_items, texts, item_words)
         lines.append({
             "item_code": ln.item_code, "description": ln.description[:500], "barcode": ln.item_code,
             "quantity": _whole(qty), "rate": ln.rate, "amount": round(ln.rate * qty, 2), "tax_percent": tax,
@@ -261,11 +394,21 @@ async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source
             "division": erp.division if erp else None,
             "name_key": norm_name(erp.name) if erp else None,
             "warnings": line_warnings,
+            # S3a-2 (additive)
+            "resolution": resolution_of(res),
+            "suggested_item_id": suggestion.id if suggestion else None,
+            "suggested_item_name": suggestion.name if suggestion else None,
+            "suggestion_score": round(score, 2) if suggestion else None,
+            "suggested_scope": suggested_scope(erp, names_by_article),
         })
 
     if untracked_lines and not lines:
         warnings.append("None of the lines of this purchase order are tracked in CKAM, so there is nothing to create from it.")
+    problems = problems_for(vendor is not None, len(undecided))
     return {
+        **vendor_context,
+        "vendor": {"id": vendor.id, "name": vendor.name} if vendor else None, "vendor_linked": vendor is not None,
+        "undecided_item_count": len(undecided), "readiness": "NEEDS_INPUT" if problems else "READY", "problems": problems,
         "untracked_lines": untracked_lines,
         "erp_po_code": po.po_code, "po_number": po.po_number, "po_date": po.po_date.isoformat(),
         "company_id": company.id if company else None, "company_code": po.company_code,
@@ -284,7 +427,50 @@ RATE_LOW_FACTOR = 0.5
 RATE_HIGH_FACTOR = 2.0
 
 
-async def _revalidate_against_erp(session: AsyncSession, data: dict, source: ErpSource) -> tuple[ErpPo, Company, Vendor]:
+MATCH_VENDOR_FIRST = "Match the vendor first (Link to an existing vendor or Create a new one)."
+
+
+async def _apply_vendor_choice(
+    session: AsyncSession, actor: AssetUser, source: ErpSource, company: Company, erp_po: ErpPo,
+    vendor: Vendor | None, choice: dict | None,
+) -> Vendor:
+    """S3a-2: matches the PO's ERP supplier in the flow, inside the PO's own transaction (if anything later
+    fails, the new vendor / link is rolled back with the PO). LINK = to an existing active vendor; CREATE = a
+    new vendor from the ERP supplier (name / GSTIN / contact, code made from the name); `also_link_codes` =
+    other registrations of the same supplier (same PAN) in the same company, linked to the same vendor. The
+    GSTIN rules of the vendor screens apply (a GSTIN already known for another vendor is refused)."""
+    if vendor is None:
+        if not choice:
+            raise ValueError(
+                f"The vendor {erp_po.supplier_name} is not linked to a CKAM vendor for {company.name}. {MATCH_VENDOR_FIRST}")
+        if choice["action"] == "LINK":
+            try:
+                done = await link_codes(session, actor, source, choice["vendor_id"], company.id, [erp_po.supplier_code])
+            except LookupError:
+                raise ValueError("The vendor you chose does not exist.")
+            vendor = done["vendor"]
+        else:
+            vendor = await create_vendor_for_codes(session, actor, source, company.id, [erp_po.supplier_code], choice.get("name"))
+    elif choice and choice["action"] == "LINK" and choice.get("vendor_id") not in (None, vendor.id):
+        raise ValueError(f"The ERP supplier {erp_po.supplier_name} is already matched to the vendor {vendor.name}.")
+    also = [c for c in (choice or {}).get("also_link_codes") or [] if (c or "").strip() and c.strip() != erp_po.supplier_code]
+    if also:
+        suppliers = {s.code: s for s in await source.vendors(company.erp_code)}
+        me = suppliers.get(erp_po.supplier_code)
+        pan = pan_of(me.gstin) if me else None
+        for code in also:
+            other = suppliers.get(code.strip())
+            if other is None:
+                raise ValueError(f"The ERP supplier {code} was not found in the ERP of {company.name}.")
+            if pan is None or pan_of(other.gstin) != pan:
+                raise ValueError(f"{other.name} is not a registration of the same supplier (its PAN is different), so it is not linked here.")
+        await link_codes(session, actor, source, vendor.id, company.id, [c.strip() for c in also])
+    return vendor
+
+
+async def _revalidate_against_erp(
+    session: AsyncSession, data: dict, source: ErpSource, actor: AssetUser | None = None,
+) -> tuple[ErpPo, Company, Vendor]:
     """S0.8: the reviewed draft comes from the browser, so everything that is
     the ERP's to decide is read again from CKAM's ERP copy: the ERP PO must
     exist and belong to the chosen company, the PO number and date are the
@@ -305,11 +491,8 @@ async def _revalidate_against_erp(session: AsyncSession, data: dict, source: Erp
     if wanted not in (company.erp_code.lower(), company.code.lower()):
         raise ValueError(f"This ERP purchase order belongs to the ERP company {erp_po.company_code}, not to {company.name}.")
     vendor = (await linked_vendors(session, company.id)).get(erp_po.supplier_code)
-    if vendor is None:
-        raise ValueError(
-            f"The vendor {erp_po.supplier_name} is not linked to a CKAM vendor for {company.name}. "
-            "Add or link it in Vendors first."
-        )
+    if vendor is None or data.get("vendor_choice"):
+        vendor = await _apply_vendor_choice(session, actor, source, company, erp_po, vendor, data.get("vendor_choice"))
     if data.get("vendor_id") is not None and data["vendor_id"] != vendor.id:
         raise ValueError(f"The vendor of this purchase order is {vendor.name} (the vendor linked to the ERP supplier); it cannot be changed here.")
 
@@ -348,7 +531,7 @@ async def create_from_draft(session: AsyncSession, actor: AssetUser, data: dict,
     S0.8: re-reads the ERP purchase order first (see _revalidate_against_erp);
     S0.3: a line whose Item belongs to the other work area is refused."""
     await ensure_company_in_scope(session, actor, data["company_id"])
-    erp_po, company, vendor = await _revalidate_against_erp(session, data, source)
+    erp_po, company, vendor = await _revalidate_against_erp(session, data, source, actor)
     number = erp_po.po_number.strip()
     done = (await session.execute(
         select(PurchaseOrder.id).where(PurchaseOrder.erp_po_code == erp_po.po_code).limit(1)
@@ -366,6 +549,16 @@ async def create_from_draft(session: AsyncSession, actor: AssetUser, data: dict,
         "delivery_asset_user_id": data.get("delivery_asset_user_id"), "warehouse_code": data.get("warehouse_code"),
         "erp_po_code": erp_po.po_code,
     }, actor)
+
+    # S3a-2: what "remember this choice" stores is read from the ERP item master (never from the browser),
+    # and when the reviewer asks to remember without naming a reach, the line's suggested reach is used.
+    remembering = [ln for ln in data["lines"] if ln.get("map_scope") or ln.get("remember")]
+    erp_items: dict = {}
+    names_by_article: dict[str, set[str]] = {}
+    if remembering:
+        erp_items = _index_items(await source.items(sorted({ln["item_code"] for ln in remembering if ln.get("item_code")})))
+        if any(not ln.get("map_scope") for ln in remembering):
+            names_by_article = await article_names(source, [e.article_key for e in erp_items.values()], company.erp_code)
 
     created = 0
     for position, ln in enumerate(data["lines"], start=1):
@@ -395,22 +588,131 @@ async def create_from_draft(session: AsyncSession, actor: AssetUser, data: dict,
                 "item_id": item.id, "erp_item_code": ln.get("item_code"),
             }, actor, allowed_domains=domains)
         created += len(lines)
-        if ln.get("map_scope"):
-            await _remember_mapping(session, actor, item, ln, company.id)
+        if ln.get("map_scope") or ln.get("remember"):
+            erp = erp_items.get(ln.get("item_code") or "") or erp_items.get((ln.get("item_code") or "").upper())
+            scope = ln.get("map_scope") or suggested_scope(erp, names_by_article)
+            await _remember_mapping(session, actor, item, ln, company.id, scope, erp, label)
     return {"po_id": po.id, "po_number": po.po_number, "lines_created": created}
 
 
-async def _remember_mapping(session: AsyncSession, actor: AssetUser, item: Item, ln: dict, company_id: int) -> None:
+async def _remember_mapping(
+    session: AsyncSession, actor: AssetUser, item: Item, ln: dict, company_id: int, scope: str, erp, label: str,
+) -> None:
     """Saves the user's choice of Item as a rule for this PO's company (its ERP
     master is its own), so the next PO of that company with this code (or
-    Article, or product name) needs no choosing."""
-    scope = ln["map_scope"]
+    Article, or product name) needs no choosing. S3a-2: the Article / product
+    name come from the ERP item master (what the browser sends is only used for
+    a code the master does not know, and then only the code can be remembered);
+    and someone other than the head-office admin can only ADD a decision, never
+    re-point one that already exists for this company (that is rule management)."""
     if scope not in ("CODE", "NAME", "ARTICLE"):
         raise ValueError(f"unknown mapping scope {scope!r}")
-    if scope != "CODE" and not ln.get("article_key"):
-        raise ValueError("this code has no Article in the ERP, so it can only be remembered by its own code")
+    article_key = erp.article_key if erp is not None else None
+    name_key = norm_name(erp.name) if erp is not None else None
+    if scope != "CODE" and not article_key:
+        raise ValueError(f"{label}: this code has no Article in the ERP, so it can only be remembered by its own code.")
+    if scope == "NAME" and not name_key:
+        raise ValueError(f"{label}: this code has no product name in the ERP; remember it for the code or the whole Article.")
+    code = (ln.get("item_code") or "").strip()
+    if not getattr(actor, "is_primary_owner", False):
+        # the decision in force for this company: its own rule, else the every-company one
+        existing = (await find_rule(session, scope, company_id, code=code, article_key=article_key, name_key=name_key)
+                    or await find_rule(session, scope, None, code=code, article_key=article_key, name_key=name_key))
+        holder = await session.get(Item, existing.item_id) if existing is not None and existing.item_id else None
+        in_force = existing is not None and (existing.not_tracked or (holder is not None and holder.is_active))
+        if in_force and (existing.not_tracked or existing.item_id != item.id):
+            current = "marked not tracked" if existing.not_tracked else f"linked to {holder.name}"
+            what = {"CODE": f"the ERP code {code}", "NAME": f"the product {erp.name} (Article {erp.article_name})",
+                    "ARTICLE": f"the whole Article {erp.article_name if erp else article_key}"}[scope]
+            way_out = ("Remember this choice for this code only, or ask the head-office admin to change it."
+                       if scope != "CODE" else "Ask the head-office admin to change it.")
+            raise ValueError(f"{label}: {what} is already {current}. {way_out}")
     await upsert_map(session, actor, {
-        "item_id": item.id, "company_id": company_id, "match_type": scope, "article_key": ln.get("article_key"), "name_key": ln.get("name_key"),
-        "erp_item_code": ln.get("item_code"), "section": ln.get("section"), "department": ln.get("department"),
-        "article_name": ln.get("article_name"),
+        "item_id": item.id, "company_id": company_id, "match_type": scope, "article_key": article_key if erp is not None else ln.get("article_key"),
+        "name_key": name_key, "erp_item_code": code or None,
+        "section": erp.section if erp is not None else ln.get("section"),
+        "department": erp.department if erp is not None else ln.get("department"),
+        "article_name": erp.article_name if erp is not None else ln.get("article_name"),
     })
+
+
+# ---- S3a-2: "not tracked" from the PO review --------------------------------------------------
+
+LEVEL_REFUSAL = "Ask the head-office admin to mark whole departments as not tracked."
+
+
+class NotAllowed(Exception):
+    """A plain-words refusal the router answers with 403."""
+
+
+async def company_of_erp_po(session: AsyncSession, actor: AssetUser, po: ErpPo) -> Company:
+    """The CKAM company of an ERP PO, which must be one this login works in."""
+    warnings: list[str] = []
+    allowed = await scoped_company_ids(session, actor)
+    company = await _match_company(session, po, allowed, warnings)
+    if company is None:
+        if any("do not have access" in w for w in warnings):
+            raise NotAllowed("You can only work on purchase orders of your own company. Ask the head-office admin.")
+        raise ValueError(warnings[0] if warnings else "No company is set up for this ERP purchase order.")
+    return company
+
+
+async def po_line_states(session: AsyncSession, source: ErpSource, po: ErpPo, company: Company) -> dict:
+    """Every live line of an ERP PO with its decision now (MATCHED / NOT_TRACKED / NEEDS_ITEM), and the PO's
+    readiness -- what the review shows after a decision."""
+    erp_items = {e.icode: e for e in await source.items([ln.item_code for ln in po.lines if ln.item_code])}
+    resolutions = await resolve_items(session, list(erp_items.values()), company.id)
+    vendor = (await linked_vendors(session, company.id)).get(po.supplier_code)
+    lines, undecided = [], set()
+    for ln in live_lines(po):
+        state = resolution_of(resolutions.get(ln.item_code))
+        if state["state"] == "NEEDS_ITEM":
+            undecided.add((ln.item_code or "").upper())
+        lines.append({"line_key": ln.po_line_key, "item_code": ln.item_code, "description": ln.description[:500],
+                      "quantity": _whole(ln.qty - ln.cancelled_qty), "resolution": state})
+    problems = problems_for(vendor is not None, len(undecided))
+    return {"po_code": po.po_code, "po_number": po.po_number, "lines": lines, "undecided_item_count": len(undecided),
+            "vendor_linked": vendor is not None, "readiness": "NEEDS_INPUT" if problems else "READY", "problems": problems}
+
+
+async def mark_not_tracked(
+    session: AsyncSession, actor: AssetUser, source: ErpSource, po_code: int, icode: str, scope: str,
+) -> dict:
+    """S3a-2: "Not an asset" on a line of the PO review, for ADMIN / OPERATOR of the PO's company. Stores the
+    same "not tracked" rule the head-office admin's screens store (app.items.service.upsert_map, actor kept),
+    for this code, its product name or its Article (in the PO's company). A whole Department / Section /
+    Division stays with the head-office admin, and so does changing a line that already has an Item, and
+    undoing a rule (DELETE /api/items/maps/{id})."""
+    po = await source.po(po_code)
+    if po is None:
+        raise LookupError("This purchase order was not found in the ERP.")
+    company = await company_of_erp_po(session, actor, po)
+    owner = bool(getattr(actor, "is_primary_owner", False))
+    if scope in LEVEL_TYPES and not owner:
+        raise NotAllowed(LEVEL_REFUSAL)
+    wanted = (icode or "").strip().upper()
+    on_po = next((ln.item_code for ln in live_lines(po) if wanted and (ln.item_code or "").upper() == wanted), None)
+    if on_po is None:
+        raise ValueError(f"The ERP item code {icode} is not on the purchase order {po.po_number}.")
+    icode = on_po                     # the ERP's own spelling of the code
+    erp = next((e for e in await source.items([icode]) if e.icode.upper() == wanted), None)
+    if erp is None and scope != "CODE":
+        raise ValueError("The ERP item master has no record of this code, so only this code can be marked not tracked.")
+    if scope == "NAME" and not norm_name(erp.name):
+        raise ValueError("This code has no product name in the ERP; mark the code or the whole Article instead.")
+    current = (await resolve_items(session, [erp], company.id)).get(erp.icode) if erp is not None else None
+    if current is not None and current.not_tracked:
+        return await po_line_states(session, source, po, company)          # already not tracked: nothing to do
+    if current is not None and current.item is not None and not owner:
+        raise ValueError(f"This line is already linked to the Item {current.item.name}. Ask the head-office admin to change it.")
+    level = {"DEPARTMENT": erp.department, "SECTION": erp.section, "DIVISION": erp.division}.get(scope) if erp else None
+    if scope in LEVEL_TYPES and not norm_name(level):
+        raise ValueError(f"This code has no {scope.title()} in the ERP.")
+    await upsert_map(session, actor, {
+        "match_type": scope, "not_tracked": True, "company_id": company.id,
+        "erp_item_code": erp.icode if erp else icode.strip(), "article_key": erp.article_key if erp else None,
+        "name_key": erp.name if erp else None, "level_key": level,
+        "section": erp.section if erp else None, "department": erp.department if erp else None,
+        "article_name": erp.article_name if erp else None, "note": f"Marked not tracked on PO {po.po_number}"[:300],
+    })
+    return await po_line_states(session, source, po, company)

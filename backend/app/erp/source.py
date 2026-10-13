@@ -210,6 +210,11 @@ class ErpSource(Protocol):
         """One PO with all its lines."""
     async def pos_with_lines(self, po_codes: list[int]) -> list[ErpPo]:
         """Several POs with all their lines (a PO the ERP no longer has is simply missing)."""
+    # S3a-2 (optional: app.erp.readiness falls back on the methods above when a source lacks them)
+    async def open_pos_with_lines(self, company_codes: list[str] | None = None) -> list[ErpPo]:
+        """Every OPEN PO of these companies, of every supplier, with all its lines."""
+    async def article_product_names(self, article_keys: list[str], company_code: str | None = None) -> dict[str, set[str]]:
+        """Per Article: the normalised product names of the codes this company bought in it."""
 
 
 def is_configured() -> bool:
@@ -431,6 +436,22 @@ class PgErpSource(PgReadOnly):
                 group by po_code order by max(po_date) desc, po_code desc""",
             supplier_codes, company_code)
         return [self._header(r) for r in rows]
+
+    async def open_pos_with_lines(self, company_codes: list[str] | None = None) -> list[ErpPo]:
+        """S3a-2: every OPEN PO of these companies with its lines (only used before the first copy)."""
+        if company_codes is not None and not company_codes:
+            return []
+        rows = await self._fetch(
+            f"""select distinct po_code from {VIEW_PO_LINE}
+                where po_status = 'OPEN' and ($1::text[] is null or company_code = any($1::text[]))""", company_codes)
+        pos = await self.pos_with_lines([r["po_code"] for r in rows])
+        return sorted((p for p in pos if p.status == "OPEN"), key=lambda p: (p.po_date, p.po_code), reverse=True)
+
+    async def article_product_names(self, article_keys: list[str], company_code: str | None = None) -> dict[str, set[str]]:
+        from app.items.service import norm
+        wanted = set(article_keys)
+        return {a.article_key: {norm(n) for n in a.names if norm(n)}
+                for a in await self.bought_articles(company_code) if a.article_key in wanted}
 
     async def po(self, po_code: int) -> ErpPo | None:
         found = await self.pos_with_lines([po_code])

@@ -10,9 +10,10 @@ from app.purchase_orders.models import PurchaseOrder, PendingAsset
 from app.purchase_orders.schemas import (
     CancelWaitingIn, CancelWaitingOut, DeliveryDoneIn, LineGroupOut, LineGroupUpdateIn,
     PendingAssetLineIn, PendingAssetLineUpdateIn, PendingAssetOut,
-    PurchaseOrderCreateIn, PurchaseOrderDeleteOut, PurchaseOrderOut, RecordPiIn, RecordPiOut,
-    SerialCheckIn, SerialCheckOut, SerialConflictOut,
+    PurchaseOrderCreateIn, PurchaseOrderDeleteOut, PurchaseOrderOut, PurchaseOrderWithLinesIn, PurchaseOrderWithLinesOut,
+    RecordPiIn, RecordPiOut, SerialCheckIn, SerialCheckOut, SerialConflictOut,
 )
+from app.purchase_orders.with_lines import create_po_with_lines
 from app.assets.models import Asset
 from app.assets.service import find_serials_in_use
 from app.bundles.schemas import BundleLinesIn
@@ -75,6 +76,30 @@ async def create_po(
     await session.commit()
     await session.refresh(po)
     return await _po_with_progress(session, po, actor)
+
+
+@router.post("/with-lines", response_model=PurchaseOrderWithLinesOut, status_code=201)
+async def create_po_with_lines_route(
+    body: PurchaseOrderWithLinesIn, session: AsyncSession = Depends(get_session),
+    actor=Depends(require_role(*WRITE_ROLES)),
+):
+    """S3a-2: the one-screen manual PO -- header, lines (Item, quantity, cost; the rest defaults from the
+    Item) and sets in ONE transaction: if any line fails nothing is created, and the message names the
+    line ("Line 2: ..."). Company scope and work area as for every PO write."""
+    await ensure_company_in_scope(session, actor, body.company_id)
+    domains = await allowed_asset_domains(session, actor)
+    try:
+        po, lines_created, units_created = await create_po_with_lines(session, body.model_dump(), actor, domains)
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    except HTTPException:
+        await session.rollback()
+        raise
+    await session.commit()
+    await session.refresh(po)
+    out = await _po_with_progress(session, po, actor)
+    return PurchaseOrderWithLinesOut(**out.model_dump(), lines_created=lines_created, units_created=units_created)
 
 
 @router.post("/check-serials", response_model=SerialCheckOut)

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.capabilities import ensure_company_for_create, require_small_create
@@ -11,8 +11,13 @@ from app.erp import vendors as erp_vendors
 from app.erp.changes import OutsideWorkArea, apply_changes, changes_summary, po_changes, snapshot_baseline
 from app.erp.invoices import apply_pi, pi_preview
 from app.erp.reminders import delivery_reminders
-from app.erp.schemas import ChangesApplyIn, DraftCreateIn, ErpVendorLinkIn, PiApplyIn, StoresCreateIn, SyncRunOut, SyncStatusOut
-from app.erp.service import build_draft, create_from_draft, list_available_pos, untracked_codes
+from app.erp.inbox import build_inbox, resolve_items_batch, resolve_vendors_batch
+from app.erp.readiness import freshness
+from app.erp.schemas import (
+    ChangesApplyIn, DraftCreateIn, ErpVendorLinkIn, InboxItemDecisionIn, InboxVendorDecisionIn, NotTrackedIn, PiApplyIn,
+    StoresCreateIn, SyncRunOut, SyncStatusOut, VendorCodesIn,
+)
+from app.erp.service import NotAllowed, build_draft, create_from_draft, erp_po_rows, mark_not_tracked, untracked_codes
 from app.erp.source import ErpSource, ErpUnavailable, get_erp_source, is_configured
 from app.erp.sync import last_runs, run_sync
 from app.erp.warehouse import WarehouseReader, get_warehouse_reader
@@ -146,6 +151,62 @@ async def link_vendor(
     return vendor
 
 
+@router.post("/vendors/{vendor_id}/link-many")
+async def link_many(
+    vendor_id: int, body: VendorCodesIn, session: AsyncSession = Depends(get_session),
+    source: ErpSource = Depends(get_erp_source), actor=Depends(require_small_create("a vendor link")),
+):
+    """S3a-2: links several ERP suppliers (e.g. every state registration of one business) of ONE company to
+    one existing vendor, all or nothing. ADMIN / OPERATOR for their own companies."""
+    await ensure_company_for_create(session, actor, body.company_id, "a vendor link")
+    try:
+        done = await erp_vendors.link_codes(session, actor, source, vendor_id, body.company_id, body.erp_vendor_codes)
+        await session.commit()
+    except ErpUnavailable as exc:
+        await session.rollback()
+        raise _unavailable(exc)
+    except LookupError as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "That ERP supplier is already linked.")
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    vendor = done["vendor"]
+    await session.refresh(vendor)
+    return {"vendor": VendorOut.model_validate(vendor), "linked": done["linked"], "already_linked": done["already_linked"]}
+
+
+@router.post("/vendors/import-group", response_model=VendorOut, status_code=201)
+async def import_group(
+    body: VendorCodesIn, session: AsyncSession = Depends(get_session),
+    source: ErpSource = Depends(get_erp_source), actor=Depends(require_small_create("a vendor")),
+):
+    """S3a-2: ONE new vendor for several registrations of a supplier in one company (named after the first
+    one, or `name`; the first GSTIN; a code made from the name), linked to every code -- all or nothing.
+    ADMIN / OPERATOR for their own companies."""
+    await ensure_company_for_create(session, actor, body.company_id, "a vendor")
+    try:
+        vendor = await erp_vendors.create_vendor_for_codes(session, actor, source, body.company_id, body.erp_vendor_codes, body.name)
+        await session.commit()
+    except ErpUnavailable as exc:
+        await session.rollback()
+        raise _unavailable(exc)
+    except LookupError as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "That ERP supplier is already linked.")
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    await session.refresh(vendor)
+    return vendor
+
+
 @router.delete("/vendors/{vendor_id}/link", response_model=VendorOut)
 async def unlink_vendor(
     vendor_id: int, company_id: int, erp_vendor_code: str, session: AsyncSession = Depends(get_session),
@@ -159,6 +220,50 @@ async def unlink_vendor(
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
     await session.refresh(vendor)
     return vendor
+
+
+# ---- S3a-2: the head-office admin's ERP inbox ----------------------------
+
+@router.get("/inbox")
+async def inbox(
+    company_id: int | None = None, session: AsyncSession = Depends(get_session),
+    source: ErpSource = Depends(get_erp_source), _actor=Depends(require_primary_owner()),
+):
+    """What is waiting for a decision: ERP item codes on open POs with no decision (by Article), unlinked
+    suppliers with open POs (by PAN), ERP stores ready to be created. Head-office admin only."""
+    try:
+        return await build_inbox(session, source, company_id)
+    except LookupError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
+    except ErpUnavailable as exc:
+        raise _unavailable(exc)
+
+
+@router.post("/inbox/items/resolve")
+async def inbox_resolve_items(
+    body: list[InboxItemDecisionIn] = Body(..., min_length=1, max_length=200), session: AsyncSession = Depends(get_session),
+    source: ErpSource = Depends(get_erp_source), actor=Depends(require_primary_owner()),
+):
+    """Decides several inbox items; each entry is its own transaction. Answers `[{ok, message, ...}]` in order."""
+    try:
+        return await resolve_items_batch(session, actor, source, [e.model_dump() for e in body])
+    except ErpUnavailable as exc:
+        await session.rollback()
+        raise _unavailable(exc)
+
+
+@router.post("/inbox/vendors/resolve")
+async def inbox_resolve_vendors(
+    body: list[InboxVendorDecisionIn] = Body(..., min_length=1, max_length=200), session: AsyncSession = Depends(get_session),
+    source: ErpSource = Depends(get_erp_source), actor=Depends(require_primary_owner()),
+):
+    """Links (LINK, to `vendor_id`) or creates (CREATE) a vendor for each group of ERP suppliers; each entry
+    is its own transaction. Answers `[{ok, message, vendor_id?}]` in order."""
+    try:
+        return await resolve_vendors_batch(session, actor, source, [e.model_dump() for e in body])
+    except ErpUnavailable as exc:
+        await session.rollback()
+        raise _unavailable(exc)
 
 
 # ---- delivery reminders and PI (for POs created from the ERP) ----------
@@ -283,16 +388,70 @@ async def pi_apply(
 
 # ---- purchase orders ---------------------------------------------------
 
+READINESS = ("READY", "NEEDS_INPUT")
+
+
 @router.get("/pos")
 async def list_pos(
+    readiness: str | None = Query(None), q: str | None = Query(None, max_length=200), company_id: int | None = None,
+    envelope: bool = False,
     session: AsyncSession = Depends(get_session), source: ErpSource = Depends(get_erp_source),
     actor=Depends(require_role(*WRITE_ROLES)),
 ):
-    """OPEN ERP purchase orders of vendors linked to CKAM, not yet created here."""
+    """OPEN ERP purchase orders not yet created here, of EVERY supplier of the caller's companies (S3a-2: a
+    PO of a supplier not matched yet is listed as needing input, never left out), each with `readiness`
+    (READY / NEEDS_INPUT) and its `problems` in plain words. Filters: `readiness`, `q` (PO number or vendor
+    name), `company_id`. `envelope=true` answers `{pos, counts, freshness}` instead of the bare list: the
+    counts per readiness (before the readiness filter) and how current the ERP data is ("ERP data as of ...",
+    `refresh_failed` + message); with `envelope=true` an unreadable ERP gives an empty list and a message
+    instead of a 503, so the screen never blocks."""
+    wanted = readiness.strip().upper() if readiness else None
+    if wanted is not None and wanted not in READINESS:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose ready or needs input.")
     try:
-        return await list_available_pos(session, actor, source)
+        rows = await erp_po_rows(session, actor, source, q=q, company_id=company_id)
+        error = None
     except ErpUnavailable as exc:
+        if not envelope:
+            raise _unavailable(exc)
+        rows, error = [], str(exc)
+    shown = [r for r in rows if wanted is None or r["readiness"] == wanted]
+    if not envelope:
+        return shown
+    counts = {"all": len(rows), "ready": sum(r["readiness"] == "READY" for r in rows),
+              "needs_input": sum(r["readiness"] == "NEEDS_INPUT" for r in rows)}
+    fresh = await freshness(session)
+    if error is not None:
+        fresh = {**fresh, "available": False, "message": f"ERP data could not be read. {error}"}
+    else:
+        fresh = {**fresh, "available": True}
+    return {"pos": shown, "counts": counts, "freshness": fresh}
+
+
+@router.post("/pos/{po_code}/not-tracked")
+async def po_line_not_tracked(
+    po_code: int, body: NotTrackedIn, session: AsyncSession = Depends(get_session),
+    source: ErpSource = Depends(get_erp_source), actor=Depends(require_role(*WRITE_ROLES)),
+):
+    """S3a-2: "Not an asset" for one line of an ERP PO under review: remembered as a "not tracked" rule for
+    this code, its product name or its Article in the PO's company (the actor is recorded). Whole
+    Department / Section / Division: head-office admin only. Answers every line's decision now."""
+    try:
+        result = await mark_not_tracked(session, actor, source, po_code, body.icode, body.scope)
+        await session.commit()
+    except ErpUnavailable as exc:
+        await session.rollback()
         raise _unavailable(exc)
+    except NotAllowed as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc))
+    except LookupError as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    return result
 
 
 @router.get("/pos/{po_code}/draft")

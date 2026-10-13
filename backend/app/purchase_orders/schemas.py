@@ -1,5 +1,6 @@
 from datetime import date
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from app.bundles.schemas import BundleLineAmountIn
 from app.core.validation import (
     InModel, MAX_AMOUNT, MAX_QUANTITY, MAX_WARRANTY_YEARS, not_in_future, require_text,
 )
@@ -23,6 +24,50 @@ class PurchaseOrderCreateIn(InModel):
     @classmethod
     def _po_date(cls, value: date) -> date:
         return not_in_future(value, "PO date")
+
+
+MAX_PO_ENTRIES = 100
+
+
+class PoWithLinesLineIn(InModel):
+    """One line of the one-screen manual PO: the Item decides category, sub-category, work area and serial
+    mode; description / brand / warranty default from the Item when left out; barcode is optional."""
+    item_id: int
+    quantity: int = Field(ge=1, le=MAX_QUANTITY)
+    purchase_cost: float = Field(ge=0, le=MAX_AMOUNT)
+    tax_percent: float | None = Field(default=None, ge=0, le=100)
+    description: str | None = Field(default=None, max_length=500)
+    barcode: str | None = Field(default=None, max_length=200)
+    brand_id: int | None = None
+    model: str | None = Field(default=None, max_length=200)
+    warranty_years: int | None = Field(default=None, ge=0, le=MAX_WARRANTY_YEARS)
+
+
+class PoWithLinesSetIn(InModel):
+    """One set (bundle) of the one-screen manual PO: `quantity` sets at `price_per_set` each (before tax),
+    one line per part (`part_amounts` = the amount per part, else the bundle's own split)."""
+    bundle_id: int
+    quantity: int = Field(ge=1, le=MAX_QUANTITY)
+    price_per_set: float = Field(gt=0, le=MAX_AMOUNT)
+    tax_percent: float | None = Field(default=None, ge=0, le=100)
+    description: str | None = Field(default=None, max_length=390)
+    barcode: str | None = Field(default=None, max_length=200)
+    warranty_years: int | None = Field(default=None, ge=0, le=MAX_WARRANTY_YEARS)
+    part_amounts: list[BundleLineAmountIn] | None = Field(default=None, max_length=50)
+
+
+class PurchaseOrderWithLinesIn(PurchaseOrderCreateIn):
+    """S3a-2: a whole manual PO in one call -- header, lines and sets, all or nothing."""
+    lines: list[PoWithLinesLineIn] = Field(default_factory=list, max_length=MAX_PO_ENTRIES)
+    sets: list[PoWithLinesSetIn] = Field(default_factory=list, max_length=MAX_PO_ENTRIES)
+
+    @model_validator(mode="after")
+    def _something_to_order(self):
+        if not self.lines and not self.sets:
+            raise ValueError("Add at least one line or set.")
+        if len(self.lines) + len(self.sets) > MAX_PO_ENTRIES:
+            raise ValueError(f"A purchase order can have at most {MAX_PO_ENTRIES} lines and sets at a time.")
+        return self
 
 
 class PurchaseOrderOut(BaseModel):
@@ -60,6 +105,13 @@ class PurchaseOrderOut(BaseModel):
     waiting_units: int = 0
     cancelled_units: int = 0
     status: str = "WAITING"
+
+
+class PurchaseOrderWithLinesOut(PurchaseOrderOut):
+    """The new PO (same shape as GET /purchase-orders/{id}) plus what was created: lines (line numbers;
+    a set counts one per part) and units."""
+    lines_created: int = 0
+    units_created: int = 0
 
 
 class PendingAssetLineUpdateIn(InModel):

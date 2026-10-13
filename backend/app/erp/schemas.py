@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from app.bundles.schemas import BundleLineAmountIn
 from app.core.validation import InModel, MAX_AMOUNT, MAX_QUANTITY, MAX_WARRANTY_YEARS, require_text
 
@@ -25,6 +25,9 @@ class DraftLineIn(InModel):
     # inside its Article, or the whole Article. The Article facts below come from
     # the draft and are stored as a snapshot on the rule.
     map_scope: Literal["CODE", "NAME", "ARTICLE"] | None = None
+    # S3a-2: remember this choice; with no `map_scope` the line's suggested reach is used (the server works
+    # it out from the ERP: the whole Article when it is a coherent group, else the product name).
+    remember: bool = False
     article_key: str | None = None
     article_name: str | None = None
     section: str | None = None
@@ -35,6 +38,26 @@ class DraftLineIn(InModel):
     @classmethod
     def _description(cls, value: str) -> str:
         return require_text(value, "Description")
+
+
+MAX_SUPPLIER_CODES = 50
+
+
+class VendorChoiceIn(InModel):
+    """S3a-2: how to match the PO's ERP supplier when it is not linked yet -- done inside the PO's own
+    transaction. LINK = to an existing vendor (`vendor_id`); CREATE = a new vendor from the ERP supplier
+    (`name` optional, else the ERP's). `also_link_codes`: other registrations of the same supplier (same PAN)
+    in the same company, linked to the same vendor."""
+    action: Literal["LINK", "CREATE"]
+    vendor_id: int | None = None
+    name: str | None = Field(default=None, max_length=200)
+    also_link_codes: list[str] = Field(default_factory=list, max_length=MAX_SUPPLIER_CODES)
+
+    @model_validator(mode="after")
+    def _vendor_for_link(self):
+        if self.action == "LINK" and self.vendor_id is None:
+            raise ValueError("Choose the vendor to link to.")
+        return self
 
 
 class DraftCreateIn(InModel):
@@ -49,6 +72,47 @@ class DraftCreateIn(InModel):
     delivery_asset_user_id: int | None = None
     warehouse_code: str | None = Field(default=None, max_length=100)
     lines: list[DraftLineIn] = Field(min_length=1, max_length=500)
+    vendor_choice: VendorChoiceIn | None = None
+
+
+class NotTrackedIn(InModel):
+    """S3a-2: mark a line of an ERP PO "not tracked" from the review (CODE / NAME / ARTICLE; the three broad
+    levels only for the head-office admin)."""
+    icode: str = Field(min_length=1, max_length=50)
+    scope: Literal["CODE", "NAME", "ARTICLE", "DEPARTMENT", "SECTION", "DIVISION"]
+
+
+class VendorCodesIn(InModel):
+    """S3a-2: several ERP suppliers (registrations) of ONE company."""
+    company_id: int
+    erp_vendor_codes: list[str] = Field(min_length=1, max_length=MAX_SUPPLIER_CODES)
+    name: str | None = Field(default=None, max_length=200)     # import-group only: the new vendor's name
+
+
+class InboxNewItemIn(InModel):
+    name: str = Field(min_length=1, max_length=200)
+    subcategory_id: int
+    serial_mode: Literal["HAS_SERIAL", "NO_SERIAL", "SERIAL_LATER"] = "HAS_SERIAL"
+
+
+class InboxItemDecisionIn(InModel):
+    """One decision of the ERP inbox: for an Article (`article_key`, scope ARTICLE) or one code (`icode`,
+    scope CODE / NAME / ARTICLE), in one company: an existing Item, a new Item, or not tracked."""
+    company_id: int
+    article_key: str | None = Field(default=None, max_length=300)
+    icode: str | None = Field(default=None, max_length=50)
+    scope: Literal["ARTICLE", "NAME", "CODE"]
+    item_id: int | None = None
+    not_tracked: bool = False
+    create_item: InboxNewItemIn | None = None
+
+
+class InboxVendorDecisionIn(InModel):
+    company_id: int
+    erp_vendor_codes: list[str] = Field(min_length=1, max_length=MAX_SUPPLIER_CODES)
+    action: Literal["LINK", "CREATE"]
+    vendor_id: int | None = None
+    name: str | None = Field(default=None, max_length=200)
 
 
 class PiApplyItemIn(BaseModel):

@@ -24,6 +24,25 @@ def _words(text: str) -> set[str]:
     return {w for w in norm(text).split() if len(w) >= 3}
 
 
+SUGGESTION_THRESHOLD = 0.5
+
+
+def suggest_item(items: list[Item], texts: list[str | None], item_words: dict[int, set[str]] | None = None) -> tuple[Item | None, float]:
+    """The existing Item whose name shares the most words with these texts (an Article's name, department
+    and product names): the share of the Item name's words found in them. Only a suggestion, and only when
+    at least half of the Item's name is there (else (None, 0)). The one suggestion engine of the ERP screens
+    (Articles screen, PO review, ERP inbox)."""
+    words_of = item_words if item_words is not None else {i.id: _words(i.name) for i in items}
+    text_words = _words(" ".join(t for t in texts if t))
+    best_item, best = None, 0.0
+    for i in items:
+        words = words_of.get(i.id) or set()
+        score = len(words & text_words) / len(words) if words else 0
+        if score > best:
+            best_item, best = i, score
+    return (best_item, best) if best_item is not None and best >= SUGGESTION_THRESHOLD else (None, 0.0)
+
+
 @dataclass
 class Resolution:
     item: Item | None
@@ -247,6 +266,31 @@ async def resolve_items(session: AsyncSession, erp_items: list[ErpItem], company
     return {e.icode: rules.resolve(e) for e in erp_items}
 
 
+async def active_rule_sets(session: AsyncSession, company_ids: list[int | None]) -> dict[int | None, "_Rules"]:
+    """S3a-2: the rules in force for several companies, read ONCE (so a whole list of ERP POs is resolved
+    without a query per PO or per line). Same rules, same precedence as resolve_items."""
+    maps = await _active_maps(session)
+    return {cid: _Rules(maps, cid) for cid in company_ids}
+
+
+async def find_rule(
+    session: AsyncSession, match_type: str, company_id: int | None, *, code: str | None = None,
+    article_key: str | None = None, name_key: str | None = None, level_key: str | None = None,
+) -> ItemMap | None:
+    """The active rule that matches exactly this (rules are identified by what they match, per company)."""
+    stmt = select(ItemMap).where(ItemMap.is_active.is_(True), ItemMap.match_type == match_type)
+    stmt = stmt.where(ItemMap.company_id.is_(None) if company_id is None else ItemMap.company_id == company_id)
+    if match_type == "CODE":
+        stmt = stmt.where(func.lower(ItemMap.erp_item_code) == (code or "").lower())
+    elif match_type == "ARTICLE":
+        stmt = stmt.where(ItemMap.article_key == article_key)
+    elif match_type in LEVEL_TYPES:
+        stmt = stmt.where(func.lower(ItemMap.level_key) == (level_key or "").lower())
+    else:
+        stmt = stmt.where(ItemMap.article_key == article_key, ItemMap.name_key == name_key)
+    return (await session.execute(stmt.limit(1))).scalar_one_or_none()
+
+
 async def upsert_map(session: AsyncSession, actor: AssetUser, data: dict) -> ItemMap:
     """Creates (or re-points) one rule. A rule is identified by what it matches,
     so mapping the same Article / name / code again just changes its Item, or
@@ -278,17 +322,7 @@ async def upsert_map(session: AsyncSession, actor: AssetUser, data: dict) -> Ite
     company_id = data.get("company_id")
     if company_id is not None and await session.get(Company, company_id) is None:
         raise ValueError("company not found")
-    stmt = select(ItemMap).where(ItemMap.is_active.is_(True), ItemMap.match_type == mt)
-    stmt = stmt.where(ItemMap.company_id.is_(None) if company_id is None else ItemMap.company_id == company_id)
-    if mt == "CODE":
-        stmt = stmt.where(func.lower(ItemMap.erp_item_code) == code.lower())
-    elif mt == "ARTICLE":
-        stmt = stmt.where(ItemMap.article_key == article_key)
-    elif mt in LEVEL_TYPES:
-        stmt = stmt.where(func.lower(ItemMap.level_key) == level_key.lower())
-    else:
-        stmt = stmt.where(ItemMap.article_key == article_key, ItemMap.name_key == name_key)
-    rule = (await session.execute(stmt.limit(1))).scalar_one_or_none()
+    rule = await find_rule(session, mt, company_id, code=code, article_key=article_key, name_key=name_key, level_key=level_key)
     if rule is None:
         rule = ItemMap(match_type=mt, created_by=actor.id, company_id=company_id,
                        article_key=article_key if mt not in ("CODE",) + LEVEL_TYPES else None,
@@ -344,14 +378,9 @@ async def article_overview(session: AsyncSession, source: ErpSource, company_id:
     for a in articles:
         res = rules.resolve_article(a.article_key, a.department, a.section, a.division)
         mapped = res.item
-        text_words = _words(" ".join([a.article_name, a.department, *a.samples]))
         suggestion, best = None, 0.0
         if mapped is None and not res.not_tracked:
-            for i in items:
-                words = item_words[i.id]
-                score = len(words & text_words) / len(words) if words else 0
-                if score > best:
-                    suggestion, best = i, score
+            suggestion, best = suggest_item(items, [a.article_name, a.department, *a.samples], item_words)
         out.append({
             "article_key": a.article_key, "article_name": a.article_name, "section": a.section, "department": a.department,
             "division": a.division, "codes": a.codes, "units": a.units, "lines": a.lines, "samples": a.samples,

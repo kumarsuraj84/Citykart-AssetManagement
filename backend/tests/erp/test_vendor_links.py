@@ -187,7 +187,10 @@ async def test_the_picker_offers_the_pos_of_both_companies_matched_by_company_an
     resp = await client.get("/api/erp/pos", headers=h)
     assert resp.status_code == 200, resp.text
     got = {(p["po_number"], p["company_code"], p["company_id"], p["vendor_id"]) for p in resp.json()}
-    assert got == {("SPO/012994/26-27", "CKSPL", ids["spl"], ids["vansh"]), ("PO/00000060/26-27", "CKVPL", ids["vpl"], ids["vansh"])}
+    # S3a-2: the two POs whose supplier is not linked in THEIR company are listed too, unmatched (never hidden)
+    assert got == {("SPO/012994/26-27", "CKSPL", ids["spl"], ids["vansh"]), ("PO/00000060/26-27", "CKVPL", ids["vpl"], ids["vansh"]),
+                   ("SPO/2", "CKSPL", ids["spl"], None), ("PO/3", "CKVPL", ids["vpl"], None)}
+    assert {p["po_number"] for p in resp.json() if not p["vendor_linked"]} == {"SPO/2", "PO/3"}
 
 
 async def test_a_po_whose_supplier_is_linked_only_in_the_other_company_has_no_vendor_in_its_draft(client, erp):

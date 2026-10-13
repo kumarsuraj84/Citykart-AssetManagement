@@ -116,6 +116,11 @@ class FakeErp:
         return [p for p in self.pos.values() if p.supplier_code in supplier_codes and p.status == "OPEN"
                 and (company_code is None or p.company_code == company_code)]
 
+    async def open_pos_with_lines(self, company_codes=None):
+        if self.down:
+            raise ErpUnavailable(self.down)
+        return [p for p in self.pos.values() if p.status == "OPEN" and (company_codes is None or p.company_code in company_codes)]
+
     async def po(self, po_code):
         if self.down:
             raise ErpUnavailable(self.down)
@@ -309,13 +314,19 @@ async def test_a_down_erp_gives_a_clear_503_not_a_crash(client, erp):
 
 # ---------- purchase orders ----------
 
-async def test_only_open_pos_of_linked_vendors_are_offered(client, erp):
+async def test_only_open_pos_are_offered_and_an_unlinked_vendors_po_is_shown_as_needing_input(client, erp):
+    # S3a-2 (intended change): a PO of a supplier that is not linked yet is no longer left out -- it is
+    # listed with "Vendor needs matching." so it can never silently disappear.
     await _setup()
     erp.pos[2] = desktop_po(po_code=2, po_number="SPO/2", supplier_code="2264", supplier_name="JAGANNATH ENTERPRISES")  # vendor not linked
     erp.pos[3] = desktop_po(po_code=3, po_number="SPO/3", status="CLOSED")
     resp = await client.get("/api/erp/pos", headers=await _headers(client, "OPR"))
     assert resp.status_code == 200
-    assert [p["po_number"] for p in resp.json()] == ["SPO/012994/26-27"]
+    by = {p["po_number"]: p for p in resp.json()}
+    assert set(by) == {"SPO/012994/26-27", "SPO/2"}
+    assert by["SPO/012994/26-27"]["readiness"] == "READY" and by["SPO/012994/26-27"]["vendor_linked"] is True
+    assert by["SPO/2"]["readiness"] == "NEEDS_INPUT" and by["SPO/2"]["vendor_id"] is None
+    assert by["SPO/2"]["problems"] == [{"kind": "VENDOR_UNMATCHED", "message": "Vendor needs matching."}]
 
 
 async def test_a_po_becomes_a_fully_matched_draft(client, erp):

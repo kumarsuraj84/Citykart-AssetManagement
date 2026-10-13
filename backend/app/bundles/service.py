@@ -176,8 +176,10 @@ async def add_bundle_lines(
     )).scalars().all()
     if not parts:
         raise ValueError("this bundle has no parts")
-    base_barcode = (data.get("barcode") or "").strip()
-    if not base_barcode:
+    base_barcode = (data.get("barcode") or "").strip() or None
+    # S3a-2: the one-screen manual PO makes the barcode optional (a blank one is stored as nothing);
+    # every other caller still requires it.
+    if base_barcode is None and not data.get("barcode_optional"):
         raise ValueError("barcode is required")
     description = data["description"].strip()
     if not description:

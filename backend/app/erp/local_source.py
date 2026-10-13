@@ -98,6 +98,42 @@ class LocalErpSource:
         pos = await self._pos([tuple_(ErpPoLineCopy.company_code, ErpPoLineCopy.po_code).in_(pairs)], with_lines=False)
         return sorted((p for p in pos if p.status == "OPEN"), key=lambda p: (p.po_date, p.po_code), reverse=True)
 
+    async def open_pos_with_lines(self, company_codes: list[str] | None = None) -> list[ErpPo]:
+        """S3a-2: every OPEN PO of these companies (of every supplier, linked or not), with all its lines, in
+        ONE query -- the PO picker resolves them all in one pass."""
+        if not await self._has_copy():
+            return await self._live.open_pos_with_lines(company_codes)
+        open_keys = select(ErpPoLineCopy.company_code, ErpPoLineCopy.po_code).where(
+            ErpPoLineCopy.is_present.is_(True), ErpPoLineCopy.line_status == "OPEN")
+        if company_codes is not None:
+            if not company_codes:
+                return []
+            open_keys = open_keys.where(ErpPoLineCopy.company_code.in_(company_codes))
+        pos = await self._pos([tuple_(ErpPoLineCopy.company_code, ErpPoLineCopy.po_code).in_(open_keys.distinct())], with_lines=True)
+        return sorted((p for p in pos if p.status == "OPEN"), key=lambda p: (p.po_date, p.po_code), reverse=True)
+
+    async def article_product_names(self, article_keys: list[str], company_code: str | None = None) -> dict[str, set[str]]:
+        """S3a-2: for each Article, the product names (the ERP item's own name, normalised) of the codes this
+        company has bought in it -- one query. Decides whether "remember for the whole Article" is a sensible
+        default (see app.erp.readiness.suggested_scope)."""
+        from app.items.service import norm      # local: items.service imports app.erp.source
+        if not await self._has_copy():
+            return await self._live.article_product_names(article_keys, company_code)
+        if not article_keys:
+            return {}
+        async with self._sf() as session:
+            stmt = (select(ErpItemCopy).join(ErpPoLineCopy, ErpPoLineCopy.icode == ErpItemCopy.icode)
+                    .where(ErpPoLineCopy.is_present.is_(True), ErpItemCopy.article_name.in_(article_keys)).distinct())
+            if company_code:
+                stmt = stmt.where(ErpPoLineCopy.company_code == company_code)
+            rows = (await session.execute(stmt)).scalars().all()
+        out: dict[str, set[str]] = {k: set() for k in article_keys}
+        for r in rows:
+            item = _erp_item(r)
+            if norm(item.name):
+                out.setdefault(item.article_key, set()).add(norm(item.name))
+        return out
+
     async def po(self, po_code: int) -> ErpPo | None:
         if not await self._has_copy():
             return await self._live.po(po_code)
