@@ -18,6 +18,8 @@ from app.asset_users.stock_rooms import router as stock_rooms_router
 from app.masters.router import router as masters_router
 from app.numbering.router import router as numbering_router
 from app.assets.router import router as assets_router
+from app.assets.tools_router import router as asset_tools_router
+from app.asset_users.people import router as people_router
 from app.lifecycle.router import router as lifecycle_router
 from app.reports.router import router as reports_router
 from app.documents.router import router as documents_router
@@ -100,8 +102,11 @@ register_exception_handlers(app)
 app.include_router(auth_router)
 app.include_router(asset_users_router)
 app.include_router(stock_rooms_router)
+app.include_router(people_router)
 app.include_router(masters_router)
 app.include_router(numbering_router)
+# S5: the fixed /api/assets/... paths (batch, pick, unlinked-items, link-items) before /api/assets/{asset_id}
+app.include_router(asset_tools_router)
 app.include_router(assets_router)
 app.include_router(lifecycle_router)
 app.include_router(reports_router)

@@ -49,39 +49,54 @@ ASSET_EXPORT_COLUMNS = [
 ]
 
 
+def asset_export_columns(custom_field_keys: list[str]) -> list[str]:
+    return ASSET_EXPORT_COLUMNS + [f"Custom:{k}" for k in custom_field_keys]
+
+
+def asset_export_values(a: Asset, labels: dict, custom_field_keys: list[str]) -> list:
+    """S5: one asset's export row (the values under asset_export_columns) -- the ONE builder the Excel
+    export and the on-screen report preview share, so the preview always shows exactly what the file holds."""
+    asset_user = labels["asset_user"].get(a.current_asset_user_id, {})
+    return [
+        a.asset_code,
+        labels["company"].get(a.company_id),
+        labels["cost_center"].get(a.cost_center_id),
+        labels["category"].get(a.category_id),
+        labels["subcategory"].get(a.subcategory_id) if a.subcategory_id else None,
+        a.description,
+        a.status,
+        asset_user.get("name"),
+        asset_user.get("asset_user_type"),
+        asset_user.get("location_name"),
+        labels["vendor"].get(a.vendor_id) if a.vendor_id else None,
+        a.po_number,
+        a.po_date.isoformat() if a.po_date else None,
+        a.invoice_number,
+        a.invoice_date.isoformat() if a.invoice_date else None,
+        a.pi_number,
+        a.pi_date.isoformat() if a.pi_date else None,
+        a.purchase_date.isoformat() if a.purchase_date else None,
+        float(a.purchase_cost) if a.purchase_cost is not None else None,
+        float(a.tax_percent) if a.tax_percent is not None else None,
+        float(a.tax_amount) if a.tax_amount is not None else None,
+        float(a.total_cost) if a.total_cost is not None else None,
+        labels["brand"].get(a.brand_id) if a.brand_id else None, a.model, a.serial_number,
+        a.warranty_upto.isoformat() if a.warranty_upto else None,
+        a.legacy_asset_code,
+    ] + [a.custom_fields.get(k) for k in custom_field_keys]
+
+
+def asset_export_row(a: Asset, labels: dict, custom_field_keys: list[str]) -> dict:
+    """The same row as a dict keyed by the export's column headings (the report preview)."""
+    return dict(zip(asset_export_columns(custom_field_keys), asset_export_values(a, labels, custom_field_keys)))
+
+
 def assets_to_xlsx(assets: list[Asset], labels: dict, custom_field_keys: list[str]) -> bytes:
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.append(ASSET_EXPORT_COLUMNS + [f"Custom:{k}" for k in custom_field_keys])
+    ws.append(asset_export_columns(custom_field_keys))
     for a in assets:
-        asset_user = labels["asset_user"].get(a.current_asset_user_id, {})
-        ws.append(_sanitize_row([
-            a.asset_code,
-            labels["company"].get(a.company_id),
-            labels["cost_center"].get(a.cost_center_id),
-            labels["category"].get(a.category_id),
-            labels["subcategory"].get(a.subcategory_id) if a.subcategory_id else None,
-            a.description,
-            a.status,
-            asset_user.get("name"),
-            asset_user.get("asset_user_type"),
-            asset_user.get("location_name"),
-            labels["vendor"].get(a.vendor_id) if a.vendor_id else None,
-            a.po_number,
-            a.po_date.isoformat() if a.po_date else None,
-            a.invoice_number,
-            a.invoice_date.isoformat() if a.invoice_date else None,
-            a.pi_number,
-            a.pi_date.isoformat() if a.pi_date else None,
-            a.purchase_date.isoformat() if a.purchase_date else None,
-            float(a.purchase_cost) if a.purchase_cost is not None else None,
-            float(a.tax_percent) if a.tax_percent is not None else None,
-            float(a.tax_amount) if a.tax_amount is not None else None,
-            float(a.total_cost) if a.total_cost is not None else None,
-            labels["brand"].get(a.brand_id) if a.brand_id else None, a.model, a.serial_number,
-            a.warranty_upto.isoformat() if a.warranty_upto else None,
-            a.legacy_asset_code,
-        ] + [a.custom_fields.get(k) for k in custom_field_keys]))
+        ws.append(_sanitize_row(asset_export_values(a, labels, custom_field_keys)))
     buf = BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -120,13 +135,26 @@ def movements_to_xlsx(rows: list[tuple]) -> bytes:
     calling this."""
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.append(["Asset Code", "Event", "Date", "From AssetUser", "To AssetUser", "Remarks"])
-    for event, asset_code, from_asset_user_name, to_asset_user_name in rows:
-        ws.append(_sanitize_row([asset_code, event.event_type, event.event_date.isoformat(),
-                   from_asset_user_name, to_asset_user_name, event.remarks]))
+    ws.append(MOVEMENT_EXPORT_COLUMNS)
+    for row in rows:
+        ws.append(_sanitize_row(movement_export_values(row)))
     buf = BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+MOVEMENT_EXPORT_COLUMNS = ["Asset Code", "Event", "Date", "From AssetUser", "To AssetUser", "Remarks"]
+
+
+def movement_export_values(row: tuple) -> list:
+    """S5: one movement's export row, shared by the Excel export and the report preview."""
+    event, asset_code, from_asset_user_name, to_asset_user_name = row
+    return [asset_code, event.event_type, event.event_date.isoformat(), from_asset_user_name, to_asset_user_name,
+            event.remarks]
+
+
+def movement_export_row(row: tuple) -> dict:
+    return dict(zip(MOVEMENT_EXPORT_COLUMNS, movement_export_values(row)))
 
 
 def _asset_detail_url(asset_id: int) -> str:

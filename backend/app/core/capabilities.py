@@ -259,5 +259,16 @@ async def capabilities(session: AsyncSession, user) -> dict:
             "erp_setup": heavy,
             "imports": heavy,
         },
-        "company_ids": await company_ids_for(session, user),
+        "company_ids": (ids := await company_ids_for(session, user)),
+        # S5 (additive): the same companies with their code and name, so a screen needs no second call.
+        "companies": await _companies_of(session, ids),
     }
+
+
+async def _companies_of(session: AsyncSession, ids: list[int]) -> list[dict]:
+    from app.masters.models import Company          # local: masters imports nothing from core.capabilities
+    if not ids:
+        return []
+    rows = (await session.execute(select(Company.id, Company.code, Company.name).where(Company.id.in_(ids)))).all()
+    by_id = {i: {"id": i, "code": code, "name": name} for i, code, name in rows}
+    return [by_id[i] for i in ids if i in by_id]

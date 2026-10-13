@@ -32,7 +32,8 @@ async def test_a_new_stock_room_looks_like_a_row_of_the_people_and_places_list(c
     assert room["location_name"] == "HO" and room["company_code"] == "S0A" and room["company_id"] == w["co"]
     listed = (await client.get("/api/asset-users", headers=await login(client, w, "admin"))).json()
     same = next(r for r in listed if r["id"] == room["id"])
-    assert set(same) == set(room)
+    # S5: the stock-room answer adds `created` (true here: a new room was made)
+    assert set(same) | {"created"} == set(room) and room["created"] is True
 
 
 async def test_the_same_name_again_returns_the_existing_stock_room(client):

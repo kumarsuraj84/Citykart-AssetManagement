@@ -1,6 +1,14 @@
+from datetime import date
+
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
+
+from app.asset_users.models import AssetUser
 from app.assets.models import Asset
+from app.core.validation import escape_like
+from app.items.models import Item
+from app.masters.models import Brand, Vendor
 
 # AM-21: an explicit whitelist, never the raw client-supplied string, used
 # directly as a SQLAlchemy column reference -- prevents both SQL injection
@@ -33,9 +41,15 @@ SORTABLE_COLUMNS: dict[str, object] = {
     "status_since": Asset.status_since,
 }
 
+# S5: who holds the asset, joined only when a search or a holder-kind filter needs it.
+HOLDER = aliased(AssetUser, name="search_holder")
+SEARCH_ITEM = aliased(Item, name="search_item")
+SEARCH_VENDOR = aliased(Vendor, name="search_vendor")
+SEARCH_BRAND = aliased(Brand, name="search_brand")
+
 
 def _escape_like(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return escape_like(value)
 
 
 def _exact_match_clause(q: str):
@@ -44,8 +58,8 @@ def _exact_match_clause(q: str):
     category/sub-category (".../CK1", ".../CK10", ".../CK11"), so a code also
     matches when its last segment after "/" equals the text: typing "ck1" finds
     every ".../CK1" and none of ".../CK10". Only identifier columns take part
-    (code, legacy code, serial, barcode, PO/invoice/PI number); free text such
-    as description and model is never "exact"."""
+    (code, legacy code, serial, barcode, ERP item code (S5), PO/invoice/PI number);
+    free text such as description and model is never "exact"."""
     ql = q.strip().lower()
     code = func.lower(Asset.asset_code)
     return or_(
@@ -54,10 +68,106 @@ def _exact_match_clause(q: str):
         func.lower(Asset.legacy_asset_code) == ql,
         func.lower(Asset.serial_number) == ql,
         func.lower(Asset.barcode) == ql,
+        func.lower(Asset.erp_item_code) == ql,
         func.lower(Asset.po_number) == ql,
         func.lower(Asset.invoice_number) == ql,
         func.lower(Asset.pi_number) == ql,
     )
+
+
+def _search_columns():
+    """S5: every column the one search box looks in -- the asset's own identifiers and text, and the names of
+    its Item, vendor, brand and holder."""
+    return (
+        Asset.asset_code, Asset.legacy_asset_code, Asset.serial_number, Asset.barcode, Asset.erp_item_code,
+        Asset.po_number, Asset.invoice_number, Asset.pi_number, Asset.description, Asset.model,
+        SEARCH_ITEM.name, SEARCH_VENDOR.name, SEARCH_BRAND.name, HOLDER.name, HOLDER.code,
+    )
+
+
+def _contains_clause(q: str):
+    # S0.10: a typed %, _ or \ matches itself (it used to match everything).
+    pattern = f"%{_escape_like(q.strip())}%"
+    return or_(*(column.ilike(pattern, escape="\\") for column in _search_columns()))
+
+
+def _prefix_clause(q: str):
+    pattern = f"{_escape_like(q.strip())}%"
+    return or_(*(column.ilike(pattern, escape="\\") for column in _search_columns()))
+
+
+def build_asset_query(
+    allowed_company_ids: list[int] | None,
+    *,
+    status: str | None = None,
+    category_id: int | None = None,
+    asset_user_id: int | None = None,
+    company_id: int | None = None,
+    q: str | None = None,
+    allowed_domains: tuple[str, ...] | None = None,
+    domain: str | None = None,
+    exact: bool = False,
+    serial_pending: bool | None = None,
+    item_id: int | None = None,
+    ids: list[int] | None = None,
+    vendor_id: int | None = None,
+    po_number: str | None = None,
+    holder_type: str | None = None,
+    purchase_from: date | None = None,
+    purchase_to: date | None = None,
+):
+    """The register's filtered SELECT (no order, no paging) -- shared by the register, the asset export and
+    the S5 report preview, so all three always mean the same thing by the same filters.
+
+    `allowed_domains` (from app.core.deps.allowed_asset_domains) is the caller's server-side scope -- None
+    means unrestricted (ADMIN/SELF_SERVICE), a tuple means the caller may only ever see those domains,
+    enforced unconditionally (spec §14/§15). `domain` is the optional user-requested work-area filter --
+    it further narrows within whatever `allowed_domains` already permits; a caller can never widen past their
+    own scope by passing a domain outside it."""
+    stmt = select(Asset).where(Asset.deleted_at.is_(None))
+    if allowed_company_ids is not None:
+        stmt = stmt.where(Asset.company_id.in_(allowed_company_ids))
+    if company_id is not None:
+        stmt = stmt.where(Asset.company_id == company_id)
+    if allowed_domains is not None:
+        stmt = stmt.where(Asset.asset_domain.in_(allowed_domains))
+    if domain is not None:
+        if allowed_domains is None or domain in allowed_domains:
+            stmt = stmt.where(Asset.asset_domain == domain)
+    if item_id is not None:
+        stmt = stmt.where(Asset.item_id == item_id)
+    if ids is not None:
+        stmt = stmt.where(Asset.id.in_(ids))
+    if serial_pending is True:
+        # The to-do list: assets still in use (nobody chases the serial of one that is gone).
+        stmt = stmt.where(Asset.serial_pending.is_(True), Asset.status.notin_(("DISPOSED", "SOLD", "SCRAPPED", "LOST")))
+    if status is not None:
+        stmt = stmt.where(Asset.status == status)
+    if category_id is not None:
+        stmt = stmt.where(Asset.category_id == category_id)
+    if asset_user_id is not None:
+        stmt = stmt.where(Asset.current_asset_user_id == asset_user_id)
+    if vendor_id is not None:
+        stmt = stmt.where(Asset.vendor_id == vendor_id)
+    if po_number is not None and po_number.strip():
+        stmt = stmt.where(func.lower(func.trim(Asset.po_number)) == po_number.strip().lower())
+    if purchase_from is not None:
+        stmt = stmt.where(Asset.purchase_date >= purchase_from)
+    if purchase_to is not None:
+        stmt = stmt.where(Asset.purchase_date <= purchase_to)
+    searching = bool(q and q.strip())
+    if searching or holder_type is not None:
+        stmt = stmt.join(HOLDER, HOLDER.id == Asset.current_asset_user_id)
+    if holder_type is not None:
+        stmt = stmt.where(HOLDER.asset_user_type == holder_type)
+    if searching and exact:
+        stmt = stmt.where(_exact_match_clause(q))
+    elif searching:
+        stmt = (stmt.outerjoin(SEARCH_ITEM, SEARCH_ITEM.id == Asset.item_id)
+                .outerjoin(SEARCH_VENDOR, SEARCH_VENDOR.id == Asset.vendor_id)
+                .outerjoin(SEARCH_BRAND, SEARCH_BRAND.id == Asset.brand_id)
+                .where(_contains_clause(q)))
+    return stmt
 
 
 async def search_assets(
@@ -78,61 +188,15 @@ async def search_assets(
     serial_pending: bool | None = None,
     item_id: int | None = None,
     ids: list[int] | None = None,
+    **more_filters,
 ) -> tuple[list[Asset], int]:
-    """`allowed_domains` (from app.core.deps.allowed_asset_domains) is the
-    caller's server-side scope -- None means unrestricted (ADMIN/SELF_SERVICE),
-    a tuple means the caller may only ever see those domains, enforced
-    unconditionally (spec §14/§15). `domain` is the optional user-requested
-    "Responsibility" filter (spec §22) -- further narrows within whatever
-    `allowed_domains` already permits; a caller can never widen past their
-    own scope by passing a domain outside it."""
-    stmt = select(Asset).where(Asset.deleted_at.is_(None))
-    if allowed_company_ids is not None:
-        stmt = stmt.where(Asset.company_id.in_(allowed_company_ids))
-    if company_id is not None:
-        stmt = stmt.where(Asset.company_id == company_id)
-    if allowed_domains is not None:
-        stmt = stmt.where(Asset.asset_domain.in_(allowed_domains))
-    if domain is not None and (allowed_domains is None or domain in allowed_domains):
-        stmt = stmt.where(Asset.asset_domain == domain)
-    if item_id is not None:
-        stmt = stmt.where(Asset.item_id == item_id)
-    if ids is not None:
-        stmt = stmt.where(Asset.id.in_(ids))
-    if serial_pending is True:
-        # The to-do list: assets still in use (nobody chases the serial of one that is gone).
-        stmt = stmt.where(Asset.serial_pending.is_(True), Asset.status.notin_(("DISPOSED", "SOLD", "SCRAPPED", "LOST")))
-    if status is not None:
-        stmt = stmt.where(Asset.status == status)
-    if category_id is not None:
-        stmt = stmt.where(Asset.category_id == category_id)
-    if asset_user_id is not None:
-        stmt = stmt.where(Asset.current_asset_user_id == asset_user_id)
-    if q and exact:
-        stmt = stmt.where(_exact_match_clause(q))
-    elif q:
-        # S0.10: a typed %, _ or \ matches itself (it used to match everything).
-        pattern = f"%{_escape_like(q)}%"
-
-        def like(column):
-            return column.ilike(pattern, escape="\\")
-        stmt = stmt.where(or_(
-            like(Asset.asset_code), like(Asset.legacy_asset_code),
-            like(Asset.serial_number), like(Asset.po_number),
-            like(Asset.invoice_number), like(Asset.pi_number),
-            # AM-11: a real operator is more likely to remember an asset's
-            # description ("the Dell laptop") than its generated code --
-            # found missing during the Phase-1 gap review's search check.
-            like(Asset.description),
-            # AM-21: rounds the register's own search box out to every
-            # remaining free-text identifier column an operator might scan
-            # or type -- barcode/model were the ones still missing. Brand
-            # was here too until it became a master FK (brand_id) --
-            # dropped from free-text search for the same reason
-            # category_id/vendor_id never were, matching this file's own
-            # SORTABLE_COLUMNS comment above.
-            like(Asset.barcode), like(Asset.model),
-        ))
+    """One page of the register plus the total. `more_filters` (S5): vendor_id, po_number, holder_type,
+    purchase_from, purchase_to -- see build_asset_query."""
+    stmt = build_asset_query(
+        allowed_company_ids, status=status, category_id=category_id, asset_user_id=asset_user_id,
+        company_id=company_id, q=q, allowed_domains=allowed_domains, domain=domain, exact=exact,
+        serial_pending=serial_pending, item_id=item_id, ids=ids, **more_filters,
+    )
 
     # COUNT(*) in the database over the same filtered query, rather than
     # materialising every matching row just to len() it -- at the spec's
@@ -147,10 +211,13 @@ async def search_assets(
         # page 2 silently re-showing/skipping rows page 1 already had.
         order = (order_column.desc(), Asset.id.desc()) if sort_dir == "desc" else (order_column.asc(), Asset.id.desc())
     elif q and q.strip():
-        # No column sort chosen: float exact identifier matches above the
-        # merely-containing ones ("CK1" before "CK10", "CK11"...), newest first
-        # within each group. An explicit column sort always wins over this.
-        order = (case((_exact_match_clause(q), 0), else_=1), Asset.id.desc())
+        # No column sort chosen: exact identifier matches first (code or its last segment, serial, barcode,
+        # ERP item code...), then values that START with the text, then the ones merely containing it;
+        # newest first within each group. An explicit column sort always wins over this.
+        if exact:
+            order = (Asset.id.desc(),)
+        else:
+            order = (case((_exact_match_clause(q), 0), (_prefix_clause(q), 1), else_=2), Asset.id.desc())
     else:
         order = (Asset.id.desc(),)
     page_stmt = stmt.order_by(*order).limit(limit).offset(offset)

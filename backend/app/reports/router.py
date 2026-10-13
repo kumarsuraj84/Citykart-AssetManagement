@@ -7,20 +7,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 from app.assets.custom_field_values import applicable_custom_fields
 from app.assets.models import Asset, AssetFieldChange
-from app.assets.search_service import search_assets
+from app.assets.search_service import build_asset_query, search_assets
 from app.core.db import get_session
 from app.core.deps import (
     READ_ROLES, WRITE_ROLES, allowed_asset_domains, get_current_asset_user, is_self_service, require_role,
     scoped_company_ids,
 )
+from app.core.validation import parse_work_area
 from app.asset_users.models import AssetUser
+from app.items.models import Item
 from app.lifecycle.models import AssetEvent
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Location, Vendor
 from app.reports.dashboard_service import dashboard_data
-from app.reports.export_service import assets_to_xlsx, field_changes_to_xlsx, movements_to_xlsx
+from app.reports.export_service import (
+    MOVEMENT_EXPORT_COLUMNS, asset_export_columns, asset_export_row, assets_to_xlsx, field_changes_to_xlsx,
+    movement_export_row, movements_to_xlsx,
+)
 from app.reports.schemas import DashboardOut
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
+
+STATUS_WORDS = {
+    "IN_STOCK": "In stock", "ALLOTTED": "Allotted", "INSTALLED": "Installed", "UNDER_REPAIR": "Under repair",
+    "DISPOSED": "Disposed", "SOLD": "Sold", "SCRAPPED": "Scrapped", "LOST": "Lost",
+}
 
 XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -91,6 +101,33 @@ async def dashboard(
     return await dashboard_data(session, allowed, include_purchase_orders, allowed_domains=domains, domain=domain)
 
 
+async def _asset_report_args(
+    session: AsyncSession, asset_user, *, status, category_id, asset_user_id, company_id, q, exact, domain,
+    work_area=None, item_id=None, vendor_id=None, po_number=None, holder_id=None, purchase_from=None, purchase_to=None,
+) -> dict:
+    """S5: the asset report's filters and scope, ONE place for the Excel export and the preview. A
+    self-service login only ever sees what it holds; everyone else their companies and work area."""
+    if holder_id is not None and asset_user_id is None:
+        asset_user_id = holder_id
+    if is_self_service(asset_user):
+        asset_user_id = asset_user.id
+        allowed = None
+    else:
+        allowed = await scoped_company_ids(session, asset_user)
+    try:
+        wanted_domain = parse_work_area(work_area) or domain
+    except ValueError as exc:
+        raise HTTPException(http_status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    if purchase_from is not None and purchase_to is not None and purchase_to < purchase_from:
+        raise HTTPException(http_status.HTTP_422_UNPROCESSABLE_ENTITY, "The 'to' date cannot be before the 'from' date.")
+    return {
+        "allowed_company_ids": allowed, "status": status, "category_id": category_id, "asset_user_id": asset_user_id,
+        "company_id": company_id, "q": q, "exact": exact, "allowed_domains": await allowed_asset_domains(session, asset_user),
+        "domain": wanted_domain, "item_id": item_id, "vendor_id": vendor_id, "po_number": po_number,
+        "purchase_from": purchase_from, "purchase_to": purchase_to,
+    }
+
+
 @router.get("/export/assets")
 async def export_assets(
     status: str | None = Query(None),
@@ -100,6 +137,13 @@ async def export_assets(
     q: str | None = Query(None, max_length=200),
     exact: bool = Query(False),
     domain: str | None = Query(None),
+    work_area: str | None = Query(None, max_length=10),
+    item_id: int | None = Query(None),
+    vendor_id: int | None = Query(None),
+    po_number: str | None = Query(None, max_length=100),
+    holder_id: int | None = Query(None),
+    purchase_from: date | None = Query(None),
+    purchase_to: date | None = Query(None),
     session: AsyncSession = Depends(get_session),
     asset_user=Depends(get_current_asset_user),
 ):
@@ -111,17 +155,16 @@ async def export_assets(
     company) -- a non-ADMIN caller can never export another company's rows. `domain`
     is the optional Responsibility filter (spec §38), same as the register's own --
     always further bounded server-side by allowed_asset_domains, never a way to widen
-    past it (see search_assets)."""
-    if is_self_service(asset_user):
-        asset_user_id = asset_user.id
-        allowed = None
-    else:
-        allowed = await scoped_company_ids(session, asset_user)
-    domains = await allowed_asset_domains(session, asset_user)
-    items, total = await search_assets(
-        session, allowed, status, category_id, asset_user_id, company_id, q, limit=EXPORT_MAX_ROWS, offset=0,
-        allowed_domains=domains, domain=domain, exact=exact,
+    past it (see search_assets). S5 (additive filters, shared with the preview): `work_area`
+    (= domain), `item_id`, `vendor_id`, `po_number` (whole number, any case), `holder_id`
+    (= asset_user_id), `purchase_from` / `purchase_to` (purchase date, inclusive)."""
+    args = await _asset_report_args(
+        session, asset_user, status=status, category_id=category_id, asset_user_id=asset_user_id,
+        company_id=company_id, q=q, exact=exact, domain=domain, work_area=work_area, item_id=item_id,
+        vendor_id=vendor_id, po_number=po_number, holder_id=holder_id, purchase_from=purchase_from,
+        purchase_to=purchase_to,
     )
+    items, total = await search_assets(session, limit=EXPORT_MAX_ROWS, offset=0, **args)
     if total > EXPORT_MAX_ROWS:
         # Refuse loudly rather than hand back a silently truncated register.
         raise HTTPException(
@@ -138,19 +181,8 @@ async def export_assets(
     )
 
 
-@router.get("/export/movements")
-async def export_movements(
-    from_date: date = Query(...),
-    to_date: date = Query(...),
-    session: AsyncSession = Depends(get_session),
-    asset_user=Depends(require_role(*READ_ROLES)),
-):
-    """Staff only (403 for a ASSET_USER): the log names every asset_user in the company, and a
-    ASSET_USER may only see their own currently-held assets (spec §6). Company-scoped the
-    same way as the dashboard (`scoped_company_ids`): a non-ADMIN role only ever gets
-    movement rows for assets in their own company, ADMIN is unrestricted. Joins in the
-    asset code and the from/to asset_user names so the exported "Asset Code"/"From AssetUser"/
-    "To AssetUser" columns hold what they say, not raw internal ids."""
+async def _movements_query(session: AsyncSession, asset_user, from_date: date, to_date: date):
+    """The movement log's SELECT (S5: shared by the Excel export and the preview), ordered by date."""
     from_asset_user = aliased(AssetUser)
     to_asset_user = aliased(AssetUser)
     # COALESCE to the point-in-time snapshot first (AM-01) -- falls back to today's live
@@ -175,6 +207,147 @@ async def export_movements(
     domains = await allowed_asset_domains(session, asset_user)
     if domains is not None:
         stmt = stmt.where(Asset.asset_domain.in_(domains))
+    return stmt
+
+
+# ---- S5: on-screen previews of the two reports (same query, same rows as the Excel files) ----
+
+PREVIEW_MAX = 200
+
+
+async def _page_export_label_maps(session: AsyncSession, items: list[Asset]) -> dict:
+    """The export's id -> name maps (same shape as _export_label_maps), but only for the ids on this page --
+    so the preview's rows hold exactly what the file's rows hold without loading every master."""
+    async def names(model, ids) -> dict:
+        wanted = {i for i in ids if i is not None}
+        if not wanted:
+            return {}
+        return dict((await session.execute(select(model.id, model.name).where(model.id.in_(wanted)))).all())
+
+    holder_ids = {a.current_asset_user_id for a in items}
+    holders = (await session.execute(
+        select(AssetUser.id, AssetUser.name, AssetUser.asset_user_type, Location.name)
+        .outerjoin(Location, Location.id == AssetUser.location_id).where(AssetUser.id.in_(holder_ids))
+    )).all() if holder_ids else []
+    return {
+        "company": await names(Company, (a.company_id for a in items)),
+        "cost_center": await names(CostCenter, (a.cost_center_id for a in items)),
+        "category": await names(AssetCategory, (a.category_id for a in items)),
+        "subcategory": await names(AssetSubcategory, (a.subcategory_id for a in items)),
+        "vendor": await names(Vendor, (a.vendor_id for a in items)),
+        "brand": await names(Brand, (a.brand_id for a in items)),
+        "asset_user": {hid: {"name": name, "asset_user_type": kind, "location_name": loc} for hid, name, kind, loc in holders},
+    }
+
+
+async def _report_custom_field_keys(session: AsyncSession, base) -> list[str]:
+    """The export's custom-field columns for EVERY asset the filters match (not just one page): every active
+    field applicable to a company among them, plus every key any of them holds -- same rule as
+    _export_custom_field_keys, computed in the database."""
+    keys: set[str] = set()
+    for company_id in (await session.execute(select(base.c.company_id).distinct())).scalars().all():
+        keys.update((await applicable_custom_fields(session, company_id)).keys())
+    held = select(func.json_object_keys(base.c.custom_fields).label("k")).where(
+        func.json_typeof(base.c.custom_fields) == "object").subquery()
+    keys.update(k for k in (await session.execute(select(held.c.k).distinct())).scalars().all() if k is not None)
+    return sorted(keys)
+
+
+@router.get("/assets/preview")
+async def preview_assets(
+    status: str | None = Query(None),
+    category_id: int | None = Query(None),
+    work_area: str | None = Query(None, max_length=10),
+    company_id: int | None = Query(None),
+    item_id: int | None = Query(None),
+    vendor_id: int | None = Query(None),
+    po_number: str | None = Query(None, max_length=100),
+    holder_id: int | None = Query(None),
+    purchase_from: date | None = Query(None),
+    purchase_to: date | None = Query(None),
+    q: str | None = Query(None, max_length=200),
+    exact: bool = Query(False),
+    domain: str | None = Query(None),
+    asset_user_id: int | None = Query(None),
+    limit: int = Query(50, ge=1, le=PREVIEW_MAX),
+    offset: int = Query(0, ge=0),
+    session: AsyncSession = Depends(get_session),
+    asset_user=Depends(get_current_asset_user),
+):
+    """The asset register report on screen: the same filters, scope and rows as GET /export/assets
+    (`columns` = the file's headings, each row a dict keyed by them, `asset_ids` in the same order), one
+    page at a time, plus `total` and a `summary` (count by status, by category, top 10 Items) over
+    everything the filters match."""
+    args = await _asset_report_args(
+        session, asset_user, status=status, category_id=category_id, asset_user_id=asset_user_id,
+        company_id=company_id, q=q, exact=exact, domain=domain, work_area=work_area, item_id=item_id,
+        vendor_id=vendor_id, po_number=po_number, holder_id=holder_id, purchase_from=purchase_from,
+        purchase_to=purchase_to,
+    )
+    items, total = await search_assets(session, limit=limit, offset=offset, **args)
+    base = build_asset_query(**args).subquery()
+    custom_keys = await _report_custom_field_keys(session, base)
+    labels = await _page_export_label_maps(session, list(items))
+    count = func.count().label("count")
+    by_status = (await session.execute(
+        select(base.c.status, count).group_by(base.c.status).order_by(count.desc(), base.c.status)
+    )).all()
+    by_category = (await session.execute(
+        select(base.c.category_id, AssetCategory.name, count)
+        .outerjoin(AssetCategory, AssetCategory.id == base.c.category_id)
+        .group_by(base.c.category_id, AssetCategory.name).order_by(count.desc(), AssetCategory.name)
+    )).all()
+    by_item = (await session.execute(
+        select(base.c.item_id, Item.name, count)
+        .outerjoin(Item, Item.id == base.c.item_id)
+        .group_by(base.c.item_id, Item.name).order_by(count.desc(), Item.name).limit(10)
+    )).all()
+    return {
+        "total": total,
+        "columns": asset_export_columns(custom_keys),
+        "rows": [asset_export_row(a, labels, custom_keys) for a in items],
+        "asset_ids": [a.id for a in items],
+        "summary": {
+            "by_status": [{"status": s, "status_label": STATUS_WORDS.get(s, s), "count": n} for s, n in by_status],
+            "by_category": [{"category_id": c, "category_name": name, "count": n} for c, name, n in by_category],
+            "by_item": [{"item_id": i, "item_name": name, "count": n} for i, name, n in by_item],
+        },
+    }
+
+
+@router.get("/movements/preview")
+async def preview_movements(
+    from_date: date = Query(...),
+    to_date: date = Query(...),
+    limit: int = Query(50, ge=1, le=PREVIEW_MAX),
+    offset: int = Query(0, ge=0),
+    session: AsyncSession = Depends(get_session),
+    asset_user=Depends(require_role(*READ_ROLES)),
+):
+    """The movement log on screen: the same query, scope and rows as GET /export/movements, one page at a
+    time (`columns` = the file's headings), plus `total`."""
+    if to_date < from_date:
+        raise HTTPException(http_status.HTTP_422_UNPROCESSABLE_ENTITY, "The 'to' date cannot be before the 'from' date.")
+    stmt = await _movements_query(session, asset_user, from_date, to_date)
+    total = (await session.execute(select(func.count()).select_from(stmt.order_by(None).subquery()))).scalar_one()
+    rows = (await session.execute(stmt.limit(limit).offset(offset))).all()
+    return {"total": total, "columns": MOVEMENT_EXPORT_COLUMNS, "rows": [movement_export_row(r) for r in rows]}
+
+
+@router.get("/export/movements")
+async def export_movements(
+    from_date: date = Query(...),
+    to_date: date = Query(...),
+    session: AsyncSession = Depends(get_session),
+    asset_user=Depends(require_role(*READ_ROLES)),
+):
+    """Staff only (403 for a ASSET_USER): the log names every asset_user in the company, and a
+    ASSET_USER may only see their own currently-held assets (spec §6). Company-scoped the
+    same way as the dashboard (`scoped_company_ids`): a non-ADMIN role only ever gets
+    movement rows for assets in their own company, ADMIN is unrestricted. Joins in the
+    asset code and the from/to asset_user names so the exported "Asset Code"/"From AssetUser"/
+    "To AssetUser" columns hold what they say, not raw internal ids."""
+    stmt = await _movements_query(session, asset_user, from_date, to_date)
     rows = (await session.execute(stmt)).all()
     return Response(
         content=movements_to_xlsx(rows),

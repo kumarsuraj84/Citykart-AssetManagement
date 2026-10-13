@@ -11,7 +11,7 @@ from app.core.deps import allowed_asset_domains, check_work_area, ensure_company
 from app.erp.readiness import (
     article_names, live_lines, open_erp_pos, problems_for, resolution_of, suggested_scope,
 )
-from app.erp.source import ErpPo, ErpSource, ErpVendor
+from app.erp.source import ErpPo, ErpSource, ErpUnavailable, ErpVendor
 from app.erp.vendors import (
     _active_vendors, create_vendor_for_codes, group_key, known_gstins, link_codes, pan_of, suggest_vendors,
 )
@@ -249,7 +249,42 @@ async def erp_po_rows(
         if needle and not any(needle in (text or "").casefold() for text in (p.po_number, p.supplier_name, row["vendor_name"])):
             continue
         out.append(row)
+    await _add_vendor_suggestions(session, source, out, {c.id: c for c in companies})
     return sorted(out, key=lambda r: (r["po_date"], r["po_code"]), reverse=True)
+
+
+VENDOR_REASON_WORDS = {"GSTIN": "same GSTIN", "PAN": "same PAN (another registration)", "NAME": "similar name"}
+
+
+async def _add_vendor_suggestions(session: AsyncSession, source: ErpSource, rows: list[dict], companies: dict[int, Company]) -> None:
+    """S5 (additive): `suggested_vendor` {vendor_id, name, reason, reason_label} on every row whose supplier is
+    not matched yet (else null) -- the strongest of the same GSTIN / PAN / name suggestions the draft makes,
+    worked out once per supplier (the supplier list is read once per company, the vendors once)."""
+    for row in rows:
+        row["suggested_vendor"] = None
+    unmatched = [r for r in rows if not r["vendor_linked"]]
+    if not unmatched:
+        return
+    vendors = await _active_vendors(session)
+    if not vendors:
+        return
+    gstins = await known_gstins(session, vendors)
+    by_company: dict[int, dict[str, ErpVendor]] = {}
+    found: dict[tuple[int, str], dict | None] = {}
+    for row in unmatched:
+        key = (row["company_id"], row["erp_vendor_code"])
+        if key not in found:
+            if row["company_id"] not in by_company:
+                company = companies[row["company_id"]]
+                try:
+                    by_company[row["company_id"]] = {s.code: s for s in await source.vendors(company.erp_code)}
+                except ErpUnavailable:          # only a suggestion: the name on the PO still works
+                    by_company[row["company_id"]] = {}
+            me = by_company[row["company_id"]].get(row["erp_vendor_code"]) or ErpVendor(row["erp_vendor_code"], row["erp_vendor_name"])
+            hits = suggest_vendors(me, vendors, gstins)
+            found[key] = ({"vendor_id": hits[0][0].id, "name": hits[0][0].name, "reason": hits[0][1],
+                           "reason_label": VENDOR_REASON_WORDS.get(hits[0][1])} if hits else None)
+        row["suggested_vendor"] = found[key]
 
 
 async def list_available_pos(session: AsyncSession, actor: AssetUser, source: ErpSource) -> list[dict]:
@@ -587,8 +622,8 @@ async def create_from_draft(session: AsyncSession, actor: AssetUser, data: dict,
     line_nos: set[int] = set()
     for position, ln in enumerate(data["lines"], start=1):
         label = f"Line {position} ({ln['item_code'] or ln['description'][:30]})"
-        if not ln["barcode"].strip():
-            raise ValueError(f"{label}: barcode is required")
+        # S5: the barcode is optional (as on the one-screen manual PO): blank -> none stored.
+        ln["barcode"] = (ln.get("barcode") or "").strip() or None
         if ln["rate"] <= 0:
             raise ValueError(f"{label}: cost must be more than 0")
         item = await session.get(Item, ln.get("item_id")) if ln.get("item_id") else None
@@ -600,7 +635,7 @@ async def create_from_draft(session: AsyncSession, actor: AssetUser, data: dict,
         if item.bundle_id:
             lines = await add_bundle_lines(session, po, {
                 "bundle_id": item.bundle_id, "description": ln["description"], "barcode": ln["barcode"],
-                "quantity": ln["quantity"], "price": ln["rate"], "tax_percent": ln["tax_percent"],
+                "barcode_optional": True, "quantity": ln["quantity"], "price": ln["rate"], "tax_percent": ln["tax_percent"],
                 "warranty_years": ln["warranty_years"], "parts": ln.get("bundle_parts"), "erp_item_code": ln.get("item_code"),
             }, actor, allowed_domains=domains)
         else:

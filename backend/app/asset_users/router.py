@@ -11,7 +11,8 @@ from app.core.deps import (
 )
 from app.asset_users.service import AssetUserService
 from app.asset_users.schemas import (
-    CompanyAccessIn, CompanyAccessOut, AssetUserIn, AssetUserOut, AssetUserUpdateIn, ResetPasswordOut,
+    MAX_ISSUE_PASSWORDS, CompanyAccessIn, CompanyAccessOut, AssetUserIn, AssetUserOut, AssetUserUpdateIn,
+    IssuedPasswordOut, IssuePasswordsIn, ResetPasswordOut,
 )
 from app.asset_users.models import ALLOWED_ASSET_DOMAINS, ASSET_USER_TYPES, PRIMARY_ASSET_DOMAINS, ROLES, AssetUser
 from app.masters.bulk_import_export import (
@@ -306,6 +307,59 @@ async def create_asset_user(
         # again in this request (a failed INSERT leaves the transaction aborted).
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A person or place with this code already exists in this company.")
+
+
+ISSUE_KINDS = {"stores": "STORE", "employees": "EMPLOYEE"}
+
+
+@router.post("/issue-passwords", response_model=list[IssuedPasswordOut])
+async def issue_passwords(
+    body: IssuePasswordsIn,
+    session: AsyncSession = Depends(get_session),
+    actor=Depends(require_role("ADMIN")),
+):
+    """S5: a temporary password for many accounts at once (e.g. every new store), each to be changed at the
+    next sign-in. Accounts: `asset_user_ids`, and/or `kind` ("stores" / "employees") and/or `company_id`;
+    only active accounts that can sign in; by default only those without a password yet
+    (`only_without_password`). Head-office admin accounts and the caller's own account are never included.
+    At most 500 accounts per call (more -> 422, nothing issued). The passwords are returned ONLY in this
+    answer -- never logged, audited or shown again."""
+    kind = None
+    if body.kind is not None and body.kind.strip():
+        kind = ISSUE_KINDS.get(body.kind.strip().lower())
+        if kind is None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose stores or employees.")
+    if not body.asset_user_ids and kind is None and body.company_id is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            "Choose whose passwords to issue: pick the accounts, or choose stores or employees.")
+    stmt = select(AssetUser).where(
+        AssetUser.is_active.is_(True), AssetUser.login_enabled.is_(True), AssetUser.is_primary_owner.is_(False),
+        AssetUser.id != actor.id,
+    )
+    if body.asset_user_ids:
+        stmt = stmt.where(AssetUser.id.in_(set(body.asset_user_ids)))
+    if kind is not None:
+        stmt = stmt.where(AssetUser.asset_user_type == kind)
+    if body.company_id is not None:
+        stmt = stmt.where(AssetUser.company_id == body.company_id)
+    allowed = await scoped_company_ids(session, actor)
+    if allowed is not None:
+        stmt = stmt.where(AssetUser.company_id.in_(allowed))
+    if body.only_without_password:
+        stmt = stmt.where(AssetUser.password_hash.is_(None))
+    count = (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+    if count > MAX_ISSUE_PASSWORDS:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"That is {count:,} accounts; at most {MAX_ISSUE_PASSWORDS} can be given a password at a time. "
+            "Choose a company, or pick the accounts.",
+        )
+    users = list((await session.execute(stmt.order_by(AssetUser.company_id, AssetUser.code, AssetUser.id))).scalars().all())
+    issued = await AssetUserService(session).issue_passwords(users, actor.id)
+    return [
+        IssuedPasswordOut(asset_user_id=u.id, code=u.code, name=u.name, email=u.email, temp_password=temp)
+        for u, temp in issued
+    ]
 
 
 async def _get_target(session: AsyncSession, asset_user_id: int, actor: AssetUser) -> AssetUser:

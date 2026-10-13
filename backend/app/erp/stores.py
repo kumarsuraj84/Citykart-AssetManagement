@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.asset_users.models import AssetUser
+from app.asset_users.store_rooms import ensure_store_rooms, room_codes
 from app.core.config import settings
 from app.erp.mirror_models import ErpSiteCopy, ErpSyncRun
 from app.erp.vendors import company_for_erp
@@ -84,13 +85,32 @@ async def list_erp_stores(session: AsyncSession, company_id: int) -> dict:
 
 async def create_erp_stores(session: AsyncSession, actor: AssetUser, company_id: int, codes: list[str]) -> dict:
     """Creates a Location (reusing one with the same code) and a STORE user for each requested store that may be
-    created. A store that cannot be is reported with the reason; the others are still created."""
+    created. A store that cannot be is reported with the reason; the others are still created.
+
+    S5: every store created here -- and every store of this list that already exists here as a store -- also
+    gets its Stock Room (STK-<code>) and Install Point (INS-<code>), reusing what exists (app.asset_users.
+    store_rooms). Additive answer fields: `rooms` (per store: codes and whether each was created) and the counts
+    `stock_rooms_created` / `install_points_created`."""
     company = await company_for_erp(session, company_id)
     listing = await list_erp_stores(session, company_id)
     rows = {r["code"].upper(): r for r in listing["stores"]}
     created: list[str] = []
     skipped: list[dict] = []
+    rooms_out: list[dict] = []
+    known = await room_codes(session, [company.id])
     seen: set[str] = set()
+
+    async def give_rooms(store: AssetUser) -> None:
+        rooms = await ensure_store_rooms(session, actor, store, known)
+        rooms_out.append({
+            "code": (store.code or "").upper(),
+            "stock_room_code": rooms["stock_room"].code if rooms["stock_room"] is not None else None,
+            "stock_room_created": "stock_room" in rooms["created"],
+            "install_point_code": rooms["install_point"].code if rooms["install_point"] is not None else None,
+            "install_point_created": "install_point" in rooms["created"],
+            "problems": rooms["problems"],
+        })
+
     for raw in codes:
         key = (raw or "").strip().upper()
         if not key or key in seen:
@@ -102,6 +122,11 @@ async def create_erp_stores(session: AsyncSession, actor: AssetUser, company_id:
             continue
         if not row["selectable"]:
             skipped.append({"code": row["code"], "reason": row["reason"] or "This store cannot be created."})
+            if row["exists"] and row["asset_user_id"] is not None:
+                existing = await session.get(AssetUser, row["asset_user_id"])
+                if existing is not None and existing.asset_user_type == "STORE" and existing.is_active:
+                    async with session.begin_nested():
+                        await give_rooms(existing)
             continue
         try:
             async with session.begin_nested():
@@ -112,14 +137,21 @@ async def create_erp_stores(session: AsyncSession, actor: AssetUser, company_id:
                     location = Location(company_id=company.id, code=row["code"].upper(), name=row["name"][:200], created_by=actor.id, updated_by=actor.id)
                     session.add(location)
                     await session.flush()
-                session.add(AssetUser(
+                store = AssetUser(
                     company_id=company.id, code=row["code"].upper(), name=row["name"][:200], asset_user_type="STORE", location_id=location.id,
                     email=row["email"], role="SELF_SERVICE", login_enabled=True, must_change_password=True,
                     created_by=actor.id, updated_by=actor.id,
-                ))
+                )
+                session.add(store)
                 await session.flush()
+                await give_rooms(store)
         except IntegrityError:
             skipped.append({"code": row["code"], "reason": "A user with this code or email already exists."})
+            known = await room_codes(session, [company.id])
             continue
         created.append(row["code"].upper())
-    return {"created": created, "skipped": skipped}
+    return {
+        "created": created, "skipped": skipped, "rooms": rooms_out,
+        "stock_rooms_created": sum(r["stock_room_created"] for r in rooms_out),
+        "install_points_created": sum(r["install_point_created"] for r in rooms_out),
+    }

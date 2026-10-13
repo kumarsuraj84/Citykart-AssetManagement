@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
+from app.core.problems import Refused
 from app.core.deps import (
     WRITE_ROLES, allowed_asset_domains, check_work_area, ensure_company_in_scope, require_role, scoped_company_ids,
 )
@@ -92,9 +93,13 @@ async def create_po_with_lines_route(
     domains = await allowed_asset_domains(session, actor)
     try:
         po, lines_created, units_created = await create_po_with_lines(session, body.model_dump(), actor, domains)
+    except Refused as exc:
+        # S5: every line / set problem at once: {detail, errors, problems: [{line_index | set_index, message}]}
+        await session.rollback()
+        return exc.response()
     except ValueError as exc:
         await session.rollback()
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+        return Refused([{"message": str(exc)}], "Nothing was created").response()
     except HTTPException:
         await session.rollback()
         raise

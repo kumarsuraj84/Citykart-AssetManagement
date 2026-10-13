@@ -10,15 +10,17 @@ from app.core.deps import (
     has_both_work_areas, is_self_service, require_role, scoped_company_ids,
 )
 from app.core.validation import (
-    InModel, MAX_AMOUNT, MAX_BULK_IDS, MAX_WARRANTY_YEARS, not_in_future,
+    InModel, MAX_AMOUNT, MAX_BULK_IDS, MAX_WARRANTY_YEARS, not_in_future, parse_work_area,
 )
+from app.asset_users.kinds import parse_holder_type
 from app.assets.audit_service import AUDITED_SCALAR_FIELDS, record_field_changes
 from app.assets.correction_service import correct_asset, UNSET as CORRECTION_UNSET
 from app.assets.custom_field_values import validate_custom_field_values
+from app.assets.labels import asset_label_rows
 from app.assets.models import Asset, AssetFieldChange
 from app.assets.schemas import (
     SerialFillIn, AssetCorrectionIn, AssetCreateIn, AssetDetailOut, AssetFieldChangeOut, AssetOut, AssetUpdateIn,
-    SerialBulkIn, SerialBulkOut, SerialFilledOut,
+    SerialBulkIn, SerialBulkOut, SerialFilledOut, with_labels,
 )
 from app.assets.search_service import search_assets
 from app.assets.service import (
@@ -26,10 +28,9 @@ from app.assets.service import (
 )
 from app.items.lookup import fill_from_item
 from app.asset_users.models import AssetUser
-from app.items.models import Item
 from app.lifecycle.service import apply_event
 from app.lifecycle.state_machine import LifecycleError
-from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Department, Location, Vendor
+from app.masters.models import AssetCategory, Brand, Vendor
 from app.reports.export_service import asset_label_png, asset_qr_png
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
@@ -69,58 +70,6 @@ class BulkActionIn(InModel):
 class BulkActionOut(BaseModel):
     done: int
     failed: list[dict]
-
-
-async def _page_label_maps(session: AsyncSession, items: list[Asset]) -> tuple[dict, dict, dict, dict, dict, dict, dict, dict, dict]:
-    """AM-11: page-scoped id->name lookups for the register's columns -- only
-    the distinct ids actually present on this one page (at most `limit`,
-    currently capped at 200), never every asset_user/company/category/etc in the
-    system (that's `app.reports.router._export_label_maps`'s job, which is
-    fine for a bounded export but would be wasteful on every register page
-    view/filter keystroke). Extended beyond the original AssetUser/Company pair
-    to Category/Sub-Category/Vendor/Cost Centre so the "show every field"
-    register pass can label those FK columns too instead of showing bare ids.
-
-    Also returns a asset_user_id -> current asset_user's Location name map (a second
-    hop off AssetUser.location_id), and a asset_user_id -> AssetUser.asset_user_type map --
-    Asset Movement needs "where is this asset right now" (which asset_user, that
-    asset_user's location, and whether that asset_user is STOCK_POINT vs an actual
-    person/store/install so an operator can see at a glance they're about to
-    move something out of someone's hands, not out of a warehouse), same
-    page-scoped batch-lookup pattern, never a per-row join."""
-    asset_user_ids = {a.current_asset_user_id for a in items}
-    company_ids = {a.company_id for a in items}
-    category_ids = {a.category_id for a in items}
-    subcategory_ids = {a.subcategory_id for a in items if a.subcategory_id is not None}
-    vendor_ids = {a.vendor_id for a in items if a.vendor_id is not None}
-    cost_center_ids = {a.cost_center_id for a in items}
-    brand_ids = {a.brand_id for a in items if a.brand_id is not None}
-
-    async def _labels(model, ids: set[int]) -> dict[int, str]:
-        if not ids:
-            return {}
-        rows = (await session.execute(select(model.id, model.name).where(model.id.in_(ids)))).all()
-        return {row[0]: row[1] for row in rows}
-
-    asset_users = await _labels(AssetUser, asset_user_ids)
-    companies = await _labels(Company, company_ids)
-    categories = await _labels(AssetCategory, category_ids)
-    subcategories = await _labels(AssetSubcategory, subcategory_ids)
-    vendors = await _labels(Vendor, vendor_ids)
-    cost_centers = await _labels(CostCenter, cost_center_ids)
-    brands = await _labels(Brand, brand_ids)
-
-    asset_user_detail_rows = []
-    if asset_user_ids:
-        asset_user_detail_rows = (await session.execute(
-            select(AssetUser.id, AssetUser.location_id, AssetUser.asset_user_type).where(AssetUser.id.in_(asset_user_ids)),
-        )).all()
-    location_ids = {loc_id for _, loc_id, _ in asset_user_detail_rows if loc_id is not None}
-    location_names = await _labels(Location, location_ids)
-    asset_user_locations = {hid: location_names.get(loc_id) for hid, loc_id, _ in asset_user_detail_rows}
-    asset_user_types = {hid: asset_user_type for hid, _, asset_user_type in asset_user_detail_rows}
-
-    return asset_users, companies, categories, subcategories, vendors, cost_centers, asset_user_locations, asset_user_types, brands
 
 
 @router.post("", response_model=list[AssetOut], status_code=201)
@@ -179,12 +128,21 @@ async def list_assets(
     sort_dir: str = Query("asc"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    holder_type: str | None = Query(None, max_length=30),
+    holder_id: int | None = Query(None),
+    vendor_id: int | None = Query(None),
+    po_number: str | None = Query(None, max_length=100),
+    work_area: str | None = Query(None, max_length=10),
     session: AsyncSession = Depends(get_session),
     asset_user=Depends(get_current_asset_user),
 ):
     """`exact=true` makes `q` match whole identifiers (code or its last segment,
-    serial, barcode, PO/invoice/PI no) instead of any text containing it; without
-    it, exact matches are still ranked first when no sort column is chosen.
+    serial, barcode, ERP item code, PO/invoice/PI no) instead of any text containing it.
+    S5: without it `q` also finds the Item's, vendor's, brand's and holder's names (and the
+    holder's code), and -- when no sort column is chosen -- lists exact identifier matches
+    first, then values starting with the text, then the rest. New filters: `holder_type`
+    (employee / store / stock room / install point), `holder_id` (= `asset_user_id`),
+    `vendor_id`, `po_number` (whole PO number, any case), `work_area` (= `domain`).
     Scoped exactly like `_get_scoped_asset`: a SELF_SERVICE asset_user only ever sees
     assets they currently hold (so `asset_user_id` is pinned to their own id, ignoring
     any value the caller passed, and the company filter is left unrestricted since
@@ -195,46 +153,35 @@ async def list_assets(
     `sort_by` must be one of search_assets.SORTABLE_COLUMNS -- an unrecognized value is
     silently ignored (falls back to the existing newest-first order) rather than a 422,
     so an old cached frontend bundle or a stale saved link never breaks."""
+    if holder_id is not None and asset_user_id is None:
+        asset_user_id = holder_id
     if is_self_service(asset_user):
         asset_user_id = asset_user.id
         allowed = None
     else:
         allowed = await scoped_company_ids(session, asset_user)
     domains = await allowed_asset_domains(session, asset_user)
+    try:
+        wanted_holder_type = parse_holder_type(holder_type)
+        wanted_domain = parse_work_area(work_area) or domain
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))   # `status` is the query parameter here, not the http module
     id_list: list[int] | None = None
     if ids is not None:
         try:
             id_list = [int(part) for part in ids.split(",") if part.strip()]
         except ValueError:
-            raise HTTPException(422, "ids must be comma-separated numbers")  # `status` is the query parameter here, not the http module
+            raise HTTPException(422, "ids must be comma-separated numbers")
         if len(id_list) > 200:
             raise HTTPException(422, "at most 200 ids at a time")
     items, total = await search_assets(
         session, allowed, status, category_id, asset_user_id, company_id, q, sort_by, sort_dir, limit, offset,
-        allowed_domains=domains, domain=domain, exact=exact, serial_pending=serial_pending or None,
-        item_id=item_id, ids=id_list,
+        allowed_domains=domains, domain=wanted_domain, exact=exact, serial_pending=serial_pending or None,
+        item_id=item_id, ids=id_list, vendor_id=vendor_id, po_number=po_number, holder_type=wanted_holder_type,
     )
-    (
-        asset_user_labels, company_labels, category_labels, subcategory_labels, vendor_labels, cost_center_labels,
-        asset_user_locations, asset_user_types, brand_labels,
-    ) = await _page_label_maps(session, items)
-    item_ids = {a.item_id for a in items if a.item_id}
-    item_labels = dict((await session.execute(select(Item.id, Item.name).where(Item.id.in_(item_ids)))).all()) if item_ids else {}
-    out_items = []
-    for a in items:
-        out = AssetOut.model_validate(a)
-        out.item_name = item_labels.get(a.item_id) if a.item_id else None
-        out.current_asset_user_name = asset_user_labels.get(a.current_asset_user_id)
-        out.current_asset_user_location_name = asset_user_locations.get(a.current_asset_user_id)
-        out.current_asset_user_type = asset_user_types.get(a.current_asset_user_id)
-        out.company_name = company_labels.get(a.company_id)
-        out.category_name = category_labels.get(a.category_id)
-        out.subcategory_name = subcategory_labels.get(a.subcategory_id) if a.subcategory_id else None
-        out.vendor_name = vendor_labels.get(a.vendor_id) if a.vendor_id else None
-        out.cost_center_name = cost_center_labels.get(a.cost_center_id)
-        out.brand_name = brand_labels.get(a.brand_id) if a.brand_id else None
-        out_items.append(out)
-    return AssetListOut(items=out_items, total=total)
+    # S5: every name on the page from ONE query (app.assets.labels), however many rows.
+    labels = await asset_label_rows(session, [a.id for a in items])
+    return AssetListOut(items=[with_labels(a, labels.get(a.id)) for a in items], total=total)
 
 
 async def _bulk_apply_event(
@@ -314,48 +261,12 @@ async def _get_scoped_asset(asset_id: int, session: AsyncSession, asset_user) ->
 
 
 async def _to_detail_out(session: AsyncSession, asset: Asset) -> AssetDetailOut:
-    """AM-04 §25: Asset 360 needs human-readable labels, not bare IDs. A
-    handful of point lookups by primary key (never more than 6 per call,
-    never per-list-row) -- additive, scoped to this one endpoint, not a new
-    generic enrichment layer."""
-    category = await session.get(AssetCategory, asset.category_id)
-    subcategory = await session.get(AssetSubcategory, asset.subcategory_id) if asset.subcategory_id else None
-    cost_center = await session.get(CostCenter, asset.cost_center_id)
-    vendor = await session.get(Vendor, asset.vendor_id) if asset.vendor_id else None
-    brand = await session.get(Brand, asset.brand_id) if asset.brand_id else None
-    current_asset_user = await session.get(AssetUser, asset.current_asset_user_id)
-    company = await session.get(Company, asset.company_id)
-    location = await session.get(Location, current_asset_user.location_id) if current_asset_user else None
-    department = (
-        await session.get(Department, current_asset_user.department_id)
-        if current_asset_user and current_asset_user.department_id else None
-    )
-    # current_asset_user_name/company_name/category_name/subcategory_name/cost_center_name/
-    # vendor_name already live on AssetOut itself (AM-11's original pair, plus the
-    # register's later "show every field" additions) -- exclude them all from the base
-    # dump here so this endpoint's own, already-fetched rows are the ones that win,
-    # not a duplicate keyword argument.
-    base = AssetOut.model_validate(asset).model_dump(
-        exclude={
-            "current_asset_user_name", "current_asset_user_location_name", "current_asset_user_type",
-            "company_name", "category_name", "subcategory_name", "cost_center_name", "vendor_name", "brand_name",
-            "item_name",
-        }
-    )
-    item = await session.get(Item, asset.item_id) if asset.item_id else None
-    return AssetDetailOut(
-        **base,
-        item_name=item.name if item else None,
-        current_asset_user_name=current_asset_user.name if current_asset_user else None,
-        company_name=company.name if company else None,
-        category_name=category.name if category else None,
-        subcategory_name=subcategory.name if subcategory else None,
-        cost_center_name=cost_center.name if cost_center else None,
-        vendor_name=vendor.name if vendor else None,
-        brand_name=brand.name if brand else None,
-        current_asset_user_type=current_asset_user.asset_user_type if current_asset_user else None,
-        location_name=location.name if location else None,
-        department_name=department.name if department else None,
+    """AM-04 §25: Asset 360 needs human-readable labels, not bare IDs. S5: every
+    name from the same single label query the register uses (app.assets.labels)."""
+    labels = (await asset_label_rows(session, [asset.id])).get(asset.id, {})
+    return with_labels(
+        asset, labels, AssetDetailOut,
+        location_name=labels.get("holder_location_name"), department_name=labels.get("holder_department_name"),
     )
 
 

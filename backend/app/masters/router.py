@@ -349,6 +349,9 @@ async def _category_before_create(session: AsyncSession, user, data: dict) -> No
     if data.get("asset_domain") not in models.ASSET_DOMAINS:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose who handles this category: IT or Non-IT.")
     await ensure_domain_manage(session, user, data["asset_domain"])
+    if data.get("code") is None:
+        # S5: no code typed -> one made from the name (the asset code may use it, so it stays short).
+        data["code"] = await unique_code(session, models.AssetCategory, data.get("name"), max_length=20, fallback="CAT")
 
 
 async def _category_before_edit(session: AsyncSession, user, existing, data: dict) -> None:
@@ -398,6 +401,10 @@ async def _subcategory_before_create(session: AsyncSession, user, data: dict) ->
     # A sub-category belongs to its category's work area: no sub-category under
     # a category of the other team. (A missing category is a 422 further on.)
     await ensure_domain_manage(session, user, await _parent_domain(session, data.get("category_id")))
+    if data.get("code") is None:
+        # S5: no code typed -> one made from the name, unique inside its category.
+        data["code"] = await unique_code(session, models.AssetSubcategory, data.get("name"), max_length=20, fallback="SUB",
+                                         scope={"category_id": data.get("category_id")})
 
 
 async def _subcategory_before_edit(session: AsyncSession, user, existing, data: dict) -> None:

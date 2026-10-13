@@ -1,12 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.bundles.models import Bundle
 from app.core.capabilities import (
     AREA_WORDS, TEAM_WORDS, ensure_domain_manage, ensure_item_create, ensure_work_area_change, require_domain_admin,
-    require_small_create,
+    require_small_create, work_areas,
 )
+from app.core.validation import parse_work_area
 from app.core.db import get_session
 from app.core.deps import WRITE_ROLES, require_primary_owner, require_role
 from app.erp.source import ErpSource, ErpUnavailable, get_erp_source
@@ -24,8 +25,23 @@ def _item_out(rows: list[dict], item_id: int) -> dict:
 
 
 @router.get("", response_model=list[ItemOut])
-async def list_all(session: AsyncSession = Depends(get_session), _actor=Depends(require_role(*WRITE_ROLES))):
-    return await service.list_items(session)
+async def list_all(
+    work_area: str | None = Query(None, max_length=10),
+    session: AsyncSession = Depends(get_session), actor=Depends(require_role(*WRITE_ROLES)),
+):
+    """Active Items. S5 (additive): `work_area=IT` / `NON_IT` -> that team's Items only; `work_area=mine` ->
+    the Items the caller may use (their own work area(s)). Left out: every Item, as before."""
+    rows = await service.list_items(session)
+    if work_area is None or not work_area.strip():
+        return rows
+    if work_area.strip().lower() == "mine":
+        wanted = set(await work_areas(session, actor))
+    else:
+        try:
+            wanted = {parse_work_area(work_area)}
+        except ValueError:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose a work area: IT, Non-IT or mine.")
+    return [r for r in rows if r["work_area"] in wanted]
 
 
 DUPLICATE_NAME = "An Item with this name already exists."

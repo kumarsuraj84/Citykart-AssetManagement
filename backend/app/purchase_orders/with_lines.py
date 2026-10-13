@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.asset_users.models import AssetUser
 from app.bundles.models import Bundle
 from app.bundles.service import add_bundle_lines
+from app.core.problems import Refused
 from app.items.models import Item
 from app.masters.models import Brand
 from app.purchase_orders.models import PurchaseOrder
@@ -85,18 +86,32 @@ async def create_po_with_lines(
     po = await create_purchase_order(session, header, actor)
     line_nos: set[int] = set()
     units = 0
+    # S5: every line and set is tried (each in its own savepoint) so ALL their problems come back at once
+    # (`problems: [{line_index | set_index, message}]`); any problem -> nothing is created (the caller rolls
+    # the whole PO back). A line of another work area is still a 403 straight away.
+    problems: list[dict] = []
     for position, ln in enumerate(data.get("lines") or [], start=1):
         try:
-            made = await add_pending_asset_line(session, po, await _line_values(session, ln), actor, allowed_domains=allowed_domains)
-        except (ValueError, HTTPException) as exc:
+            async with session.begin_nested():
+                made = await add_pending_asset_line(session, po, await _line_values(session, ln), actor, allowed_domains=allowed_domains)
+        except HTTPException as exc:
             raise _labelled(f"Line {position}", exc) from exc
+        except ValueError as exc:
+            problems.append({"line_index": position, "message": str(exc)})
+            continue
         line_nos.update(u.line_no for u in made)
         units += len(made)
     for position, st in enumerate(data.get("sets") or [], start=1):
         try:
-            made = await add_bundle_lines(session, po, await _set_values(session, st), actor, allowed_domains=allowed_domains)
-        except (ValueError, HTTPException) as exc:
+            async with session.begin_nested():
+                made = await add_bundle_lines(session, po, await _set_values(session, st), actor, allowed_domains=allowed_domains)
+        except HTTPException as exc:
             raise _labelled(f"Set {position}", exc) from exc
+        except ValueError as exc:
+            problems.append({"set_index": position, "message": str(exc)})
+            continue
         line_nos.update(u.line_no for u in made)
         units += len(made)
+    if problems:
+        raise Refused(problems, "Nothing was created")
     return po, len(line_nos), units

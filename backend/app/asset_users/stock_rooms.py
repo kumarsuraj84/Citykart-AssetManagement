@@ -74,34 +74,50 @@ async def _existing(session: AsyncSession, company_id: int, name: str) -> AssetU
     )).scalars().first()
 
 
-async def _location_for(session: AsyncSession, actor, company_id: int, body: StockRoomIn) -> Location:
-    if body.location_id is not None:
-        location = await session.get(Location, body.location_id)
+async def resolve_location(
+    session: AsyncSession, actor, company_id: int, location_id: int | None, location_name: str | None, *,
+    noun: str = "stock room", missing: str | None = None,
+) -> Location:
+    """S3a-1 (shared since S5 with employees, stores and install points): an existing active Location of the
+    company (`location_id`), or the active Location of that company with this name (any case), or a new one
+    made from the name (code from the name, unique per company). Raises 422 in words."""
+    if location_id is not None:
+        location = await session.get(Location, location_id)
         if location is None or not location.is_active:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "The location you chose does not exist or is no longer active.")
         if location.company_id != company_id:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "The location must belong to the same company as the stock room.")
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"The location must belong to the same company as the {noun}.")
         return location
-    if body.location_name is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose where the stock room is, or type the name of the place.")
+    if location_name is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            missing or f"Choose where the {noun} is, or type the name of the place.")
     found = (await session.execute(
         select(Location).where(
             Location.company_id == company_id, Location.is_active.is_(True),
-            func.lower(func.trim(Location.name)) == body.location_name.lower(),
+            func.lower(func.trim(Location.name)) == location_name.lower(),
         ).order_by(Location.id).limit(1)
     )).scalars().first()
     if found is not None:
         return found
-    code = await unique_code(session, Location, body.location_name, max_length=LOCATION_CODE_LENGTH, fallback="LOC",
+    code = await unique_code(session, Location, location_name, max_length=LOCATION_CODE_LENGTH, fallback="LOC",
                              separator="-", scope={"company_id": company_id})
-    location = Location(company_id=company_id, code=code, name=body.location_name,
+    location = Location(company_id=company_id, code=code, name=location_name,
                         created_by=actor.id, updated_by=actor.id)
     session.add(location)
     await session.flush()
     return location
 
 
-@router.post("", response_model=AssetUserOut, status_code=201)
+async def _location_for(session: AsyncSession, actor, company_id: int, body: StockRoomIn) -> Location:
+    return await resolve_location(session, actor, company_id, body.location_id, body.location_name)
+
+
+class StockRoomOut(AssetUserOut):
+    # S5 (additive): false when a stock room with this name already existed and was returned as it is.
+    created: bool = True
+
+
+@router.post("", response_model=StockRoomOut, status_code=201)
 async def create_stock_room(
     body: StockRoomIn, response: Response, session: AsyncSession = Depends(get_session),
     actor=Depends(require_small_create("a stock room")),
@@ -113,7 +129,7 @@ async def create_stock_room(
     existing = await _existing(session, company.id, body.name)
     if existing is not None:
         response.status_code = status.HTTP_200_OK
-        return (await _out(session, [existing]))[0]
+        return _room_out((await _out(session, [existing]))[0], created=False)
     location = await _location_for(session, actor, company.id, body)
     code = await unique_code(session, AssetUser, body.name, max_length=CODE_LENGTH, fallback="ROOM",
                              prefix="STK-", separator="-", scope={"company_id": company.id})
@@ -131,9 +147,13 @@ async def create_stock_room(
         if again is None:
             raise HTTPException(status.HTTP_409_CONFLICT, "This stock room could not be saved. Try again.")
         response.status_code = status.HTTP_200_OK
-        return (await _out(session, [again]))[0]
+        return _room_out((await _out(session, [again]))[0], created=False)
     await session.refresh(room)
-    return (await _out(session, [room]))[0]
+    return _room_out((await _out(session, [room]))[0], created=True)
+
+
+def _room_out(row: AssetUserOut, created: bool) -> StockRoomOut:
+    return StockRoomOut(**row.model_dump(), created=created)
 
 
 @router.get("", response_model=list[AssetUserOut])

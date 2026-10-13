@@ -40,8 +40,9 @@ async def _companies(session: AsyncSession, company_id: int | None) -> list[Comp
     return companies
 
 
-async def build_inbox(session: AsyncSession, source: ErpSource, company_id: int | None = None) -> dict:
-    companies = await _companies(session, company_id)
+async def _open_state(session: AsyncSession, source: ErpSource, companies: list[Company]) -> dict:
+    """What both the inbox and its counts start from: the open ERP POs of these companies not created here
+    yet, their ERP items, the item rules and the vendor links -- each read once."""
     by_erp: dict[str, Company] = {}
     for c in companies:
         by_erp.setdefault(c.erp_code.lower(), c)
@@ -52,10 +53,12 @@ async def build_inbox(session: AsyncSession, source: ErpSource, company_id: int 
     codes = sorted({ln.item_code for p in pos for ln in live_lines(p) if ln.item_code})
     erp_items = _index_items(await source.items(codes)) if codes else {}
     rules = await active_rule_sets(session, [c.id for c in companies])
-    active_items = list((await session.execute(select(Item).where(Item.is_active.is_(True)))).scalars().all())
-    item_words = {i.id: _words(i.name) for i in active_items}
+    return {"by_erp": by_erp, "links": links, "pos": pos, "erp_items": erp_items, "rules": rules}
 
-    # ---- items: undecided codes on open POs, grouped by Article (per company) ----
+
+def _undecided_groups(state: dict) -> dict[tuple[int, str], dict]:
+    """Undecided codes on open POs, grouped by Article (per company)."""
+    by_erp, pos, erp_items, rules = state["by_erp"], state["pos"], state["erp_items"], state["rules"]
     groups: dict[tuple[int, str], dict] = {}
     for p in pos:
         company = by_erp[p.company_code.lower()]
@@ -73,6 +76,54 @@ async def build_inbox(session: AsyncSession, source: ErpSource, company_id: int 
                 "units": 0.0, "po_numbers": set(), "erp": erp})
             entry["units"] += ln.qty - ln.cancelled_qty
             entry["po_numbers"].add(p.po_number)
+    return groups
+
+
+def _unlinked_open_suppliers(state: dict) -> dict[tuple[int, str], int]:
+    """(company id, ERP supplier code) -> open POs, for suppliers not linked to a CKAM vendor."""
+    out: dict[tuple[int, str], int] = {}
+    for p in state["pos"]:
+        company = state["by_erp"][p.company_code.lower()]
+        if (company.id, p.supplier_code) not in state["links"]:
+            out[(company.id, p.supplier_code)] = out.get((company.id, p.supplier_code), 0) + 1
+    return out
+
+
+async def _ready_store_count(session: AsyncSession, companies: list[Company]) -> int:
+    total = 0
+    for company in companies:
+        listing = await erp_stores.list_erp_stores(session, company.id)
+        total += sum(1 for s in listing["stores"] if s["group"] == erp_stores.READY and s["selectable"])
+    return total
+
+
+async def inbox_counts(session: AsyncSession, source: ErpSource, company_id: int | None = None) -> dict:
+    """S5: just the three numbers for Home -- Article groups of undecided items, PAN groups of unmatched
+    suppliers, stores ready to create -- the same rules as build_inbox without its suggestions and lists."""
+    companies = await _companies(session, company_id)
+    state = await _open_state(session, source, companies)
+    groups = _undecided_groups(state)
+    open_by_supplier = _unlinked_open_suppliers(state)
+    vendor_groups = 0
+    for company in companies:
+        wanted = {code for (cid, code) in open_by_supplier if cid == company.id}
+        if not wanted:
+            continue
+        known = {s.code: s for s in await source.vendors(company.erp_code)}
+        vendor_groups += len({group_key(company.erp_code, code, known[code].gstin if code in known else None)
+                              for code in wanted})
+    return {"items": len(groups), "vendors": vendor_groups, "stores": await _ready_store_count(session, companies)}
+
+
+async def build_inbox(session: AsyncSession, source: ErpSource, company_id: int | None = None) -> dict:
+    companies = await _companies(session, company_id)
+    state = await _open_state(session, source, companies)
+    by_erp, links, pos = state["by_erp"], state["links"], state["pos"]
+    active_items = list((await session.execute(select(Item).where(Item.is_active.is_(True)))).scalars().all())
+    item_words = {i.id: _words(i.name) for i in active_items}
+
+    # ---- items: undecided codes on open POs, grouped by Article (per company) ----
+    groups = _undecided_groups(state)
     names_cache: dict[int, dict[str, set[str]]] = {}
     for company in companies:
         keys = [k for (cid, k) in groups if cid == company.id and k]
@@ -100,11 +151,7 @@ async def build_inbox(session: AsyncSession, source: ErpSource, company_id: int 
         })
 
     # ---- vendors: unlinked suppliers with open POs, grouped by PAN (per company) ----
-    open_by_supplier: dict[tuple[int, str], int] = {}
-    for p in pos:
-        company = by_erp[p.company_code.lower()]
-        if (company.id, p.supplier_code) not in links:
-            open_by_supplier[(company.id, p.supplier_code)] = open_by_supplier.get((company.id, p.supplier_code), 0) + 1
+    open_by_supplier = _unlinked_open_suppliers(state)
     vendors_out = []
     if open_by_supplier:
         ckam = await _active_vendors(session)

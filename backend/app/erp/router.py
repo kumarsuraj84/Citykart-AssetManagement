@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.capabilities import ensure_company_for_create, require_small_create
@@ -11,7 +11,7 @@ from app.erp import vendors as erp_vendors
 from app.erp.changes import OutsideWorkArea, apply_changes, changes_summary, po_changes, snapshot_baseline
 from app.erp.invoices import apply_pi, pi_preview
 from app.erp.reminders import delivery_reminders
-from app.erp.inbox import build_inbox, resolve_items_batch, resolve_vendors_batch
+from app.erp.inbox import build_inbox, inbox_counts, resolve_items_batch, resolve_vendors_batch
 from app.erp.readiness import freshness
 from app.erp.schemas import (
     ChangesApplyIn, DraftCreateIn, ErpVendorLinkIn, InboxItemDecisionIn, InboxVendorDecisionIn, NotTrackedIn, PiApplyIn,
@@ -85,18 +85,37 @@ async def create_stores(
 
 # ---- vendors -----------------------------------------------------------
 
+VENDOR_PAGE_DEFAULT = 200
+
+
 @router.get("/vendors")
 async def list_vendors(
-    company_id: int, session: AsyncSession = Depends(get_session), source: ErpSource = Depends(get_erp_source),
+    response: Response,
+    company_id: int,
+    q: str | None = Query(None, max_length=200),
+    limit: int | None = Query(None, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    session: AsyncSession = Depends(get_session), source: ErpSource = Depends(get_erp_source),
     _actor=Depends(require_primary_owner()),
 ):
-    """The ERP suppliers of ONE company (the same code means a different supplier in the other company)."""
+    """The ERP suppliers of ONE company (the same code means a different supplier in the other company).
+    S5 (additive): `q` (supplier name, ERP code, GSTIN or the linked / suggested vendor's name; plain text),
+    `limit` (1-1000) and `offset`; `X-Total-Count` = all matching suppliers. A call with none of the three
+    still gets the whole list (as before); with `q` or `offset` but no `limit`, a page of 200."""
     try:
-        return await erp_vendors.list_erp_vendors(session, source, company_id)
+        rows = await erp_vendors.list_erp_vendors(session, source, company_id)
     except LookupError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
     except ErpUnavailable as exc:
         raise _unavailable(exc)
+    needle = (q or "").strip().casefold()
+    if needle:
+        rows = [r for r in rows if any(needle in (r.get(k) or "").casefold() for k in (
+            "name", "erp_code", "gstin", "linked_vendor_name", "suggested_vendor_name"))]
+    response.headers["X-Total-Count"] = str(len(rows))
+    if limit is not None or offset or needle:
+        rows = rows[offset: offset + (limit or VENDOR_PAGE_DEFAULT)]
+    return rows
 
 
 @router.post("/vendors/import", response_model=VendorOut, status_code=201)
@@ -233,6 +252,22 @@ async def inbox(
     suppliers with open POs (by PAN), ERP stores ready to be created. Head-office admin only."""
     try:
         return await build_inbox(session, source, company_id)
+    except LookupError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
+    except ErpUnavailable as exc:
+        raise _unavailable(exc)
+
+
+@router.get("/inbox/counts")
+async def inbox_counts_route(
+    company_id: int | None = None, session: AsyncSession = Depends(get_session),
+    source: ErpSource = Depends(get_erp_source), _actor=Depends(require_primary_owner()),
+):
+    """S5: only the three numbers of the ERP inbox, for Home: {items, vendors, stores} (Article groups of ERP
+    items waiting for a decision, supplier groups waiting for a vendor match, ERP stores ready to create).
+    Same rules as GET /inbox, without its lists and suggestions. Head-office admin only."""
+    try:
+        return await inbox_counts(session, source, company_id)
     except LookupError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
     except ErpUnavailable as exc:

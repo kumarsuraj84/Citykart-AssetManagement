@@ -85,6 +85,38 @@ class AssetCreateIn(InModel):
         return self
 
 
+MAX_BATCH_UNITS = 1000
+
+
+class AssetBatchIn(InModel):
+    """S5: POST /api/assets/batch -- add `quantity` assets of one Item in one go. Category, sub-category and
+    work area come from the Item; the company from the cost centre; brand, warranty, serial rule and
+    description default from the Item. Everything is checked first; see app.assets.batch."""
+    item_id: int
+    quantity: int = Field(ge=1, le=MAX_BATCH_UNITS)
+    received_into_asset_user_id: int
+    cost_center_id: int
+    company_id: int | None = None
+    serial_mode: str | None = Field(default=None, max_length=20)
+    serial_numbers: list[str | None] | None = Field(default=None, max_length=MAX_BATCH_UNITS)
+    vendor_id: int | None = None
+    po_number: str | None = Field(default=None, max_length=100)
+    po_date: date | None = None
+    invoice_number: str | None = Field(default=None, max_length=100)
+    invoice_date: date | None = None
+    invoice_amount: float | None = Field(default=None, ge=0, le=MAX_AMOUNT)
+    purchase_cost: float | None = Field(default=None, ge=0, le=MAX_AMOUNT)
+    tax_percent: float | None = Field(default=None, ge=0, le=100)
+    brand_id: int | None = None
+    model: str | None = Field(default=None, max_length=200)
+    warranty_years: int | None = Field(default=None, ge=0, le=MAX_WARRANTY_YEARS)
+    description: str | None = Field(default=None, max_length=500)
+    barcode: str | None = Field(default=None, max_length=200)
+    legacy_asset_code: str | None = Field(default=None, max_length=200)
+    custom_fields: dict | None = None
+    unit_custom_fields: list[dict | None] | None = Field(default=None, max_length=MAX_BATCH_UNITS)
+
+
 class AssetOut(BaseModel):
     """AM-02: expanded to mirror the Asset model's business/procurement fields --
     these were already captured correctly on create (AssetCreateIn already had
@@ -155,6 +187,24 @@ class AssetOut(BaseModel):
     # CityKart's own Item this asset is (see app.items); the ERP item code is
     # only its link back to the PO / receipt / PI.
     item_name: str | None = None
+    # S5 (additive): who holds it, in the owner's words, and the company code /
+    # work area -- all from one label query per page (app.assets.labels).
+    holder_type: str | None = None             # EMPLOYEE / STORE / STOCK_POINT / INSTALLED
+    holder_kind_label: str | None = None       # Employee / Store / Stock Room / Install Point
+    holder_name: str | None = None
+    holder_code: str | None = None
+    holder_location_name: str | None = None
+    company_code: str | None = None
+    work_area: str | None = None               # IT / NON_IT (= asset_domain)
+    work_area_label: str | None = None         # IT / Non-IT
+
+
+LABEL_FIELDS = (
+    "item_name", "current_asset_user_name", "current_asset_user_location_name", "current_asset_user_type",
+    "company_name", "category_name", "subcategory_name", "cost_center_name", "vendor_name", "brand_name",
+    "holder_type", "holder_kind_label", "holder_name", "holder_code", "holder_location_name", "company_code",
+    "work_area", "work_area_label",
+)
 
 
 class AssetDetailOut(AssetOut):
@@ -175,6 +225,14 @@ class AssetDetailOut(AssetOut):
     current_asset_user_type: str | None
     location_name: str | None
     department_name: str | None
+
+
+def with_labels(asset, labels: dict | None, out_cls=AssetOut, **extra):
+    """An AssetOut (or AssetDetailOut) for `asset` with the names from app.assets.labels.asset_label_rows."""
+    base = AssetOut.model_validate(asset).model_dump(exclude=set(LABEL_FIELDS))
+    names = {k: (labels or {}).get(k) for k in LABEL_FIELDS}
+    names.update(extra)
+    return out_cls(**base, **names)
 
 
 class AssetFieldChangeOut(BaseModel):

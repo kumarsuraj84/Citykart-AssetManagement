@@ -8,7 +8,8 @@ from app.core.validation import InModel, MAX_AMOUNT, MAX_QUANTITY, MAX_WARRANTY_
 class DraftLineIn(InModel):
     item_code: str | None = Field(default=None, max_length=50)   # the ERP item code; kept on the asset as a link back to the PO/receipt/PI
     description: str = Field(min_length=1, max_length=500)
-    barcode: str = Field(max_length=200)
+    # S5: optional, like on the one-screen manual PO (blank or left out -> none stored; labels print the asset code).
+    barcode: str | None = Field(default=None, max_length=200)
     quantity: int = Field(ge=1, le=MAX_QUANTITY)
     rate: float = Field(gt=0, le=MAX_AMOUNT)
     tax_percent: float = Field(default=0, ge=0, le=100)

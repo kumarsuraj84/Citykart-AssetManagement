@@ -96,6 +96,17 @@ def not_in_future(value: date | None, label: str) -> date | None:
     return value
 
 
+def parse_work_area(value: str | None) -> str | None:
+    """S5: a work-area filter ("IT", "NON_IT", "Non-IT", "non it", any case) -> IT / NON_IT; None when not
+    given; ValueError in words otherwise."""
+    if value is None or not value.strip():
+        return None
+    text = value.strip().upper().replace("-", "_").replace(" ", "_")
+    if text in ("IT", "NON_IT"):
+        return text
+    raise ValueError("Choose a work area: IT or Non-IT.")
+
+
 def escape_like(value: str) -> str:
     """For LIKE/ILIKE with escape='\\': a typed %, _ or \\ matches itself."""
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")

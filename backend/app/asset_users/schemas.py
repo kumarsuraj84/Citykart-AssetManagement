@@ -109,6 +109,26 @@ class ResetPasswordOut(BaseModel):
     temp_password: str
 
 
+MAX_ISSUE_PASSWORDS = 500
+
+
+class IssuePasswordsIn(InModel):
+    """S5: POST /asset-users/issue-passwords -- a temporary password for many accounts at once (e.g. every new
+    store). Choose the accounts by id, or by kind and/or company."""
+    asset_user_ids: list[int] | None = Field(default=None, max_length=MAX_ISSUE_PASSWORDS)
+    kind: str | None = Field(default=None, max_length=20)          # "stores" | "employees"
+    only_without_password: bool = True
+    company_id: int | None = None
+
+
+class IssuedPasswordOut(BaseModel):
+    asset_user_id: int
+    code: str | None
+    name: str
+    email: str | None
+    temp_password: str
+
+
 class CompanyAccessIn(InModel):
     company_ids: list[int] = Field(max_length=MAX_BULK_IDS)
 

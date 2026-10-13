@@ -206,14 +206,15 @@ class CostCenterOut(BaseModel):
 
 
 class AssetCategoryIn(InModel):
-    code: str = Field(max_length=20)
+    # S5: may be left out (or null) -- a readable unique code is made from the name, as for vendors.
+    code: str | None = Field(default=None, max_length=20)
     name: str = Field(max_length=200)
     # IT / NON_IT (app.masters.models.ASSET_DOMAINS) -- the FUTURE default
     # domain for assets created under this category (spec §17/§41). Required:
     # every category must be explicitly classified, never guessed.
     asset_domain: str
 
-    _code = field_validator("code")(_required_code)
+    _code = field_validator("code")(_optional_code)
     _name = field_validator("name")(_required_name)
 
 
@@ -241,10 +242,11 @@ class AssetCategoryOut(BaseModel):
 
 class AssetSubcategoryIn(InModel):
     category_id: int
-    code: str = Field(max_length=20)
+    # S5: may be left out (or null) -- made from the name, unique inside the category.
+    code: str | None = Field(default=None, max_length=20)
     name: str = Field(max_length=200)
 
-    _code = field_validator("code")(_required_code)
+    _code = field_validator("code")(_optional_code)
     _name = field_validator("name")(_required_name)
 
 
