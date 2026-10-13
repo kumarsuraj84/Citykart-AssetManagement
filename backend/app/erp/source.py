@@ -191,18 +191,22 @@ def _f(value) -> float | None:
     return None if value is None else float(value)
 
 
-class PgErpSource:
-    def __init__(self):
-        self._cache: dict[str, tuple[float, object]] = {}
+class PgReadOnly:
+    """A read-only connection to the ERP warehouse. Every connection is opened with
+    default_transaction_read_only, so a mistake in a query cannot write to the ERP."""
+    statement_timeout_ms: int | None = None      # None = the server's own default
 
     async def _connect(self) -> asyncpg.Connection:
         if not is_configured():
             raise ErpUnavailable("The ERP connection is not set up on this server.")
+        server_settings = {"default_transaction_read_only": "on"}
+        if self.statement_timeout_ms:
+            server_settings["statement_timeout"] = str(self.statement_timeout_ms)
         try:
             return await asyncpg.connect(
                 host=settings.po_source_host, port=settings.po_source_port, database=settings.po_source_db,
                 user=settings.po_source_user, password=settings.po_source_password,
-                timeout=CONNECT_TIMEOUT_SECONDS, server_settings={"default_transaction_read_only": "on"},
+                timeout=CONNECT_TIMEOUT_SECONDS, server_settings=server_settings,
             )
         except (OSError, TimeoutError, asyncpg.PostgresError) as exc:
             raise ErpUnavailable(f"The ERP database could not be reached ({type(exc).__name__}).") from exc
@@ -219,6 +223,11 @@ class PgErpSource:
             raise ErpUnavailable(f"The ERP database refused the request ({type(exc).__name__}).") from exc
         finally:
             await conn.close()
+
+
+class PgErpSource(PgReadOnly):
+    def __init__(self):
+        self._cache: dict[str, tuple[float, object]] = {}
 
     def _cached(self, key: str):
         hit = self._cache.get(key)
