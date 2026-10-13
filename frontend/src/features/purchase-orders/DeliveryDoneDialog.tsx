@@ -7,8 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { SearchableSelect, type SearchableSelectOption } from "@/components/shared/SearchableSelect";
+import { type SearchableSelectOption } from "@/components/shared/SearchableSelect";
 import { AsyncButton } from "@/components/shared/AsyncButton";
+import { StockRoomSelect, useStockRooms } from "@/components/quick-create/StockRoomSelect";
+import { useRemember, useRememberedDefault } from "@/lib/remembered-defaults";
 import { serialConflictSentence } from "./serial-conflict";
 import type { PendingAssetRow } from "./po-detail-types";
 
@@ -48,10 +50,6 @@ function parseSerials(text: string): string[] {
   return text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
 }
 
-function selectValue(v: string): string | undefined {
-  return v || undefined;
-}
-
 type GroupInput = { text: string; noSerial: boolean; later: boolean };
 
 interface Props {
@@ -60,13 +58,16 @@ interface Props {
   units: PendingAssetRow[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** The PO's company: its stock rooms are listed (GET /stock-rooms). */
+  companyId: number | null;
   /** Where the PO's goods naturally go (its delivery location); still changeable. */
   defaultReceivedIntoId?: number | null;
-  receivedIntoOptions: SearchableSelectOption[];
+  /** Kept in the list although not a stock room (the PO's own older delivery place). */
+  extraReceivedInto?: SearchableSelectOption[];
   onDelivered: (result: PendingAssetRow[]) => void;
 }
 
-export function DeliveryDoneDialog({ poId, units, open, onOpenChange, defaultReceivedIntoId, receivedIntoOptions, onDelivered }: Props) {
+export function DeliveryDoneDialog({ poId, units, open, onOpenChange, companyId, defaultReceivedIntoId, extraReceivedInto, onDelivered }: Props) {
   const deliveryGroups = useMemo(() => groupUnits(units), [units]);
 
   const [invoiceNumber, setInvoiceNumber] = useState("");
@@ -78,6 +79,13 @@ export function DeliveryDoneDialog({ poId, units, open, onOpenChange, defaultRec
   // a pasted/scanned list, one serial per line, is handed to the units in
   // order, or "No serial number" sets N/A for the whole product.
   const [initialAssetUserId, setInitialAssetUserId] = useState(() => (defaultReceivedIntoId ? String(defaultReceivedIntoId) : ""));
+  // No delivery place on the PO: start with the stock room this person received into last (if it still exists).
+  const stockRoomsQ = useStockRooms(companyId);
+  const rememberChoice = useRemember();
+  useRememberedDefault({
+    kind: "stock_room", companyId, value: initialAssetUserId, setValue: setInitialAssetUserId,
+    validIds: stockRoomsQ.rows.map((r) => r.id), ready: stockRoomsQ.isSuccess,
+  });
   // Parts that never carry a serial (a set's mouse/keyboard) start with
   // "No serial number" already ticked; it can still be unticked.
   const [groupInput, setGroupInput] = useState<Record<string, GroupInput>>(() =>
@@ -207,7 +215,10 @@ export function DeliveryDoneDialog({ poId, units, open, onOpenChange, defaultRec
             .filter((line) => later || line.serial_number !== "");
         }),
       }),
-    onSuccess: (result) => onDelivered(Array.isArray(result) ? result : []),
+    onSuccess: (result) => {
+      rememberChoice(companyId, "stock_room", initialAssetUserId);
+      onDelivered(Array.isArray(result) ? result : []);
+    },
   });
 
   const n = units.length;
@@ -229,13 +240,14 @@ export function DeliveryDoneDialog({ poId, units, open, onOpenChange, defaultRec
           <Label htmlFor="initial-asset-user" className="text-xs">
             Received Into<span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
           </Label>
-          <SearchableSelect
+          <StockRoomSelect
             id="initial-asset-user"
-            value={selectValue(initialAssetUserId)}
+            companyId={companyId}
+            value={initialAssetUserId}
             onValueChange={setInitialAssetUserId}
-            options={receivedIntoOptions}
+            extraOptions={extraReceivedInto}
           />
-          <p className="text-xs text-muted-foreground">The Stock Room, Store or Employee this delivery goes to. Applies to every unit below.</p>
+          <p className="text-xs text-muted-foreground">The Stock Room this delivery goes to. Applies to every unit below.</p>
         </div>
 
         <div className="grid shrink-0 grid-cols-3 gap-2">

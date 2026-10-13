@@ -5,6 +5,8 @@ import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { createAppRouter } from "../../router";
 import { apiClient } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
+import type { Capabilities } from "../../lib/capabilities";
+import { KINDS, OPERATOR_IT, VIEWER, withCapabilities } from "../../test-capabilities";
 
 vi.mock("../../lib/api-client");
 
@@ -87,6 +89,8 @@ function mockGets(units: Unit[], opts: { po?: unknown; groups?: unknown[] } = {}
     if (path.startsWith("/masters/subcategories")) return Promise.resolve([{ id: 2, name: "Laptop", category_id: 1 }]);
     if (path.startsWith("/masters/cost-centers")) return Promise.resolve([{ id: 3, name: "Head Office" }]);
     if (path.startsWith("/masters/brands")) return Promise.resolve([{ id: 9, name: "Dell" }]);
+    // Received Into lists the PO company's stock rooms (S3b-1: GET /stock-rooms).
+    if (path.startsWith("/stock-rooms?company_id=")) return Promise.resolve([{ id: 5, name: "IT Stock-HO" }]);
     if (path.startsWith("/asset-users")) return Promise.resolve([{ id: 5, name: "IT Stock-HO" }]);
     return Promise.resolve([]);
   });
@@ -1031,5 +1035,111 @@ describe("PurchaseOrderDetail: invoices received and their Purchase Invoice (PI)
     await waitFor(() => expect(lineRows()).toHaveLength(1));
     fireEvent.click(screen.getByRole("link", { name: /^close$/i }));
     await waitFor(() => expect(screen.getByRole("link", { name: /new purchase order/i })).toBeInTheDocument());
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S3b-1: Item / Brand on Add Line and Edit line, and the Received Into stock
+// room, can be added right here by whoever the capabilities allow.
+// ---------------------------------------------------------------------------
+describe("S3b-1: inline creation on the PO page", () => {
+  function withCaps(caps: Capabilities | null) {
+    const base = (apiClient.get as any).getMockImplementation();
+    (apiClient.get as any).mockImplementation(withCapabilities(caps, base));
+  }
+
+  async function offered(label: RegExp, entry: RegExp, scope: HTMLElement = document.body): Promise<boolean> {
+    const trigger = within(scope).getByLabelText(label);
+    fireEvent.click(trigger);
+    await screen.findAllByRole("option");
+    const found = screen.queryByRole("option", { name: entry }) !== null;
+    fireEvent.click(trigger);
+    await waitFor(() => expect(screen.queryByRole("option", { name: entry })).not.toBeInTheDocument());
+    return found;
+  }
+
+  const settle = async () => {
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/auth/capabilities"));
+    await new Promise((r) => setTimeout(r, 20));
+  };
+
+  beforeEach(() => {
+    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: false, mustChangePassword: false, assetUserId: 5 });
+  });
+
+  it.each(KINDS)("%s: Add Line offers New Item / New Brand as the capabilities say", async (_kind, caps) => {
+    mockGets([]);
+    withCaps(caps);
+    renderDetailAt();
+    fireEvent.click(await screen.findByRole("button", { name: /\+ add line/i }));
+    await waitFor(() => expect(screen.getByLabelText(/^description\*?$/i)).toBeInTheDocument());
+    await settle();
+    expect(await offered(/^item\*?$/i, /new item/i)).toBe(caps.can_create.item === true);
+    expect(await offered(/^brand$/i, /new brand/i)).toBe(caps.can_create.brand === true);
+  });
+
+  it.each(KINDS)("%s: Edit line offers New Item / New Brand as the capabilities say", async (_kind, caps) => {
+    mockGets([], { groups: [group({ item_id: 21, item_name: "Laptop", ordered: 2, waiting: 2 })] });
+    withCaps(caps);
+    renderDetailAt();
+    await waitFor(() => expect(lineRows()).toHaveLength(1));
+    fireEvent.click(screen.getByRole("button", { name: /edit line 1/i }));
+    const dialog = screen.getByRole("dialog");
+    await settle();
+    expect(await offered(/^item$/i, /new item/i, dialog)).toBe(caps.can_create.item === true);
+    expect(await offered(/^brand$/i, /new brand/i, dialog)).toBe(caps.can_create.brand === true);
+  });
+
+  async function openReceive(caps: Capabilities, po: unknown = PO) {
+    mockGets([PENDING_LINE], { po });
+    withCaps(caps);
+    renderDetailAt();
+    await waitFor(() => expect(lineRows().length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole("button", { name: /receive line 1\b/i }));
+    return screen.findByRole("dialog");
+  }
+
+  it("Receive lists the PO company's stock rooms from /stock-rooms, and a new one is added and picked right there", async () => {
+    const dialog = await openReceive(OPERATOR_IT);
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/stock-rooms?company_id=1"));
+    (apiClient.post as any).mockImplementation((path: string, body: Record<string, unknown>) =>
+      Promise.resolve(path === "/stock-rooms" ? { id: 77, name: body.name } : []));
+    const base = (apiClient.get as any).getMockImplementation();
+    let created = false;
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (path.startsWith("/stock-rooms?company_id=") && created) return Promise.resolve([{ id: 5, name: "IT Stock-HO" }, { id: 77, name: "Gate Stock" }]);
+      if (path === "/masters/locations?company_id=1") return Promise.resolve([{ id: 50, name: "Head Office" }]);
+      return base(path);
+    });
+    fireEvent.click(within(dialog).getByLabelText(/received into/i));
+    fireEvent.click(await screen.findByRole("option", { name: /new stock room/i }));
+    const add = await screen.findByRole("dialog", { name: /new stock room/i });
+    fireEvent.change(within(add).getByLabelText(/^name/i), { target: { value: "Gate Stock" } });
+    fireEvent.click(within(add).getByLabelText(/^place/i));
+    fireEvent.click(await screen.findByRole("option", { name: "Head Office" }));
+    created = true;
+    fireEvent.click(within(add).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/stock-rooms", { name: "Gate Stock", company_id: 1, location_id: 50 }));
+    await waitFor(() => expect(within(dialog).getByLabelText(/received into/i)).toHaveTextContent("Gate Stock"));
+    expect(screen.getByRole("dialog", { name: /receive 1 unit/i })).toBeInTheDocument();     // still receiving
+  });
+
+  it("a viewer-like login (capabilities say no) gets no New Stock Room in Receive", async () => {
+    const dialog = await openReceive(VIEWER);
+    await settle();
+    expect(await offered(/received into/i, /new stock room/i, dialog)).toBe(false);
+  });
+
+  it("with no delivery place on the PO, Receive starts with the stock room this person received into last, and remembers the new choice", async () => {
+    window.localStorage.setItem("ckam:last-used:5:1", JSON.stringify({ stock_room: "5" }));
+    (apiClient.post as any).mockResolvedValue([]);
+    const dialog = await openReceive(OPERATOR_IT);
+    await waitFor(() => expect(within(dialog).getByLabelText(/received into/i)).toHaveTextContent("IT Stock-HO"));
+    fireEvent.change(within(dialog).getByLabelText(/invoice no/i), { target: { value: "INV-1" } });
+    fireEvent.change(within(dialog).getByLabelText(/invoice amount/i), { target: { value: "100" } });
+    fireEvent.change(within(dialog).getByLabelText(/^serial number\*?$/i), { target: { value: "SN-1" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: /confirm/i }));
+    await waitFor(() => expect(deliverCall()?.[1].lines[0]).toEqual(expect.objectContaining({ initial_asset_user_id: 5 })));
+    expect(JSON.parse(window.localStorage.getItem("ckam:last-used:5:1")!)).toEqual({ stock_room: "5" });
   });
 });

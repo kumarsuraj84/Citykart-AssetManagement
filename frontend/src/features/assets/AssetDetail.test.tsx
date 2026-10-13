@@ -4,6 +4,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AssetDetail } from "./AssetDetail";
 import { apiClient, ApiError } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
+import type { Capabilities } from "../../lib/capabilities";
+import { KINDS, OPERATOR_IT, withCapabilities } from "../../test-capabilities";
 
 // Keeps the real ApiError class (so `instanceof ApiError` checks inside
 // AssetDetail work against the same class this test constructs) while still
@@ -742,5 +744,66 @@ describe("AssetDetail -- AM-07 asset correction", () => {
     expect(within(panel).getByText("Wrong category selected initially")).toBeInTheDocument();
     expect(within(panel).getByText("CAT-1 - IT Equipment (#1)")).toBeInTheDocument();
     expect(within(panel).getByText("Edit")).toBeInTheDocument();
+  });
+});
+
+// S3b-1: Asset 360 Edit can add a missing brand or vendor right there.
+describe("AssetDetail -- S3b-1 brand / vendor added in Edit", () => {
+  function signedInWith(caps: Capabilities) {
+    (useAuthStore as any).mockImplementation((selector: any) => {
+      const state = { role: "ADMIN", accessToken: "tok", companyId: 1, mustChangePassword: false, isPrimaryOwner: false, assetUserId: 5 };
+      return selector ? selector(state) : state;
+    });
+    const base = (apiClient.get as any).getMockImplementation();
+    (apiClient.get as any).mockImplementation(withCapabilities(caps, base));
+  }
+
+  async function openEdit() {
+    renderWithClient(<AssetDetail assetId={1} />);
+    await screen.findByRole("heading", { name: "FA/HO01/IT/LAP/CK_1" });
+    fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
+    await screen.findByLabelText(/^brand$/i);
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/auth/capabilities"));
+    await new Promise((r) => setTimeout(r, 20));
+  }
+
+  async function offered(label: RegExp, entry: RegExp) {
+    const trigger = screen.getByRole("combobox", { name: label });
+    fireEvent.click(trigger);
+    await screen.findAllByRole("option");
+    const found = screen.queryByRole("option", { name: entry }) !== null;
+    fireEvent.click(trigger);
+    await waitFor(() => expect(screen.queryByRole("option", { name: entry })).not.toBeInTheDocument());
+    return found;
+  }
+
+  it.each(KINDS)("%s: New Brand / New Vendor follow the capabilities", async (_kind, caps) => {
+    mockGets();
+    signedInWith(caps);
+    await openEdit();
+    expect(await offered(/^brand$/i, /new brand/i)).toBe(caps.can_create.brand === true);
+    expect(await offered(/^vendor$/i, /new vendor/i)).toBe(caps.can_create.vendor === true);
+  });
+
+  it("a brand added here is picked and saved with the asset", async () => {
+    const brands = [{ id: 9, name: "Dell" }];
+    mockGets({ brands });
+    signedInWith(OPERATOR_IT);
+    (apiClient.post as any).mockImplementation((path: string, body: { name: string }) => {
+      const row = { id: 12, ...body };
+      if (path === "/masters/brands") brands.push(row);
+      return Promise.resolve(row);
+    });
+    (apiClient.put as any).mockResolvedValue({ ...FULL_ASSET, brand_id: 12 });
+    await openEdit();
+    fireEvent.click(screen.getByRole("combobox", { name: /^brand$/i }));
+    fireEvent.click(await screen.findByRole("option", { name: /new brand/i }));
+    const dialog = await screen.findByRole("dialog", { name: /new brand/i });
+    fireEvent.change(within(dialog).getByLabelText(/^name/i), { target: { value: "Lenovo" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/masters/brands", { name: "Lenovo" }));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /^brand$/i })).toHaveTextContent("Lenovo"));
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() => expect(apiClient.put).toHaveBeenCalledWith("/assets/1", expect.objectContaining({ brand_id: 12 })));
   });
 });

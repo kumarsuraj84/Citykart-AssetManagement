@@ -12,7 +12,10 @@ import {
   autoSubcategory, parseTypeValue, typeOfAssetOptions, typeValueFor,
   type TypeCategory, type TypeSubcategory,
 } from "./type-of-asset";
-import { NewBrandDialog, NewSubcategoryDialog, useCanCreateMasters } from "@/components/quick-create/masters";
+import { NewBrandDialog, NewSubcategoryDialog } from "@/components/quick-create/masters";
+import {
+  ASK_TO_ADD, canCreate as may, canManage, domainManageAreas, inAreas, itemCreateAreas, useCapabilities,
+} from "@/lib/capabilities";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -94,7 +97,12 @@ export function ItemFormDialog({
   allowSet?: boolean;
 }) {
   const qc = useQueryClient();
-  const canCreate = useCanCreateMasters();
+  // What this person may do here (capabilities endpoint; nothing while it loads):
+  // add a type of asset only inside the work areas they manage, a brand, a part's Item,
+  // and make a new set only as the head-office admin (others may use an existing set).
+  const { caps, settled: capsSettled } = useCapabilities();
+  const canCreateType = may(caps, "sub_category") && domainManageAreas(caps).length > 0;
+  const canMakeSets = canManage(caps, "bundle");
   const categoriesQ = useQuery({ queryKey: ["masters", "categories"], queryFn: () => apiClient.get<TypeCategory[]>("/masters/categories"), enabled: open });
   const subsQ = useQuery({ queryKey: ["masters", "subcategories"], queryFn: () => apiClient.get<TypeSubcategory[]>("/masters/subcategories"), enabled: open });
   const bundlesQ = useQuery({ queryKey: ["bundles"], queryFn: () => apiClient.get<Bundle[]>("/bundles"), enabled: open && allowSet });
@@ -103,6 +111,10 @@ export function ItemFormDialog({
   const asList = <T,>(d: unknown): T[] => (Array.isArray(d) ? (d as T[]) : []);
   const categories = asList<TypeCategory>(categoriesQ.data);
   const subs = asList<TypeSubcategory>(subsQ.data);
+  // Only the types this person may work with: a new Item in the work areas they may add
+  // Items in; an edit in the ones they manage (the Item's current type always stays listed).
+  const allowedAreas = item ? domainManageAreas(caps) : itemCreateAreas(caps);
+  const pickableCategories = categories.filter((c) => inAreas(c.asset_domain, allowedAreas) || c.id === item?.category_id);
   const bundles = asList<Bundle>(bundlesQ.data);
   const brands = asList<Named>(brandsQ.data);
 
@@ -174,7 +186,7 @@ export function ItemFormDialog({
     }
     set({ categoryId: String(parsed.id), subcategoryId: "" });
     // A group with no Sub-category yet: give it one right away.
-    if (autoSubcategory(parsed.id, subs) === null && canCreate) setNewType(true);
+    if (autoSubcategory(parsed.id, subs) === null && canCreateType) setNewType(true);
   }
 
   function toggleSet(on: boolean) {
@@ -193,7 +205,10 @@ export function ItemFormDialog({
       const itemName = draft.name.trim();
       let bundleId: number | null = allowSet ? null : (item?.bundle_id ?? null);
       let setSaved = false;
-      if (allowSet && draft.isSet) {
+      if (allowSet && draft.isSet && !canMakeSets) {
+        // Not allowed to make or change a set: the Item just points at the existing one chosen.
+        bundleId = draft.setBundleId ? Number(draft.setBundleId) : null;
+      } else if (allowSet && draft.isSet) {
         const existingId = draft.setBundleId ? Number(draft.setBundleId) : createdSetId.current;
         try {
           if (existingId) {
@@ -244,7 +259,8 @@ export function ItemFormDialog({
   const missing: string[] = [];
   if (draft.name.trim() === "") missing.push("a name");
   if (draft.categoryId === "" || effectiveSubId === "") missing.push("the type of asset");
-  if (allowSet && draft.isSet && !partsReady(parts)) missing.push("every part's name, Item and share (total 100%)");
+  if (allowSet && draft.isSet && canMakeSets && !partsReady(parts)) missing.push("every part's name, Item and share (total 100%)");
+  if (allowSet && draft.isSet && !canMakeSets && draft.setBundleId === "") missing.push("the set it comes as");
   const canSave = missing.length === 0;
 
   // A part is a single thing: never an Item that is itself a set, nor this Item.
@@ -289,19 +305,25 @@ export function ItemFormDialog({
                 id="item-type"
                 value={typeValue}
                 onValueChange={chooseType}
-                options={typeOfAssetOptions(categories, subs)}
+                options={typeOfAssetOptions(pickableCategories, subs)}
                 placeholder="Choose the type of asset"
                 searchPlaceholder="Search groups and sub-categories…"
-                onCreateNew={canCreate ? () => setNewType(true) : undefined}
+                onCreateNew={canCreateType ? () => setNewType(true) : undefined}
                 createLabel="New type…"
               />
             </FormField>
-            {categoryWithoutSub && (
+            {categoryWithoutSub ? (
               <p className="-mt-1 text-xs text-destructive" role="note">
-                {canCreate
+                {canCreateType
                   ? "This group has no Sub-category yet. Use “New type…” to add one."
-                  : "This group has no Sub-category yet. Ask the head-office admin to add one (Settings › Catalogue › Asset Groups)."}
+                  : `This group has no Sub-category yet. ${ASK_TO_ADD.sub_category}`}
               </p>
+            ) : (
+              capsSettled && !canCreateType && (
+                <p className="-mt-1 text-xs text-muted-foreground" role="note">
+                  The type you need is not listed? {ASK_TO_ADD.sub_category}
+                </p>
+              )
             )}
 
             <fieldset className="flex flex-col gap-1.5">
@@ -346,7 +368,7 @@ export function ItemFormDialog({
                         id="item-brand" value={draft.brandId || undefined} onValueChange={(v) => set({ brandId: v })}
                         options={[{ value: "", label: "None" }, ...brandOptions(brands)]}
                         placeholder="None"
-                        onCreateNew={canCreate ? () => setNewBrand(true) : undefined} createLabel="New Brand…"
+                        onCreateNew={may(caps, "brand") ? () => setNewBrand(true) : undefined} createLabel="New Brand…"
                       />
                     </FormField>
                     <FormField htmlFor="item-warranty" label="Default warranty (years)">
@@ -354,7 +376,7 @@ export function ItemFormDialog({
                     </FormField>
                   </div>
 
-                  {allowSet && (
+                  {allowSet && (canMakeSets || bundles.length > 0 || draft.isSet) && (
                     <div className="flex flex-col gap-2 rounded-md border p-2.5">
                       <div className="flex items-center justify-between gap-3">
                         <Label htmlFor="item-set" className="flex flex-col gap-0.5">
@@ -365,7 +387,20 @@ export function ItemFormDialog({
                         </Label>
                         <Switch id="item-set" checked={draft.isSet} onCheckedChange={toggleSet} />
                       </div>
-                      {draft.isSet && (
+                      {draft.isSet && !canMakeSets && (
+                        <>
+                          <FormField htmlFor="item-set-existing" label="The set it comes as" required>
+                            <SearchableSelect
+                              id="item-set-existing" value={draft.setBundleId || undefined}
+                              onValueChange={(v) => set({ setBundleId: v })}
+                              options={nameOptions(bundles)}
+                              placeholder="Choose the set"
+                            />
+                          </FormField>
+                          <p className="text-xs text-muted-foreground">Only the head-office admin can make a new set or change its parts.</p>
+                        </>
+                      )}
+                      {draft.isSet && canMakeSets && (
                         <>
                           {draft.setBundleId ? (
                             <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -394,7 +429,7 @@ export function ItemFormDialog({
                             items={partItems}
                             categories={lookups.categories}
                             subcategories={lookups.subcategories}
-                            onNewItem={canCreate ? setNewPartItemFor : undefined}
+                            onNewItem={may(caps, "item") ? setNewPartItemFor : undefined}
                             idPrefix="item-part"
                             showExample
                           />

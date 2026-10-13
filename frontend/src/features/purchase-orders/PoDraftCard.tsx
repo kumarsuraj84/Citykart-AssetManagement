@@ -9,9 +9,11 @@ import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField } from "@/components/shared/FormField";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { ItemFormDialog } from "../items/ItemFormDialog";
-import { NewBrandDialog, NewCostCenterDialog, useCanCreateMasters } from "@/components/quick-create/masters";
-import { brandOptions, companyOptions, costCentreOptions, itemOptions, namesById, stockRoomOptions } from "@/lib/option-labels";
-import { usePlaceLookups } from "@/lib/lookups";
+import { NewBrandDialog, NewCostCenterDialog } from "@/components/quick-create/masters";
+import { StockRoomSelect, useStockRooms } from "@/components/quick-create/StockRoomSelect";
+import { brandOptions, companyOptions, costCentreOptions, itemOptions, namesById, placeOption } from "@/lib/option-labels";
+import { ASK_TO_ADD, canCreate as may, canManage, useCapabilities } from "@/lib/capabilities";
+import { useRemember, useRememberedDefault } from "@/lib/remembered-defaults";
 import { MAX_QUANTITY, quantityHint } from "@/lib/limits";
 import { RATE_HIGH_FACTOR, RATE_LOW_FACTOR, lineIndexesForServerMessage } from "./erp-create-errors";
 import { linesAndUnitsSentence } from "./po-list";
@@ -163,19 +165,28 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
     queryFn: () => apiClient.get<Option[]>(`/masters/cost-centers?company_id=${companyId}`),
     enabled: companyId !== "",
   });
-  const usersQ = useQuery({
-    queryKey: ["asset_users", companyId],
-    queryFn: () => apiClient.get<Option[]>(`/asset-users?company_id=${companyId}`),
-    enabled: companyId !== "",
-  });
+  const stockRoomsQ = useStockRooms(companyId === "" ? null : Number(companyId));
   const companies = companiesQ.data ?? [];
-  // A missing Item, Brand, Vendor or Cost Centre is created right here, then picked.
-  const canCreateMasters = useCanCreateMasters();
+  // A missing Item, Brand, Cost Centre or stock room is created right here, then picked
+  // (the vendor is the one linked to the ERP supplier, so it is not made here).
+  const { caps } = useCapabilities();
   const [newItemFor, setNewItemFor] = useState<number | null>(null);
   const [newBrandFor, setNewBrandFor] = useState<number | null>(null);
   const [newCostCenter, setNewCostCenter] = useState(false);
-  const deliveryOptions = (usersQ.data ?? []).filter((u) => !u.asset_user_type || u.asset_user_type === "STOCK_POINT");
-  const placeLookups = usePlaceLookups();
+  // The ERP's suggested delivery place, kept in the list even if it is not a stock room.
+  const draftDelivery = draft.delivery_candidates.find((c) => c.id === draft.delivery_asset_user_id);
+  const deliveryExtra = draftDelivery && companyId === str(draft.company_id) ? [placeOption(draftDelivery)] : [];
+
+  // Smart defaults, only where the ERP draft did not say: the Cost Centre and stock room used last.
+  const rememberChoice = useRemember();
+  useRememberedDefault({
+    kind: "cost_centre", companyId, value: costCenterId, setValue: setCostCenterId,
+    validIds: (costCentersQ.data ?? []).map((c) => c.id), ready: costCentersQ.isSuccess,
+  });
+  useRememberedDefault({
+    kind: "stock_room", companyId, value: deliveryId, setValue: setDeliveryId,
+    validIds: stockRoomsQ.rows.map((r) => r.id), ready: stockRoomsQ.isSuccess,
+  });
   // Dropdown options with context ("Laptop · IT Fixed Assets", "HO Stock · Head Office").
   const itemSelectOptions = useMemo(
     () => itemOptions(items, { categories: namesById(categoriesQ.data), subcategories: namesById(subcategoriesQ.data) }),
@@ -256,6 +267,8 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
         }),
       }),
     onSuccess: () => {
+      rememberChoice(companyId, "cost_centre", costCenterId);
+      rememberChoice(companyId, "stock_room", deliveryId);
       qc.invalidateQueries({ queryKey: ["purchase-orders"] });
       qc.invalidateQueries({ queryKey: ["items"] });
     },
@@ -344,7 +357,10 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
           <FormField
             htmlFor={`${poNumber}-vendor`} label="Vendor"
             helperText={draft.vendor_name ? `In the ERP: ${draft.vendor_name}. The vendor linked to this supplier is used.` : "The vendor linked to the ERP supplier is used."}
-            errorText={vendorMissing ? `${draft.vendor_name ?? "This supplier"} is not linked to a CKAM vendor for this company yet. Add or link it in Vendors first.` : undefined}
+            errorText={vendorMissing
+              ? `${draft.vendor_name ?? "This supplier"} is not linked to a CKAM vendor for this company yet. ${
+                caps?.is_head_office_admin ? "Add or link it in Settings › Vendors first." : "Ask the head-office admin to link it to a vendor."}`
+              : undefined}
           >
             <Input id={`${poNumber}-vendor`} value={vendorShown} readOnly aria-readonly="true" className="bg-muted/40" />
           </FormField>
@@ -352,16 +368,19 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
             <SearchableSelect
               id={`${poNumber}-cost-center`} value={opt(costCenterId)} onValueChange={setCostCenterId}
               options={costCentreOptions(costCentersQ.data)}
-              onCreateNew={canCreateMasters && companyId !== "" ? () => setNewCostCenter(true) : undefined} createLabel="New Cost Centre…"
+              onCreateNew={may(caps, "cost_centre") && companyId !== "" ? () => setNewCostCenter(true) : undefined} createLabel="New Cost Centre…"
             />
+            {costCentersQ.isSuccess && (costCentersQ.data ?? []).length === 0 && !may(caps, "cost_centre") && caps && (
+              <p className="text-xs text-muted-foreground" role="note">{ASK_TO_ADD.cost_centre}</p>
+            )}
           </FormField>
           <FormField
             htmlFor={`${poNumber}-delivery`} label="Received Into"
             helperText={draft.warehouse ? `Location in the ERP: ${draft.warehouse}. The Stock Room the delivery goes to.` : "The Stock Room the delivery goes to."}
           >
-            <SearchableSelect
-              id={`${poNumber}-delivery`} value={opt(deliveryId)} onValueChange={setDeliveryId}
-              options={stockRoomOptions(deliveryOptions, placeLookups)}
+            <StockRoomSelect
+              id={`${poNumber}-delivery`} companyId={companyId === "" ? null : Number(companyId)}
+              value={deliveryId} onValueChange={setDeliveryId} extraOptions={deliveryExtra}
             />
           </FormField>
         </div>
@@ -399,7 +418,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
                     <SearchableSelect
                       id={`${id}-item`} value={opt(l.itemId)} onValueChange={(v) => changeItem(i, v)}
                       options={itemSelectOptions} placeholder="Choose the Item"
-                      onCreateNew={canCreateMasters ? () => setNewItemFor(i) : undefined} createLabel="New Item…"
+                      onCreateNew={may(caps, "item") ? () => setNewItemFor(i) : undefined} createLabel="New Item…"
                     />
                   </FormField>
                   <FormField htmlFor={`${id}-scope`} label="Remember" className="col-span-3">
@@ -469,7 +488,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
                         <SearchableSelect
                           id={`${id}-brand`} value={opt(l.brandId)} onValueChange={(v) => setLine(i, { brandId: v })}
                           options={brandSelectOptions}
-                          onCreateNew={canCreateMasters ? () => setNewBrandFor(i) : undefined} createLabel="New Brand…"
+                          onCreateNew={may(caps, "brand") ? () => setNewBrandFor(i) : undefined} createLabel="New Brand…"
                         />
                       </FormField>
                       <FormField htmlFor={`${id}-model`} label="Model" className="col-span-2">
@@ -482,7 +501,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
                 {serverLineIdx.includes(i) && createMessage && (
                   <p className="text-xs font-medium text-destructive" role="alert" aria-label={`Line ${i + 1} refused`}>{createMessage}</p>
                 )}
-                {canCreateMasters && s.item_id === null && s.item_code && (
+                {canManage(caps, "item_rules") && s.item_id === null && s.item_code && (
                   <div className="flex flex-wrap items-end gap-2 border-t pt-2" aria-label={`Line ${i + 1} not tracked`}>
                     <span className="pb-2 text-xs text-muted-foreground">Not something CKAM tracks (a cable, a hanger)?</span>
                     <div className="w-64">

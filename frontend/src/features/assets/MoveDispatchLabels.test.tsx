@@ -29,6 +29,8 @@ const ITEMS = [{ id: 31, name: "Mouse", category_id: 1, subcategory_id: 2, seria
 function mockGets(found: Record<string, unknown[]> = {}) {
   (apiClient.get as any).mockImplementation((path: string) => {
     if (path === "/asset-users") return Promise.resolve(USERS);
+    // "Currently in stock at" lists stock rooms from GET /stock-rooms (S3b-1).
+    if (path === "/stock-rooms") return Promise.resolve(USERS.filter((u) => u.asset_user_type === "STOCK_POINT"));
     if (path === "/items") return Promise.resolve(ITEMS);
     if (path.startsWith("/assets?item_id=31")) return Promise.resolve({ items: MICE, total: MICE.length });
     if (path.startsWith("/assets?")) {
@@ -356,6 +358,7 @@ describe("S0: quantities are 1 to 1,000", () => {
     const MANY = Array.from({ length: 450 }, (_, i) => asset(1000 + i, `FA/IT/MSE/${1000 + i}`, { serial_number: null, item_name: "Mouse", erp_item_code: null }));
     (apiClient.get as any).mockImplementation((path: string) => {
       if (path === "/asset-users") return Promise.resolve(USERS);
+      if (path === "/stock-rooms") return Promise.resolve(USERS.filter((u) => u.asset_user_type === "STOCK_POINT"));
       if (path === "/items") return Promise.resolve(ITEMS);
       if (path.startsWith("/assets?item_id=31")) {
         const offset = Number(/[&]offset=(\d+)/.exec(path)?.[1] ?? 0);

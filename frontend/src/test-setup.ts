@@ -8,6 +8,16 @@ import { cleanup } from "@testing-library/react";
 // test file has more than one test. Register it explicitly.
 afterEach(() => cleanup());
 
+// Remembered choices (lib/remembered-defaults.ts) live in localStorage; never let
+// one test's saved Cost Centre / stock room become the next test's default.
+afterEach(() => {
+  try {
+    window.localStorage.clear();
+  } catch {
+    // no storage in this environment
+  }
+});
+
 // jsdom doesn't implement these, but Radix UI's Select (used e.g. by
 // AssetUsersScreen and MasterCrudScreen) calls them when opening/scrolling its
 // popover-positioned listbox. Without these no-op polyfills, interacting

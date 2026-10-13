@@ -5,6 +5,7 @@ import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { createAppRouter } from "../../router";
 import { apiClient } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
+import { HEAD_OFFICE } from "../../test-capabilities";
 
 vi.mock("../../lib/api-client");
 
@@ -33,6 +34,7 @@ const CODES = [
 
 function mockApi(articlesError: Error | null = null) {
   (apiClient.get as any).mockImplementation((path: string) => {
+    if (path === "/auth/capabilities") return Promise.resolve(HEAD_OFFICE);
     if (path === "/items") return Promise.resolve(ITEMS);
     if (path === "/items/articles") return articlesError ? Promise.reject(articlesError) : Promise.resolve(ARTICLES);
     if (path.startsWith("/items/articles/codes")) return Promise.resolve(CODES);
@@ -160,7 +162,8 @@ describe("Items screen", () => {
     fireEvent.click(within(subDialog).getByLabelText(/^category/i));
     fireEvent.click(await screen.findByRole("option", { name: "Computers" }));
     fireEvent.change(within(subDialog).getByLabelText(/^name/i), { target: { value: "Network Switch" } });
-    expect(within(subDialog).getByLabelText(/^code/i)).toHaveValue("NS");      // suggested, still editable
+    fireEvent.click(within(subDialog).getByRole("button", { name: /^more$/i }));
+    expect(within(subDialog).getByLabelText(/^code/i)).toHaveValue("NS");      // suggested, still editable under More
     fireEvent.click(within(subDialog).getByRole("button", { name: "Save" }));
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith("/masters/subcategories", { category_id: 1, name: "Network Switch", code: "NS" }),
@@ -191,6 +194,7 @@ describe("Items screen", () => {
 
     const catDialog = await screen.findByRole("dialog", { name: /new category/i });
     fireEvent.change(within(catDialog).getByLabelText(/^name/i), { target: { value: "Admin Fixed Assets" } });
+    fireEvent.click(within(catDialog).getByRole("button", { name: /^more$/i }));
     expect(within(catDialog).getByLabelText(/^code/i)).toHaveValue("AFA");
     fireEvent.click(within(catDialog).getByLabelText(/^work area/i));
     fireEvent.click(await screen.findByRole("option", { name: "Admin / Non-IT Team" }));

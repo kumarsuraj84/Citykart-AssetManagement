@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
 import { BundlesScreen } from "./BundlesScreen";
+import { HEAD_OFFICE, VIEWER } from "../../test-capabilities";
 
 vi.mock("../../lib/api-client");
 
@@ -22,6 +23,7 @@ const item = (id: number, name: string, over: Record<string, unknown> = {}) => (
 
 function mockGets(bundles: unknown[]) {
   (apiClient.get as any).mockImplementation((path: string) => {
+    if (path === "/auth/capabilities") return Promise.resolve(useAuthStore.getState().isPrimaryOwner ? HEAD_OFFICE : VIEWER);
     if (path === "/bundles") return Promise.resolve(bundles);
     if (path === "/items") {
       return Promise.resolve([

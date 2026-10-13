@@ -6,6 +6,8 @@ import { createAppRouter } from "../../router";
 import { apiClient } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
 import type { Draft, DraftLine } from "./PoDraftCard";
+import type { Capabilities } from "../../lib/capabilities";
+import { ADMIN_BOTH, ADMIN_IT, HEAD_OFFICE, KINDS, OPERATOR_IT, withCapabilities } from "../../test-capabilities";
 
 vi.mock("../../lib/api-client");
 
@@ -52,6 +54,10 @@ function draft(over: Partial<Draft> = {}, lines: DraftLine[] = [line()]): Draft 
 
 function mockApi({ configured = true, rows = [ROW] as unknown[], posError = null as Error | null, d = draft() } = {}) {
   (apiClient.get as any).mockImplementation((path: string) => {
+    if (path === "/auth/capabilities") return Promise.resolve(useAuthStore.getState().isPrimaryOwner ? HEAD_OFFICE : ADMIN_BOTH);
+    if (path.startsWith("/stock-rooms?company_id=")) {
+      return Promise.resolve([{ id: 9, name: "WH Tajnagar Stores", asset_user_type: "STOCK_POINT", location_name: "WH-TAJNAGAR", company_code: "CKSPL" }]);
+    }
     if (path === "/erp/status") return Promise.resolve({ configured });
     if (path === "/erp/pos") return posError ? Promise.reject(posError) : Promise.resolve(rows);
     if (path.startsWith("/erp/pos/") && path.endsWith("/draft")) return Promise.resolve(d);
@@ -267,7 +273,7 @@ describe("Things CKAM does not track", () => {
     });
     renderScreen();
     await openDraft();
-    fireEvent.click(screen.getByLabelText("Line 2: how far this reaches"));
+    fireEvent.click(await screen.findByLabelText("Line 2: how far this reaches"));
     fireEvent.click(await screen.findByRole("option", { name: "This ERP code only" }));
     fireEvent.click(screen.getByRole("button", { name: "Line 2: not tracked" }));
     await waitFor(() =>
@@ -287,7 +293,7 @@ describe("Things CKAM does not track", () => {
     mockApi({ d: draft({}, [line(), CABLE]) });
     renderScreen();
     await openDraft();
-    fireEvent.click(screen.getByLabelText("Line 2: how far this reaches"));
+    fireEvent.click(await screen.findByLabelText("Line 2: how far this reaches"));
     expect(await screen.findByRole("option", { name: "The whole Department FA_CE_CCTV" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "The whole Section IT EQUIPMENTS" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("option", { name: "The whole Division FIXED ASSETS" }));
@@ -441,5 +447,84 @@ describe("S0 contract: the ERP decides number, date, vendor, open quantity and r
     fireEvent.click(create);
     expect(await screen.findByText(sentence)).toBeInTheDocument();
     expect(screen.queryByRole("alert", { name: "Line 1 refused" })).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S3b-1: in the ERP review, Cost Centre, stock room, Item and Brand can be added
+// right here; the vendor is the ERP supplier's linked vendor (matched in a later stage).
+// ---------------------------------------------------------------------------
+describe("S3b-1: inline creation in the ERP review", () => {
+  const SWITCH_LINE = () => line({ item_id: 3, item_name: "Network Switch", bundle_id: null, bundle_name: null, matched_by: "CODE" });
+
+  function withCaps(caps: Capabilities) {
+    const base = (apiClient.get as any).getMockImplementation();
+    (apiClient.get as any).mockImplementation(withCapabilities(caps, base));
+  }
+
+  async function offered(label: RegExp, entry: RegExp): Promise<boolean> {
+    const trigger = screen.getByLabelText(label);
+    fireEvent.click(trigger);
+    await screen.findAllByRole("option");
+    const found = screen.queryByRole("option", { name: entry }) !== null;
+    fireEvent.click(trigger);
+    await waitFor(() => expect(screen.queryByRole("option", { name: entry })).not.toBeInTheDocument());
+    return found;
+  }
+
+  beforeEach(() => {
+    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: false, mustChangePassword: false, assetUserId: 5 });
+  });
+
+  it.each(KINDS)("%s: Cost Centre, Received Into, Item and Brand offer \"+ New …\" as allowed; never a new vendor", async (_kind, caps) => {
+    mockApi({ d: draft({}, [SWITCH_LINE()]) });
+    withCaps(caps);
+    renderScreen();
+    await openDraft();
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/auth/capabilities"));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(await offered(/^cost centre/i, /new cost centre/i)).toBe(caps.can_create.cost_centre === true);
+    expect(await offered(/^received into/i, /new stock room/i)).toBe(caps.can_create.stock_room === true);
+    expect(await offered(/^item\*?$/i, /new item/i)).toBe(caps.can_create.item === true);
+    expect(await offered(/^brand$/i, /new brand/i)).toBe(caps.can_create.brand === true);
+    expect(screen.queryByText(/new vendor/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/^vendor/i)).toHaveAttribute("readonly");
+  });
+
+  it("Received Into lists the company's stock rooms from /stock-rooms", async () => {
+    mockApi({ d: draft({ delivery_asset_user_id: null }, [SWITCH_LINE()]) });
+    withCaps(OPERATOR_IT);
+    renderScreen();
+    await openDraft();
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/stock-rooms?company_id=1"));
+    fireEvent.click(screen.getByLabelText(/^received into/i));
+    expect(await screen.findByRole("option", { name: /^WH Tajnagar Stores\s?· WH-TAJNAGAR · CKSPL$/ })).toBeInTheDocument();
+  });
+
+  it("an unlinked supplier tells an ordinary user whom to ask (no Settings dead end)", async () => {
+    mockApi({ d: draft({ vendor_id: null }, [SWITCH_LINE()]) });
+    withCaps(ADMIN_IT);
+    renderScreen();
+    await openDraft();
+    expect(await screen.findByText(/is not linked to a CKAM vendor for this company yet\. Ask the head-office admin to link it to a vendor\./)).toBeInTheDocument();
+    expect(screen.queryByText(/settings › vendors/i)).not.toBeInTheDocument();
+  });
+
+  it("the head-office admin is pointed to Settings › Vendors", async () => {
+    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: true, mustChangePassword: false, assetUserId: 5 });
+    mockApi({ d: draft({ vendor_id: null }, [SWITCH_LINE()]) });
+    renderScreen();
+    await openDraft();
+    expect(await screen.findByText(/Add or link it in Settings › Vendors first\./)).toBeInTheDocument();
+  });
+
+  it("where the ERP gave no Cost Centre or stock room, the ones used last are chosen (the ERP's own values always win)", async () => {
+    window.localStorage.setItem("ckam:last-used:5:1", JSON.stringify({ cost_centre: "5", stock_room: "9" }));
+    mockApi({ d: draft({ cost_center_id: null, delivery_asset_user_id: null }, [SWITCH_LINE()]) });
+    withCaps(OPERATOR_IT);
+    renderScreen();
+    await openDraft();
+    await waitFor(() => expect(screen.getByLabelText(/^cost centre/i)).toHaveTextContent("CKSPL"));
+    await waitFor(() => expect(screen.getByLabelText(/^received into/i)).toHaveTextContent("WH Tajnagar Stores"));
   });
 });

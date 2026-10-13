@@ -10,6 +10,7 @@ import { FormField } from "@/components/shared/FormField";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { MAX_QUANTITY, quantityHint, quantityProblem } from "@/lib/limits";
 import { linesAndUnitsSentence } from "./po-list";
+import { useCanManage } from "@/lib/capabilities";
 
 // The split itself lives in ../bundles/bundle-parts (one copy for the whole app);
 // re-exported here for existing imports.
@@ -31,6 +32,8 @@ export function AddBundleDialog({ poId, open, onOpenChange, onAdded }: Props) {
   const qc = useQueryClient();
   const bundlesQ = useQuery({ queryKey: ["bundles"], queryFn: () => apiClient.get<Bundle[]>("/bundles"), enabled: open });
   const bundles = bundlesQ.data ?? [];
+  // Sets are made by the head-office admin (capabilities: can_manage.bundle).
+  const mayMakeSets = useCanManage("bundle");
 
   const [bundleId, setBundleId] = useState("");
   const [description, setDescription] = useState("");
@@ -107,7 +110,9 @@ export function AddBundleDialog({ poId, open, onOpenChange, onAdded }: Props) {
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
           {!bundlesQ.isLoading && bundles.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No sets are set up yet. The head-office admin can make one on an Item (Settings › Catalogue › Items, “Comes as a set”).
+              {mayMakeSets
+                ? "No sets are set up yet. Make one on an Item (Settings › Catalogue › Items, “Comes as a set”)."
+                : "No sets are set up yet. Ask the head-office admin to make one (an Item that “Comes as a set”)."}
             </p>
           ) : (
             <>

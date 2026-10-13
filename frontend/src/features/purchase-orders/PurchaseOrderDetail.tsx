@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import type { Item } from "../items/types";
 import { ItemFormDialog } from "../items/ItemFormDialog";
-import { NewBrandDialog, useCanCreateMasters } from "@/components/quick-create/masters";
+import { NewBrandDialog } from "@/components/quick-create/masters";
+import { useCapabilities, canCreate as may } from "@/lib/capabilities";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { ErrorState } from "@/components/shared/ErrorState";
@@ -26,7 +27,7 @@ import { DeliveryReminderBanner } from "../erp/DeliveryReminders";
 import { ErpChangesPanel } from "../erp/ErpChanges";
 import { ErpPiDialog } from "../erp/ErpPiDialog";
 import { workAreaLabel } from "@/lib/labels";
-import { brandOptions, itemOptions, namesById, placeOptions } from "@/lib/option-labels";
+import { brandOptions, itemOptions, namesById, placeOption } from "@/lib/option-labels";
 import { usePlaceLookups } from "@/lib/lookups";
 
 interface PurchaseOrderOut {
@@ -124,7 +125,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const vendorsQ = useQuery({ queryKey: ["masters", "vendors"], queryFn: () => apiClient.get<Option[]>("/masters/vendors") });
   const brandsQ = useQuery({ queryKey: ["masters", "brands"], queryFn: () => apiClient.get<Option[]>("/masters/brands") });
   const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => apiClient.get<Item[]>("/items") });
-  const canCreate = useCanCreateMasters();
+  const { caps } = useCapabilities();
   const placeLookups = usePlaceLookups();
   const [newItemForAdd, setNewItemForAdd] = useState(false);
   const [newBrandForAdd, setNewBrandForAdd] = useState(false);
@@ -143,7 +144,9 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     id == null ? "—" : vendors.find((v) => v.id === id)?.name ?? poQ.data?.vendor_name ?? String(id);
   const itemSelectOptions = itemOptions(items, { categories: namesById(categories), subcategories: namesById(subcategories) });
   const brandSelectOptions = brandOptions(brands);
-  const receivedIntoOptions = placeOptions(asset_users, placeLookups);
+  // The PO's own delivery place stays choosable when receiving, even if it is not a stock room.
+  const poDelivery = asset_users.find((u) => u.id === poQ.data?.delivery_asset_user_id);
+  const deliveryExtra = poDelivery ? [placeOption(poDelivery, placeLookups)] : [];
 
   // Summary: units, counted by the server per line (the caller's work area).
   const totals = groups.reduce(
@@ -452,7 +455,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
                   value={selectValue(lineForm.itemId)}
                   onValueChange={(v) => pickLineItem(items.find((i) => i.id === Number(v)))}
                   options={itemSelectOptions}
-                  onCreateNew={canCreate ? () => setNewItemForAdd(true) : undefined}
+                  onCreateNew={may(caps, "item") ? () => setNewItemForAdd(true) : undefined}
                   createLabel="New Item…"
                 />
               </FormField>
@@ -476,7 +479,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
                   value={selectValue(lineForm.brandId)}
                   onValueChange={(v) => setLineForm((f) => ({ ...f, brandId: v }))}
                   options={brandSelectOptions}
-                  onCreateNew={canCreate ? () => setNewBrandForAdd(true) : undefined}
+                  onCreateNew={may(caps, "brand") ? () => setNewBrandForAdd(true) : undefined}
                   createLabel="New Brand…"
                 />
               </FormField>
@@ -580,7 +583,6 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
           onSaved={setNotice}
           itemSelectOptions={itemSelectOptions}
           brandSelectOptions={brandSelectOptions}
-          canCreate={canCreate}
         />
       )}
 
@@ -672,8 +674,9 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
           units={deliverUnits}
           open={deliverOpen}
           onOpenChange={setDeliverOpen}
+          companyId={po?.company_id ?? null}
           defaultReceivedIntoId={po?.delivery_asset_user_id}
-          receivedIntoOptions={receivedIntoOptions}
+          extraReceivedInto={deliveryExtra}
           onDelivered={onDelivered}
         />
       )}

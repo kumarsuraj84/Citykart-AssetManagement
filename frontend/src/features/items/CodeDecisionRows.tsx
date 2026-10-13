@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { ItemFormDialog } from "./ItemFormDialog";
-import { useCanCreateMasters } from "@/components/quick-create/masters";
+import { useCanCreate } from "@/lib/capabilities";
 import { itemOptions as buildItemOptions } from "@/lib/option-labels";
 import { useCategoryLookups } from "@/lib/lookups";
 
@@ -45,7 +45,7 @@ export function CodeDecisionRows({ rows, items, companyId, showArticle = false }
   rows: CodeDecisionRow[]; items: Item[]; companyId?: string; showArticle?: boolean;
 }) {
   const qc = useQueryClient();
-  const canCreate = useCanCreateMasters();
+  const canCreate = useCanCreate("item");
   const [mode, setMode] = useState<Mode>("CODE");
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());

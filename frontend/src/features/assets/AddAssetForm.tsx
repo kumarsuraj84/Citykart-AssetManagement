@@ -18,16 +18,16 @@ import { FormField } from "@/components/shared/FormField";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { workAreaLabel } from "@/lib/labels";
 import {
-  brandOptions, companyOptions, costCentreOptions, itemOptions, namesById, stockRoomOptions, vendorOptions,
+  brandOptions, companyOptions, costCentreOptions, itemOptions, namesById, vendorOptions,
 } from "@/lib/option-labels";
-import { usePlaceLookups } from "@/lib/lookups";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { ErrorState } from "@/components/shared/ErrorState";
 import type { Item } from "../items/types";
 import { ItemFormDialog } from "../items/ItemFormDialog";
-import {
-  NewBrandDialog, NewCostCenterDialog, NewVendorDialog, useCanCreateMasters,
-} from "@/components/quick-create/masters";
+import { NewBrandDialog, NewCostCenterDialog, NewVendorDialog } from "@/components/quick-create/masters";
+import { StockRoomSelect, useStockRooms } from "@/components/quick-create/StockRoomSelect";
+import { ASK_TO_ADD, canCreate as may, useCapabilities } from "@/lib/capabilities";
+import { useRemember, useRememberedDefault } from "@/lib/remembered-defaults";
 
 interface Option {
   id: number;
@@ -169,7 +169,8 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
     queryFn: () => apiClient.get<(Option & { category_id: number })[]>("/masters/subcategories"),
   });
   const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => apiClient.get<Item[]>("/items") });
-  const canCreate = useCanCreateMasters();
+  // What this person may add right here (from the capabilities endpoint; nothing while it loads).
+  const { caps, settled: capsSettled } = useCapabilities();
   const [newItem, setNewItem] = useState(false);
   const [newBrand, setNewBrand] = useState(false);
   const [newVendor, setNewVendor] = useState(false);
@@ -185,17 +186,10 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
     queryKey: ["masters", "custom-fields"],
     queryFn: () => apiClient.get<CustomFieldDef[]>("/masters/custom-fields"),
   });
-  // Scoped to this company's STOCK_POINT asset_users only -- a company can have more than
-  // one (one per location), so the backend deliberately has no server-side default
-  // and requires an explicit initial_asset_user_id. The admin must explicitly choose
-  // one; canSave below blocks submission until they do (never auto-picked, since
-  // AssetUserService.list has no stable ordering and guessing risks silently misfiling
-  // a purchase into the wrong location's stock).
-  const stockAssetUsersQ = useQuery({
-    queryKey: ["asset_users", "STOCK_POINT", selectedCompanyId],
-    queryFn: () => apiClient.get<Option[]>(`/asset-users?asset_user_type=STOCK_POINT&company_id=${selectedCompanyId}`),
-    enabled: selectedCompanyId != null,
-  });
+  // This company's stock rooms (GET /stock-rooms). A company can have more than one,
+  // so the server needs an explicit initial_asset_user_id and nothing is guessed: only
+  // the one this person used last for this company is chosen again (if it still exists).
+  const stockRoomsQ = useStockRooms(selectedCompanyId);
 
   const categories = categoriesQ.data ?? [];
   const subcategories = subcategoriesQ.data ?? [];
@@ -203,12 +197,10 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
   const costCenters = costCentersQ.data ?? [];
   const vendors = vendorsQ.data ?? [];
   const brands = brandsQ.data ?? [];
-  const stockAssetUsers = stockAssetUsersQ.data ?? [];
   // Dropdown context: an Item shows its Category (› Sub-category); a Stock
   // Room shows its place.
   const categoryNames = useMemo(() => namesById(categoriesQ.data), [categoriesQ.data]);
   const subcategoryNames = useMemo(() => namesById(subcategoriesQ.data), [subcategoriesQ.data]);
-  const { locations } = usePlaceLookups();
   // AM-05: only fields applicable to THIS asset's company -- Global
   // (company_id null) plus this company's own -- ever render, are
   // validated, or count toward requiredness here. A field scoped to a
@@ -229,13 +221,24 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
   // never trusting anything the client sends.
   const selectedCategoryDomain = selectedCategory?.asset_domain;
 
-  const mastersQueries = [categoriesQ, subcategoriesQ, itemsQ, costCentersQ, vendorsQ, brandsQ, customFieldsQ, stockAssetUsersQ];
+  const mastersQueries = [categoriesQ, subcategoriesQ, itemsQ, costCentersQ, vendorsQ, brandsQ, customFieldsQ, stockRoomsQ];
   const mastersError = mastersQueries.some((q) => q.isError);
   const mastersLoading = mastersQueries.some((q) => q.isLoading);
 
   function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }));
   }
+
+  // Smart defaults: the Cost Centre and stock room this person used last for this company.
+  const rememberChoice = useRemember();
+  useRememberedDefault({
+    kind: "cost_centre", companyId: selectedCompanyId, value: form.costCenterId,
+    setValue: (v) => setField("costCenterId", v), validIds: costCenters.map((c) => c.id), ready: costCentersQ.isSuccess,
+  });
+  useRememberedDefault({
+    kind: "stock_room", companyId: selectedCompanyId, value: form.initialAssetUserId,
+    setValue: (v) => setField("initialAssetUserId", v), validIds: stockRoomsQ.rows.map((r) => r.id), ready: stockRoomsQ.isSuccess,
+  });
 
   // Picking an Item sets the serial box to what the Item says (a mouse: "No
   // serial number" ticked), and starts the brand and warranty from the Item's
@@ -277,7 +280,6 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
     return v === undefined || v === "";
   }
 
-  const hasAssetUserOption = stockAssetUsers.length > 0;
   const hasCostCenterOption = costCenters.length > 0;
   // AM-19: PO/Invoice/PI No+Date are no longer required here -- ground
   // reality is that paperwork routinely arrives after the physical asset
@@ -341,6 +343,8 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
         custom_fields: buildCustomFieldsPayload(),
       }),
     onSuccess: (created) => {
+      rememberChoice(selectedCompanyId, "cost_centre", form.costCenterId);
+      rememberChoice(selectedCompanyId, "stock_room", form.initialAssetUserId);
       // Asset Code is always server-generated, never guessed client-side.
       // AM-19: every save now creates exactly one asset (Quantity was
       // removed -- Import is the tool for a genuine multi-unit bulk add),
@@ -425,12 +429,14 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
               onValueChange={(v) => setField("costCenterId", v)}
               disabled={mastersLoading}
               options={costCentreOptions(costCenters)}
-              onCreateNew={canCreate && selectedCompanyId != null ? () => setNewCostCenter(true) : undefined}
+              onCreateNew={may(caps, "cost_centre") && selectedCompanyId != null ? () => setNewCostCenter(true) : undefined}
               createLabel="New Cost Centre…"
             />
-            {!mastersLoading && !hasCostCenterOption && (
-              <p className="text-sm text-destructive">
-                No active cost centres are configured for this company. Ask the head-office admin to add one under Settings › Organisation › Cost Centres.
+            {!mastersLoading && capsSettled && costCentersQ.isSuccess && !hasCostCenterOption && (
+              <p className="text-xs text-muted-foreground" role="note">
+                {may(caps, "cost_centre")
+                  ? "This company has no cost centre yet. Add one with “New Cost Centre…” in the list."
+                  : `This company has no cost centre yet. ${ASK_TO_ADD.cost_centre}`}
               </p>
             )}
           </FormField>
@@ -453,9 +459,12 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
               onValueChange={(v) => applyItem(items.find((i) => i.id === Number(v)))}
               disabled={mastersLoading}
               options={itemOptions(items, { categories: categoryNames, subcategories: subcategoryNames })}
-              onCreateNew={canCreate ? () => setNewItem(true) : undefined}
+              onCreateNew={may(caps, "item") ? () => setNewItem(true) : undefined}
               createLabel="New Item…"
             />
+            {!mastersLoading && capsSettled && itemsQ.isSuccess && items.length === 0 && !may(caps, "item") && (
+              <p className="text-xs text-muted-foreground" role="note">{ASK_TO_ADD.item}</p>
+            )}
           </FormField>
 
           {selectedCategoryDomain && (
@@ -480,7 +489,7 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
               onValueChange={(v) => setField("brandId", v)}
               disabled={mastersLoading}
               options={brandOptions(brands)}
-              onCreateNew={canCreate ? () => setNewBrand(true) : undefined}
+              onCreateNew={may(caps, "brand") ? () => setNewBrand(true) : undefined}
               createLabel="New Brand…"
             />
           </FormField>
@@ -563,9 +572,12 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
             onValueChange={(v) => setField("vendorId", v)}
             disabled={mastersLoading}
             options={vendorOptions(vendors)}
-            onCreateNew={canCreate ? () => setNewVendor(true) : undefined}
+            onCreateNew={may(caps, "vendor") ? () => setNewVendor(true) : undefined}
             createLabel="New Vendor…"
           />
+          {!mastersLoading && capsSettled && vendorsQ.isSuccess && vendors.length === 0 && !may(caps, "vendor") && (
+            <p className="text-xs text-muted-foreground" role="note">{ASK_TO_ADD.vendor}</p>
+          )}
         </FormField>
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -624,17 +636,14 @@ export function AddAssetForm({ companyId }: { companyId: number | null }) {
         <SectionHeading>Where it is received</SectionHeading>
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField htmlFor="initial-asset-user" label="Received Into" required helperText="The Stock Room this asset is received into.">
-            <SearchableSelect
+            <StockRoomSelect
               id="initial-asset-user"
               aria-label="Received Into"
-              value={selectValue(form.initialAssetUserId)}
+              companyId={selectedCompanyId}
+              value={form.initialAssetUserId}
               onValueChange={(v) => setField("initialAssetUserId", v)}
               disabled={mastersLoading}
-              options={stockRoomOptions(stockAssetUsers, { locations })}
             />
-            {!mastersLoading && !hasAssetUserOption && (
-              <p className="text-sm text-destructive">No Stock Room found for this company. An admin can add one under People &amp; Places › Stock Rooms.</p>
-            )}
           </FormField>
         </div>
       </section>

@@ -8,6 +8,8 @@ import { actionsFor, targetLabelFor, type ActionDef } from "./actionRules";
 import { fieldLabel, humanizeCode, placeTypeLabel, workAreaLabel } from "../../lib/labels";
 import { brandOptions, categoryOptions, nameOptions, placeOptions, vendorOptions } from "../../lib/option-labels";
 import { usePlaceLookups } from "../../lib/lookups";
+import { canCreate as may, useCapabilities } from "../../lib/capabilities";
+import { NewBrandDialog, NewVendorDialog } from "@/components/quick-create/masters";
 import { Timeline, type AssetEvent } from "./Timeline";
 import { DocumentsTab } from "./DocumentsTab";
 import { Button } from "@/components/ui/button";
@@ -313,6 +315,10 @@ export function AssetDetail({ assetId }: { assetId: number }) {
     queryFn: () => apiClient.get<MasterOption[]>("/masters/brands"),
     enabled: editing,
   });
+  // A missing brand or vendor is added right here by whoever may (capabilities endpoint).
+  const { caps } = useCapabilities();
+  const [newBrand, setNewBrand] = useState(false);
+  const [newVendor, setNewVendor] = useState(false);
   const { data: customFieldDefsRaw = [] } = useQuery({
     queryKey: ["masters", "custom-fields"],
     queryFn: () => apiClient.get<CustomFieldDef[]>("/masters/custom-fields"),
@@ -625,7 +631,10 @@ export function AssetDetail({ assetId }: { assetId: number }) {
                 value={selectValue(editForm.brandId)}
                 onValueChange={(v) => setEditField("brandId", v)}
                 options={brandOptions(brands)}
+                onCreateNew={may(caps, "brand") ? () => setNewBrand(true) : undefined}
+                createLabel="New Brand…"
               />
+              <NewBrandDialog open={newBrand} onOpenChange={setNewBrand} onCreated={(row) => setEditField("brandId", String(row.id))} />
             </FormField>
             <FormField htmlFor="edit-model" label="Model"><Input id="edit-model" aria-label="Model" value={editForm.model} onChange={(e) => setEditField("model", e.target.value)} /></FormField>
             <FormField
@@ -661,7 +670,10 @@ export function AssetDetail({ assetId }: { assetId: number }) {
                 value={selectValue(editForm.vendorId)}
                 onValueChange={(v) => setEditField("vendorId", v)}
                 options={vendorOptions(vendors)}
+                onCreateNew={may(caps, "vendor") ? () => setNewVendor(true) : undefined}
+                createLabel="New Vendor…"
               />
+              <NewVendorDialog open={newVendor} onOpenChange={setNewVendor} onCreated={(row) => setEditField("vendorId", String(row.id))} />
             </FormField>
             <FormField
               htmlFor="edit-warranty-years" label="Warranty Years"

@@ -1,10 +1,12 @@
 ﻿import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { createAppRouter } from "../../router";
 import { apiClient } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
+import { ASK_TO_ADD, type Capabilities } from "../../lib/capabilities";
+import { ADMIN_BOTH, HEAD_OFFICE, KINDS, VIEWER, withCapabilities } from "../../test-capabilities";
 
 vi.mock("../../lib/api-client");
 
@@ -42,19 +44,24 @@ function mockGets({
   subcategories = [{ id: 2, code: "LAP", name: "Laptop", category_id: 1 }] as unknown[],
   items = [item(11, "Laptop")] as unknown[],
   locations = [] as unknown[],
+  caps = ADMIN_BOTH as Capabilities | null,
+  vendors = [{ id: 7, code: "VND1", name: "Acme Traders" }] as unknown[],
+  costCentres = [{ id: 3, code: "HO01", name: "Head Office" }] as unknown[],
 } = {}) {
-  (apiClient.get as any).mockImplementation((path: string) => {
+  (apiClient.get as any).mockImplementation(withCapabilities(caps, (path: string) => {
     if (path === "/items") return Promise.resolve(items);
+    // Received Into lists the company's stock rooms (S3b-1: GET /stock-rooms).
+    if (path.startsWith("/stock-rooms")) return Promise.resolve(asset_users);
     if (path === "/masters/locations") return Promise.resolve(locations);
     if (path.startsWith("/masters/categories")) return Promise.resolve(categories);
     if (path.startsWith("/masters/subcategories")) return Promise.resolve(subcategories);
-    if (path.startsWith("/masters/cost-centers")) return Promise.resolve([{ id: 3, code: "HO01", name: "Head Office" }]);
-    if (path.startsWith("/masters/vendors")) return Promise.resolve([{ id: 7, code: "VND1", name: "Acme Traders" }]);
+    if (path.startsWith("/masters/cost-centers")) return Promise.resolve(costCentres);
+    if (path.startsWith("/masters/vendors")) return Promise.resolve(vendors);
     if (path.startsWith("/masters/brands")) return Promise.resolve([{ id: 9, code: "DELL", name: "Dell" }]);
     if (path.startsWith("/masters/custom-fields")) return Promise.resolve(customFields);
     if (path.startsWith("/asset-users")) return Promise.resolve(asset_users);
     return Promise.resolve([]);
-  });
+  }));
 }
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -276,10 +283,9 @@ describe("AddAssetForm", () => {
     expect(await screen.findByRole("option", { name: optionName("Laptop", "IT Equipment") })).toBeInTheDocument();
   });
 
-  it("asks where the asset is Received Into, listing Stock Rooms with their place", async () => {
+  it("asks where the asset is Received Into, listing the company's Stock Rooms with place and company", async () => {
     mockGets({
-      asset_users: [{ id: 4, name: "HO Stock", code: "STK-HO", location_id: 50 }],
-      locations: [{ id: 50, name: "Head Office" }],
+      asset_users: [{ id: 4, name: "HO Stock", code: "STK-HO", location_id: 50, location_name: "Head Office", company_code: "CKSPL", company_id: 1 }],
     });
     renderFormAt();
     await screen.findByLabelText(/description/i);
@@ -287,12 +293,15 @@ describe("AddAssetForm", () => {
     expect(screen.queryByText(/goes into|initial custody/i)).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("combobox", { name: /^received into$/i })).toBeEnabled());
     fireEvent.click(screen.getByRole("combobox", { name: /^received into$/i }));
-    // A Stock Room reads by its name (not its machine code) plus its place.
-    expect(await screen.findByRole("option", { name: optionName("HO Stock", "Head Office") })).toBeInTheDocument();
+    // A Stock Room reads by its name (not its machine code) plus its place and company code.
+    expect(await screen.findByRole("option", { name: optionName("HO Stock", "Head Office · CKSPL") })).toBeInTheDocument();
+    // From the stock-rooms endpoint, for this company -- not people filtered by type.
+    expect(apiClient.get).toHaveBeenCalledWith("/stock-rooms?company_id=1");
+    expect(apiClient.get).not.toHaveBeenCalledWith(expect.stringContaining("asset_user_type=STOCK_POINT"));
   });
 
-  it("only the Primary Owner is offered \"New Item…\" (the server only lets them create masters)", async () => {
-    mockGets();
+  it("offers no \"New Item…\" while it cannot be told whether this person may add one (capabilities failed)", async () => {
+    mockGets({ caps: null });
     renderFormAt();
     await screen.findByLabelText(/description/i);
     await waitFor(() => expect(screen.getByRole("combobox", { name: /^item$/i })).toBeEnabled());
@@ -301,9 +310,9 @@ describe("AddAssetForm", () => {
     expect(screen.queryByRole("option", { name: /new item/i })).not.toBeInTheDocument();
   });
 
-  it("the Primary Owner can create the Item right from here and it is picked", async () => {
+  it("the head-office admin can create the Item right from here and it is picked", async () => {
     useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: true, mustChangePassword: false });
-    mockGets();
+    mockGets({ caps: HEAD_OFFICE });
     (apiClient.post as any).mockResolvedValue(item(14, "Ceiling Fan", { serial_required: false }));
     renderFormAt();
     await screen.findByLabelText(/description/i);
@@ -449,6 +458,7 @@ describe("AddAssetForm", () => {
       if (path.startsWith("/masters/cost-centers")) return Promise.resolve([{ id: 3, code: "HO01", name: "Head Office" }]);
       if (path.startsWith("/masters/vendors")) return Promise.resolve([{ id: 7, code: "VND1", name: "Acme Traders" }]);
       if (path.startsWith("/masters/custom-fields")) return Promise.resolve([]);
+      if (path.startsWith("/stock-rooms")) return Promise.resolve([{ id: 4, name: "IT Stock-HO" }]);
       if (path.startsWith("/asset-users")) return Promise.resolve([{ id: 4, name: "IT Stock-HO" }]);
       return Promise.resolve([]);
     });
@@ -541,26 +551,22 @@ describe("AddAssetForm", () => {
     );
   });
 
-  it("AM-08: does not submit and shows a clear message when the company has no active cost centres", async () => {
-    (apiClient.get as any).mockImplementation((path: string) => {
-      if (path === "/items") return Promise.resolve([item(11, "Laptop")]);
-      if (path.startsWith("/masters/categories")) return Promise.resolve([{ id: 1, code: "IT", name: "IT Equipment" }]);
-      if (path.startsWith("/masters/cost-centers")) return Promise.resolve([]);
-      if (path.startsWith("/asset-users")) return Promise.resolve([{ id: 4, name: "IT Stock-HO" }]);
-      return Promise.resolve([]);
-    });
+  it("AM-08: does not submit when the company has no cost centre, and offers to add one right here", async () => {
+    mockGets({ costCentres: [] });
 
     renderFormAt();
     fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Test Laptop" } });
     await pickSelectOption(/^item$/i, "Laptop");
 
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("/masters/cost-centers")));
-    expect(screen.getByText(/no active cost centres are configured for this company/i)).toBeInTheDocument();
+    expect(await screen.findByText("This company has no cost centre yet. Add one with “New Cost Centre…” in the list.")).toBeInTheDocument();
+    // The old dead end ("Ask the head-office admin … under Settings › Organisation") is gone.
+    expect(screen.queryByText(/settings › organisation/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /save/i })).toBeDisabled();
     expect(apiClient.post).not.toHaveBeenCalled();
   });
 
-  it("does not submit while no IT_STOCK asset_user is available for the company", async () => {
+  it("does not submit while the company has no stock room, and offers to add one right here", async () => {
     mockGets({ asset_users: [] });
 
     renderFormAt();
@@ -568,9 +574,10 @@ describe("AddAssetForm", () => {
     await pickSelectOption(/^item$/i, "Laptop");
     await pickSelectOption(/cost centre/i, optionName("HO01 · Head Office"));
 
-    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("/asset-users")));
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/stock-rooms?company_id=1"));
 
-    expect(screen.getByText(/no stock room found for this company/i)).toBeInTheDocument();
+    expect(await screen.findByText("This company has no stock room yet. Add one with “New Stock Room…” in the list.")).toBeInTheDocument();
+    expect(screen.queryByText(/people & places › stock rooms/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /save/i })).toBeDisabled();
     expect(apiClient.post).not.toHaveBeenCalled();
   });
@@ -589,7 +596,7 @@ describe("AddAssetForm", () => {
     await pickSelectOption(/^item$/i, "Laptop");
     await pickSelectOption(/cost centre/i, optionName("HO01 · Head Office"));
 
-    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("/asset-users")));
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("/stock-rooms")));
 
     // Neither of the two asset_users is pre-selected -- the combobox still shows
     // its placeholder, and clicking Save without a pick must not submit.
@@ -638,5 +645,136 @@ describe("AddAssetForm", () => {
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/masters/cost-centers?company_id=2"));
     await pickSelectOption(/^cost centre$/i, "B Cost Centre");
     expect(screen.getByRole("combobox", { name: /^cost centre$/i })).toHaveTextContent("B Cost Centre");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S3b-1: create the missing small record right here, as the capabilities allow.
+// The route guard lets ADMIN in; what is offered depends only on what
+// GET /auth/capabilities answers for the kind of login under test.
+// ---------------------------------------------------------------------------
+
+const CREATE_ENTRIES: [string, RegExp, RegExp][] = [
+  ["vendor", /^vendor$/i, /new vendor/i],
+  ["brand", /^brand$/i, /new brand/i],
+  ["item", /^item$/i, /new item/i],
+  ["cost_centre", /^cost centre$/i, /new cost centre/i],
+  ["stock_room", /^received into$/i, /new stock room/i],
+];
+
+describe("S3b-1: inline creation on Add Asset", () => {
+  beforeEach(() => {
+    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: false, mustChangePassword: false, assetUserId: 5 });
+  });
+
+  it.each(KINDS)("%s: the \"+ New …\" entries follow the capabilities", async (_kind, caps) => {
+    mockGets({ caps });
+    renderFormAt();
+    await screen.findByLabelText(/description/i);
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /^item$/i })).toBeEnabled());
+    // Wait for the answer: the Item picker's "New Item…" (or, without it, the type note in an opened Item list).
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/auth/capabilities"));
+    await new Promise((r) => setTimeout(r, 20));
+    for (const [kind, label, entry] of CREATE_ENTRIES) {
+      const allowed = caps.can_create[kind as keyof typeof caps.can_create] === true;
+      const trigger = screen.getByRole("combobox", { name: label });
+      fireEvent.click(trigger);
+      if (allowed) {
+        expect(await screen.findByRole("option", { name: entry })).toBeInTheDocument();
+      } else {
+        await new Promise((r) => setTimeout(r, 10));
+        expect(screen.queryByRole("option", { name: entry })).not.toBeInTheDocument();
+      }
+      fireEvent.click(trigger);
+      await waitFor(() => expect(screen.queryByRole("option", { name: entry })).not.toBeInTheDocument());
+    }
+  });
+
+  it("a new vendor is made from the name only (no code), picked at once, and the form keeps everything typed", async () => {
+    const vendors: { id: number; name: string }[] = [{ id: 7, name: "Acme Traders" }];
+    mockGets({ vendors });
+    (apiClient.post as any).mockImplementation((path: string, body: { name: string }) => {
+      const row = { id: 31, ...body };
+      if (path === "/masters/vendors") vendors.push(row);
+      return Promise.resolve(row);
+    });
+    renderFormAt();
+    fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Test Laptop" } });
+    fireEvent.click(screen.getByRole("combobox", { name: /^vendor$/i }));
+    fireEvent.click(await screen.findByRole("option", { name: /new vendor/i }));
+    const dialog = await screen.findByRole("dialog", { name: /new vendor/i });
+    fireEvent.change(within(dialog).getByLabelText(/^name/i), { target: { value: "Vansh Enterprises" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/masters/vendors", expect.objectContaining({ name: "Vansh Enterprises" })));
+    expect((apiClient.post as any).mock.calls[0][1]).not.toHaveProperty("code");
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /^vendor$/i })).toHaveTextContent("Vansh Enterprises"));
+    expect(screen.queryByRole("dialog", { name: /new vendor/i })).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/description/i)).toHaveValue("Test Laptop");        // still on the same task
+  });
+
+  it("a new stock room (in a new place) is made for this company and becomes Received Into", async () => {
+    const rooms: Record<string, unknown>[] = [];
+    mockGets({ asset_users: rooms });
+    (apiClient.post as any).mockImplementation((path: string, body: Record<string, unknown>) => {
+      const row = { id: 88, name: body.name, location_name: body.location_name, company_code: "CKSPL", company_id: 1 };
+      if (path === "/stock-rooms") rooms.push(row);
+      return Promise.resolve(row);
+    });
+    renderFormAt();
+    await screen.findByLabelText(/description/i);
+    expect(await screen.findByText("This company has no stock room yet. Add one with “New Stock Room…” in the list.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("combobox", { name: /^received into$/i }));
+    fireEvent.click(await screen.findByRole("option", { name: /new stock room/i }));
+    const dialog = await screen.findByRole("dialog", { name: /new stock room/i });
+    fireEvent.change(within(dialog).getByLabelText(/^name/i), { target: { value: "Farukhnagar Stock" } });
+    fireEvent.change(await within(dialog).findByLabelText(/new place name/i), { target: { value: "Farukhnagar Warehouse" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/stock-rooms", {
+      name: "Farukhnagar Stock", company_id: 1, location_name: "Farukhnagar Warehouse",
+    }));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /^received into$/i })).toHaveTextContent("Farukhnagar Stock"));
+  });
+
+  it("someone who may not add a vendor, cost centre or stock room is told who can, instead of a dead end", async () => {
+    mockGets({ caps: VIEWER, costCentres: [], vendors: [], asset_users: [] });
+    renderFormAt();
+    expect(await screen.findByText(`This company has no cost centre yet. ${ASK_TO_ADD.cost_centre}`)).toBeInTheDocument();
+    expect(await screen.findByText(`This company has no stock room yet. ${ASK_TO_ADD.stock_room}`)).toBeInTheDocument();
+    expect(await screen.findByText(ASK_TO_ADD.vendor)).toBeInTheDocument();
+  });
+
+  it("remembers the Cost Centre and stock room used last (per person and company) and starts with them next time", async () => {
+    mockGets({
+      asset_users: [{ id: 4, name: "IT Stock-HO" }, { id: 5, name: "IT Stock-WH" }],
+      costCentres: [{ id: 3, code: "HO01", name: "Head Office" }, { id: 6, code: "WH", name: "Warehouse" }],
+    });
+    (apiClient.post as any).mockResolvedValue([{ id: 20, asset_code: "A1" }, { id: 21, asset_code: "A2" }]);
+    renderFormAt();
+    fireEvent.change(await screen.findByLabelText(/description/i), { target: { value: "Test Laptop" } });
+    await pickSelectOption(/^item$/i, "Laptop");
+    await pickSelectOption(/^cost centre$/i, optionName("WH · Warehouse"));
+    await pickSelectOption(/^received into$/i, "IT Stock-WH");
+    await fillMandatoryProcurementFields();
+    await waitFor(() => expect(screen.getByRole("button", { name: /save/i })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/assets", expect.objectContaining({ cost_center_id: 6, initial_asset_user_id: 5 })));
+    cleanup();
+
+    renderFormAt();
+    await screen.findByLabelText(/description/i);
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /^cost centre$/i })).toHaveTextContent("Warehouse"));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /^received into$/i })).toHaveTextContent("IT Stock-WH"));
+  });
+
+  it("a remembered record that no longer exists is quietly forgotten", async () => {
+    window.localStorage.setItem("ckam:last-used:5:1", JSON.stringify({ cost_centre: "99", stock_room: "98" }));
+    mockGets();
+    renderFormAt();
+    await screen.findByLabelText(/description/i);
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/stock-rooms?company_id=1"));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.getByRole("combobox", { name: /^cost centre$/i })).not.toHaveTextContent("Head Office");
+    expect(screen.getByRole("combobox", { name: /^received into$/i })).not.toHaveTextContent("IT Stock-HO");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

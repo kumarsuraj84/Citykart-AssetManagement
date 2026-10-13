@@ -36,7 +36,8 @@ import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField } from "@/components/shared/FormField";
 import { BulkImportExport } from "@/components/shared/BulkImportExport";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
-import { NewDepartmentDialog, NewLocationDialog, useCanCreateMasters } from "@/components/quick-create/masters";
+import { NewDepartmentDialog, NewLocationDialog } from "@/components/quick-create/masters";
+import { canManage, useCapabilities } from "@/lib/capabilities";
 import { bulkDeactivate, type BulkDeactivateFailure } from "../../lib/bulk-deactivate";
 import {
   PLACE_TYPES,
@@ -266,7 +267,8 @@ export function AssetUsersScreen({ fixedType, embedded = false }: AssetUsersScre
   });
 
   // A missing Location (of the chosen company) or Department is created right here.
-  const canCreateMasters = useCanCreateMasters();
+  // Places, Departments and ERP stores are head-office set-up (capabilities endpoint).
+  const { caps } = useCapabilities();
   const [newLocation, setNewLocation] = useState(false);
   const [newDepartment, setNewDepartment] = useState(false);
 
@@ -592,7 +594,7 @@ export function AssetUsersScreen({ fixedType, embedded = false }: AssetUsersScre
               basePath="/asset-users"
               onImported={() => qc.invalidateQueries({ queryKey: ["asset_users"] })}
             />
-            {canCreateMasters && (fixedType === undefined || fixedType === "STORE") && <ErpStoresDialog />}
+            {canManage(caps, "erp_setup") && (fixedType === undefined || fixedType === "STORE") && <ErpStoresDialog />}
             <Button onClick={openAdd}>{fixedType ? `Add ${noun}` : "Add"}</Button>
           </>
         }
@@ -746,7 +748,7 @@ export function AssetUsersScreen({ fixedType, embedded = false }: AssetUsersScre
                 value={draft.location_id || undefined}
                 onValueChange={handleLocationChange}
                 options={locations.map((l) => ({ value: String(l.id), label: l.name, keywords: [l.code] }))}
-                onCreateNew={canCreateMasters && draft.company_id ? () => setNewLocation(true) : undefined}
+                onCreateNew={canManage(caps, "location") && draft.company_id ? () => setNewLocation(true) : undefined}
                 createLabel="New Place…"
               />
             </FormField>
@@ -776,7 +778,7 @@ export function AssetUsersScreen({ fixedType, embedded = false }: AssetUsersScre
                 value={draft.department_id || undefined}
                 onValueChange={(v) => setField("department_id", v)}
                 options={departments.map((d) => ({ value: String(d.id), label: d.name }))}
-                onCreateNew={canCreateMasters ? () => setNewDepartment(true) : undefined}
+                onCreateNew={canManage(caps, "department") ? () => setNewDepartment(true) : undefined}
                 createLabel="New Department…"
               />
             </FormField>

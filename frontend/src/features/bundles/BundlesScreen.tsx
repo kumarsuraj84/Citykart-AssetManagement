@@ -3,7 +3,7 @@ import { Pencil, Trash2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import { Button } from "@/components/ui/button";
-import { useCanCreateMasters } from "@/components/quick-create/masters";
+import { useCanCreate } from "@/lib/capabilities";
 import { ItemFormDialog } from "../items/ItemFormDialog";
 import type { Item } from "../items/types";
 import { Input } from "@/components/ui/input";
@@ -39,7 +39,7 @@ export function BundlesScreen() {
   const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => apiClient.get<Item[]>("/items") });
   const categoriesQ = useQuery({ queryKey: ["masters", "categories"], queryFn: () => apiClient.get<Named[]>("/masters/categories") });
   const subcategoriesQ = useQuery({ queryKey: ["masters", "subcategories"], queryFn: () => apiClient.get<Named[]>("/masters/subcategories") });
-  const canCreate = useCanCreateMasters();
+  const canCreate = useCanCreate("item");
   // A part is a single thing (CPU, Mouse), never an Item that is itself a bundle.
   const partItems = (itemsQ.data ?? []).filter((i) => i.bundle_id === null);
   const bundles = bundlesQ.data ?? [];

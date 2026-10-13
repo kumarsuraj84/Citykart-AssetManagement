@@ -4,7 +4,9 @@ import { api, loginAdmin, newSeedRegistry, seedTestCompany, teardownTestCompany,
 // "Create it right here": the head-office admin adding an Item whose type of asset
 // (Asset Group › Sub-category) does not exist yet makes both from the Item form's
 // "New type…" (no trip to Settings › Catalogue › Asset Groups and back), and the
-// Item lands under them.
+// Item lands under them. Since S3b-1 the "+ New …" entries follow
+// GET /api/auth/capabilities (the head-office admin has all of them; an ordinary
+// Admin / Operator has the in-flow ones too -- covered by the vitest suites).
 
 async function loginAs(page: Page, empCode: string, password: string) {
   await page.goto("/login");
@@ -50,6 +52,8 @@ test("a new Item brings its own new Category and Sub-Category with it, all from 
   await page.getByRole("option", { name: "New Category…" }).click();
   const categoryDialog = page.getByRole("dialog", { name: "New Category" });
   await categoryDialog.locator("#qc-cat-name").fill(categoryName);
+  // S3b-1: the Code is made from the name and kept under "More"; a run-unique one is typed there.
+  await categoryDialog.getByRole("button", { name: "More", exact: true }).click();
   await categoryDialog.locator("#qc-cat-code").fill(`E2EC${ts}`);
   await categoryDialog.locator("#qc-cat-asset_domain").click();
   await page.getByRole("option", { name: "Admin / Non-IT Team", exact: true }).click();
@@ -57,6 +61,7 @@ test("a new Item brings its own new Category and Sub-Category with it, all from 
   await expect(subDialog.locator("#qc-category_id")).toHaveText(categoryName);       // picked for us
 
   await subDialog.locator("#qc-name").fill(subName);
+  await subDialog.getByRole("button", { name: "More", exact: true }).click();
   await subDialog.locator("#qc-code").fill(`E2ES${ts}`);
   await subDialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect(itemDialog.locator("#item-type")).toContainText(`${categoryName} › ${subName}`);

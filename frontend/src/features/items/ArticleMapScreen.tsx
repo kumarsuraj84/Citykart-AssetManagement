@@ -16,7 +16,7 @@ import { ErrorState } from "@/components/shared/ErrorState";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { ItemFormDialog } from "./ItemFormDialog";
 import { ErpGroupsDialog } from "./ErpGroupsDialog";
-import { useCanCreateMasters } from "@/components/quick-create/masters";
+import { useCanCreate } from "@/lib/capabilities";
 import { companyOptions, itemOptions as buildItemOptions } from "@/lib/option-labels";
 import { useCategoryLookups } from "@/lib/lookups";
 
@@ -87,7 +87,7 @@ function ArticlesView({ companyId, items }: { companyId?: string; items: Item[] 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkItem, setBulkItem] = useState<string | undefined>();
   // An Article whose Item does not exist yet gets it created right here, then linked to it.
-  const canCreate = useCanCreateMasters();
+  const canCreate = useCanCreate("item");
   const [newItemFor, setNewItemFor] = useState<ArticleRow | null>(null);
 
   const articlesQ = useQuery({

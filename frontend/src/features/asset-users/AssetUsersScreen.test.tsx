@@ -4,6 +4,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AssetUsersScreen, canManageAccount } from "./AssetUsersScreen";
 import { apiClient, ApiError } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
+import { ADMIN_BOTH, HEAD_OFFICE } from "../../test-capabilities";
+
+// What GET /auth/capabilities answers for whoever is signed in right now.
+const capsOfSignedIn = () => (useAuthStore.getState().isPrimaryOwner ? HEAD_OFFICE : ADMIN_BOTH);
 
 // Keeps the real ApiError class (so `instanceof ApiError` checks inside the
 // bulk-deactivate helper work against the same class this test constructs)
@@ -63,6 +67,7 @@ function mockGets(
   locations: { id: number; company_id: number }[] = [LOCATION],
 ) {
   (apiClient.get as any).mockImplementation((path: string) => {
+    if (path === "/auth/capabilities") return Promise.resolve(capsOfSignedIn());
     if (path === "/asset-users") return Promise.resolve(asset_users);
     if (path === "/masters/companies") return Promise.resolve(companies);
     if (path.startsWith("/masters/locations")) {
@@ -419,6 +424,7 @@ describe("People & Places lists (one type each)", () => {
 
   function mockAll() {
     (apiClient.get as any).mockImplementation((path: string) => {
+      if (path === "/auth/capabilities") return Promise.resolve(capsOfSignedIn());
       if (path === "/asset-users") return Promise.resolve([ASSET_USER, ADMIN_EMP, STORE, STOCK]);
       if (path === "/masters/companies") return Promise.resolve([COMPANY]);
       if (path === "/masters/locations") return Promise.resolve([LOCATION]);
@@ -507,7 +513,7 @@ describe("People & Places lists (one type each)", () => {
     await waitFor(() => expect(screen.getByText("Lamington Road")).toBeInTheDocument());
     expect(screen.queryByText("Ankur")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Store" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Stores from ERP" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Stores from ERP" })).toBeInTheDocument();
     expect(screen.getByText("No login")).toBeInTheDocument();
     useAuthStore.getState().logout();
   });

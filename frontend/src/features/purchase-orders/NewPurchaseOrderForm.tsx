@@ -7,9 +7,11 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { FormField } from "@/components/shared/FormField";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { AsyncButton } from "@/components/shared/AsyncButton";
-import { NewCostCenterDialog, NewVendorDialog, useCanCreateMasters } from "@/components/quick-create/masters";
-import { companyOptions, costCentreOptions, stockRoomOptions, vendorOptions } from "@/lib/option-labels";
-import { usePlaceLookups } from "@/lib/lookups";
+import { NewCostCenterDialog, NewVendorDialog } from "@/components/quick-create/masters";
+import { StockRoomSelect, useStockRooms } from "@/components/quick-create/StockRoomSelect";
+import { companyOptions, costCentreOptions, vendorOptions } from "@/lib/option-labels";
+import { ASK_TO_ADD, canCreate as may, useCapabilities } from "@/lib/capabilities";
+import { useRemember, useRememberedDefault } from "@/lib/remembered-defaults";
 
 interface Option {
   id: number;
@@ -59,17 +61,23 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
   // Where the goods arrive (a Stock Room of this company). Optional: Mark
   // Delivery Done then starts with it as the place it is Received Into.
   const [deliveryId, setDeliveryId] = useState("");
-  const usersQ = useQuery({
-    queryKey: ["asset_users", selectedCompanyId],
-    queryFn: () => apiClient.get<Option[]>(`/asset-users?company_id=${selectedCompanyId}`),
-    enabled: selectedCompanyId != null,
-  });
-  const stockPoints = (usersQ.data ?? []).filter((u) => !u.asset_user_type || u.asset_user_type === "STOCK_POINT");
-  const placeLookups = usePlaceLookups();
+  const stockRoomsQ = useStockRooms(selectedCompanyId);
 
-  const canCreate = useCanCreateMasters();
+  // What this person may add right here (nothing while the answer loads).
+  const { caps, settled: capsSettled } = useCapabilities();
   const [newVendor, setNewVendor] = useState(false);
   const [newCostCenter, setNewCostCenter] = useState(false);
+
+  // Smart defaults: the Cost Centre and stock room this person used last for this company.
+  const rememberChoice = useRemember();
+  useRememberedDefault({
+    kind: "cost_centre", companyId: selectedCompanyId, value: costCenterId, setValue: setCostCenterId,
+    validIds: costCenters.map((c) => c.id), ready: costCentersQ.isSuccess,
+  });
+  useRememberedDefault({
+    kind: "stock_room", companyId: selectedCompanyId, value: deliveryId, setValue: setDeliveryId,
+    validIds: stockRoomsQ.rows.map((r) => r.id), ready: stockRoomsQ.isSuccess,
+  });
 
   const canSave = selectedCompanyId != null && poNumber.trim() !== "" && poDate !== "" && costCenterId !== "";
 
@@ -84,6 +92,8 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
         ...(deliveryId ? { delivery_asset_user_id: Number(deliveryId) } : {}),
       }),
     onSuccess: (created) => {
+      rememberChoice(selectedCompanyId, "cost_centre", costCenterId);
+      rememberChoice(selectedCompanyId, "stock_room", deliveryId);
       navigate({ to: "/purchase-orders/$id", params: { id: String(created.id) } });
     },
   });
@@ -119,9 +129,12 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
             value={selectValue(vendorId)}
             onValueChange={setVendorId}
             options={vendorOptions(vendors)}
-            onCreateNew={canCreate ? () => setNewVendor(true) : undefined}
+            onCreateNew={may(caps, "vendor") ? () => setNewVendor(true) : undefined}
             createLabel="New Vendor…"
           />
+          {capsSettled && vendorsQ.isSuccess && vendors.length === 0 && !may(caps, "vendor") && (
+            <p className="text-xs text-muted-foreground" role="note">{ASK_TO_ADD.vendor}</p>
+          )}
         </FormField>
         <FormField htmlFor="cost-center" label="Cost Centre" required>
           <SearchableSelect
@@ -129,19 +142,26 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
             value={selectValue(costCenterId)}
             onValueChange={setCostCenterId}
             options={costCentreOptions(costCenters)}
-            onCreateNew={canCreate && selectedCompanyId != null ? () => setNewCostCenter(true) : undefined}
+            onCreateNew={may(caps, "cost_centre") && selectedCompanyId != null ? () => setNewCostCenter(true) : undefined}
             createLabel="New Cost Centre…"
           />
+          {capsSettled && costCentersQ.isSuccess && costCenters.length === 0 && (
+            <p className="text-xs text-muted-foreground" role="note">
+              {may(caps, "cost_centre")
+                ? "This company has no cost centre yet. Add one with “New Cost Centre…” in the list."
+                : `This company has no cost centre yet. ${ASK_TO_ADD.cost_centre}`}
+            </p>
+          )}
         </FormField>
         <FormField
           htmlFor="delivery-location" label="Received Into" className="col-span-2"
           helperText="Optional. The Stock Room the goods arrive at; receiving starts with it."
         >
-          <SearchableSelect
+          <StockRoomSelect
             id="delivery-location"
-            value={selectValue(deliveryId)}
+            companyId={selectedCompanyId}
+            value={deliveryId}
             onValueChange={setDeliveryId}
-            options={stockRoomOptions(stockPoints, placeLookups)}
           />
         </FormField>
       </div>

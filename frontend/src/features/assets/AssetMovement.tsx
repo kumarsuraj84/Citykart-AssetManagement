@@ -5,8 +5,11 @@ import { apiClient } from "../../lib/api-client";
 import type { Item } from "../items/types";
 import { actionsFor, targetLabelFor } from "./actionRules";
 import { statusLabel } from "../../lib/labels";
-import { itemOptions, placeOptions, stockRoomOptions } from "../../lib/option-labels";
+import { itemOptions, placeOptions } from "../../lib/option-labels";
 import { useCategoryLookups, usePlaceLookups } from "../../lib/lookups";
+import { useCanCreate } from "../../lib/capabilities";
+import { NewStockRoomDialog } from "@/components/quick-create/masters";
+import { stockRoomPickerOptions, useStockRooms } from "@/components/quick-create/StockRoomSelect";
 import { MAX_QUANTITY, quantityHint, quantityProblem } from "../../lib/limits";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -184,6 +187,12 @@ export function AssetMovement() {
   const placeLookups = usePlaceLookups();
   const categoryLookups = useCategoryLookups();
   const peopleAndPlaces = placeOptions(asset_users, placeLookups);
+  // Stock rooms of every company this person works in (Add by Item's "where it is now").
+  const stockRoomsQ = useStockRooms("all");
+  // A destination stock room that does not exist yet is added right here (people and
+  // stores are not: those belong to People & Places).
+  const mayAddStockRoom = useCanCreate("stock_room");
+  const [newStockRoom, setNewStockRoom] = useState(false);
 
   // "Currently With" browse: everything a specific person/store/point holds
   // right now, so an operator who knows WHO has something (but not its
@@ -476,7 +485,10 @@ export function AssetMovement() {
               options={peopleAndPlaces}
               placeholder="Pick an employee, store or stock room…"
               searchPlaceholder="Search by name or code…"
+              onCreateNew={mayAddStockRoom ? () => setNewStockRoom(true) : undefined}
+              createLabel="New Stock Room…"
             />
+            <NewStockRoomDialog open={newStockRoom} onOpenChange={setNewStockRoom} onCreated={(row) => setToAssetUserId(String(row.id))} />
           </FormField>
         )}
       </div>
@@ -591,7 +603,7 @@ export function AssetMovement() {
           <FormField htmlFor="movement-from" label="Currently in stock at">
             <SearchableSelect
               id="movement-from" aria-label="Currently in stock at" value={selectValue(fromId)} onValueChange={setFromId}
-              options={stockRoomOptions(asset_users.filter((u) => u.asset_user_type === "STOCK_POINT"), placeLookups)}
+              options={stockRoomPickerOptions(stockRoomsQ.rows)}
               placeholder="Choose the Stock Room"
             />
           </FormField>

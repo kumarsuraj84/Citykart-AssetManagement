@@ -6,6 +6,8 @@ import { useAuthStore } from "../../lib/auth-store";
 import { ItemFormDialog, SERIAL_MODES, serialFlags, serialModeOf } from "./ItemFormDialog";
 import { autoSubcategory, parseTypeValue, typeOfAssetOptions, typeValueFor } from "./type-of-asset";
 import type { Item } from "./types";
+import type { Capabilities } from "../../lib/capabilities";
+import { ADMIN_BOTH, HEAD_OFFICE, KINDS, OPERATOR_IT } from "../../test-capabilities";
 
 vi.mock("../../lib/api-client");
 
@@ -34,8 +36,12 @@ const BUNDLES = [{
   ],
 }];
 
+// What GET /auth/capabilities answers in the current test (S3b-1).
+let CAPS: Capabilities = HEAD_OFFICE;
+
 function mockGets() {
   (apiClient.get as any).mockImplementation((path: string) => {
+    if (path === "/auth/capabilities") return Promise.resolve(CAPS);
     if (path === "/masters/categories") return Promise.resolve(CATS);
     if (path === "/masters/subcategories") return Promise.resolve(SUBS);
     if (path === "/items") return Promise.resolve(ITEMS);
@@ -61,8 +67,9 @@ async function pickType(dialog: HTMLElement, name: RegExp) {
   fireEvent.click(await screen.findByRole("option", { name }));
 }
 
-function loginAs(isPrimaryOwner: boolean) {
-  useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: isPrimaryOwner ? null : 1, isPrimaryOwner, mustChangePassword: false });
+function loginAs(isPrimaryOwner: boolean, caps: Capabilities = isPrimaryOwner ? HEAD_OFFICE : ADMIN_BOTH) {
+  CAPS = caps;
+  useAuthStore.getState().setAuth({ accessToken: "tok", role: caps.role, companyId: isPrimaryOwner ? null : 1, isPrimaryOwner, mustChangePassword: false });
 }
 
 beforeEach(() => {
@@ -158,6 +165,9 @@ describe("Sub-category is still required by the server, but never asked separate
     const sub = await screen.findByRole("dialog", { name: /new sub-category/i });
     expect(within(sub).getByLabelText(/^category/i)).toHaveTextContent("Furniture");
     fireEvent.change(within(sub).getByLabelText(/^name/i), { target: { value: "Office Chair" } });
+    // The Code is made from the name and kept under More (it can still be changed there).
+    expect(within(sub).queryByLabelText(/^code/i)).not.toBeInTheDocument();
+    fireEvent.click(within(sub).getByRole("button", { name: /^more$/i }));
     expect(within(sub).getByLabelText(/^code/i)).toHaveValue("OC");
     fireEvent.click(within(sub).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/masters/subcategories", { category_id: 2, name: "Office Chair", code: "OC" }));
@@ -166,8 +176,8 @@ describe("Sub-category is still required by the server, but never asked separate
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/items", expect.objectContaining({ category_id: 2, subcategory_id: 60 })));
   });
 
-  it("only the head-office admin is offered New type…; anyone else is told whom to ask", async () => {
-    loginAs(false);
+  it("someone who may not add types of asset (an operator) is not offered New type… and is told whom to ask", async () => {
+    loginAs(false, { ...OPERATOR_IT, item_create_work_areas: ["IT", "NON_IT"] });
     const { dialog } = renderForm({ initialName: "Desk" });
     fireEvent.click(within(dialog).getByRole("combobox", { name: /type of asset/i }));
     await screen.findByRole("option", { name: /^Furniture/ });
@@ -182,7 +192,8 @@ describe("Sub-category is still required by the server, but never asked separate
 describe("Comes as a set (the Item's own bundle)", () => {
   async function openSet(dialog: HTMLElement) {
     fireEvent.click(within(dialog).getByRole("button", { name: /^more$/i }));
-    fireEvent.click(within(dialog).getByRole("switch", { name: /comes as a set/i }));
+    // Offered once the capabilities say this person may make sets (the head-office admin).
+    fireEvent.click(await within(dialog).findByRole("switch", { name: /comes as a set/i }));
   }
 
   it("saves the set first, then the Item pointing at it", async () => {
@@ -319,5 +330,91 @@ describe("ERP codes under More", () => {
     fireEvent.click(within(fresh.dialog).getByRole("button", { name: /^more$/i }));
     expect(within(fresh.dialog).getByText(/link them after saving/i)).toBeInTheDocument();
     expect(within(fresh.dialog).queryByRole("button", { name: "Open ERP links" })).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S3b-1: the Item form for every kind of login (capabilities endpoint).
+// ---------------------------------------------------------------------------
+describe("S3b-1: what each kind of login may do in the Item form", () => {
+  async function typeOptions(dialog: HTMLElement): Promise<string[]> {
+    const trigger = within(dialog).getByRole("combobox", { name: /type of asset/i });
+    fireEvent.click(trigger);
+    const opts = await screen.findAllByRole("option");
+    const names = opts.map((o) => o.textContent ?? "");
+    fireEvent.click(trigger);
+    await waitFor(() => expect(screen.queryAllByRole("option")).toHaveLength(0));
+    return names;
+  }
+
+  const settle = async () => {
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/auth/capabilities"));
+    await new Promise((r) => setTimeout(r, 20));
+  };
+
+  it.each(KINDS)("%s: types only of the work areas they may add Items in; New type… only if they may add types", async (_kind, caps) => {
+    loginAs(caps.is_head_office_admin, caps);
+    const { dialog } = renderForm({ initialName: "Thing" });
+    await settle();
+    if (caps.item_create_work_areas.length === 0) {
+      fireEvent.click(within(dialog).getByRole("combobox", { name: /type of asset/i }));
+      await new Promise((r) => setTimeout(r, 20));
+      expect(screen.queryByRole("option", { name: /›/ })).not.toBeInTheDocument();
+      return;
+    }
+    const names = await typeOptions(dialog);
+    expect(names.some((n) => n.startsWith("IT Fixed Assets › Laptop"))).toBe(true);
+    expect(names.some((n) => n.startsWith("Furniture"))).toBe(caps.item_create_work_areas.includes("NON_IT"));
+    expect(names.some((n) => /new type/i.test(n))).toBe(caps.can_create.sub_category === true);
+    if (!caps.can_create.sub_category) {
+      expect(within(dialog).getByText(/Ask the head-office admin to add this type of asset\./)).toBeInTheDocument();
+    }
+    fireEvent.click(within(dialog).getByRole("button", { name: /^more$/i }));
+    const brand = within(dialog).getByRole("combobox", { name: /default brand/i });
+    fireEvent.click(brand);
+    await screen.findAllByRole("option");
+    expect(screen.queryByRole("option", { name: /new brand/i }) !== null).toBe(caps.can_create.brand === true);
+  });
+
+  it("an operator adds an IT Item (two fields and a choice) and it is saved for the IT type picked", async () => {
+    loginAs(false, OPERATOR_IT);
+    const { dialog, onSaved } = renderForm({ initialName: "Barcode Scanner" });
+    await settle();
+    await pickType(dialog, /^Network › Switch/);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/items", expect.objectContaining({
+      name: "Barcode Scanner", category_id: 3, subcategory_id: 30,
+    })));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  });
+
+  it("the server's work-area refusal stays in the Item form, word for word", async () => {
+    loginAs(false, OPERATOR_IT);
+    const sentence = "This belongs to the Admin / Non-IT team; you can only work with IT items. Ask someone in the Admin / Non-IT team or the head-office admin.";
+    (apiClient.post as any).mockRejectedValue(new Error(sentence));
+    const { dialog, onOpenChange } = renderForm({ initialName: "Scanner" });
+    await settle();
+    await pickType(dialog, /^Network › Switch/);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(await within(dialog).findByText(sentence)).toBeInTheDocument();
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
+  it("someone who may not make sets can only point a new Item at an existing set (no set is created or changed)", async () => {
+    loginAs(false, ADMIN_BOTH);
+    const { dialog } = renderForm({ initialName: "Desktop Basic" });
+    await settle();
+    await pickType(dialog, /^IT Fixed Assets › Laptop/);
+    fireEvent.click(within(dialog).getByRole("button", { name: /^more$/i }));
+    fireEvent.click(await within(dialog).findByRole("switch", { name: /comes as a set/i }));
+    expect(within(dialog).queryByRole("button", { name: /use the desktop example/i })).not.toBeInTheDocument();
+    expect(within(dialog).getByText(/only the head-office admin can make a new set/i)).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Save" })).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole("combobox", { name: /the set it comes as/i }));
+    fireEvent.click(await screen.findByRole("option", { name: "Desktop Set" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/items", expect.objectContaining({ name: "Desktop Basic", bundle_id: 7 })));
+    expect(apiClient.post).not.toHaveBeenCalledWith("/bundles", expect.anything());
+    expect(apiClient.put).not.toHaveBeenCalled();
   });
 });

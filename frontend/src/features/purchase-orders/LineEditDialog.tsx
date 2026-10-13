@@ -8,6 +8,7 @@ import { FormField } from "@/components/shared/FormField";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { SearchableSelect, type SearchableSelectOption } from "@/components/shared/SearchableSelect";
 import { NewBrandDialog } from "@/components/quick-create/masters";
+import { canCreate as may, useCapabilities } from "@/lib/capabilities";
 import { ItemFormDialog } from "../items/ItemFormDialog";
 import { MAX_QUANTITY } from "@/lib/limits";
 import { type LineGroup, type PendingAssetRow, lineTitle } from "./po-detail-types";
@@ -85,12 +86,13 @@ interface Props {
   onSaved: (message: string) => void;
   itemSelectOptions: SearchableSelectOption[];
   brandSelectOptions: SearchableSelectOption[];
-  canCreate: boolean;
 }
 
 /** Mount with a fresh `key` per target: the form starts from the target's values. */
-export function LineEditDialog({ poId, target, onClose, onSaved, itemSelectOptions, brandSelectOptions, canCreate }: Props) {
+export function LineEditDialog({ poId, target, onClose, onSaved, itemSelectOptions, brandSelectOptions }: Props) {
   const qc = useQueryClient();
+  // "+ New Item…" / "+ New Brand…" for whoever may add them (capabilities endpoint).
+  const { caps } = useCapabilities();
   const [form, setForm] = useState<FormState>(() =>
     target ? initialForm(target) : initialForm({ kind: "unit", unit: {} as PendingAssetRow }),
   );
@@ -193,7 +195,7 @@ export function LineEditDialog({ poId, target, onClose, onSaved, itemSelectOptio
                 onValueChange={(v) => set({ itemId: v })}
                 options={itemSelectOptions}
                 disabled={!fieldsEditable}
-                onCreateNew={canCreate ? () => setNewItemOpen(true) : undefined}
+                onCreateNew={may(caps, "item") ? () => setNewItemOpen(true) : undefined}
                 createLabel="New Item…"
               />
             </FormField>
@@ -210,7 +212,7 @@ export function LineEditDialog({ poId, target, onClose, onSaved, itemSelectOptio
                 onValueChange={(v) => set({ brandId: v })}
                 options={brandSelectOptions}
                 disabled={!fieldsEditable}
-                onCreateNew={canCreate ? () => setNewBrandOpen(true) : undefined}
+                onCreateNew={may(caps, "brand") ? () => setNewBrandOpen(true) : undefined}
                 createLabel="New Brand…"
               />
             </FormField>

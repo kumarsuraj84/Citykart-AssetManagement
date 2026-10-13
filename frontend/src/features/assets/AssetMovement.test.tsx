@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { createAppRouter } from "../../router";
 import { apiClient } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
+import type { Capabilities } from "../../lib/capabilities";
+import { KINDS, OPERATOR_IT, withCapabilities } from "../../test-capabilities";
 
 vi.mock("../../lib/api-client");
 
@@ -326,5 +328,59 @@ describe("AssetMovement", () => {
     fireEvent.keyDown(screen.getByLabelText(/scan or type/i), { key: "Enter" });
 
     await waitFor(() => expect(screen.getByText(/Queued \(1\)/)).toBeInTheDocument());
+  });
+});
+
+// S3b-1: Move's stock-room pickers read GET /stock-rooms; a destination stock room
+// can be added right here (people and stores are not created inline).
+describe("S3b-1: stock rooms on Move", () => {
+  const ROOMS = [{ id: 9, name: "IT Stock-HO", location_name: "Head Office", company_code: "CKSPL", company_id: 1 }];
+
+  function world(caps: Capabilities) {
+    (apiClient.get as any).mockImplementation(withCapabilities(caps, (path: string) => {
+      if (path === "/stock-rooms") return Promise.resolve(ROOMS);
+      if (path === "/asset-users/me/companies") return Promise.resolve([{ id: 1, name: "Citykart Stores" }]);
+      if (path === "/masters/locations?company_id=1") return Promise.resolve([{ id: 50, name: "Head Office" }]);
+      if (path.startsWith("/asset-users")) return Promise.resolve([{ id: 9, name: "IT Stock-HO", asset_user_type: "STOCK_POINT" }, { id: 3, code: "E1", name: "Ankur", asset_user_type: "EMPLOYEE" }]);
+      return Promise.resolve([]);
+    }));
+  }
+
+  it("Add by Item's \"Currently in stock at\" lists the stock rooms of the person's companies from /stock-rooms", async () => {
+    world(OPERATOR_IT);
+    await renderMovement();
+    fireEvent.click(screen.getByRole("combobox", { name: /currently in stock at/i }));
+    expect(await screen.findByRole("option", { name: /^IT Stock-HO\s?· Head Office · CKSPL$/ })).toBeInTheDocument();
+    expect(apiClient.get).toHaveBeenCalledWith("/stock-rooms");
+    // a brand-new room holds nothing, so the source never offers to create one
+    expect(screen.queryByRole("option", { name: /new stock room/i })).not.toBeInTheDocument();
+  });
+
+  it.each(KINDS)("%s: Move To offers New Stock Room only when allowed, and never a new person", async (_kind, caps) => {
+    world(caps);
+    await renderMovement();
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/auth/capabilities"));
+    await new Promise((r) => setTimeout(r, 20));
+    const trigger = screen.getByRole("combobox", { name: /move to/i });
+    fireEvent.click(trigger);
+    await screen.findByRole("option", { name: /Ankur/ });
+    expect(screen.queryByRole("option", { name: /new stock room/i }) !== null).toBe(caps.can_create.stock_room === true);
+    expect(screen.queryByRole("option", { name: /new (employee|store|person)/i })).not.toBeInTheDocument();
+  });
+
+  it("a new destination stock room asks for the company only when there is a choice, then is picked as Move To", async () => {
+    world(OPERATOR_IT);
+    (apiClient.post as any).mockResolvedValue({ id: 70, name: "Hisar Stock" });
+    await renderMovement();
+    fireEvent.click(screen.getByRole("combobox", { name: /move to/i }));
+    fireEvent.click(await screen.findByRole("option", { name: /new stock room/i }));
+    const dialog = await screen.findByRole("dialog", { name: /new stock room/i });
+    await waitFor(() => expect(within(dialog).getByLabelText(/^company/i)).toHaveTextContent("Citykart Stores"));
+    fireEvent.change(within(dialog).getByLabelText(/^name/i), { target: { value: "Hisar Stock" } });
+    fireEvent.click(within(dialog).getByLabelText(/^place/i));
+    fireEvent.click(await screen.findByRole("option", { name: "Head Office" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/stock-rooms", { name: "Hisar Stock", company_id: 1, location_id: 50 }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /new stock room/i })).not.toBeInTheDocument());
   });
 });

@@ -12,7 +12,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { ItemFormDialog } from "./ItemFormDialog";
-import { useCanCreateMasters } from "@/components/quick-create/masters";
+import { useCanCreate } from "@/lib/capabilities";
 import { itemOptions as buildItemOptions } from "@/lib/option-labels";
 import { useCategoryLookups } from "@/lib/lookups";
 
@@ -30,7 +30,7 @@ const ALL_DEPARTMENTS = "__all__";
  */
 export function ErpCodesView({ companyId, items, fixedItem }: { companyId?: string; items: Item[]; fixedItem?: Item }) {
   const qc = useQueryClient();
-  const canCreate = useCanCreateMasters();
+  const canCreate = useCanCreate("item");
   const [tab, setTab] = useState<Tab>("undecided");
   const [search, setSearch] = useState("");
   const [department, setDepartment] = useState<string>(ALL_DEPARTMENTS);

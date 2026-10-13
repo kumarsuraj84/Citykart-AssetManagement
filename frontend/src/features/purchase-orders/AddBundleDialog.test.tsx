@@ -140,11 +140,11 @@ describe("AddBundleDialog", () => {
     expect(add).toBeDisabled();
   });
 
-  it("explains when no bundle exists yet", async () => {
+  it("explains when no bundle exists yet, naming who can make one", async () => {
     (apiClient.get as any).mockResolvedValue([]);
     renderDialog();
     expect(await screen.findByText(/No sets are set up yet/)).toHaveTextContent(
-      "The head-office admin can make one on an Item (Settings › Catalogue › Items, “Comes as a set”).",
+      "No sets are set up yet. Ask the head-office admin to make one (an Item that “Comes as a set”).",
     );
     expect(screen.queryByText(/Primary Owner|Masters/)).not.toBeInTheDocument();
     expect(within(screen.getByRole("dialog")).queryByLabelText(/^description/i)).not.toBeInTheDocument();
