@@ -20,7 +20,7 @@ export const HEAD_OFFICE: Capabilities = {
   can_create: { ...SMALL, item: true, category: true, sub_category: true },
   item_create_work_areas: ["IT", "NON_IT"], domain_manage_work_areas: ["IT", "NON_IT"],
   can_manage: Object.fromEntries(Object.keys(NO_MANAGE).map((k) => [k, true])),
-  company_ids: [1, 2],
+  company_ids: [1, 2], companies: [],
 };
 
 export const ADMIN_BOTH: Capabilities = {
@@ -29,7 +29,7 @@ export const ADMIN_BOTH: Capabilities = {
   can_create: { ...SMALL, item: true, category: true, sub_category: true },
   item_create_work_areas: ["IT", "NON_IT"], domain_manage_work_areas: ["IT", "NON_IT"],
   can_manage: { ...NO_MANAGE, category: true, sub_category: true, item: true, change_work_area: true, erp_vendor_link: true, users: true },
-  company_ids: [1, 2],
+  company_ids: [1, 2], companies: [],
 };
 
 export const ADMIN_IT: Capabilities = {
@@ -45,7 +45,7 @@ export const OPERATOR_IT: Capabilities = {
   can_create: { ...SMALL, item: true, category: false, sub_category: false },
   item_create_work_areas: ["IT"], domain_manage_work_areas: [],
   can_manage: { ...NO_MANAGE, erp_vendor_link: true },
-  company_ids: [1],
+  company_ids: [1], companies: [],
 };
 
 export const VIEWER: Capabilities = {
@@ -54,7 +54,7 @@ export const VIEWER: Capabilities = {
   can_create: { vendor: false, brand: false, cost_centre: false, stock_room: false, item: false, category: false, sub_category: false },
   item_create_work_areas: [], domain_manage_work_areas: [],
   can_manage: { ...NO_MANAGE },
-  company_ids: [1],
+  company_ids: [1], companies: [],
 };
 
 /** Every kind of login the S3b-1 gating tests walk through. */

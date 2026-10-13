@@ -50,7 +50,22 @@ describe("PrintLabelsAction (the one 'print these labels' action)", () => {
     expect(document.querySelector(".print-labels-sheet")).toBeNull();
   });
 
-  it("with only ids (a delivery): loads their label details when opened, 200 per request, in the given order", async () => {
+  it("S6: 1,000 ids (a big receipt) are read in ONE request (?ids= up to 1,000), in the given order", async () => {
+    const ids = Array.from({ length: 1000 }, (_, i) => i + 1);
+    (apiClient.get as any).mockImplementation((path: string) => {
+      const wanted = decodeURIComponent(/ids=([^&]*)/.exec(path)![1]).split(",").map(Number);
+      return Promise.resolve({ items: [...wanted].reverse().map(asset), total: wanted.length });
+    });
+    const rows = await fetchAssetsByIds<{ id: number }>(ids);
+    expect(apiClient.get).toHaveBeenCalledTimes(1);
+    expect(apiClient.get).toHaveBeenCalledWith(`/assets?ids=${encodeURIComponent(ids.join(","))}&limit=1000`);
+    expect(rows.map((r) => r.id)).toEqual(ids);
+    (apiClient.get as any).mockClear();
+    await fetchAssetsByIds<{ id: number }>(Array.from({ length: 1001 }, (_, i) => i + 1));
+    expect(apiClient.get).toHaveBeenCalledTimes(2);                  // more than 1,000: a second request
+  });
+
+  it("with only ids (a delivery): loads their label details when opened, in the given order", async () => {
     const ids = Array.from({ length: 250 }, (_, i) => i + 1);
     (apiClient.get as any).mockImplementation((path: string) => {
       const wanted = decodeURIComponent(/ids=([^&]*)/.exec(path)![1]).split(",").map(Number);
@@ -61,8 +76,8 @@ describe("PrintLabelsAction (the one 'print these labels' action)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Print their labels now" }));
     const dialog = await screen.findByRole("dialog", { name: "Print 250 labels" });
     await waitFor(() => expect(within(dialog).getByTestId("label-preview").querySelectorAll(".print-label")).toHaveLength(250));
-    expect(apiClient.get).toHaveBeenCalledTimes(2);
-    expect(apiClient.get).toHaveBeenNthCalledWith(1, `/assets?ids=${encodeURIComponent(ids.slice(0, 200).join(","))}&limit=200`);
+    expect(apiClient.get).toHaveBeenCalledTimes(1);
+    expect(apiClient.get).toHaveBeenNthCalledWith(1, `/assets?ids=${encodeURIComponent(ids.join(","))}&limit=1000`);
     const codes = Array.from(within(dialog).getByTestId("label-preview").querySelectorAll(".print-label")).slice(0, 2).map((l) => l.textContent);
     expect(codes[0]).toContain("FA/IT/1");
     expect(codes[1]).toContain("FA/IT/2");

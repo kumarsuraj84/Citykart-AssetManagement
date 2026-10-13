@@ -19,6 +19,9 @@ export interface Item {
   work_area?: string | null;
   category_name?: string | null;
   subcategory_name?: string | null;
+  /** S6: the Item comes as a set, and that set's name (from the server). */
+  is_set?: boolean;
+  bundle_name?: string | null;
 }
 
 export type MatchType = "CODE" | "NAME" | "ARTICLE" | "DEPARTMENT" | "SECTION" | "DIVISION";

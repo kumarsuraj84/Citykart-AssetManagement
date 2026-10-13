@@ -42,6 +42,9 @@ interface BulkProblem {
 }
 
 const ALL = "__all__";
+/** The server's page size for an ordinary list, and how many waiting assets the screen reads at most. */
+const PENDING_PAGE = 200;
+const PENDING_MAX = 5000;
 const daysSince = (isoDate: string) =>
   Math.max(0, Math.floor((Date.now() - new Date(isoDate).getTime()) / 86_400_000));
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-IN")} ${n === 1 ? one : many}`;
@@ -67,9 +70,20 @@ export function SerialPendingScreen() {
   const [notice, setNotice] = useState<string | null>(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
 
+  // Every waiting asset, 200 per request (the server's page size), so the list, its filters
+  // and the bulk paste keep working past 200.
   const listQ = useQuery({
     queryKey: ["assets", "serial-pending"],
-    queryFn: () => apiClient.get<{ items: PendingRow[]; total: number }>("/assets?serial_pending=true&limit=200"),
+    queryFn: async () => {
+      const first = await apiClient.get<{ items: PendingRow[]; total: number }>(`/assets?serial_pending=true&limit=${PENDING_PAGE}`);
+      const items = Array.isArray(first?.items) ? [...first.items] : [];
+      const total = typeof first?.total === "number" ? first.total : items.length;
+      for (let offset = PENDING_PAGE; offset < Math.min(total, PENDING_MAX) && items.length >= offset; offset += PENDING_PAGE) {
+        const next = await apiClient.get<{ items: PendingRow[]; total: number }>(`/assets?serial_pending=true&limit=${PENDING_PAGE}&offset=${offset}`);
+        items.push(...(Array.isArray(next?.items) ? next.items : []));
+      }
+      return { items, total };
+    },
   });
 
   function refresh() {
@@ -273,7 +287,11 @@ export function SerialPendingScreen() {
             options={[{ value: ALL, label: "All POs" }, ...poChoices.map((v) => ({ value: v, label: v }))]}
           />
         )}
-        {listQ.data && <span className="text-sm text-muted-foreground" role="status">{listQ.data.total} waiting</span>}
+        {listQ.data && (
+          <span className="text-sm text-muted-foreground" role="status">
+            {listQ.data.total} waiting{listQ.data.items.length < listQ.data.total ? ` (${listQ.data.items.length.toLocaleString("en-IN")} listed here)` : ""}
+          </span>
+        )}
       </div>
 
       {notice && <p className="rounded-md border bg-success-soft/50 px-2 py-1.5 text-sm" role="status">{notice}</p>}

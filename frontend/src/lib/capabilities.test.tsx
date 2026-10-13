@@ -47,6 +47,13 @@ describe("parseCapabilities and the pure helpers", () => {
     expect(caps.item_create_work_areas).toEqual(["IT"]);
   });
 
+  it("S5: reads the person's companies (code and name); an older answer without them gives none", () => {
+    const caps = parseCapabilities({ ...OPERATOR_IT, companies: [{ id: 1, code: "CKS", name: "Citykart Stores" }, { bad: true }] })!;
+    expect(caps.companies).toEqual([{ id: 1, code: "CKS", name: "Citykart Stores" }]);
+    const { companies: _drop, ...older } = OPERATOR_IT;
+    expect(parseCapabilities(older)!.companies).toEqual([]);
+  });
+
   it("anything that is not a capabilities object means nothing is allowed", () => {
     for (const bad of [null, undefined, [], "x", 3, {}, { can_create: [] }]) {
       expect(parseCapabilities(bad)).toBeNull();

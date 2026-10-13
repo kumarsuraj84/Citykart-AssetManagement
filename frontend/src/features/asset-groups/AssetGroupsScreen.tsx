@@ -5,7 +5,6 @@ import { apiClient, ApiError } from "../../lib/api-client";
 import { bulkDeactivate } from "../../lib/bulk-deactivate";
 import { suggestCode } from "../../lib/code-suggest";
 import { WORK_AREA_OPTIONS, workAreaLabel } from "../../lib/labels";
-import type { Item } from "../items/types";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -28,6 +27,8 @@ export interface Category {
   code: string;
   name: string;
   asset_domain: string;
+  /** S6: active Items in the group (list answers only; null/absent = not known). */
+  item_count?: number | null;
 }
 
 export interface Subcategory {
@@ -35,6 +36,25 @@ export interface Subcategory {
   category_id: number;
   code: string;
   name: string;
+  item_count?: number | null;
+  is_active?: boolean;
+}
+
+const known = (n: number | null | undefined): n is number => typeof n === "number" && Number.isFinite(n);
+
+/**
+ * Why a group / Sub-category cannot be deactivated yet, from what the list already says (S6: the server
+ * refuses while active Sub-categories or Items remain). null = nothing known that blocks it.
+ */
+export function deactivateBlocker(t: { kind: "category"; row: Category; subs: Subcategory[] } | { kind: "subcategory"; row: Subcategory }): string | null {
+  const items = known(t.row.item_count) ? t.row.item_count : 0;
+  const subs = t.kind === "category" ? t.subs.filter((s) => s.is_active !== false).length : 0;
+  if (items === 0 && subs === 0) return null;
+  const parts = [
+    ...(subs > 0 ? [`${subs} active Sub-categor${subs === 1 ? "y" : "ies"}`] : []),
+    ...(items > 0 ? [`${items} active Item${items === 1 ? "" : "s"}`] : []),
+  ];
+  return `${t.row.name} still has ${parts.join(" and ")}. Deactivate them or move them to another ${t.kind === "category" ? "group" : "Sub-category"} first.`;
 }
 
 const CATEGORIES_KEY = ["masters", "categories"];
@@ -51,6 +71,25 @@ const errorMessage = (e: unknown, fallback: string) => (e instanceof ApiError ||
 type GroupForm = { mode: "add" } | { mode: "edit"; cat: Category };
 type SubForm = { mode: "add"; cat: Category } | { mode: "edit"; sub: Subcategory; cat?: Category };
 type Target = { kind: "category"; row: Category } | { kind: "subcategory"; row: Subcategory };
+
+/**
+ * Deactivate (trash) for one row. When the list already shows that something active is still in it,
+ * the button is disabled and says why (hover, and for screen readers); the server would refuse anyway.
+ */
+function DeactivateButton({ name, blocker, onClick }: { name: string; blocker: string | null; onClick: () => void }) {
+  const reasonId = `deactivate-why-${name.replace(/[^A-Za-z0-9]+/g, "-")}`;
+  return (
+    <span title={blocker ?? undefined} className="inline-flex">
+      <Button
+        variant="ghost" size="icon" aria-label={`Deactivate ${name}`} disabled={blocker !== null}
+        aria-describedby={blocker ? reasonId : undefined} onClick={onClick}
+      >
+        <Trash2 className="h-4 w-4" aria-hidden="true" />
+      </Button>
+      {blocker && <span id={reasonId} className="sr-only">{blocker}</span>}
+    </span>
+  );
+}
 
 /** A Code field that starts as a suggestion from the name, under "More" (Codes become part of asset codes). */
 function CodeField({ id, value, onChange, open, onToggle, help }: {
@@ -80,10 +119,8 @@ export function AssetGroupsScreen({ embedded = false }: { embedded?: boolean } =
   const qc = useQueryClient();
   const categoriesQ = useQuery({ queryKey: CATEGORIES_KEY, queryFn: () => apiClient.get<Category[]>("/masters/categories") });
   const subsQ = useQuery({ queryKey: SUBCATEGORIES_KEY, queryFn: () => apiClient.get<Subcategory[]>("/masters/subcategories") });
-  const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => apiClient.get<Item[]>("/items") });
   const categories = asList<Category>(categoriesQ.data).slice().sort((a, b) => a.name.localeCompare(b.name));
   const subs = asList<Subcategory>(subsQ.data);
-  const items = asList<Item>(itemsQ.data);
 
   const [search, setSearchRaw] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
@@ -106,8 +143,6 @@ export function AssetGroupsScreen({ embedded = false }: { embedded?: boolean } =
     setSelected([]);
   }
 
-  const itemsInCategory = (id: number) => items.filter((i) => i.category_id === id).length;
-  const itemsInSub = (id: number) => items.filter((i) => i.subcategory_id === id).length;
   const subsOf = (catId: number) => subs.filter((s) => s.category_id === catId).sort((a, b) => a.name.localeCompare(b.name));
   const categoryCodes = categories.map((c) => c.code);
   const subCodesIn = (catId: number) => subs.filter((s) => s.category_id === catId).map((s) => s.code);
@@ -304,7 +339,9 @@ export function AssetGroupsScreen({ embedded = false }: { embedded?: boolean } =
                 <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
                   {workAreaLabel(cat.asset_domain)}
                 </span>
-                <span className="text-xs text-muted-foreground tabular-nums">{plural(itemsInCategory(cat.id), "Item")}</span>
+                {known(cat.item_count) && (
+                  <span className="text-xs text-muted-foreground tabular-nums">{plural(cat.item_count, "Item")}</span>
+                )}
                 <div className="ml-auto flex items-center gap-1">
                   <Button variant="ghost" size="sm" className="gap-1" aria-label={`Add Sub-category to ${cat.name}`} onClick={() => openAddSub(cat)}>
                     <Plus className="h-4 w-4" aria-hidden="true" />
@@ -313,9 +350,11 @@ export function AssetGroupsScreen({ embedded = false }: { embedded?: boolean } =
                   <Button variant="ghost" size="icon" aria-label={`Edit ${cat.name}`} onClick={() => openEditGroup(cat)}>
                     <Pencil className="h-4 w-4" aria-hidden="true" />
                   </Button>
-                  <Button variant="ghost" size="icon" aria-label={`Deactivate ${cat.name}`} onClick={() => { deactivateMutation.reset(); setDeactivating({ kind: "category", row: cat }); }}>
-                    <Trash2 className="h-4 w-4" aria-hidden="true" />
-                  </Button>
+                  <DeactivateButton
+                    name={cat.name}
+                    blocker={deactivateBlocker({ kind: "category", row: cat, subs: subsOf(cat.id) })}
+                    onClick={() => { deactivateMutation.reset(); setDeactivating({ kind: "category", row: cat }); }}
+                  />
                 </div>
               </div>
               {own.length === 0 ? (
@@ -332,14 +371,18 @@ export function AssetGroupsScreen({ embedded = false }: { embedded?: boolean } =
                       <span className="text-muted-foreground" aria-hidden="true">›</span>
                       <span>{s.name}</span>
                       <span className="font-mono text-xs text-muted-foreground">{s.code}</span>
-                      <span className="text-xs text-muted-foreground tabular-nums">{plural(itemsInSub(s.id), "Item")}</span>
+                      {known(s.item_count) && (
+                        <span className="text-xs text-muted-foreground tabular-nums">{plural(s.item_count, "Item")}</span>
+                      )}
                       <div className="ml-auto flex items-center gap-1">
                         <Button variant="ghost" size="icon" aria-label={`Edit ${s.name}`} onClick={() => openEditSub(s)}>
                           <Pencil className="h-4 w-4" aria-hidden="true" />
                         </Button>
-                        <Button variant="ghost" size="icon" aria-label={`Deactivate ${s.name}`} onClick={() => { deactivateMutation.reset(); setDeactivating({ kind: "subcategory", row: s }); }}>
-                          <Trash2 className="h-4 w-4" aria-hidden="true" />
-                        </Button>
+                        <DeactivateButton
+                          name={s.name}
+                          blocker={deactivateBlocker({ kind: "subcategory", row: s })}
+                          onClick={() => { deactivateMutation.reset(); setDeactivating({ kind: "subcategory", row: s }); }}
+                        />
                       </div>
                     </li>
                   ))}

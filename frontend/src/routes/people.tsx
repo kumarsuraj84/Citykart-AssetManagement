@@ -1,19 +1,19 @@
-import { AssetUsersScreen } from "../features/asset-users/AssetUsersScreen";
+import { PeopleScreen } from "../features/people/PeopleScreen";
 
-// People & Places: one backend table (asset users), four natural lists.
+// People & Places: one backend table, four natural lists (S5b-2: GET /api/people?kind=…).
 
 export function EmployeesRoute() {
-  return <AssetUsersScreen fixedType="EMPLOYEE" />;
+  return <PeopleScreen kind="employees" />;
 }
 
 export function StoresRoute() {
-  return <AssetUsersScreen fixedType="STORE" />;
+  return <PeopleScreen kind="stores" />;
 }
 
 export function StockRoomsRoute() {
-  return <AssetUsersScreen fixedType="STOCK_POINT" />;
+  return <PeopleScreen kind="stock-rooms" />;
 }
 
 export function InstallPointsRoute() {
-  return <AssetUsersScreen fixedType="INSTALLED" />;
+  return <PeopleScreen kind="install-points" />;
 }

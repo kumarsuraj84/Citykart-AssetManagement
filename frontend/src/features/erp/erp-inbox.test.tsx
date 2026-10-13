@@ -51,9 +51,21 @@ const DASHBOARD = {
   recent_activity: [], pending_po_summary: { count: 0, value: 0 }, open_purchase_orders: [],
 };
 
+let attentionFails = false;
+
 function mockApi(inbox: Inbox = INBOX) {
   (apiClient.get as any).mockImplementation((path: string) => {
     if (path === "/auth/capabilities") return Promise.resolve(useAuthStore.getState().isPrimaryOwner ? HEAD_OFFICE : ADMIN_BOTH);
+    // S6: Home's one call carries the inbox counts for the head-office admin.
+    if (path.startsWith("/home/attention")) {
+      if (attentionFails) return Promise.reject(new Error("503"));
+      return Promise.resolve({
+        serial_pending: 0, under_repair: 0, lost: 0, unlinked_assets: 0, waiting_pos: 0, waiting_units: 0, erp_available: true,
+        erp_changed_pos: 0, erp_arrived_pos: 0, erp_pos_needing_input: 0,
+        inbox: useAuthStore.getState().isPrimaryOwner ? { items: inbox.counts.items, vendors: inbox.counts.vendors, stores: inbox.counts.stores } : null,
+      });
+    }
+    if (path === "/erp/inbox/counts") return Promise.resolve({ items: inbox.counts.items, vendors: inbox.counts.vendors, stores: inbox.counts.stores });
     if (path.startsWith("/erp/inbox")) return Promise.resolve(inbox);
     if (path === "/masters/companies") return Promise.resolve([{ id: 1, code: "CKSPL", name: "Citykart Stores" }, { id: 2, code: "CKVPL", name: "Citykart Ventures" }]);
     if (path === "/items") return Promise.resolve([
@@ -84,6 +96,7 @@ const body = (path: string) => (apiClient.post as any).mock.calls.find((c: unkno
 
 beforeEach(() => {
   vi.clearAllMocks();
+  attentionFails = false;
   asHeadOffice();
   mockApi();
   (apiClient.post as any).mockImplementation((_path: string, entries: unknown[]) =>
@@ -246,12 +259,29 @@ describe("Home: the ERP decisions waiting (head-office admin)", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Home" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "ERP Inbox" })).not.toBeInTheDocument();
     expect(apiClient.get).not.toHaveBeenCalledWith("/erp/inbox");
+    expect(apiClient.get).not.toHaveBeenCalledWith("/erp/inbox/counts");
+  });
+
+  it("S6: the counts come with Home's one call -- the inbox itself is not read on Home", async () => {
+    renderAt("/dashboard");
+    await screen.findByRole("region", { name: "ERP Inbox" });
+    expect(apiClient.get).toHaveBeenCalledWith("/home/attention");
+    expect(apiClient.get).not.toHaveBeenCalledWith("/erp/inbox");
+    expect(apiClient.get).not.toHaveBeenCalledWith("/erp/inbox/counts");
+  });
+
+  it("S6: when Home's call fails, the row asks the small counts endpoint itself", async () => {
+    attentionFails = true;
+    renderAt("/dashboard");
+    const row = await screen.findByRole("region", { name: "ERP Inbox" });
+    expect(row).toHaveTextContent("14 stores from the ERP not created yet");
+    expect(apiClient.get).toHaveBeenCalledWith("/erp/inbox/counts");
   });
 
   it("all counts zero: no row", async () => {
     mockApi(EMPTY);
     renderAt("/dashboard");
-    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/erp/inbox"));
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/home/attention"));
     await new Promise((r) => setTimeout(r, 20));
     expect(screen.queryByRole("region", { name: "ERP Inbox" })).not.toBeInTheDocument();
   });

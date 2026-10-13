@@ -655,6 +655,40 @@ describe("S0 contract: the ERP decides number, date, vendor, open quantity and r
     await waitFor(() => expect(create).not.toBeDisabled());
   });
 
+  it("S6: two lines of one code share the ERP's open units: each is capped at open − the other lines, and says 'ERP has N open'", async () => {
+    mockApi({ d: draft({}, [
+      { ...CABLE_LINE(), quantity: 7, open_units: 9, max_units: 7 },
+      { ...CABLE_LINE(), quantity: 2, open_units: 9, max_units: 2 },
+    ]) });
+    renderScreen();
+    const create = await openDraft();
+    await waitFor(() => expect(create).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: "Line 1: details" }));
+    fireEvent.click(screen.getByRole("button", { name: "Line 2: details" }));
+    const first = byId(QTY);
+    const second = byId("SPO/012994/26-27-line-1-quantity");
+    expect(first).toHaveAttribute("max", "7");
+    expect(second).toHaveAttribute("max", "2");
+    expect(screen.getByText("The ERP has 9 open: 1 to 7. (2 on the other lines of this code)")).toBeInTheDocument();
+    // Moving a unit from line 2 to line 1 is allowed...
+    fireEvent.change(second, { target: { value: "1" } });
+    await waitFor(() => expect(byId(QTY)).toHaveAttribute("max", "8"));
+    fireEvent.change(byId(QTY), { target: { value: "8" } });
+    await waitFor(() => expect(create).not.toBeDisabled());
+    // ...asking more than is open in total is not.
+    fireEvent.change(byId(QTY), { target: { value: "9" } });
+    expect(await screen.findByText(/Line 1: quantity cannot be more than 8: the ERP has 9 open for this code and the other lines ask 1\./)).toBeInTheDocument();
+    expect(create).toBeDisabled();
+  });
+
+  it("S6: max_units caps a single line even without open_units", async () => {
+    mockApi({ d: draft({}, [{ ...CABLE_LINE(), quantity: 10, max_units: 6 }]) });
+    renderScreen();
+    await openDraft();
+    expect(await screen.findByText(/Line 1: quantity cannot be more than the 6 the ERP still has open\./)).toBeInTheDocument();
+    expect(byId(QTY)).toHaveAttribute("max", "6");
+  });
+
   it("a line the ERP has more than 1,000 of cannot be sent above 1,000", async () => {
     mockApi({ d: draft({}, [{ ...CABLE_LINE(), quantity: 5000 }]) });
     renderScreen();

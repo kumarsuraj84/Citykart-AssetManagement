@@ -40,6 +40,15 @@ export interface Capabilities {
   domain_manage_work_areas: WorkArea[];
   can_manage: Partial<Record<ManageKey, boolean>>;
   company_ids: number[];
+  /** S5: the same companies as `company_ids`, with their code and name (empty from an older server). */
+  companies: CompanyRef[];
+}
+
+/** A company this person works in. */
+export interface CompanyRef {
+  id: number;
+  code: string;
+  name: string;
 }
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
@@ -66,6 +75,11 @@ export function parseCapabilities(data: unknown): Capabilities | null {
     domain_manage_work_areas: strings(d.domain_manage_work_areas),
     can_manage: flags(d.can_manage),
     company_ids: Array.isArray(d.company_ids) ? d.company_ids.filter((x): x is number => typeof x === "number") : [],
+    companies: Array.isArray(d.companies)
+      ? d.companies
+          .filter((c): c is Record<string, unknown> => !!c && typeof c === "object" && typeof (c as { id?: unknown }).id === "number")
+          .map((c) => ({ id: c.id as number, code: typeof c.code === "string" ? c.code : "", name: typeof c.name === "string" ? c.name : "" }))
+      : [],
   };
 }
 
@@ -126,6 +140,23 @@ export function useCapabilities(): {
   });
   const caps = q.isError ? null : (q.data ?? null);
   return { caps, ready: caps !== null, settled: caps !== null || !q.isFetching };
+}
+
+/**
+ * The companies the signed-in person works in: `capabilities.companies` (S5), or -- from an older server, or
+ * while that answer is missing -- `GET /asset-users/me/companies` (the same list). `ready` = known.
+ */
+export function useMyCompanies(): { companies: CompanyRef[]; ready: boolean } {
+  const { caps, settled } = useCapabilities();
+  const fromCaps = caps?.companies ?? [];
+  const q = useQuery({
+    queryKey: ["asset_users", "me", "companies"],
+    queryFn: () => apiClient.get<CompanyRef[]>("/asset-users/me/companies"),
+    enabled: settled && fromCaps.length === 0,
+  });
+  if (fromCaps.length > 0) return { companies: fromCaps, ready: true };
+  const list = Array.isArray(q.data) ? q.data : [];
+  return { companies: list, ready: q.isSuccess || q.isError };
 }
 
 /** May the signed-in person create a `kind` right here? False while loading or on failure. */

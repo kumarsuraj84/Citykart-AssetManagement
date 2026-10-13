@@ -437,7 +437,7 @@ describe("S5a: one Move screen with plain-word choices", () => {
     mockGets({ byIds: [inStock, LAPTOP] });
     await renderMovement("/asset-movement?ids=1,4&choice=store");
     await waitFor(() => expect(screen.getByText(/Queued \(2\)/)).toBeInTheDocument());
-    expect(apiClient.get).toHaveBeenCalledWith("/assets?ids=1%2C4&limit=200");
+    expect(apiClient.get).toHaveBeenCalledWith("/assets?ids=1%2C4&limit=1000");
     expect(screen.getByRole("radio", { name: "Send to Store" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("combobox", { name: "Store" })).toBeInTheDocument();
     // In the order they were sent, and nothing printed: nothing was scanned.
@@ -484,12 +484,27 @@ describe("S5a: one Move screen with plain-word choices", () => {
     }));
   });
 
-  it("an earlier date or a reference number is recorded per asset with the date, reference and remarks", async () => {
+  it("S6: a reference number with today's date sends reference_no only (no date)", async () => {
+    mockGets({ searchResults: { "SN-001": [LAPTOP] } });
+    (apiClient.post as any).mockResolvedValue({ done: 1, failed: [] });
+    await renderMovement();
+    scan("SN-001");
+    await screen.findByText(/Queued \(1\)/);
+    choose("Send for Repair");
+    fireEvent.click(screen.getByRole("button", { name: /^more/i }));
+    fireEvent.change(screen.getByLabelText("Reference number"), { target: { value: " GP-9 " } });
+    fireEvent.click(applyButton("Send for Repair", 1));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/assets/bulk-action", {
+      asset_ids: [1], event_type: "SENT_FOR_REPAIR", to_asset_user_id: null, remarks: null, reference_no: "GP-9",
+    }));
+  });
+
+  it("S6: an earlier date and a reference number go with the ONE batch request; a refused asset comes back with its sentence", async () => {
     const second = { ...LAPTOP, id: 5, asset_code: "FA/HO01/IT/LAP/CK_5" };
     mockGets({ searchResults: { "SN-001": [LAPTOP], "SN-005": [second] } });
-    (apiClient.post as any).mockImplementation((path: string) =>
-      path === "/assets/5/events" ? Promise.reject(new Error("The date cannot be before the asset's last recorded movement (02-10-2026).")) : Promise.resolve({ id: 1 }),
-    );
+    (apiClient.post as any).mockResolvedValue({
+      done: 1, failed: [{ asset_id: 5, reason: "The date cannot be before the asset's last recorded movement (02-10-2026)." }],
+    });
     await renderMovement();
     scan("SN-001");
     await screen.findByText(/Queued \(1\)/);
@@ -503,11 +518,13 @@ describe("S5a: one Move screen with plain-word choices", () => {
     fireEvent.change(screen.getByLabelText("Remarks"), { target: { value: "new joiner kit" } });
     fireEvent.click(applyButton("Give to Employee", 2));
 
-    await waitFor(() => expect(apiClient.post).toHaveBeenCalledTimes(2));
-    expect(apiClient.post).toHaveBeenCalledWith("/assets/1/events", {
-      event_type: "MOVED", to_asset_user_id: 11, event_date: new Date("2026-10-01").toISOString(), reference_no: "GP-114", remarks: "new joiner kit",
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledTimes(1));
+    expect(apiClient.post).toHaveBeenCalledWith("/assets/bulk-action", {
+      asset_ids: [1, 5], event_type: "MOVED", to_asset_user_id: 11, remarks: "new joiner kit",
+      event_date: new Date("2026-10-01").toISOString(), reference_no: "GP-114",
     });
-    expect(apiClient.post).not.toHaveBeenCalledWith("/assets/bulk-action", expect.anything());
+    // No per-asset fallback any more.
+    expect((apiClient.post as any).mock.calls.some((c: unknown[]) => String(c[0]).endsWith("/events"))).toBe(false);
     const result = await screen.findByTestId("move-result");
     expect(result).toHaveTextContent("1 asset given to the employee.");
     expect(result).toHaveTextContent("FA/HO01/IT/LAP/CK_5: The date cannot be before the asset's last recorded movement (02-10-2026).");

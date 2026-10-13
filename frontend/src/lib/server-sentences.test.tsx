@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor, within } from "@testing-library/rea
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { createAppRouter } from "../router";
-import { AssetUsersScreen } from "../features/asset-users/AssetUsersScreen";
+import { PeopleScreen } from "../features/people/PeopleScreen";
 import { authFetch } from "./auth-fetch";
 import { useAuthStore } from "./auth-store";
 
@@ -69,16 +69,17 @@ describe("the server's sentence reaches the screen (real api-client)", () => {
           detail: "Ravi Kumar still holds 3 assets. Move them to someone else or back to a stock room first, then deactivate.",
         }));
       }
-      if (path === "/asset-users") {
-        return Promise.resolve(json(200, [{
-          id: 4, company_id: 1, code: "E4", name: "Ravi Kumar", asset_user_type: "EMPLOYEE", location_id: 1, department_id: null,
-          email: null, phone: null, role: "SELF_SERVICE", login_enabled: false, is_primary_owner: false, is_active: true,
-        }]));
+      if (path.startsWith("/people?kind=employees")) {
+        return Promise.resolve(new Response(JSON.stringify([{
+          id: 4, kind: "EMPLOYEE", kind_label: "Employee", company_id: 1, code: "E4", name: "Ravi Kumar", location_id: 1, location_name: "HO",
+          department_id: null, email: null, phone: null, role: "SELF_SERVICE", role_label: null, login_enabled: false, has_password: false,
+          is_primary_owner: false, is_active: true,
+        }]), { status: 200, headers: { "Content-Type": "application/json", "X-Total-Count": "1" } }));
       }
       return Promise.resolve(json(200, []));
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<QueryClientProvider client={qc}><AssetUsersScreen fixedType="EMPLOYEE" /></QueryClientProvider>);
+    render(<QueryClientProvider client={qc}><PeopleScreen kind="employees" /></QueryClientProvider>);
     await waitFor(() => expect(screen.getByText("Ravi Kumar")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: /^deactivate ravi kumar$/i }));
     const dialog = await screen.findByRole("alertdialog");

@@ -1,10 +1,11 @@
 /**
  * "Set up CKAM": seven steps whose status is read from the data that already
- * exists (the normal list endpoints), never stored. A step is done when its
+ * exists (S6: one `GET /api/setup/status`), never stored. A step is done when its
  * records exist, so the guide can be left and resumed at any time, and doing
  * the same work on the normal Settings screens counts too.
  */
-import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
 
 export interface SetupCounts {
@@ -84,47 +85,76 @@ export function computeSetupSteps(c: SetupCounts): SetupStep[] {
   ];
 }
 
-interface Row {
-  id: number;
+/** What `GET /api/setup/status` answers (S6): counts and the seven steps from one SELECT. */
+export interface SetupStatus {
+  company_count: number;
+  place_count: number;
+  stock_room_count: number;
+  cost_centre_count: number;
+  category_count: number;
+  subcategory_count?: number;
+  item_count: number;
+  vendor_count: number;
+  people_count: number;
+  store_count: number;
+  code_rule_configured: boolean;
+  steps: { key: string; label: string; done: boolean }[];
+  done_count: number;
+  total_steps: number;
 }
-interface PersonRow extends Row {
-  asset_user_type?: string;
-  is_primary_owner?: boolean;
-}
 
-const len = (d: unknown) => (Array.isArray(d) ? d.length : 0);
+export const SETUP_STATUS_KEY = ["setup", "status"];
 
-/** Reads the same lists (and query keys) the Settings screens use, so their saves refresh this too. */
-export function useSetupProgress(enabled = true) {
-  const companiesQ = useQuery({ queryKey: ["masters", "companies"], queryFn: () => apiClient.get<Row[]>("/masters/companies"), enabled });
-  const placesQ = useQuery({ queryKey: ["masters", "locations"], queryFn: () => apiClient.get<Row[]>("/masters/locations"), enabled });
-  const costQ = useQuery({ queryKey: ["masters", "cost-centers"], queryFn: () => apiClient.get<Row[]>("/masters/cost-centers"), enabled });
-  const groupsQ = useQuery({ queryKey: ["masters", "categories"], queryFn: () => apiClient.get<Row[]>("/masters/categories"), enabled });
-  const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => apiClient.get<Row[]>("/items"), enabled });
-  const vendorsQ = useQuery({ queryKey: ["masters", "vendors"], queryFn: () => apiClient.get<Row[]>("/masters/vendors"), enabled });
-  const peopleQ = useQuery({ queryKey: ["asset_users"], queryFn: () => apiClient.get<PersonRow[]>("/asset-users"), enabled });
-  const rulesQ = useQuery({ queryKey: ["code-rules"], queryFn: () => apiClient.get<Row[]>("/code-rules"), enabled });
-  const all = [companiesQ, placesQ, costQ, groupsQ, itemsQ, vendorsQ, peopleQ, rulesQ];
+const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 
-  const people = (Array.isArray(peopleQ.data) ? peopleQ.data : []).filter((p) => !p.is_primary_owner);
-  const ofType = (t: string) => people.filter((p) => p.asset_user_type === t).length;
+const EMPTY_COUNTS: SetupCounts = {
+  companies: 0, places: 0, stockRooms: 0, costCentres: 0, groups: 0, items: 0, vendors: 0, employees: 0, stores: 0, codeFormat: false,
+};
+
+/** The server's counts as the steps' status words; the server's own `done` decides each step. */
+export function stepsFromStatus(s: SetupStatus): SetupStep[] {
   const steps = computeSetupSteps({
-    companies: len(companiesQ.data),
-    places: len(placesQ.data),
-    stockRooms: ofType("STOCK_POINT"),
-    costCentres: len(costQ.data),
-    groups: len(groupsQ.data),
-    items: len(itemsQ.data),
-    vendors: len(vendorsQ.data),
-    employees: ofType("EMPLOYEE"),
-    stores: ofType("STORE"),
-    codeFormat: len(rulesQ.data) > 0,
+    companies: num(s.company_count),
+    places: num(s.place_count),
+    stockRooms: num(s.stock_room_count),
+    costCentres: num(s.cost_centre_count),
+    groups: num(s.category_count),
+    items: num(s.item_count),
+    vendors: num(s.vendor_count),
+    employees: num(s.people_count),
+    stores: num(s.store_count),
+    codeFormat: s.code_rule_configured === true,
   });
+  const serverDone = new Map((Array.isArray(s.steps) ? s.steps : []).map((x) => [x.key, x.done === true]));
+  return steps.map((step) => (serverDone.has(step.key) ? { ...step, done: serverDone.get(step.key)! } : step));
+}
+
+/**
+ * The set-up progress from ONE call (S6: `GET /api/setup/status`) instead of eight lists.
+ * Any save made while it is on screen (a Settings form, a quick-create, a wizard step)
+ * asks for it again, so a step turns "Done" as soon as its data exists.
+ */
+export function useSetupProgress(enabled = true) {
+  const qc = useQueryClient();
+  const q = useQuery({
+    queryKey: SETUP_STATUS_KEY,
+    queryFn: () => apiClient.get<SetupStatus>("/setup/status"),
+    enabled,
+  });
+  useEffect(() => {
+    if (!enabled) return;
+    return qc.getMutationCache().subscribe((event) => {
+      if (event.type === "updated" && event.action.type === "success") qc.invalidateQueries({ queryKey: SETUP_STATUS_KEY });
+    });
+  }, [qc, enabled]);
+  const data = q.data;
+  const ok = !!data && typeof data === "object" && !Array.isArray(data);
+  const steps = ok ? stepsFromStatus(data) : computeSetupSteps(EMPTY_COUNTS);
   return {
     steps,
     doneCount: steps.filter((s) => s.done).length,
     total: SETUP_TOTAL,
-    isLoading: all.some((q) => q.isLoading),
-    isError: all.some((q) => q.isError),
+    isLoading: q.isLoading,
+    isError: q.isError || (q.isSuccess && !ok),
   };
 }

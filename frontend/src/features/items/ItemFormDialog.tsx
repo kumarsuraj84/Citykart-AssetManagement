@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import {
-  blankPart, draftPartsFromBundle, partsPayload, partsReady, type Bundle, type DraftPart,
+  blankPart, draftPartsFromBundle, partsPayload, partsReady, partsSummary, type Bundle, type DraftPart,
 } from "../bundles/bundle-parts";
 import { BundlePartsEditor } from "../bundles/BundlePartsEditor";
 import type { Item } from "./types";
@@ -54,11 +54,6 @@ export function serialModeOf(item: Pick<Item, "serial_required" | "serial_later"
   return item.serial_later ? "later" : "has";
 }
 
-/** Thrown when the set (bundle) was saved but the Item itself then failed. */
-class ItemAfterSetError extends Error {}
-/** Thrown when the set itself was refused (nothing was saved). */
-class SetStepError extends Error {}
-
 interface Draft {
   name: string;
   categoryId: string;
@@ -98,11 +93,12 @@ export function ItemFormDialog({
 }) {
   const qc = useQueryClient();
   // What this person may do here (capabilities endpoint; nothing while it loads):
-  // add a type of asset only inside the work areas they manage, a brand, a part's Item,
-  // and make a new set only as the head-office admin (others may use an existing set).
+  // add a type of asset only inside the work areas they manage, a brand, a part's Item.
+  // S6: whoever may save the Item may also list its own set's parts (saved with the Item in
+  // ONE call, `set_parts`); a set other Items share is changed on the Sets screen only.
   const { caps, settled: capsSettled } = useCapabilities();
   const canCreateType = may(caps, "sub_category") && domainManageAreas(caps).length > 0;
-  const canMakeSets = canManage(caps, "bundle");
+  const canMakeSets = item ? canManage(caps, "item") : may(caps, "item");
   const categoriesQ = useQuery({ queryKey: ["masters", "categories"], queryFn: () => apiClient.get<TypeCategory[]>("/masters/categories"), enabled: open });
   const subsQ = useQuery({ queryKey: ["masters", "subcategories"], queryFn: () => apiClient.get<TypeSubcategory[]>("/masters/subcategories"), enabled: open });
   const bundlesQ = useQuery({ queryKey: ["bundles"], queryFn: () => apiClient.get<Bundle[]>("/bundles"), enabled: open && allowSet });
@@ -125,16 +121,16 @@ export function ItemFormDialog({
   const [newBrand, setNewBrand] = useState(false);
   const [newPartItemFor, setNewPartItemFor] = useState<number | null>(null);
   const [showLinks, setShowLinks] = useState(false);
-  // A set created by an earlier Save whose Item then failed: the retry updates it, never makes a second one.
-  const createdSetId = useRef<number | null>(null);
   const [partsLoadedFor, setPartsLoadedFor] = useState<string>("");
+  // The parts as loaded from the Item's own set: an untouched set is not sent again.
+  const [loadedParts, setLoadedParts] = useState<string>("");
   const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
 
   useEffect(() => {
     if (!open) return;
     saveMutation.reset();
-    createdSetId.current = null;
     setPartsLoadedFor("");
+    setLoadedParts("");
     setParts([]);
     if (item) {
       setDraft({
@@ -159,8 +155,10 @@ export function ItemFormDialog({
   // The parts of the set being edited, once the sets have loaded.
   const editingSet = bundles.find((b) => String(b.id) === draft.setBundleId);
   if (editingSet && partsLoadedFor !== draft.setBundleId) {
+    const loaded = draftPartsFromBundle(editingSet);
     setPartsLoadedFor(draft.setBundleId);
-    setParts(draftPartsFromBundle(editingSet));
+    setParts(loaded);
+    setLoadedParts(JSON.stringify(partsPayload(loaded).map(({ name, item_id, share_percent }) => ({ name, item_id, share_percent }))));
   }
 
   // A stored Item without a Sub-category, or a Category picked with only one: use its only Sub-category.
@@ -200,86 +198,68 @@ export function ItemFormDialog({
     setParts([blankPart()]);
   }
 
+  // The Item's own set (or a new one) can have its parts listed here; a set chosen from the list
+  // that belongs to other Items is only pointed at (its parts change on the Sets screen).
+  const ownSetId = item?.bundle_id ?? null;
+  const onOwnOrNewSet = draft.setBundleId === "" || (ownSetId !== null && draft.setBundleId === String(ownSetId));
+  const partsEditable = canMakeSets && onOwnOrNewSet;
+
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const itemName = draft.name.trim();
-      let bundleId: number | null = allowSet ? null : (item?.bundle_id ?? null);
-      let setSaved = false;
-      if (allowSet && draft.isSet && !canMakeSets) {
-        // Not allowed to make or change a set: the Item just points at the existing one chosen.
-        bundleId = draft.setBundleId ? Number(draft.setBundleId) : null;
-      } else if (allowSet && draft.isSet) {
-        const existingId = draft.setBundleId ? Number(draft.setBundleId) : createdSetId.current;
-        try {
-          if (existingId) {
-            // Edits keep the same set; an existing set keeps its own name.
-            const keepName = bundles.find((b) => b.id === existingId)?.name ?? itemName;
-            await apiClient.put(`/bundles/${existingId}`, { name: keepName, parts: partsPayload(parts) });
-            bundleId = existingId;
-          } else {
-            const created = await apiClient.post<Bundle>("/bundles", { name: itemName, parts: partsPayload(parts) });
-            bundleId = created.id;
-            createdSetId.current = created.id;
-          }
-        } catch (e) {
-          throw new SetStepError(e instanceof Error ? e.message : "Could not save the set.");
-        }
-        setSaved = true;
-      }
-      const body = {
-        name: itemName,
+      const body: Record<string, unknown> = {
+        name: draft.name.trim(),
         category_id: Number(draft.categoryId),
         subcategory_id: Number(effectiveSubId),
         ...serialFlags(draft.serial),
-        bundle_id: bundleId,
+        bundle_id: setPlan.bundleId,
         default_brand_id: draft.brandId ? Number(draft.brandId) : null,
         default_warranty_years: draft.warranty !== "" ? Number(draft.warranty) : null,
+        ...(setPlan.setParts ? { set_parts: setPlan.setParts } : {}),
       };
-      try {
-        return item ? await apiClient.put<Item>(`/items/${item.id}`, body) : await apiClient.post<Item>("/items", body);
-      } catch (e) {
-        if (setSaved) throw new ItemAfterSetError(e instanceof Error ? e.message : "Could not save the Item.");
-        throw e;
-      }
+      // S6: ONE call -- the Item and its set are saved together or not at all.
+      return item ? apiClient.put<Item>(`/items/${item.id}`, body) : apiClient.post<Item>("/items", body);
     },
     onSuccess: async (saved) => {
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["items"] }),
         qc.invalidateQueries({ queryKey: ["bundles"] }),
       ]);
+      // The Asset Groups' Item counts (S6 `item_count`) change with it.
+      qc.invalidateQueries({ queryKey: ["masters", "categories"] });
+      qc.invalidateQueries({ queryKey: ["masters", "subcategories"] });
       onOpenChange(false);
       onSaved?.(saved);
     },
-    onSettled: () => {
-      // A set made on this Save is now "the" set of this form, so a retry updates it.
-      if (createdSetId.current !== null) qc.invalidateQueries({ queryKey: ["bundles"] });
-    },
   });
+
+  // What the Save sends about the set: nothing (not a set), the chosen set's id, or the parts.
+  const setPlan: { bundleId: number | null; setParts: { name: string; item_id: number; share_percent: number }[] | null } = (() => {
+    if (!allowSet) return { bundleId: item?.bundle_id ?? null, setParts: null };
+    if (!draft.isSet) return { bundleId: null, setParts: null };
+    if (!partsEditable) return { bundleId: draft.setBundleId ? Number(draft.setBundleId) : null, setParts: null };
+    const payload = partsPayload(parts).map(({ name, item_id, share_percent }) => ({ name, item_id, share_percent }));
+    // The Item's own set, untouched: keep pointing at it (a shared set is never sent back).
+    if (ownSetId !== null && draft.setBundleId === String(ownSetId) && JSON.stringify(payload) === loadedParts) {
+      return { bundleId: ownSetId, setParts: null };
+    }
+    return { bundleId: null, setParts: payload };
+  })();
 
   const missing: string[] = [];
   if (draft.name.trim() === "") missing.push("a name");
   if (draft.categoryId === "" || effectiveSubId === "") missing.push("the type of asset");
-  if (allowSet && draft.isSet && canMakeSets && !partsReady(parts)) missing.push("every part's name, Item and share (total 100%)");
-  if (allowSet && draft.isSet && !canMakeSets && draft.setBundleId === "") missing.push("the set it comes as");
+  if (allowSet && draft.isSet && partsEditable && !partsReady(parts)) missing.push("every part's name, Item and share (total 100%)");
+  if (allowSet && draft.isSet && !partsEditable && draft.setBundleId === "") missing.push("the set it comes as");
   const canSave = missing.length === 0;
 
   // A part is a single thing: never an Item that is itself a set, nor this Item.
   const partItems = asList<Item>(itemsQ.data).filter((i) => i.bundle_id === null && i.id !== item?.id);
   const lookups = { categories: namesById(categories), subcategories: namesById(subs) };
 
-  let errorText: string | null = null;
-  if (saveMutation.isError) {
-    const e = saveMutation.error;
-    if (e instanceof ItemAfterSetError) {
-      errorText = `The set (its parts) was saved, but the Item was not: ${e.message} Correct it and press Save again; the set is updated, not made twice.`;
-    } else if (e instanceof SetStepError) {
-      errorText = `Nothing was saved: the set was refused (${e.message}).${
-        /already exists/i.test(e.message) ? " Pick it under “Or use a set that already exists”, or rename the Item." : ""
-      }`;
-    } else {
-      errorText = e instanceof Error ? e.message : "Could not save the Item.";
-    }
-  }
+  // One call: a refusal means nothing was saved (neither the Item nor its set); the server's sentence is shown as written.
+  const errorText = saveMutation.isError
+    ? saveMutation.error instanceof Error ? saveMutation.error.message : "Could not save the Item."
+    : null;
 
   return (
     <>
@@ -397,19 +377,22 @@ export function ItemFormDialog({
                               placeholder="Choose the set"
                             />
                           </FormField>
-                          <p className="text-xs text-muted-foreground">Only the head-office admin can make a new set or change its parts.</p>
+                          <p className="text-xs text-muted-foreground">You can choose an existing set here; listing a set's parts needs someone who may change this Item.</p>
                         </>
                       )}
-                      {draft.isSet && canMakeSets && (
+                      {draft.isSet && canMakeSets && !partsEditable && (
+                        <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" data-testid="shared-set">
+                          Uses the set “{editingSet?.name ?? "…"}”{editingSet ? `: ${partsSummary(editingSet.parts)}` : ""}. Its parts are changed on the Sets screen.
+                          <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={startNewSet}>
+                            Make a new set instead
+                          </Button>
+                        </p>
+                      )}
+                      {draft.isSet && partsEditable && (
                         <>
                           {draft.setBundleId ? (
                             <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                              Parts of the set “{editingSet?.name ?? "…"}”.
-                              {!item?.bundle_id && (
-                                <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={startNewSet}>
-                                  Make a new set instead
-                                </Button>
-                              )}
+                              Parts of the set “{editingSet?.name ?? "…"}”, saved together with the Item.
                             </p>
                           ) : (
                             bundles.length > 0 && (

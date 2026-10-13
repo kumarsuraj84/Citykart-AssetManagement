@@ -5,7 +5,7 @@ import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { createAppRouter } from "../../router";
 import { apiClient } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
-import { buildAttentionRows, type DashboardData } from "./Dashboard";
+import { attentionRowsFrom, buildAttentionRows, type DashboardData, type HomeAttention } from "./Dashboard";
 
 vi.mock("../../lib/api-client");
 
@@ -33,22 +33,19 @@ const baseDashboardData: DashboardData = {
   open_purchase_orders: [],
 };
 
-interface ErpMocks {
-  configured?: boolean;
-  changes?: unknown;
-  reminders?: unknown;
-  /** Make the ERP endpoints fail like a 503. */
-  fail?: boolean;
-}
+/** S6: what GET /home/attention answers when nothing needs attention. */
+const QUIET: HomeAttention = {
+  serial_pending: 0, under_repair: 0, lost: 0, unlinked_assets: null, waiting_pos: 0, waiting_units: 0,
+  erp_available: false, erp_changed_pos: null, erp_arrived_pos: null, erp_pos_needing_input: null, inbox: null,
+};
 
-function mockApiGet(dashboardData: unknown, erp: ErpMocks = {}) {
+/** `attention`: the Home call's answer, or "fail" (a 503). */
+function mockApiGet(dashboardData: unknown, attention: Partial<HomeAttention> | "fail" = {}) {
   (apiClient.get as any).mockImplementation((path: string) => {
-    if (path.startsWith("/erp/")) {
-      if (erp.fail) return Promise.reject(new Error("503 Service Unavailable"));
-      if (path === "/erp/status") return Promise.resolve({ configured: erp.configured ?? false });
-      if (path === "/erp/changes/summary") return Promise.resolve(erp.changes ?? { available: true, items: [] });
-      if (path.startsWith("/erp/reminders")) return Promise.resolve(erp.reminders ?? []);
+    if (path.startsWith("/home/attention")) {
+      return attention === "fail" ? Promise.reject(new Error("503 Service Unavailable")) : Promise.resolve({ ...QUIET, ...attention });
     }
+    if (path.startsWith("/erp/")) return Promise.reject(new Error("Home must not call the ERP screens' endpoints"));
     if (path.startsWith("/masters/")) return Promise.resolve([]);
     return Promise.resolve(dashboardData);
   });
@@ -97,44 +94,47 @@ describe("Home", () => {
     expect(quickActions().getAllByRole("link").map((l) => l.textContent?.trim())).toEqual(["Find Asset"]);
   });
 
-  it("lists what needs attention, each row opening the right screen", async () => {
-    mockApiGet(
-      {
-        ...baseDashboardData,
-        serial_pending_count: 7,
-        pending_po_summary: { count: 12, value: 2360 },
-        exception_counts: { UNDER_REPAIR: 2, LOST: 1, DISPOSED: 0, SOLD: 0, SCRAPPED: 0 },
-      },
-      { configured: true, changes: { available: true, items: [{ po_id: 3, po_number: "SPO/1", changes: 2, cancelled: false }] }, reminders: [{ po_id: 4, to_deliver: 5 }] },
-    );
+  it("S6: lists what needs attention from ONE call (GET /home/attention), each row opening the right screen", async () => {
+    mockApiGet(baseDashboardData, {
+      waiting_pos: 3, waiting_units: 12, serial_pending: 7, under_repair: 2, lost: 1, unlinked_assets: 4,
+      erp_available: true, erp_changed_pos: 1, erp_arrived_pos: 1, erp_pos_needing_input: 2,
+    });
     renderHome();
     const list = await screen.findByRole("list", { name: "Needs attention" });
-    await waitFor(() => expect(within(list).getByText(/the erp changed 1 purchase order/i)).toBeInTheDocument());
-
     const row = (text: RegExp) => within(list).getByText(text).closest("li") as HTMLElement;
-    expect(within(row(/12 units on purchase orders are waiting for goods/i)).getByRole("link")).toHaveAttribute("href", "/receive");
+    expect(within(row(/3 purchase orders waiting for goods \(12 units\)/i)).getByRole("link")).toHaveAttribute("href", "/receive");
+    expect(within(row(/goods arrived for 1 purchase order/i)).getByRole("link")).toHaveAttribute("href", "/receive");
+    expect(within(row(/2 ERP purchase orders need your input/i)).getByRole("link")).toHaveAttribute("href", "/purchase-orders/from-erp");
     expect(within(row(/7 assets waiting for a serial number/i)).getByRole("link")).toHaveAttribute("href", "/serial-pending");
     expect(within(row(/the erp changed 1 purchase order/i)).getByRole("link")).toHaveAttribute("href", "/purchase-orders");
-    expect(within(row(/goods arrived for 1 purchase order/i)).getByRole("link")).toHaveAttribute("href", "/receive");
     expect(within(row(/2 assets under repair/i)).getByRole("link")).toHaveAttribute("href", "/assets?status=UNDER_REPAIR");
     expect(within(row(/1 asset reported lost/i)).getByRole("link")).toHaveAttribute("href", "/assets?status=LOST");
+    expect(within(row(/4 assets have no Item yet/i)).getByRole("link")).toHaveAttribute("href", "/settings/catalogue/link-assets");
+    // The old assembly is gone: no PO list count, ERP summary, reminders or unlinked-items calls.
+    expect(apiClient.getPage).not.toHaveBeenCalled();
+    const asked = (apiClient.get as any).mock.calls.map((c: unknown[]) => c[0]);
+    expect(asked.some((p: string) => p.startsWith("/erp/"))).toBe(false);
   });
 
-  it("S2: counts the POs waiting for goods from the PO list's total (waiting=true), with the units beside it", async () => {
-    mockApiGet({ ...baseDashboardData, pending_po_summary: { count: 104, value: 0 } });
-    (apiClient.getPage as any).mockResolvedValue({ data: [{ id: 1 }], total: 3 });
+  it("S6: ERP figures are left out when the ERP is not available (no alarming message)", async () => {
+    mockApiGet(baseDashboardData, { serial_pending: 2, erp_available: false, erp_changed_pos: null, erp_arrived_pos: null, erp_pos_needing_input: null });
     renderHome();
-    const list = await screen.findByRole("list", { name: "Needs attention" });
-    const text = await within(list).findByText("3 purchase orders waiting for goods (104 units)");
-    expect(within(text.closest("li") as HTMLElement).getByRole("link")).toHaveAttribute("href", "/receive");
-    expect(apiClient.getPage).toHaveBeenCalledWith("/purchase-orders?waiting=true&limit=1");
+    expect(await screen.findByText(/2 assets waiting for a serial number/i)).toBeInTheDocument();
+    expect(screen.queryByText(/erp/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("S2: keeps the unit-count sentence when the PO list gives no total", async () => {
-    mockApiGet({ ...baseDashboardData, pending_po_summary: { count: 12, value: 0 } });
-    (apiClient.getPage as any).mockRejectedValue(new Error("503"));
+  it("S6: if the Home call fails, the rows the dashboard numbers allow are still shown (no ERP rows, no error)", async () => {
+    mockApiGet({
+      ...baseDashboardData, serial_pending_count: 5, pending_po_summary: { count: 12, value: 0 },
+      exception_counts: { UNDER_REPAIR: 1, LOST: 0, DISPOSED: 0, SOLD: 0, SCRAPPED: 0 },
+    }, "fail");
     renderHome();
     expect(await screen.findByText("12 units on purchase orders are waiting for goods")).toBeInTheDocument();
+    expect(screen.getByText(/5 assets waiting for a serial number/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 asset under repair/i)).toBeInTheDocument();
+    expect(screen.queryByText(/erp/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("says nothing needs attention when nothing does", async () => {
@@ -143,27 +143,17 @@ describe("Home", () => {
     expect(await screen.findByText(/nothing needs your attention right now/i)).toBeInTheDocument();
   });
 
-  it("tolerates the ERP being down (503): no ERP rows, no alarming error", async () => {
-    mockApiGet({ ...baseDashboardData, serial_pending_count: 2 }, { fail: true });
-    renderHome();
-    expect(await screen.findByText(/2 assets waiting for a serial number/i)).toBeInTheDocument();
-    expect(screen.queryByText(/erp/i)).not.toBeInTheDocument();
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-  });
-
-  it("does not show purchase-order or serial rows to a VIEWER, only repair/lost", async () => {
+  it("does not show purchase-order, serial or ERP rows to a VIEWER, only repair/lost", async () => {
     loginAs("VIEWER");
-    mockApiGet({
-      ...baseDashboardData,
-      serial_pending_count: 7,
-      pending_po_summary: { count: 12, value: 1 },
-      exception_counts: { UNDER_REPAIR: 2, LOST: 0, DISPOSED: 0, SOLD: 0, SCRAPPED: 0 },
+    mockApiGet(baseDashboardData, {
+      serial_pending: 7, under_repair: 2, waiting_pos: null, waiting_units: null,
+      erp_available: true, erp_changed_pos: 3,
     });
     renderHome();
     expect(await screen.findByText(/2 assets under repair/i)).toBeInTheDocument();
     expect(screen.queryByText(/serial number/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/waiting for goods/i)).not.toBeInTheDocument();
-    expect(apiClient.get).not.toHaveBeenCalledWith("/erp/status");
+    expect(screen.queryByText(/erp/i)).not.toBeInTheDocument();
   });
 
   it("no longer shows status tiles or an Exceptions table, but keeps counts per status as plain-word links", async () => {
@@ -216,6 +206,7 @@ describe("Home", () => {
     expect(await screen.findByRole("option", { name: "IT Team" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("option", { name: "Admin / Non-IT Team" }));
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/reports/dashboard?domain=NON_IT"));
+    expect(apiClient.get).toHaveBeenCalledWith("/home/attention?work_area=NON_IT");
   });
 
   it("shows an error state with a retry action when Home's numbers fail to load", async () => {
@@ -228,7 +219,44 @@ describe("Home", () => {
   });
 });
 
-describe("buildAttentionRows", () => {
+describe("attentionRowsFrom (S6: GET /home/attention)", () => {
+  const ALL_NULL: HomeAttention = {
+    serial_pending: null, under_repair: null, lost: null, unlinked_assets: null, waiting_pos: null, waiting_units: null,
+    erp_available: false, erp_changed_pos: null, erp_arrived_pos: null, erp_pos_needing_input: null, inbox: null,
+  };
+
+  it("null numbers (not for this login) give no rows", () => {
+    expect(attentionRowsFrom(ALL_NULL)).toEqual([]);
+  });
+
+  it("ERP numbers count only while the ERP is available", () => {
+    const a = { ...ALL_NULL, erp_changed_pos: 2, erp_arrived_pos: 1, erp_pos_needing_input: 1 };
+    expect(attentionRowsFrom(a)).toEqual([]);
+    expect(attentionRowsFrom({ ...a, erp_available: true }).map((r) => r.key)).toEqual(["erp-arrived", "erp-needs-input", "erp-changed"]);
+  });
+
+  it("singular and plural words, and the order of the rows", () => {
+    const rows = attentionRowsFrom({
+      ...ALL_NULL, waiting_pos: 1, waiting_units: 1, serial_pending: 1, under_repair: 1, lost: 2, unlinked_assets: 1,
+      erp_available: true, erp_pos_needing_input: 1,
+    });
+    expect(rows.map((r) => r.text)).toEqual([
+      "1 purchase order waiting for goods (1 unit)",
+      "1 ERP purchase order needs your input before it can be brought in",
+      "1 asset waiting for a serial number",
+      "1 asset under repair",
+      "2 assets reported lost",
+      "1 asset has no Item yet",
+    ]);
+  });
+
+  it("someone who cannot do the work gets no work rows", () => {
+    const rows = attentionRowsFrom({ ...ALL_NULL, waiting_pos: 3, serial_pending: 4, under_repair: 1, erp_available: true, erp_changed_pos: 1 }, { canWork: false });
+    expect(rows.map((r) => r.key)).toEqual(["repair"]);
+  });
+});
+
+describe("buildAttentionRows (the fallback when Home's call fails)", () => {
   it("only offers work rows to people who can do the work", () => {
     const data = { ...baseDashboardData, serial_pending_count: 3, pending_po_summary: { count: 1, value: 0 } };
     const forWorker = buildAttentionRows({ data, canWork: true, erpChangedPos: 0, erpArrivedPos: 0 }).map((r) => r.key);

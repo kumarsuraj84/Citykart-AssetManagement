@@ -82,6 +82,20 @@ describe("Items screen", () => {
     expect(await screen.findByText("Accessories › Mouse Unit")).toBeInTheDocument();
   });
 
+  it("S6: the set comes from the Item row itself (is_set / bundle_name): the sets list is not read", async () => {
+    mockApi();
+    (apiClient.get as any).mockImplementation(((prev) => (path: string) =>
+      path === "/items"
+        ? Promise.resolve([{ ...ITEMS[0], is_set: true, bundle_name: "Desktop Kit" }, { ...ITEMS[1], is_set: false, bundle_name: null }])
+        : prev(path))((apiClient.get as any).getMockImplementation()));
+    renderAt("/settings/catalogue/items");
+    const desktop = (await screen.findByText("Desktop")).closest("tr")!;
+    expect(within(desktop).getByText("Desktop Kit")).toBeInTheDocument();
+    const mouse = screen.getByText("Mouse").closest("tr")!;
+    expect(within(mouse).getAllByText("—").length).toBeGreaterThan(0);
+    expect(apiClient.get).not.toHaveBeenCalledWith("/bundles");
+  });
+
   it("S5b-1: each Item shows its work area as a chip (the server's, else its group's)", async () => {
     mockApi();
     (apiClient.get as any).mockImplementation(((prev) => (path: string) =>

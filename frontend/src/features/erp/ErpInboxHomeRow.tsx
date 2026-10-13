@@ -3,24 +3,33 @@ import { Link } from "@tanstack/react-router";
 import { ArrowRight } from "lucide-react";
 import { apiClient } from "@/lib/api-client";
 import { useAccess } from "@/lib/access";
-import { INBOX_PATH, type Inbox, type InboxSection } from "./ErpInbox";
+import { INBOX_PATH, type InboxSection } from "./ErpInbox";
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-IN")} ${n === 1 ? one : many}`;
+
+interface Counts {
+  items?: number;
+  vendors?: number;
+  stores?: number;
+}
 
 /**
  * Home, head-office admin only (S3b-2): the ERP decisions waiting in the ERP Inbox, one row per kind with its count
  * and a link to that part of the inbox. Nothing for anyone else, while loading, on any ERP trouble, or when nothing waits.
+ *
+ * S6: the counts come with Home's one call (`GET /home/attention` → `inbox`). Only when that call failed
+ * (`counts` undefined) does the row ask `GET /erp/inbox/counts` itself.
  */
-export function ErpInboxHomeRow() {
+export function ErpInboxHomeRow({ counts: given }: { counts?: Counts | null } = {}) {
   const { can } = useAccess();
   const allowed = can("settings");
   const q = useQuery({
-    queryKey: ["erp", "inbox", "all"],
-    queryFn: () => apiClient.get<Inbox>("/erp/inbox"),
-    enabled: allowed,
+    queryKey: ["erp", "inbox", "counts"],
+    queryFn: () => apiClient.get<Counts>("/erp/inbox/counts"),
+    enabled: allowed && given === undefined,
     retry: false,
   });
-  const counts = q.data && typeof q.data === "object" ? q.data.counts : undefined;
+  const counts = given === undefined ? (q.data && typeof q.data === "object" ? q.data : null) : given;
   if (!allowed || !counts) return null;
   const rows: { key: InboxSection; text: string; action: string; n: number }[] = [
     { key: "items", n: counts.items ?? 0, text: `${plural(counts.items ?? 0, "new item")} from the ERP to link to an Item`, action: "Decide" },

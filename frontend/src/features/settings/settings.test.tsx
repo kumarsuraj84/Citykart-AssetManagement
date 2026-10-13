@@ -5,7 +5,7 @@ import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { createAppRouter } from "../../router";
 import { apiClient } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
-import { computeSetupSteps, type SetupCounts } from "./setup-progress";
+import { computeSetupSteps, stepsFromStatus, type SetupCounts } from "./setup-progress";
 import { SETTINGS_SECTIONS } from "./settings-structure";
 
 vi.mock("../../lib/api-client");
@@ -16,6 +16,22 @@ const person = (id: number, type: string, over: Record<string, unknown> = {}) =>
   id, code: `P${id}`, name: `Person ${id}`, asset_user_type: type, company_id: 1, location_id: 1, department_id: null,
   phone: null, email: null, login_enabled: false, role: null, is_primary_owner: false, is_active: true, ...over,
 });
+
+/** What GET /setup/status answers for each level (S6: one call; the head-office admin is never counted). */
+function setupStatus(level: Level) {
+  const c = level === "complete"
+    ? { company_count: 1, place_count: 1, stock_room_count: 1, cost_centre_count: 1, category_count: 1, subcategory_count: 1, item_count: 1, vendor_count: 1, people_count: 1, store_count: 1, code_rule_configured: true }
+    : level === "partial"
+      ? { company_count: 1, place_count: 1, stock_room_count: 1, cost_centre_count: 0, category_count: 0, subcategory_count: 0, item_count: 0, vendor_count: 0, people_count: 0, store_count: 0, code_rule_configured: false }
+      : { company_count: 0, place_count: 0, stock_room_count: 0, cost_centre_count: 0, category_count: 0, subcategory_count: 0, item_count: 0, vendor_count: 0, people_count: 0, store_count: 0, code_rule_configured: false };
+  const done = {
+    company: c.company_count > 0, "stock-room": c.place_count > 0 && c.stock_room_count > 0, "cost-centre": c.cost_centre_count > 0,
+    catalogue: c.category_count > 0 && c.item_count > 0, vendors: c.vendor_count > 0, people: c.people_count + c.store_count > 0,
+    "code-format": c.code_rule_configured,
+  };
+  const steps = Object.entries(done).map(([key, d]) => ({ key, label: key, done: d }));
+  return { ...c, steps, done_count: steps.filter((s) => s.done).length, total_steps: 7 };
+}
 
 function mockApi(level: Level, erp: { configured?: boolean } = {}) {
   const some = (rows: unknown[]) => (level === "complete" ? rows : []);
@@ -29,6 +45,7 @@ function mockApi(level: Level, erp: { configured?: boolean } = {}) {
         : { configured: false, last: null, last_success: null });
     }
     if (path.startsWith("/erp/")) return Promise.resolve({ configured: false });
+    if (path === "/setup/status") return Promise.resolve(setupStatus(level));
     if (level === "empty") return Promise.resolve([]);
     if (path === "/masters/companies") return Promise.resolve([{ id: 1, code: "CKS", name: "Citykart Stores", erp_company_code: null }]);
     if (path.startsWith("/masters/locations")) return Promise.resolve([{ id: 1, company_id: 1, code: "HO", name: "Head Office", address: null }]);
@@ -157,6 +174,45 @@ describe("Set up CKAM screen", () => {
   });
 });
 
+describe("S6: Set up CKAM from GET /setup/status (one call)", () => {
+  it("the steps and the x-of-7 count come from one call, not from seven lists", async () => {
+    mockApi("partial");
+    renderAt("/settings/setup?step=1");
+    await waitFor(() => expect(screen.getByTestId("setup-done-count")).toHaveTextContent("2 of 7 done"));
+    const asked = (apiClient.get as any).mock.calls.map((c: unknown[]) => c[0]);
+    expect(asked.filter((p: string) => p === "/setup/status").length).toBeGreaterThanOrEqual(1);
+    for (const list of ["/items", "/masters/vendors", "/code-rules", "/asset-users", "/masters/cost-centers"]) {
+      expect(asked).not.toContain(list);
+    }
+  });
+
+  it("the server's own 'done' decides each step; its counts give the words", () => {
+    const steps = stepsFromStatus({
+      ...setupStatus("partial"),
+      steps: [{ key: "company", label: "Company", done: false }],
+    });
+    expect(steps[0].done).toBe(false);                       // the server said not done
+    expect(steps[0].status).toBe("1 company");
+    expect(steps[1].done).toBe(true);                        // not in the server's list: from the counts
+  });
+
+  it("a save made while the wizard is open asks for the status again", async () => {
+    mockApi("empty");
+    (apiClient.post as any).mockResolvedValue({ id: 1, name: "Citykart Stores" });
+    renderAt("/settings/setup?step=1");
+    await waitFor(() => expect(screen.getByTestId("setup-done-count")).toHaveTextContent("0 of 7 done"));
+    const before = (apiClient.get as any).mock.calls.filter((c: unknown[]) => c[0] === "/setup/status").length;
+    mockApi("partial");
+    fireEvent.click((await screen.findAllByRole("button", { name: "Add Company" }))[0]);
+    const dialog = await screen.findByRole("dialog");
+    for (const input of within(dialog).getAllByRole("textbox")) fireEvent.change(input, { target: { value: "CKS" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: /save/i }));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalled());
+    await waitFor(() => expect((apiClient.get as any).mock.calls.filter((c: unknown[]) => c[0] === "/setup/status").length).toBeGreaterThan(before));
+    await waitFor(() => expect(screen.getByTestId("setup-done-count")).toHaveTextContent("2 of 7 done"));
+  });
+});
+
 describe("Home: Finish setting up", () => {
   it("shows the head-office admin how far set-up is, with a way in", async () => {
     mockApi("partial");
@@ -170,7 +226,7 @@ describe("Home: Finish setting up", () => {
     mockApi("complete");
     renderAt("/dashboard");
     await screen.findByRole("heading", { name: "Home" });
-    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/code-rules"));
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/setup/status"));
     await new Promise((r) => setTimeout(r, 20));
     expect(screen.queryByRole("region", { name: "Finish setting up" })).not.toBeInTheDocument();
   });
@@ -181,7 +237,7 @@ describe("Home: Finish setting up", () => {
     renderAt("/dashboard");
     await screen.findByRole("heading", { name: "Home" });
     expect(screen.queryByRole("region", { name: "Finish setting up" })).not.toBeInTheDocument();
-    expect(apiClient.get).not.toHaveBeenCalledWith("/code-rules");
+    expect(apiClient.get).not.toHaveBeenCalledWith("/setup/status");
   });
 });
 

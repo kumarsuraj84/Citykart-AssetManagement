@@ -46,6 +46,21 @@ describe("Serial Pending list", () => {
     expect(screen.queryByText(/Sub-Category/)).not.toBeInTheDocument();
   });
 
+  it("keeps working past 200: every page of the waiting list is read (200 at a time)", async () => {
+    const many = Array.from({ length: 450 }, (_, i) => row(i + 1, `FA/AMP/${i + 1}`, { purchase_date: "2026-09-01" }));
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (!path.startsWith("/assets?serial_pending=true")) return Promise.resolve([]);
+      const offset = Number(new URL(path, "http://x").searchParams.get("offset") ?? 0);
+      return Promise.resolve({ items: many.slice(offset, offset + 200), total: 450 });
+    });
+    renderScreen();
+    expect(await screen.findByText("450 waiting")).toBeInTheDocument();
+    expect(apiClient.get).toHaveBeenCalledWith("/assets?serial_pending=true&limit=200");
+    expect(apiClient.get).toHaveBeenCalledWith("/assets?serial_pending=true&limit=200&offset=200");
+    expect(apiClient.get).toHaveBeenCalledWith("/assets?serial_pending=true&limit=200&offset=400");
+    expect(screen.getByRole("link", { name: "FA/AMP/450" })).toBeInTheDocument();
+  });
+
   it("types the serial and saves it for that asset only", async () => {
     renderScreen();
     await screen.findByText("FA/AMP/1");
@@ -150,6 +165,17 @@ describe("Serial Pending: bulk entry for the selected assets", () => {
     expect(await screen.findByText(/3 of 2 entered — 1 too many/)).toBeInTheDocument();
     expect(within(preview()).getByText("No asset for this one")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save 2 serials" })).toBeDisabled();
+  });
+
+  it("S6: a conflict the server marks `masked` reads 'an asset you cannot see', never a code", async () => {
+    (apiClient.post as any).mockImplementation((path: string, body: { serials?: string[] }) =>
+      Promise.resolve(path === "/purchase-orders/check-serials"
+        ? { conflicts: (body.serials ?? []).filter((s) => s === "HIDDEN").map((serial) => ({ serial, asset_code: "an asset outside your companies or work area", masked: true })) }
+        : {}));
+    await selectRows("FA/AMP/1");
+    fireEvent.change(pasteBox(), { target: { value: "HIDDEN" } });
+    expect(await screen.findByText('Row 1: Serial "HIDDEN" is already used by an asset you cannot see.')).toBeInTheDocument();
+    expect(screen.queryByText(/outside your companies/)).not.toBeInTheDocument();
   });
 
   it("a serial pasted twice (any case) names its rows and marks them; one CKAM already has is flagged too", async () => {

@@ -50,6 +50,10 @@ export interface DraftLine {
   description: string;
   barcode: string;
   quantity: number;
+  /** S6: the ERP's open units for this item code over the whole PO (all its lines). */
+  open_units?: number | null;
+  /** S6: the most this line may ask while the other lines of the code keep their drafted quantities (≤ 1,000). */
+  max_units?: number | null;
   rate: number;
   amount: number;
   tax_percent: number;
@@ -319,6 +323,22 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
     setLine(uid, { rate, partAmounts: partAmountsFor(bundleOf(l?.itemId ?? ""), rate) });
   }
 
+  // S6: the ERP's open units are per item code over the whole PO. A line may take what is
+  // open minus what the other lines of the same code ask right now (so units can move
+  // between two lines of one code), never more than 1,000. Without `open_units` (older
+  // server) the line's own ERP quantity is the limit, as before.
+  function lineCap(l: LineForm): { open: number; others: number; cap: number } {
+    const open = typeof l.src.open_units === "number" ? l.src.open_units : null;
+    if (open === null) {
+      const own = typeof l.src.max_units === "number" ? l.src.max_units : l.src.quantity;
+      return { open: own, others: 0, cap: Math.min(own, MAX_QUANTITY) };
+    }
+    const others = lines
+      .filter((x) => x.uid !== l.uid && x.src.item_code === l.src.item_code)
+      .reduce((t, x) => t + Math.max(0, Math.floor(Number(x.quantity) || 0)), 0);
+    return { open, others, cap: Math.max(0, Math.min(open - others, MAX_QUANTITY)) };
+  }
+
   function lineProblem(l: LineForm): string | null {
     if (l.itemId === "") return "choose the Item";
     if (l.description.trim() === "") return "description is required";
@@ -326,7 +346,12 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
     const q = Number(l.quantity);
     if (l.quantity.trim() === "" || !(q >= 1) || !Number.isInteger(q)) return "quantity must be a whole number, at least 1";
     if (q > MAX_QUANTITY) return `quantity can be at most ${MAX_QUANTITY.toLocaleString("en-IN")} on one line`;
-    if (q > l.src.quantity) return `quantity cannot be more than the ${l.src.quantity.toLocaleString("en-IN")} the ERP still has open`;
+    const { open, others, cap } = lineCap(l);
+    if (q > cap) {
+      return others > 0
+        ? `quantity cannot be more than ${cap.toLocaleString("en-IN")}: the ERP has ${open.toLocaleString("en-IN")} open for this code and the other lines ask ${others.toLocaleString("en-IN")}`
+        : `quantity cannot be more than the ${open.toLocaleString("en-IN")} the ERP still has open`;
+    }
     if (!(Number(l.rate) > 0)) return "cost must be more than 0";
     const erpRate = l.src.rate;
     if (erpRate > 0) {
@@ -478,6 +503,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
     const s = l.src;
     const showItem = !needsItem(s);
     const changed = !needsItem(s) && l.itemId !== str(s.item_id);
+    const cap = lineCap(l);
     return (
       <div className="grid grid-cols-6 gap-2 border-t pt-2">
         {showItem && (
@@ -511,13 +537,14 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
         <FormField
           htmlFor={`${id}-quantity`} label="Quantity" required
           helperText={
-            s.quantity <= MAX_QUANTITY
-              ? `The ERP has ${s.quantity.toLocaleString("en-IN")} open: 1 to ${s.quantity.toLocaleString("en-IN")}.`
-              : `${quantityHint()} The ERP has ${s.quantity.toLocaleString("en-IN")} open.`
+            cap.open <= MAX_QUANTITY
+              ? `The ERP has ${cap.open.toLocaleString("en-IN")} open: 1 to ${cap.cap.toLocaleString("en-IN")}.` +
+                (cap.others > 0 ? ` (${cap.others.toLocaleString("en-IN")} on the other lines of this code)` : "")
+              : `${quantityHint()} The ERP has ${cap.open.toLocaleString("en-IN")} open.`
           }
         >
           <Input
-            id={`${id}-quantity`} type="number" min={1} max={Math.min(MAX_QUANTITY, s.quantity)} step={1}
+            id={`${id}-quantity`} type="number" min={1} max={Math.max(1, cap.cap)} step={1}
             value={l.quantity} onChange={(e) => setLine(l.uid, { quantity: e.target.value })}
           />
         </FormField>

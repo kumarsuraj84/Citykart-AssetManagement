@@ -545,6 +545,20 @@ describe("Add Assets: answers from the server", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/assets"));
     expect(router.state.location.search).toEqual({ ids: "500,501" });
   });
+
+  it("S6: Open assets after a big batch carries every id up to 1,000 (no 'first 200' note)", async () => {
+    mockApi();
+    onBatch(batchResult(450));
+    const router = renderAt();
+    await fillEssentials("Mouse", "450");
+    await waitFor(() => expect(addButton()).toBeEnabled());
+    fireEvent.click(addButton());
+    const panel = await screen.findByRole("region", { name: "Added" });
+    expect(within(panel).queryByText(/shows the first/i)).not.toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole("button", { name: "Open assets" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/assets"));
+    expect(String((router.state.location.search as { ids?: string }).ids).split(",")).toHaveLength(450);
+  });
 });
 
 describe("Add Assets: company, smart defaults and creating what is missing", () => {

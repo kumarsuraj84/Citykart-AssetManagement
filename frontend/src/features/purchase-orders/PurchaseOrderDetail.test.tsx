@@ -599,7 +599,7 @@ describe("PurchaseOrderDetail: invoices received and their Purchase Invoice (PI)
     renderDetailAt();
     fireEvent.click(await screen.findByRole("button", { name: /print labels for the received units/i }));
     expect(await screen.findByRole("dialog", { name: /print 3 labels/i })).toBeInTheDocument();
-    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/assets?ids=99%2C98%2C97&limit=200"));
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/assets?ids=99%2C98%2C97&limit=1000"));
   });
 
   it("a PO created from the ERP: the one Record PI dialog starts on Fetch from ERP, and can switch to typing it in", async () => {
@@ -754,4 +754,82 @@ describe("S3b-1: inline creation on the PO page", () => {
 
   // Received Into (stock rooms, + New Stock Room, remembered choice) now lives on the Receive
   // screen: see features/receive/ReceiveScreen.test.tsx.
+});
+
+describe("S6: Edit details of a PO (PUT /purchase-orders/{id})", () => {
+  function mockWithVendors(units: Unit[], po: unknown = PO) {
+    mockGets(units, { po });
+    const base = (apiClient.get as any).getMockImplementation();
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (path === "/masters/vendors") return Promise.resolve([{ id: 31, name: "Blue Star", gstin: null }, { id: 32, name: "Acme Traders", gstin: null }]);
+      if (path.startsWith("/masters/cost-centers")) return Promise.resolve([{ id: 3, code: "HO", name: "Head Office" }, { id: 4, code: "WH", name: "Warehouse" }]);
+      return base(path);
+    });
+    (apiClient.put as any).mockResolvedValue(po);
+  }
+
+  async function openEdit() {
+    fireEvent.click(await screen.findByRole("button", { name: "Edit details" }));
+    return screen.findByRole("dialog", { name: /edit details of/i });
+  }
+
+  async function choose(dialog: HTMLElement, label: string, option: string | RegExp) {
+    const box = within(dialog).getByRole("combobox", { name: label });
+    fireEvent.click(box);
+    fireEvent.click(await screen.findByRole("option", { name: option }));
+    await waitFor(() => expect(box).toHaveAttribute("aria-expanded", "false"));
+  }
+
+  it("sends ONLY the changed fields, then says it was saved", async () => {
+    mockWithVendors([PENDING_LINE]);
+    renderDetailAt();
+    const dialog = await openEdit();
+    expect(within(dialog).getByRole("button", { name: "Save" })).toBeDisabled();          // nothing changed yet
+    fireEvent.change(within(dialog).getByLabelText(/po number/i), { target: { value: "PO-2026-001A" } });
+    await choose(dialog, "Vendor", /^Acme Traders/);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(apiClient.put).toHaveBeenCalledWith("/purchase-orders/1", { vendor_id: 32, po_number: "PO-2026-001A" }));
+    expect(await screen.findByText("PO details saved.")).toBeInTheDocument();
+  });
+
+  it("after a receipt only the delivery place can change: the rest is disabled with the reason", async () => {
+    mockWithVendors([PENDING_LINE, DELIVERED_LINE], { ...PO, vendor_id: 31 });
+    renderDetailAt();
+    const dialog = await openEdit();
+    expect(within(dialog).getByLabelText(/po number/i)).toBeDisabled();
+    expect(within(dialog).getByLabelText(/po date/i)).toBeDisabled();
+    expect(within(dialog).getByRole("combobox", { name: "Vendor" })).toBeDisabled();
+    expect(within(dialog).getByRole("combobox", { name: "Cost Centre" })).toBeDisabled();
+    expect(within(dialog).getByRole("combobox", { name: "Delivery place" })).toBeEnabled();
+    expect(dialog).toHaveTextContent("Goods have already been received on this purchase order, so this can no longer be changed");
+    await choose(dialog, "Delivery place", /IT Stock-HO/);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(apiClient.put).toHaveBeenCalledWith("/purchase-orders/1", { delivery_asset_user_id: 5 }));
+  });
+
+  it("an ERP-made PO keeps the ERP's number, date and vendor (disabled, with why); cost centre stays editable", async () => {
+    mockWithVendors([PENDING_LINE], { ...PO, erp_po_code: 556677, vendor_id: 31 });
+    renderDetailAt();
+    const dialog = await openEdit();
+    expect(within(dialog).getByLabelText(/po number/i)).toBeDisabled();
+    expect(within(dialog).getByRole("combobox", { name: "Vendor" })).toBeDisabled();
+    expect(within(dialog).getByRole("combobox", { name: "Cost Centre" })).toBeEnabled();
+    expect(dialog).toHaveTextContent("made from the ERP, so its PO number and date are the ERP's");
+    expect(dialog).toHaveTextContent("its vendor follows the ERP supplier");
+    await choose(dialog, "Cost Centre", /Warehouse/);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(apiClient.put).toHaveBeenCalledWith("/purchase-orders/1", { cost_center_id: 4 }));
+  });
+
+  it("a refusal is shown word for word and the dialog stays open", async () => {
+    mockWithVendors([PENDING_LINE]);
+    const sentence = "Purchase order PO-B already exists for this company.";
+    (apiClient.put as any).mockRejectedValue(new Error(sentence));
+    renderDetailAt();
+    const dialog = await openEdit();
+    fireEvent.change(within(dialog).getByLabelText(/po number/i), { target: { value: "PO-B" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(sentence);
+    expect(screen.getByRole("dialog", { name: /edit details of/i })).toBeInTheDocument();
+  });
 });

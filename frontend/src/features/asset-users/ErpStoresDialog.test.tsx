@@ -97,6 +97,29 @@ describe("Stores from the ERP", () => {
     expect(within(status).getByText(/SPR2: The login email is already used/)).toBeInTheDocument();
   });
 
+  it("S5: says how many stock rooms and install points the stores were given, and any room that could not be made", async () => {
+    (apiClient.post as any).mockResolvedValue({
+      created: ["LAM", "SPR2"], skipped: [], stock_rooms_created: 2, install_points_created: 1,
+      rooms: [
+        { code: "LAM", stock_room_code: "STK-LAM", stock_room_created: true, install_point_code: "INS-LAM", install_point_created: true, problems: [] },
+        { code: "SPR2", stock_room_code: "STK-SPR2", stock_room_created: true, install_point_code: null, install_point_created: false,
+          problems: ["The code INS-SPR2 is already used by Old Point, so the install point of store SPR2 was not made."] },
+      ],
+    });
+    renderDialog();
+    fireEvent.click(await screen.findByRole("button", { name: "Create 2 stores" }));
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("Created 2 stores. 2 stock rooms and 1 install point were added.");
+    expect(within(status).getByRole("list", { name: "Rooms not made" })).toHaveTextContent("SPR2: The code INS-SPR2 is already used by Old Point");
+  });
+
+  it("S5: stores that already had their rooms are said so", async () => {
+    (apiClient.post as any).mockResolvedValue({ created: [], skipped: [{ code: "LAM", reason: "Already a store." }], stock_rooms_created: 0, install_points_created: 0, rooms: [] });
+    renderDialog();
+    fireEvent.click(await screen.findByRole("button", { name: "Create 2 stores" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Created 0 stores. Every store already had its Stock Room and Install Point.");
+  });
+
   it("asks for the company when there are two, and reads that company's stores", async () => {
     renderDialog();
     await screen.findByLabelText("Select LAM");

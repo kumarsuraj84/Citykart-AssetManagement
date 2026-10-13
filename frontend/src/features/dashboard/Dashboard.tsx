@@ -16,8 +16,6 @@ import { statusLabel, workAreaLabel, ASSET_STATUSES } from "../../lib/labels";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useErpChangesSummary } from "../erp/ErpChanges";
-import { fetchPoPage } from "../purchase-orders/po-list";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -29,10 +27,10 @@ import { ErrorState } from "@/components/shared/ErrorState";
 /**
  * Home (route /dashboard): what to do next, not a wall of numbers.
  *  1. Quick actions the person's role may use.
- *  2. "Needs attention": rows built only from data the server already returns
- *     (GET /reports/dashboard, /erp/changes/summary, /erp/reminders), each
- *     opening the screen where it is dealt with. ERP trouble (503, not set up)
- *     simply means fewer rows -- never an alarming error.
+ *  2. "Needs attention": rows from ONE call (S6: GET /home/attention), each
+ *     opening the screen where it is dealt with. ERP trouble (not set up, not
+ *     readable) simply means fewer rows -- never an alarming error; should the
+ *     call fail, the rows the dashboard numbers allow are shown instead.
  *  3. Recent changes and Stock by Place, compact; a collapsed Watch list keeps
  *     Warranty Expiring Soon and the long-with-someone list.
  */
@@ -63,11 +61,6 @@ export interface DashboardData {
     vendor_id: number | null;
     pending_line_count: number;
   }[];
-}
-
-interface Reminder {
-  po_id: number;
-  to_deliver: number;
 }
 
 /** One "needs attention" row: plain sentence + where to deal with it. */
@@ -172,6 +165,111 @@ export function buildAttentionRows(input: {
   return rows;
 }
 
+/** The head-office admin's ERP Inbox counts (`GET /api/home/attention` → `inbox`). */
+export interface InboxCounts {
+  items: number;
+  vendors: number;
+  stores: number;
+}
+
+/** What `GET /api/home/attention` answers (S6). A null number = not for this login. */
+export interface HomeAttention {
+  work_area?: string | null;
+  serial_pending: number | null;
+  under_repair: number | null;
+  lost: number | null;
+  unlinked_assets: number | null;
+  waiting_pos: number | null;
+  waiting_units: number | null;
+  erp_available: boolean;
+  erp_changed_pos: number | null;
+  erp_arrived_pos: number | null;
+  erp_pos_needing_input: number | null;
+  inbox: InboxCounts | null;
+}
+
+const count = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+
+/**
+ * "Needs attention" from ONE call (S6, pure; exported for tests). Each row opens the screen
+ * where it is dealt with; a null number (not for this login) or no ERP (`erp_available`
+ * false) simply means no row -- never an alarming message.
+ */
+export function attentionRowsFrom(a: HomeAttention, opts: { canWork: boolean } = { canWork: true }): AttentionRow[] {
+  const rows: AttentionRow[] = [];
+  // Work rows (receive, serials, ERP) only for someone who can do that work: the links would lead nowhere otherwise.
+  const work = opts.canWork;
+  const erp = work && a.erp_available === true;
+  const waitingPos = count(a.waiting_pos);
+  const waitingUnits = count(a.waiting_units);
+  if (work && waitingPos > 0) {
+    rows.push({
+      key: "receive",
+      text: `${plural(waitingPos, "purchase order")} waiting for goods` + (waitingUnits > 0 ? ` (${plural(waitingUnits, "unit")})` : ""),
+      to: "/receive",
+      action: "Receive",
+    });
+  }
+  if (erp && count(a.erp_arrived_pos) > 0) {
+    rows.push({
+      key: "erp-arrived",
+      text: `The ERP shows goods arrived for ${plural(count(a.erp_arrived_pos), "purchase order")} not yet received here`,
+      to: "/receive",
+      action: "Receive",
+    });
+  }
+  if (erp && count(a.erp_pos_needing_input) > 0) {
+    const nIn = count(a.erp_pos_needing_input);
+    rows.push({
+      key: "erp-needs-input",
+      text: `${plural(nIn, "ERP purchase order")} ${nIn === 1 ? "needs" : "need"} your input before ${nIn === 1 ? "it" : "they"} can be brought in`,
+      to: "/purchase-orders/from-erp",
+      action: "Review",
+    });
+  }
+  if (work && count(a.serial_pending) > 0) {
+    rows.push({
+      key: "serial",
+      text: `${plural(count(a.serial_pending), "asset")} waiting for a serial number`,
+      to: "/serial-pending",
+      action: "Add serials",
+    });
+  }
+  if (erp && count(a.erp_changed_pos) > 0) {
+    rows.push({
+      key: "erp-changed",
+      text: `The ERP changed ${plural(count(a.erp_changed_pos), "purchase order")}`,
+      to: "/purchase-orders",
+      action: "Review",
+    });
+  }
+  if (count(a.under_repair) > 0) {
+    rows.push({ key: "repair", text: `${plural(count(a.under_repair), "asset")} under repair`, to: "/assets", search: { status: "UNDER_REPAIR" }, action: "See them" });
+  }
+  if (count(a.lost) > 0) {
+    rows.push({ key: "lost", text: `${plural(count(a.lost), "asset")} reported lost`, to: "/assets", search: { status: "LOST" }, action: "See them" });
+  }
+  const unlinked = count(a.unlinked_assets);
+  if (unlinked > 0) {
+    rows.push({
+      key: "link-items",
+      text: `${plural(unlinked, "asset")} ${unlinked === 1 ? "has" : "have"} no Item yet`,
+      to: "/settings/catalogue/link-assets",
+      action: "Link to Items",
+    });
+  }
+  return rows;
+}
+
+/** One call for Home's counters (S6); the ERP figures are null when the ERP cannot be read. */
+export function useHomeAttention(domain: string) {
+  return useQuery({
+    queryKey: ["home", "attention", domain],
+    queryFn: () => apiClient.get<HomeAttention>(`/home/attention${domain !== "ALL" ? `?work_area=${domain}` : ""}`),
+    retry: false,
+  });
+}
+
 interface QuickAction {
   label: string;
   to: string;
@@ -267,26 +365,15 @@ const activityColumns: DataTableColumn<ActivityRow>[] = [
   { key: "by", header: "By", cell: (r) => r.recorded_by_name ?? "—" },
 ];
 
-/** ERP "goods arrived here but not received" reminders; any ERP trouble = none. */
-function useErpArrivedReminders(enabled: boolean) {
-  const statusQ = useQuery({
-    queryKey: ["erp", "status"],
-    queryFn: () => apiClient.get<{ configured: boolean }>("/erp/status"),
-    enabled,
-    retry: false,
-  });
-  return useQuery({
-    queryKey: ["erp", "reminders", "all"],
-    queryFn: () => apiClient.get<Reminder[]>("/erp/reminders"),
-    enabled: enabled && statusQ.data?.configured === true,
-    retry: false,
-  });
+/** What the head-office rows under "Needs attention" are given (S6: the inbox counts come with Home's one call). */
+export interface HeadOfficeContext {
+  /** The ERP Inbox counts; null = none to show; undefined = Home's call failed (the row may ask for itself). */
+  inbox: InboxCounts | null | undefined;
 }
 
 export interface DashboardProps {
-  /** Extension point: a later stage adds a "Head-office admin" group of rows
-   * (new ERP items / vendors / stores) here, shown under Needs attention. */
-  headOfficeSection?: ReactNode;
+  /** The "Head-office admin" rows (new ERP items / vendors / stores, set-up), shown under Needs attention. */
+  headOfficeSection?: ReactNode | ((ctx: HeadOfficeContext) => ReactNode);
 }
 
 export function Dashboard({ headOfficeSection }: DashboardProps = {}) {
@@ -294,43 +381,24 @@ export function Dashboard({ headOfficeSection }: DashboardProps = {}) {
   const { can } = useAccess();
   const canWork = can("work");
 
+  // The tables (stock by place, warranty, recent changes) and the status counts.
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["dashboard", domain],
     queryFn: () =>
       apiClient.get<DashboardData>(`/reports/dashboard${domain !== "ALL" ? `?domain=${domain}` : ""}`),
   });
 
-  const erpChangesQ = useErpChangesSummary(canWork);
-  const erpRemindersQ = useErpArrivedReminders(canWork);
-  const erpChangedPos = Array.isArray(erpChangesQ.data?.items) ? erpChangesQ.data.items.length : 0;
-  const erpArrivedPos = Array.isArray(erpRemindersQ.data) ? erpRemindersQ.data.length : 0;
-
-  // S2: how many POs wait for goods, straight from the PO list's total
-  // (?waiting=true, X-Total-Count). It counts the person's whole work area, so
-  // it is used only when Home is not narrowed to one area; otherwise (or when
-  // the server does not say) the waiting-unit count above is used.
-  const waitingPosQ = useQuery({
-    queryKey: ["purchase-orders", "waiting-count"],
-    queryFn: async () => (await fetchPoPage({ waiting: true, limit: 1 })).total,
-    enabled: canWork,
-    retry: false,
-  });
-  const waitingPos = domain === "ALL" && typeof waitingPosQ.data === "number" ? waitingPosQ.data : null;
-
-  // S5b-1: admins see how many assets still have no Item (one cheap count: limit=1, X-Total-Count).
-  const canLink = can("admin");
-  const unlinkedQ = useQuery({
-    queryKey: ["assets", "unlinked-items", "count"],
-    queryFn: async () => {
-      const page = await apiClient.getPage<unknown[]>("/assets/unlinked-items?limit=1");
-      return typeof page?.total === "number" ? page.total : null;
-    },
-    enabled: canLink,
-    retry: false,
-  });
-  const unlinkedAssets = canLink && typeof unlinkedQ.data === "number" ? unlinkedQ.data : null;
-
-  const attention = buildAttentionRows({ data, canWork, erpChangedPos, erpArrivedPos, waitingPos, unlinkedAssets });
+  // S6: "Needs attention" from ONE call. Should it fail, the rows Home can still build from
+  // the dashboard numbers are shown (no ERP rows) -- never an alarming error.
+  const attentionQ = useHomeAttention(domain);
+  const attentionOk = !!attentionQ.data && typeof attentionQ.data === "object" && !Array.isArray(attentionQ.data);
+  const attention = attentionOk
+    ? attentionRowsFrom(attentionQ.data!, { canWork })
+    : buildAttentionRows({ data, canWork, erpChangedPos: 0, erpArrivedPos: 0 });
+  const attentionLoading = attentionQ.isLoading || (!attentionOk && isLoading);
+  const headOffice = typeof headOfficeSection === "function"
+    ? headOfficeSection({ inbox: attentionOk ? (attentionQ.data!.inbox ?? null) : attentionQ.isError ? undefined : null })
+    : headOfficeSection;
   const statusCounts = ASSET_STATUSES.filter((s) => (data?.status_counts?.[s] ?? 0) > 0).map((s) => ({
     status: s,
     count: data?.status_counts?.[s] ?? 0,
@@ -384,7 +452,7 @@ export function Dashboard({ headOfficeSection }: DashboardProps = {}) {
               <CardTitle>Needs attention</CardTitle>
             </CardHeader>
             <CardContent>
-              {isLoading ? (
+              {attentionLoading ? (
                 <div className="flex flex-col gap-2">
                   <Skeleton className="h-5 w-2/3" />
                   <Skeleton className="h-5 w-1/2" />
@@ -412,7 +480,7 @@ export function Dashboard({ headOfficeSection }: DashboardProps = {}) {
             </CardContent>
           </Card>
 
-          {headOfficeSection}
+          {headOffice}
 
           {statusCounts.length > 0 && (
             <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm" aria-label="Assets by status">

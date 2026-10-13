@@ -5,7 +5,7 @@ import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { apiClient } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
 import { createAppRouter } from "../../router";
-import { AssetGroupsScreen, WORK_AREA_CHANGE_TEXT } from "./AssetGroupsScreen";
+import { AssetGroupsScreen, WORK_AREA_CHANGE_TEXT, deactivateBlocker } from "./AssetGroupsScreen";
 
 vi.mock("../../lib/api-client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/api-client")>();
@@ -13,14 +13,14 @@ vi.mock("../../lib/api-client", async (importOriginal) => {
 });
 
 const CATEGORIES = [
-  { id: 1, code: "ITFA", name: "IT Fixed Assets", asset_domain: "IT", is_active: true },
-  { id: 2, code: "ADMFA", name: "Admin Fixed Assets", asset_domain: "NON_IT", is_active: true },
-  { id: 3, code: "FUR", name: "Furniture", asset_domain: "NON_IT", is_active: true },
+  { id: 1, code: "ITFA", name: "IT Fixed Assets", asset_domain: "IT", is_active: true, item_count: 3 },
+  { id: 2, code: "ADMFA", name: "Admin Fixed Assets", asset_domain: "NON_IT", is_active: true, item_count: 0 },
+  { id: 3, code: "FUR", name: "Furniture", asset_domain: "NON_IT", is_active: true, item_count: 0 },
 ];
 const SUBCATEGORIES = [
-  { id: 10, category_id: 1, code: "SWT", name: "Network Switch", is_active: true },
-  { id: 11, category_id: 1, code: "LAP", name: "Laptop", is_active: true },
-  { id: 20, category_id: 2, code: "FAN", name: "Fan", is_active: true },
+  { id: 10, category_id: 1, code: "SWT", name: "Network Switch", is_active: true, item_count: 1 },
+  { id: 11, category_id: 1, code: "LAP", name: "Laptop", is_active: true, item_count: 2 },
+  { id: 20, category_id: 2, code: "FAN", name: "Fan", is_active: true, item_count: 0 },
 ];
 const ITEMS = [
   { id: 1, name: "Dell Laptop", category_id: 1, subcategory_id: 11 },
@@ -192,6 +192,49 @@ describe("Asset Groups: Categories and Sub-categories in one nested screen", () 
     await waitFor(() => expect(apiClient.delete).toHaveBeenCalledWith("/masters/subcategories/10"));
     expect(apiClient.delete).toHaveBeenCalledWith("/masters/categories/2");
     expect(await screen.findByText(/could not deactivate 1/i)).toBeInTheDocument();
+  });
+});
+
+describe("S6: Item counts from the server, and deactivation refused while something active remains", () => {
+  it("counts come from item_count on the lists (no Items list is read)", async () => {
+    renderScreen();
+    await screen.findByText("Laptop");
+    expect(within(groupRow("IT Fixed Assets")).getByText("3 Items")).toBeInTheDocument();
+    expect(within(groupRow("Furniture")).getByText("0 Items")).toBeInTheDocument();
+    expect(apiClient.get).not.toHaveBeenCalledWith("/items");
+  });
+
+  it("a group or Sub-category that still has active Items / Sub-categories cannot be deactivated, and says why", async () => {
+    renderScreen();
+    await screen.findByText("Laptop");
+    const group = screen.getByRole("button", { name: "Deactivate IT Fixed Assets" });
+    expect(group).toBeDisabled();
+    expect(group).toHaveAccessibleDescription("IT Fixed Assets still has 2 active Sub-categories and 3 active Items. Deactivate them or move them to another group first.");
+    const sub = screen.getByRole("button", { name: "Deactivate Laptop" });
+    expect(sub).toBeDisabled();
+    expect(sub.parentElement).toHaveAttribute("title", "Laptop still has 2 active Items. Deactivate them or move them to another Sub-category first.");
+    // Admin Fixed Assets has no Items but still has the Sub-category Fan.
+    expect(screen.getByRole("button", { name: "Deactivate Admin Fixed Assets" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Deactivate Furniture" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Deactivate Fan" })).toBeEnabled();
+  });
+
+  it("the server's refusal sentence is shown word for word (counts unknown, or changed meanwhile)", async () => {
+    const sentence = "Furniture cannot be deactivated because it still has 1 active Item (Chair). Deactivate them or move them to another group first. Assets already in the register keep their group.";
+    (apiClient.delete as any).mockRejectedValue(new Error(sentence));
+    renderScreen();
+    await screen.findByText("Laptop");
+    fireEvent.click(screen.getByRole("button", { name: "Deactivate Furniture" }));
+    const confirm = await screen.findByRole("alertdialog");
+    fireEvent.click(within(confirm).getByRole("button", { name: "Deactivate" }));
+    expect(await within(confirm).findByRole("alert")).toHaveTextContent(sentence);
+  });
+
+  it("deactivateBlocker: nothing known blocks it -> null", () => {
+    expect(deactivateBlocker({ kind: "subcategory", row: { id: 1, category_id: 1, code: "X", name: "X" } })).toBeNull();
+    expect(deactivateBlocker({ kind: "category", row: { id: 1, code: "X", name: "X", asset_domain: "IT", item_count: null }, subs: [] })).toBeNull();
+    expect(deactivateBlocker({ kind: "category", row: { id: 1, code: "X", name: "X", asset_domain: "IT", item_count: 1 }, subs: [] }))
+      .toBe("X still has 1 active Item. Deactivate them or move them to another group first.");
   });
 });
 

@@ -8,14 +8,14 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { AssetLabel, PrintNow, useLabelSettings, type LabelAsset } from "@/components/labels/AssetLabel";
 import { LabelSettingsDisclosure, type LabelSettings } from "./LabelSettingsDisclosure";
 
-/** The most assets the server returns for one `?ids=` request. */
-const IDS_PER_REQUEST = 200;
+/** The most assets the server returns for one `?ids=` request (S6: up to 1,000 ids, limit up to 1,000). */
+const IDS_PER_REQUEST = 1000;
 
 export function labelsWord(n: number): string {
   return `${n} label${n === 1 ? "" : "s"}`;
 }
 
-/** Loads these assets (200 per request, the server's limit), returned in the order of `ids`. */
+/** Loads these assets (1,000 per request, the server's limit -- one request for any receipt), returned in the order of `ids`. */
 export async function fetchAssetsByIds<T extends { id: number }>(ids: number[]): Promise<T[]> {
   const out: T[] = [];
   for (let i = 0; i < ids.length; i += IDS_PER_REQUEST) {

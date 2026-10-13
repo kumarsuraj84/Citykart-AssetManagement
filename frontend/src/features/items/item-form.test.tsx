@@ -189,14 +189,14 @@ describe("Sub-category is still required by the server, but never asked separate
   });
 });
 
-describe("Comes as a set (the Item's own bundle)", () => {
+describe("Comes as a set (S6: the Item and its set in ONE call)", () => {
   async function openSet(dialog: HTMLElement) {
     fireEvent.click(within(dialog).getByRole("button", { name: /^more$/i }));
-    // Offered once the capabilities say this person may make sets (the head-office admin).
     fireEvent.click(await within(dialog).findByRole("switch", { name: /comes as a set/i }));
   }
+  const bundleCalls = () => [...(apiClient.post as any).mock.calls, ...(apiClient.put as any).mock.calls].filter((c: unknown[]) => String(c[0]).startsWith("/bundles"));
 
-  it("saves the set first, then the Item pointing at it", async () => {
+  it("a new Item that comes as a set is saved with its parts in one POST /items (set_parts), no set saved first", async () => {
     const { dialog, onSaved } = renderForm();
     fireEvent.change(within(dialog).getByLabelText(/^item name/i), { target: { value: "Desktop Pro" } });
     await pickType(dialog, /^IT Fixed Assets › Laptop/);
@@ -212,11 +212,11 @@ describe("Comes as a set (the Item's own bundle)", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
-    const post = apiClient.post as any;
-    expect(post).toHaveBeenCalledWith("/bundles", { name: "Desktop Pro", parts: [{ id: null, name: "Base", item_id: 101, share_percent: 100 }] });
-    expect(post).toHaveBeenCalledWith("/items", expect.objectContaining({ name: "Desktop Pro", bundle_id: 77 }));
-    const order = post.mock.calls.map((c: unknown[]) => c[0]);
-    expect(order.indexOf("/bundles")).toBeLessThan(order.indexOf("/items"));
+    expect(apiClient.post).toHaveBeenCalledTimes(1);
+    expect(apiClient.post).toHaveBeenCalledWith("/items", expect.objectContaining({
+      name: "Desktop Pro", bundle_id: null, set_parts: [{ name: "Base", item_id: 101, share_percent: 100 }],
+    }));
+    expect(bundleCalls()).toHaveLength(0);
   });
 
   it("the Desktop example fills the 70/26/2/2 parts", async () => {
@@ -227,48 +227,51 @@ describe("Comes as a set (the Item's own bundle)", () => {
     expect(within(dialog).getByRole("status")).toHaveTextContent("Total 100%");
   });
 
-  it("editing an Item that comes as a set updates the same set (same parts) and keeps the Item on it", async () => {
+  it("editing the Item's own set sends the changed parts with the Item (PUT /items, set_parts) -- never PUT /bundles", async () => {
     const { dialog } = renderForm({ item: ITEMS[2] });
     await waitFor(() => expect(within(dialog).getByLabelText("Part name", { selector: "#item-part-name-1" })).toHaveValue("TFT"));
-    expect(within(dialog).getByText(/Parts of the set “Desktop Set”/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Parts of the set “Desktop Set”, saved together with the Item/)).toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText("Share %", { selector: "#item-part-share-0" }), { target: { value: "75" } });
     fireEvent.change(within(dialog).getByLabelText("Share %", { selector: "#item-part-share-1" }), { target: { value: "25" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
-    await waitFor(() =>
-      expect(apiClient.put).toHaveBeenCalledWith("/bundles/7", {
-        name: "Desktop Set",
-        parts: [
-          { id: 71, name: "CPU", item_id: 101, share_percent: 75 },
-          { id: 72, name: "TFT", item_id: 102, share_percent: 25 },
-        ],
-      }),
-    );
-    await waitFor(() => expect(apiClient.put).toHaveBeenCalledWith("/items/103", expect.objectContaining({ bundle_id: 7 })));
-    expect(apiClient.post).not.toHaveBeenCalledWith("/bundles", expect.anything());
+    await waitFor(() => expect(apiClient.put).toHaveBeenCalledTimes(1));
+    expect(apiClient.put).toHaveBeenCalledWith("/items/103", expect.objectContaining({
+      bundle_id: null,
+      set_parts: [{ name: "CPU", item_id: 101, share_percent: 75 }, { name: "TFT", item_id: 102, share_percent: 25 }],
+    }));
+    expect(bundleCalls()).toHaveLength(0);
   });
 
-  it("an existing set can be used instead of making a new one", async () => {
+  it("editing only the Item's name keeps pointing at its set and sends no parts (a shared set is never sent back)", async () => {
+    const { dialog } = renderForm({ item: ITEMS[2] });
+    await waitFor(() => expect(within(dialog).getByLabelText("Part name", { selector: "#item-part-name-1" })).toHaveValue("TFT"));
+    fireEvent.change(within(dialog).getByLabelText(/^item name/i), { target: { value: "Desktop Mk2" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(apiClient.put).toHaveBeenCalledTimes(1));
+    const body = (apiClient.put as any).mock.calls[0][1];
+    expect(body).toMatchObject({ name: "Desktop Mk2", bundle_id: 7 });
+    expect(body).not.toHaveProperty("set_parts");
+  });
+
+  it("an existing set can be used instead of making a new one: the Item points at it, its parts are only shown", async () => {
     const { dialog } = renderForm({ initialName: "Desktop Lite" });
     await pickType(dialog, /^IT Fixed Assets › Laptop/);
     await openSet(dialog);
     fireEvent.click(within(dialog).getByRole("combobox", { name: /set that already exists/i }));
     fireEvent.click(await screen.findByRole("option", { name: "Desktop Set" }));
-    await waitFor(() => expect(within(dialog).getByLabelText("Part name", { selector: "#item-part-name-0" })).toHaveValue("CPU"));
+    expect(await within(dialog).findByTestId("shared-set")).toHaveTextContent("Uses the set “Desktop Set”: CPU 70%, TFT 30%");
+    expect(within(dialog).queryByLabelText("Part name", { selector: "#item-part-name-0" })).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(apiClient.put).toHaveBeenCalledWith("/bundles/7", expect.objectContaining({ name: "Desktop Set" })));
-    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/items", expect.objectContaining({ name: "Desktop Lite", bundle_id: 7 })));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledTimes(1));
+    const body = (apiClient.post as any).mock.calls[0][1];
+    expect(body).toMatchObject({ name: "Desktop Lite", bundle_id: 7 });
+    expect(body).not.toHaveProperty("set_parts");
+    expect(bundleCalls()).toHaveLength(0);
   });
 
-  it("if the set saved but the Item did not, says so, and Save again updates that set instead of making a second one", async () => {
-    let itemTries = 0;
-    (apiClient.post as any).mockImplementation((path: string, body: any) => {
-      if (path === "/bundles") return Promise.resolve({ id: 77, ...body });
-      if (path === "/items") {
-        itemTries += 1;
-        return itemTries === 1 ? Promise.reject(new Error("an Item named 'Desktop Pro' already exists")) : Promise.resolve({ id: 500, ...body });
-      }
-      return Promise.resolve({});
-    });
+  it("a refusal (set name taken, shares wrong, …) is shown word for word; nothing was saved and there is no partial-save branch", async () => {
+    const sentence = "A set named Desktop Pro already exists. Choose it as this Item's set, or give the Item another name.";
+    (apiClient.post as any).mockRejectedValue(new Error(sentence));
     const { dialog, onSaved } = renderForm({ initialName: "Desktop Pro" });
     await pickType(dialog, /^IT Fixed Assets › Laptop/);
     await openSet(dialog);
@@ -277,35 +280,11 @@ describe("Comes as a set (the Item's own bundle)", () => {
     fireEvent.click(await screen.findByRole("option", { name: /^CPU/ }));
     fireEvent.change(within(dialog).getByLabelText("Share %", { selector: "#item-part-share-0" }), { target: { value: "100" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
-
     const alert = await within(dialog).findByRole("alert");
-    expect(alert).toHaveTextContent("The set (its parts) was saved, but the Item was not");
-    expect(alert).toHaveTextContent("already exists");
+    expect(alert.textContent).toBe(sentence);
     expect(onSaved).not.toHaveBeenCalled();
-
-    fireEvent.change(within(dialog).getByLabelText(/^item name/i), { target: { value: "Desktop Pro 2" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(onSaved).toHaveBeenCalled());
-    expect((apiClient.post as any).mock.calls.filter((c: unknown[]) => c[0] === "/bundles")).toHaveLength(1);
-    expect(apiClient.put).toHaveBeenCalledWith("/bundles/77", expect.objectContaining({ parts: [expect.objectContaining({ item_id: 101 })] }));
-    expect(apiClient.post).toHaveBeenLastCalledWith("/items", expect.objectContaining({ name: "Desktop Pro 2", bundle_id: 77 }));
-  });
-
-  it("if the set itself is refused, shows why and saves nothing else", async () => {
-    (apiClient.post as any).mockImplementation((path: string) =>
-      path === "/bundles" ? Promise.reject(new Error("the shares add up to 90%, they must add up to exactly 100%")) : Promise.resolve({ id: 500 }));
-    const { dialog } = renderForm({ initialName: "Desktop Pro" });
-    await pickType(dialog, /^IT Fixed Assets › Laptop/);
-    await openSet(dialog);
-    fireEvent.change(within(dialog).getByLabelText("Part name", { selector: "#item-part-name-0" }), { target: { value: "Base" } });
-    fireEvent.click(within(dialog).getByLabelText("Item", { selector: "#item-part-item-0" }));
-    fireEvent.click(await screen.findByRole("option", { name: /^CPU/ }));
-    fireEvent.change(within(dialog).getByLabelText("Share %", { selector: "#item-part-share-0" }), { target: { value: "100" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
-    const alert = await within(dialog).findByRole("alert");
-    expect(alert).toHaveTextContent("Nothing was saved");
-    expect(alert).toHaveTextContent("must add up to exactly 100%");
-    expect(apiClient.post).not.toHaveBeenCalledWith("/items", expect.anything());
+    expect(apiClient.post).toHaveBeenCalledTimes(1);
+    expect(bundleCalls()).toHaveLength(0);
   });
 
   it("turning the set off unlinks it from the Item (the set itself is kept)", async () => {
@@ -315,7 +294,8 @@ describe("Comes as a set (the Item's own bundle)", () => {
     expect(within(dialog).getByText(/the set itself is kept/i)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(apiClient.put).toHaveBeenCalledWith("/items/103", expect.objectContaining({ bundle_id: null })));
-    expect(apiClient.put).not.toHaveBeenCalledWith("/bundles/7", expect.anything());
+    expect((apiClient.put as any).mock.calls[0][1]).not.toHaveProperty("set_parts");
+    expect(bundleCalls()).toHaveLength(0);
     expect(apiClient.delete).not.toHaveBeenCalled();
   });
 });
@@ -400,21 +380,31 @@ describe("S3b-1: what each kind of login may do in the Item form", () => {
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
 
-  it("someone who may not make sets can only point a new Item at an existing set (no set is created or changed)", async () => {
-    loginAs(false, ADMIN_BOTH);
+  it.each([["ADMIN (both work areas)", ADMIN_BOTH], ["OPERATOR (IT)", OPERATOR_IT]] as const)(
+    "S6: %s may list a new set's parts (whoever may add the Item); the set goes with the Item",
+    async (_kind, caps) => {
+      loginAs(false, caps);
+      const { dialog } = renderForm({ initialName: "Desktop Basic" });
+      await settle();
+      await pickType(dialog, /^IT Fixed Assets › Laptop/);
+      fireEvent.click(within(dialog).getByRole("button", { name: /^more$/i }));
+      fireEvent.click(await within(dialog).findByRole("switch", { name: /comes as a set/i }));
+      fireEvent.click(within(dialog).getByRole("button", { name: /use the desktop example/i }));
+      expect(within(dialog).getByLabelText("Part name", { selector: "#item-part-name-0" })).toHaveValue("CPU");
+      expect(within(dialog).queryByText(/only the head-office admin/i)).not.toBeInTheDocument();
+    },
+  );
+
+  it("someone who may not add Items can only point a new Item at an existing set (no parts are sent)", async () => {
+    loginAs(false, { ...OPERATOR_IT, can_create: { ...OPERATOR_IT.can_create, item: false } });
     const { dialog } = renderForm({ initialName: "Desktop Basic" });
     await settle();
-    await pickType(dialog, /^IT Fixed Assets › Laptop/);
     fireEvent.click(within(dialog).getByRole("button", { name: /^more$/i }));
     fireEvent.click(await within(dialog).findByRole("switch", { name: /comes as a set/i }));
     expect(within(dialog).queryByRole("button", { name: /use the desktop example/i })).not.toBeInTheDocument();
-    expect(within(dialog).getByText(/only the head-office admin can make a new set/i)).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(within(dialog).getByText(/you can choose an existing set here/i)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("combobox", { name: /the set it comes as/i }));
     fireEvent.click(await screen.findByRole("option", { name: "Desktop Set" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/items", expect.objectContaining({ name: "Desktop Basic", bundle_id: 7 })));
-    expect(apiClient.post).not.toHaveBeenCalledWith("/bundles", expect.anything());
-    expect(apiClient.put).not.toHaveBeenCalled();
+    expect(within(dialog).getByText(/Still needed: the type of asset/)).toBeInTheDocument();
   });
 });

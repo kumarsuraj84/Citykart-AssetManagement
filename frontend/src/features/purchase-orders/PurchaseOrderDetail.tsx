@@ -18,6 +18,7 @@ import { AddBundleDialog } from "./AddBundleDialog";
 import { InvoicesCard, type InvoiceSummary } from "./InvoicesCard";
 import { LineEditDialog, type EditTarget } from "./LineEditDialog";
 import { CancelWaitingDialog, type CancelTarget } from "./CancelWaitingDialog";
+import { PoHeaderEditDialog } from "./PoHeaderEditDialog";
 import { PoLinesTable } from "./PoLinesTable";
 import { type LineGroup, type Option, type PendingAssetRow, distinctLines, money } from "./po-detail-types";
 import { linesAndUnitsSentence } from "./po-list";
@@ -81,6 +82,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [headerOpen, setHeaderOpen] = useState(false);
   // One plain sentence about the last thing done here (lines added, saved, cancelled).
   // S3b-2: the one-screen New Purchase Order hands over "PO created: …" for the first view.
   const [notice, setNotice] = useState<string | null>(() => peekPoFlash(poId));
@@ -278,6 +280,11 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
             <Button asChild variant="outline">
               <Link to="/purchase-orders">Close</Link>
             </Button>
+            {po && (
+              <Button variant="outline" disabled={!groupsReady} onClick={() => setHeaderOpen(true)}>
+                Edit details
+              </Button>
+            )}
             {groupsReady && totals.waiting > 0 && (
               <Button variant="outline" onClick={() => openCancel({ kind: "po", waiting: totals.waiting })}>
                 Cancel waiting items
@@ -439,6 +446,16 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
           onSaved={setNotice}
           itemSelectOptions={itemSelectOptions}
           brandSelectOptions={brandSelectOptions}
+        />
+      )}
+
+      {headerOpen && po && (
+        <PoHeaderEditDialog
+          po={po}
+          receivedUnits={totals.received}
+          deliveryPlaceName={receivedIntoName || undefined}
+          onClose={() => setHeaderOpen(false)}
+          onSaved={setNotice}
         />
       )}
 

@@ -683,7 +683,7 @@ describe("Receive screen: after receiving", () => {
     await receiveWith(result(3));
     fireEvent.click(screen.getByRole("button", { name: "Print labels (3)" }));
     expect(await screen.findByRole("dialog", { name: /print 3 labels/i })).toBeInTheDocument();
-    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/assets?ids=500%2C501%2C502&limit=200"));
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/assets?ids=500%2C501%2C502&limit=1000"));
   });
 
   it("Open assets shows exactly the new assets in the register", async () => {

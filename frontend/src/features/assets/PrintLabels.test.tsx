@@ -116,7 +116,7 @@ describe("PrintLabels label content and delivery preload", () => {
     });
     await renderPrintLabels("/print-labels?assets=1,2");
     await waitFor(() => expect(screen.getByText(/Queued \(2\)/)).toBeInTheDocument());
-    expect(apiClient.get).toHaveBeenCalledWith("/assets?ids=1%2C2&limit=200");
+    expect(apiClient.get).toHaveBeenCalledWith("/assets?ids=1%2C2&limit=1000");
     const codes = Array.from(document.querySelectorAll(".print-labels-sheet .print-label")).map((l) => l.textContent ?? "");
     expect(codes[0]).toContain("FA/HO01/IT/LAP/CK_1");
     expect(codes[1]).toContain("FA/HO01/IT/MOU/CK_2");

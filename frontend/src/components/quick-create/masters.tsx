@@ -241,7 +241,40 @@ const NEW_PLACE = "__new_place__";
  * it). The company is the task's own; only where none is known (Move) it is asked.
  * Adding a name that already exists in that company just picks that stock room.
  */
-export function NewStockRoomDialog({ companyId, ...props }: QuickCreateProps & { companyId?: number | null }) {
+export function NewStockRoomDialog(props: QuickCreateProps & { companyId?: number | null }) {
+  return (
+    <NewRoomDialog
+      {...props}
+      idPrefix="qc-sr"
+      title="New Stock Room"
+      endpoint="/stock-rooms"
+      noun="stock room"
+      namePlaceholder="Farukhnagar Stock"
+    />
+  );
+}
+
+/**
+ * New Install Point (S5b-2, People & Places): where things get installed -- its
+ * name and where it is, exactly like a new Stock Room. The code is made by the
+ * server (INS-…); the same name again in that company just picks the existing one.
+ */
+export function NewInstallPointDialog(props: QuickCreateProps & { companyId?: number | null }) {
+  return (
+    <NewRoomDialog
+      {...props}
+      idPrefix="qc-ip"
+      title="New Install Point"
+      endpoint="/people/install-points"
+      noun="install point"
+      namePlaceholder="HO Server Room"
+    />
+  );
+}
+
+function NewRoomDialog({
+  companyId, idPrefix, title, endpoint, noun, namePlaceholder, ...props
+}: QuickCreateProps & { companyId?: number | null; idPrefix: string; title: string; endpoint: string; noun: string; namePlaceholder: string }) {
   const [values, setValues] = useState<Record<string, string>>({});
   const companiesQ = useQuery({
     queryKey: ["asset_users", "me", "companies"],
@@ -266,29 +299,29 @@ export function NewStockRoomDialog({ companyId, ...props }: QuickCreateProps & {
   return (
     <QuickCreateDialog
       {...props}
-      idPrefix="qc-sr"
+      idPrefix={idPrefix}
       values={values}
       // Another company has other places, so the place is chosen again.
       onValuesChange={(update) => setValues((prev) => {
         const next = update(prev);
         return prev.company_id && next.company_id !== prev.company_id ? { ...next, location_id: "" } : next;
       })}
-      title="New Stock Room"
-      endpoint="/stock-rooms"
-      refresh={[["stock-rooms"], ["asset_users"]]}
+      title={title}
+      endpoint={endpoint}
+      refresh={[["stock-rooms"], ["asset_users"], ["people"], ["masters", "locations"]]}
       initial={onlyCompany ? { company_id: onlyCompany } : undefined}
       fields={[
         ...(companyId == null
           ? [{ key: "company_id", label: "Company", kind: "select" as const, required: true, options: companyOptions(companies) }]
           : []),
-        { key: "name", label: "Name", required: true, placeholder: "Farukhnagar Stock" },
+        { key: "name", label: "Name", required: true, placeholder: namePlaceholder },
         { key: "location_id", label: "Place", kind: "select", required: true,
           options: [...places.map((p) => ({ value: String(p.id), label: p.name })), { value: NEW_PLACE, label: "A new place (type its name)" }],
-          placeholder: "Where the stock room is",
+          placeholder: `Where the ${noun} is`,
           helperText: "Pick the place, or choose “A new place” and type its name.",
           visible: (v) => !typing(v) },
         { key: "location_name", label: "New place name", required: true, placeholder: "Farukhnagar Warehouse",
-          helperText: places.length === 0 ? "This company has no place yet; it is added with the stock room." : "Added with the stock room.",
+          helperText: places.length === 0 ? `This company has no place yet; it is added with the ${noun}.` : `Added with the ${noun}.`,
           visible: typing },
       ]}
       canSave={(v) =>
@@ -299,7 +332,7 @@ export function NewStockRoomDialog({ companyId, ...props }: QuickCreateProps & {
         company_id: chosenCompany,
         ...(typing(v) ? { location_name: trimmed(v.location_name) } : { location_id: Number(v.location_id) }),
       })}
-      note="If this company already has a stock room with this name, that one is picked."
+      note={`If this company already has ${noun === "install point" ? "an" : "a"} ${noun} with this name, that one is picked.`}
     />
   );
 }

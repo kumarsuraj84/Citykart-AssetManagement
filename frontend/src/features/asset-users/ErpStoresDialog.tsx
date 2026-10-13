@@ -37,9 +37,33 @@ interface StoresResponse {
   stores: StoreRow[];
 }
 
+interface RoomResult {
+  code: string;
+  stock_room_code?: string | null;
+  stock_room_created?: boolean;
+  install_point_code?: string | null;
+  install_point_created?: boolean;
+  problems?: string[];
+}
+
 interface CreateResult {
   created: string[];
   skipped: { code: string; reason: string }[];
+  /** S5: every store of the request gets its Stock Room and Install Point (made or already there). */
+  rooms?: RoomResult[];
+  stock_rooms_created?: number;
+  install_points_created?: number;
+}
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-IN")} ${n === 1 ? one : many}`;
+
+/** "2 stock rooms and 2 install points were added." -- the rooms the stores were given (S5). */
+export function roomsSentence(r: CreateResult): string | null {
+  if (r.stock_rooms_created === undefined && r.install_points_created === undefined) return null;
+  const sr = r.stock_rooms_created ?? 0;
+  const ip = r.install_points_created ?? 0;
+  if (sr + ip === 0) return "Every store already had its Stock Room and Install Point.";
+  return `${plural(sr, "stock room")} and ${plural(ip, "install point")} were added.`;
 }
 
 const GROUPS: { key: Group; title: string; hint: string }[] = [
@@ -83,6 +107,8 @@ export function ErpStoresDialog({ triggerLabel = "Stores from ERP", initialCompa
       qc.invalidateQueries({ queryKey: ["erp", "stores"] });
       qc.invalidateQueries({ queryKey: ["erp", "inbox"] });
       qc.invalidateQueries({ queryKey: ["asset_users"] });
+      qc.invalidateQueries({ queryKey: ["people"] });
+      qc.invalidateQueries({ queryKey: ["stock-rooms"] });
       qc.invalidateQueries({ queryKey: ["masters", "locations"] });
     },
   });
@@ -115,8 +141,8 @@ export function ErpStoresDialog({ triggerLabel = "Stores from ERP", initialCompa
           <DialogHeader>
             <DialogTitle>Stores from the ERP</DialogTitle>
             <DialogDescription>
-              Adds each store you tick to Stores, with its place. Its code is the store's code in the ERP, and it signs in with its own email
-              (for example sm.lam@citykartstores.com). A new store has no password yet: issue one with Reset Password when it is ready to sign in.
+              Adds each store you tick to Stores, with its place, its Stock Room and its Install Point. Its code is the store's code in the ERP, and it signs in with its own email
+              (for example sm.lam@citykartstores.com). A new store has no password yet: use Issue login passwords on the Stores list when it is ready to sign in.
             </DialogDescription>
           </DialogHeader>
 
@@ -202,10 +228,15 @@ export function ErpStoresDialog({ triggerLabel = "Stores from ERP", initialCompa
           )}
           {result && (
             <div className="text-sm" role="status">
-              <p>Created {result.created.length} store{result.created.length === 1 ? "" : "s"}.</p>
+              <p>Created {result.created.length} store{result.created.length === 1 ? "" : "s"}.{roomsSentence(result) ? ` ${roomsSentence(result)}` : ""}</p>
               {result.skipped.length > 0 && (
                 <ul className="mt-1 text-xs text-destructive">
                   {result.skipped.map((s) => <li key={s.code}>{s.code}: {s.reason}</li>)}
+                </ul>
+              )}
+              {(result.rooms ?? []).some((r) => (r.problems ?? []).length > 0) && (
+                <ul className="mt-1 text-xs text-destructive" aria-label="Rooms not made">
+                  {(result.rooms ?? []).flatMap((r) => (r.problems ?? []).map((p, i) => <li key={`${r.code}-${i}`}>{r.code}: {p}</li>))}
                 </ul>
               )}
             </div>

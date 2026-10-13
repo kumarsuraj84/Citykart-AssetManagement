@@ -31,8 +31,10 @@ export function ItemsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => apiClient.get<Item[]>("/items") });
   const categoriesQ = useQuery({ queryKey: ["masters", "categories"], queryFn: () => apiClient.get<Named[]>("/masters/categories") });
   const subsQ = useQuery({ queryKey: ["masters", "subcategories"], queryFn: () => apiClient.get<Sub[]>("/masters/subcategories") });
-  const bundlesQ = useQuery({ queryKey: ["bundles"], queryFn: () => apiClient.get<Bundle[]>("/bundles") });
   const items = itemsQ.data ?? [];
+  // S6: Item rows carry `is_set` / `bundle_name`; the set list is read only for an older answer without them.
+  const needSetNames = Array.isArray(items) && items.some((i) => i.bundle_id != null && i.bundle_name === undefined);
+  const bundlesQ = useQuery({ queryKey: ["bundles"], queryFn: () => apiClient.get<Bundle[]>("/bundles"), enabled: needSetNames });
   const categories = categoriesQ.data ?? [];
   const subs = subsQ.data ?? [];
   const bundles = bundlesQ.data ?? [];
@@ -49,6 +51,7 @@ export function ItemsScreen({ embedded = false }: { embedded?: boolean } = {}) {
     mutationFn: (id: number) => apiClient.delete(`/items/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["items"] });
+      qc.invalidateQueries({ queryKey: ["masters"] });
       setDeleting(null);
     },
   });
@@ -81,7 +84,10 @@ export function ItemsScreen({ embedded = false }: { embedded?: boolean } = {}) {
       key: "serial", header: "Serial number",
       cell: (i) => (i.serial_required && i.serial_later ? "Yes (entered later)" : yesNo(i.serial_required)),
     },
-    { key: "bundle", header: "Comes as a set", cell: (i) => bundles.find((b) => b.id === i.bundle_id)?.name ?? "—" },
+    {
+      key: "bundle", header: "Comes as a set",
+      cell: (i) => i.bundle_name ?? bundles.find((b) => b.id === i.bundle_id)?.name ?? (i.is_set || i.bundle_id != null ? "Yes" : "—"),
+    },
     {
       key: "maps", header: "ERP links", cellClassName: "tabular-nums",
       cell: (i) => (

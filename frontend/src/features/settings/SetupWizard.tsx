@@ -11,7 +11,7 @@ import CompaniesSetup from "../../routes/setup/companies";
 import LocationsSetup from "../../routes/setup/locations";
 import CostCentersSetup from "../../routes/setup/cost-centers";
 import VendorsSetup from "../../routes/setup/vendors";
-import { AssetUsersScreen } from "../asset-users/AssetUsersScreen";
+import { PeopleScreen } from "../people/PeopleScreen";
 import { AssetGroupsScreen } from "../asset-groups/AssetGroupsScreen";
 import { ItemsScreen } from "../items/ItemsScreen";
 import { CodeRuleScreen } from "../numbering/CodeRuleScreen";
@@ -27,7 +27,7 @@ function StepContent({ stepKey }: { stepKey: SetupStepKey }): ReactNode {
       return (
         <div className="flex flex-col gap-6">
           <LocationsSetup embedded />
-          <AssetUsersScreen fixedType="STOCK_POINT" embedded />
+          <PeopleScreen kind="stock-rooms" embedded />
         </div>
       );
     case "cost-centre":
@@ -44,8 +44,8 @@ function StepContent({ stepKey }: { stepKey: SetupStepKey }): ReactNode {
     case "people":
       return (
         <div className="flex flex-col gap-6">
-          <AssetUsersScreen fixedType="EMPLOYEE" embedded />
-          <AssetUsersScreen fixedType="STORE" embedded />
+          <PeopleScreen kind="employees" embedded />
+          <PeopleScreen kind="stores" embedded />
         </div>
       );
     case "code-format":

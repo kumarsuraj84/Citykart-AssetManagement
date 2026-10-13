@@ -486,43 +486,24 @@ export function AssetMovement({ preloadIds, initialChoice }: AssetMovementProps 
           ? `Choose the ${choice.destinationLabel?.toLowerCase()}.`
           : null;
 
-  // The batch goes in one request. A date other than today or a reference number is
-  // recorded per asset through the single-asset endpoint (the batch endpoint does not take
-  // them yet), each asset reported on its own exactly as the batch endpoint would.
+  // The batch always goes in ONE request (S6: the batch endpoint takes the date and the
+  // reference). An asset the ledger refuses (a date before its last movement, ...) comes
+  // back in `failed` with the server's sentence; the others are recorded.
   const applyMutation = useMutation({
     mutationFn: async (): Promise<ApplyOutcome> => {
       const c = choice!;
       const sent = eligibleQueue;
-      const to = c.destination ? Number(toAssetUserId) : null;
       const reference = referenceNo.trim();
-      const note = remarks.trim() || null;
       const customDate = eventDate !== "" && eventDate !== todayIso();
-      if (!customDate && reference === "") {
-        const result = await apiClient.post<BulkActionResult>("/assets/bulk-action", {
-          asset_ids: sent.map((a) => a.id),
-          event_type: c.eventType,
-          to_asset_user_id: to,
-          remarks: note,
-        });
-        return { ...result, choice: c, sent };
-      }
-      const failed: BulkActionResult["failed"] = [];
-      let done = 0;
-      for (const a of sent) {
-        try {
-          await apiClient.post(`/assets/${a.id}/events`, {
-            event_type: c.eventType,
-            to_asset_user_id: to,
-            event_date: customDate ? new Date(eventDate).toISOString() : undefined,
-            reference_no: reference || null,
-            remarks: note,
-          });
-          done += 1;
-        } catch (err) {
-          failed.push({ asset_id: a.id, reason: err instanceof Error ? err.message : "Could not be recorded." });
-        }
-      }
-      return { done, failed, choice: c, sent };
+      const result = await apiClient.post<BulkActionResult>("/assets/bulk-action", {
+        asset_ids: sent.map((a) => a.id),
+        event_type: c.eventType,
+        to_asset_user_id: c.destination ? Number(toAssetUserId) : null,
+        remarks: remarks.trim() || null,
+        ...(customDate ? { event_date: new Date(eventDate).toISOString() } : {}),
+        ...(reference ? { reference_no: reference } : {}),
+      });
+      return { ...result, choice: c, sent };
     },
     onSuccess: (result) => {
       const failedIds = new Set(result.failed.map((f) => f.asset_id));

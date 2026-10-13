@@ -30,6 +30,14 @@ function mockApi(changes: unknown = report(), summary: unknown = { available: tr
     if (path === "/purchase-orders/7/lines") return Promise.resolve([]);
     if (path === "/erp/purchase-orders/7/changes") return Promise.resolve(changes);
     if (path === "/erp/changes/summary") return Promise.resolve(summary);
+    // S6: Home's counters come from one call; its ERP figure equals the summary's number of POs.
+    if (path.startsWith("/home/attention")) {
+      const items = (summary as { items?: unknown[] })?.items ?? [];
+      return Promise.resolve({
+        serial_pending: 0, under_repair: 0, lost: 0, unlinked_assets: 0, waiting_pos: 0, waiting_units: 0,
+        erp_available: true, erp_changed_pos: items.length, erp_arrived_pos: 0, erp_pos_needing_input: 0, inbox: null,
+      });
+    }
     if (path === "/erp/reminders" || path.startsWith("/erp/reminders?")) return Promise.resolve([]);
     if (path === "/reports/dashboard") {
       return Promise.resolve({
@@ -266,7 +274,8 @@ describe("ERP changes in the Purchase Orders list and on the dashboard", () => {
     mockApi(report(), { available: true, items: [] });
     await renderAt("/dashboard");
     await screen.findByRole("heading", { name: "Home" });
-    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/erp/changes/summary"));
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/home/attention"));
+    await screen.findByText(/nothing needs your attention/i);
     expect(screen.queryByText(/the erp changed/i)).not.toBeInTheDocument();
   });
 });

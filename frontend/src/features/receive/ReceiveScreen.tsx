@@ -31,7 +31,7 @@ const CHECK_DELAY_MS = 150;
 /** New asset codes listed in the result before "and N more". */
 const CODES_SHOWN = 20;
 /** The register opens at most this many assets by id (the server's `ids=` limit). */
-const OPEN_IDS_MAX = 200;
+const OPEN_IDS_MAX = 1000;
 
 /**
  * Receive (S4): one screen per purchase order. The common things -- where the
