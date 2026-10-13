@@ -172,7 +172,31 @@ class ErpArticleCode:
     lines: int
 
 
+@dataclass
+class ErpCodeHit:
+    """One bought ERP item code found by a search, with the Article it sits in and its descriptive text."""
+    icode: str
+    article_key: str
+    article_name: str
+    section: str
+    department: str
+    division: str
+    cats: list[str]
+    units: float
+    lines: int
+
+    @property
+    def name(self) -> str:
+        return self.cats[0] if self.cats else ""
+
+    @property
+    def description(self) -> str:
+        return " · ".join(self.cats)
+
+
 class ErpSource(Protocol):
+    async def find_codes(self, query: str, company_code: str | None = None, limit: int = 60) -> list[ErpCodeHit]:
+        """Bought item codes whose code, product name, description or Article contains `query` (exact code first)."""
     async def items(self, codes: list[str]) -> list[ErpItem]: ...
     async def bought_articles(self, company_code: str | None = None) -> list[ErpArticle]: ...
     async def article_codes(self, article_key: str, company_code: str | None = None) -> list[ErpArticleCode]: ...
@@ -326,6 +350,23 @@ class PgErpSource(PgReadOnly):
                        division=(r["division"] or "").strip())
             for r in rows
         ])
+
+    async def find_codes(self, query: str, company_code: str | None = None, limit: int = 60) -> list[ErpCodeHit]:
+        rel = await self._item_relation()
+        like = "%" + query.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        rows = await self._fetch(
+            f"""select i.icode, coalesce(i.article_code::text, i.article_name) article_key, i.article_name, i.section, i.department, i.division,
+                       i.cat1, i.cat2, i.cat3, i.cat4, i.cat5, i.cat6, coalesce(sum(l.ordqty), 0) units, count(l.icode) lines
+                from {rel} i join {VIEW_PO_LINE} l on l.icode = i.icode and ($2::text is null or l.company_code = $2)
+                where i.icode ilike $1 or i.article_name ilike $1 or i.cat1 ilike $1 or i.cat2 ilike $1 or i.cat3 ilike $1
+                group by i.icode, i.article_code, i.article_name, i.section, i.department, i.division, i.cat1, i.cat2, i.cat3, i.cat4, i.cat5, i.cat6
+                order by (upper(i.icode) = upper($4)) desc, sum(l.ordqty) desc limit $3""", like, company_code, limit, query.strip())
+        return [
+            ErpCodeHit(icode=r["icode"], article_key=r["article_key"], article_name=(r["article_name"] or "").strip(), section=(r["section"] or "").strip(),
+                       department=(r["department"] or "").strip(), division=(r["division"] or "").strip(),
+                       cats=[c for c in (clean_name(r[f"cat{n}"]) for n in range(1, 7)) if c], units=float(r["units"] or 0), lines=int(r["lines"]))
+            for r in rows
+        ]
 
     async def article_codes(self, article_key: str, company_code: str | None = None) -> list[ErpArticleCode]:
         rel = await self._item_relation()

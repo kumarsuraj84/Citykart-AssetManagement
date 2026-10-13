@@ -120,6 +120,26 @@ async def test_a_vendor_without_its_own_gstin_is_found_through_the_gstin_the_erp
     assert resp.status_code == 422 and "same GSTIN as Vansh Enterprises" in resp.json()["detail"]
 
 
+async def test_linking_fills_in_the_vendors_gstin_when_it_has_none_and_never_overwrites_one(client, erp):
+    ids = await _ids_for_gstin()
+    h = await _headers(client)
+    erp.vendor_list = [ErpVendor("555", "Harshit Infosolution", gstin=" 07afzpc6360h1z3 ", company_code="CKSPL"),
+                       ErpVendor("405", "HARSHIT INFOSOLUTION", gstin="07AFZPC6360H1Z3", company_code="CKVPL")]
+    ok = await client.post(f"/api/erp/vendors/{ids['harshit']}/link", headers=h, json=link(ids["spl"], "555"))
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["gstin"] == "07afzpc6360h1z3"
+    # a GSTIN already on the vendor is kept, even when the other company's supplier shows another
+    async with SessionLocal() as s:
+        (await s.get(Vendor, ids["harshit"])).gstin = "09BBBBB1111B1Z1"
+        await s.commit()
+    again = await client.post(f"/api/erp/vendors/{ids['harshit']}/link", headers=h, json=link(ids["vpl"], "405"))
+    assert again.status_code == 200 and again.json()["gstin"] == "09BBBBB1111B1Z1"
+
+
+async def _ids_for_gstin():
+    return await _setup()
+
+
 async def test_a_supplier_linked_in_this_company_shows_its_vendor_not_a_suggestion(client, erp):
     ids = await _setup()
     erp.vendor_list = [ErpVendor("11338", "VANSH ENTERPRISES", gstin=GSTIN, company_code="CKSPL")]

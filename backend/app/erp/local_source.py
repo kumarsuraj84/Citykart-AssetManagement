@@ -8,12 +8,12 @@ source, so a fresh install keeps working.
 A PO has no status of its own in the warehouse: it is derived from its lines (`derive_po_status`). Lines
 the warehouse stopped returning (`is_present = false`) are not part of the PO any more."""
 from collections import defaultdict
-from sqlalchemy import select, tuple_
+from sqlalchemy import func, or_, select, tuple_
 
 from app.core.db import SessionLocal
 from app.erp.mirror_models import ErpItemCopy, ErpPoLineCopy, ErpSyncRun, ErpVendorCopy
 from app.erp.source import (
-    ErpArticle, ErpArticleCode, ErpInvoice, ErpItem, ErpPo, ErpPoLine, ErpReceipt, ErpSource, ErpVendor, clean_name,
+    ErpArticle, ErpArticleCode, ErpCodeHit, ErpInvoice, ErpItem, ErpPo, ErpPoLine, ErpReceipt, ErpSource, ErpVendor, clean_name,
 )
 from app.erp.tax import derive_tax
 from app.erp.warehouse import derive_po_status
@@ -157,6 +157,31 @@ class LocalErpSource:
                        codes=len(g["codes"]), units=g["units"], lines=g["lines"], samples=[n[:40] for n in sorted(g["names"])][:4],
                        icodes=sorted(g["codes"]), names=sorted(g["names"]), division=(g["item"].division or "").strip())
             for key, g in ordered
+        ]
+
+    async def find_codes(self, query: str, company_code: str | None = None, limit: int = 60) -> list[ErpCodeHit]:
+        if not await self._has_copy():
+            return await self._live.find_codes(query, company_code, limit)
+        text = query.strip()          # empty = every bought code of the company
+        fields = (ErpItemCopy.icode, ErpItemCopy.article_name, ErpItemCopy.cat1, ErpItemCopy.cat2, ErpItemCopy.cat3, ErpItemCopy.cat4, ErpItemCopy.cat5, ErpItemCopy.cat6)
+        async with self._sf() as session:
+            stmt = (select(ErpItemCopy, func.coalesce(func.sum(ErpPoLineCopy.ordqty), 0), func.count(ErpPoLineCopy.po_line_key))
+                    .join(ErpPoLineCopy, ErpPoLineCopy.icode == ErpItemCopy.icode)
+                    .where(ErpPoLineCopy.is_present.is_(True))
+                    .group_by(ErpItemCopy.icode)
+                    .order_by((func.upper(ErpItemCopy.icode) == text.upper()).desc(), func.sum(ErpPoLineCopy.ordqty).desc())
+                    .limit(limit))
+            if text:
+                like = "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+                stmt = stmt.where(or_(*[f.ilike(like, escape="\\") for f in fields]))
+            if company_code:
+                stmt = stmt.where(ErpPoLineCopy.company_code == company_code)
+            rows = (await session.execute(stmt)).all()
+        return [
+            ErpCodeHit(icode=item.icode, article_key=(item.article_name or "").strip(), article_name=(item.article_name or "").strip(),
+                       section=(item.section or "").strip(), department=(item.department or "").strip(), division=(item.division or "").strip(),
+                       cats=_cats(item), units=float(units or 0), lines=int(lines))
+            for item, units, lines in rows
         ]
 
     async def article_codes(self, article_key: str, company_code: str | None = None) -> list[ErpArticleCode]:

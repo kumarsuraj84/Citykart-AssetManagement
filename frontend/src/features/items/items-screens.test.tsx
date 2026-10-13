@@ -53,6 +53,11 @@ function renderAt(path: string) {
   render(<QueryClientProvider client={qc}><RouterProvider router={router} /></QueryClientProvider>);
 }
 
+// The screen opens on its Codes view; these tests are about the Articles view.
+async function openArticles() {
+  fireEvent.click(await screen.findByRole("button", { name: "Articles" }));
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: true, mustChangePassword: false });
@@ -245,6 +250,7 @@ describe("ERP Articles screen", () => {
   it("shows the Articles not linked yet, with a suggested Item, and links one", async () => {
     mockApi();
     renderAt("/setup/erp-articles");
+    await openArticles();
     expect(await screen.findByText("FA_CE_UPS")).toBeInTheDocument();
     expect(screen.getByText("COMPUTER EQUIPMENT › FA_CE_UPS")).toBeInTheDocument();
     expect(screen.getByText("Suggested: UPS")).toBeInTheDocument();
@@ -263,6 +269,7 @@ describe("ERP Articles screen", () => {
   it("All shows linked Articles too, with their Item and extra rules, and Change is only offered after picking another Item", async () => {
     mockApi();
     renderAt("/setup/erp-articles");
+    await openArticles();
     await screen.findByText("FA_CE_UPS");
     fireEvent.click(screen.getByRole("button", { name: "All (3)" }));
     const row = screen.getByText("02-I3 CORE[IT-01]").closest("tr")!;
@@ -277,6 +284,7 @@ describe("ERP Articles screen", () => {
   it("searches by Article, department or product", async () => {
     mockApi();
     renderAt("/setup/erp-articles");
+    await openArticles();
     await screen.findByText("FA_CE_UPS");
     fireEvent.click(screen.getByRole("button", { name: "All (3)" }));
     fireEvent.change(screen.getByLabelText("Search ERP Articles"), { target: { value: "rack" } });
@@ -287,13 +295,14 @@ describe("ERP Articles screen", () => {
   it("searching an item code (the barcode) finds its Article, even one that is already linked, and says which code matched", async () => {
     mockApi();
     renderAt("/setup/erp-articles");
+    await openArticles();
     await screen.findByText("FA_CE_UPS");
     expect(screen.queryByText("02-I3 CORE[IT-01]")).not.toBeInTheDocument();       // linked, so hidden by "Not linked" while nothing is typed
 
     fireEvent.change(screen.getByLabelText("Search ERP Articles"), { target: { value: "CT324973" } });
     const row = (await screen.findByText("02-I3 CORE[IT-01]")).closest("tr")!;
     expect(within(row).getByText("CT324973")).toBeInTheDocument();
-    expect(within(row).getByText(/linked to Desktop/)).toBeInTheDocument();
+    expect(within(row).getByText(/decide the code itself above/)).toBeInTheDocument();       // the code's own decision is shown in the codes panel, not its Article's
     expect(screen.queryByText("FA_CE_UPS")).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Search ERP Articles"), { target: { value: "ct9990" } });       // partial and case-insensitive; another code of the same Article
@@ -312,6 +321,7 @@ describe("ERP Articles screen", () => {
   it("a mixed Article is linked code by code or product name by product name", async () => {
     mockApi();
     renderAt("/setup/erp-articles");
+    await openArticles();
     fireEvent.click(await screen.findByRole("button", { name: "Codes of FA_IT_OTHERS" }));
     const dialog = await screen.findByRole("dialog");
     expect(await within(dialog).findByText("48 PORT SWITCH")).toBeInTheDocument();
@@ -320,14 +330,16 @@ describe("ERP Articles screen", () => {
 
     fireEvent.click(within(dialog).getByLabelText("Item for CT500001"));
     fireEvent.click(await screen.findByRole("option", { name: "UPS" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Link name of CT500001" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Every code with the same product name" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Link CT500001" }));
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith("/items/maps", {
         item_id: 3, match_type: "NAME", article_key: "FA_IT_OTHERS", article_name: "FA_IT_OTHERS", section: "IT EQUIPMENTS",
         department: "FA_IT_OTHERS", name_key: "48 port switch",
       }),
     );
-    fireEvent.click(within(dialog).getByRole("button", { name: "Link code CT500001" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "This code only" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Link CT500001" }));
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith("/items/maps", expect.objectContaining({ match_type: "CODE", erp_item_code: "CT500001", item_id: 3 })),
     );
@@ -336,6 +348,7 @@ describe("ERP Articles screen", () => {
   it("shows the server's message when the ERP cannot be read", async () => {
     mockApi(new Error("The ERP database could not be reached (OSError)."));
     renderAt("/setup/erp-articles");
+    await openArticles();
     expect(await screen.findByText(/could not be reached/)).toBeInTheDocument();
   });
 
@@ -356,6 +369,7 @@ describe("ERP Articles screen", () => {
     it("asks the ERP for the first company's Articles, and the other company's when switched", async () => {
       mockTwoCompanies();
       renderAt("/setup/erp-articles");
+    await openArticles();
       expect(await screen.findByText("FA_CE_UPS")).toBeInTheDocument();
       expect(apiClient.get).toHaveBeenCalledWith("/items/articles?company_id=1");
 
@@ -369,6 +383,7 @@ describe("ERP Articles screen", () => {
     it("a link made for a company belongs to that company", async () => {
       mockTwoCompanies();
       renderAt("/setup/erp-articles");
+    await openArticles();
       await screen.findByText("FA_CE_UPS");
       fireEvent.click(screen.getByRole("button", { name: "Link FA_CE_UPS" }));
       await waitFor(() =>
@@ -388,13 +403,14 @@ describe("ERP Articles screen", () => {
     it("the codes of an Article are read and linked for the chosen company", async () => {
       mockTwoCompanies();
       renderAt("/setup/erp-articles");
+    await openArticles();
       fireEvent.click(await screen.findByRole("button", { name: "Codes of FA_IT_OTHERS" }));
       const dialog = await screen.findByRole("dialog");
       await within(dialog).findByText("48 PORT SWITCH");
       expect(apiClient.get).toHaveBeenCalledWith("/items/articles/codes?article_key=FA_IT_OTHERS&company_id=1");
       fireEvent.click(within(dialog).getByLabelText("Item for CT500001"));
       fireEvent.click(await screen.findByRole("option", { name: "UPS" }));
-      fireEvent.click(within(dialog).getByRole("button", { name: "Link code CT500001" }));
+      fireEvent.click(within(dialog).getByRole("button", { name: "Link CT500001" }));
       await waitFor(() =>
         expect(apiClient.post).toHaveBeenCalledWith("/items/maps", expect.objectContaining({ company_id: 1, match_type: "CODE", erp_item_code: "CT500001" })),
       );

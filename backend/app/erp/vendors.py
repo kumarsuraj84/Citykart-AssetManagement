@@ -141,6 +141,8 @@ async def link_vendor(session: AsyncSession, actor: AssetUser, source: ErpSource
         owner = await session.get(Vendor, other.vendor_id)
         raise ValueError(f"{erp.name} is already linked to the vendor {owner.name if owner else other.vendor_id}")
     vendor.erp_links.append(VendorErpLink(company_id=company.id, erp_vendor_code=erp.code, created_by=actor.id))
+    if not _gstin(vendor.gstin) and _gstin(erp.gstin):
+        vendor.gstin = erp.gstin.strip()       # a vendor made before the ERP supplied GSTINs gets it now, so later matching works
     vendor.updated_by = actor.id
     await session.flush()
     return vendor

@@ -163,6 +163,60 @@ async def test_the_groups_list_counts_each_department_section_or_division_and_it
     assert (await client.get("/api/items/articles/groups?level=DEPARTMENT", headers=ids["op"])).status_code == 403
 
 
+async def test_a_code_found_by_its_barcode_is_shown_with_its_own_decision_not_its_articles(client, erp):
+    ids = await _ids(client)
+    h = ids["owner"]
+    await client.post("/api/items/maps", headers=h, json={"item_id": ids["item_cable"], "match_type": "ARTICLE", **ART})      # the Article -> Cable
+    hit = (await client.get("/api/items/codes?q=ct500002", headers=h)).json()
+    assert [x["icode"] for x in hit] == ["CT500002"]
+    row = hit[0]
+    assert (row["name"], row["name_key"], row["article_key"], row["section"], row["department"], row["division"]) == (
+        "6U RACK", "6u rack", "FA_IT_OTHERS", "IT EQUIPMENTS", "FA_IT_OTHERS", "FIXED ASSETS")
+    assert (row["item_name"], row["matched_by"], row["not_tracked"]) == ("Cable", "ARTICLE", False)       # it follows the Article, and says so
+    # the rack is not an asset: that one code is marked, and its sibling in the same Article still follows the Article
+    await client.post("/api/items/maps", headers=h, json={"not_tracked": True, "match_type": "CODE", "erp_item_code": "CT500002", **ART})
+    again = {x["icode"]: x for x in (await client.get("/api/items/codes?q=CT5000", headers=h)).json()}
+    assert (again["CT500002"]["not_tracked"], again["CT500002"]["matched_by"], again["CT500002"]["map_id"] is not None) == (True, "CODE", True)
+    assert (again["CT500001"]["not_tracked"], again["CT500001"]["item_name"], again["CT500001"]["matched_by"]) == (False, "Cable", "ARTICLE")
+
+
+async def test_codes_are_found_by_words_from_their_name_too_and_the_exact_code_comes_first(client, erp):
+    ids = await _ids(client)
+    h = ids["owner"]
+    by_name = (await client.get("/api/items/codes?q=rack", headers=h)).json()
+    assert [x["icode"] for x in by_name] == ["CT500002"]
+    by_article = (await client.get("/api/items/codes?q=FA_IT_OTHERS", headers=h)).json()
+    assert {x["icode"] for x in by_article} == {"CT500001", "CT500002"}
+    assert (await client.get("/api/items/codes?q=CT500001", headers=h)).json()[0]["icode"] == "CT500001"
+
+
+async def test_every_bought_code_is_listed_on_its_own_never_bundled_with_its_article(client, erp):
+    ids = await _ids(client)
+    h = ids["owner"]
+    await client.post("/api/items/maps", headers=h, json={"item_id": ids["item_cable"], "match_type": "ARTICLE", **ART})       # FA_IT_OTHERS -> Cable
+    await client.post("/api/items/maps", headers=h, json={"not_tracked": True, "match_type": "CODE", "erp_item_code": "CT500002", **ART})
+    rows = {r["icode"]: r for r in (await client.get("/api/items/codes", headers=h)).json()}
+    assert set(rows) == {"CT324973", "CT999001", "CT500001", "CT500002"}                       # one row per code
+    # each code carries its own decision and its Article's name, but is never merged into it
+    assert (rows["CT500001"]["item_name"], rows["CT500001"]["matched_by"]) == ("Cable", "ARTICLE")
+    assert (rows["CT500002"]["not_tracked"], rows["CT500002"]["matched_by"]) == (True, "CODE")
+    assert (rows["CT324973"]["item_name"], rows["CT324973"]["matched_by"], rows["CT324973"]["article_key"]) == ("Desktop", "ARTICLE", "02-I3 CORE[IT-01]")
+    assert rows["CT999001"]["article_name"] == "02-I3 CORE[IT-01]" and rows["CT999001"]["item_name"] == "Desktop"
+    # a code of one company is not listed for the other
+    erp.company_codes["CKVPL"] = {"CT500001"}
+    only_vpl = (await client.get(f"/api/items/codes?company_id={ids['vpl']}", headers=h)).json()
+    assert [r["icode"] for r in only_vpl] == ["CT500001"]
+
+
+async def test_the_code_search_needs_two_characters_and_the_primary_owner(client, erp):
+    ids = await _ids(client)
+    assert (await client.get("/api/items/codes?q=C", headers=ids["owner"])).json() == []
+    assert (await client.get("/api/items/codes?q=CT5", headers=ids["op"])).status_code == 403
+    erp.down = "The ERP database could not be reached (OSError)."
+    down = await client.get("/api/items/codes?q=CT5", headers=ids["owner"])
+    assert down.status_code == 503 and "could not be reached" in down.json()["detail"]
+
+
 async def test_not_tracked_rules_are_not_an_items_rules_and_deactivating_items_does_not_switch_them_off(client, erp):
     ids = await _ids(client)
     h = ids["owner"]

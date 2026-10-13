@@ -155,6 +155,36 @@ async def test_a_tax_the_warehouse_does_not_store_is_worked_out_from_the_po_tota
     assert (t3.tax_percent, t3.tax_derived) == (12.0, False)
 
 
+async def test_codes_are_found_by_code_name_or_article_inside_one_company_with_the_exact_code_first(source):
+    hits = await source.find_codes("CT", "CKSPL")
+    assert {h.icode for h in hits} == {"CT371487", "CT2"}                                 # CKVPL's CV1911 is another company's
+    exact = await source.find_codes("ct2", "CKSPL")
+    assert exact[0].icode == "CT2"
+    mouse = (await source.find_codes("mouse", "CKSPL"))[0]                                  # by the product name (CAT1)
+    assert (mouse.icode, mouse.name, mouse.article_key, mouse.section, mouse.department, mouse.division) == (
+        "CT2", "MOUSE", "01-MOUSE[IT-01]", "ELECTRICAL FITTING", "FA_IT_MOUSE", "FIXED ASSETS")
+    assert (mouse.units, mouse.lines) == (4.0, 1) and mouse.description == "MOUSE · DELL"
+    assert [h.icode for h in await source.find_codes("UPS", "CKVPL")] == ["CV1911"]       # by the Article name
+    assert [h.icode for h in await source.find_codes("CV1911")] == ["CV1911"]               # no company: every company's
+    assert len(await source.find_codes("CT", "CKSPL", limit=1)) == 1
+
+
+async def test_an_empty_search_lists_every_bought_code_of_the_company(source):
+    assert {h.icode for h in await source.find_codes("", "CKSPL")} == {"CT371487", "CT2"}
+    assert {h.icode for h in await source.find_codes("", "CKVPL")} == {"CV1911"}
+    assert {h.icode for h in await source.find_codes("")} == {"CT371487", "CT2", "CV1911"}
+
+
+async def test_a_percent_or_underscore_in_a_search_is_not_a_wildcard(source):
+    assert await source.find_codes("%", "CKSPL") == []
+    assert await source.find_codes("C_2", "CKSPL") == []
+
+
+async def test_before_the_first_copy_a_code_search_goes_to_the_live_source():
+    live = Live()
+    assert await LocalErpSource(live=live, session_factory=SessionLocal).find_codes("CT1", "CKSPL") == "live:find_codes"
+
+
 async def test_receipts_and_invoices_still_come_from_the_live_source(source):
     assert await source.receipts([1001]) == "live:receipts"
     assert await source.invoices([1001]) == "live:invoices"

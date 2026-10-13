@@ -81,6 +81,20 @@ class FakeErp:
         return [ErpArticleCode(e.icode, e.name, e.description, 10.0, 2) for e in self.erp_items.values()
                 if e.article_key == article_key and (wanted is None or e.icode in wanted)]
 
+    async def find_codes(self, query, company_code=None, limit=60):
+        if self.down:
+            raise ErpUnavailable(self.down)
+        from app.erp.source import ErpCodeHit
+        needle = query.strip().lower()
+        wanted = self.company_codes.get(company_code)
+        hits = [
+            ErpCodeHit(e.icode, e.article_key, e.article_name, e.section, e.department, e.division, list(e.cats), 10.0, 2)
+            for e in self.erp_items.values()
+            if (wanted is None or e.icode in wanted)
+            and (needle in e.icode.lower() or needle in e.article_name.lower() or any(needle in c.lower() for c in e.cats))
+        ]
+        return sorted(hits, key=lambda h: h.icode.lower() != needle)[:limit]
+
     async def receipts(self, po_codes):
         if self.down:
             raise ErpUnavailable(self.down)

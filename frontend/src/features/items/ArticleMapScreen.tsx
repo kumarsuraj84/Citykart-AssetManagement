@@ -2,7 +2,9 @@ import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
-import type { ArticleCodeRow, ArticleRow, Item, MatchType } from "./types";
+import type { ArticleCodeRow, ArticleRow, Item } from "./types";
+import { CodeDecisionRows, type CodeDecisionRow } from "./CodeDecisionRows";
+import { ErpCodesView } from "./ErpCodesView";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -25,39 +27,75 @@ interface Company {
 
 type Tab = "unmapped" | "untracked" | "linked" | "all";
 
-/** Setup > ERP Articles: every ERP Article that has been bought, and what CKAM does with it: it belongs to an
- * Item, or it is not tracked here at all (cables, hangers, sensor tags). Linking an Article links all its item
- * codes (the normal case); a mixed Article is decided product name by product name, or code by code. */
+/** Setup > ERP Articles. Two views of the same decisions. **Codes** (the main one): every ERP barcode on its own row,
+ * never bundled, to tick any of them and link them to one Item or mark them not tracked. **Articles**: a shortcut
+ * for a whole family at once (every code under an Article, including new vendor codes, follows it). */
 export function ArticleMapScreen() {
+  const [view, setView] = useState<"codes" | "articles">("codes");
+  const [showGroups, setShowGroups] = useState(false);
+  // Each company has its own ERP master (same product, different codes and Articles), so decisions are per company.
+  const companiesQ = useQuery({ queryKey: ["masters", "companies"], queryFn: () => apiClient.get<Company[]>("/masters/companies") });
+  const companies = Array.isArray(companiesQ.data) ? companiesQ.data : [];
+  const [pickedCompany, setPickedCompany] = useState<string | undefined>(undefined);
+  const companyId = pickedCompany ?? (companies[0] ? String(companies[0].id) : undefined);
+  const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => apiClient.get<Item[]>("/items") });
+  const items = itemsQ.data ?? [];
+
+  return (
+    <div className="flex flex-col gap-4">
+      <PageHeader
+        title="ERP Articles"
+        description="Decide what CKAM does with every ERP item code (barcode): link it to an Item, or mark it Not tracked (cables, hangers, sensor tags: purchase orders leave those lines out). In Codes, every barcode is its own row: tick the ones you want and link them to one Item. Each company has its own ERP master, so decide per company. Articles is a shortcut for a whole family at once; Groups… clears a whole Department, Section or Division."
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowGroups(true)}>Groups…</Button>
+            <Button asChild variant="outline"><Link to="/setup/items">Items</Link></Button>
+          </div>
+        }
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        {companies.length > 1 && (
+          <div className="w-64">
+            <SearchableSelect
+              id="article-company" aria-label="Company" value={companyId} onValueChange={setPickedCompany}
+              options={companies.map((c) => ({ value: String(c.id), label: c.name }))}
+            />
+          </div>
+        )}
+        <Button size="sm" variant={view === "codes" ? "default" : "outline"} aria-pressed={view === "codes"} onClick={() => setView("codes")}>Codes</Button>
+        <Button size="sm" variant={view === "articles" ? "default" : "outline"} aria-pressed={view === "articles"} onClick={() => setView("articles")}>Articles</Button>
+      </div>
+      {companiesQ.isFetched && (view === "codes"
+        ? <ErpCodesView key={companyId ?? "all"} companyId={companyId} items={items} />
+        : <ArticlesView key={companyId ?? "all"} companyId={companyId} items={items} />)}
+      {showGroups && <ErpGroupsDialog companyId={companyId} onClose={() => setShowGroups(false)} />}
+    </div>
+  );
+}
+
+/** The Articles view: one row per ERP Article, decided as a family. */
+function ArticlesView({ companyId, items }: { companyId?: string; items: Item[] }) {
   const qc = useQueryClient();
   const [filter, setFilter] = useState<Tab>("unmapped");
   const [search, setSearch] = useState("");
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [detail, setDetail] = useState<ArticleRow | null>(null);
-  const [showGroups, setShowGroups] = useState(false);
+  // Marking a whole Article not tracked reaches every code in it: ask first.
+  const [confirmNt, setConfirmNt] = useState<ArticleRow | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkItem, setBulkItem] = useState<string | undefined>();
   // An Article whose Item does not exist yet gets it created right here, then linked to it.
   const canCreate = useCanCreateMasters();
   const [newItemFor, setNewItemFor] = useState<ArticleRow | null>(null);
 
-  // Each company has its own ERP master (same product, different codes and
-  // Articles), so Articles are linked per company.
-  const companiesQ = useQuery({ queryKey: ["masters", "companies"], queryFn: () => apiClient.get<Company[]>("/masters/companies") });
-  const companies = Array.isArray(companiesQ.data) ? companiesQ.data : [];
-  const [pickedCompany, setPickedCompany] = useState<string | undefined>(undefined);
-  const companyId = pickedCompany ?? (companies[0] ? String(companies[0].id) : undefined);
-  const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => apiClient.get<Item[]>("/items") });
   const articlesQ = useQuery({
     queryKey: ["items", "articles", companyId],
     queryFn: async () =>
       (await apiClient.get<ArticleRow[]>(`/items/articles${companyId ? `?company_id=${companyId}` : ""}`)).map((a) => ({
         ...a, decision: a.decision ?? (a.item_id !== null ? ("ITEM" as const) : null), untracked_rules: a.untracked_rules ?? 0,
       })),
-    enabled: companiesQ.isFetched,
     retry: false,
   });
-  const items = itemsQ.data ?? [];
   const itemOptions = items.map((i) => ({ value: String(i.id), label: i.name }));
 
   const company = companyId ? { company_id: Number(companyId) } : {};
@@ -139,8 +177,7 @@ export function ArticleMapScreen() {
           {a.samples.length > 0 && <p className="truncate text-xs font-normal text-muted-foreground">{a.samples.join(", ")}</p>}
           {matchedCode(a) && (
             <p className="text-xs font-normal text-foreground">
-              Has code <span className="font-mono">{matchedCode(a)}</span>
-              {a.item_name ? ` · linked to ${a.item_name}` : a.decision === "NOT_TRACKED" ? " · not tracked" : " · not linked yet"}
+              Has code <span className="font-mono">{matchedCode(a)}</span> · decide the code itself above
             </p>
           )}
         </div>
@@ -194,8 +231,9 @@ export function ArticleMapScreen() {
               </Button>
             ) : (
               <Button
-                size="sm" variant="outline" aria-label={`Not tracked: ${a.article_name}`} disabled={a.decision === "NOT_TRACKED" || notTrackedMutation.isPending}
-                onClick={() => notTrackedMutation.mutate(a)}
+                size="sm" variant="outline" aria-label={`Not tracked: ${a.article_name}`} title="Mark the whole Article not tracked"
+                disabled={a.decision === "NOT_TRACKED" || notTrackedMutation.isPending}
+                onClick={() => setConfirmNt(a)}
               >
                 Not tracked
               </Button>
@@ -215,25 +253,11 @@ export function ArticleMapScreen() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader
-        title="ERP Articles"
-        description="Decide once what CKAM does with each ERP Article: link it to an Item (every code under it, including new vendor codes, follows), or mark it Not tracked (cables, hangers, sensor tags: purchase orders leave those lines out). Each company has its own ERP master, so decide per company: the same Item can have a different Article in each. For a mixed Article, use Codes… to decide by product name or by code. To clear a whole Department, Section or Division at once, use Groups…"
-        actions={
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setShowGroups(true)}>Groups…</Button>
-            <Button asChild variant="outline"><Link to="/setup/items">Items</Link></Button>
-          </div>
-        }
-      />
+      <p className="text-xs text-muted-foreground">
+        An Article groups what was bought together (every code under it, including new vendor codes, follows it), so a cable can sit in the camera Article.
+        For a mixed Article use Codes… or the Codes view to decide each barcode by itself.
+      </p>
       <div className="flex flex-wrap items-center gap-2">
-        {companies.length > 1 && (
-          <div className="w-64">
-            <SearchableSelect
-              id="article-company" aria-label="Company" value={companyId} onValueChange={(v) => { setPickedCompany(v); setSelected(new Set()); }}
-              options={companies.map((c) => ({ value: String(c.id), label: c.name }))}
-            />
-          </div>
-        )}
         <Input
           aria-label="Search ERP Articles" placeholder="Search item code, Article, Department, product…" className="max-w-sm"
           value={search} onChange={(e) => setSearch(e.target.value)}
@@ -283,8 +307,23 @@ export function ArticleMapScreen() {
       )}
 
       {detail && <ArticleCodesDialog article={detail} items={items} companyId={companyId} onClose={() => setDetail(null)} />}
-      {showGroups && <ErpGroupsDialog companyId={companyId} onClose={() => setShowGroups(false)} />}
-
+      {confirmNt && (
+        <Dialog open onOpenChange={(open) => !open && setConfirmNt(null)}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="text-base">Mark the whole Article {confirmNt.article_name} as not tracked?</DialogTitle>
+              <DialogDescription>
+                All {confirmNt.codes} code{confirmNt.codes === 1 ? "" : "s"} in it ({confirmNt.samples.slice(0, 3).join(", ") || "no sample names"}) will be left out of purchase orders.
+                If only some of them are not tracked (a cable bought for the cameras), use <b>Codes…</b> instead and mark just those codes.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setConfirmNt(null)}>Cancel</Button>
+              <Button onClick={() => { notTrackedMutation.mutate(confirmNt); setConfirmNt(null); }}>Yes, the whole Article is not tracked</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
       <ItemFormDialog
         open={newItemFor !== null}
         onOpenChange={(open) => !open && setNewItemFor(null)}
@@ -296,10 +335,6 @@ export function ArticleMapScreen() {
 }
 
 function ArticleCodesDialog({ article, items, companyId, onClose }: { article: ArticleRow; items: Item[]; companyId?: string; onClose: () => void }) {
-  const qc = useQueryClient();
-  const [picked, setPicked] = useState<Record<string, string>>({});
-  const canCreate = useCanCreateMasters();
-  const [newItemFor, setNewItemFor] = useState<ArticleCodeRow | null>(null);
   const codesQ = useQuery({
     queryKey: ["items", "articles", "codes", companyId, article.article_key],
     queryFn: () =>
@@ -308,27 +343,21 @@ function ArticleCodesDialog({ article, items, companyId, onClose }: { article: A
       ),
     retry: false,
   });
-  const rule = (row: ArticleCodeRow, type: MatchType) => ({
-    match_type: type, article_key: article.article_key, article_name: article.article_name,
-    section: article.section, department: article.department, ...(companyId ? { company_id: Number(companyId) } : {}),
-    ...(type === "CODE" ? { erp_item_code: row.icode } : { name_key: row.name_key }),
+  const qc = useQueryClient();
+  const rows: CodeDecisionRow[] = (codesQ.data ?? []).map((c) => ({
+    ...c, not_tracked: c.not_tracked ?? false, not_tracked_by: c.not_tracked_by ?? null, map_id: c.map_id ?? null,
+    article_key: article.article_key, article_name: article.article_name, section: article.section, department: article.department,
+  }));
+  // If the Article itself is marked not tracked, every code follows that: say so, and offer the way back right here.
+  const articleOff = article.decision === "NOT_TRACKED";
+  const viaArticle = articleOff && article.not_tracked_level === "ARTICLE";
+  const trackAgain = useMutation({
+    mutationFn: () => apiClient.delete(`/items/maps/${article.decision_map_id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["items"] });
+      onClose();
+    },
   });
-  const done = () => qc.invalidateQueries({ queryKey: ["items"] });
-  const saveMutation = useMutation({
-    mutationFn: (v: { row: ArticleCodeRow; itemId: number | null; type: MatchType }) =>
-      apiClient.post("/items/maps", v.itemId === null ? { not_tracked: true, ...rule(v.row, v.type) } : { item_id: v.itemId, ...rule(v.row, v.type) }),
-    onSuccess: done,
-  });
-  const undoMutation = useMutation({
-    mutationFn: (row: ArticleCodeRow) => apiClient.delete(`/items/maps/${row.map_id}`),
-    onSuccess: done,
-  });
-  const options = items.map((i) => ({ value: String(i.id), label: i.name }));
-  const how: Record<MatchType, string> = {
-    CODE: "by its code", NAME: "by its product name", ARTICLE: "through its Article",
-    DEPARTMENT: "through its Department", SECTION: "through its Section", DIVISION: "through its Division",
-  };
-  const failure = [saveMutation, undoMutation].find((m) => m.isError)?.error;
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -337,77 +366,28 @@ function ArticleCodesDialog({ article, items, companyId, onClose }: { article: A
           <DialogTitle className="text-base">Codes of {article.article_name}</DialogTitle>
           <DialogDescription>
             Decide a single code, or every code with the same product name: link it to an Item, or mark it not tracked (a cable bought for the cameras, for example).
-            Anything else in the Article keeps following the Article's own decision.
+            Tick several to decide them together. Anything else in the Article keeps following the Article's own decision.
           </DialogDescription>
         </DialogHeader>
+        {articleOff && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning/50 bg-warning/10 p-3 text-sm" role="status">
+            <p>
+              The whole Article is marked <b>not tracked</b>{viaArticle ? "" : ` (${article.not_tracked_by})`}, so every code below follows that
+              unless it is decided by itself.
+            </p>
+            {viaArticle && (
+              <Button size="sm" disabled={trackAgain.isPending} onClick={() => trackAgain.mutate()}>Track the Article again</Button>
+            )}
+          </div>
+        )}
         {codesQ.isLoading && <p className="text-sm text-muted-foreground">Reading the ERP…</p>}
         {codesQ.isError && (
           <p className="text-sm text-destructive" role="alert">
             {codesQ.error instanceof Error ? codesQ.error.message : "Could not read the codes."}
           </p>
         )}
-        {failure && (
-          <p className="text-sm text-destructive" role="alert">
-            {failure instanceof Error ? failure.message : "Could not save."}
-          </p>
-        )}
-        <ul className="flex max-h-96 flex-col gap-2 overflow-y-auto">
-          {(codesQ.data ?? []).map((c) => {
-            const value = picked[c.icode] ?? (c.item_id !== null ? String(c.item_id) : "");
-            const own = c.not_tracked && (c.matched_by === "CODE" || c.matched_by === "NAME");
-            return (
-              <li key={c.icode} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-2 text-sm">
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium">
-                    <span className="font-mono text-xs">{c.icode}</span> {c.name || "(no product name in the ERP)"}
-                  </p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {c.description} · {units(c.units)} units in {c.lines} lines
-                  </p>
-                  <p className="text-xs">
-                    {c.not_tracked ? (
-                      <>Now: <b>Not tracked</b> {c.matched_by ? how[c.matched_by] : ""}</>
-                    ) : c.item_name ? (
-                      <>Now: <b>{c.item_name}</b> {c.matched_by ? how[c.matched_by] : ""}</>
-                    ) : (
-                      <span className="text-warning-foreground">Not decided yet</span>
-                    )}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-1">
-                  <SearchableSelect
-                    id={`code-item-${c.icode}`} aria-label={`Item for ${c.icode}`} value={value || undefined}
-                    onValueChange={(v) => setPicked((p) => ({ ...p, [c.icode]: v }))} options={options} placeholder="Item"
-                    onCreateNew={canCreate ? () => setNewItemFor(c) : undefined} createLabel="New Item…"
-                  />
-                  <Button size="sm" variant="outline" disabled={!value || saveMutation.isPending} aria-label={`Link code ${c.icode}`}
-                    onClick={() => saveMutation.mutate({ row: c, itemId: Number(value), type: "CODE" })}>This code</Button>
-                  <Button size="sm" variant="outline" disabled={!value || !c.name_key || saveMutation.isPending} aria-label={`Link name of ${c.icode}`}
-                    onClick={() => saveMutation.mutate({ row: c, itemId: Number(value), type: "NAME" })}>This name</Button>
-                  {own ? (
-                    <Button size="sm" variant="outline" disabled={undoMutation.isPending} aria-label={`Track ${c.icode} again`} onClick={() => undoMutation.mutate(c)}>
-                      Track again
-                    </Button>
-                  ) : (
-                    <>
-                      <Button size="sm" variant="outline" disabled={saveMutation.isPending} aria-label={`Code ${c.icode} not tracked`}
-                        onClick={() => saveMutation.mutate({ row: c, itemId: null, type: "CODE" })}>Code not tracked</Button>
-                      <Button size="sm" variant="outline" disabled={!c.name_key || saveMutation.isPending} aria-label={`Name of ${c.icode} not tracked`}
-                        onClick={() => saveMutation.mutate({ row: c, itemId: null, type: "NAME" })}>Name not tracked</Button>
-                    </>
-                  )}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+        <CodeDecisionRows rows={rows} items={items} companyId={companyId} />
         <div className="flex justify-end"><Button variant="outline" onClick={onClose}>Close</Button></div>
-        <ItemFormDialog
-          open={newItemFor !== null}
-          onOpenChange={(open) => !open && setNewItemFor(null)}
-          initialName={newItemFor?.name || undefined}
-          onSaved={(saved) => newItemFor && setPicked((p) => ({ ...p, [newItemFor.icode]: String(saved.id) }))}
-        />
       </DialogContent>
     </Dialog>
   );

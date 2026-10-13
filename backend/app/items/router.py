@@ -93,6 +93,19 @@ async def article_groups(
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc))
 
 
+@router.get("/codes")
+async def search_codes(
+    q: str = "", company_id: int | None = None, session: AsyncSession = Depends(get_session),
+    source: ErpSource = Depends(get_erp_source), _actor=Depends(require_primary_owner()),
+):
+    """ERP item codes, one row each, each with its own decision (not its Article's). No `q` = every bought code of the company;
+    with `q` (two characters or more) = the codes whose code, name or Article contains it."""
+    try:
+        return await service.code_search(session, source, q, company_id)
+    except ErpUnavailable as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc))
+
+
 @router.get("/articles/codes")
 async def article_codes(
     article_key: str, company_id: int | None = None, session: AsyncSession = Depends(get_session),

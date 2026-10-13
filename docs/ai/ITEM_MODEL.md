@@ -115,7 +115,13 @@ can say **"not tracked"** instead of naming an Item (`item_map.not_tracked`, `it
 - **Effect:** the PO draft leaves those lines out (listed collapsed as "N lines left out"), a PO made only of them is not offered in
   Pick from ERP (rows show "1 (+3 not tracked)"), the ERP change check ignores them on both sides (marking a code not tracked
   after a PO was made never shows as a cancellation) and delivery reminders never see them (they have no CKAM lines).
-- **Where to decide:** Setup > ERP Articles: tabs Not decided / Linked / Not tracked / All with counts; a Not tracked button per
+- **Codes view first (owner feedback 2026-10-13):** Setup > ERP Articles opens on **Codes**: every ERP barcode its own row, never
+  bundled by Article (`GET /api/items/codes`, no `q` = every bought code of the company, each with its own decision), with search,
+  a Department filter, tabs Not decided / Linked / Not tracked / All, tick any codes from any Article or Department and
+  **Link N to this Item** or **Mark N not tracked**; those are CODE rules. "Also for every other and future code of these
+  Articles" is an explicit extra, off by default. **Articles** is the secondary shortcut for a whole family; marking a whole
+  Article not tracked asks first, and Codes... of an Article warns when the Article itself is marked and offers Track again.
+- **Where to decide (Articles view):** tabs Not decided / Linked / Not tracked / All with counts; a Not tracked button per
   Article and Track again; tick several Articles and Link them to one Item or mark them not tracked in one go (for example the 3
   CKSPL and 2 CKVPL Articles of "Indoor Camera": the Item is shared, each company links its own Articles); Codes... decides one code or
   one product name; **Groups...** marks a whole Department / Section / Division. On a PO review the Primary Owner can mark an

@@ -11,6 +11,9 @@ from app.items.models import Item, ItemMap, LEVEL_TYPES, MATCH_TYPES
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company
 
 
+ALL_CODES_LIMIT = 5000
+
+
 def norm(text: str | None) -> str:
     """A name reduced to lower-case words, so 'Duct Split AC' and 'duct split ac.'
     are the same product name."""
@@ -369,6 +372,29 @@ async def group_overview(session: AsyncSession, source: ErpSource, level: str, c
     for key, g in sorted(groups.items(), key=lambda kv: -kv[1]["codes"]):
         hit = table.get(key)
         out.append({**g, "level": level, "not_tracked": hit is not None and hit[0].not_tracked, "map_id": hit[0].id if hit else None})
+    return out
+
+
+async def code_search(session: AsyncSession, source: ErpSource, query: str, company_id: int | None = None, limit: int = 60) -> list[dict]:
+    """Bought ERP item codes matching a search (a code, or words from its name or Article), each with its OWN
+    decision: what it resolves to and why. An Article is a purchasing group, not a statement of what each code
+    is (the camera Article holds a network cable), so a code found by its barcode is shown by itself."""
+    text = (query or "").strip()
+    if len(text) == 1:
+        return []
+    # An empty search is the whole list: every bought code of the company, one row each (never bundled by Article).
+    hits = await source.find_codes(text, await _company_code(session, company_id), ALL_CODES_LIMIT if not text else limit)
+    rules = _Rules(await _active_maps(session), company_id)
+    out = []
+    for h in hits:
+        r = rules.resolve(ErpItem(icode=h.icode, article_key=h.article_key, article_name=h.article_name, section=h.section,
+                                  department=h.department, division=h.division, cats=h.cats))
+        out.append({
+            "icode": h.icode, "name": h.name, "name_key": norm(h.name), "description": h.description, "units": h.units, "lines": h.lines,
+            "article_key": h.article_key, "article_name": h.article_name, "section": h.section, "department": h.department, "division": h.division,
+            "item_id": r.item.id if r.item else None, "item_name": r.item.name if r.item else None, "matched_by": r.matched_by,
+            "not_tracked": r.not_tracked, "not_tracked_by": r.why_not_tracked, "map_id": r.map_id,
+        })
     return out
 
 
