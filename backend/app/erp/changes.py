@@ -18,7 +18,7 @@ from app.assets.service import compute_tax
 from app.bundles.models import Bundle, BundlePart
 from app.bundles.service import add_bundle_lines, split_amounts
 from app.core.deps import scoped_company_ids
-from app.erp.service import derive_tax, linked_vendors
+from app.erp.service import derive_tax, linked_vendors, untracked_codes
 from app.erp.source import ErpPo, ErpSource
 from app.masters.models import Vendor
 from app.purchase_orders.models import PendingAsset, PurchaseOrder, PurchaseOrderErpBaseline, PurchaseOrderErpChange
@@ -39,13 +39,14 @@ def _units(qty: float) -> int:
     return int(qty) if qty > 0 else 0
 
 
-def erp_now(po: ErpPo) -> dict[str, dict]:
-    """What the ERP says now, per item code (upper-case): units after cancellations, rate, tax %."""
+def erp_now(po: ErpPo, untracked: frozenset[str] | set[str] = frozenset()) -> dict[str, dict]:
+    """What the ERP says now, per item code (upper-case): units after cancellations, rate, tax %. Codes CKAM
+    does not track (`untracked`, upper-case) are left out: they are never lines here, so they are never a change."""
     derived, _ = derive_tax(po)
     out: dict[str, dict] = {}
     for ln in po.lines:
         code = (ln.item_code or "").strip().upper()
-        if not code:
+        if not code or code in untracked:
             continue
         units = _units(ln.qty - ln.cancelled_qty)
         tax = ln.tax_percent if ln.tax_percent is not None else (derived if derived is not None else 0.0)
@@ -59,14 +60,14 @@ def erp_now(po: ErpPo) -> dict[str, dict]:
     return out
 
 
-async def snapshot_baseline(session: AsyncSession, po: PurchaseOrder, erp: ErpPo) -> None:
+async def snapshot_baseline(session: AsyncSession, po: PurchaseOrder, erp: ErpPo, untracked: frozenset[str] | set[str] = frozenset()) -> None:
     """Remembers what the ERP says now as the state CKAM agrees with (replacing any earlier one)."""
     for row in (await session.execute(
         select(PurchaseOrderErpBaseline).where(PurchaseOrderErpBaseline.purchase_order_id == po.id)
     )).scalars().all():
         await session.delete(row)
     await session.flush()
-    for code, now in erp_now(erp).items():
+    for code, now in erp_now(erp, untracked).items():
         session.add(PurchaseOrderErpBaseline(purchase_order_id=po.id, item_code=code, qty=now["qty"], rate=now["rate"], tax_percent=now["tax"]))
     _stamp_header(po, erp)
     await session.flush()
@@ -119,9 +120,12 @@ def _ckam_groups(lines: list[PendingAsset]) -> dict[str, dict]:
 
 
 def compute_changes(po: PurchaseOrder, erp: ErpPo | None, baseline: dict[str, PurchaseOrderErpBaseline], lines: list[PendingAsset],
-                    vendors_by_code: dict[str, Vendor] | None = None) -> dict:
+                    vendors_by_code: dict[str, Vendor] | None = None, untracked: frozenset[str] | set[str] = frozenset()) -> dict:
     """`vendors_by_code`: the CKAM vendors linked to this PO's company's ERP suppliers, by supplier code
-    (see app.erp.service.linked_vendors); it tells whether a vendor the ERP moved the PO to is known here."""
+    (see app.erp.service.linked_vendors); it tells whether a vendor the ERP moved the PO to is known here.
+    `untracked`: ERP codes (upper case) CKAM does not track; they are ignored on both sides, so marking a
+    code "not tracked" after a PO was made never shows up as that line being cancelled."""
+    baseline = {code: row for code, row in baseline.items() if code not in untracked}
     report: dict = {
         "found": erp is not None, "watching": po.erp_synced_at is not None, "erp_status": erp.status if erp else None,
         "erp_as_of": erp.loaded_at.isoformat() if erp and erp.loaded_at else None, "changes": [], "info": [],
@@ -133,7 +137,7 @@ def compute_changes(po: PurchaseOrder, erp: ErpPo | None, baseline: dict[str, Pu
         return report                       # no baseline yet: nothing can be said to have changed
 
     groups = _ckam_groups(lines)
-    now = erp_now(erp)
+    now = erp_now(erp, untracked)
     pending_total = sum(g["pending"] for g in groups.values())
     delivered_total = sum(g["delivered"] for g in groups.values())
 
@@ -213,7 +217,9 @@ async def _log(session: AsyncSession, po_id: int, actor: AssetUser, kind: str, i
 
 async def po_changes(session: AsyncSession, source: ErpSource, po: PurchaseOrder) -> dict:
     erp = await source.po(po.erp_po_code) if po.erp_po_code is not None else None
-    report = compute_changes(po, erp, await _baseline(session, po.id), await _lines(session, po.id), await linked_vendors(session, po.company_id))
+    untracked = await untracked_codes(session, source, po.company_id, [erp] if erp else [])
+    report = compute_changes(po, erp, await _baseline(session, po.id), await _lines(session, po.id),
+                             await linked_vendors(session, po.company_id), untracked)
     report.update({"po_id": po.id, "po_number": po.po_number, "erp_po_code": po.erp_po_code})
     log_rows = (await session.execute(
         select(PurchaseOrderErpChange).where(PurchaseOrderErpChange.purchase_order_id == po.id)
@@ -248,12 +254,15 @@ async def changes_summary(session: AsyncSession, actor: AssetUser, source: ErpSo
         return []
     erp_by_code = {e.po_code: e for e in await source.pos_with_lines([p.erp_po_code for p in pos])}
     vendors_by_company: dict[int, dict] = {}
+    untracked_by_company: dict[int, set[str]] = {}
     out = []
     for p in pos:
         if p.company_id not in vendors_by_company:
             vendors_by_company[p.company_id] = await linked_vendors(session, p.company_id)
+            company_pos = [erp_by_code[q.erp_po_code] for q in pos if q.company_id == p.company_id and q.erp_po_code in erp_by_code]
+            untracked_by_company[p.company_id] = await untracked_codes(session, source, p.company_id, company_pos)
         report = compute_changes(p, erp_by_code.get(p.erp_po_code), await _baseline(session, p.id), await _lines(session, p.id),
-                                 vendors_by_company[p.company_id])
+                                 vendors_by_company[p.company_id], untracked_by_company[p.company_id])
         if report["changes"]:
             out.append({
                 "po_id": p.id, "po_number": p.po_number, "changes": len(report["changes"]),
@@ -352,16 +361,17 @@ async def apply_changes(session: AsyncSession, actor: AssetUser, source: ErpSour
     erp = await source.po(po.erp_po_code) if po.erp_po_code is not None else None
     if erp is None:
         raise ValueError("The ERP no longer has this purchase order, so there is nothing to compare with.")
+    untracked = await untracked_codes(session, source, po.company_id, [erp])
     if any(i["id"] == "WATCH" for i in items):
-        await snapshot_baseline(session, po, erp)
+        await snapshot_baseline(session, po, erp, untracked)
         await _log(session, po.id, actor, "WATCH", None, "Started comparing this purchase order with the ERP.")
         return await po_changes(session, source, po)
 
     lines = await _lines(session, po.id)
     groups = _ckam_groups(lines)
-    now = erp_now(erp)
+    now = erp_now(erp, untracked)
     vendors = await linked_vendors(session, po.company_id)
-    report = compute_changes(po, erp, await _baseline(session, po.id), lines, vendors)
+    report = compute_changes(po, erp, await _baseline(session, po.id), lines, vendors, untracked)
     current = {c["id"]: c for c in report["changes"]}
     for item in items:
         change = current.get(item["id"])

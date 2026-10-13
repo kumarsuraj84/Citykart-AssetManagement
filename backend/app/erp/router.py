@@ -10,7 +10,7 @@ from app.erp.changes import apply_changes, changes_summary, po_changes, snapshot
 from app.erp.invoices import apply_pi, pi_preview
 from app.erp.reminders import delivery_reminders
 from app.erp.schemas import ChangesApplyIn, DraftCreateIn, ErpVendorLinkIn, PiApplyIn, StoresCreateIn, SyncRunOut, SyncStatusOut
-from app.erp.service import build_draft, create_from_draft, list_available_pos
+from app.erp.service import build_draft, create_from_draft, list_available_pos, untracked_codes
 from app.erp.source import ErpSource, ErpUnavailable, get_erp_source, is_configured
 from app.erp.sync import last_runs, run_sync
 from app.erp.warehouse import WarehouseReader, get_warehouse_reader
@@ -306,7 +306,8 @@ async def create_po(
         try:
             erp_po = await source.po(body.erp_po_code) if body.erp_po_code is not None else None
             if erp_po is not None:
-                await snapshot_baseline(session, await session.get(PurchaseOrder, result["po_id"]), erp_po)
+                untracked = await untracked_codes(session, source, body.company_id, [erp_po])
+                await snapshot_baseline(session, await session.get(PurchaseOrder, result["po_id"]), erp_po, untracked)
         except ErpUnavailable:
             pass
         await session.commit()

@@ -116,6 +116,16 @@ async def linked_vendors(session: AsyncSession, company_id: int) -> dict[str, Ve
     return {code: vendor for code, vendor in rows}
 
 
+async def untracked_codes(session: AsyncSession, source: ErpSource, company_id: int | None, erp_pos: list[ErpPo]) -> set[str]:
+    """The ERP item codes (upper case) on these POs that CKAM does not track, by the company's rules (a code,
+    its product name, its Article, Department, Section or Division marked "not tracked")."""
+    codes = sorted({ln.item_code for p in erp_pos for ln in p.lines if ln.item_code})
+    if not codes:
+        return set()
+    resolutions = await resolve_items(session, await source.items(codes), company_id)
+    return {code.upper() for code, r in resolutions.items() if r.not_tracked}
+
+
 async def list_available_pos(session: AsyncSession, actor: AssetUser, source: ErpSource) -> list[dict]:
     """OPEN ERP POs, of every company the user may work in, whose vendor is linked in that company and
     that have not been created in CKAM yet."""
@@ -131,14 +141,22 @@ async def list_available_pos(session: AsyncSession, actor: AssetUser, source: Er
         vendors = await linked_vendors(session, company.id)
         if not vendors:
             continue
-        for p in await source.open_pos(list(vendors), company.erp_code):
-            if p.po_code in created or p.supplier_code not in vendors:
+        candidates = [p for p in await source.open_pos(list(vendors), company.erp_code)
+                      if p.po_code not in created and p.supplier_code in vendors]
+        # How many lines of each PO CKAM tracks: a PO made only of things CKAM does not track is not offered.
+        full = {p.po_code: p for p in await source.pos_with_lines([p.po_code for p in candidates])}
+        untracked = await untracked_codes(session, source, company.id, list(full.values()))
+        for p in candidates:
+            live = [ln for ln in (full[p.po_code].lines if p.po_code in full else []) if ln.qty - ln.cancelled_qty > 0]
+            skipped = sum(1 for ln in live if (ln.item_code or "").upper() in untracked)
+            if live and skipped == len(live):
                 continue
             out.append({
                 "po_code": p.po_code, "po_number": p.po_number, "po_date": p.po_date.isoformat(),
                 "company_id": company.id, "company_code": p.company_code, "delivery_location": p.delivery_location,
                 "vendor_id": vendors[p.supplier_code].id, "vendor_name": vendors[p.supplier_code].name,
                 "line_count": p.line_count, "net_amount": p.header_net,
+                "tracked_lines": len(live) - skipped, "untracked_lines": skipped,
             })
     return sorted(out, key=lambda r: (r["po_date"], r["po_code"]), reverse=True)
 
@@ -179,10 +197,19 @@ async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source
     bundles_by_id = {b.id: b for b in (await session.execute(select(Bundle).where(Bundle.is_active.is_(True)))).scalars().all()}
 
     lines = []
+    untracked_lines = []
     for ln in po.lines:
         line_warnings: list[str] = []
         qty = ln.qty - ln.cancelled_qty
         if qty <= 0:
+            continue
+        res = resolutions.get(ln.item_code)
+        if res is not None and res.not_tracked:
+            # Something CKAM does not track (a cable, a hanger): it never becomes a line here.
+            untracked_lines.append({
+                "item_code": ln.item_code, "description": ln.description[:500], "quantity": _whole(qty), "rate": ln.rate,
+                "why": res.why_not_tracked, "map_id": res.map_id,
+            })
             continue
         if not float(qty).is_integer():
             line_warnings.append(f"The ordered quantity {qty:g} is not a whole number; it was rounded down. Check it.")
@@ -200,7 +227,6 @@ async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source
             tax = 0
             line_warnings.append("The ERP has no tax % for this line and it could not be worked out. Enter it.")
         erp = erp_items.get(ln.item_code)
-        res = resolutions.get(ln.item_code)
         item = res.item if res else None
         brand_id = warranty = None
         if item is not None:
@@ -236,7 +262,10 @@ async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source
             "warnings": line_warnings,
         })
 
+    if untracked_lines and not lines:
+        warnings.append("None of the lines of this purchase order are tracked in CKAM, so there is nothing to create from it.")
     return {
+        "untracked_lines": untracked_lines,
         "erp_po_code": po.po_code, "po_number": po.po_number, "po_date": po.po_date.isoformat(),
         "company_id": company.id if company else None, "company_code": po.company_code,
         "company_name": company.name if company else po.company_name,
