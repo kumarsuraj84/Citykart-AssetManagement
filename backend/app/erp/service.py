@@ -241,7 +241,8 @@ async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source
 
     return {
         "erp_po_code": po.po_code, "po_number": po.po_number, "po_date": po.po_date.isoformat(),
-        "company_id": company.id if company else None, "company_code": po.company_code, "company_name": po.company_name,
+        "company_id": company.id if company else None, "company_code": po.company_code,
+        "company_name": company.name if company else po.company_name,
         "cost_center_id": cost_center.id if cost_center else None,
         "vendor_id": vendor.id if vendor else None, "vendor_name": po.supplier_name,
         "warehouse_code": warehouse_code, "warehouse": warehouse,

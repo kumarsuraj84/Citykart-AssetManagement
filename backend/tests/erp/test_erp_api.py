@@ -91,15 +91,16 @@ class FakeErp:
             raise ErpUnavailable(self.down)
         return [i for i in self.invoice_list if i.po_code in po_codes]
 
-    async def vendors(self):
+    async def vendors(self, company_code=None):
         if self.down:
             raise ErpUnavailable(self.down)
-        return self.vendor_list
+        return [v for v in self.vendor_list if company_code is None or v.company_code in (None, company_code)]
 
-    async def open_pos(self, supplier_codes):
+    async def open_pos(self, supplier_codes, company_code=None):
         if self.down:
             raise ErpUnavailable(self.down)
-        return [p for p in self.pos.values() if p.supplier_code in supplier_codes and p.status == "OPEN"]
+        return [p for p in self.pos.values() if p.supplier_code in supplier_codes and p.status == "OPEN"
+                and (company_code is None or p.company_code == company_code)]
 
     async def po(self, po_code):
         if self.down:

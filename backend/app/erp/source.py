@@ -48,11 +48,12 @@ class ErpVendor:
     phone: str | None = None
     email: str | None = None
     is_active: bool = True
+    company_code: str | None = None     # which company's ERP this supplier code belongs to (codes repeat across companies)
 
 
 @dataclass
 class ErpPoLine:
-    po_line_key: int
+    po_line_key: str
     item_code: str
     description: str
     group_code: str | None
@@ -174,9 +175,10 @@ class ErpSource(Protocol):
     async def article_codes(self, article_key: str, company_code: str | None = None) -> list[ErpArticleCode]: ...
     async def receipts(self, po_codes: list[int]) -> list[ErpReceipt]: ...
     async def invoices(self, po_codes: list[int]) -> list[ErpInvoice]: ...
-    async def vendors(self) -> list[ErpVendor]: ...
-    async def open_pos(self, supplier_codes: list[str]) -> list[ErpPo]:
-        """Headers only (no lines) of the OPEN POs of these suppliers, newest first."""
+    async def vendors(self, company_code: str | None = None) -> list[ErpVendor]:
+        """The suppliers of one company (None = every company; codes then repeat, see ErpVendor.company_code)."""
+    async def open_pos(self, supplier_codes: list[str], company_code: str | None = None) -> list[ErpPo]:
+        """Headers only (no lines) of the OPEN POs of these suppliers (of one company, or all), newest first."""
     async def po(self, po_code: int) -> ErpPo | None:
         """One PO with all its lines."""
     async def pos_with_lines(self, po_codes: list[int]) -> list[ErpPo]:
@@ -237,7 +239,10 @@ class PgErpSource(PgReadOnly):
         self._cache[key] = (time.monotonic(), value)
         return value
 
-    async def vendors(self) -> list[ErpVendor]:
+    async def vendors(self, company_code: str | None = None) -> list[ErpVendor]:
+        # This live source only knows the one company the gold_ckam views cover (CKSPL).
+        if company_code not in (None, "CKSPL"):
+            return []
         cached = self._cached("vendors")
         if cached is not None:
             return cached
@@ -255,7 +260,7 @@ class PgErpSource(PgReadOnly):
         return self._remember("vendors", [
             ErpVendor(code=str(r["supplier_code"]), name=(r["supplier_name"] or "").strip(), gstin=r["gstin"],
                       contact_name=r["contact_name"], phone=r["phone"], email=r["email"],
-                      is_active=True if r["is_active"] is None else bool(r["is_active"]))
+                      is_active=True if r["is_active"] is None else bool(r["is_active"]), company_code="CKSPL")
             for r in rows
         ])
 
@@ -367,7 +372,7 @@ class PgErpSource(PgReadOnly):
             for r in rows
         ])
 
-    async def open_pos(self, supplier_codes: list[str]) -> list[ErpPo]:
+    async def open_pos(self, supplier_codes: list[str], company_code: str | None = None) -> list[ErpPo]:
         if not supplier_codes:
             return []
         rows = await self._fetch(
@@ -377,9 +382,9 @@ class PgErpSource(PgReadOnly):
                        max(supplier_name) supplier_name, max(hdr_netamt) hdr_netamt, max(hdr_chgamt) hdr_chgamt,
                        count(*) line_count
                 from {VIEW_PO_LINE}
-                where po_status = 'OPEN' and supplier_code::text = any($1::text[])
+                where po_status = 'OPEN' and supplier_code::text = any($1::text[]) and ($2::text is null or company_code = $2)
                 group by po_code order by max(po_date) desc, po_code desc""",
-            supplier_codes)
+            supplier_codes, company_code)
         return [self._header(r) for r in rows]
 
     async def po(self, po_code: int) -> ErpPo | None:
@@ -421,8 +426,14 @@ class PgErpSource(PgReadOnly):
 
 
 _source = PgErpSource()
+_local = None
 
 
 def get_erp_source() -> ErpSource:
-    """FastAPI dependency; tests override it with a stand-in."""
-    return _source
+    """FastAPI dependency; tests override it with a stand-in. The screens read CKAM's own copy of the
+    ERP data (kept up to date by app.erp.sync); the live source answers only what is not copied yet."""
+    global _local
+    if _local is None:
+        from app.erp.local_source import LocalErpSource      # imported here: local_source imports this module
+        _local = LocalErpSource(live=_source)
+    return _local
