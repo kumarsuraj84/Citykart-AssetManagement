@@ -8,8 +8,15 @@ import { AsyncButton } from "@/components/shared/AsyncButton";
 
 export interface ErpChange {
   id: string;
-  kind: "PO_CANCELLED" | "CANCEL_UNITS" | "ADD_UNITS" | "COST_CHANGED" | "NEW_ITEM" | "HEADER";
+  kind: "PO_CANCELLED" | "CANCEL_UNITS" | "ADD_UNITS" | "COST_CHANGED" | "NEW_ITEM" | "HEADER" | "VENDOR_CHANGED";
   item_code: string | null;
+  // VENDOR_CHANGED: the ERP moved the PO to another supplier. `linked_vendor_*` is the CKAM vendor linked to
+  // that supplier in this PO's company, when there is one.
+  was_vendor?: string;
+  now_code?: string;
+  now_name?: string;
+  linked_vendor_id?: number | null;
+  linked_vendor_name?: string | null;
   description?: string;
   message?: string;
   messages?: string[];
@@ -168,6 +175,27 @@ function Change({ c, busy, onChoose }: { c: ErpChange; busy: boolean; onChoose: 
         <div className="flex gap-2">
           {(c.pending_units ?? 0) > 0 && <Button size="sm" disabled={busy} onClick={() => onChoose(c.id, "apply")}>Update {plural(c.pending_units ?? 0, "pending unit")}</Button>}
           {keep((c.pending_units ?? 0) > 0 ? "Keep as it is" : "Noted")}
+        </div>
+      </li>
+    );
+  }
+  if (c.kind === "VENDOR_CHANGED") {
+    const known = c.linked_vendor_id != null;
+    return (
+      <li className="flex flex-col gap-1 rounded-md border p-2 text-sm">
+        <p>The ERP moved this purchase order to another vendor: <b>{c.now_name}</b> (ERP code {c.now_code}).</p>
+        {known ? (
+          <p className="text-xs text-muted-foreground">That is the vendor <b>{c.linked_vendor_name}</b> here. Units already delivered keep the vendor they were delivered with.</p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            That supplier is not linked to a vendor here yet. The Primary Owner can link it in Setup &gt; Vendors (Add from ERP), then you can move the PO.
+          </p>
+        )}
+        <div className="flex gap-2">
+          <Button size="sm" disabled={busy || !known} onClick={() => onChoose(c.id, "apply")}>
+            {known ? `Move this PO to ${c.linked_vendor_name}` : "Move this PO to the new vendor"}
+          </Button>
+          {keep("Keep the vendor")}
         </div>
       </li>
     );

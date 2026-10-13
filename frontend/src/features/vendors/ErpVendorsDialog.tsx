@@ -4,8 +4,16 @@ import { apiClient } from "../../lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { SearchableSelect } from "@/components/shared/SearchableSelect";
+
+interface Company {
+  id: number;
+  code: string;
+  name: string;
+}
 
 interface ErpVendorRow {
+  company_id: number;
   erp_code: string;
   name: string;
   gstin: string | null;
@@ -14,21 +22,32 @@ interface ErpVendorRow {
   linked_vendor_name: string | null;
   suggested_vendor_id: number | null;
   suggested_vendor_name: string | null;
+  suggestion_reason: "gstin" | "name" | null;
 }
 
 const MAX_SHOWN = 100;
+const REASON: Record<string, string> = { gstin: "same GSTIN", name: "same name" };
 
-/** "Add from ERP": lists the ERP's suppliers; add one as a CKAM vendor, or tie
- * an existing CKAM vendor (same name/code) to its ERP supplier. POs are matched
- * to vendors through that tie, so only linked vendors' POs are offered. */
+/** "Add from ERP": lists one company's ERP suppliers; add one as a CKAM vendor, or tie an existing CKAM
+ * vendor to it (the same vendor can be tied to a supplier in each company: each company's ERP numbers its
+ * suppliers on its own). POs are matched to vendors through that tie, so only linked vendors' POs are offered. */
 export function ErpVendorsDialog() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const listQ = useQuery({
-    queryKey: ["erp", "vendors"],
-    queryFn: () => apiClient.get<ErpVendorRow[]>("/erp/vendors"),
+  const [pickedCompany, setPickedCompany] = useState<string | undefined>();
+  const companiesQ = useQuery({
+    queryKey: ["masters", "companies"],
+    queryFn: () => apiClient.get<Company[]>("/masters/companies"),
     enabled: open,
+  });
+  const companies = Array.isArray(companiesQ.data) ? companiesQ.data : [];
+  const companyId = pickedCompany ?? (companies[0] ? String(companies[0].id) : undefined);
+
+  const listQ = useQuery({
+    queryKey: ["erp", "vendors", companyId],
+    queryFn: () => apiClient.get<ErpVendorRow[]>(`/erp/vendors?company_id=${companyId}`),
+    enabled: open && companyId !== undefined,
     retry: false,
   });
   const changed = () => {
@@ -37,16 +56,17 @@ export function ErpVendorsDialog() {
     qc.invalidateQueries({ queryKey: ["erp", "pos"] });
   };
   const addMutation = useMutation({
-    mutationFn: (erpCode: string) => apiClient.post("/erp/vendors/import", { erp_vendor_code: erpCode }),
+    mutationFn: (erpCode: string) => apiClient.post("/erp/vendors/import", { company_id: Number(companyId), erp_vendor_code: erpCode }),
     onSuccess: changed,
   });
   const linkMutation = useMutation({
     mutationFn: ({ vendorId, erpCode }: { vendorId: number; erpCode: string }) =>
-      apiClient.post(`/erp/vendors/${vendorId}/link`, { erp_vendor_code: erpCode }),
+      apiClient.post(`/erp/vendors/${vendorId}/link`, { company_id: Number(companyId), erp_vendor_code: erpCode }),
     onSuccess: changed,
   });
   const unlinkMutation = useMutation({
-    mutationFn: (vendorId: number) => apiClient.delete(`/erp/vendors/${vendorId}/link`),
+    mutationFn: ({ vendorId, erpCode }: { vendorId: number; erpCode: string }) =>
+      apiClient.delete(`/erp/vendors/${vendorId}/link?company_id=${companyId}&erp_vendor_code=${encodeURIComponent(erpCode)}`),
     onSuccess: changed,
   });
   const error = [addMutation, linkMutation, unlinkMutation].find((m) => m.isError)?.error;
@@ -65,10 +85,24 @@ export function ErpVendorsDialog() {
           <DialogHeader>
             <DialogTitle>Vendors in the ERP</DialogTitle>
             <DialogDescription>
-              Add a supplier as a vendor here, or link a vendor you already have. Only linked vendors' purchase orders can be brought in from the ERP.
+              Each company's ERP numbers its suppliers on its own, so pick the company first. Add a supplier as a vendor here, or link a vendor you already have
+              (one vendor can be linked in both companies). Only linked vendors' purchase orders can be brought in from the ERP.
             </DialogDescription>
           </DialogHeader>
-          <Input aria-label="Search ERP vendors" placeholder="Search name, ERP code or GSTIN…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <div className="flex flex-wrap items-center gap-2">
+            {companies.length > 1 && (
+              <div className="w-64">
+                <SearchableSelect
+                  id="erp-vendor-company" aria-label="Company" value={companyId} onValueChange={(v) => { setPickedCompany(v); setSearch(""); }}
+                  options={companies.map((c) => ({ value: String(c.id), label: c.name }))}
+                />
+              </div>
+            )}
+            <Input
+              aria-label="Search ERP vendors" placeholder="Search name, ERP code or GSTIN…" className="min-w-48 flex-1"
+              value={search} onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
           {listQ.isLoading && <p className="text-sm text-muted-foreground">Reading the ERP…</p>}
           {listQ.isError && (
             <p className="text-sm text-destructive" role="alert">
@@ -93,16 +127,22 @@ export function ErpVendorsDialog() {
                     {v.linked_vendor_id !== null ? (
                       <div className="flex items-center gap-2 text-xs">
                         <span className="text-success">Linked to {v.linked_vendor_name}</span>
-                        <Button size="sm" variant="ghost" aria-label={`Unlink ${v.name}`} onClick={() => unlinkMutation.mutate(v.linked_vendor_id!)}>Unlink</Button>
+                        <Button
+                          size="sm" variant="ghost" aria-label={`Unlink ${v.name}`}
+                          onClick={() => unlinkMutation.mutate({ vendorId: v.linked_vendor_id!, erpCode: v.erp_code })}
+                        >
+                          Unlink
+                        </Button>
                       </div>
                     ) : (
                       <div className="flex flex-wrap items-center gap-2">
                         {v.suggested_vendor_id !== null && (
                           <Button
                             size="sm" variant="outline" aria-label={`Link ${v.name} to ${v.suggested_vendor_name}`}
+                            title={v.suggestion_reason ? `Probably the same supplier: ${REASON[v.suggestion_reason]}` : undefined}
                             onClick={() => linkMutation.mutate({ vendorId: v.suggested_vendor_id!, erpCode: v.erp_code })}
                           >
-                            Link to {v.suggested_vendor_name}
+                            Link to {v.suggested_vendor_name}{v.suggestion_reason ? ` (${REASON[v.suggestion_reason]})` : ""}
                           </Button>
                         )}
                         <Button size="sm" aria-label={`Add ${v.name} as a vendor`} onClick={() => addMutation.mutate(v.erp_code)}>Add as vendor</Button>

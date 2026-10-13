@@ -9,8 +9,12 @@ interface Vendor {
   contact_name: string | null;
   contact_phone: string | null;
   contact_email: string | null;
-  erp_vendor_code: string | null;
+  /** One supplier code per company: the same code is a different supplier in each company's ERP. */
+  erp_links: { company_id: number; company_code: string; erp_vendor_code: string }[];
 }
+
+const linksText = (value: unknown) =>
+  (Array.isArray(value) ? (value as Vendor["erp_links"]) : []).map((l) => `${l.company_code} ${l.erp_vendor_code}`).join(" · ");
 
 export default function VendorsSetup() {
   return (
@@ -25,7 +29,7 @@ export default function VendorsSetup() {
           { key: "name", label: "Name" },
           { key: "gstin", label: "GSTIN" },
           { key: "contact_name", label: "Contact" },
-          { key: "erp_vendor_code", label: "ERP code" },
+          { key: "erp_links", label: "ERP codes", format: linksText },
         ],
         formFields: [
           { key: "code", label: "Code" },

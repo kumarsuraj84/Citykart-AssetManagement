@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DeliveryRemindersCard } from "../erp/DeliveryReminders";
 import { ErpChangedBadge, ErpChangesCard, useErpChangesSummary } from "../erp/ErpChanges";
+import { ErpSyncStatus } from "../erp/ErpSyncStatus";
 
 interface PurchaseOrderRow {
   id: number;
@@ -151,6 +152,7 @@ export function PurchaseOrdersList() {
         }
       />
 
+      <ErpSyncStatus />
       <ErpChangesCard />
       <DeliveryRemindersCard />
 

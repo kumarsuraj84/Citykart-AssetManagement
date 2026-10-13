@@ -20,6 +20,7 @@ const REDUCED = { id: "CANCEL_UNITS:CT324973", kind: "CANCEL_UNITS", item_code: 
 const RAISED = { id: "ADD_UNITS:CT324973", kind: "ADD_UNITS", item_code: "CT324973", description: "DELL DESKTOP", was_units: 7, erp_units: 9, count: 2, can_add: true };
 const COST = { id: "COST_CHANGED:CT324973", kind: "COST_CHANGED", item_code: "CT324973", description: "DELL DESKTOP", was_rate: 20000, now_rate: 25000, was_tax: 18, now_tax: 12, pending_units: 6, delivered_units: 1 };
 const NEWITEM = { id: "NEW_ITEM:CT500001", kind: "NEW_ITEM", item_code: "CT500001", description: "48 PORT SWITCH", qty: 2, rate: 9000 };
+const VENDOR = { id: "VENDOR_CHANGED", kind: "VENDOR_CHANGED", item_code: null, was_vendor: "11338", now_code: "2264", now_name: "JAGANNATH ENTERPRISES", linked_vendor_id: 9, linked_vendor_name: "Jagannath Enterprises" };
 const HEADER = { id: "HEADER", kind: "HEADER", item_code: null, messages: ["The ERP now shows this purchase order as closed (fully received there). Nothing to change here."] };
 
 function mockApi(changes: unknown = report(), summary: unknown = { available: true, items: [] }) {
@@ -157,6 +158,31 @@ describe("ERP changes on a purchase order", () => {
     fireEvent.click(within(panel).getByRole("button", { name: "Noted: HEADER" }));
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith("/erp/purchase-orders/7/changes/apply", { items: [{ id: "HEADER", mode: "keep" }] }),
+    );
+  });
+
+  it("a vendor the ERP moved the PO to: the PO can be moved when that supplier is known here", async () => {
+    mockApi(report({ changes: [VENDOR] }));
+    await renderAt("/purchase-orders/7");
+    const panel = await screen.findByLabelText("ERP changes");
+    expect(panel).toHaveTextContent("The ERP moved this purchase order to another vendor: JAGANNATH ENTERPRISES (ERP code 2264).");
+    expect(panel).toHaveTextContent("Units already delivered keep the vendor they were delivered with.");
+    fireEvent.click(within(panel).getByRole("button", { name: "Move this PO to Jagannath Enterprises" }));
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith("/erp/purchase-orders/7/changes/apply", { items: [{ id: "VENDOR_CHANGED", mode: "apply" }] }),
+    );
+  });
+
+  it("a supplier that is not linked here yet cannot be moved to, and the way to link it is said", async () => {
+    mockApi(report({ changes: [{ ...VENDOR, linked_vendor_id: null, linked_vendor_name: null }] }));
+    await renderAt("/purchase-orders/7");
+    const panel = await screen.findByLabelText("ERP changes");
+    expect(within(panel).getByRole("button", { name: "Move this PO to the new vendor" })).toBeDisabled();
+    expect(panel).toHaveTextContent("not linked to a vendor here yet");
+    expect(panel).toHaveTextContent("Setup > Vendors");
+    fireEvent.click(within(panel).getByRole("button", { name: "Keep the vendor: VENDOR_CHANGED" }));
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith("/erp/purchase-orders/7/changes/apply", { items: [{ id: "VENDOR_CHANGED", mode: "keep" }] }),
     );
   });
 

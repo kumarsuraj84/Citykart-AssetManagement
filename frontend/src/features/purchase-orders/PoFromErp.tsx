@@ -12,11 +12,13 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
+import { ErpSyncStatus } from "../erp/ErpSyncStatus";
 
 interface ErpPoRow {
   po_code: number;
   po_number: string;
   po_date: string;
+  company_id: number;
   company_code: string;
   delivery_location: string;
   vendor_id: number;
@@ -58,6 +60,7 @@ export function PoFromErp() {
 
   const columns: DataTableColumn<ErpPoRow>[] = [
     { key: "po_number", header: "PO No", cellClassName: "font-medium", cell: (p) => p.po_number },
+    { key: "company", header: "Company", cell: (p) => p.company_code },
     { key: "po_date", header: "PO Date", cell: (p) => p.po_date },
     { key: "vendor", header: "Vendor", cell: (p) => p.vendor_name },
     { key: "delivery", header: "Delivery", cell: (p) => p.delivery_location },
@@ -80,6 +83,8 @@ export function PoFromErp() {
         description="Open purchase orders of your vendors, read from the ERP. Pick one, check it, then create it here. Nothing is written back to the ERP."
         actions={<Link className="text-sm underline" to="/purchase-orders">Back to Purchase Orders</Link>}
       />
+
+      <ErpSyncStatus />
 
       {statusQ.data && !statusQ.data.configured && (
         <EmptyState
