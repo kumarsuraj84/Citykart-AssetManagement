@@ -30,7 +30,6 @@ function mockApi(changes: unknown = report(), summary: unknown = { available: tr
     if (path === "/purchase-orders/7/lines") return Promise.resolve([]);
     if (path === "/erp/purchase-orders/7/changes") return Promise.resolve(changes);
     if (path === "/erp/changes/summary") return Promise.resolve(summary);
-    if (path === "/purchase-orders") return Promise.resolve([{ ...PO, pi_status: "NOT_DELIVERED", pi_number: null, pi_date: null }]);
     if (path === "/erp/reminders" || path.startsWith("/erp/reminders?")) return Promise.resolve([]);
     if (path === "/reports/dashboard") {
       return Promise.resolve({
@@ -42,6 +41,11 @@ function mockApi(changes: unknown = report(), summary: unknown = { available: tr
     return Promise.resolve([]);
   });
   (apiClient.post as any).mockResolvedValue(report());
+  // S2: the Purchase Orders list is paged by the server (rows + X-Total-Count).
+  (apiClient.getPage as any).mockResolvedValue({
+    data: [{ ...PO, pi_status: "NOT_DELIVERED", pi_number: null, pi_date: null, status: "WAITING", waiting_units: 5 }],
+    total: 1,
+  });
 }
 
 async function renderAt(url: string) {

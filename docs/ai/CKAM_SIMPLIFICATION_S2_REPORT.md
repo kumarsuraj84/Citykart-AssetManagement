@@ -141,3 +141,81 @@ Changed: `app/purchase_orders/{models,schemas,service,router}.py`; `app/bundles/
 * The Excel PO import's duplicate-PO-number check also matches deleted POs (pre-existing; `create_purchase_order` checks active POs only).
 
 ## Frontend
+
+| | |
+|---|---|
+| Starting HEAD | `13e1354` (feat(web): S0F adapt frontend to S0 contract …) |
+| Scope | S2 frontend: PO detail by LINE, after-create wording in lines + units, PO list with progress / status / server search + paging, Receive queue on `?waiting=true`, Home "POs waiting for goods" count, safe cancel / delete wording |
+| Backend | not touched (requests in §F7) |
+| Commit | none (the controller commits) |
+| Tests | `npx tsc -b` clean · `npx vitest run` **682 → 707 passed** (63 files, 0 failed) · `npm run build` OK (the existing >500 kB chunk warning only) · Playwright not run (e2e strings updated) |
+
+### F1. What changed
+
+| # | Item | What was done |
+|---|---|---|
+| 1 | PO detail = lines | `/purchase-orders/$id` is built from `GET …/line-groups`: one row per line — #, Item (name; description + serial mode under it in muted text; set tag; work-area chip in central words), Ordered, Received, Waiting, Rate (+tax % under it), Value, Status (dot + plain word). Row actions: **Receive** (only when something waits), **Edit**, **Cancel waiting** (only when something waits), **View units**. The three per-unit tables ("Pending Delivery / Delivered / Cancelled"), the tick boxes, the column search boxes and the "Mark N Delivery Done" header button are gone as the primary presentation. |
+| 1 | Receive (line / all) | **Receive** on a line fetches `GET …/line-groups/{n}/units?status=WAITING` and opens the *existing* Mark Delivery Done dialog with exactly those units (payload unchanged: one entry per waiting unit id). Header **Receive all waiting (N)** fetches `GET …/lines` and feeds every waiting unit. The dialog was moved unchanged into `DeliveryDoneDialog.tsx` (grouping now also keys on `line_no`; title "Receive N units"; "leave the rest waiting" wording). |
+| 1 | Edit line | Dialog → `PUT …/line-groups/{n}` with **only the changed fields** (description, barcode, Item, brand, model, warranty, cost, tax) plus an editable **Ordered** quantity (0–1,000, not below Received; the same sentence the server uses). A line with nothing waiting can only have Ordered raised (other fields disabled until then). Per-field validation applies only to fields being sent. |
+| 1 | Cancel waiting | Line: confirm dialog with "How many to cancel" (default = all waiting, 1…waiting) → `POST …/line-groups/{n}/cancel-waiting {quantity}`. Header **Cancel waiting items** → confirm → `POST …/cancel-waiting`. Both say received items are not affected; server refusals shown verbatim. |
+| 1 | Delete PO | De-emphasised ghost "Delete PO" at the foot of the page, shown **only when received units = 0**; the red primary header button is gone. A 409 shows the server's sentence and offers **Cancel waiting items instead**. The old "only the head-office admin can delete…" / "will permanently remove N assets" branches are removed (the server no longer allows either). |
+| 1 | Summary tiles | Lines · Ordered units · Received units · Waiting units · Value (counted by the server per line; "Total Lines" no longer counts units). |
+| 1 | View units | Per-line expander, loaded lazily (`…/units?status=`), chips Waiting / Received / Cancelled with counts. Waiting: description, barcode, value + per-unit **Edit** (`PUT /lines/{id}`, unchanged payload) and **Cancel** (`POST /lines/{id}/cancel`). Received: serial, invoice, **link to Asset 360** ("Open asset", or the asset code once the server sends it). Never rendered for all lines by default. |
+| 1 | Kept | ERP changes panel, delivery reminder banner, Add Line inline form, Add Set dialog, Item/Brand quick-create. Invoices card ("Invoices received under this PO") now holds Record PI per invoice, **Fetch PI from ERP** and **Print labels for the received units** in one place; "Purchase Invoice (PI)" spelled out once. "Print their labels now" after receiving kept. Arriving with `#po-lines` (from Receive) scrolls to the lines. |
+| 2 | After-create wording | Add Line → "Line added: 1 line, 3 units waiting."; Add Set → "Set added: 4 lines, 8 units waiting." (lines = distinct `line_no` of the units returned); Add Set preview "This will add 4 lines, 8 units waiting: 2 CPU, …"; ERP create banner "PO created: 4 lines, 28 units waiting." (lines = draft lines, a set counting one per part; units = `lines_created`); ERP draft set note "becomes 4 lines, 28 units (7 of each part)". "Bundle" → "Set" in the PO flow (button, dialog, fields). |
+| 3 | PO list | Columns PO No (+ ERP-changed badge), Vendor, Company, Date, Ordered, Received, Waiting, Status (plain word), Purchase Invoice (PI) (status + "PI No · Date" in one compact column; Cost Centre column dropped). Status chips All / Waiting / Partly Received / Received / Cancelled → server `status`. Search debounced (300 ms) → server `q`; a PI No typed in the box is still found among the loaded POs (AM-21 kept). Paged with `limit=200&offset=` via `useInfiniteQuery`, "Showing x of y purchase orders" from `X-Total-Count`, **Load more**. Rows open the PO. ERP sync line, ERP-changes card and delivery-reminders card are secondary: each renders only when there is something to act on, as a one-line `<details>` (open by default only when ≤ 3 POs). |
+| 4 | Receive queue | Rebuilt on `GET /purchase-orders?waiting=true`: PO No, Vendor, Company, PO Date, Waiting, Ordered, Received, Status, (ERP "shows N units arrived" column only when the ERP has reminders), **Open** and **Receive** (→ PO page `#po-lines`). Search (`q`) and chips All waiting / Waiting / Partly Received; paging + Load more. The S1 "may not show here yet" note and the dashboard/PI-status guessing are removed. Kept self-contained in `features/receive/` for S4. |
+| 5 | Home | "N purchase orders waiting for goods (M units)" from `GET /purchase-orders?waiting=true&limit=1` → `X-Total-Count`, used when Home is not narrowed to one work area; otherwise (or when no total) the S1 unit sentence is kept. Zero waiting POs = no row. |
+| 6 | Units keep working | Per-unit endpoints and the delivery payload are unchanged; the dialog's grouping / serial / leave-waiting / check-serials logic is the same code, moved. |
+| 7 | Words | Central `lib/labels.ts` gained `poStatusLabel` (Waiting / Partly Received / Received / Cancelled), `poUnitStatusLabel`, `serialModeLabel` (Has serial number / No serial number / Serial will be entered later), `PO_STATUSES`; work area via `workAreaLabel`. No raw enum reaches the screen. |
+
+### F2. Files
+
+New: `src/features/purchase-orders/{DeliveryDoneDialog,LineEditDialog,CancelWaitingDialog,PoLinesTable,PoStatusBadge}.tsx`, `po-detail-types.ts`, `po-list.ts` (PO list types, `poListPath`, `fetchPoPage`, `usePoPages`, `loadedAndTotal`, `useDebounced`, `linesAndUnitsSentence`).
+Changed: `lib/api-client.ts` (+`apiClient.getPage` → `{data, total}` from `X-Total-Count`; errors unchanged), `lib/labels.ts`; `features/purchase-orders/{PurchaseOrderDetail,PurchaseOrdersList,AddBundleDialog,PoDraftCard,NewPurchaseOrderForm}.tsx`; `features/receive/ReceiveQueue.tsx`; `features/dashboard/Dashboard.tsx`; `features/erp/{DeliveryReminders,ErpChanges}.tsx` (compact `<details>`, "Receive"/"Add Set" wording).
+Tests changed: `PurchaseOrderDetail.test.tsx` (rewritten around lines), `PurchaseOrdersList.test.tsx`, `ReceiveQueue.test.tsx`, `AddBundleDialog.test.tsx`, `PoFromErp.test.tsx`, `Dashboard.test.tsx`, `erp-changes.test.tsx` (list mock now `getPage`), `lib/labels.test.ts`, `lib/api-client.test.ts`. E2E strings: `e2e/purchase-order-delivery-journey.spec.ts`, `e2e/bundle-journey.spec.ts` (type-checked, not run).
+
+### F3. UX before / after (measured example: 3 lines / 104 units)
+
+| | Before (13e1354) | After |
+|---|---|---|
+| PO page for SPO with 50 cameras + 50 gang boxes + 4 access points | "Total Lines 104"; a "Pending Delivery (104)" table with **104 rows** (one per unit) and tick boxes; Delivered/Cancelled tables below | Tiles "Lines 3 · Ordered units 104 · Waiting units 104"; a lines table with **3 rows** (asserted: header + 3 rows, no unit table, no unit request) |
+| Receive 50 cameras | Tick 50 boxes (or filter + Select all), "Mark 50 Delivery Done" | **Receive** on the line (1 click) → the same dialog with all 50 waiting units |
+| Change quantity 50 → 40 | Cancel 10 units one by one | Edit line → Ordered 40 → Save (10 newest waiting units cancelled by the server) |
+| After adding a line of 10 | Nothing said; 10 new rows | "Line added: 1 line, 10 units waiting." |
+| ERP create of 3 lines / 104 units | "Created. 104 lines added." | "PO created: 3 lines, 104 units waiting." |
+| Delete a PO with received items | Red primary button; non-owners told "only the head-office admin…", the owner could delete assets | No Delete button once anything is received; "Cancel waiting items" instead; a 409 race shows the server's sentence + the same way out |
+| PO list | No progress; whole list fetched; client search | Ordered/Received/Waiting/Status; status chips; server search; 200 per page with "Showing x of y" + Load more |
+| Receive queue | Guessed from PI status + dashboard; footnote "may not show here yet" | Exact `waiting=true` list with counts, search, chips, Receive → PO lines |
+
+### F4. Tests added / updated (682 → 707)
+
+* `PurchaseOrderDetail.test.tsx` 37 → 49: grouped rendering with plain words; **3 groups / 104 waiting units → exactly 3 line rows, no unit rows, no unit request**; partly received / received / cancelled counts, statuses and which actions show; **per-line Receive feeds the dialog with exactly that line's waiting ids** (payload ids `[20,21,22]`); Receive all waiting; nothing waiting; units-load error; Edit line payload = only changed fields + quantity; below-received / > 1,000 guard; server refusal; nothing-waiting line; barcode-less line quantity-only edit; Cancel waiting partial (`{quantity: 2}`), default all (`{quantity: 4}`) and server error; header Cancel waiting items; Delete shown only when nothing received; **409 sentence shown + "Cancel waiting items instead"**; units expander lazy loading, Waiting/Received chips, per-unit Edit/Cancel, Asset 360 link, hide; Add Line → "Line added: 1 line, 3 units waiting."; Add Set opens; every existing delivery-dialog behaviour test kept (serial lists, N/A, later, duplicates, check-serials, leave waiting, set parts, required markers, print labels, server error); PI tests kept (+ "PI spelled out once").
+* `PurchaseOrdersList.test.tsx` 8 → 13 (+ helpers): columns and cells; rows open the PO; status chips → `status=`; debounced `q=`; PI No still found (AM-21); paging 250 POs → "Showing 200 of 250", Load more → `offset=200`; server error sentence; sort; `poListPath`; `linesAndUnitsSentence` / `distinctLines`.
+* `ReceiveQueue.test.tsx` 4 → 6 (+4 People routes unchanged): waiting=true list and cells; Receive → `/purchase-orders/4#po-lines`; search + chips; ERP column; ERP down; empty.
+* `Dashboard.test.tsx` +3: PO count from `X-Total-Count`; fallback on failure; `buildAttentionRows` with `waitingPos`.
+* `AddBundleDialog.test.tsx` +1 (`onAdded` gets the units; wording "4 lines, 16 units waiting"); `PoFromErp.test.tsx` wording; `labels.test.ts` +1; `api-client.test.ts` +1 (`getPage`).
+
+### F5. Decisions
+
+1. **Receive all waiting uses `GET /{id}/lines`** (one request) filtered to waiting units; per-line Receive uses the units endpoint as specified. `GET /lines` is also still loaded once (never rendered) to list the invoices received and the received units' labels — see request (a).
+2. **Line edit sends only changed fields**, so an unchanged field never trips "Nothing on this line is still waiting"; Save stays disabled until something changes.
+3. **Cancel on a line always sends an explicit `quantity`** (the number shown), so a concurrent change can never make "all" cancel more than the person saw.
+4. Header holds Close · Cancel waiting items · **Receive all waiting (N)**; **+ Add Line / + Add Set** sit on the Lines section header (next to the table they change) rather than crowding the page header.
+5. "Bundle" is said **"Set"** on purchase orders (owner wording since S6a); the Settings › Bundles screen itself was not renamed in this stage.
+6. The PO list drops the Cost Centre column (not in the S2 column list; still on the PO page). PI status / number / date are merged into one compact column.
+7. Home uses the PO count only when its work-area filter is "All" (the list total is the person's whole work area).
+8. ERP cards stay rendered only when there is something to act on (as before) and became one-line `<details>`, open when ≤ 3 POs.
+
+### F6. Deferred / not done
+
+* Real Receive screen (quantity per line, S4) — the queue's Receive opens the PO at its lines meanwhile.
+* No browser check in this stage: the containers do not live-mount source and starting/rebuilding Docker was out of scope; verified by unit tests, type-check and production build only. E2E specs were updated but not run.
+* The per-unit Edit can still make one unit of a line differ (backend §8 observation); the line view shows the template unit. Steering fully to whole-line edits is left for a later stage.
+
+### F7. Backend requests
+
+a. A small **invoices summary** for a PO (`GET /purchase-orders/{id}/invoices` → invoice numbers with their received asset ids / PI state) so the PO page no longer loads every unit (`GET /lines`) just for the invoices card and label printing.
+b. **`delivered_asset_code`** on `PendingAssetOut` (received units), so the units list links show the asset code instead of "Open asset".
+c. Server-side **PI number in `q`** of `GET /purchase-orders` (today a PI No is matched only among the POs already loaded).
+d. A **line count** in the ERP create response (`lines_created` is a unit count; the client derives the lines from the draft today).

@@ -92,25 +92,22 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   await page.locator("#line-quantity").fill("3");
   await page.getByRole("button", { name: "Add Line", exact: true }).click();
 
-  // ---- Confirm 3 individual PENDING units now exist for this line ----
-  // (the Pending Delivery table has no per-row status badge -- every row in
-  // it is implicitly PENDING, same status the section heading's own count
-  // already reflects)
-  const lineCheckboxes = page.getByRole("checkbox", { name: `Select ${lineDescription}` });
-  await expect(lineCheckboxes).toHaveCount(3);
-  await expect(page.getByRole("heading", { name: "Pending Delivery (3)", exact: true })).toBeVisible();
+  // ---- S2: the PO shows ONE line holding 3 waiting units (not 3 rows) ----
+  await expect(page.getByRole("status").filter({ hasText: "Line added: 1 line, 3 units waiting." })).toBeVisible();
+  const lineRow = page.getByRole("row", { name: /^Line 1:/ });
+  await expect(lineRow).toHaveCount(1);
+  // #, Item, Ordered, Received, Waiting
+  await expect(lineRow.getByRole("cell").nth(2)).toHaveText("3");
+  await expect(lineRow.getByRole("cell").nth(3)).toHaveText("0");
+  await expect(lineRow.getByRole("cell").nth(4)).toHaveText("3");
+  await expect(lineRow.getByText("Waiting", { exact: true })).toBeVisible();
 
-  // ---- Select exactly 2 of the 3 pending units ----
-  await lineCheckboxes.nth(0).click();
-  await lineCheckboxes.nth(1).click();
-  await expect(page.getByRole("button", { name: "Mark 2 Delivery Done", exact: true })).toBeVisible();
-
-  // ---- Trigger Delivery Done ----
-  await page.getByRole("button", { name: "Mark 2 Delivery Done", exact: true }).click();
+  // ---- Receive the line: the dialog gets all 3 waiting units ----
+  await lineRow.getByRole("button", { name: /^Receive line 1\b/ }).click();
   // Named, not a bare "dialog": the Received Into dropdown's popup also
   // has role=dialog and can still be in the DOM while this dialog closes.
-  const deliverDialog = page.getByRole("dialog", { name: /assets? delivered/ });
-  await expect(deliverDialog.getByRole("heading", { name: "Mark 2 assets delivered" })).toBeVisible();
+  const deliverDialog = page.getByRole("dialog", { name: /^Receive \d+ units?$/ });
+  await expect(deliverDialog.getByRole("heading", { name: "Receive 3 units" })).toBeVisible();
 
   // ---- Shared Invoice fields, filled once ----
   const invoiceNumber = `E2E-INV-${ts}`;
@@ -125,28 +122,29 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   await deliverDialog.locator("#initial-asset-user").click();
   await page.getByRole("option", { name: optionMatcher(ctx.stock.name) }).click();
 
-  // ---- Distinct Serial Number per selected unit ----
-  // The 2 selected units are identical units of one line item, so the dialog
-  // groups them into ONE block with a single list box (one serial per line).
-  // (id is "serials-<first pending id>", unknown ahead of time -- select by
-  // the id prefix.)
-  await expect(deliverDialog.getByText("2 units", { exact: true })).toBeVisible();
+  // ---- Distinct Serial Number for 2 of the 3 units ----
+  // The 3 units are identical units of one line, so the dialog groups them
+  // into ONE block with a single list box (one serial per line). (id is
+  // "serials-<first pending id>", unknown ahead of time -- select by prefix.)
+  await expect(deliverDialog.getByText("3 units", { exact: true })).toBeVisible();
   const serialsBox = deliverDialog.locator('textarea[id^="serials-"]');
   await expect(serialsBox).toHaveCount(1);
 
   const serialA = `E2E-SN-${ts}-A`;
   const serialB = `E2E-SN-${ts}-B`;
   await serialsBox.fill(`${serialA}\n${serialB}`);
-  await expect(deliverDialog.getByText("2 of 2 entered")).toBeVisible();
+  await expect(deliverDialog.getByText(/^2 of 3 entered/)).toBeVisible();
+  // Receive only these 2; the 3rd stays waiting on the PO.
+  await deliverDialog.getByRole("checkbox", { name: "Leave the remaining units waiting" }).click();
 
   // ---- Confirm the delivery ----
   await deliverDialog.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(deliverDialog).not.toBeVisible();
 
-  // ---- Exactly 2 units DELIVERED, the 3rd still PENDING (section heading
-  // counts -- see the "no per-row status badge" note above) ----
-  await expect(page.getByRole("heading", { name: "Delivered (2)", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Pending Delivery (1)", exact: true })).toBeVisible();
+  // ---- Exactly 2 units received, the 3rd still waiting: the line's counts ----
+  await expect(lineRow.getByRole("cell").nth(3)).toHaveText("2");
+  await expect(lineRow.getByRole("cell").nth(4)).toHaveText("1");
+  await expect(lineRow.getByText("Partly Received", { exact: true })).toBeVisible();
 
   // ---- 2 new Assets now exist -- verified via the Asset Register, since
   // PurchaseOrderDetail has no link to the delivered asset -- searching by
@@ -203,16 +201,14 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   // Number (reusing unit A's serialA) is rejected end to end, with a visible
   // UI error, not silently accepted. ----
   await page.goto(poPath);
-  await expect(page.getByRole("heading", { name: "Pending Delivery (1)", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Delivered (2)", exact: true })).toBeVisible();
+  const lineAgain = page.getByRole("row", { name: /^Line 1:/ });
+  await expect(lineAgain.getByRole("cell").nth(3)).toHaveText("2");
+  await expect(lineAgain.getByRole("cell").nth(4)).toHaveText("1");
 
-  const lastCheckbox = page.getByRole("checkbox", { name: `Select ${lineDescription}` });
-  await expect(lastCheckbox).toHaveCount(1);
-  await lastCheckbox.click();
-  await page.getByRole("button", { name: "Mark 1 Delivery Done", exact: true }).click();
+  await lineAgain.getByRole("button", { name: /^Receive line 1\b/ }).click();
 
-  const dupDialog = page.getByRole("dialog", { name: /assets? delivered/ });
-  await expect(dupDialog.getByRole("heading", { name: "Mark 1 asset delivered" })).toBeVisible();
+  const dupDialog = page.getByRole("dialog", { name: /^Receive \d+ units?$/ });
+  await expect(dupDialog.getByRole("heading", { name: "Receive 1 unit" })).toBeVisible();
   await dupDialog.locator("#invoice-number").fill(`E2E-INV-DUP-${ts}`);
   await dupDialog.locator("#invoice-date").fill("2026-01-16");
   await dupDialog.locator("#invoice-amount").fill("1050");
@@ -229,6 +225,6 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   await expect(dupDialog).toBeVisible();
   await dupDialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(dupDialog).not.toBeVisible();
-  await expect(page.getByRole("heading", { name: "Pending Delivery (1)", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Delivered (2)", exact: true })).toBeVisible();
+  await expect(lineAgain.getByRole("cell").nth(3)).toHaveText("2");
+  await expect(lineAgain.getByRole("cell").nth(4)).toHaveText("1");
 });

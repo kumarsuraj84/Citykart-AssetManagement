@@ -68,8 +68,8 @@ test("Desktop bundle journey: define it, add 2 to a PO, deliver with no-serial d
   await page.getByRole("button", { name: "Create Purchase Order", exact: true }).click();
   await expect(page).toHaveURL(/\/purchase-orders\/\d+$/);
 
-  await page.getByRole("button", { name: "+ Add Bundle", exact: true }).click();
-  const addBundle = page.getByRole("dialog", { name: "Add Bundle" });
+  await page.getByRole("button", { name: "+ Add Set", exact: true }).click();
+  const addBundle = page.getByRole("dialog", { name: "Add Set" });
   await selectRadixById(page, "bundle-pick", bundleName);
   await addBundle.locator("#bundle-description").fill(`E2E Dell Desktop ${ts}`);
   await addBundle.locator("#bundle-barcode").fill(`E2E-BC-${ts}`);
@@ -79,16 +79,16 @@ test("Desktop bundle journey: define it, add 2 to a PO, deliver with no-serial d
   await expect(addBundle.getByLabel("Amount for TFT")).toHaveValue("4160");
   await expect(addBundle.getByLabel("Amount for Keyboard")).toHaveValue("320");
   await expect(addBundle.getByLabel("Amount for Mouse")).toHaveValue("320");
-  await expect(addBundle.getByText("This will add 8 lines")).toBeVisible();
-  await addBundle.getByRole("button", { name: "Add Bundle", exact: true }).click();
+  // S2: one line per part, 2 units on each -- never "8 lines".
+  await expect(addBundle.getByText(/This will add 4 lines, 8 units waiting/)).toBeVisible();
+  await addBundle.getByRole("button", { name: "Add Set", exact: true }).click();
 
-  await expect(page.getByRole("heading", { name: "Pending Delivery (8)", exact: true })).toBeVisible();
-  await expect(page.getByRole("checkbox", { name: `Select E2E Dell Desktop ${ts} - Mouse` })).toHaveCount(2);
+  await expect(page.getByRole("status").filter({ hasText: "Set added: 4 lines, 8 units waiting." })).toBeVisible();
+  await expect(page.getByRole("row", { name: /^Line \d+:/ })).toHaveCount(4);
 
-  // ---- Deliver all 8: serials only for the CPUs and TFTs ----
-  await page.getByRole("checkbox", { name: "Select all pending lines" }).click();
-  await page.getByRole("button", { name: "Mark 8 Delivery Done", exact: true }).click();
-  const deliver = page.getByRole("dialog", { name: /assets? delivered/ });
+  // ---- Receive all 8: serials only for the CPUs and TFTs ----
+  await page.getByRole("button", { name: "Receive all waiting (8)", exact: true }).click();
+  const deliver = page.getByRole("dialog", { name: /^Receive \d+ units?$/ });
   await deliver.locator("#invoice-number").fill(`E2E-INV-${ts}`);
   await deliver.locator("#invoice-amount").fill("37760");
   await selectRadixById(page, "initial-asset-user", ctx.stock.name);
@@ -104,11 +104,16 @@ test("Desktop bundle journey: define it, add 2 to a PO, deliver with no-serial d
   await deliver.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(deliver).not.toBeVisible();
 
-  await expect(page.getByRole("heading", { name: "Delivered (8)", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Pending Delivery (0)", exact: true })).toBeVisible();
-  // The 4 mouse/keyboard assets took N/A; the CPUs and TFTs their own serials.
-  await expect(page.getByRole("cell", { name: "N/A", exact: true })).toHaveCount(4);
-  await expect(page.getByRole("cell", { name: `E2E-C-${ts}-1`, exact: true })).toBeVisible();
+  await expect(page.getByText("8 units received and now in the register.")).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Receive all waiting/ })).toBeDisabled();
+  // The mouse/keyboard assets took N/A; the CPUs their own serials (seen in each line's units).
+  const mouseLine = page.getByRole("row", { name: /^Line \d+: .*Mouse/ });
+  await mouseLine.getByRole("button", { name: /^View units of line/ }).click();
+  await expect(page.getByRole("table", { name: /^Units of line/ }).getByRole("cell", { name: "N/A", exact: true })).toHaveCount(2);
+  await mouseLine.getByRole("button", { name: /^Hide units of line/ }).click();
+  const cpuLine = page.getByRole("row", { name: /^Line \d+: .*CPU/ });
+  await cpuLine.getByRole("button", { name: /^View units of line/ }).click();
+  await expect(page.getByRole("table", { name: /^Units of line/ }).getByRole("cell", { name: `E2E-C-${ts}-1`, exact: true })).toBeVisible();
 
   // ---- Deactivate the bundle: it stops being offered ----
   await page.goto("/setup/bundles");

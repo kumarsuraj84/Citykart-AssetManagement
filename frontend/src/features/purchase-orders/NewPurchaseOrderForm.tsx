@@ -135,7 +135,7 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
         </FormField>
         <FormField
           htmlFor="delivery-location" label="Received Into" className="col-span-2"
-          helperText="Optional. The Stock Room the goods arrive at; Mark Delivery Done starts with it."
+          helperText="Optional. The Stock Room the goods arrive at; receiving starts with it."
         >
           <SearchableSelect
             id="delivery-location"

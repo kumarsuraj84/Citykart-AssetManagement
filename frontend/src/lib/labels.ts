@@ -136,6 +136,51 @@ export const WORK_AREA_OPTIONS = [
 ];
 
 // ---------------------------------------------------------------------------
+// Purchase orders: the status of a PO or of one of its lines, a unit's own
+// status, and a line's serial mode (S2)
+// ---------------------------------------------------------------------------
+
+/** PO / PO line statuses, in the order the filter chips list them. */
+export const PO_STATUSES = ["WAITING", "PARTLY_RECEIVED", "RECEIVED", "CANCELLED"] as const;
+
+const PO_STATUS_LABELS: Record<string, string> = {
+  WAITING: "Waiting",
+  PARTLY_RECEIVED: "Partly Received",
+  RECEIVED: "Received",
+  CANCELLED: "Cancelled",
+};
+
+/** "PARTLY_RECEIVED" -> "Partly Received" (a PO or one of its lines). */
+export function poStatusLabel(status: string | null | undefined): string {
+  if (!status) return "";
+  return PO_STATUS_LABELS[status] ?? humanizeCode(status);
+}
+
+const PO_UNIT_STATUS_LABELS: Record<string, string> = {
+  PENDING: "Waiting",
+  DELIVERED: "Received",
+  CANCELLED: "Cancelled",
+};
+
+/** One unit on a PO line: "PENDING" -> "Waiting", "DELIVERED" -> "Received". */
+export function poUnitStatusLabel(status: string | null | undefined): string {
+  if (!status) return "";
+  return PO_UNIT_STATUS_LABELS[status] ?? humanizeCode(status);
+}
+
+const SERIAL_MODE_LABELS: Record<string, string> = {
+  HAS_SERIAL: "Has serial number",
+  NO_SERIAL: "No serial number",
+  SERIAL_LATER: "Serial will be entered later",
+};
+
+/** A PO line's `serial_mode` in plain words. */
+export function serialModeLabel(mode: string | null | undefined): string {
+  if (!mode) return "";
+  return SERIAL_MODE_LABELS[mode] ?? humanizeCode(mode);
+}
+
+// ---------------------------------------------------------------------------
 // Asset history (event types) and the Changes tab (audited field names)
 // ---------------------------------------------------------------------------
 

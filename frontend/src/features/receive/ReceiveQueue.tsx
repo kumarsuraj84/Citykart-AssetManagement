@@ -1,107 +1,51 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { PackageCheck } from "lucide-react";
 import { apiClient } from "../../lib/api-client";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
+import { AsyncButton } from "@/components/shared/AsyncButton";
+import { poStatusLabel } from "@/lib/labels";
+import { PoStatusBadge } from "../purchase-orders/PoStatusBadge";
+import { type PoListRow, loadedAndTotal, useDebounced, usePoPages } from "../purchase-orders/po-list";
 
 /**
- * Receive: the purchase orders that still have goods to come in, each with a
- * clear way into the PO, where the delivery is recorded today.
+ * Receive: the purchase orders that still have units waiting for goods
+ * (GET /purchase-orders?waiting=true), each with Open and Receive.
  *
- * Deliberately small and self-contained: a later stage replaces it with the
- * real receipt screen. Built only from what the server already returns:
- *  - GET /purchase-orders (every active PO; "nothing received yet" when its
- *    Purchase Invoice status is NOT_DELIVERED; and `waiting_units` once the
- *    server adds it -- then that count alone decides),
- *  - GET /reports/dashboard `open_purchase_orders` (exact waiting-unit counts
- *    for the newest open POs),
- *  - GET /erp/reminders (POs where the ERP shows goods received that are not
- *    yet received here) -- optional, any ERP trouble is simply ignored.
+ * Kept self-contained in features/receive/: stage S4 replaces this page's
+ * body with the real Receive screen. Until then Receive opens the PO at its
+ * lines, where each line (or every line) is received.
  */
-
-interface PurchaseOrderRow {
-  id: number;
-  company_id: number;
-  po_number: string;
-  po_date: string;
-  vendor_id: number | null;
-  pi_status: "NOT_DELIVERED" | "PENDING" | "RECORDED";
-  /** Not returned by the server yet (backend request); used when present. */
-  waiting_units?: number | null;
-}
-
-interface Named {
-  id: number;
-  name: string;
-}
-
-interface DashboardOpenPo {
-  id: number;
-  pending_line_count: number;
-}
 
 interface Reminder {
   po_id: number;
   to_deliver: number;
 }
 
-export interface ReceiveRow {
-  po: PurchaseOrderRow;
-  /** Units known to be waiting, or null when only "nothing received yet" is known. */
-  waiting: number | null;
-  /** Units the ERP shows as received but not yet received here. */
-  erpReceived: number | null;
-}
-
 const asArray = <T,>(data: unknown): T[] => (Array.isArray(data) ? (data as T[]) : []);
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+const num = (n: number | null | undefined) => (typeof n === "number" ? n.toLocaleString("en-IN") : "—");
+const plural = (n: number, word: string) => `${n.toLocaleString("en-IN")} ${word}${n === 1 ? "" : "s"}`;
 
-/** Which POs still have goods to come in (pure; exported for tests). */
-export function buildReceiveRows(
-  pos: PurchaseOrderRow[],
-  openPos: DashboardOpenPo[],
-  reminders: Reminder[],
-): ReceiveRow[] {
-  const known = new Map(openPos.map((p) => [p.id, p.pending_line_count]));
-  const erp = new Map(reminders.map((r) => [r.po_id, r.to_deliver]));
-  const rows: ReceiveRow[] = [];
-  for (const po of pos) {
-    const erpReceived = erp.get(po.id) ?? null;
-    if (typeof po.waiting_units === "number") {
-      if (po.waiting_units > 0) rows.push({ po, waiting: po.waiting_units, erpReceived });
-      continue;
-    }
-    const waiting = known.get(po.id) ?? null;
-    if ((waiting !== null && waiting > 0) || po.pi_status === "NOT_DELIVERED" || erpReceived !== null) {
-      rows.push({ po, waiting, erpReceived });
-    }
-  }
-  return rows;
-}
+const CHIPS = [
+  { value: "", label: "All waiting" },
+  { value: "WAITING", label: poStatusLabel("WAITING") },
+  { value: "PARTLY_RECEIVED", label: poStatusLabel("PARTLY_RECEIVED") },
+];
 
 export function ReceiveQueue() {
   const navigate = useNavigate();
-  const posQ = useQuery({
-    queryKey: ["purchase-orders"],
-    queryFn: () => apiClient.get<PurchaseOrderRow[]>("/purchase-orders"),
-  });
-  const vendorsQ = useQuery({
-    queryKey: ["masters", "vendors"],
-    queryFn: () => apiClient.get<Named[]>("/masters/vendors"),
-  });
-  const companiesQ = useQuery({
-    queryKey: ["masters", "companies"],
-    queryFn: () => apiClient.get<Named[]>("/masters/companies"),
-  });
-  const dashboardQ = useQuery({
-    queryKey: ["dashboard", "ALL"],
-    queryFn: () => apiClient.get<{ open_purchase_orders?: DashboardOpenPo[] }>("/reports/dashboard"),
-    retry: false,
-  });
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("");
+  const q = useDebounced(search.trim(), 300);
+  const posQ = usePoPages({ waiting: true, status, q });
+
+  // Optional: POs where the ERP shows goods arrived that are not received here yet.
   const erpStatusQ = useQuery({
     queryKey: ["erp", "status"],
     queryFn: () => apiClient.get<{ configured: boolean }>("/erp/status"),
@@ -113,77 +57,87 @@ export function ReceiveQueue() {
     enabled: erpStatusQ.data?.configured === true,
     retry: false,
   });
+  const erpArrived = new Map(asArray<Reminder>(remindersQ.data).map((r) => [r.po_id, r.to_deliver]));
 
-  const vendorNames = Object.fromEntries(asArray<Named>(vendorsQ.data).map((v) => [v.id, v.name]));
-  const companyNames = Object.fromEntries(asArray<Named>(companiesQ.data).map((c) => [c.id, c.name]));
-  const rows = buildReceiveRows(
-    asArray<PurchaseOrderRow>(posQ.data),
-    asArray<DashboardOpenPo>(dashboardQ.data?.open_purchase_orders),
-    asArray<Reminder>(remindersQ.data),
-  );
-  const showCompany = new Set(rows.map((r) => r.po.company_id)).size > 1;
+  const rows = (posQ.data?.pages ?? []).flatMap((p) => p.rows);
+  const { loaded, total } = loadedAndTotal(posQ.data?.pages);
+  const showErp = rows.some((r) => erpArrived.has(r.id));
 
-  const columns: DataTableColumn<ReceiveRow>[] = [
+  const openPo = (po: PoListRow, atLines = false) =>
+    navigate({ to: "/purchase-orders/$id", params: { id: String(po.id) }, ...(atLines ? { hash: "po-lines" } : {}) });
+
+  const columns: DataTableColumn<PoListRow>[] = [
     {
       key: "po_number",
       header: "PO No",
       cellClassName: "font-medium",
-      cell: (r) => (
-        <Link to="/purchase-orders/$id" params={{ id: String(r.po.id) }} onClick={(e) => e.stopPropagation()}>
-          {r.po.po_number}
+      cell: (po) => (
+        <Link to="/purchase-orders/$id" params={{ id: String(po.id) }} onClick={(e) => e.stopPropagation()}>
+          {po.po_number}
         </Link>
       ),
     },
-    { key: "po_date", header: "PO Date", cell: (r) => r.po.po_date },
-    { key: "vendor", header: "Vendor", cell: (r) => (r.po.vendor_id ? (vendorNames[r.po.vendor_id] ?? "—") : "—") },
-    ...(showCompany
-      ? [{ key: "company", header: "Company", cell: (r: ReceiveRow) => companyNames[r.po.company_id] ?? "—" }]
+    { key: "vendor", header: "Vendor", cell: (po) => po.vendor_name ?? "—" },
+    { key: "company", header: "Company", cell: (po) => po.company_name ?? "—" },
+    { key: "po_date", header: "PO Date", cell: (po) => po.po_date },
+    {
+      key: "waiting", header: "Waiting", headerClassName: "text-right", cellClassName: "text-right tabular-nums font-semibold",
+      cell: (po) => num(po.waiting_units),
+    },
+    { key: "ordered", header: "Ordered", headerClassName: "text-right", cellClassName: "text-right tabular-nums", cell: (po) => num(po.ordered_units) },
+    { key: "received", header: "Received", headerClassName: "text-right", cellClassName: "text-right tabular-nums", cell: (po) => num(po.received_units) },
+    { key: "status", header: "Status", cell: (po) => <PoStatusBadge status={po.status} /> },
+    ...(showErp
+      ? [{
+          key: "erp",
+          header: "ERP",
+          cell: (po: PoListRow) =>
+            erpArrived.has(po.id) ? (
+              <span className="text-xs">ERP shows {plural(erpArrived.get(po.id) ?? 0, "unit")} arrived</span>
+            ) : (
+              <span className="text-muted-foreground">—</span>
+            ),
+        }]
       : []),
     {
-      key: "waiting",
-      header: "Waiting",
-      cell: (r) =>
-        r.waiting !== null && r.waiting > 0
-          ? `${plural(r.waiting, "unit")} waiting`
-          : r.po.pi_status === "NOT_DELIVERED"
-            ? "Nothing received yet"
-            : "Some units waiting",
-    },
-    {
-      key: "erp",
-      header: "ERP",
-      cell: (r) =>
-        r.erpReceived !== null ? (
-          <span className="text-xs">ERP shows {plural(r.erpReceived, "unit")} arrived</span>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        ),
-    },
-    {
-      key: "__open",
-      header: <span className="sr-only">Open</span>,
+      key: "__actions",
+      header: <span className="sr-only">Actions</span>,
       headerClassName: "text-right",
       cellClassName: "text-right",
-      cell: (r) => (
-        <Button asChild size="sm" variant="outline">
-          <Link
-            to="/purchase-orders/$id"
-            params={{ id: String(r.po.id) }}
-            onClick={(e) => e.stopPropagation()}
-            aria-label={`Open ${r.po.po_number}`}
+      cell: (po) => (
+        <div className="flex justify-end gap-1.5">
+          <Button asChild size="sm" variant="outline">
+            <Link
+              to="/purchase-orders/$id"
+              params={{ id: String(po.id) }}
+              onClick={(e) => e.stopPropagation()}
+              aria-label={`Open ${po.po_number}`}
+            >
+              Open
+            </Link>
+          </Button>
+          <Button
+            size="sm"
+            aria-label={`Receive ${po.po_number}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              openPo(po, true);
+            }}
           >
-            Open
-          </Link>
-        </Button>
+            Receive
+          </Button>
+        </div>
       ),
     },
   ];
+
+  const filtered = q !== "" || status !== "";
 
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
         title="Receive"
-        description="Purchase orders with goods still to come in. Open one to record what arrived."
+        description="Purchase orders with units still waiting for goods. Receive opens the PO at its lines."
         actions={
           <Button asChild variant="outline">
             <Link to="/purchase-orders">All Purchase Orders</Link>
@@ -191,28 +145,70 @@ export function ReceiveQueue() {
         }
       />
 
-      {posQ.isError ? (
-        <ErrorState message="Couldn't load purchase orders." onRetry={() => posQ.refetch()} />
-      ) : (
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(r) => r.po.id}
-          isLoading={posQ.isLoading}
-          onRowClick={(r) => navigate({ to: "/purchase-orders/$id", params: { id: String(r.po.id) } })}
-          emptyState={
-            <EmptyState
-              icon={PackageCheck}
-              title="Nothing waiting to be received."
-              description="Every purchase order's goods have been received."
-            />
-          }
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          aria-label="Search purchase orders to receive"
+          placeholder="Search PO No or Vendor…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="max-w-sm"
         />
+        <div className="flex flex-wrap gap-1" role="group" aria-label="Show">
+          {CHIPS.map((chip) => (
+            <Button
+              key={chip.value || "all"}
+              size="sm"
+              variant={status === chip.value ? "secondary" : "ghost"}
+              className="h-8 px-2.5 text-xs"
+              aria-pressed={status === chip.value}
+              onClick={() => setStatus(chip.value)}
+            >
+              {chip.label}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      {posQ.isError ? (
+        <ErrorState
+          message={posQ.error instanceof Error ? posQ.error.message : "Couldn't load purchase orders."}
+          onRetry={() => posQ.refetch()}
+        />
+      ) : (
+        <>
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(po) => po.id}
+            isLoading={posQ.isLoading}
+            onRowClick={(po) => openPo(po)}
+            emptyState={
+              filtered ? (
+                <EmptyState title="No matches" description="Try a different search or filter." />
+              ) : (
+                <EmptyState
+                  icon={PackageCheck}
+                  title="Nothing waiting to be received."
+                  description="Every purchase order's goods have been received."
+                />
+              )
+            }
+          />
+          {!posQ.isLoading && rows.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+              <span role="status">
+                Showing {loaded.toLocaleString("en-IN")}
+                {total !== null ? ` of ${total.toLocaleString("en-IN")}` : ""} purchase order{(total ?? loaded) === 1 ? "" : "s"}
+              </span>
+              {posQ.hasNextPage && (
+                <AsyncButton size="sm" variant="outline" onClick={() => posQ.fetchNextPage()} pending={posQ.isFetchingNextPage} pendingLabel="Loading…">
+                  Load more
+                </AsyncButton>
+              )}
+            </div>
+          )}
+        </>
       )}
-      <p className="text-xs text-muted-foreground">
-        A purchase order that is already partly received may not show here yet; the full list is under Purchase
-        Orders.
-      </p>
     </div>
   );
 }

@@ -14,11 +14,11 @@ const DESKTOP = {
   parts: [part(11, "CPU", 70, true), part(12, "TFT", 26, true), part(13, "Keyboard", 2, false), part(14, "Mouse", 2, false)],
 };
 
-function renderDialog(onOpenChange = vi.fn()) {
+function renderDialog(onOpenChange = vi.fn(), onAdded = vi.fn()) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
-      <AddBundleDialog poId={7} open onOpenChange={onOpenChange} />
+      <AddBundleDialog poId={7} open onOpenChange={onOpenChange} onAdded={onAdded} />
     </QueryClientProvider>,
   );
   return onOpenChange;
@@ -31,12 +31,12 @@ beforeEach(() => {
 });
 
 async function fillDesktop(price = "20000") {
-  fireEvent.click(await screen.findByLabelText(/^bundle\*?$/i));
+  fireEvent.click(await screen.findByLabelText(/^set\*?$/i));
   fireEvent.click(await screen.findByText("Desktop"));
   fireEvent.change(screen.getByLabelText(/^description\*?$/i), { target: { value: "Dell Desktop i3" } });
   fireEvent.change(screen.getByLabelText(/^barcode\*?$/i), { target: { value: "CT324973" } });
   fireEvent.change(screen.getByLabelText(/^quantity\*?$/i), { target: { value: "4" } });
-  fireEvent.change(screen.getByLabelText(/price per bundle/i), { target: { value: price } });
+  fireEvent.change(screen.getByLabelText(/price per set/i), { target: { value: price } });
 }
 
 describe("splitAmounts", () => {
@@ -61,14 +61,15 @@ describe("AddBundleDialog", () => {
     expect(screen.getByLabelText("Amount for Mouse")).toHaveValue(400);
     expect(screen.getByRole("status")).toHaveTextContent("20,000.00 (matches the price)");
     expect(screen.getByText("23,600.00", { selector: "td" })).toBeInTheDocument(); // 20,000 + 18% tax
-    expect(screen.getByText(/This will add 16 lines: 4 CPU, 4 TFT, 4 Keyboard, 4 Mouse\./)).toBeInTheDocument();
+    // S2: one line per part, each holding 4 units -- never "16 lines".
+    expect(screen.getByText(/This will add 4 lines, 16 units waiting: 4 CPU, 4 TFT, 4 Keyboard, 4 Mouse\./)).toBeInTheDocument();
     expect(screen.getAllByText("No serial")).toHaveLength(2);
   });
 
   it("blocks Add until the edited amounts add up to the price again", async () => {
     renderDialog();
     await fillDesktop("16000");
-    const add = screen.getByRole("button", { name: /^add bundle$/i });
+    const add = screen.getByRole("button", { name: /^add set$/i });
     expect(add).not.toBeDisabled();
 
     fireEvent.change(screen.getByLabelText("Amount for CPU"), { target: { value: "11000" } });
@@ -85,7 +86,7 @@ describe("AddBundleDialog", () => {
     const onOpenChange = renderDialog();
     await fillDesktop("16000");
     fireEvent.change(screen.getByLabelText(/^warranty years/i), { target: { value: "1" } });
-    fireEvent.click(screen.getByRole("button", { name: /^add bundle$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^add set$/i }));
 
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith("/purchase-orders/7/bundle-lines", {
@@ -100,11 +101,21 @@ describe("AddBundleDialog", () => {
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
   });
 
+  it("S2: hands the units the server made to the page, so it can say how many lines and units were added", async () => {
+    const units = [1, 1, 2, 2].map((line_no, i) => ({ id: 100 + i, line_no }));
+    (apiClient.post as any).mockResolvedValue(units);
+    const onAdded = vi.fn();
+    renderDialog(vi.fn(), onAdded);
+    await fillDesktop("16000");
+    fireEvent.click(screen.getByRole("button", { name: /^add set$/i }));
+    await waitFor(() => expect(onAdded).toHaveBeenCalledWith(units));
+  });
+
   it("S0: Quantity is 1 to 1,000 -- hint shown, a bad value blocks Add and hides the line count", async () => {
     renderDialog();
     await fillDesktop("1000");
     const qty = screen.getByLabelText(/^quantity\*?$/i);
-    const add = screen.getByRole("button", { name: /^add bundle$/i });
+    const add = screen.getByRole("button", { name: /^add set$/i });
     expect(qty).toHaveAttribute("max", "1000");
     expect(screen.getByText("Whole number, 1 to 1,000.")).toBeInTheDocument();
     expect(add).not.toBeDisabled();
@@ -116,12 +127,12 @@ describe("AddBundleDialog", () => {
     }
     fireEvent.change(qty, { target: { value: "1000" } });
     await waitFor(() => expect(add).not.toBeDisabled());
-    expect(screen.getByText(/This will add 4000 lines/)).toBeInTheDocument();
+    expect(screen.getByText(/This will add 4 lines, 4,000 units waiting/)).toBeInTheDocument();
   });
 
   it("needs a bundle, description, barcode and price before Add is enabled", async () => {
     renderDialog();
-    const add = await screen.findByRole("button", { name: /^add bundle$/i });
+    const add = await screen.findByRole("button", { name: /^add set$/i });
     expect(add).toBeDisabled();
     await fillDesktop("1000");
     expect(add).not.toBeDisabled();
@@ -132,7 +143,7 @@ describe("AddBundleDialog", () => {
   it("explains when no bundle exists yet", async () => {
     (apiClient.get as any).mockResolvedValue([]);
     renderDialog();
-    expect(await screen.findByText(/No bundles are set up yet/)).toHaveTextContent(
+    expect(await screen.findByText(/No sets are set up yet/)).toHaveTextContent(
       "The head-office admin can make one on an Item (Settings › Catalogue › Items, “Comes as a set”).",
     );
     expect(screen.queryByText(/Primary Owner|Masters/)).not.toBeInTheDocument();

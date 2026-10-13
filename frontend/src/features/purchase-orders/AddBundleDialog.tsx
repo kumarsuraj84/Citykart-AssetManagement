@@ -9,6 +9,7 @@ import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField } from "@/components/shared/FormField";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { MAX_QUANTITY, quantityHint, quantityProblem } from "@/lib/limits";
+import { linesAndUnitsSentence } from "./po-list";
 
 // The split itself lives in ../bundles/bundle-parts (one copy for the whole app);
 // re-exported here for existing imports.
@@ -20,9 +21,13 @@ interface Props {
   poId: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** The units the server made (one entry per unit; `line_no` tells the lines apart). */
+  onAdded?: (units: { line_no?: number | null }[]) => void;
 }
 
-export function AddBundleDialog({ poId, open, onOpenChange }: Props) {
+// A set (bundle) is said as a "set" on the purchase order: one line per part,
+// each holding `quantity` units.
+export function AddBundleDialog({ poId, open, onOpenChange, onAdded }: Props) {
   const qc = useQueryClient();
   const bundlesQ = useQuery({ queryKey: ["bundles"], queryFn: () => apiClient.get<Bundle[]>("/bundles"), enabled: open });
   const bundles = bundlesQ.data ?? [];
@@ -75,35 +80,39 @@ export function AddBundleDialog({ poId, open, onOpenChange }: Props) {
 
   const addMutation = useMutation({
     mutationFn: () =>
-      apiClient.post(`/purchase-orders/${poId}/bundle-lines`, {
+      apiClient.post<{ line_no?: number | null }[]>(`/purchase-orders/${poId}/bundle-lines`, {
         bundle_id: Number(bundleId), description: description.trim(), barcode: barcode.trim(),
         quantity: qty, price: priceNum, tax_percent: tax, warranty_years: Number(warrantyYears) || 0,
         parts: bundle!.parts.map((p) => ({ part_id: p.id, amount: Number(amounts[p.id]) })),
       }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["purchase-order", poId, "lines"] });
+    onSuccess: (units) => {
+      qc.invalidateQueries({ queryKey: ["purchase-order", poId] });
+      qc.invalidateQueries({ queryKey: ["purchase-orders"] });
+      onAdded?.(Array.isArray(units) ? units : []);
       onOpenChange(false);
     },
   });
 
-  const lineCount = bundle ? bundle.parts.length * qty : 0;
+  // One line per part; each line holds `qty` units.
+  const lineCount = bundle ? bundle.parts.length : 0;
+  const unitCount = lineCount * qty;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col gap-3 overflow-hidden">
         <DialogHeader>
-          <DialogTitle className="text-base">Add Bundle</DialogTitle>
+          <DialogTitle className="text-base">Add Set</DialogTitle>
         </DialogHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
           {!bundlesQ.isLoading && bundles.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No bundles are set up yet. The head-office admin can make one on an Item (Settings › Catalogue › Items, “Comes as a set”).
+              No sets are set up yet. The head-office admin can make one on an Item (Settings › Catalogue › Items, “Comes as a set”).
             </p>
           ) : (
             <>
               <div className="grid grid-cols-2 gap-2">
-                <FormField htmlFor="bundle-pick" label="Bundle" required>
+                <FormField htmlFor="bundle-pick" label="Set" required>
                   <SearchableSelect
                     id="bundle-pick"
                     value={bundleId || undefined}
@@ -120,7 +129,7 @@ export function AddBundleDialog({ poId, open, onOpenChange }: Props) {
                 <FormField htmlFor="bundle-quantity" label="Quantity" required helperText={quantityHint()} errorText={quantityProblem(quantity) ?? undefined}>
                   <Input id="bundle-quantity" type="number" min={1} max={MAX_QUANTITY} step={1} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
                 </FormField>
-                <FormField htmlFor="bundle-price" label="Price per bundle (before tax)" required>
+                <FormField htmlFor="bundle-price" label="Price per set (before tax)" required>
                   <Input id="bundle-price" type="number" min={0.01} step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} />
                 </FormField>
                 <FormField htmlFor="bundle-tax" label="Tax %">
@@ -164,7 +173,7 @@ export function AddBundleDialog({ poId, open, onOpenChange }: Props) {
                     </tbody>
                     <tfoot>
                       <tr className="font-medium">
-                        <td className="px-2 py-1.5" colSpan={2}>Per bundle</td>
+                        <td className="px-2 py-1.5" colSpan={2}>Per set</td>
                         <td className={`px-2 py-1.5 tabular-nums ${totalMatches ? "" : "text-destructive"}`} role="status">
                           {money(partTotal)} {totalMatches ? "(matches the price)" : `(must equal ${money(priceNum)})`}
                         </td>
@@ -177,7 +186,7 @@ export function AddBundleDialog({ poId, open, onOpenChange }: Props) {
 
               {bundle && quantityProblem(quantity) === null && (
                 <p className="text-sm text-muted-foreground">
-                  This will add {lineCount} line{lineCount === 1 ? "" : "s"}: {bundle.parts.map((p) => `${qty} ${p.name}`).join(", ")}.
+                  This will add {linesAndUnitsSentence(lineCount, unitCount)}: {bundle.parts.map((p) => `${qty} ${p.name}`).join(", ")}.
                 </p>
               )}
             </>
@@ -186,13 +195,13 @@ export function AddBundleDialog({ poId, open, onOpenChange }: Props) {
 
         {addMutation.isError && (
           <p className="shrink-0 text-sm text-destructive" role="alert">
-            {addMutation.error instanceof Error ? addMutation.error.message : "Failed to add the bundle."}
+            {addMutation.error instanceof Error ? addMutation.error.message : "Failed to add the set."}
           </p>
         )}
         <DialogFooter className="shrink-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <AsyncButton onClick={() => addMutation.mutate()} disabled={!canAdd} pending={addMutation.isPending} pendingLabel="Adding…">
-            Add Bundle
+            Add Set
           </AsyncButton>
         </DialogFooter>
       </DialogContent>

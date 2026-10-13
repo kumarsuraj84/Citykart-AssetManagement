@@ -91,13 +91,18 @@ export function ErpChangesCard() {
   const q = useErpChangesSummary();
   const items = q.data?.items ?? [];
   if (!Array.isArray(q.data?.items) || items.length === 0) return null;
+  // Compact and secondary: one line, the list opens on demand (open by default only when short).
   return (
-    <section className="rounded-md border border-warning/50 bg-warning/10 p-3" aria-label="Purchase orders changed in the ERP">
-      <h2 className="flex items-center gap-2 text-sm font-semibold">
+    <details
+      className="rounded-md border border-warning/50 bg-warning/10 px-3 py-2"
+      aria-label="Purchase orders changed in the ERP"
+      open={items.length <= 3}
+    >
+      <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
         <GitCompareArrows className="h-4 w-4" aria-hidden="true" />
         The ERP has changed {plural(items.length, "purchase order")} made from it
-      </h2>
-      <p className="mb-2 text-xs text-muted-foreground">Open the PO to see what is different. Nothing is changed here until you apply it.</p>
+      </summary>
+      <p className="mb-2 mt-1 text-xs text-muted-foreground">Open the PO to see what is different. Nothing is changed here until you apply it.</p>
       <ul className="flex flex-wrap gap-2">
         {items.map((i) => (
           <li key={i.po_id}>
@@ -107,7 +112,7 @@ export function ErpChangesCard() {
           </li>
         ))}
       </ul>
-    </section>
+    </details>
   );
 }
 
@@ -204,7 +209,7 @@ function Change({ c, busy, onChoose }: { c: ErpChange; busy: boolean; onChoose: 
     return (
       <li className="flex flex-col gap-1 rounded-md border p-2 text-sm">
         <p>New in the ERP: <b>{label}</b>, {c.qty} at {money(c.rate)}.</p>
-        <p className="text-xs text-muted-foreground">Add it with + Add Line (or + Add Bundle) below, then choose "Added it".</p>
+        <p className="text-xs text-muted-foreground">Add it with + Add Line (or + Add Set) below, then choose "Added it".</p>
         <div className="flex gap-2">{keep("Added it")}</div>
       </li>
     );

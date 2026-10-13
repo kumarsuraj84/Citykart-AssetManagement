@@ -110,7 +110,8 @@ describe("Purchase Orders from the ERP", () => {
     expect(screen.getByText(/DELL DESKTOP REFURB\/i3 · HARSHIT INFOSOLUTION/)).toBeInTheDocument();
     expect(screen.getByLabelText(/^item\*?$/i)).toHaveTextContent("Desktop");
     expect(await screen.findByText(/Computers › CPU · linked through its Article/)).toBeInTheDocument();
-    expect(screen.getByText(/Desktop is a bundle: becomes 28 lines, 7 of each part/)).toBeInTheDocument();
+    // S2: lines and units are told apart -- one line per part, 7 units of each.
+    expect(screen.getByText(/Desktop is a set: becomes 4 lines, 28 units \(7 of each part\)/)).toBeInTheDocument();
     expect(screen.getByLabelText("Line 1 amount for CPU")).toHaveValue(14000);
     expect(screen.queryByLabelText(/^brand$/i)).not.toBeInTheDocument();          // a bundle has no single brand/model
   });
@@ -135,7 +136,9 @@ describe("Purchase Orders from the ERP", () => {
       }),
     );
     expect(await screen.findByRole("link", { name: "Open SPO/012994/26-27" })).toHaveAttribute("href", "/purchase-orders/42");
-    expect(screen.getByRole("status")).toHaveTextContent("Created. 28 lines added.");
+    // S2: never "28 lines added" -- the set's 4 parts are 4 lines holding 28 units.
+    expect(screen.getByRole("status")).toHaveTextContent("PO created: 4 lines, 28 units waiting.");
+    expect(screen.getByRole("status")).not.toHaveTextContent(/28 lines/);
   });
 
   it("an unlinked code asks for the Item, and remembers the choice for the whole Article by default", async () => {

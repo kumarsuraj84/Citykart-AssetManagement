@@ -78,4 +78,15 @@ describe("apiClient errors (S0 contract)", () => {
     (authFetch as any).mockResolvedValue(new Response(null, { status: 204 }));
     await expect(apiClient.delete("/x")).resolves.toBeUndefined();
   });
+
+  it("S2: getPage returns the rows and the X-Total-Count total (null when the header is missing)", async () => {
+    (authFetch as any).mockResolvedValue(
+      new Response(JSON.stringify([{ id: 1 }]), { status: 200, headers: { "Content-Type": "application/json", "X-Total-Count": "412" } }),
+    );
+    await expect(apiClient.getPage("/purchase-orders?limit=1")).resolves.toEqual({ data: [{ id: 1 }], total: 412 });
+    respond(200, []);
+    await expect(apiClient.getPage("/purchase-orders")).resolves.toEqual({ data: [], total: null });
+    respond(409, { detail: "Not allowed." });
+    await expect(apiClient.getPage("/purchase-orders")).rejects.toMatchObject({ status: 409, message: "Not allowed." });
+  });
 });

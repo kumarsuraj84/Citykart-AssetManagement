@@ -120,6 +120,23 @@ describe("Home", () => {
     expect(within(row(/1 asset reported lost/i)).getByRole("link")).toHaveAttribute("href", "/assets?status=LOST");
   });
 
+  it("S2: counts the POs waiting for goods from the PO list's total (waiting=true), with the units beside it", async () => {
+    mockApiGet({ ...baseDashboardData, pending_po_summary: { count: 104, value: 0 } });
+    (apiClient.getPage as any).mockResolvedValue({ data: [{ id: 1 }], total: 3 });
+    renderHome();
+    const list = await screen.findByRole("list", { name: "Needs attention" });
+    const text = await within(list).findByText("3 purchase orders waiting for goods (104 units)");
+    expect(within(text.closest("li") as HTMLElement).getByRole("link")).toHaveAttribute("href", "/receive");
+    expect(apiClient.getPage).toHaveBeenCalledWith("/purchase-orders?waiting=true&limit=1");
+  });
+
+  it("S2: keeps the unit-count sentence when the PO list gives no total", async () => {
+    mockApiGet({ ...baseDashboardData, pending_po_summary: { count: 12, value: 0 } });
+    (apiClient.getPage as any).mockRejectedValue(new Error("503"));
+    renderHome();
+    expect(await screen.findByText("12 units on purchase orders are waiting for goods")).toBeInTheDocument();
+  });
+
   it("says nothing needs attention when nothing does", async () => {
     mockApiGet(baseDashboardData);
     renderHome();
@@ -218,6 +235,14 @@ describe("buildAttentionRows", () => {
     const forViewer = buildAttentionRows({ data, canWork: false, erpChangedPos: 4, erpArrivedPos: 4 }).map((r) => r.key);
     expect(forWorker).toEqual(["receive", "serial"]);
     expect(forViewer).toEqual([]);
+  });
+
+  it("S2: the PO count wins when known (none waiting = no row); unknown falls back to units", () => {
+    const data = { ...baseDashboardData, pending_po_summary: { count: 5, value: 0 } };
+    const base = { data, canWork: true, erpChangedPos: 0, erpArrivedPos: 0 };
+    expect(buildAttentionRows({ ...base, waitingPos: 1 })[0].text).toBe("1 purchase order waiting for goods (5 units)");
+    expect(buildAttentionRows({ ...base, waitingPos: 0 }).map((r) => r.key)).toEqual([]);
+    expect(buildAttentionRows({ ...base, waitingPos: null })[0].text).toBe("5 units on purchase orders are waiting for goods");
   });
 
   it("uses singular and plural words correctly", () => {

@@ -2,13 +2,17 @@ import { describe, it, expect } from "vitest";
 import {
   ASSET_STATUSES,
   PLACE_TYPES,
+  PO_STATUSES,
   ROLES,
   eventLabel,
   fieldLabel,
   humanizeCode,
   placeTypeLabel,
   placeTypePlural,
+  poStatusLabel,
+  poUnitStatusLabel,
   roleLabel,
+  serialModeLabel,
   statusLabel,
   statusOptions,
   workAreaLabel,
@@ -64,5 +68,15 @@ describe("labels: the one place codes become words", () => {
     expect(roleLabel("AUDITOR")).toBe("Auditor");
     expect(eventLabel("SENT_FOR_REPAIR")).toBe("Sent for repair");
     expect(eventLabel("SOMETHING_ELSE")).toBe("Something else");
+  });
+
+  it("S2: purchase-order statuses, unit statuses and serial modes in plain words", () => {
+    expect(PO_STATUSES.map(poStatusLabel)).toEqual(["Waiting", "Partly Received", "Received", "Cancelled"]);
+    expect(["PENDING", "DELIVERED", "CANCELLED"].map(poUnitStatusLabel)).toEqual(["Waiting", "Received", "Cancelled"]);
+    expect(["HAS_SERIAL", "NO_SERIAL", "SERIAL_LATER"].map(serialModeLabel)).toEqual([
+      "Has serial number", "No serial number", "Serial will be entered later",
+    ]);
+    expect(poStatusLabel("ON_HOLD")).toBe("On hold");
+    expect(poStatusLabel(null)).toBe("");
   });
 });

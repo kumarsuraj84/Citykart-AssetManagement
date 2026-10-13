@@ -14,6 +14,7 @@ import { brandOptions, companyOptions, costCentreOptions, itemOptions, namesById
 import { usePlaceLookups } from "@/lib/lookups";
 import { MAX_QUANTITY, quantityHint } from "@/lib/limits";
 import { RATE_HIGH_FACTOR, RATE_LOW_FACTOR, lineIndexesForServerMessage } from "./erp-create-errors";
+import { linesAndUnitsSentence } from "./po-list";
 
 export type MapScope = "NONE" | "ARTICLE" | "NAME" | "CODE";
 /** How far a "not tracked" decision reaches: one code, a product name, an Article, or a whole Department / Section / Division. */
@@ -291,6 +292,8 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
 
   const created = createMutation.data;
   const locked = !!created;
+  // The server numbers one line per draft line, or one per part of a set; it reports the units it made.
+  const createdLineCount = lines.reduce((n, l) => n + (bundleOf(l.itemId)?.parts.length ?? 1), 0);
   // The server checks the draft against the ERP again; when it refuses one line (too many units, a cost
   // too far from the ERP's) its sentence is shown right under that line.
   const createMessage = createMutation.isError
@@ -311,7 +314,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
         </h2>
         {created && (
           <p className="text-sm text-success" role="status">
-            Created. {created.lines_created} line{created.lines_created === 1 ? "" : "s"} added.{" "}
+            PO created: {linesAndUnitsSentence(createdLineCount, created.lines_created)}.{" "}
             <Link className="underline" to="/purchase-orders/$id" params={{ id: String(created.po_id) }}>Open {created.po_number}</Link>
           </p>
         )}
@@ -441,7 +444,8 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
                   {bundle ? (
                     <div className="col-span-6 rounded-md border bg-background p-2 text-sm">
                       <p className="mb-1 text-xs text-muted-foreground">
-                        {item?.name} is a bundle: becomes {bundle.parts.length * (Number(l.quantity) || 0)} lines, {Number(l.quantity) || 0} of each part.
+                        {item?.name} is a set: becomes {bundle.parts.length} line{bundle.parts.length === 1 ? "" : "s"},{" "}
+                        {bundle.parts.length * (Number(l.quantity) || 0)} units ({Number(l.quantity) || 0} of each part).
                       </p>
                       <div className="flex flex-wrap items-end gap-3">
                         {bundle.parts.map((p) => (

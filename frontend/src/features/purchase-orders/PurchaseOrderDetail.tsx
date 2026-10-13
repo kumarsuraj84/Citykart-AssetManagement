@@ -1,26 +1,26 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { apiClient } from "../../lib/api-client";
-import { useAuthStore } from "../../lib/auth-store";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import type { Item } from "../items/types";
 import { ItemFormDialog } from "../items/ItemFormDialog";
 import { NewBrandDialog, useCanCreateMasters } from "@/components/quick-create/masters";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
-import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { FormField } from "@/components/shared/FormField";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { AddBundleDialog } from "./AddBundleDialog";
-import { serialConflictSentence } from "./serial-conflict";
+import { DeliveryDoneDialog } from "./DeliveryDoneDialog";
+import { LineEditDialog, type EditTarget } from "./LineEditDialog";
+import { CancelWaitingDialog, type CancelTarget } from "./CancelWaitingDialog";
+import { PoLinesTable } from "./PoLinesTable";
+import { type LineGroup, type Option, type PendingAssetRow, distinctLines, money } from "./po-detail-types";
+import { linesAndUnitsSentence } from "./po-list";
 import { MAX_QUANTITY, quantityHint, quantityProblem } from "@/lib/limits";
 import { DeliveryReminderBanner } from "../erp/DeliveryReminders";
 import { ErpChangesPanel } from "../erp/ErpChanges";
@@ -39,12 +39,10 @@ interface PurchaseOrderOut {
   delivery_asset_user_id?: number | null;
   warehouse_code?: string | null;
   erp_po_code?: number | null;
+  vendor_name?: string | null;
 }
 
-/** AM-14: a compact KPI tile for the PO detail summary row -- a smaller,
- * denser sibling of Dashboard's own KPI Card (that one needs a title+
- * description header slot; this one is just label+number, so it isn't
- * built out of `Card`/`CardHeader`/`CardContent` at all). */
+/** AM-14: a compact KPI tile for the PO detail summary row (label + number). */
 function SummaryTile({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="rounded-md border bg-card px-4 py-3 shadow-sm">
@@ -54,83 +52,10 @@ function SummaryTile({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
-interface PendingAssetRow {
-  id: number;
-  purchase_order_id: number;
-  description: string;
-  barcode: string | null;
-  category_id: number;
-  subcategory_id: number | null;
-  item_id?: number | null;
-  brand_id: number | null;
-  model: string | null;
-  warranty_years: number | null;
-  cost_center_id: number;
-  purchase_cost: number | null;
-  tax_percent: number | null;
-  total_cost: number | null;
-  status: "PENDING" | "DELIVERED" | "CANCELLED";
-  // False for a part that never carries a serial (mouse, keyboard); the
-  // delivery dialog then starts with "No serial number" ticked for it.
-  serial_required?: boolean;
-  // The Item's serial is read later (an amplifier): delivery starts with "add it later" ticked.
-  serial_later?: boolean;
-  bundle_label?: string | null;
-  serial_number: string | null;
-  invoice_number: string | null;
-  delivered_asset_id: number | null;
-}
-
-// A line made from a bundle carries a small tag naming it ("Desktop"), so it's
-// clear where the CPU/TFT/Keyboard/Mouse lines of one order came from.
-function descriptionCell(l: PendingAssetRow): ReactNode {
-  if (!l.bundle_label) return l.description;
-  return (
-    <>
-      <span>{l.description}</span>
-      <span className="ml-1.5 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{l.bundle_label}</span>
-    </>
-  );
-}
-
-interface DeliveryGroup {
-  key: string;
-  lines: PendingAssetRow[];
-}
-
-// Units created from one PO line item (qty N) are identical, so they're
-// grouped back together for delivery; any difference (description, barcode,
-// category, brand, model, cost...) keeps two items in separate groups.
-function groupUnits(units: PendingAssetRow[]): DeliveryGroup[] {
-  const byKey = new Map<string, PendingAssetRow[]>();
-  for (const u of units) {
-    const key = [
-      u.description, u.barcode ?? "", u.category_id, u.subcategory_id ?? "", u.brand_id ?? "", u.model ?? "",
-      u.purchase_cost ?? "",
-    ].join("|");
-    const list = byKey.get(key);
-    if (list) list.push(u);
-    else byKey.set(key, [u]);
-  }
-  return [...byKey].map(([key, lines]) => ({ key, lines }));
-}
-
-// One serial per line of pasted/scanned text; blank lines are ignored.
-function parseSerials(text: string): string[] {
-  return text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
-}
-
 interface RecordPiResult {
   invoice_number: string;
   updated: string[];
   skipped: string[];
-}
-
-interface Option {
-  id: number;
-  code?: string;
-  email?: string;
-  name: string;
 }
 
 // A person or place a delivery can be Received Into. placeOptions keeps its
@@ -142,9 +67,8 @@ interface PlaceOption extends Option {
 }
 
 interface CategoryOption extends Option {
-  // IT / NON_IT (spec §17/§19) -- drives the read-only Work area preview on
-  // the Add Line dialog; the backend independently re-derives it from this
-  // Category when the line is saved.
+  // IT / NON_IT -- drives the read-only Work area preview on the Add Line
+  // form; the backend independently re-derives it from this Category.
   asset_domain: string;
 }
 
@@ -152,37 +76,32 @@ function selectValue(v: string): string | undefined {
   return v || undefined;
 }
 
-// `scope` disambiguates the aria-label (e.g. "Search Barcode (Pending)" vs.
-// "Search Barcode (Delivered)") now that Pending/Delivered are two separate
-// tables that can each carry a same-named column -- without it, a screen
-// reader (and anything else querying by accessible name) can't tell the two
-// apart.
-function ColumnSearchHeader({ label, value, onChange, scope }: { label: string; value: string; onChange: (v: string) => void; scope: string }) {
-  return (
-    <div className="flex flex-col gap-1 py-1">
-      <span>{label}</span>
-      <Input
-        aria-label={`Search ${label} (${scope})`}
-        placeholder="Search…"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-7 text-xs font-normal"
-        onClick={(e) => e.stopPropagation()}
-      />
-    </div>
-  );
-}
+const plural = (n: number, one: string) => `${n.toLocaleString("en-IN")} ${one}${n === 1 ? "" : "s"}`;
 
+/**
+ * A purchase order, by LINE (S2): one row per line with Ordered / Received /
+ * Waiting units, whatever the quantity. Receiving opens the existing Mark
+ * Delivery Done dialog with every waiting unit of the line (or of the PO);
+ * unit-level detail is behind each line's "View units".
+ */
 export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const isPrimaryOwner = useAuthStore((s) => s.isPrimaryOwner);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  // One plain sentence about the last thing done here (lines added, saved, cancelled).
+  const [notice, setNotice] = useState<string | null>(null);
 
   const poQ = useQuery({
     queryKey: ["purchase-order", poId],
     queryFn: () => apiClient.get<PurchaseOrderOut>(`/purchase-orders/${poId}`),
   });
+  // The PO's lines with their counts -- the primary view.
+  const groupsQ = useQuery({
+    queryKey: ["purchase-order", poId, "line-groups"],
+    queryFn: () => apiClient.get<LineGroup[]>(`/purchase-orders/${poId}/line-groups`),
+  });
+  // Every unit, never rendered as rows: only read for the invoices received
+  // under this PO and the labels of its received units.
   const linesQ = useQuery({
     queryKey: ["purchase-order", poId, "lines"],
     queryFn: () => apiClient.get<PendingAssetRow[]>(`/purchase-orders/${poId}/lines`),
@@ -202,15 +121,13 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     queryFn: () => apiClient.get<PlaceOption[]>(`/asset-users?company_id=${poQ.data!.company_id}`),
     enabled: !!poQ.data,
   });
-  // AM-14: the header previously named PO Date/Cost Centre but never Vendor --
-  // the same master-list lookup PurchaseOrdersList.tsx already uses.
   const vendorsQ = useQuery({ queryKey: ["masters", "vendors"], queryFn: () => apiClient.get<Option[]>("/masters/vendors") });
   const brandsQ = useQuery({ queryKey: ["masters", "brands"], queryFn: () => apiClient.get<Option[]>("/masters/brands") });
   const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => apiClient.get<Item[]>("/items") });
   const canCreate = useCanCreateMasters();
   const placeLookups = usePlaceLookups();
-  const [newItemFor, setNewItemFor] = useState<"add" | "edit" | null>(null);
-  const [newBrandFor, setNewBrandFor] = useState<"add" | "edit" | null>(null);
+  const [newItemForAdd, setNewItemForAdd] = useState(false);
+  const [newBrandForAdd, setNewBrandForAdd] = useState(false);
 
   const items = itemsQ.data ?? [];
   const categories = categoriesQ.data ?? [];
@@ -219,36 +136,42 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const asset_users = asset_usersQ.data ?? [];
   const vendors = vendorsQ.data ?? [];
   const brands = brandsQ.data ?? [];
-  const lines = linesQ.data ?? [];
-  const categoryName = (id: number) => categories.find((c) => c.id === id)?.name ?? String(id);
+  const groups = Array.isArray(groupsQ.data) ? groupsQ.data : [];
+  const units = Array.isArray(linesQ.data) ? linesQ.data : [];
   const costCenterName = (id: number | null) => (id == null ? "—" : costCenters.find((c) => c.id === id)?.name ?? String(id));
-  const vendorName = (id: number | null) => (id == null ? "—" : vendors.find((v) => v.id === id)?.name ?? String(id));
-  // Dropdown options with context: "Laptop · IT Fixed Assets", "CS6872 · Ankur Pahwa · Head Office".
+  const vendorName = (id: number | null) =>
+    id == null ? "—" : vendors.find((v) => v.id === id)?.name ?? poQ.data?.vendor_name ?? String(id);
   const itemSelectOptions = itemOptions(items, { categories: namesById(categories), subcategories: namesById(subcategories) });
   const brandSelectOptions = brandOptions(brands);
   const receivedIntoOptions = placeOptions(asset_users, placeLookups);
 
-  // AM-14 summary row -- derived entirely from `lines`, already fetched for the
-  // table below, so this costs zero extra requests. Value is every non-
-  // cancelled line's own total_cost (matches the table's own "PO Value" column).
-  const pendingCount = lines.filter((l) => l.status === "PENDING").length;
-  const deliveredCount = lines.filter((l) => l.status === "DELIVERED").length;
-  // Unfiltered (unlike deliveredLines below, which only reflects whatever
-  // the column search boxes currently narrow to) -- deleting the PO removes
-  // every one of these, so the confirmation must name every one of them.
-  const allDeliveredLines = useMemo(() => lines.filter((l) => l.status === "DELIVERED"), [lines]);
-  const totalValue = lines
-    .filter((l) => l.status !== "CANCELLED")
-    .reduce((sum, l) => sum + (l.total_cost ?? 0), 0);
+  // Summary: units, counted by the server per line (the caller's work area).
+  const totals = groups.reduce(
+    (t, g) => ({
+      ordered: t.ordered + g.ordered, received: t.received + g.received, waiting: t.waiting + g.waiting,
+      value: t.value + (g.line_value ?? 0),
+    }),
+    { ordered: 0, received: 0, waiting: 0, value: 0 },
+  );
+  const groupsReady = groupsQ.isSuccess && Array.isArray(groupsQ.data);
 
-  // --- Record PI (AM-19) ---
-  // PI arrives from Finance per Invoice, not per PO -- a PO delivered across
+  // Arriving from the Receive queue ("#po-lines"): bring the lines into view once they are there.
+  const hash = useLocation({ select: (l) => l.hash });
+  useEffect(() => {
+    if (hash !== "po-lines" || !groupsReady) return;
+    const el = document.getElementById("po-lines");
+    if (el && typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "start" });
+  }, [hash, groupsReady]);
+
+  // --- Invoices received and their Purchase Invoice (PI) (AM-19) ---
+  // PI arrives from Finance per Invoice, not per PO -- a PO received across
   // several partial deliveries can have several invoices, each getting its
-  // own PI later. Derived entirely from already-fetched `lines`, zero extra
-  // requests, matching the KPI summary row's own pattern above.
+  // own PI later.
+  const receivedUnits = units.filter((l) => l.status === "DELIVERED");
   const deliveredInvoiceNumbers = Array.from(new Set(
-    lines.filter((l) => l.status === "DELIVERED" && l.invoice_number).map((l) => l.invoice_number as string),
+    receivedUnits.filter((l) => l.invoice_number).map((l) => l.invoice_number as string),
   ));
+  const deliveredAssetIds = receivedUnits.filter((l) => l.delivered_asset_id != null).map((l) => l.delivered_asset_id as number);
   const [recordPiInvoice, setRecordPiInvoice] = useState<string | null>(null);
   const [recordPiForm, setRecordPiForm] = useState({ piNumber: "", piDate: "", overwrite: false });
   const [recordPiResult, setRecordPiResult] = useState<RecordPiResult | null>(null);
@@ -274,10 +197,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   });
   const canRecordPi = recordPiForm.piNumber.trim() !== "" && recordPiForm.piDate !== "";
 
-  // --- Add Line form ---
-  // AM-14: collapsed by default -- the form previously stayed permanently
-  // expanded, always paying its vertical space even when nobody was adding a
-  // line. Same fields/mutation/validation, purely a visibility toggle.
+  // --- Add Line form (collapsed by default) ---
   const [showAddLine, setShowAddLine] = useState(false);
   const [bundleOpen, setBundleOpen] = useState(false);
   const [lineForm, setLineForm] = useState({
@@ -306,6 +226,15 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     lineForm.warrantyYears.trim() !== "" &&
     Number(lineForm.warrantyYears) >= 0;
 
+  function refreshPo() {
+    qc.invalidateQueries({ queryKey: ["purchase-order", poId] });
+    qc.invalidateQueries({ queryKey: ["purchase-orders"] });
+  }
+
+  function announceAdded(made: { line_no?: number | null }[], what: string) {
+    setNotice(`${what}: ${linesAndUnitsSentence(distinctLines(made), made.length)}.`);
+  }
+
   const addLineMutation = useMutation({
     mutationFn: () =>
       apiClient.post<PendingAssetRow[]>(`/purchase-orders/${poId}/lines`, {
@@ -320,8 +249,9 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
         tax_percent: Number(lineForm.taxPercent) || 0,
         quantity: Number(lineForm.quantity),
       }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["purchase-order", poId, "lines"] });
+    onSuccess: (made) => {
+      refreshPo();
+      announceAdded(Array.isArray(made) ? made : [], "Line added");
       setLineForm({
         description: "", barcode: "", itemId: "",
         brandId: "", model: "", warrantyYears: "0", purchaseCost: "0", taxPercent: "0", quantity: "1",
@@ -329,49 +259,27 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     },
   });
 
-  // --- Edit line dialog ---
-  const [editingLine, setEditingLine] = useState<PendingAssetRow | null>(null);
-  const [editForm, setEditForm] = useState({
-    description: "", barcode: "", categoryId: "", subcategoryId: "", itemId: "",
-    brandId: "", model: "", warrantyYears: "0", purchaseCost: "0", taxPercent: "0",
-  });
-
-  function openEdit(line: PendingAssetRow) {
-    setEditingLine(line);
-    setEditForm({
-      description: line.description, barcode: line.barcode ?? "", categoryId: String(line.category_id),
-      subcategoryId: line.subcategory_id ? String(line.subcategory_id) : "", itemId: line.item_id ? String(line.item_id) : "",
-      brandId: line.brand_id ? String(line.brand_id) : "", model: line.model ?? "", warrantyYears: String(line.warranty_years ?? 0),
-      purchaseCost: String(line.purchase_cost ?? 0),
-      taxPercent: String(line.tax_percent ?? 0),
-    });
+  // --- Line / unit edit, cancel waiting ---
+  const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
+  const [editKey, setEditKey] = useState(0);
+  function openEdit(t: EditTarget) {
+    setEditKey((k) => k + 1);
+    setEditTarget(t);
+  }
+  const [cancelTarget, setCancelTarget] = useState<CancelTarget | null>(null);
+  const [cancelKey, setCancelKey] = useState(0);
+  function openCancel(t: CancelTarget) {
+    setCancelKey((k) => k + 1);
+    setCancelTarget(t);
   }
 
-  const canSaveEdit =
-    editForm.description.trim() !== "" && editForm.barcode.trim() !== "" && Number(editForm.purchaseCost) > 0 &&
-    editForm.warrantyYears.trim() !== "" && Number(editForm.warrantyYears) >= 0;
-
-  const editMutation = useMutation({
-    mutationFn: () =>
-      apiClient.put<PendingAssetRow>(`/purchase-orders/lines/${editingLine!.id}`, {
-        description: editForm.description, barcode: editForm.barcode || null, category_id: Number(editForm.categoryId),
-        subcategory_id: editForm.subcategoryId ? Number(editForm.subcategoryId) : null,
-        // An Item, when the line has one, decides Category and Sub-Category on the server.
-        item_id: editForm.itemId ? Number(editForm.itemId) : null,
-        brand_id: editForm.brandId ? Number(editForm.brandId) : null, model: editForm.model || null,
-        warranty_years: Number(editForm.warrantyYears) || 0,
-        purchase_cost: Number(editForm.purchaseCost) || 0, tax_percent: Number(editForm.taxPercent) || 0,
-      }),
+  // Cancelling one unit (from a line's units list) is immediate, as before.
+  const cancelUnitMutation = useMutation({
+    mutationFn: (unitId: number) => apiClient.post(`/purchase-orders/lines/${unitId}/cancel`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["purchase-order", poId, "lines"] });
-      setEditingLine(null);
+      refreshPo();
+      setNotice("1 waiting unit cancelled.");
     },
-  });
-
-  // --- Cancel line ---
-  const cancelMutation = useMutation({
-    mutationFn: (lineId: number) => apiClient.post(`/purchase-orders/lines/${lineId}/cancel`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["purchase-order", poId, "lines"] }),
   });
 
   const deleteMutation = useMutation({
@@ -382,337 +290,73 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     },
   });
 
-  // --- Lines tables: Pending/Delivered/Cancelled are shown as three
-  // separate tables (never one mixed list) so marking delivery only ever
-  // shows rows that still need it -- a delivered row sitting in the same
-  // table as a pending one was confusing to select against. Each table
-  // keeps its own per-column search, independent of the others, since the
-  // column sets themselves differ (Serial No only exists once delivered;
-  // Edit/Cancel actions only make sense while still pending).
-  const [pendingFilters, setPendingFilters] = useState({ description: "", barcode: "", category: "", cost: "" });
-  const [deliveredFilters, setDeliveredFilters] = useState({ description: "", barcode: "", category: "", cost: "", serial: "" });
-  function setPendingFilter(key: keyof typeof pendingFilters, value: string) {
-    setPendingFilters((f) => ({ ...f, [key]: value }));
-  }
-  function setDeliveredFilter(key: keyof typeof deliveredFilters, value: string) {
-    setDeliveredFilters((f) => ({ ...f, [key]: value }));
-  }
-  function matchesCommonFilters(l: PendingAssetRow, f: { description: string; barcode: string; category: string; cost: string }) {
-    const cost = (l.total_cost ?? 0).toFixed(2);
-    return (
-      l.description.toLowerCase().includes(f.description.toLowerCase()) &&
-      (l.barcode ?? "").toLowerCase().includes(f.barcode.toLowerCase()) &&
-      categoryName(l.category_id).toLowerCase().includes(f.category.toLowerCase()) &&
-      cost.includes(f.cost.toLowerCase())
-    );
-  }
-  const pendingLines = useMemo(
-    () => lines.filter((l) => l.status === "PENDING" && matchesCommonFilters(l, pendingFilters)),
-    [lines, pendingFilters, categories],
-  );
-  const deliveredLines = useMemo(
-    () => lines.filter((l) =>
-      l.status === "DELIVERED" && matchesCommonFilters(l, deliveredFilters) &&
-      (l.serial_number ?? "").toLowerCase().includes(deliveredFilters.serial.toLowerCase()),
-    ),
-    [lines, deliveredFilters, categories],
-  );
-  const cancelledLines = useMemo(() => lines.filter((l) => l.status === "CANCELLED"), [lines]);
-
-  // --- Selection + Delivery Done ---
-  const [selected, setSelected] = useState<number[]>([]);
-  function toggleOne(id: number, checked: boolean) {
-    setSelected((s) => (checked ? [...s, id] : s.filter((x) => x !== id)));
-  }
-
-  // Select All acts only on the currently-visible (filtered) Pending rows --
-  // a hidden/filtered-out row's own selection state is never touched by it,
-  // matching the requested "select all of what's currently filtered, or
-  // everything if nothing is filtered" behavior.
-  const isAllVisibleSelected =
-    pendingLines.length > 0 && pendingLines.every((l) => selected.includes(l.id));
-  function toggleAllVisible(checked: boolean) {
-    const visibleIds = new Set(pendingLines.map((l) => l.id));
-    setSelected((s) =>
-      checked ? [...new Set([...s, ...visibleIds])] : s.filter((id) => !visibleIds.has(id)),
-    );
-  }
-
+  // --- Receive (the existing Mark Delivery Done dialog) ---
+  const [deliverUnits, setDeliverUnits] = useState<PendingAssetRow[]>([]);
   const [deliverOpen, setDeliverOpen] = useState(false);
-  const [invoiceNumber, setInvoiceNumber] = useState("");
-  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().slice(0, 10));
-  const [invoiceAmount, setInvoiceAmount] = useState("");
-  // A PO is delivered to one location only, so where it is Received Into is
-  // chosen once for the whole delivery. Serial numbers are entered per
-  // product (all identical units of one line item together), not per unit:
-  // a pasted/scanned list, one serial per line, is handed to the units in
-  // order, or "No serial number" sets N/A for the whole product.
-  const [initialAssetUserId, setInitialAssetUserId] = useState("");
-  const [groupInput, setGroupInput] = useState<Record<string, { text: string; noSerial: boolean; later: boolean }>>({});
-  // Deliberate opt-in to deliver only the units that have a serial and leave
-  // the rest in Pending Delivery (instead of cancelling and re-selecting).
-  const [leavePending, setLeavePending] = useState(false);
-  // lower-cased serial -> asset code of the asset in CKAM that already has it,
-  // from the advisory check-serials call below.
-  const [existingSerials, setExistingSerials] = useState<Record<string, string>>({});
+  const [deliverKey, setDeliverKey] = useState(0);
+  // Which line's waiting units are being fetched ("all" = the whole PO).
+  const [receiving, setReceiving] = useState<number | "all" | null>(null);
+  const [receiveError, setReceiveError] = useState<string | null>(null);
+  const [justDelivered, setJustDelivered] = useState<number[]>([]);
 
-  function openDeliver() {
-    deliverMutation.reset();
-    setInvoiceNumber("");
-    setInvoiceDate(new Date().toISOString().slice(0, 10));
-    setInvoiceAmount("");
-    // The PO's delivery location (a Stock Room read from the PO, or chosen
-    // when it was created) is where it is naturally Received Into; still changeable.
-    setInitialAssetUserId(poQ.data?.delivery_asset_user_id ? String(poQ.data.delivery_asset_user_id) : "");
-    // Parts that never carry a serial (a bundle's mouse/keyboard) start with
-    // "No serial number" already ticked; it can still be unticked.
-    setGroupInput(
-      Object.fromEntries(
-        groupUnits(lines.filter((l) => selected.includes(l.id))).map((g) => [
-          g.key, { text: "", noSerial: g.lines[0].serial_required === false, later: g.lines[0].serial_required !== false && g.lines[0].serial_later === true },
-        ]),
-      ),
-    );
-    setLeavePending(false);
-    setExistingSerials({});
+  function startReceiving(waitingUnits: PendingAssetRow[]) {
+    const waiting = waitingUnits.filter((u) => u.status === "PENDING");
+    if (waiting.length === 0) {
+      setReceiveError("Nothing is waiting to be received.");
+      return;
+    }
+    setDeliverUnits(waiting);
+    setDeliverKey((k) => k + 1);
     setDeliverOpen(true);
   }
 
-  function setGroupField(key: string, patch: Partial<{ text: string; noSerial: boolean; later: boolean }>) {
-    setGroupInput((p) => ({ ...p, [key]: { ...(p[key] ?? { text: "", noSerial: false, later: false }), ...patch } }));
-  }
-  // A group that types nothing: "No serial number" (N/A) or "add it later" (Pending).
-  const skipsTyping = (key: string) => !!(groupInput[key]?.noSerial || groupInput[key]?.later);
-
-  const selectedLines = useMemo(() => lines.filter((l) => selected.includes(l.id)), [lines, selected]);
-  const deliveryGroups = useMemo(() => groupUnits(selectedLines), [selectedLines]);
-
-  // Serials typed (not "N/A") that appear more than once in THIS delivery,
-  // compared case-insensitively like the server does. Lower-cased keys. The
-  // server separately checks every serial against the whole system.
-  const duplicateSerials = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const g of deliveryGroups) {
-      if (skipsTyping(g.key)) continue;
-      for (const s of parseSerials(groupInput[g.key]?.text ?? "")) {
-        const k = s.toLowerCase();
-        if (k === "n/a") continue;
-        counts.set(k, (counts.get(k) ?? 0) + 1);
-      }
+  async function receiveLine(line: LineGroup) {
+    setReceiveError(null);
+    setReceiving(line.line_no);
+    try {
+      const got = await apiClient.get<PendingAssetRow[]>(`/purchase-orders/${poId}/line-groups/${line.line_no}/units?status=WAITING`);
+      startReceiving(Array.isArray(got) ? got : []);
+    } catch (e) {
+      setReceiveError(e instanceof Error ? e.message : "Couldn't load the waiting units of this line.");
+    } finally {
+      setReceiving(null);
     }
-    return new Set([...counts].filter(([, n]) => n > 1).map(([s]) => s));
-  }, [deliveryGroups, groupInput]);
-
-  // One serial per unit of a group: N/A for all, or the pasted list in order
-  // ("" where the list is shorter than the group).
-  function serialsForGroup(g: DeliveryGroup): string[] {
-    const inp = groupInput[g.key];
-    if (inp?.noSerial) return g.lines.map(() => "N/A");
-    if (inp?.later) return g.lines.map(() => "");
-    const tokens = parseSerials(inp?.text ?? "");
-    return g.lines.map((_, i) => tokens[i] ?? "");
   }
-  // A block is broken (not merely unfinished) if it has more serials than
-  // units, a serial repeated in this delivery, or one CKAM already has.
-  function groupHasProblem(g: DeliveryGroup): boolean {
-    const inp = groupInput[g.key];
-    if (inp?.noSerial || inp?.later) return false;
-    const tokens = parseSerials(inp?.text ?? "");
-    return tokens.length > g.lines.length ||
-      tokens.some((s) => duplicateSerials.has(s.toLowerCase()) || existingSerials[s.toLowerCase()] !== undefined);
-  }
-  // Units of a group that would be delivered: all if "No serial number", else
-  // as many as there are serials (never more than the units).
-  function deliverCountForGroup(g: DeliveryGroup): number {
-    if (skipsTyping(g.key)) return g.lines.length;
-    return Math.min(parseSerials(groupInput[g.key]?.text ?? "").length, g.lines.length);
-  }
-  const deliverUnits = deliveryGroups.reduce((sum, g) => sum + deliverCountForGroup(g), 0);
-  const unitsWithoutSerial = selectedLines.length - deliverUnits;
-  const anyProblem = deliveryGroups.some(groupHasProblem);
 
-  const canDeliver =
-    initialAssetUserId !== "" && invoiceNumber.trim() !== "" && invoiceDate !== "" && invoiceAmount !== "" &&
-    !anyProblem && deliverUnits > 0 && (unitsWithoutSerial === 0 || leavePending);
-
-  // Advisory, debounced: ask the server which of the serials typed so far
-  // CKAM already has, so the user finds out now rather than after Confirm.
-  // The delivery itself re-checks everything, so a failed lookup is ignored.
-  const typedSerials = useMemo(() => {
-    const seen = new Map<string, string>();
-    for (const g of deliveryGroups) {
-      if (skipsTyping(g.key)) continue;
-      for (const s of parseSerials(groupInput[g.key]?.text ?? "")) {
-        if (s.toLowerCase() !== "n/a" && !seen.has(s.toLowerCase())) seen.set(s.toLowerCase(), s);
-      }
+  async function receiveAll() {
+    setReceiveError(null);
+    setReceiving("all");
+    try {
+      const got = await apiClient.get<PendingAssetRow[]>(`/purchase-orders/${poId}/lines`);
+      startReceiving(Array.isArray(got) ? got : []);
+    } catch (e) {
+      setReceiveError(e instanceof Error ? e.message : "Couldn't load the waiting units of this purchase order.");
+    } finally {
+      setReceiving(null);
     }
-    return [...seen.values()];
-  }, [deliveryGroups, groupInput]);
-  const typedSerialsKey = typedSerials.join("\n");
-  useEffect(() => {
-    if (!deliverOpen || typedSerials.length === 0) {
-      setExistingSerials((prev) => (Object.keys(prev).length ? {} : prev));
-      return;
-    }
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      apiClient
-        .post<{ conflicts: { serial: string; asset_code: string }[] }>("/purchase-orders/check-serials", { serials: typedSerials })
-        .then((r) => {
-          if (!cancelled) setExistingSerials(Object.fromEntries((r?.conflicts ?? []).map((c) => [c.serial.toLowerCase(), c.asset_code])));
-        })
-        .catch(() => {
-          if (!cancelled) setExistingSerials({});
-        });
-    }, 400);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deliverOpen, typedSerialsKey]);
+  }
 
-  // The assets the last Mark Delivery just made, so their labels can be printed right away
-  // (tag every received unit before it is dispatched).
-  const deliveredAssetIds = lines.filter((l) => l.status === "DELIVERED" && l.delivered_asset_id != null).map((l) => l.delivered_asset_id as number);
-  const [justDelivered, setJustDelivered] = useState<number[]>([]);
-
-  const deliverMutation = useMutation({
-    mutationFn: () =>
-      apiClient.post<PendingAssetRow[]>(`/purchase-orders/${poId}/deliver`, {
-        invoice_number: invoiceNumber, invoice_date: invoiceDate, invoice_amount: Number(invoiceAmount) || 0,
-        // Only units that have a serial; the rest (if the user chose to leave
-        // them pending) are simply not sent and stay in Pending Delivery.
-        lines: deliveryGroups.flatMap((g) => {
-          const serials = serialsForGroup(g);
-          const later = !!groupInput[g.key]?.later;
-          return g.lines
-            .map((l, i): { pending_asset_id: number; serial_number?: string; serial_pending?: true; initial_asset_user_id: number } => ({
-              pending_asset_id: l.id,
-              // "Add it later": no serial is sent, the asset is made as Serial Pending.
-              ...(later ? { serial_pending: true as const } : { serial_number: serials[i] }),
-              initial_asset_user_id: Number(initialAssetUserId),
-            }))
-            .filter((line) => later || line.serial_number !== "");
-        }),
-      }),
-    onSuccess: (result) => {
-      qc.invalidateQueries({ queryKey: ["purchase-order", poId, "lines"] });
-      setSelected([]);
-      setDeliverOpen(false);
-      setJustDelivered((Array.isArray(result) ? result : []).map((l) => l.delivered_asset_id).filter((id): id is number => id != null));
-    },
-  });
-
-  const pendingColumns: DataTableColumn<PendingAssetRow>[] = [
-    {
-      key: "select",
-      header: pendingLines.length > 0 ? (
-        <Checkbox
-          aria-label="Select all pending lines"
-          checked={isAllVisibleSelected}
-          onCheckedChange={(checked) => toggleAllVisible(checked === true)}
-        />
-      ) : null,
-      cell: (l) => (
-        <Checkbox
-          aria-label={`Select ${l.description}`}
-          checked={selected.includes(l.id)}
-          onCheckedChange={(checked) => toggleOne(l.id, checked === true)}
-        />
-      ),
-    },
-    {
-      key: "description",
-      header: <ColumnSearchHeader label="Description" value={pendingFilters.description} onChange={(v) => setPendingFilter("description", v)} scope="Pending" />,
-      cell: (l) => descriptionCell(l),
-    },
-    {
-      key: "barcode",
-      header: <ColumnSearchHeader label="Barcode" value={pendingFilters.barcode} onChange={(v) => setPendingFilter("barcode", v)} scope="Pending" />,
-      cell: (l) => l.barcode ?? "—",
-    },
-    {
-      key: "category",
-      header: <ColumnSearchHeader label="Category" value={pendingFilters.category} onChange={(v) => setPendingFilter("category", v)} scope="Pending" />,
-      cell: (l) => categoryName(l.category_id),
-    },
-    {
-      key: "cost",
-      header: <ColumnSearchHeader label="PO Value" value={pendingFilters.cost} onChange={(v) => setPendingFilter("cost", v)} scope="Pending" />,
-      headerClassName: "text-right", cellClassName: "text-right tabular-nums",
-      cell: (l) => (l.total_cost ?? 0).toFixed(2),
-    },
-    {
-      key: "actions",
-      header: "",
-      cell: (l) => (
-        <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => openEdit(l)}>
-            Edit
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => cancelMutation.mutate(l.id)}>
-            Cancel
-          </Button>
-        </div>
-      ),
-    },
-  ];
-
-  const deliveredColumns: DataTableColumn<PendingAssetRow>[] = [
-    {
-      key: "description",
-      header: <ColumnSearchHeader label="Description" value={deliveredFilters.description} onChange={(v) => setDeliveredFilter("description", v)} scope="Delivered" />,
-      cell: (l) => descriptionCell(l),
-    },
-    {
-      key: "barcode",
-      header: <ColumnSearchHeader label="Barcode" value={deliveredFilters.barcode} onChange={(v) => setDeliveredFilter("barcode", v)} scope="Delivered" />,
-      cell: (l) => l.barcode ?? "—",
-    },
-    {
-      key: "category",
-      header: <ColumnSearchHeader label="Category" value={deliveredFilters.category} onChange={(v) => setDeliveredFilter("category", v)} scope="Delivered" />,
-      cell: (l) => categoryName(l.category_id),
-    },
-    {
-      key: "cost",
-      header: <ColumnSearchHeader label="PO Value" value={deliveredFilters.cost} onChange={(v) => setDeliveredFilter("cost", v)} scope="Delivered" />,
-      headerClassName: "text-right", cellClassName: "text-right tabular-nums",
-      cell: (l) => (l.total_cost ?? 0).toFixed(2),
-    },
-    {
-      key: "serial",
-      header: <ColumnSearchHeader label="Serial No" value={deliveredFilters.serial} onChange={(v) => setDeliveredFilter("serial", v)} scope="Delivered" />,
-      cell: (l) => l.serial_number ?? "—",
-    },
-  ];
-
-  // No search boxes here -- cancelled lines are a small, rarely-reviewed
-  // tail, not something an operator hunts through the way pending/delivered
-  // rows get searched while working a PO.
-  const cancelledColumns: DataTableColumn<PendingAssetRow>[] = [
-    { key: "description", header: "Description", cell: (l) => l.description },
-    { key: "barcode", header: "Barcode", cell: (l) => l.barcode ?? "—" },
-    { key: "category", header: "Category", cell: (l) => categoryName(l.category_id) },
-    {
-      key: "cost", header: "PO Value", headerClassName: "text-right", cellClassName: "text-right tabular-nums",
-      cell: (l) => (l.total_cost ?? 0).toFixed(2),
-    },
-  ];
+  function onDelivered(result: PendingAssetRow[]) {
+    refreshPo();
+    setDeliverOpen(false);
+    setJustDelivered(result.map((l) => l.delivered_asset_id).filter((id): id is number => id != null));
+  }
 
   if (poQ.isError) return <ErrorState message="Couldn't load this purchase order." onRetry={() => poQ.refetch()} />;
+
+  const po = poQ.data;
+  const receivedIntoName = po?.delivery_asset_user_id
+    ? asset_users.find((u) => u.id === po.delivery_asset_user_id)?.name ?? po.warehouse_code ?? ""
+    : "";
 
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title={poQ.data ? `Purchase Order ${poQ.data.po_number}` : "Purchase Order"}
+        title={po ? `Purchase Order ${po.po_number}` : "Purchase Order"}
         description={
-          poQ.data
-            ? `Vendor: ${vendorName(poQ.data.vendor_id)} · PO Date: ${poQ.data.po_date} · Cost Centre: ${costCenterName(poQ.data.cost_center_id)}` +
-              (poQ.data.delivery_asset_user_id
-                ? ` · Received Into: ${asset_users.find((u) => u.id === poQ.data!.delivery_asset_user_id)?.name ?? poQ.data.warehouse_code ?? ""}`
-                : "")
+          po
+            ? `Vendor: ${vendorName(po.vendor_id)} · PO Date: ${po.po_date} · Cost Centre: ${costCenterName(po.cost_center_id)}` +
+              (po.delivery_asset_user_id ? ` · Received Into: ${receivedIntoName}` : "")
             : undefined
         }
         actions={
@@ -720,55 +364,49 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
             <Button asChild variant="outline">
               <Link to="/purchase-orders">Close</Link>
             </Button>
-            <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
-              Delete PO
-            </Button>
-            <Button onClick={openDeliver} disabled={selected.length === 0}>
-              Mark {selected.length > 0 ? selected.length : ""} Delivery Done
-            </Button>
+            {groupsReady && totals.waiting > 0 && (
+              <Button variant="outline" onClick={() => openCancel({ kind: "po", waiting: totals.waiting })}>
+                Cancel waiting items
+              </Button>
+            )}
+            <AsyncButton
+              onClick={receiveAll}
+              disabled={!groupsReady || totals.waiting === 0 || (receiving !== null && receiving !== "all")}
+              pending={receiving === "all"}
+              pendingLabel="Opening…"
+            >
+              Receive all waiting{groupsReady && totals.waiting > 0 ? ` (${totals.waiting})` : ""}
+            </AsyncButton>
           </>
         }
       />
 
-      {poQ.data?.erp_po_code != null && <ErpChangesPanel poId={poId} />}
-      {poQ.data?.erp_po_code != null && <DeliveryReminderBanner poId={poId} fromErp />}
+      {po?.erp_po_code != null && <ErpChangesPanel poId={poId} />}
+      {po?.erp_po_code != null && <DeliveryReminderBanner poId={poId} fromErp />}
 
-      {/* AM-14: a KPI summary row, derived from the already-fetched `lines` --
-          the page previously had no at-a-glance sense of this PO's overall
-          size/progress/value without reading every table row. */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <SummaryTile label="Total Lines" value={lines.length} />
-        <SummaryTile label="Pending" value={pendingCount} />
-        <SummaryTile label="Delivered" value={deliveredCount} />
-        <SummaryTile label="Value" value={totalValue.toFixed(2)} />
+      {/* Units, counted per line by the server. */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <SummaryTile label="Lines" value={groups.length} />
+        <SummaryTile label="Ordered units" value={totals.ordered} />
+        <SummaryTile label="Received units" value={totals.received} />
+        <SummaryTile label="Waiting units" value={totals.waiting} />
+        <SummaryTile label="Value" value={money(totals.value)} />
       </div>
 
-      {deliveredInvoiceNumbers.length > 0 && (
-        <div className="rounded-md border p-3">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold">Invoices delivered under this PO</h2>
-            {poQ.data?.erp_po_code != null && <ErpPiDialog poId={poId} />}
-          </div>
-          <p className="mb-2 text-xs text-muted-foreground">
-            Purchase Invoice (PI) Number/Date arrive from Finance per invoice, not per PO -- a partial delivery on a
-            different invoice gets its own PI, recorded separately.
-          </p>
-          <ul className="flex flex-col gap-1.5">
-            {deliveredInvoiceNumbers.map((invoiceNumber) => (
-              <li key={invoiceNumber} className="flex items-center justify-between gap-2 rounded-sm border bg-muted/40 px-2 py-1.5 text-sm">
-                <span className="font-medium">{invoiceNumber}</span>
-                <Button size="sm" variant="outline" onClick={() => openRecordPi(invoiceNumber)}>
-                  Record PI
-                </Button>
-              </li>
-            ))}
-          </ul>
+      {justDelivered.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-success-soft/60 p-2 text-sm" role="status">
+          <span>{plural(justDelivered.length, "unit")} received and now in the register.</span>
+          <Button asChild size="sm">
+            <Link to="/print-labels" search={{ assets: justDelivered.slice(0, 200).join(",") }}>
+              Print their labels now
+            </Link>
+          </Button>
         </div>
       )}
 
-      <div className="rounded-md border p-3">
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Add Line</h2>
+      <section id="po-lines" className="flex scroll-mt-4 flex-col gap-2 rounded-md border p-3" aria-label="Lines">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">Lines ({groups.length})</h2>
           <div className="flex gap-2">
             {!showAddLine && (
               <Button size="sm" variant="outline" onClick={() => setShowAddLine(true)}>
@@ -776,216 +414,190 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
               </Button>
             )}
             <Button size="sm" variant="outline" onClick={() => setBundleOpen(true)}>
-              + Add Bundle
+              + Add Set
             </Button>
           </div>
         </div>
-        {showAddLine && (
-        <>
-        <div className="grid grid-cols-3 gap-2">
-          <FormField htmlFor="line-description" label="Description" required>
-            <Input id="line-description" value={lineForm.description} onChange={(e) => setLineForm((f) => ({ ...f, description: e.target.value }))} />
-          </FormField>
-          <FormField htmlFor="line-barcode" label="Barcode" required helperText="CityKart's own internal tag — may repeat across assets.">
-            <Input id="line-barcode" value={lineForm.barcode} onChange={(e) => setLineForm((f) => ({ ...f, barcode: e.target.value }))} />
-          </FormField>
-          <FormField
-            htmlFor="line-item"
-            label="Item"
-            required
-            helperText={lineItem ? `Category › Sub-category: ${[lineCategory?.name, lineSubcategory?.name].filter(Boolean).join(" › ")}` : "What this is. Its Category and Sub-category follow from it."}
-          >
-            <SearchableSelect
-              id="line-item"
-              value={selectValue(lineForm.itemId)}
-              onValueChange={(v) => pickLineItem(items.find((i) => i.id === Number(v)))}
-              options={itemSelectOptions}
-              onCreateNew={canCreate ? () => setNewItemFor("add") : undefined}
-              createLabel="New Item…"
-            />
-          </FormField>
-          {lineForm.itemId && lineCategory && (
-            <FormField htmlFor="line-work-area" label="Work area" helperText="Follows from the Item's Category.">
-              <Input id="line-work-area" value={workAreaLabel(lineCategory.asset_domain ?? "")} disabled readOnly />
-            </FormField>
-          )}
-          <FormField htmlFor="line-cost" label="Cost" required>
-            <Input id="line-cost" type="number" min={0.01} step="0.01" value={lineForm.purchaseCost} onChange={(e) => setLineForm((f) => ({ ...f, purchaseCost: e.target.value }))} />
-          </FormField>
-          <FormField htmlFor="line-tax" label="Tax %">
-            <Input id="line-tax" type="number" value={lineForm.taxPercent} onChange={(e) => setLineForm((f) => ({ ...f, taxPercent: e.target.value }))} />
-          </FormField>
-          <FormField htmlFor="line-quantity" label="Quantity" required helperText={quantityHint()} errorText={quantityProblem(lineForm.quantity) ?? undefined}>
-            <Input id="line-quantity" type="number" min={1} max={MAX_QUANTITY} step={1} value={lineForm.quantity} onChange={(e) => setLineForm((f) => ({ ...f, quantity: e.target.value }))} />
-          </FormField>
-          <FormField htmlFor="line-brand" label="Brand">
-            <SearchableSelect
-              id="line-brand"
-              value={selectValue(lineForm.brandId)}
-              onValueChange={(v) => setLineForm((f) => ({ ...f, brandId: v }))}
-              options={brandSelectOptions}
-              onCreateNew={canCreate ? () => setNewBrandFor("add") : undefined}
-              createLabel="New Brand…"
-            />
-          </FormField>
-          <FormField htmlFor="line-model" label="Model">
-            <Input id="line-model" value={lineForm.model} onChange={(e) => setLineForm((f) => ({ ...f, model: e.target.value }))} />
-          </FormField>
-          <FormField htmlFor="line-warranty-years" label="Warranty Years" required helperText="Enter 0 if there is no warranty.">
-            <Input id="line-warranty-years" type="number" min={0} step={1} value={lineForm.warrantyYears} onChange={(e) => setLineForm((f) => ({ ...f, warrantyYears: e.target.value }))} />
-          </FormField>
-        </div>
-        {addLineMutation.isError && (
-          <p className="mt-2 text-sm text-destructive" role="alert">
-            {addLineMutation.error instanceof Error ? addLineMutation.error.message : "Failed to add line."}
+
+        {notice && (
+          <p className="rounded-md border bg-muted/40 px-2 py-1.5 text-sm" role="status">{notice}</p>
+        )}
+        {receiveError && (
+          <p className="text-sm text-destructive" role="alert">{receiveError}</p>
+        )}
+        {cancelUnitMutation.isError && (
+          <p className="text-sm text-destructive" role="alert">
+            {cancelUnitMutation.error instanceof Error ? cancelUnitMutation.error.message : "Failed to cancel the unit."}
           </p>
         )}
-        <div className="mt-2 flex gap-2">
-          <AsyncButton onClick={() => addLineMutation.mutate()} disabled={!canAddLine} pending={addLineMutation.isPending} pendingLabel="Adding…">
-            Add Line
-          </AsyncButton>
-          <Button variant="ghost" onClick={() => setShowAddLine(false)}>
-            Cancel
-          </Button>
-        </div>
-        </>
-        )}
-      </div>
 
-      <div className="rounded-md border p-3">
-        <h2 className="mb-2 text-sm font-semibold">Pending Delivery ({pendingLines.length})</h2>
-        <DataTable
-          columns={pendingColumns}
-          rows={pendingLines}
-          rowKey={(l) => l.id}
-          isLoading={linesQ.isLoading}
-          emptyState={
-            <EmptyState title={pendingCount === 0 ? "Nothing pending delivery." : "No pending lines match the current search."} />
-          }
-        />
-      </div>
-
-      <div className="rounded-md border p-3">
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">Delivered ({deliveredLines.length})</h2>
-          {deliveredAssetIds.length > 0 && (
-            <Button asChild size="sm" variant="outline">
-              <Link to="/print-labels" search={{ assets: deliveredAssetIds.slice(0, 200).join(",") }}>
-                Print labels for the delivered units
-              </Link>
-            </Button>
-          )}
-        </div>
-        {justDelivered.length > 0 && (
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-md border bg-success-soft/60 p-2 text-sm" role="status">
-            <span>{justDelivered.length} unit{justDelivered.length === 1 ? "" : "s"} delivered and now in the register.</span>
-            <Button asChild size="sm">
-              <Link to="/print-labels" search={{ assets: justDelivered.slice(0, 200).join(",") }}>
-                Print their labels now
-              </Link>
-            </Button>
+        {showAddLine && (
+          <div className="rounded-md border bg-muted/20 p-3">
+            <h3 className="mb-2 text-sm font-semibold">Add Line</h3>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <FormField htmlFor="line-description" label="Description" required>
+                <Input id="line-description" value={lineForm.description} onChange={(e) => setLineForm((f) => ({ ...f, description: e.target.value }))} />
+              </FormField>
+              <FormField htmlFor="line-barcode" label="Barcode" required helperText="CityKart's own internal tag — may repeat across assets.">
+                <Input id="line-barcode" value={lineForm.barcode} onChange={(e) => setLineForm((f) => ({ ...f, barcode: e.target.value }))} />
+              </FormField>
+              <FormField
+                htmlFor="line-item"
+                label="Item"
+                required
+                helperText={lineItem ? `Category › Sub-category: ${[lineCategory?.name, lineSubcategory?.name].filter(Boolean).join(" › ")}` : "What this is. Its Category and Sub-category follow from it."}
+              >
+                <SearchableSelect
+                  id="line-item"
+                  value={selectValue(lineForm.itemId)}
+                  onValueChange={(v) => pickLineItem(items.find((i) => i.id === Number(v)))}
+                  options={itemSelectOptions}
+                  onCreateNew={canCreate ? () => setNewItemForAdd(true) : undefined}
+                  createLabel="New Item…"
+                />
+              </FormField>
+              {lineForm.itemId && lineCategory && (
+                <FormField htmlFor="line-work-area" label="Work area" helperText="Follows from the Item's Category.">
+                  <Input id="line-work-area" value={workAreaLabel(lineCategory.asset_domain ?? "")} disabled readOnly />
+                </FormField>
+              )}
+              <FormField htmlFor="line-cost" label="Cost" required>
+                <Input id="line-cost" type="number" min={0.01} step="0.01" value={lineForm.purchaseCost} onChange={(e) => setLineForm((f) => ({ ...f, purchaseCost: e.target.value }))} />
+              </FormField>
+              <FormField htmlFor="line-tax" label="Tax %">
+                <Input id="line-tax" type="number" value={lineForm.taxPercent} onChange={(e) => setLineForm((f) => ({ ...f, taxPercent: e.target.value }))} />
+              </FormField>
+              <FormField htmlFor="line-quantity" label="Quantity" required helperText={quantityHint()} errorText={quantityProblem(lineForm.quantity) ?? undefined}>
+                <Input id="line-quantity" type="number" min={1} max={MAX_QUANTITY} step={1} value={lineForm.quantity} onChange={(e) => setLineForm((f) => ({ ...f, quantity: e.target.value }))} />
+              </FormField>
+              <FormField htmlFor="line-brand" label="Brand">
+                <SearchableSelect
+                  id="line-brand"
+                  value={selectValue(lineForm.brandId)}
+                  onValueChange={(v) => setLineForm((f) => ({ ...f, brandId: v }))}
+                  options={brandSelectOptions}
+                  onCreateNew={canCreate ? () => setNewBrandForAdd(true) : undefined}
+                  createLabel="New Brand…"
+                />
+              </FormField>
+              <FormField htmlFor="line-model" label="Model">
+                <Input id="line-model" value={lineForm.model} onChange={(e) => setLineForm((f) => ({ ...f, model: e.target.value }))} />
+              </FormField>
+              <FormField htmlFor="line-warranty-years" label="Warranty Years" required helperText="Enter 0 if there is no warranty.">
+                <Input id="line-warranty-years" type="number" min={0} step={1} value={lineForm.warrantyYears} onChange={(e) => setLineForm((f) => ({ ...f, warrantyYears: e.target.value }))} />
+              </FormField>
+            </div>
+            {addLineMutation.isError && (
+              <p className="mt-2 text-sm text-destructive" role="alert">
+                {addLineMutation.error instanceof Error ? addLineMutation.error.message : "Failed to add line."}
+              </p>
+            )}
+            <div className="mt-2 flex gap-2">
+              <AsyncButton onClick={() => addLineMutation.mutate()} disabled={!canAddLine} pending={addLineMutation.isPending} pendingLabel="Adding…">
+                Add Line
+              </AsyncButton>
+              <Button variant="ghost" onClick={() => setShowAddLine(false)}>
+                Cancel
+              </Button>
+            </div>
           </div>
         )}
-        <DataTable
-          columns={deliveredColumns}
-          rows={deliveredLines}
-          rowKey={(l) => l.id}
-          isLoading={linesQ.isLoading}
-          emptyState={
-            <EmptyState title={deliveredCount === 0 ? "Nothing delivered yet." : "No delivered lines match the current search."} />
-          }
-        />
-      </div>
 
-      {cancelledLines.length > 0 && (
-        <div className="rounded-md border p-3">
-          <h2 className="mb-2 text-sm font-semibold">Cancelled ({cancelledLines.length})</h2>
-          <DataTable
-            columns={cancelledColumns}
-            rows={cancelledLines}
-            rowKey={(l) => l.id}
-            emptyState={<EmptyState title="No cancelled lines." />}
+        {groupsQ.isError ? (
+          <ErrorState
+            message={groupsQ.error instanceof Error ? groupsQ.error.message : "Couldn't load the lines of this purchase order."}
+            onRetry={() => groupsQ.refetch()}
           />
+        ) : (
+          <PoLinesTable
+            poId={poId}
+            lines={groups}
+            isLoading={groupsQ.isLoading}
+            receivingLine={typeof receiving === "number" ? receiving : null}
+            onReceive={receiveLine}
+            onEdit={(line) => openEdit({ kind: "line", line })}
+            onCancelWaiting={(line) => openCancel({ kind: "line", line })}
+            onEditUnit={(unit) => openEdit({ kind: "unit", unit })}
+            onCancelUnit={(unit) => cancelUnitMutation.mutate(unit.id)}
+          />
+        )}
+      </section>
+
+      {(deliveredInvoiceNumbers.length > 0 || deliveredAssetIds.length > 0) && (
+        <section className="rounded-md border p-3" aria-label="Invoices received">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold">Invoices received under this PO</h2>
+            <div className="flex flex-wrap gap-2">
+              {deliveredAssetIds.length > 0 && (
+                <Button asChild size="sm" variant="outline">
+                  <Link to="/print-labels" search={{ assets: deliveredAssetIds.slice(0, 200).join(",") }}>
+                    Print labels for the received units
+                  </Link>
+                </Button>
+              )}
+              {po?.erp_po_code != null && deliveredInvoiceNumbers.length > 0 && <ErpPiDialog poId={poId} />}
+            </div>
+          </div>
+          {deliveredInvoiceNumbers.length > 0 && (
+            <>
+              <p className="mb-2 text-xs text-muted-foreground">
+                Purchase Invoice (PI) Number/Date arrive from Finance per invoice, not per PO -- a partial delivery on a
+                different invoice gets its own PI, recorded separately.
+                {po?.erp_po_code != null ? " Fetch PI from ERP fills them in from the ERP; Record PI types one in." : ""}
+              </p>
+              <ul className="flex flex-col gap-1.5">
+                {deliveredInvoiceNumbers.map((invoiceNumber) => (
+                  <li key={invoiceNumber} className="flex items-center justify-between gap-2 rounded-sm border bg-muted/40 px-2 py-1.5 text-sm">
+                    <span className="font-medium">{invoiceNumber}</span>
+                    <Button size="sm" variant="outline" onClick={() => openRecordPi(invoiceNumber)}>
+                      Record PI
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
+      )}
+
+      {/* De-emphasised and only offered while nothing has been received: once
+          anything is received the server refuses (409) and the waiting items
+          are cancelled instead. */}
+      {groupsReady && totals.received === 0 && (
+        <div className="flex justify-end">
+          <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setDeleteOpen(true)}>
+            Delete PO
+          </Button>
         </div>
       )}
 
-      <Dialog open={editingLine !== null} onOpenChange={(open) => !open && setEditingLine(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit line</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-3">
-            <FormField htmlFor="edit-description" label="Description" required>
-              <Input id="edit-description" value={editForm.description} onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))} />
-            </FormField>
-            <FormField htmlFor="edit-barcode" label="Barcode" required>
-              <Input id="edit-barcode" value={editForm.barcode} onChange={(e) => setEditForm((f) => ({ ...f, barcode: e.target.value }))} />
-            </FormField>
-            <FormField htmlFor="edit-item" label="Item" helperText="Changing the Item also changes the Category and Sub-category.">
-              <SearchableSelect
-                id="edit-item"
-                value={selectValue(editForm.itemId)}
-                onValueChange={(v) => setEditForm((f) => ({ ...f, itemId: v }))}
-                options={itemSelectOptions}
-                onCreateNew={canCreate ? () => setNewItemFor("edit") : undefined}
-                createLabel="New Item…"
-              />
-            </FormField>
-            <FormField htmlFor="edit-cost" label="Cost" required>
-              <Input id="edit-cost" type="number" min={0.01} step="0.01" value={editForm.purchaseCost} onChange={(e) => setEditForm((f) => ({ ...f, purchaseCost: e.target.value }))} />
-            </FormField>
-            <FormField htmlFor="edit-tax" label="Tax %">
-              <Input id="edit-tax" type="number" value={editForm.taxPercent} onChange={(e) => setEditForm((f) => ({ ...f, taxPercent: e.target.value }))} />
-            </FormField>
-            <FormField htmlFor="edit-brand" label="Brand">
-              <SearchableSelect
-                id="edit-brand"
-                value={selectValue(editForm.brandId)}
-                onValueChange={(v) => setEditForm((f) => ({ ...f, brandId: v }))}
-                options={brandSelectOptions}
-                onCreateNew={canCreate ? () => setNewBrandFor("edit") : undefined}
-                createLabel="New Brand…"
-              />
-            </FormField>
-            <FormField htmlFor="edit-model" label="Model">
-              <Input id="edit-model" value={editForm.model} onChange={(e) => setEditForm((f) => ({ ...f, model: e.target.value }))} />
-            </FormField>
-            <FormField htmlFor="edit-warranty-years" label="Warranty Years" required helperText="Enter 0 if there is no warranty.">
-              <Input id="edit-warranty-years" type="number" min={0} step={1} value={editForm.warrantyYears} onChange={(e) => setEditForm((f) => ({ ...f, warrantyYears: e.target.value }))} />
-            </FormField>
-          </div>
-          {editMutation.isError && (
-            <p className="text-sm text-destructive" role="alert">
-              {editMutation.error instanceof Error ? editMutation.error.message : "Failed to update line."}
-            </p>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingLine(null)}>
-              Cancel
-            </Button>
-            <AsyncButton onClick={() => editMutation.mutate()} disabled={!canSaveEdit} pending={editMutation.isPending} pendingLabel="Saving…">
-              Save
-            </AsyncButton>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {editTarget && (
+        <LineEditDialog
+          key={editKey}
+          poId={poId}
+          target={editTarget}
+          onClose={() => setEditTarget(null)}
+          onSaved={setNotice}
+          itemSelectOptions={itemSelectOptions}
+          brandSelectOptions={brandSelectOptions}
+          canCreate={canCreate}
+        />
+      )}
+
+      {cancelTarget && (
+        <CancelWaitingDialog key={cancelKey} poId={poId} target={cancelTarget} onClose={() => setCancelTarget(null)} onDone={setNotice} />
+      )}
 
       <ItemFormDialog
-        open={newItemFor !== null}
-        onOpenChange={(open) => !open && setNewItemFor(null)}
-        initialName={newItemFor === "add" ? lineForm.description.trim() || undefined : editForm.description.trim() || undefined}
-        onSaved={(saved) => {
-          if (newItemFor === "add") pickLineItem(saved);
-          else setEditForm((f) => ({ ...f, itemId: String(saved.id) }));
-        }}
+        open={newItemForAdd}
+        onOpenChange={setNewItemForAdd}
+        initialName={lineForm.description.trim() || undefined}
+        onSaved={(saved) => pickLineItem(saved)}
       />
       <NewBrandDialog
-        open={newBrandFor !== null}
-        onOpenChange={(open) => !open && setNewBrandFor(null)}
-        onCreated={(row) => {
-          if (newBrandFor === "add") setLineForm((f) => ({ ...f, brandId: String(row.id) }));
-          else setEditForm((f) => ({ ...f, brandId: String(row.id) }));
-        }}
+        open={newBrandForAdd}
+        onOpenChange={setNewBrandForAdd}
+        onCreated={(row) => setLineForm((f) => ({ ...f, brandId: String(row.id) }))}
       />
 
       <Dialog open={recordPiInvoice !== null} onOpenChange={(open) => !open && setRecordPiInvoice(null)}>
@@ -1051,233 +663,63 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
         </DialogContent>
       </Dialog>
 
-      <AddBundleDialog poId={poId} open={bundleOpen} onOpenChange={setBundleOpen} />
+      <AddBundleDialog poId={poId} open={bundleOpen} onOpenChange={setBundleOpen} onAdded={(made) => announceAdded(made, "Set added")} />
 
-      <Dialog open={deliverOpen} onOpenChange={(open) => !open && setDeliverOpen(false)}>
-        {/* flex flex-col + max-h + overflow-hidden caps the dialog to the
-            viewport; only the per-line list below scrolls (flex-1 min-h-0),
-            so Cancel/Confirm in the footer stay reachable no matter how many
-            lines were selected -- previously the dialog just grew past the
-            viewport with no way to scroll down to them. */}
-        <DialogContent className="flex max-h-[85vh] max-w-xl flex-col gap-3 overflow-hidden">
-          <DialogHeader>
-            <DialogTitle className="text-base">
-              Mark {selectedLines.length} asset{selectedLines.length === 1 ? "" : "s"} delivered
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="flex shrink-0 flex-col gap-1">
-            <Label htmlFor="initial-asset-user" className="text-xs">
-              Received Into<span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
-            </Label>
-            <SearchableSelect
-              id="initial-asset-user"
-              value={selectValue(initialAssetUserId)}
-              onValueChange={setInitialAssetUserId}
-              options={receivedIntoOptions}
-            />
-            <p className="text-xs text-muted-foreground">The Stock Room, Store or person this delivery goes to. Applies to every asset below.</p>
-          </div>
-
-          <div className="grid shrink-0 grid-cols-3 gap-2">
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="invoice-number" className="text-xs">
-                Invoice No<span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
-              </Label>
-              <Input id="invoice-number" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="invoice-date" className="text-xs">
-                Invoice Date<span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
-              </Label>
-              <Input id="invoice-date" type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="invoice-amount" className="text-xs">
-                Invoice Amount<span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
-              </Label>
-              <Input id="invoice-amount" type="number" value={invoiceAmount} onChange={(e) => setInvoiceAmount(e.target.value)} />
-            </div>
-          </div>
-
-          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
-            {deliveryGroups.map((g) => {
-              const n = g.lines.length;
-              const first = g.lines[0];
-              const inp = groupInput[g.key] ?? { text: "", noSerial: false, later: false };
-              const typing = !inp.noSerial && !inp.later;
-              const tokens = parseSerials(inp.text);
-              const extra = Math.max(0, tokens.length - n);
-              const dups = [...new Set(tokens.filter((s) => duplicateSerials.has(s.toLowerCase())))];
-              const taken = [...new Set(tokens.filter((s) => existingSerials[s.toLowerCase()] !== undefined))];
-              const problem = typing && (extra > 0 || dups.length > 0 || taken.length > 0);
-              return (
-                <div key={g.key} className="flex flex-col gap-2 rounded-md border p-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0 truncate text-xs font-medium">{first.description}</div>
-                    <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs tabular-nums text-muted-foreground">
-                      {n} unit{n === 1 ? "" : "s"}
-                    </span>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <Label htmlFor={n === 1 ? `serial-${first.id}` : `serials-${first.id}`} className="text-xs">
-                      {n === 1 ? "Serial Number" : "Serial Numbers"}
-                      <span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
-                    </Label>
-                    {n === 1 ? (
-                      <Input
-                        id={`serial-${first.id}`}
-                        value={inp.noSerial ? "N/A" : inp.later ? "" : inp.text}
-                        placeholder={inp.later ? "Pending: add it later" : undefined}
-                        disabled={!typing}
-                        onChange={(e) => setGroupField(g.key, { text: e.target.value })}
-                      />
-                    ) : (
-                      <Textarea
-                        id={`serials-${first.id}`}
-                        rows={Math.min(Math.max(n, 2), 6)}
-                        value={inp.noSerial ? `N/A for all ${n} units` : inp.later ? "" : inp.text}
-                        disabled={!typing}
-                        placeholder={inp.later ? "Pending: add them later" : "One serial per line. Paste a list or scan; each scan goes on a new line."}
-                        onChange={(e) => setGroupField(g.key, { text: e.target.value })}
-                      />
-                    )}
-                    {n > 1 && typing && (
-                      <p className={`text-xs ${problem ? "text-destructive" : "text-muted-foreground"}`}>
-                        {tokens.length} of {n} entered
-                        {extra > 0 && ` -- ${extra} too many, remove ${extra === 1 ? "it" : "them"}`}
-                        {dups.length > 0 && ` -- duplicate: ${dups.join(", ")}`}
-                        {tokens.length < n && leavePending && ` -- ${n - tokens.length} will stay pending`}
-                      </p>
-                    )}
-                    {n === 1 && dups.length > 0 && typing && (
-                      <p className="text-xs text-destructive">Duplicate serial: {dups.join(", ")}</p>
-                    )}
-                    {typing && taken.map((s) => (
-                      <p key={s} className="text-xs text-destructive" role="alert">
-                        {serialConflictSentence(s, existingSerials[s.toLowerCase()])}
-                      </p>
-                    ))}
-                  </div>
-                  <label className="flex items-center gap-1.5 text-xs">
-                    <Checkbox
-                      aria-label={`No serial number for ${first.description}`}
-                      checked={inp.noSerial}
-                      onCheckedChange={(checked) => setGroupField(g.key, checked === true ? { noSerial: true, later: false } : { noSerial: false })}
-                    />
-                    No serial number{n > 1 ? " (sets N/A for all units)" : ""}
-                  </label>
-                  <label className="flex items-center gap-1.5 text-xs">
-                    <Checkbox
-                      aria-label={`Add the serial later for ${first.description}`}
-                      checked={inp.later}
-                      onCheckedChange={(checked) => setGroupField(g.key, checked === true ? { later: true, noSerial: false } : { later: false })}
-                    />
-                    It has one, but add it later{n > 1 ? " (for all units)" : ""}: it shows on the Serial Pending list
-                  </label>
-                </div>
-              );
-            })}
-          </div>
-
-          {unitsWithoutSerial > 0 && !anyProblem && (
-            <label className="flex shrink-0 items-start gap-2 rounded-md border border-warning/50 bg-warning/10 p-2 text-xs">
-              <Checkbox
-                aria-label="Leave the remaining units pending"
-                checked={leavePending}
-                onCheckedChange={(checked) => setLeavePending(checked === true)}
-              />
-              <span>
-                {unitsWithoutSerial} unit{unitsWithoutSerial === 1 ? " has" : "s have"} no serial yet. Tick to deliver only the{" "}
-                {deliverUnits} with serials and leave {unitsWithoutSerial === 1 ? "it" : "them"} in Pending Delivery.
-              </span>
-            </label>
-          )}
-
-          {deliverMutation.isError && (
-            <p className="shrink-0 text-sm text-destructive" role="alert">
-              {deliverMutation.error instanceof Error ? deliverMutation.error.message : "Failed to mark delivery done."}
-            </p>
-          )}
-
-          <DialogFooter className="shrink-0">
-            <Button variant="outline" onClick={() => setDeliverOpen(false)}>
-              Cancel
-            </Button>
-            <AsyncButton onClick={() => deliverMutation.mutate()} disabled={!canDeliver} pending={deliverMutation.isPending} pendingLabel="Saving…">
-              Confirm
-            </AsyncButton>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {deliverOpen && (
+        <DeliveryDoneDialog
+          key={deliverKey}
+          poId={poId}
+          units={deliverUnits}
+          open={deliverOpen}
+          onOpenChange={setDeliverOpen}
+          defaultReceivedIntoId={po?.delivery_asset_user_id}
+          receivedIntoOptions={receivedIntoOptions}
+          onDelivered={onDelivered}
+        />
+      )}
 
       <Dialog open={deleteOpen} onOpenChange={(open) => { setDeleteOpen(open); if (!open) deleteMutation.reset(); }}>
         <DialogContent>
-          {allDeliveredLines.length > 0 && !isPrimaryOwner ? (
-            <>
-              <DialogHeader>
-                <DialogTitle>This purchase order already has delivered items</DialogTitle>
-              </DialogHeader>
-              <p className="text-sm text-muted-foreground">
-                {allDeliveredLines.length} item{allDeliveredLines.length === 1 ? "" : "s"} under this PO
-                {allDeliveredLines.length === 1 ? " has" : " have"} already been delivered into the Asset
-                Register. Only the head-office admin can delete a purchase order once items have been delivered.
-              </p>
-              <DialogFooter>
-                <Button onClick={() => setDeleteOpen(false)}>Close</Button>
-              </DialogFooter>
-            </>
-          ) : (
-            <>
-              <DialogHeader>
-                <DialogTitle>Delete Purchase Order {poQ.data?.po_number}?</DialogTitle>
-              </DialogHeader>
-              <div className="flex flex-col gap-2 text-sm">
-                {pendingCount > 0 && (
-                  <p>{pendingCount} pending line{pendingCount === 1 ? "" : "s"} will be cancelled.</p>
-                )}
-                {allDeliveredLines.length > 0 ? (
-                  <>
-                    <p className="font-medium text-destructive">
-                      This will also permanently remove {allDeliveredLines.length} asset
-                      {allDeliveredLines.length === 1 ? "" : "s"} already in the Asset Register:
-                    </p>
-                    <ul className="list-disc pl-5">
-                      {allDeliveredLines.map((l) => (
-                        <li key={l.id}>
-                          {l.description} (Barcode: {l.barcode ?? "—"}, Serial: {l.serial_number ?? "—"})
-                        </li>
-                      ))}
-                    </ul>
-                    <p className="text-muted-foreground">
-                      This is refused if any of these assets have already moved or been processed beyond their
-                      original delivery -- they would need to be handled individually first.
-                    </p>
-                  </>
-                ) : (
-                  <p className="text-muted-foreground">Nothing has been delivered under this PO yet -- no assets are affected.</p>
-                )}
-              </div>
-              {deleteMutation.isError && (
-                <p className="text-sm text-destructive" role="alert">
-                  {deleteMutation.error instanceof Error ? deleteMutation.error.message : "Failed to delete this purchase order."}
-                </p>
-              )}
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setDeleteOpen(false)}>
-                  Cancel
-                </Button>
-                <AsyncButton
-                  onClick={() => deleteMutation.mutate()}
-                  pending={deleteMutation.isPending}
-                  pendingLabel="Deleting…"
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                >
-                  Delete
-                </AsyncButton>
-              </DialogFooter>
-            </>
+          <DialogHeader>
+            <DialogTitle>Delete Purchase Order {po?.po_number}?</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-2 text-sm">
+            {totals.waiting > 0 && (
+              <p>{plural(totals.waiting, "waiting unit")} on {plural(groups.length, "line")} will be cancelled.</p>
+            )}
+            <p className="text-muted-foreground">Nothing has been received under this PO, so no assets are affected.</p>
+          </div>
+          {deleteMutation.isError && (
+            <p className="text-sm text-destructive" role="alert">
+              {deleteMutation.error instanceof Error ? deleteMutation.error.message : "Failed to delete this purchase order."}
+            </p>
           )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)}>
+              Keep it
+            </Button>
+            {(deleteMutation.error as { status?: number } | null)?.status === 409 && totals.waiting > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setDeleteOpen(false);
+                  deleteMutation.reset();
+                  refreshPo();
+                  openCancel({ kind: "po", waiting: totals.waiting });
+                }}
+              >
+                Cancel waiting items instead
+              </Button>
+            )}
+            <AsyncButton
+              onClick={() => deleteMutation.mutate()}
+              pending={deleteMutation.isPending}
+              pendingLabel="Deleting…"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AsyncButton>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

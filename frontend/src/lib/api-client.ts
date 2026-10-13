@@ -60,7 +60,7 @@ export function errorMessageFrom(body: unknown, status: number): string {
   return fallback;
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function send(method: string, path: string, body?: unknown): Promise<Response> {
   // FormData (multipart uploads, e.g. the Excel import screen) must be sent
   // as-is: JSON.stringify-ing it would produce "[object FormData]", and
   // setting Content-Type ourselves would drop the multipart boundary the
@@ -77,12 +77,34 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     const body = await res.json().catch(() => null);
     throw new ApiError(errorMessageFrom(body, res.status), res.status);
   }
+  return res;
+}
+
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const res = await send(method, path, body);
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
 
+/** One page of a list plus the server's total before paging (its
+ * `X-Total-Count` header); `total` is null when the server did not send one. */
+export interface Page<T> {
+  data: T;
+  total: number | null;
+}
+
+async function requestPage<T>(path: string): Promise<Page<T>> {
+  const res = await send("GET", path);
+  const data = (await res.json()) as T;
+  const raw = res.headers.get("X-Total-Count");
+  const total = raw === null || raw.trim() === "" ? NaN : Number(raw);
+  return { data, total: Number.isFinite(total) ? total : null };
+}
+
 export const apiClient = {
   get: <T>(path: string) => request<T>("GET", path),
+  /** A paged list: the rows and the total (S2: the purchase-order list). */
+  getPage: <T>(path: string) => requestPage<T>(path),
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
   put: <T>(path: string, body?: unknown) => request<T>("PUT", path, body),
   delete: <T>(path: string) => request<T>("DELETE", path),

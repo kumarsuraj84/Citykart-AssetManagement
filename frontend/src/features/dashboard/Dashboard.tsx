@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useErpChangesSummary } from "../erp/ErpChanges";
+import { fetchPoPage } from "../purchase-orders/po-list";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -86,12 +87,25 @@ export function buildAttentionRows(input: {
   canWork: boolean;
   erpChangedPos: number;
   erpArrivedPos: number;
+  /** POs with units waiting (the PO list's total), when known; else the unit count is used. */
+  waitingPos?: number | null;
 }): AttentionRow[] {
-  const { data, canWork, erpChangedPos, erpArrivedPos } = input;
+  const { data, canWork, erpChangedPos, erpArrivedPos, waitingPos } = input;
   const rows: AttentionRow[] = [];
   if (canWork) {
     const waitingUnits = data?.pending_po_summary?.count ?? 0;
-    if (waitingUnits > 0) {
+    if (typeof waitingPos === "number") {
+      if (waitingPos > 0) {
+        rows.push({
+          key: "receive",
+          text:
+            `${plural(waitingPos, "purchase order")} waiting for goods` +
+            (waitingUnits > 0 ? ` (${plural(waitingUnits, "unit")})` : ""),
+          to: "/receive",
+          action: "Receive",
+        });
+      }
+    } else if (waitingUnits > 0) {
       rows.push({
         key: "receive",
         text: `${plural(waitingUnits, "unit")} on purchase orders ${waitingUnits === 1 ? "is" : "are"} waiting for goods`,
@@ -281,7 +295,19 @@ export function Dashboard({ headOfficeSection }: DashboardProps = {}) {
   const erpChangedPos = Array.isArray(erpChangesQ.data?.items) ? erpChangesQ.data.items.length : 0;
   const erpArrivedPos = Array.isArray(erpRemindersQ.data) ? erpRemindersQ.data.length : 0;
 
-  const attention = buildAttentionRows({ data, canWork, erpChangedPos, erpArrivedPos });
+  // S2: how many POs wait for goods, straight from the PO list's total
+  // (?waiting=true, X-Total-Count). It counts the person's whole work area, so
+  // it is used only when Home is not narrowed to one area; otherwise (or when
+  // the server does not say) the waiting-unit count above is used.
+  const waitingPosQ = useQuery({
+    queryKey: ["purchase-orders", "waiting-count"],
+    queryFn: async () => (await fetchPoPage({ waiting: true, limit: 1 })).total,
+    enabled: canWork,
+    retry: false,
+  });
+  const waitingPos = domain === "ALL" && typeof waitingPosQ.data === "number" ? waitingPosQ.data : null;
+
+  const attention = buildAttentionRows({ data, canWork, erpChangedPos, erpArrivedPos, waitingPos });
   const statusCounts = ASSET_STATUSES.filter((s) => (data?.status_counts?.[s] ?? 0) > 0).map((s) => ({
     status: s,
     count: data?.status_counts?.[s] ?? 0,

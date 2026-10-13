@@ -47,13 +47,18 @@ export function DeliveryRemindersCard() {
   const q = useReminders();
   const reminders = q.data ?? [];
   if (!Array.isArray(q.data) || reminders.length === 0) return null;
+  // Compact and secondary: one line, the list opens on demand (open by default only when short).
   return (
-    <section className="rounded-md border border-warning/50 bg-warning/10 p-3" aria-label="Delivery reminders">
-      <h2 className="flex items-center gap-2 text-sm font-semibold">
+    <details
+      className="rounded-md border border-warning/50 bg-warning/10 px-3 py-2"
+      aria-label="Delivery reminders"
+      open={reminders.length <= 3}
+    >
+      <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
         <PackageCheck className="h-4 w-4" aria-hidden="true" />
         The ERP shows goods received on {plural(reminders.length, "purchase order")} that are not marked delivered here
-      </h2>
-      <p className="mb-2 text-xs text-muted-foreground">Open the PO and use Mark Delivery Done: serial numbers are needed, so it is never done automatically.</p>
+      </summary>
+      <p className="mb-2 mt-1 text-xs text-muted-foreground">Open the PO and use Receive: serial numbers are needed, so it is never done automatically.</p>
       <ul className="flex flex-col gap-1">
         {reminders.map((r) => (
           <li key={r.po_id} className="flex flex-wrap items-center justify-between gap-2 rounded-sm border bg-background px-2 py-1 text-sm">
@@ -68,7 +73,7 @@ export function DeliveryRemindersCard() {
           </li>
         ))}
       </ul>
-    </section>
+    </details>
   );
 }
 
@@ -90,7 +95,7 @@ export function DeliveryReminderBanner({ poId, fromErp }: { poId: number; fromEr
           </li>
         ))}
       </ul>
-      <p className="mt-1 text-xs text-muted-foreground">Select the received lines and use Mark Delivery Done to enter their serial numbers.</p>
+      <p className="mt-1 text-xs text-muted-foreground">Use Receive on those lines below to enter their serial numbers.</p>
     </section>
   );
 }
