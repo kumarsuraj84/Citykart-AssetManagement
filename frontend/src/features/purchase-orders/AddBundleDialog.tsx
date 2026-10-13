@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import { splitAmounts, type Bundle } from "../bundles/bundle-parts";
@@ -11,12 +11,11 @@ import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { MAX_QUANTITY, quantityHint, quantityProblem } from "@/lib/limits";
 import { linesAndUnitsSentence } from "./po-list";
 import { useCanManage } from "@/lib/capabilities";
+import { SetPartAmounts, partAmountsFor, partAmountsPayload, partsMatchPrice } from "./SetPartAmounts";
 
 // The split itself lives in ../bundles/bundle-parts (one copy for the whole app);
 // re-exported here for existing imports.
 export { splitAmounts };
-
-const money = (n: number) => n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 interface Props {
   poId: number;
@@ -64,29 +63,22 @@ export function AddBundleDialog({ poId, open, onOpenChange, onAdded }: Props) {
   }, [open]);
 
   useEffect(() => {
-    if (!bundle) { setAmounts({}); return; }
-    const split = priceNum > 0 ? splitAmounts(priceNum, bundle.parts.map((p) => p.share_percent)) : bundle.parts.map(() => 0);
-    setAmounts(Object.fromEntries(bundle.parts.map((p, i) => [p.id, split[i] ? String(split[i]) : ""])));
+    setAmounts(partAmountsFor(bundle, priceNum));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bundleId, price, bundles.length]);
 
   const qty = Number(quantity) || 0;
   const tax = Number(taxPercent) || 0;
-  const partTotal = useMemo(
-    () => (bundle ? bundle.parts.reduce((sum, p) => sum + (Number(amounts[p.id]) || 0), 0) : 0),
-    [bundle, amounts],
-  );
-  const totalMatches = Math.abs(partTotal - priceNum) < 0.005;
   const canAdd =
     !!bundle && description.trim() !== "" && barcode.trim() !== "" && quantityProblem(quantity) === null && priceNum > 0 &&
-    totalMatches && bundle.parts.every((p) => Number(amounts[p.id]) > 0);
+    partsMatchPrice(bundle, amounts, priceNum);
 
   const addMutation = useMutation({
     mutationFn: () =>
       apiClient.post<{ line_no?: number | null }[]>(`/purchase-orders/${poId}/bundle-lines`, {
         bundle_id: Number(bundleId), description: description.trim(), barcode: barcode.trim(),
         quantity: qty, price: priceNum, tax_percent: tax, warranty_years: Number(warrantyYears) || 0,
-        parts: bundle!.parts.map((p) => ({ part_id: p.id, amount: Number(amounts[p.id]) })),
+        parts: partAmountsPayload(bundle!, amounts),
       }),
     onSuccess: (units) => {
       qc.invalidateQueries({ queryKey: ["purchase-order", poId] });
@@ -146,47 +138,7 @@ export function AddBundleDialog({ poId, open, onOpenChange, onAdded }: Props) {
               </div>
 
               {bundle && (
-                <div className="rounded-md border">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b text-left text-xs text-muted-foreground">
-                        <th className="px-2 py-1.5 font-medium">Part</th>
-                        <th className="px-2 py-1.5 font-medium">Serial</th>
-                        <th className="px-2 py-1.5 font-medium">Amount (before tax)</th>
-                        <th className="px-2 py-1.5 text-right font-medium">With tax</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {bundle.parts.map((p) => {
-                        const amt = Number(amounts[p.id]) || 0;
-                        return (
-                          <tr key={p.id} className="border-b last:border-0">
-                            <td className="px-2 py-1">{p.name}</td>
-                            <td className="px-2 py-1 text-xs text-muted-foreground">{p.serial_required ? "Needs serial" : "No serial"}</td>
-                            <td className="px-2 py-1">
-                              <Input
-                                aria-label={`Amount for ${p.name}`}
-                                type="number" min={0} step="0.01" className="h-8 w-32"
-                                value={amounts[p.id] ?? ""}
-                                onChange={(e) => setAmounts((a) => ({ ...a, [p.id]: e.target.value }))}
-                              />
-                            </td>
-                            <td className="px-2 py-1 text-right tabular-nums">{money(amt * (1 + tax / 100))}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                    <tfoot>
-                      <tr className="font-medium">
-                        <td className="px-2 py-1.5" colSpan={2}>Per set</td>
-                        <td className={`px-2 py-1.5 tabular-nums ${totalMatches ? "" : "text-destructive"}`} role="status">
-                          {money(partTotal)} {totalMatches ? "(matches the price)" : `(must equal ${money(priceNum)})`}
-                        </td>
-                        <td className="px-2 py-1.5 text-right tabular-nums">{money(partTotal * (1 + tax / 100))}</td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
+                <SetPartAmounts bundle={bundle} price={price} taxPercent={taxPercent} amounts={amounts} onAmountsChange={setAmounts} />
               )}
 
               {bundle && quantityProblem(quantity) === null && (

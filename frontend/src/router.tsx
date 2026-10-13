@@ -55,6 +55,7 @@ import { SettingsLanding } from "./features/settings/SettingsLanding";
 import { OrganisationScreen, isOrganisationTab, type OrganisationTab } from "./features/settings/OrganisationScreen";
 import { UsersAccessScreen } from "./features/settings/UsersAccessScreen";
 import { ErpSyncScreen } from "./features/settings/ErpSyncScreen";
+import { ErpInboxScreen, type InboxSection } from "./features/erp/ErpInbox";
 import { SetupWizard } from "./features/settings/SetupWizard";
 import { SETUP_TOTAL } from "./features/settings/setup-progress";
 import ReceiveRoute from "./routes/receive";
@@ -568,6 +569,23 @@ export const settingsUsersAccessRoute = createRoute({
   component: guarded("settings", UsersAccessScreen),
 });
 
+/** `?section=items|vendors|stores` -- the part of the ERP Inbox to open at (Home's rows link to it). */
+export interface ErpInboxSearch {
+  section?: InboxSection;
+}
+
+export const settingsErpInboxRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/settings/erp/inbox",
+  validateSearch: (search: Record<string, unknown>): ErpInboxSearch => ({
+    section: search.section === "items" || search.section === "vendors" || search.section === "stores" ? search.section : undefined,
+  }),
+  component: guarded("settings", function ErpInboxComponent() {
+    const { section } = settingsErpInboxRoute.useSearch();
+    return <ErpInboxScreen section={section} />;
+  }),
+});
+
 export const settingsErpMappingRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/settings/erp/mapping",
@@ -773,6 +791,7 @@ const routeTree = rootRoute.addChildren([
     settingsBrandsRoute,
     settingsVendorsRoute,
     settingsUsersAccessRoute,
+    settingsErpInboxRoute,
     settingsErpMappingRoute,
     settingsErpSyncRoute,
     settingsCustomFieldsRoute,

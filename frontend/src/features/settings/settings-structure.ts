@@ -73,9 +73,14 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     line: "The read-only link to the ERP.",
     links: [
       {
+        to: "/settings/erp/inbox",
+        label: "ERP Inbox",
+        line: "New items, vendors and stores from the ERP, each decided once and remembered.",
+      },
+      {
         to: "/settings/erp/mapping",
         label: "ERP Mapping",
-        line: "Advanced mapping rules: which ERP codes are which Item, and what CKAM does not track.",
+        line: "Advanced mapping rules for the rare cases: which ERP codes are which Item, and what CKAM does not track.",
       },
       { to: "/settings/erp/sync", label: "ERP Data Sync", line: "When the ERP data was last copied, and refresh it now." },
     ],

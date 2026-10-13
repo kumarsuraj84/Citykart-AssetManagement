@@ -66,34 +66,34 @@ test("PO delivery journey: raise PO, deliver partial quantity, verify Asset 360,
   await loginAs(page, ctx.admin.empCode, ctx.admin.password);
   await expect(page).toHaveURL(/\/dashboard$/);
 
-  // ---- Create a new Purchase Order (Cost Centre required, Vendor set too) ----
+  // ---- S3b-2: a new Purchase Order WITH its line, on one screen (Cost Centre required, Vendor set too) ----
   await page.goto("/purchase-orders/new");
   const poNumber = `E2E-PO-${ts}`;
   await page.locator("#po-number").fill(poNumber); // required field -- see selectRadixById's comment
   await selectRadix(page, "Vendor", ctx.vendor.name); // not required -- plain "Vendor" label, no asterisk
   await selectRadixById(page, "cost-center", ctx.costCenter.name);
-  await page.getByRole("button", { name: "Create Purchase Order", exact: true }).click();
+
+  // One line with Quantity = 3. The line's controls carry their own aria-label ("Line 1 …").
+  const lineDescription = `E2E PO Delivery Laptop ${ts}`;
+  const barcode = `E2E-BC-${ts}`;
+  await page.getByLabel("Line 1 Item", { exact: true }).click();
+  await page.getByRole("option", { name: optionMatcher(ctx.item.name) }).click();
+  await page.getByLabel("Line 1 Quantity", { exact: true }).fill("3");
+  await page.getByLabel("Line 1 Unit Cost", { exact: true }).fill("1000");
+  await page.getByLabel("Line 1 Tax %", { exact: true }).fill("5");
+  // Description starts as the Item's name and the barcode is optional: both under More details.
+  await page.getByRole("button", { name: "Line 1: more details", exact: true }).click();
+  await page.getByLabel("Description", { exact: true }).fill(lineDescription);
+  await page.getByLabel("Barcode", { exact: true }).fill(barcode);
+  await expect(page.getByLabel("Purchase order total")).toContainText("1 line · 3 units");
+  await page.getByRole("button", { name: "Save PO", exact: true }).click();
 
   await expect(page).toHaveURL(/\/purchase-orders\/\d+$/);
   await expect(page.getByRole("heading", { name: `Purchase Order ${poNumber}`, level: 1 })).toBeVisible();
   const poPath = new URL(page.url()).pathname;
 
-  // ---- Add one line with Quantity = 3 ----
-  const lineDescription = `E2E PO Delivery Laptop ${ts}`;
-  const barcode = `E2E-BC-${ts}`;
-  await page.getByRole("button", { name: "+ Add Line", exact: true }).click();
-  // Description/Barcode/Item/Cost/Quantity are all required
-  // here -- id-based, same reason as the PO header fields above.
-  await page.locator("#line-description").fill(lineDescription);
-  await page.locator("#line-barcode").fill(barcode);
-  await selectRadixById(page, "line-item", ctx.item.name);
-  await page.locator("#line-cost").fill("1000");
-  await page.locator("#line-tax").fill("5");
-  await page.locator("#line-quantity").fill("3");
-  await page.getByRole("button", { name: "Add Line", exact: true }).click();
-
   // ---- S2: the PO shows ONE line holding 3 waiting units (not 3 rows) ----
-  await expect(page.getByRole("status").filter({ hasText: "Line added: 1 line, 3 units waiting." })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "PO created: 1 line, 3 units waiting." })).toBeVisible();
   const lineRow = page.getByRole("row", { name: /^Line 1:/ });
   await expect(lineRow).toHaveCount(1);
   // #, Item, Ordered, Received, Waiting

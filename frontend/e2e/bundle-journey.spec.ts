@@ -60,30 +60,32 @@ test("Desktop bundle journey: define it, add 2 to a PO, deliver with no-serial d
   await expect(page.getByText(bundleName, { exact: true })).toBeVisible();
   await expect(page.getByText("CPU 70%, TFT 26%, Keyboard 2%, Mouse 2%")).toBeVisible();
 
-  // ---- A PO with the bundle added twice ----
+  // ---- S3b-2: a PO with the bundle twice, made on the one-screen New Purchase Order ----
   await page.goto("/purchase-orders/new");
   const poNumber = `E2E-BND-${ts}`;
   await page.locator("#po-number").fill(poNumber);
   await selectRadixById(page, "cost-center", ctx.costCenter.name);
-  await page.getByRole("button", { name: "Create Purchase Order", exact: true }).click();
+  // The empty first Item line is left out when saving; a set is added instead.
+  await page.getByRole("button", { name: "Add set", exact: true }).click();
+  const set = page.getByLabel("Set 1", { exact: true });
+  // Required labels end in a hidden "*": the set's own controls are reached by their id ending.
+  await set.locator('[id$="-bundle"]').click();
+  await page.getByRole("option", { name: optionMatcher(bundleName) }).click();
+  await set.locator('[id$="-quantity"]').fill("2");
+  await set.locator('[id$="-price"]').fill("16000");
+  await expect(set.getByLabel("Set 1 amount for CPU")).toHaveValue("11200");
+  await expect(set.getByLabel("Set 1 amount for TFT")).toHaveValue("4160");
+  await expect(set.getByLabel("Set 1 amount for Keyboard")).toHaveValue("320");
+  await expect(set.getByLabel("Set 1 amount for Mouse")).toHaveValue("320");
+  // S2: one line per part, 2 units on each -- never "8 lines".
+  await expect(set.getByText(/4 lines, 8 units waiting \(2 of each part\)/)).toBeVisible();
+  await set.getByRole("button", { name: "Set 1: more details", exact: true }).click();
+  await set.getByLabel("Description", { exact: true }).fill(`E2E Dell Desktop ${ts}`);
+  await set.getByLabel("Barcode", { exact: true }).fill(`E2E-BC-${ts}`);
+  await page.getByRole("button", { name: "Save PO", exact: true }).click();
   await expect(page).toHaveURL(/\/purchase-orders\/\d+$/);
 
-  await page.getByRole("button", { name: "+ Add Set", exact: true }).click();
-  const addBundle = page.getByRole("dialog", { name: "Add Set" });
-  await selectRadixById(page, "bundle-pick", bundleName);
-  await addBundle.locator("#bundle-description").fill(`E2E Dell Desktop ${ts}`);
-  await addBundle.locator("#bundle-barcode").fill(`E2E-BC-${ts}`);
-  await addBundle.locator("#bundle-quantity").fill("2");
-  await addBundle.locator("#bundle-price").fill("16000");
-  await expect(addBundle.getByLabel("Amount for CPU")).toHaveValue("11200");
-  await expect(addBundle.getByLabel("Amount for TFT")).toHaveValue("4160");
-  await expect(addBundle.getByLabel("Amount for Keyboard")).toHaveValue("320");
-  await expect(addBundle.getByLabel("Amount for Mouse")).toHaveValue("320");
-  // S2: one line per part, 2 units on each -- never "8 lines".
-  await expect(addBundle.getByText(/This will add 4 lines, 8 units waiting/)).toBeVisible();
-  await addBundle.getByRole("button", { name: "Add Set", exact: true }).click();
-
-  await expect(page.getByRole("status").filter({ hasText: "Set added: 4 lines, 8 units waiting." })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "PO created: 4 lines, 8 units waiting." })).toBeVisible();
   await expect(page.getByRole("row", { name: /^Line \d+:/ })).toHaveCount(4);
 
   // ---- Receive all 8: serials only for the CPUs and TFTs ----

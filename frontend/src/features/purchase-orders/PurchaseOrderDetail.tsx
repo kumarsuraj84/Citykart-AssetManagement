@@ -22,6 +22,7 @@ import { CancelWaitingDialog, type CancelTarget } from "./CancelWaitingDialog";
 import { PoLinesTable } from "./PoLinesTable";
 import { type LineGroup, type Option, type PendingAssetRow, distinctLines, money } from "./po-detail-types";
 import { linesAndUnitsSentence } from "./po-list";
+import { clearPoFlash, peekPoFlash } from "./po-flash";
 import { MAX_QUANTITY, quantityHint, quantityProblem } from "@/lib/limits";
 import { DeliveryReminderBanner } from "../erp/DeliveryReminders";
 import { ErpChangesPanel } from "../erp/ErpChanges";
@@ -90,7 +91,9 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const navigate = useNavigate();
   const [deleteOpen, setDeleteOpen] = useState(false);
   // One plain sentence about the last thing done here (lines added, saved, cancelled).
-  const [notice, setNotice] = useState<string | null>(null);
+  // S3b-2: the one-screen New Purchase Order hands over "PO created: …" for the first view.
+  const [notice, setNotice] = useState<string | null>(() => peekPoFlash(poId));
+  useEffect(() => clearPoFlash(poId), [poId]);
 
   const poQ = useQuery({
     queryKey: ["purchase-order", poId],

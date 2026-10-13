@@ -46,7 +46,9 @@ function buildPayload(formFields: FormField[], draft: Record<string, unknown>) {
     if (!(field.key in draft)) continue;
     const raw = draft[field.key];
     if (field.toPayload) {
-      payload[field.key] = field.toPayload(raw);
+      // undefined = leave this field out of the request entirely (an optional code left blank).
+      const value = field.toPayload(raw);
+      if (value !== undefined) payload[field.key] = value;
     } else if (field.type === "number") {
       payload[field.key] = raw === "" ? undefined : Number(raw);
     } else if (field.type === "select") {
@@ -128,9 +130,36 @@ function MasterFormField({
       id={field.key}
       aria-label={field.label}
       type={field.type === "number" ? "number" : "text"}
+      placeholder={field.placeholder}
       value={(value as string) ?? ""}
       onChange={(e) => onChange(e.target.value)}
     />
+  );
+}
+
+const isBlank = (v: unknown) => v === undefined || v === null || (typeof v === "string" && v.trim() === "");
+
+/** What stops Save: a required field left empty or a value the field's own check refuses. */
+function fieldErrors(fields: FormField[], draft: Record<string, unknown>): { missing: boolean; errors: Record<string, string> } {
+  const errors: Record<string, string> = {};
+  let missing = false;
+  for (const f of fields) {
+    const raw = draft[f.key];
+    if (f.required && isBlank(raw)) missing = true;
+    const problem = f.validate && !isBlank(raw) ? f.validate(raw) : null;
+    if (problem) errors[f.key] = problem;
+  }
+  return { missing, errors };
+}
+
+/** One labelled field of a master dialog (helper text, or the field's own error under it). */
+function DialogField({
+  field, idPrefix = "", value, error, onChange,
+}: { field: FormField; idPrefix?: string; value: unknown; error?: string; onChange: (value: unknown) => void }) {
+  return (
+    <FormFieldShell htmlFor={`${idPrefix}${field.key}`} label={field.label} required={field.required} helperText={field.helperText} errorText={error}>
+      <MasterFormField field={{ ...field, key: `${idPrefix}${field.key}` }} value={value} onChange={onChange} />
+    </FormFieldShell>
   );
 }
 
@@ -257,6 +286,9 @@ export function MasterCrudScreen<T extends object>({
     if (!editRow) return;
     updateMutation.mutate({ id: editRow.id, payload: buildPayload(config.editFields, editDraft) });
   }
+
+  const createCheck = fieldErrors(config.formFields, createDraft);
+  const editCheck = fieldErrors(config.editFields, editDraft);
 
   const readOnlyFields = config.formFields.filter(
     (f) => !config.editFields.some((ef) => ef.key === f.key),
@@ -416,15 +448,25 @@ export function MasterCrudScreen<T extends object>({
           </DialogHeader>
 
           <div className="flex flex-col gap-4">
-            {config.formFields.map((f) => (
-              <FormFieldShell key={f.key} htmlFor={f.key} label={f.label}>
-                <MasterFormField
-                  field={f}
-                  value={createDraft[f.key]}
-                  onChange={(value) => setCreateDraft((d) => ({ ...d, [f.key]: value }))}
-                />
-              </FormFieldShell>
+            {config.formFields.filter((f) => !f.more).map((f) => (
+              <DialogField
+                key={f.key} field={f} value={createDraft[f.key]} error={createCheck.errors[f.key]}
+                onChange={(value) => setCreateDraft((d) => ({ ...d, [f.key]: value }))}
+              />
             ))}
+            {config.formFields.some((f) => f.more) && (
+              <details className="rounded-md border px-3 py-2" open={Object.keys(createCheck.errors).some((k) => config.formFields.find((f) => f.key === k)?.more)}>
+                <summary className="cursor-pointer select-none text-sm font-medium">More</summary>
+                <div className="mt-3 flex flex-col gap-4">
+                  {config.formFields.filter((f) => f.more).map((f) => (
+                    <DialogField
+                      key={f.key} field={f} value={createDraft[f.key]} error={createCheck.errors[f.key]}
+                      onChange={(value) => setCreateDraft((d) => ({ ...d, [f.key]: value }))}
+                    />
+                  ))}
+                </div>
+              </details>
+            )}
 
             {createMutation.isError && (
               <p className="text-sm text-destructive" role="alert">
@@ -437,7 +479,10 @@ export function MasterCrudScreen<T extends object>({
             <Button variant="outline" onClick={() => setCreateOpen(false)}>
               Cancel
             </Button>
-            <AsyncButton onClick={handleCreateSave} pending={createMutation.isPending} pendingLabel="Saving…">
+            <AsyncButton
+              onClick={handleCreateSave} pending={createMutation.isPending} pendingLabel="Saving…"
+              disabled={createCheck.missing || Object.keys(createCheck.errors).length > 0}
+            >
               Save
             </AsyncButton>
           </DialogFooter>
@@ -467,13 +512,10 @@ export function MasterCrudScreen<T extends object>({
               </div>
             )}
             {config.editFields.map((f) => (
-              <FormFieldShell key={f.key} htmlFor={`edit-${f.key}`} label={f.label}>
-                <MasterFormField
-                  field={{ ...f, key: `edit-${f.key}` }}
-                  value={editDraft[f.key]}
-                  onChange={(value) => setEditDraft((d) => ({ ...d, [f.key]: value }))}
-                />
-              </FormFieldShell>
+              <DialogField
+                key={f.key} field={f} idPrefix="edit-" value={editDraft[f.key]} error={editCheck.errors[f.key]}
+                onChange={(value) => setEditDraft((d) => ({ ...d, [f.key]: value }))}
+              />
             ))}
 
             {updateMutation.isError && (
@@ -487,7 +529,10 @@ export function MasterCrudScreen<T extends object>({
             <Button variant="outline" onClick={() => setEditRow(null)}>
               Cancel
             </Button>
-            <AsyncButton onClick={handleEditSave} pending={updateMutation.isPending} pendingLabel="Saving…">
+            <AsyncButton
+              onClick={handleEditSave} pending={updateMutation.isPending} pendingLabel="Saving…"
+              disabled={editCheck.missing || Object.keys(editCheck.errors).length > 0}
+            >
               Save
             </AsyncButton>
           </DialogFooter>

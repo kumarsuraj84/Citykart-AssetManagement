@@ -152,7 +152,7 @@ const PEOPLE_MENU = ["Employees", "Stores", "Stock Rooms", "Install Points"];
 const SETTINGS_LINKS = [
   "All Settings", "Organisation",
   "Items", "Asset Groups", "Brands",
-  "Vendors", "Users & Access", "ERP Mapping", "ERP Data Sync",
+  "Vendors", "Users & Access", "ERP Inbox", "ERP Mapping", "ERP Data Sync",
   "Custom Fields", "Asset Code Format", "Bulk Import",
 ];
 
@@ -180,6 +180,7 @@ describe("AppShell navigation (role-aware sidebar)", () => {
     expect(within(nav).getByRole("link", { name: "Organisation" })).toHaveAttribute("href", "/settings/organisation");
     expect(within(nav).getByRole("link", { name: "Asset Groups" })).toHaveAttribute("href", "/settings/catalogue/asset-groups");
     expect(within(nav).getByRole("link", { name: "Asset Code Format" })).toHaveAttribute("href", "/settings/advanced/code-format");
+    expect(within(nav).getByRole("link", { name: "ERP Inbox" })).toHaveAttribute("href", "/settings/erp/inbox");
     expect(within(nav).getByRole("link", { name: "ERP Mapping" })).toHaveAttribute("href", "/settings/erp/mapping");
     expect(within(nav).getByRole("link", { name: "ERP Data Sync" })).toHaveAttribute("href", "/settings/erp/sync");
     expect(within(nav).getByRole("link", { name: "Bulk Import" })).toHaveAttribute("href", "/settings/advanced/import");

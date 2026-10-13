@@ -50,7 +50,7 @@ const GROUPS: { key: Group; title: string; hint: string }[] = [
 
 /** "Stores from ERP": makes a store user (and its location) for each store the ERP has, with the login email
  * built from the store's code. The user has no password until an admin issues one (Reset Password). */
-export function ErpStoresDialog() {
+export function ErpStoresDialog({ triggerLabel = "Stores from ERP", initialCompanyId }: { triggerLabel?: string; initialCompanyId?: number | null } = {}) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -63,7 +63,7 @@ export function ErpStoresDialog() {
     enabled: open,
   });
   const companies = Array.isArray(companiesQ.data) ? companiesQ.data : [];
-  const companyId = pickedCompany ?? (companies[0] ? String(companies[0].id) : undefined);
+  const companyId = pickedCompany ?? (initialCompanyId != null ? String(initialCompanyId) : companies[0] ? String(companies[0].id) : undefined);
 
   const listQ = useQuery({
     queryKey: ["erp", "stores", companyId],
@@ -81,6 +81,7 @@ export function ErpStoresDialog() {
     mutationFn: () => apiClient.post<CreateResult>("/erp/stores/create", { company_id: Number(companyId), codes: [...chosen] }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["erp", "stores"] });
+      qc.invalidateQueries({ queryKey: ["erp", "inbox"] });
       qc.invalidateQueries({ queryKey: ["asset_users"] });
       qc.invalidateQueries({ queryKey: ["masters", "locations"] });
     },
@@ -108,7 +109,7 @@ export function ErpStoresDialog() {
 
   return (
     <>
-      <Button variant="outline" onClick={() => setOpen(true)}>Stores from ERP</Button>
+      <Button variant="outline" onClick={() => setOpen(true)}>{triggerLabel}</Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>

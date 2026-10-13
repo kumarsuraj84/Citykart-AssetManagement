@@ -34,6 +34,14 @@ export interface FormField {
   /** Render a select as a type-to-filter dropdown (Company, Category...) instead
    * of a plain list. The field keeps its id and label either way. */
   searchable?: boolean;
+  /** Must be filled before Save (marked with *). */
+  required?: boolean;
+  /** Shown under a collapsed "More" in the Add dialog (contact details, an optional code). */
+  more?: boolean;
+  helperText?: string;
+  placeholder?: string;
+  /** A short sentence when the typed value is not acceptable (null = fine); Save waits until it is. */
+  validate?: (raw: unknown) => string | null;
 }
 
 export interface MasterConfig<T> {

@@ -50,11 +50,16 @@ export function ArticleMapScreen() {
         description="Advanced mapping rules. Decide what CKAM does with every ERP item code (barcode): link it to an Item, or mark it Not tracked (cables, hangers, sensor tags: purchase orders leave those lines out). In Codes, every barcode is its own row: tick the ones you want and link them to one Item. Each company has its own ERP master, so decide per company. Articles is a shortcut for a whole family at once; Groups… clears a whole Department, Section or Division."
         actions={
           <div className="flex gap-2">
+            <Button asChild variant="outline"><Link to="/settings/erp/inbox">ERP Inbox</Link></Button>
             <Button variant="outline" onClick={() => setShowGroups(true)}>Groups…</Button>
             <Button asChild variant="outline"><Link to="/settings/catalogue/items">Items</Link></Button>
           </div>
         }
       />
+      <p className="text-sm text-muted-foreground" role="note">
+        Day to day, new ERP items are decided in the <Link className="font-medium text-primary underline-offset-2 hover:underline" to="/settings/erp/inbox">ERP Inbox</Link> or
+        in the purchase order review; use these rules for the rare cases.
+      </p>
       <div className="flex flex-wrap items-center gap-2">
         {companies.length > 1 && (
           <div className="w-64">
