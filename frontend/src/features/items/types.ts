@@ -17,13 +17,23 @@ export interface Item {
   map_count: number;
 }
 
-export type MatchType = "CODE" | "NAME" | "ARTICLE";
+export type MatchType = "CODE" | "NAME" | "ARTICLE" | "DEPARTMENT" | "SECTION" | "DIVISION";
+/** The broad levels can only say "not tracked in CKAM". */
+export type GroupLevel = "DEPARTMENT" | "SECTION" | "DIVISION";
 
 export interface ArticleRow {
   article_key: string;
   article_name: string;
   section: string;
   department: string;
+  division: string;
+  /** "ITEM" (linked to an Item), "NOT_TRACKED" (the Article or its Department / Section / Division is marked so), or none yet. */
+  decision: "ITEM" | "NOT_TRACKED" | null;
+  not_tracked_by: string | null;
+  not_tracked_level: MatchType | null;
+  decision_map_id: number | null;
+  /** Code / product-name rules inside the Article that say "not tracked". */
+  untracked_rules: number;
   codes: number;
   units: number;
   lines: number;
@@ -49,4 +59,20 @@ export interface ArticleCodeRow {
   item_id: number | null;
   item_name: string | null;
   matched_by: MatchType | null;
+  not_tracked: boolean;
+  not_tracked_by: string | null;
+  map_id: number | null;
+}
+
+/** A Department / Section / Division the company has bought from, for marking a whole group not tracked. */
+export interface GroupRow {
+  value: string;
+  level: GroupLevel;
+  articles: number;
+  codes: number;
+  units: number;
+  section: string;
+  samples: string[];
+  not_tracked: boolean;
+  map_id: number | null;
 }

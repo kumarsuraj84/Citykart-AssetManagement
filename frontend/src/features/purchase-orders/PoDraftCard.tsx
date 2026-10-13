@@ -13,6 +13,17 @@ import { ItemFormDialog } from "../items/ItemFormDialog";
 import { NewBrandDialog, NewCostCenterDialog, NewVendorDialog, useCanCreateMasters } from "@/components/quick-create/masters";
 
 export type MapScope = "NONE" | "ARTICLE" | "NAME" | "CODE";
+/** How far a "not tracked" decision reaches: one code, a product name, an Article, or a whole Department / Section / Division. */
+export type NotTrackedScope = "CODE" | "NAME" | "ARTICLE" | "DEPARTMENT" | "SECTION" | "DIVISION";
+
+/** A line of the ERP PO that CKAM does not track, so it is left out of the draft. */
+export interface UntrackedLine {
+  item_code: string | null;
+  description: string;
+  quantity: number;
+  rate: number;
+  why: string | null;
+}
 
 export interface DraftLine {
   item_code: string | null;
@@ -42,6 +53,7 @@ export interface DraftLine {
   article_name: string | null;
   section: string | null;
   department: string | null;
+  division?: string | null;
   name_key: string | null;
   warnings: string[];
 }
@@ -64,6 +76,8 @@ export interface Draft {
   status: string;
   warnings: string[];
   lines: DraftLine[];
+  /** Lines of this PO that CKAM does not track (cables, hangers…): not part of the draft. */
+  untracked_lines?: UntrackedLine[];
 }
 
 interface Option {
@@ -85,6 +99,7 @@ interface LineForm {
   itemId: string;
   partAmounts: Record<number, string>;
   mapScope: MapScope;
+  notTrackedScope: NotTrackedScope;
 }
 
 const str = (v: number | null | undefined) => (v == null ? "" : String(v));
@@ -124,6 +139,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
         itemId: str(l.item_id), partAmounts: partAmountsFor(bundle, String(l.rate)),
         // An unlinked code is remembered by default (for its whole Article when it has one).
         mapScope: l.item_id === null ? (l.article_key ? "ARTICLE" : "CODE") : "NONE",
+        notTrackedScope: l.article_key ? "ARTICLE" : "CODE",
       };
     }),
   );
@@ -213,8 +229,38 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
     },
   });
 
+  // "Not tracked": CKAM does not manage this (a cable, a hanger). Remembered as a rule for this PO's company, then the draft is read again
+  // without those lines.
+  const notTrackedMutation = useMutation({
+    mutationFn: (l: LineForm) => {
+      const s = l.src;
+      const base = { not_tracked: true, match_type: l.notTrackedScope, ...(companyId ? { company_id: Number(companyId) } : {}) };
+      const article = { article_key: s.article_key, article_name: s.article_name, section: s.section, department: s.department };
+      if (l.notTrackedScope === "CODE") return apiClient.post("/items/maps", { ...base, ...article, erp_item_code: s.item_code });
+      if (l.notTrackedScope === "NAME") return apiClient.post("/items/maps", { ...base, ...article, name_key: s.name_key });
+      if (l.notTrackedScope === "ARTICLE") return apiClient.post("/items/maps", { ...base, ...article });
+      const level = { DEPARTMENT: s.department, SECTION: s.section, DIVISION: s.division }[l.notTrackedScope];
+      return apiClient.post("/items/maps", { ...base, level_key: level });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["erp", "draft"] });
+      qc.invalidateQueries({ queryKey: ["erp", "pos"] });
+      qc.invalidateQueries({ queryKey: ["items"] });
+    },
+  });
+  const notTrackedChoices = (s: DraftLine): { value: NotTrackedScope; label: string }[] => {
+    const out: { value: NotTrackedScope; label: string }[] = [{ value: "CODE", label: "This ERP code only" }];
+    if (s.article_key && s.name_key) out.push({ value: "NAME", label: "This product name" });
+    if (s.article_key) out.push({ value: "ARTICLE", label: `Every code of this Article` });
+    if (s.department) out.push({ value: "DEPARTMENT", label: `The whole Department ${s.department}` });
+    if (s.section) out.push({ value: "SECTION", label: `The whole Section ${s.section}` });
+    if (s.division) out.push({ value: "DIVISION", label: `The whole Division ${s.division}` });
+    return out;
+  };
+
   const created = createMutation.data;
   const locked = !!created;
+  const leftOut = draft.untracked_lines ?? [];
   const categoryName = (id: number) => categoriesQ.data?.find((c) => c.id === id)?.name ?? "";
   const subcategoryName = (id: number | null) => (id ? subcategoriesQ.data?.find((s) => s.id === id)?.name ?? "" : "");
 
@@ -378,9 +424,47 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
                   )}
                 </div>
                 {problems[i] && <p className="text-xs text-destructive">Line {i + 1}: {problems[i]}.</p>}
+                {canCreateMasters && s.item_id === null && s.item_code && (
+                  <div className="flex flex-wrap items-end gap-2 border-t pt-2" aria-label={`Line ${i + 1} not tracked`}>
+                    <span className="pb-2 text-xs text-muted-foreground">Not something CKAM tracks (a cable, a hanger)?</span>
+                    <div className="w-64">
+                      <SearchableSelect
+                        id={`${id}-not-tracked-scope`} aria-label={`Line ${i + 1}: how far this reaches`} value={l.notTrackedScope}
+                        onValueChange={(v) => setLine(i, { notTrackedScope: v as NotTrackedScope })}
+                        options={notTrackedChoices(s)}
+                      />
+                    </div>
+                    <AsyncButton
+                      type="button" variant="outline" size="sm" pending={notTrackedMutation.isPending} pendingLabel="Saving…"
+                      aria-label={`Line ${i + 1}: not tracked`} onClick={() => notTrackedMutation.mutate(l)}
+                    >
+                      Not tracked
+                    </AsyncButton>
+                  </div>
+                )}
               </div>
             );
           })}
+          {notTrackedMutation.isError && (
+            <p className="text-sm text-destructive" role="alert">
+              {notTrackedMutation.error instanceof Error ? notTrackedMutation.error.message : "Could not save that decision."}
+            </p>
+          )}
+          {leftOut.length > 0 && (
+            <details className="rounded-md border bg-muted/20 p-2 text-sm" aria-label="Lines left out">
+              <summary className="cursor-pointer text-xs text-muted-foreground">
+                {leftOut.length} line{leftOut.length === 1 ? "" : "s"} left out: not tracked in CKAM
+              </summary>
+              <ul className="mt-1 flex flex-col gap-0.5 text-xs">
+                {leftOut.map((u) => (
+                  <li key={`${u.item_code}-${u.description}`}>
+                    <span className="font-mono">{u.item_code}</span> {u.description} · {u.quantity} × {money(u.rate)}
+                    {u.why && <span className="text-muted-foreground"> · {u.why}</span>}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </div>
       </fieldset>
 

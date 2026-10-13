@@ -258,6 +258,7 @@ async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source
             "erp_description": erp.description if erp else None, "erp_name": erp.name if erp else None,
             "article_key": erp.article_key if erp else None, "article_name": erp.article_name if erp else None,
             "section": erp.section if erp else None, "department": erp.department if erp else None,
+            "division": erp.division if erp else None,
             "name_key": norm_name(erp.name) if erp else None,
             "warnings": line_warnings,
         })

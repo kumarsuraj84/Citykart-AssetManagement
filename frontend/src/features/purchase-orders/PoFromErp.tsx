@@ -25,6 +25,9 @@ interface ErpPoRow {
   vendor_name: string;
   line_count: number;
   net_amount: number;
+  /** Lines CKAM tracks, and lines it does not (cables, hangers…): a PO with none of the first is not offered. */
+  tracked_lines?: number;
+  untracked_lines?: number;
 }
 
 const money = (n: number) => n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -64,7 +67,10 @@ export function PoFromErp() {
     { key: "po_date", header: "PO Date", cell: (p) => p.po_date },
     { key: "vendor", header: "Vendor", cell: (p) => p.vendor_name },
     { key: "delivery", header: "Delivery", cell: (p) => p.delivery_location },
-    { key: "lines", header: "Lines", cellClassName: "tabular-nums", cell: (p) => p.line_count },
+    {
+      key: "lines", header: "Lines", cellClassName: "tabular-nums",
+      cell: (p) => (p.untracked_lines ? `${p.tracked_lines ?? 0} (+${p.untracked_lines} not tracked)` : p.line_count),
+    },
     { key: "amount", header: "PO Value", cellClassName: "tabular-nums", cell: (p) => money(p.net_amount) },
     {
       key: "open", header: "",
@@ -130,7 +136,11 @@ export function PoFromErp() {
             </p>
           )}
           {draftQ.data && itemsQ.data && bundlesQ.data && (
-            <PoDraftCard key={draftQ.data.erp_po_code} draft={draftQ.data} bundles={bundlesQ.data} items={itemsQ.data} />
+            // A decision "not tracked" changes which lines the draft has, so the card starts again from the fresh draft.
+            <PoDraftCard
+              key={`${draftQ.data.erp_po_code}:${draftQ.data.lines.length}:${(draftQ.data.untracked_lines ?? []).length}`}
+              draft={draftQ.data} bundles={bundlesQ.data} items={itemsQ.data}
+            />
           )}
           {itemsQ.isError && <p className="text-sm text-destructive" role="alert">Could not load the Items.</p>}
         </div>

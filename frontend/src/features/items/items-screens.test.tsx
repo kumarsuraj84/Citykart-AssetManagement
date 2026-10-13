@@ -249,7 +249,8 @@ describe("ERP Articles screen", () => {
     expect(screen.getByText("COMPUTER EQUIPMENT › FA_CE_UPS")).toBeInTheDocument();
     expect(screen.getByText("Suggested: UPS")).toBeInTheDocument();
     expect(screen.queryByText("02-I3 CORE[IT-01]")).not.toBeInTheDocument();                 // already linked: hidden in "Not linked"
-    expect(screen.getByText("1 of 3 Articles linked")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Not decided (2)" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Linked (1)" })).toBeInTheDocument();
     expect(screen.getByLabelText("Item for FA_CE_UPS")).toHaveTextContent("UPS");              // the suggestion is pre-filled, not saved
     fireEvent.click(screen.getByRole("button", { name: "Link FA_CE_UPS" }));
     await waitFor(() =>
@@ -263,7 +264,7 @@ describe("ERP Articles screen", () => {
     mockApi();
     renderAt("/setup/erp-articles");
     await screen.findByText("FA_CE_UPS");
-    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    fireEvent.click(screen.getByRole("button", { name: "All (3)" }));
     const row = screen.getByText("02-I3 CORE[IT-01]").closest("tr")!;
     expect(within(row).getByText("+ 1 by name, 0 by code")).toBeInTheDocument();
     expect(within(row).getByRole("button", { name: "Link 02-I3 CORE[IT-01]" })).toBeDisabled();
@@ -277,7 +278,7 @@ describe("ERP Articles screen", () => {
     mockApi();
     renderAt("/setup/erp-articles");
     await screen.findByText("FA_CE_UPS");
-    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    fireEvent.click(screen.getByRole("button", { name: "All (3)" }));
     fireEvent.change(screen.getByLabelText("Search ERP Articles"), { target: { value: "rack" } });
     expect(screen.getByText("FA_IT_OTHERS")).toBeInTheDocument();
     expect(screen.queryByText("FA_CE_UPS")).not.toBeInTheDocument();
@@ -314,7 +315,7 @@ describe("ERP Articles screen", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Codes of FA_IT_OTHERS" }));
     const dialog = await screen.findByRole("dialog");
     expect(await within(dialog).findByText("48 PORT SWITCH")).toBeInTheDocument();
-    expect(within(dialog).getByText("Not linked to any Item")).toBeInTheDocument();
+    expect(within(dialog).getByText("Not decided yet")).toBeInTheDocument();
     expect(within(dialog).getByText(/by its product name/)).toBeInTheDocument();             // the rack already follows a name rule
 
     fireEvent.click(within(dialog).getByLabelText("Item for CT500001"));

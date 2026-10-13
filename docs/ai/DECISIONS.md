@@ -2,6 +2,14 @@
 
 Newest first. These override older spec/plan text where they conflict.
 
+## 2026-10-13 — Not everything the ERP capitalises is tracked in CKAM: a "not tracked" decision
+
+The ERP's Fixed Assets division includes shop-fitting material (hangers, sensor tags, cables, brackets) and mixed Articles (cameras
+with their cable and connector), and the owner wants CKAM clean. An ERP code, product name, Article, Department, Section or Division
+can be marked **not tracked** once, and is remembered per company; PO drafts leave those lines out, the picker hides a PO made only
+of them, the ERP change check and reminders ignore them. A rule that links an Item beats a broader not-tracked rule. Nothing forces
+an Item to be created for something that is not tracked. Details in `ITEM_MODEL.md`.
+
 ## 2026-10-13 — Two companies: CKAM keeps its own copy of the ERP data, and every ERP code is (company, code)
 
 CKSPL and CKVPL buy the same articles from the same vendors, each in its own ERP numbering. Checked on the real data: item

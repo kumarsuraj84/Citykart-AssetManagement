@@ -232,3 +232,77 @@ describe("Purchase Orders from the ERP", () => {
     expect(await screen.findByRole("link", { name: "Pick from ERP" })).toHaveAttribute("href", "/purchase-orders/from-erp");
   });
 });
+
+describe("Things CKAM does not track", () => {
+  const CABLE = line({
+    item_code: "CT166452", description: "CABLE CAT-6", barcode: "CT166452", quantity: 2, rate: 4000, amount: 8000, item_id: null, item_name: null, matched_by: null,
+    category_name: null, subcategory_name: null, bundle_id: null, bundle_name: null, erp_description: "CABLE CAT-6 · DLINK", erp_name: "CABLE CAT-6",
+    article_key: "FA_CE_CAMERA", article_name: "FA_CE_CAMERA", section: "IT EQUIPMENTS", department: "FA_CE_CCTV", division: "FIXED ASSETS",
+    name_key: "cable cat 6", warnings: ["No Item is linked to this ERP code yet."],
+  });
+  const LEFT_OUT = [{ item_code: "CT166452", description: "CABLE CAT-6", quantity: 2, rate: 4000, why: "Code" }];
+
+  function asOwner(isPrimaryOwner: boolean) {
+    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner, mustChangePassword: false });
+  }
+
+  it("the Primary Owner can say a line is not tracked, and the draft is read again without it", async () => {
+    asOwner(true);
+    const before = draft({}, [line(), CABLE]);
+    const after = draft({ untracked_lines: LEFT_OUT }, [line()]);
+    mockApi({ d: before });
+    const base = (apiClient.get as any).getMockImplementation();
+    let decided = false;
+    (apiClient.get as any).mockImplementation((path: string) => (path.endsWith("/draft") ? Promise.resolve(decided ? after : before) : base(path)));
+    (apiClient.post as any).mockImplementation((path: string) => {
+      if (path === "/items/maps") decided = true;
+      return Promise.resolve({});
+    });
+    renderScreen();
+    await openDraft();
+    fireEvent.click(screen.getByLabelText("Line 2: how far this reaches"));
+    fireEvent.click(await screen.findByRole("option", { name: "This ERP code only" }));
+    fireEvent.click(screen.getByRole("button", { name: "Line 2: not tracked" }));
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith("/items/maps", {
+        not_tracked: true, match_type: "CODE", company_id: 1, article_key: "FA_CE_CAMERA", article_name: "FA_CE_CAMERA", section: "IT EQUIPMENTS",
+        department: "FA_CE_CCTV", erp_item_code: "CT166452",
+      }),
+    );
+    expect(await screen.findByText("1 line left out: not tracked in CKAM")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Line 2")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("1 line left out: not tracked in CKAM"));
+    expect(screen.getByText(/CABLE CAT-6/, { selector: "li" })).toHaveTextContent("2 × 4,000.00");
+  });
+
+  it("offers the whole Department, Section or Division too", async () => {
+    asOwner(true);
+    mockApi({ d: draft({}, [line(), CABLE]) });
+    renderScreen();
+    await openDraft();
+    fireEvent.click(screen.getByLabelText("Line 2: how far this reaches"));
+    expect(await screen.findByRole("option", { name: "The whole Department FA_CE_CCTV" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "The whole Section IT EQUIPMENTS" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: "The whole Division FIXED ASSETS" }));
+    fireEvent.click(screen.getByRole("button", { name: "Line 2: not tracked" }));
+    await waitFor(() =>
+      expect(apiClient.post).toHaveBeenCalledWith("/items/maps", { not_tracked: true, match_type: "DIVISION", company_id: 1, level_key: "FIXED ASSETS" }),
+    );
+  });
+
+  it("people who cannot make rules do not see the choice, and a linked line never has it", async () => {
+    asOwner(false);
+    mockApi({ d: draft({}, [line(), CABLE]) });
+    renderScreen();
+    await openDraft();
+    expect(screen.queryByRole("button", { name: "Line 2: not tracked" })).not.toBeInTheDocument();
+    asOwner(true);
+    expect(screen.queryByRole("button", { name: "Line 1: not tracked" })).not.toBeInTheDocument();      // line 1 is linked to Desktop
+  });
+
+  it("shows what a PO has beyond the lines CKAM tracks", async () => {
+    mockApi({ rows: [{ ...ROW, tracked_lines: 1, untracked_lines: 3 }] });
+    renderScreen();
+    expect(await screen.findByText("1 (+3 not tracked)")).toBeInTheDocument();
+  });
+});

@@ -100,6 +100,29 @@ Where the second company's data lives (found 2026-10-13): the same warehouse, in
 ERP codes are only unique *inside* a company (vendor codes and site codes clash across the two companies;
 item codes happen not to). Treat every ERP code as `(company, code)`.
 
+## Things CKAM does not track (decided 2026-10-13)
+
+The ERP's Fixed Assets division also holds shop-fitting material that CKAM must not be cluttered with (hangers: 7.7 million
+units; sensor tags: 2.5 million; cables, brackets, cable trays, thimbles...), and an Article is a purchasing group, not a
+statement of what each code is (the camera Article FA_CE_CAMERA holds 6 cameras, a CAT-6 cable and a connector). So a rule
+can say **"not tracked"** instead of naming an Item (`item_map.not_tracked`, `item_id` null).
+
+- **Levels, most specific first:** CODE > product NAME > ARTICLE > DEPARTMENT > SECTION > DIVISION (`level_key` holds the ERP name
+  of the last three). Per company, a company's own rule beating an every-company one, as for Items. The three broad levels can only
+  say "not tracked" (a department is not one Item); a code / name / Article rule that links an **Item beats** a broader
+  "not tracked" rule, so one Article can stay tracked inside a department that is not, and a code inside a tracked Article can be
+  not tracked.
+- **Effect:** the PO draft leaves those lines out (listed collapsed as "N lines left out"), a PO made only of them is not offered in
+  Pick from ERP (rows show "1 (+3 not tracked)"), the ERP change check ignores them on both sides (marking a code not tracked
+  after a PO was made never shows as a cancellation) and delivery reminders never see them (they have no CKAM lines).
+- **Where to decide:** Setup > ERP Articles: tabs Not decided / Linked / Not tracked / All with counts; a Not tracked button per
+  Article and Track again; tick several Articles and Link them to one Item or mark them not tracked in one go (for example the 3
+  CKSPL and 2 CKVPL Articles of "Indoor Camera": the Item is shared, each company links its own Articles); Codes... decides one code or
+  one product name; **Groups...** marks a whole Department / Section / Division. On a PO review the Primary Owner can mark an
+  undecided line not tracked with the reach chosen (this code, product name, Article, Department, Section, Division).
+- Undoing a rule only deactivates it (`is_active = false`). Real data (dev): CKSPL 146 Articles in 80 Departments and 6 Sections,
+  CKVPL 58 Articles in 45 Departments, one Division each ("FIXED ASSETS").
+
 ## Where it shows
 
 - **Setup > Items** (Primary Owner): create/edit/deactivate; "Create from
