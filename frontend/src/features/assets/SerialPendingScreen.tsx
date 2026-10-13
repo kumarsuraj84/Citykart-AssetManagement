@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
+import { holderDisplayName, sameText } from "../../lib/labels";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,6 +46,20 @@ const ALL = "__all__";
 /** The server's page size for an ordinary list, and how many waiting assets the screen reads at most. */
 const PENDING_PAGE = 200;
 const PENDING_MAX = 5000;
+/** The waiting assets, oldest purchase first (S7 P3-12). */
+export const PENDING_PATH = "/assets?serial_pending=true&sort_by=purchase_date&sort_dir=asc";
+
+/** Oldest purchase first; within a day, the asset made first (lower id) first. Pure; exported for tests. */
+export function oldestFirst<T extends { id: number; purchase_date: string }>(rows: T[]): T[] {
+  return rows.slice().sort((a, b) => a.purchase_date.localeCompare(b.purchase_date) || a.id - b.id);
+}
+
+/** "Laptops" for an Item called Laptop in IT Fixed Assets › Laptops -- the type of asset without repeating the Item (S7 P3-4). */
+export function typeOfAssetText(r: { item_name?: string | null; category_name: string | null; subcategory_name: string | null }): string {
+  const parts = [r.category_name, r.subcategory_name].filter((p): p is string => !!p);
+  const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  return parts.filter((p, i) => !(i > 0 && same(p, parts[0])) && !(r.item_name && i > 0 && same(p, r.item_name))).join(" › ");
+}
 const daysSince = (isoDate: string) =>
   Math.max(0, Math.floor((Date.now() - new Date(isoDate).getTime()) / 86_400_000));
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-IN")} ${n === 1 ? one : many}`;
@@ -75,11 +90,12 @@ export function SerialPendingScreen() {
   const listQ = useQuery({
     queryKey: ["assets", "serial-pending"],
     queryFn: async () => {
-      const first = await apiClient.get<{ items: PendingRow[]; total: number }>(`/assets?serial_pending=true&limit=${PENDING_PAGE}`);
+      // S7 (P3-12): asked oldest first, so the pages (and the paste) start with the assets made first.
+      const first = await apiClient.get<{ items: PendingRow[]; total: number }>(`${PENDING_PATH}&limit=${PENDING_PAGE}`);
       const items = Array.isArray(first?.items) ? [...first.items] : [];
       const total = typeof first?.total === "number" ? first.total : items.length;
       for (let offset = PENDING_PAGE; offset < Math.min(total, PENDING_MAX) && items.length >= offset; offset += PENDING_PAGE) {
-        const next = await apiClient.get<{ items: PendingRow[]; total: number }>(`/assets?serial_pending=true&limit=${PENDING_PAGE}&offset=${offset}`);
+        const next = await apiClient.get<{ items: PendingRow[]; total: number }>(`${PENDING_PATH}&limit=${PENDING_PAGE}&offset=${offset}`);
         items.push(...(Array.isArray(next?.items) ? next.items : []));
       }
       return { items, total };
@@ -103,10 +119,9 @@ export function SerialPendingScreen() {
     onError: (err, v) => setErrors((e) => ({ ...e, [v.id]: err instanceof Error ? err.message : "Could not save the serial." })),
   });
 
-  const allRows = useMemo(
-    () => (listQ.data?.items ?? []).slice().sort((a, b) => a.purchase_date.localeCompare(b.purchase_date)), // oldest first: waiting longest
-    [listQ.data],
-  );
+  // Oldest first: waiting longest. Within one day the asset made first comes first (S7 P3-12: the
+  // first pasted serial goes to the first asset of the batch, e.g. CKAM1 before CKAM10).
+  const allRows = useMemo(() => oldestFirst(listQ.data?.items ?? []), [listQ.data]);
   const itemChoices = [...new Set(allRows.map((r) => r.item_name).filter((v): v is string => !!v))].sort();
   const poChoices = [...new Set(allRows.map((r) => r.po_number).filter((v): v is string => !!v))].sort();
 
@@ -213,17 +228,22 @@ export function SerialPendingScreen() {
         <div className="min-w-0">
           <Link to="/assets/$id" params={{ id: String(r.id) }} className="font-mono text-xs underline" onClick={(e) => e.stopPropagation()}>{r.asset_code}</Link>
           <p className="truncate">{r.item_name ?? r.description}</p>
-          {r.item_name && <p className="truncate text-xs text-muted-foreground">{r.description}</p>}
+          {/* S7 (P3-4): the description only when it says more than the Item's name. */}
+          {r.item_name && r.description.trim().toLowerCase() !== r.item_name.trim().toLowerCase() && (
+            <p className="truncate text-xs text-muted-foreground">{r.description}</p>
+          )}
         </div>
       ),
     },
-    { key: "class", header: "Category › Sub-category", cell: (r) => [r.category_name, r.subcategory_name].filter(Boolean).join(" › ") },
+    { key: "class", header: "Type of asset", cell: (r) => typeOfAssetText(r) || "—" },
     { key: "po", header: "PO", cell: (r) => r.po_number ?? "—" },
     {
       key: "holder", header: "Now with", cell: (r) => (
         <div className="min-w-0">
-          <p className="truncate">{r.current_asset_user_name ?? "—"}</p>
-          {r.current_asset_user_location_name && <p className="truncate text-xs text-muted-foreground">{r.current_asset_user_location_name}</p>}
+          <p className="truncate">{holderDisplayName(r.current_asset_user_name) || "—"}</p>
+          {r.current_asset_user_location_name && !sameText(r.current_asset_user_location_name, holderDisplayName(r.current_asset_user_name)) && (
+            <p className="truncate text-xs text-muted-foreground">{r.current_asset_user_location_name}</p>
+          )}
         </div>
       ),
     },

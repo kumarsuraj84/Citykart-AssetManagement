@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within, act, cleanup } from "@testing-library/react";
+import { currentIdempotencyKey } from "../../lib/request-key";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { createAppRouter } from "../../router";
@@ -162,9 +163,9 @@ describe("AssetMovement", () => {
     scan("SN-001");
     await waitFor(() => expect(screen.getByText(/Queued \(1\)/)).toBeInTheDocument());
 
-    choose("Return to Stock Room");
+    choose("Move to Stock Room");
     await pick("Stock Room", "IT Stock-HO");
-    fireEvent.click(applyButton("Return to Stock Room", 1));
+    fireEvent.click(applyButton("Move to Stock Room", 1));
 
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith("/assets/bulk-action", {
@@ -172,7 +173,7 @@ describe("AssetMovement", () => {
       }),
     );
     expect(await screen.findByTestId("bulk-action-done-count")).toHaveTextContent("1");
-    expect(screen.getByTestId("move-result")).toHaveTextContent("1 asset returned to the stock room.");
+    expect(screen.getByTestId("move-result")).toHaveTextContent("1 asset moved to the stock room.");
   });
 
   it("Qty > 1 queues that many eligible matches in one go, without a pick-one-at-a-time list", async () => {
@@ -319,7 +320,7 @@ describe("AssetMovement", () => {
     fireEvent.click(screen.getByRole("combobox", { name: "Employee" }));
     expect(await screen.findByRole("option", { name: /^CS6872 · Ankur\s?· Head Office · CKSPL$/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("combobox", { name: "Employee" }));
-    choose("Return to Stock Room");
+    choose("Move to Stock Room");
     fireEvent.click(screen.getByRole("combobox", { name: "Stock Room" }));
     // A Stock Room reads by its name, not its machine code.
     expect(await screen.findByRole("option", { name: /^WH Stock\s?· Warehouse · CKRPL$/ })).toBeInTheDocument();
@@ -349,7 +350,7 @@ describe("S5a: one Move screen with plain-word choices", () => {
     await renderMovement();
     const group = screen.getByRole("radiogroup", { name: "What do you want to do?" });
     expect(within(group).getAllByRole("radio").map((r) => r.textContent)).toEqual([
-      "Give to Employee", "Return to Stock Room", "Send to Store", "Install",
+      "Give to Employee", "Move to Stock Room", "Send to Store", "Install",
       "Send for Repair", "Receive from Repair", "Report Lost", "Mark Found", "Sell", "Scrap", "Dispose",
     ]);
     expect(within(group).getAllByRole("radio").filter((r) => r.getAttribute("aria-checked") === "true")).toHaveLength(0);
@@ -360,7 +361,7 @@ describe("S5a: one Move screen with plain-word choices", () => {
 
   it.each([
     ["Give to Employee", "Employee", ["E11 · Ankur"]],
-    ["Return to Stock Room", "Stock Room", ["IT Stock-HO"]],
+    ["Move to Stock Room", "Stock Room", ["IT Stock-HO"]],
     ["Send to Store", "Store", ["S12 · Lamington Store"]],
     ["Install", "Install Point", ["Lamington Install Point"]],
     ["Mark Found", "Stock Room", ["IT Stock-HO"]],
@@ -414,15 +415,18 @@ describe("S5a: one Move screen with plain-word choices", () => {
     expect(screen.getByRole("radio", { name: "Receive from Repair" })).toBeDisabled();
     expect(screen.getByRole("radio", { name: "Sell" })).toBeDisabled();
     expect(screen.getByRole("radio", { name: "Give to Employee" })).toBeEnabled();
-    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    expect(screen.queryByText(/This batch has assets that are/)).not.toBeInTheDocument();
     scan("SN-003");
     await screen.findByText(/Queued \(2\)/);
     for (const r of screen.getAllByRole("radio")) expect(r).toBeDisabled();       // nothing fits both
-    expect(screen.getByRole("note")).toHaveTextContent("This batch has assets that are With Employee / Store, Under Repair: only what is possible for all of them is offered.");
+    expect(screen.getByText(/This batch has assets that are/)).toHaveTextContent("This batch has assets that are With Employee / Store, Under Repair: only what is possible for all of them is offered.");
     expect(screen.getByRole("radio", { name: "Give to Employee" })).toHaveAttribute("title", "Not possible for every asset in this batch.");
+    // S7 P3-5: the reason is also visible as words, not only on hover.
+    expect(screen.getByRole("note", { name: "Choices not possible now" })).toHaveTextContent("Give to Employee, Move to Stock Room, Send to Store, Install");
+    expect(screen.getByRole("note", { name: "Choices not possible now" })).toHaveTextContent("(not possible for every asset in this batch)");
     fireEvent.click(screen.getByRole("button", { name: "Remove FA/HO01/IT/LAP/CK_1" }));
     expect(screen.getByRole("radio", { name: "Receive from Repair" })).toBeEnabled();
-    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    expect(screen.queryByText(/This batch has assets that are/)).not.toBeInTheDocument();
   });
 
   it("Mark Found is for an admin only", async () => {
@@ -581,12 +585,12 @@ describe("S3b-1: stock rooms on Move", () => {
     expect(screen.queryByRole("option", { name: /new stock room/i })).not.toBeInTheDocument();
   });
 
-  it.each(KINDS)("%s: Return to Stock Room offers New Stock Room only when allowed; Give to Employee never offers a new person", async (_kind, caps) => {
+  it.each(KINDS)("%s: Move to Stock Room offers New Stock Room only when allowed; Give to Employee never offers a new person", async (_kind, caps) => {
     world(caps);
     await renderMovement();
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/auth/capabilities"));
     await new Promise((r) => setTimeout(r, 20));
-    choose("Return to Stock Room");
+    choose("Move to Stock Room");
     const trigger = screen.getByRole("combobox", { name: "Stock Room" });
     fireEvent.click(trigger);
     await screen.findByRole("option", { name: /IT Stock-HO/ });
@@ -602,7 +606,7 @@ describe("S3b-1: stock rooms on Move", () => {
     world(OPERATOR_IT);
     (apiClient.post as any).mockResolvedValue({ id: 70, name: "Hisar Stock" });
     await renderMovement();
-    choose("Return to Stock Room");
+    choose("Move to Stock Room");
     fireEvent.click(screen.getByRole("combobox", { name: "Stock Room" }));
     fireEvent.click(await screen.findByRole("option", { name: /new stock room/i }));
     const dialog = await screen.findByRole("dialog", { name: /new stock room/i });
@@ -613,5 +617,100 @@ describe("S3b-1: stock rooms on Move", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/stock-rooms", { name: "Hisar Stock", company_id: 1, location_id: 50 }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: /new stock room/i })).not.toBeInTheDocument());
+  });
+});
+
+describe("S7 fixes on Move", () => {
+  it("P1-2: two activations of Apply in the same tick send ONE bulk action, with an Idempotency-Key", async () => {
+    mockGets({ searchResults: { "SN-001": [LAPTOP] } });
+    const keys: (string | null)[] = [];
+    (apiClient.post as any).mockImplementation(() => {
+      keys.push(currentIdempotencyKey());
+      return new Promise(() => {});
+    });
+    await renderMovement();
+    choose("Send for Repair");
+    scan("SN-001");
+    await screen.findByText(/Queued \(1\)/);
+    const button = applyButton("Send for Repair", 1);
+    act(() => {
+      button.click();
+      button.click();
+    });
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(apiClient.post).toHaveBeenCalledTimes(1);
+    expect(keys[0]).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("P2-8: Sell asks first with the asset count; Cancel sends nothing", async () => {
+    mockGets({ searchResults: { "SN-001": [{ ...LAPTOP, status: "IN_STOCK", current_asset_user_type: "STOCK_POINT" }] } });
+    await renderMovement();
+    scan("SN-001");
+    await screen.findByText(/Queued \(1\)/);
+    choose("Sell");
+    fireEvent.click(applyButton("Sell", 1));
+    const confirm = await screen.findByRole("alertdialog");
+    expect(confirm).toHaveTextContent("Sell 1 asset?");
+    expect(confirm).toHaveTextContent("1 asset will be sold. This is final and cannot be undone");
+    fireEvent.click(within(confirm).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(apiClient.post).not.toHaveBeenCalled();
+  });
+
+  it("P2-8: Send for Repair is not an end state: applied without a question", async () => {
+    mockGets({ searchResults: { "SN-001": [LAPTOP] } });
+    (apiClient.post as any).mockResolvedValue({ done: 1, failed: [] });
+    await renderMovement();
+    choose("Send for Repair");
+    scan("SN-001");
+    await screen.findByText(/Queued \(1\)/);
+    fireEvent.click(applyButton("Send for Repair", 1));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalled());
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("P2-7: an operator is told who adds a missing employee; a Full Admin gets '+ Add employee'", async () => {
+    mockGets();
+    await renderMovement();
+    choose("Give to Employee");
+    expect(screen.getByRole("note", { name: "Employee not in the list" }))
+      .toHaveTextContent("Not in the list? Ask a Full Admin to add the employee (People & Places > Employees).");
+    cleanup();
+    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: false, mustChangePassword: false });
+    mockGets();
+    await renderMovement();
+    choose("Give to Employee");
+    expect(screen.getByRole("link", { name: "+ Add employee" })).toHaveAttribute("href", "/people/employees");
+  });
+
+  it("P2-13: one sentence explains Send to Store vs Move to Stock Room", async () => {
+    mockGets();
+    await renderMovement();
+    expect(screen.getByText(/Send to Store: the assets are with the store itself\. Move to Stock Room: they are kept in a stock room/)).toBeInTheDocument();
+    choose("Send to Store");
+    expect(screen.getByText("The assets will be with this store.")).toBeInTheDocument();
+  });
+
+  it("P3-5: 'None of these assets can be sold.' (plain grammar)", async () => {
+    mockGets({ searchResults: { "SN-002": [SCRAPPED_MOUSE] } });
+    await renderMovement();
+    choose("Sell");
+    scan("SN-002");
+    await screen.findByText(/Queued \(1\)/);
+    expect(screen.getByText("None of these assets can be sold.")).toBeInTheDocument();
+  });
+
+  it("P2-2: the scan box has its own row and label; Apply sits in a sticky bar at the bottom", async () => {
+    mockGets();
+    await renderMovement();
+    const scanBox = screen.getByLabelText(/scan or type/i);
+    const section = screen.getByRole("region", { name: "Add assets" });
+    expect(section).toContainElement(scanBox);
+    expect(scanBox.className).toContain("flex-1");
+    // Qty is not in the scan box's row any more.
+    expect(scanBox.parentElement).not.toContainElement(screen.getByLabelText("Qty"));
+    const apply = screen.getByRole("button", { name: "Choose what to do" });
+    expect(apply.closest(".sticky")).not.toBeNull();
   });
 });

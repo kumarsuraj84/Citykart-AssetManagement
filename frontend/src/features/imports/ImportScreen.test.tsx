@@ -60,6 +60,19 @@ describe("ImportScreen", () => {
     expect(screen.getByRole("button", { name: /^commit/i })).toBeEnabled();
   });
 
+  it("S7 P2-10: the add-mode help names the Item and Received Into Code columns (Vendor Code optional), and the preview shows each row's Item", async () => {
+    (apiClient.post as any).mockResolvedValue({ valid_rows: [{ ...VALID_ROW, item: "Dell Laptop" }], errors: [] });
+    render(<ImportScreen />);
+    const help = screen.getByTestId("add-import-help");
+    expect(help).toHaveTextContent("Give the Item");
+    expect(help).toHaveTextContent("Received Into Code is the Stock Room the assets go to; Vendor Code is optional.");
+    selectFile();
+    fireEvent.click(screen.getByRole("button", { name: /^preview$/i }));
+    expect(await screen.findByText("Dell Laptop")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Item" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Type of asset" })).toBeInTheDocument();
+  });
+
   it("disables Commit when preview found no valid rows", async () => {
     (apiClient.post as any).mockResolvedValue({ valid_rows: [], errors: [ROW_ERROR] });
     render(<ImportScreen />);

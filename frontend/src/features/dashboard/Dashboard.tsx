@@ -185,6 +185,8 @@ export interface HomeAttention {
   erp_changed_pos: number | null;
   erp_arrived_pos: number | null;
   erp_pos_needing_input: number | null;
+  /** S7: the ERP figures that could not be read this time (each is then null); the others still show. */
+  erp_unavailable?: string[];
   inbox: InboxCounts | null;
 }
 
@@ -199,7 +201,9 @@ export function attentionRowsFrom(a: HomeAttention, opts: { canWork: boolean } =
   const rows: AttentionRow[] = [];
   // Work rows (receive, serials, ERP) only for someone who can do that work: the links would lead nowhere otherwise.
   const work = opts.canWork;
-  const erp = work && a.erp_available === true;
+  // S7 (P1-1): each ERP figure stands on its own -- one the ERP could not give is null and simply shows no
+  // row, while every figure that did come is shown (one missing ERP view no longer hides all ERP rows).
+  const erp = work;
   const waitingPos = count(a.waiting_pos);
   const waitingUnits = count(a.waiting_units);
   if (work && waitingPos > 0) {
@@ -498,8 +502,9 @@ export function Dashboard({ headOfficeSection }: DashboardProps = {}) {
             </p>
           )}
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Card>
+          {/* grid-cols-1 = minmax(0, 1fr): a wide table scrolls inside its card instead of widening the page (S7 P2-4). */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Card className="min-w-0">
               <CardHeader className="pb-2">
                 <CardTitle>Recent changes</CardTitle>
                 <CardDescription>The latest moves and updates. The full history is in Reports.</CardDescription>
@@ -515,7 +520,7 @@ export function Dashboard({ headOfficeSection }: DashboardProps = {}) {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="min-w-0">
               <CardHeader className="pb-2">
                 <CardTitle>Stock by Place</CardTitle>
                 <CardDescription>Assets in Stock Rooms, by place.</CardDescription>
@@ -540,8 +545,8 @@ export function Dashboard({ headOfficeSection }: DashboardProps = {}) {
                 {plural(longWith.length, "asset")} with someone over 180 days
               </span>
             </summary>
-            <div className="grid gap-4 border-t p-4 lg:grid-cols-2">
-              <section aria-labelledby="watch-warranty">
+            <div className="grid grid-cols-1 gap-4 border-t p-4 lg:grid-cols-2">
+              <section aria-labelledby="watch-warranty" className="min-w-0">
                 <h2 id="watch-warranty" className="mb-1 text-sm font-semibold">
                   Warranty Expiring Soon
                 </h2>
@@ -554,7 +559,7 @@ export function Dashboard({ headOfficeSection }: DashboardProps = {}) {
                   emptyState={<EmptyState title="Nothing expiring soon." />}
                 />
               </section>
-              <section aria-labelledby="watch-long">
+              <section aria-labelledby="watch-long" className="min-w-0">
                 <h2 id="watch-long" className="mb-1 text-sm font-semibold">
                   With Employee / Store Over 180 Days
                 </h2>

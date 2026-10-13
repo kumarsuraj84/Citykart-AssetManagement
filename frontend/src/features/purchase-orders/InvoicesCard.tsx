@@ -151,7 +151,7 @@ function PiEntry({ poId, invoices, fromErp, onClose }: { poId: number; invoices:
       )}
 
       {way === "erp" ? (
-        <ErpPiPanel poId={poId} onClose={onClose} />
+        <ErpPiPanel poId={poId} onClose={onClose} onTypeItIn={() => setWay("type")} />
       ) : result ? (
         <div className="flex flex-col gap-2 text-sm" role="status">
           <p>PI recorded for invoice {result.invoice_number}: {plural(result.updated.length, "asset")} updated.</p>

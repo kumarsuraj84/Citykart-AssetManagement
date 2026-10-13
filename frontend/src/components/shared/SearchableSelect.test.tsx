@@ -56,6 +56,31 @@ describe("SearchableSelect", () => {
     expect(await screen.findByText("No results found.")).toBeInTheDocument();
   });
 
+  it("S7 P2-1: when the typed text matches nothing, '+ New …' is still offered and gets the typed text", async () => {
+    const onCreateNew = vi.fn();
+    render(
+      <SearchableSelect value={undefined} onValueChange={vi.fn()} options={OPTIONS} onCreateNew={onCreateNew} createLabel="New Vendor…" />,
+    );
+    fireEvent.click(screen.getByRole("combobox"));
+    const search = await screen.findByPlaceholderText("Search…");
+    fireEvent.change(search, { target: { value: "  ABC Traders " } });
+    expect(await screen.findByText("No results found.")).toBeInTheDocument();
+    const create = screen.getByRole("option", { name: /New Vendor…/ });
+    expect(create).toHaveTextContent("“ABC Traders”");
+    fireEvent.click(create);
+    expect(onCreateNew).toHaveBeenCalledWith("ABC Traders");
+  });
+
+  it("'+ New …' without typing passes an empty name, and the search starts empty next time", async () => {
+    const onCreateNew = vi.fn();
+    render(<SearchableSelect value={undefined} onValueChange={vi.fn()} options={OPTIONS} onCreateNew={onCreateNew} createLabel="New Item…" />);
+    fireEvent.click(screen.getByRole("combobox"));
+    fireEvent.click(await screen.findByRole("option", { name: "New Item…" }));
+    expect(onCreateNew).toHaveBeenCalledWith("");
+    fireEvent.click(screen.getByRole("combobox"));
+    expect(await screen.findByPlaceholderText("Search…")).toHaveValue("");
+  });
+
   it("also matches an option's keywords (e.g. Asset User code/email), not just its displayed label", async () => {
     const USER_OPTIONS = [
       { value: "1", label: "Ankur Pahwa", keywords: ["CS6872", "ankur.pahwa@citykartstores.com"] },

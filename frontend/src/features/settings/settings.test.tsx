@@ -151,7 +151,13 @@ describe("Set up CKAM screen", () => {
     await waitFor(() => expect(screen.getByTestId("setup-done-count")).toHaveTextContent("7 of 7 done"));
     expect(screen.getByRole("status")).toHaveTextContent("CKAM is set up");
     expect(await screen.findByTestId("code-preview")).toHaveTextContent("FA/CKS/0001");
-    expect(screen.getByRole("link", { name: "Finish" })).toHaveAttribute("href", "/settings");
+    // S7 P2-3: Finish ends on a completion state, not on step 7.
+    fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+    const summary = await screen.findByRole("region", { name: "Set-up summary" });
+    expect(summary).toHaveTextContent("CKAM is set up.");
+    expect(within(summary).getByRole("link", { name: "Add the first assets" })).toHaveAttribute("href", "/assets/new");
+    expect(within(summary).getByRole("link", { name: "Go to Settings" })).toHaveAttribute("href", "/settings");
+    expect(screen.queryByRole("heading", { name: "Asset Code Format" })).not.toBeInTheDocument();
   });
 
   it("step 7 shows the SERVER's example for the format, asked from the preview endpoint", async () => {
@@ -210,6 +216,52 @@ describe("S6: Set up CKAM from GET /setup/status (one call)", () => {
     await waitFor(() => expect(apiClient.post).toHaveBeenCalled());
     await waitFor(() => expect((apiClient.get as any).mock.calls.filter((c: unknown[]) => c[0] === "/setup/status").length).toBeGreaterThan(before));
     await waitFor(() => expect(screen.getByTestId("setup-done-count")).toHaveTextContent("2 of 7 done"));
+  });
+});
+
+describe("S7 P2-3: set-up per company", () => {
+  const TWO = [{ id: 2, code: "CKSPL", name: "Citykart Stores" }, { id: 3, code: "NEW2", name: "UAT New Two" }];
+
+  function perCompany() {
+    const base = (apiClient.get as any).getMockImplementation();
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (path === "/asset-users/me/companies") return Promise.resolve(TWO);
+      if (path === "/setup/status?company_id=2") return Promise.resolve({ ...setupStatus("complete"), company_id: 2 });
+      if (path === "/setup/status?company_id=3") return Promise.resolve({ ...setupStatus("partial"), company_id: 3 });
+      return base(path);
+    });
+  }
+
+  it("the guide is about the company the person works in, and another one can be chosen", async () => {
+    loginAs("ADMIN", true);
+    mockApi("complete");
+    perCompany();
+    renderAt("/settings/setup?step=7");
+    await waitFor(() => expect(screen.getByTestId("setup-done-count")).toHaveTextContent("7 of 7 done for CKSPL"));
+    expect(apiClient.get).toHaveBeenCalledWith("/setup/status?company_id=2");
+    // Step 7's example is that company's (the preview is asked with its id).
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/code-rules/preview", expect.objectContaining({ company_id: 2 })));
+    expect(screen.getByTestId("code-preview-label")).toHaveTextContent("Next Asset Code in CKSPL");
+    fireEvent.click(screen.getByRole("combobox", { name: "Company being set up" }));
+    fireEvent.click(await screen.findByRole("option", { name: /UAT New Two/ }));
+    await waitFor(() => expect(screen.getByTestId("setup-done-count")).toHaveTextContent("2 of 7 done for NEW2"));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/code-rules/preview", expect.objectContaining({ company_id: 3 })));
+    fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+    const summary = await screen.findByRole("region", { name: "Set-up summary" });
+    expect(summary).toHaveTextContent("2 of 7 steps done for NEW2.");
+    expect(summary).toHaveTextContent("Still to do: Cost Centre, Asset Groups and first Items, Vendors, People / Stores, Asset Code Format.");
+    expect(within(summary).getByRole("button", { name: "Continue with Cost Centre" })).toBeInTheDocument();
+  });
+
+  it("Home's 'Finish setting up' row follows the default company (a complete company shows none)", async () => {
+    loginAs("ADMIN", true);
+    mockApi("partial");
+    perCompany();
+    renderAt("/dashboard");
+    await screen.findByRole("heading", { name: "Home" });
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/setup/status?company_id=2"));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByRole("region", { name: "Finish setting up" })).not.toBeInTheDocument();
   });
 });
 

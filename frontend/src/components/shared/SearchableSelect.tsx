@@ -49,9 +49,11 @@ interface SearchableSelectProps {
   className?: string;
   "aria-label"?: string;
   /** When given (only pass it to someone allowed to create the record), the list
-   * ends with a "+ <createLabel>" entry that stays visible while searching, so a
-   * missing choice can be created right here instead of in another screen. */
-  onCreateNew?: () => void;
+   * ends with a "+ <createLabel>" entry that stays visible while searching --
+   * also when nothing matches (S7 P2-1) -- so a missing choice can be created
+   * right here instead of in another screen. It receives the text typed in the
+   * search box, so the New dialog can start with that name. */
+  onCreateNew?: (typed: string) => void;
   createLabel?: string;
 }
 
@@ -90,11 +92,19 @@ export function SearchableSelect({
   createLabel = "Create new…",
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const selected = options.find((o) => o.value === value);
   const selectedText = selected ? optionText(selected) : undefined;
+  const typed = search.trim();
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (!o) setSearch("");
+      }}
+    >
       <PopoverTrigger asChild>
         <Button
           id={id}
@@ -135,7 +145,7 @@ export function SearchableSelect({
       </PopoverTrigger>
       <PopoverContent className="w-(--radix-popover-trigger-width) p-0" align="start">
         <Command>
-          <CommandInput placeholder={searchPlaceholder} />
+          <CommandInput placeholder={searchPlaceholder} value={search} onValueChange={setSearch} />
           <CommandList>
             <CommandEmpty>{emptyText}</CommandEmpty>
             <CommandGroup>
@@ -147,6 +157,7 @@ export function SearchableSelect({
                   onSelect={() => {
                     onValueChange(option.value);
                     setOpen(false);
+                    setSearch("");
                   }}
                 >
                   <Check
@@ -167,17 +178,21 @@ export function SearchableSelect({
               ))}
             </CommandGroup>
             {onCreateNew && (
-              <CommandGroup>
+              // forceMount on the group too: cmdk hides a group none of whose items match the search,
+              // which hid "+ New …" exactly when it was needed (S7 P2-1).
+              <CommandGroup forceMount>
                 <CommandItem
                   forceMount
                   value={`__create__ ${createLabel}`}
                   onSelect={() => {
                     setOpen(false);
-                    onCreateNew();
+                    setSearch("");
+                    onCreateNew(typed);
                   }}
                 >
                   <Plus className="h-4 w-4" aria-hidden="true" />
                   {createLabel}
+                  {typed && <span className="text-muted-foreground">“{typed}”</span>}
                 </CommandItem>
               </CommandGroup>
             )}

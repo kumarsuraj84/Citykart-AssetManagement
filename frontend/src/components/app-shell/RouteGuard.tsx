@@ -3,6 +3,8 @@ import { Link } from "@tanstack/react-router";
 import { Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { homePathFor, useAccess, type Area } from "@/lib/access";
+import { useCapabilities } from "@/lib/capabilities";
+import { canUseCatalogue } from "./AppNav";
 
 /** Shown inside the app shell instead of a screen the person may not use. */
 export function NoAccess() {
@@ -34,6 +36,25 @@ export function NoAccess() {
  * so the screen's own data requests never fire either). UX only: the server
  * still checks every request.
  */
+/**
+ * S7 (final review): the Catalogue screens (Items, Asset Groups) -- the head-office admin always; a Full
+ * Admin when the capabilities endpoint says they may manage Items or Asset Groups of a work area (the
+ * screen then offers edit / deactivate only inside that area; the server checks every save). Anyone
+ * else gets <NoAccess />. While the answer loads nothing of the screen is shown.
+ */
+export function guardedCatalogue<P extends object>(Screen: ComponentType<P>): (props: P) => ReactElement {
+  function GuardedCatalogue(props: P): ReactElement {
+    const { can } = useAccess();
+    const { caps, settled } = useCapabilities();
+    if (can("settings")) return <Screen {...props} />;
+    if (!can("admin")) return <NoAccess />;
+    if (!settled) return <p className="text-sm text-muted-foreground" role="status">Loading…</p>;
+    return canUseCatalogue(caps) ? <Screen {...props} /> : <NoAccess />;
+  }
+  GuardedCatalogue.displayName = `GuardedCatalogue(${Screen.displayName ?? Screen.name ?? "Screen"})`;
+  return GuardedCatalogue;
+}
+
 export function guarded<P extends object>(area: Area, Screen: ComponentType<P>): (props: P) => ReactElement {
   function Guarded(props: P): ReactElement {
     const { can } = useAccess();

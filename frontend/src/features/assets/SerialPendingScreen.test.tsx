@@ -5,6 +5,7 @@ import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { createAppRouter } from "../../router";
 import { apiClient } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
+import { PENDING_PATH, oldestFirst, typeOfAssetText } from "./SerialPendingScreen";
 
 vi.mock("../../lib/api-client");
 
@@ -40,9 +41,9 @@ describe("Serial Pending list", () => {
     const codes = screen.getAllByRole("link", { name: /^FA\/AMP/ }).map((l) => l.textContent);
     expect(codes).toEqual(["FA/AMP/2", "FA/AMP/1"]);          // 2026-08-01 before 2026-09-01
     expect(screen.getByText("Store Rohtak")).toBeInTheDocument();
-    expect(apiClient.get).toHaveBeenCalledWith("/assets?serial_pending=true&limit=200");
+    expect(apiClient.get).toHaveBeenCalledWith("/assets?serial_pending=true&sort_by=purchase_date&sort_dir=asc&limit=200");
     // One spelling of Sub-category in visible text.
-    expect(screen.getByText("Category › Sub-category")).toBeInTheDocument();
+    expect(screen.getByText("Type of asset")).toBeInTheDocument();
     expect(screen.queryByText(/Sub-Category/)).not.toBeInTheDocument();
   });
 
@@ -55,9 +56,9 @@ describe("Serial Pending list", () => {
     });
     renderScreen();
     expect(await screen.findByText("450 waiting")).toBeInTheDocument();
-    expect(apiClient.get).toHaveBeenCalledWith("/assets?serial_pending=true&limit=200");
-    expect(apiClient.get).toHaveBeenCalledWith("/assets?serial_pending=true&limit=200&offset=200");
-    expect(apiClient.get).toHaveBeenCalledWith("/assets?serial_pending=true&limit=200&offset=400");
+    expect(apiClient.get).toHaveBeenCalledWith("/assets?serial_pending=true&sort_by=purchase_date&sort_dir=asc&limit=200");
+    expect(apiClient.get).toHaveBeenCalledWith("/assets?serial_pending=true&sort_by=purchase_date&sort_dir=asc&limit=200&offset=200");
+    expect(apiClient.get).toHaveBeenCalledWith("/assets?serial_pending=true&sort_by=purchase_date&sort_dir=asc&limit=200&offset=400");
     expect(screen.getByRole("link", { name: "FA/AMP/450" })).toBeInTheDocument();
   });
 
@@ -258,5 +259,27 @@ describe("Serial Pending: bulk entry for the selected assets", () => {
     await waitFor(() => expect(bulkCalls()).toHaveLength(1));
     expect(bulkCalls()[0][1].entries).toHaveLength(100);
     expect(await screen.findByText("100 serial numbers saved.")).toBeInTheDocument();
+  });
+});
+
+describe("S7 fixes on Serial Pending", () => {
+  it("P3-12: oldest first, and within one day the asset made first -- the first pasted serial goes to CKAM1, not CKAM10", () => {
+    const rows = [
+      { id: 10, purchase_date: "2026-10-13" }, { id: 1, purchase_date: "2026-10-13" }, { id: 5, purchase_date: "2026-10-01" },
+    ];
+    expect(oldestFirst(rows).map((r) => r.id)).toEqual([5, 1, 10]);
+    expect(PENDING_PATH).toContain("sort_by=purchase_date&sort_dir=asc");
+  });
+
+  it("P3-4: the type of asset never repeats the Item, and an equal description is not printed twice", async () => {
+    expect(typeOfAssetText({ item_name: "Gondola Rack", category_name: "Store Fixtures", subcategory_name: "Gondola Rack" })).toBe("Store Fixtures");
+    expect(typeOfAssetText({ item_name: "Amplifier", category_name: "Admin Fixed Assets", subcategory_name: "Audio" })).toBe("Admin Fixed Assets › Audio");
+    (apiClient.get as any).mockImplementation((path: string) =>
+      Promise.resolve(path.startsWith("/assets?serial_pending=true")
+        ? { items: [row(7, "FA/AMP/7", { description: "Amplifier" })], total: 1 }
+        : []));
+    renderScreen();
+    await screen.findByText("FA/AMP/7");
+    expect(screen.getAllByText("Amplifier")).toHaveLength(1);
   });
 });

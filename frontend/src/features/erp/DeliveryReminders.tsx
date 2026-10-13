@@ -25,17 +25,54 @@ export interface Reminder {
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-/** Only runs when the server has an ERP connection; any ERP trouble is simply
- * "no reminders" here, since this is an extra and must never get in the way. */
-function useReminders(poId?: number, enabled = true) {
+/** What the reminders call answers, read the same way whatever the server's age. */
+export interface RemindersAnswer {
+  /** false = the ERP cannot give goods receipts (yet): "no information", never an error on screen. */
+  available: boolean;
+  message: string | null;
+  items: Reminder[];
+}
+
+/** `/erp/reminders?…&envelope=true` (S7: the server answers `{available, message, items}`, never a 503). */
+export function remindersPath(poId?: number): string {
+  return poId ? `/erp/reminders?po_id=${poId}&envelope=true` : "/erp/reminders?envelope=true";
+}
+
+/** An envelope, or an older server's bare list; anything else = no information. */
+export function asReminders(data: unknown): RemindersAnswer {
+  if (Array.isArray(data)) return { available: true, message: null, items: data as Reminder[] };
+  if (data && typeof data === "object") {
+    const d = data as { available?: unknown; message?: unknown; items?: unknown };
+    return {
+      available: d.available !== false,
+      message: typeof d.message === "string" ? d.message : null,
+      items: Array.isArray(d.items) ? (d.items as Reminder[]) : [],
+    };
+  }
+  return { available: false, message: null, items: [] };
+}
+
+/**
+ * Only runs when the server has an ERP connection (and, for one PO, only for a PO made from the ERP);
+ * any ERP trouble is simply "no reminders" here, since this is an extra and must never get in the way.
+ */
+export function useErpReminders(poId?: number, enabled = true) {
   const statusQ = useQuery({
     queryKey: ["erp", "status"],
     queryFn: () => apiClient.get<{ configured: boolean }>("/erp/status"),
     enabled,
+    retry: false,
   });
   return useQuery({
     queryKey: ["erp", "reminders", poId ?? "all"],
-    queryFn: () => apiClient.get<Reminder[]>(poId ? `/erp/reminders?po_id=${poId}` : "/erp/reminders"),
+    queryFn: async (): Promise<RemindersAnswer> => {
+      try {
+        return asReminders(await apiClient.get<unknown>(remindersPath(poId)));
+      } catch {
+        // An older server still answering 503: no information, not an error.
+        return { available: false, message: null, items: [] };
+      }
+    },
     enabled: enabled && statusQ.data?.configured === true,
     retry: false,
   });
@@ -44,9 +81,9 @@ function useReminders(poId?: number, enabled = true) {
 /** Top of the Purchase Orders list: every PO where the ERP shows goods received
  * that have not been marked delivered here. */
 export function DeliveryRemindersCard() {
-  const q = useReminders();
-  const reminders = q.data ?? [];
-  if (!Array.isArray(q.data) || reminders.length === 0) return null;
+  const q = useErpReminders();
+  const reminders = q.data?.available ? q.data.items : [];
+  if (reminders.length === 0) return null;
   // Compact and secondary: one line, the list opens on demand (open by default only when short).
   return (
     <details
@@ -79,8 +116,8 @@ export function DeliveryRemindersCard() {
 
 /** Top of one PO: what exactly the ERP says was received. */
 export function DeliveryReminderBanner({ poId, fromErp }: { poId: number; fromErp: boolean }) {
-  const q = useReminders(poId, fromErp);
-  const reminder = Array.isArray(q.data) ? q.data[0] : undefined;
+  const q = useErpReminders(poId, fromErp);
+  const reminder = q.data?.available ? q.data.items[0] : undefined;
   if (!fromErp || !reminder) return null;
   return (
     <section className="rounded-md border border-warning/50 bg-warning/10 p-3 text-sm" aria-label="Delivery reminder">

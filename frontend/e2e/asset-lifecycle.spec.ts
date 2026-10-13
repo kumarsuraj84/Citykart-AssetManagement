@@ -105,7 +105,7 @@ test("full custody journey: procure, allot, return, allot again", async ({ page,
   await expect(page.getByText("With Employee", { exact: true }).first()).toBeVisible();
 
   // ---- Return to the Stock Room ----
-  await moveFromAsset360("Return to Stock Room", "Stock Room", ctx.stock.name);
+  await moveFromAsset360("Move to Stock Room", "Stock Room", ctx.stock.name);
   await expect(page.getByText("In Stock", { exact: true }).first()).toBeVisible();
 
   // ---- Send to the test STORE ----

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within, act, cleanup } from "@testing-library/react";
+import { currentIdempotencyKey } from "../../lib/request-key";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { createAppRouter } from "../../router";
@@ -40,17 +41,20 @@ const DESKTOP_SET = {
 };
 const PO_AFTER = { id: 42, company_id: 1, po_number: "PO-1", po_date: "2026-10-13", vendor_id: null, cost_center_id: 3 };
 
-/** A world with one company, a cost centre, Items, a set and a stock room. */
-function world({ companies = [{ id: 1, name: "Citykart Stores" }], caps = OPERATOR_IT as Capabilities | null } = {}) {
+/** A world with one company, two cost centres, Items, a set and a stock room. */
+function world({
+  companies = [{ id: 1, name: "Citykart Stores" }], caps = OPERATOR_IT as Capabilities | null,
+  costCentres1 = [{ id: 3, name: "Head Office" }, { id: 4, name: "Warehouse" }],
+} = {}) {
   (apiClient.get as any).mockImplementation(withCapabilities(caps, (path: string) => {
     if (path === "/asset-users/me/companies") return Promise.resolve(companies);
-    if (path === "/masters/cost-centers?company_id=1") return Promise.resolve([{ id: 3, name: "Head Office" }]);
+    if (path === "/masters/cost-centers?company_id=1") return Promise.resolve(costCentres1);
     if (path === "/masters/cost-centers?company_id=2") return Promise.resolve([{ id: 30, name: "B Cost Centre" }]);
     if (path === "/masters/vendors") return Promise.resolve([{ id: 9, name: "Acme Traders" }]);
     if (path === "/masters/brands") return Promise.resolve([{ id: 4, name: "Dell" }, { id: 6, name: "HP" }]);
     if (path === "/masters/categories") return Promise.resolve([{ id: 1, name: "IT Fixed Assets", asset_domain: "IT" }, { id: 2, name: "Furniture", asset_domain: "NON_IT" }]);
     if (path === "/masters/subcategories") return Promise.resolve([{ id: 10, category_id: 1, name: "Laptops" }]);
-    if (path === "/items") return Promise.resolve(ITEMS);
+    if (path === "/items?work_area=mine") return Promise.resolve(ITEMS);
     if (path === "/bundles") return Promise.resolve([DESKTOP_SET]);
     if (path === "/masters/locations?company_id=1") return Promise.resolve([{ id: 50, name: "Head Office" }]);
     if (path === "/stock-rooms?company_id=1") return Promise.resolve([
@@ -87,6 +91,8 @@ const sentBody = () => (apiClient.post as any).mock.calls.find((c: unknown[]) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.sessionStorage.clear();
+  window.localStorage.clear();
   useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: false, mustChangePassword: false, assetUserId: 5 });
   world();
 });
@@ -373,5 +379,111 @@ describe("S3b-1: inline creation on New Purchase Order", () => {
     fireEvent.click(saveButton());
     await waitFor(() => expect(sentBody()).toBeDefined());
     expect(sentBody()).not.toHaveProperty("delivery_asset_user_id");
+  });
+});
+
+describe("S7 fixes on New Purchase Order", () => {
+  it("P1-2: a double activation of Save sends ONE request, with an Idempotency-Key", async () => {
+    const keys: (string | null)[] = [];
+    (apiClient.post as any).mockImplementation(() => {
+      keys.push(currentIdempotencyKey());
+      return new Promise(() => {});
+    });
+    renderFormAt();
+    await ready();
+    await fillHeader();
+    await fillLine(1, /^Laptop/, "1", "100");
+    const button = saveButton();
+    act(() => {
+      button.click();
+      button.click();
+    });
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(apiClient.post).toHaveBeenCalledTimes(1);
+    expect(keys[0]).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("P3-13: a company with exactly one Cost Centre has it chosen already", async () => {
+    world({ costCentres1: [{ id: 3, name: "Head Office" }] });
+    renderFormAt();
+    await waitFor(() => expect(screen.getByLabelText(/^cost centre/i)).toHaveTextContent("Head Office"));
+    expect(screen.getByText(/Still needed: the PO No, at least one line or set\./)).toBeInTheDocument();
+  });
+
+  it("P2-1: the vendor name typed in the picker starts the New Vendor dialog", async () => {
+    world({ caps: { ...OPERATOR_IT, can_create: { ...OPERATOR_IT.can_create, vendor: true } } });
+    renderFormAt();
+    await ready();
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/auth/capabilities"));
+    await new Promise((r) => setTimeout(r, 20));
+    fireEvent.click(screen.getByLabelText(/^vendor$/i));
+    fireEvent.change(await screen.findByPlaceholderText("Search…"), { target: { value: "ABC Traders" } });
+    expect(await screen.findByText("No results found.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: /New Vendor…/ }));
+    const dialog = await screen.findByRole("dialog", { name: /new vendor/i });
+    expect(within(dialog).getByLabelText(/^name/i)).toHaveValue("ABC Traders");
+  });
+
+  it("P2-6: the line Item picker lists only the Items of this person's work areas", async () => {
+    renderFormAt();
+    await ready();
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/items?work_area=mine"));
+    expect(apiClient.get).not.toHaveBeenCalledWith("/items");
+  });
+
+  it("P2-12: what is typed is kept for a reload of this tab, and comes back with a way to start again", async () => {
+    renderFormAt();
+    await ready();
+    fireEvent.change(screen.getByLabelText(/po no/i), { target: { value: "PO-DRAFT" } });
+    await fillLine(1, /^Laptop/, "3", "1500");
+    await waitFor(() => expect(window.sessionStorage.getItem("ckam:manual-po-draft")).toContain("PO-DRAFT"));
+    cleanup();
+    renderFormAt();
+    await ready();
+    expect(screen.getByLabelText(/po no/i)).toHaveValue("PO-DRAFT");
+    expect(screen.getByLabelText("Line 1 Quantity")).toHaveValue(3);
+    expect(screen.getByLabelText("Line 1 Unit Cost")).toHaveValue(1500);
+    expect(screen.getByText(/The purchase order you were typing before the page reloaded is back\./)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Start again" }));
+    expect(screen.getByLabelText(/po no/i)).toHaveValue("");
+    await waitFor(() => expect(window.sessionStorage.getItem("ckam:manual-po-draft")).toBeNull());
+  });
+
+  it("P2-12: the draft is cleared once the PO is saved", async () => {
+    (apiClient.post as any).mockResolvedValue({ ...PO_AFTER, lines_created: 1, units_created: 1 });
+    const router = renderFormAt();
+    await ready();
+    await fillHeader();
+    await fillLine(1, /^Laptop/, "1", "100");
+    await waitFor(() => expect(window.sessionStorage.getItem("ckam:manual-po-draft")).not.toBeNull());
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(router.state.location.pathname).toBe("/purchase-orders/42"));
+    expect(window.sessionStorage.getItem("ckam:manual-po-draft")).toBeNull();
+  });
+
+  it("P2-12: leaving a typed PO asks first (beforeunload and in-app navigation)", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const router = renderFormAt();
+    await ready();
+    fireEvent.change(screen.getByLabelText(/po no/i), { target: { value: "PO-5" } });
+    await new Promise((r) => setTimeout(r, 0));
+    const ev = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(true);
+    act(() => { void router.navigate({ to: "/purchase-orders" }); });
+    await waitFor(() => expect(confirm).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(router.state.location.pathname).toBe("/purchase-orders/new");
+    confirm.mockRestore();
+  });
+
+  it("P2-4: lines are cards on a narrow screen -- no table that scrolls sideways", async () => {
+    renderFormAt();
+    await ready();
+    const lines = screen.getByRole("region", { name: "Lines" });
+    expect(lines.querySelector("table")).toBeNull();
+    expect(lines.querySelector(".overflow-x-auto")).toBeNull();
+    expect(within(lines).getByRole("group", { name: "Line 1" })).toBeInTheDocument();
   });
 });

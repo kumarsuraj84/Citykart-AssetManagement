@@ -43,7 +43,7 @@ function mockGets(found: Record<string, unknown[]> = {}, pool: { id: number }[] 
     if (path === "/asset-users") return Promise.resolve(USERS);
     // "Currently in stock at" lists stock rooms from GET /stock-rooms (S3b-1).
     if (path === "/stock-rooms") return Promise.resolve(USERS.filter((u) => u.asset_user_type === "STOCK_POINT"));
-    if (path === "/items") return Promise.resolve(ITEMS);
+    if (path === "/items?work_area=mine") return Promise.resolve(ITEMS);
     if (path.startsWith("/assets?")) {
       const q = /[?&]q=([^&]*)/.exec(path);
       const ids = /[?&]ids=([^&]*)/.exec(path);
@@ -289,7 +289,7 @@ describe("Move: Send to Store prints labels as assets are scanned", () => {
     expect(screen.queryByRole("checkbox", { name: /print labels as i scan/i })).not.toBeInTheDocument();
     choose("Send to Store");
     expect(screen.getByRole("checkbox", { name: /print labels as i scan/i })).toBeInTheDocument();
-    for (const other of ["Give to Employee", "Return to Stock Room", "Install", "Send for Repair"]) {
+    for (const other of ["Give to Employee", "Move to Stock Room", "Install", "Send for Repair"]) {
       choose(other);
       expect(screen.queryByRole("checkbox", { name: /print labels as i scan/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /label settings/i })).not.toBeInTheDocument();
@@ -320,7 +320,7 @@ describe("Move: Send to Store prints labels as assets are scanned", () => {
 describe("S0: the destination follows the server's rule", () => {
   it.each([
     ["Give to Employee", "Employee"],
-    ["Return to Stock Room", "Stock Room"],
+    ["Move to Stock Room", "Stock Room"],
     ["Send to Store", "Store"],
     ["Install", "Install Point"],
     ["Receive from Repair", "Received into"],
@@ -343,6 +343,11 @@ describe("S0: the destination follows the server's rule", () => {
       choose(choice);
       expect(screen.queryByRole("combobox", { name: /^(employee|store|stock room|install point|received into)$/i })).not.toBeInTheDocument();
       fireEvent.click(applyButton(choice, 1));
+      // S7 P2-8: Sell / Scrap / Dispose are final: confirmed first.
+      if (["Dispose", "Sell", "Scrap"].includes(choice)) {
+        const confirm = await screen.findByRole("alertdialog");
+        fireEvent.click(within(confirm).getByRole("button", { name: `${choice} 1 asset` }));
+      }
       await waitFor(() => expect(apiClient.post).toHaveBeenCalled());
       expect((apiClient.post as any).mock.calls.at(-1)[1]).toMatchObject({ to_asset_user_id: null });
     },

@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,10 +16,13 @@ import { AssetGroupsScreen } from "../asset-groups/AssetGroupsScreen";
 import { ItemsScreen } from "../items/ItemsScreen";
 import { CodeRuleScreen } from "../numbering/CodeRuleScreen";
 import { SETTINGS_HOME } from "./settings-structure";
-import { SETUP_TOTAL, useSetupProgress, type SetupStep, type SetupStepKey } from "./setup-progress";
+import { SETUP_TOTAL, useDefaultSetupCompany, useSetupProgress, type SetupStep, type SetupStepKey } from "./setup-progress";
+import { SearchableSelect } from "@/components/shared/SearchableSelect";
+import { companyOptions } from "@/lib/option-labels";
+import type { CompanyRef } from "@/lib/capabilities";
 
 /** Each step opens the normal Settings screen(s) inline: the same forms, rules and permissions. */
-function StepContent({ stepKey }: { stepKey: SetupStepKey }): ReactNode {
+function StepContent({ stepKey, company }: { stepKey: SetupStepKey; company: CompanyRef | null }): ReactNode {
   switch (stepKey) {
     case "company":
       return <CompaniesSetup embedded />;
@@ -49,7 +52,8 @@ function StepContent({ stepKey }: { stepKey: SetupStepKey }): ReactNode {
         </div>
       );
     case "code-format":
-      return <CodeRuleScreen embedded />;
+      // S7 (P2-3): the example is the guide's company's (its code in the asset code).
+      return <CodeRuleScreen embedded exampleCompany={company} />;
   }
 }
 
@@ -70,9 +74,18 @@ export function SetupWizard({
   /** `replace`: pin the opening step without adding a history entry. */
   onStepChange: (n: number, opts?: { replace?: boolean }) => void;
 }) {
-  const progress = useSetupProgress();
+  // S7 (P2-3): the guide is about ONE company (default: the one the person works in), chosen at the top.
+  const defaults = useDefaultSetupCompany();
+  const [chosenCompanyId, setChosenCompanyId] = useState<number | null>(null);
+  const companyId = chosenCompanyId ?? defaults.companyId;
+  const company = defaults.companies.find((c) => c.id === companyId) ?? (companyId != null ? { id: companyId, code: "", name: "" } : null);
+  const progress = useSetupProgress(defaults.ready, companyId);
+  const companyWord = (company ? company.code || company.name : "") || progress.companyLabel;
   const { steps, doneCount } = progress;
-  const opening = progress.isLoading || progress.isError ? null : firstOpenStep(steps);
+  const loading = progress.isLoading || !defaults.ready;
+  const opening = loading || progress.isError ? null : firstOpenStep(steps);
+  // "Finish": the guide ends on a summary of where this company stands (not on step 7).
+  const [finished, setFinished] = useState(false);
 
   // Opened without a step: settle on the first step not done yet, once, so the page does not jump
   // to the next step by itself while the person is still working on this one.
@@ -91,6 +104,7 @@ export function SetupWizard({
 
   const current = steps.find((s) => s.n === step) ?? steps.find((s) => s.n === firstOpenStep(steps))!;
   const allDone = doneCount === SETUP_TOTAL;
+  const left = steps.filter((s) => !s.done);
 
   return (
     <div className="flex flex-col gap-4">
@@ -100,16 +114,59 @@ export function SetupWizard({
         actions={
           <div className="flex min-w-48 flex-col gap-1 text-right">
             <span className="text-sm font-medium tabular-nums" data-testid="setup-done-count">
-              {progress.isLoading ? "…" : `${doneCount} of ${SETUP_TOTAL} done`}
+              {loading ? "…" : `${doneCount} of ${SETUP_TOTAL} done${companyWord ? ` for ${companyWord}` : ""}`}
             </span>
             <Progress value={(doneCount / SETUP_TOTAL) * 100} className="h-1.5" aria-label="Set-up progress" />
           </div>
         }
       />
 
-      {allDone && !progress.isLoading && (
+      {defaults.companies.length > 1 && (
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+          <label htmlFor="setup-company" className="text-sm font-medium">Company being set up</label>
+          <div className="w-full sm:w-72">
+            <SearchableSelect
+              id="setup-company" aria-label="Company being set up" value={companyId != null ? String(companyId) : undefined}
+              onValueChange={(v) => { setChosenCompanyId(Number(v)); setFinished(false); }}
+              options={companyOptions(defaults.companies)}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">Places, stock rooms, cost centres and people are per company; groups, Items and vendors are shared.</p>
+        </div>
+      )}
+
+      {finished && !loading ? (
+        <section aria-label="Set-up summary" className="flex flex-col gap-3 rounded-md border p-4" aria-live="polite">
+          {allDone ? (
+            <>
+              <h2 className="text-base font-semibold">CKAM is set up{companyWord ? ` for ${companyWord}` : ""}.</h2>
+              <p className="text-sm text-muted-foreground">
+                All seven steps are done. Everything stays available under Settings; the first assets can be added now.
+              </p>
+            </>
+          ) : (
+            <>
+              <h2 className="text-base font-semibold">
+                {doneCount} of {SETUP_TOTAL} steps done{companyWord ? ` for ${companyWord}` : ""}.
+              </h2>
+              <p className="text-sm text-muted-foreground">Still to do: {left.map((s) => s.title).join(", ")}.</p>
+            </>
+          )}
+          <div className="flex flex-wrap gap-2">
+            {allDone ? (
+              <Button asChild size="sm"><Link to="/assets/new">Add the first assets</Link></Button>
+            ) : (
+              <Button size="sm" onClick={() => { setFinished(false); onStepChange(left[0].n); }}>Continue with {left[0].title}</Button>
+            )}
+            <Button asChild size="sm" variant="outline"><Link to={SETTINGS_HOME}>Go to Settings</Link></Button>
+            <Button size="sm" variant="ghost" onClick={() => setFinished(false)}>Back to the steps</Button>
+          </div>
+        </section>
+      ) : (
+      <>
+      {allDone && !loading && (
         <p className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-sm" role="status">
-          CKAM is set up. Everything stays available under <Link to={SETTINGS_HOME} className="font-medium underline-offset-2 hover:underline">Settings</Link>.
+          CKAM is set up{companyWord ? ` for ${companyWord}` : ""}. Everything stays available under <Link to={SETTINGS_HOME} className="font-medium underline-offset-2 hover:underline">Settings</Link>.
         </p>
       )}
 
@@ -142,7 +199,7 @@ export function SetupWizard({
                   <span className="flex min-w-0 flex-col">
                     <span className="font-medium">{s.title}</span>
                     <span className="text-xs text-muted-foreground">
-                      {progress.isLoading ? "…" : s.done ? `Done · ${s.status}` : `To do · ${s.status}`}
+                      {loading ? "…" : s.done ? `Done · ${s.status}` : `To do · ${s.status}`}
                     </span>
                   </span>
                 </button>
@@ -166,17 +223,17 @@ export function SetupWizard({
                 current.done ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground",
               )}
             >
-              {progress.isLoading ? "Checking…" : current.done ? "Done" : "To do"}
+              {loading ? "Checking…" : current.done ? "Done" : "To do"}
             </span>
           </div>
 
-          {progress.isLoading ? (
+          {loading ? (
             <div className="flex flex-col gap-2">
               <Skeleton className="h-9 w-full" />
               <Skeleton className="h-9 w-2/3" />
             </div>
           ) : (
-            <StepContent stepKey={current.key} />
+            <StepContent stepKey={current.key} company={company} />
           )}
 
           <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
@@ -188,13 +245,15 @@ export function SetupWizard({
                 {current.done ? "Next" : "Skip for now"}
               </Button>
             ) : (
-              <Button asChild size="sm">
-                <Link to={SETTINGS_HOME}>Finish</Link>
+              <Button size="sm" onClick={() => setFinished(true)}>
+                Finish
               </Button>
             )}
           </div>
         </section>
       </div>
+      </>
+      )}
     </div>
   );
 }

@@ -1,6 +1,12 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach } from "vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
+
+// S7: the full suite runs ~80 jsdom files in parallel; a screen that renders through the
+// whole router (sidebar, capabilities, several queries) can need just over the default 1 s
+// for a findBy / waitFor on a busy machine. 2.5 s removes those timing-only failures; a
+// genuinely failing expectation still fails (only later).
+configure({ asyncUtilTimeout: 2500 });
 
 // This project's vitest config doesn't enable `globals: true`, so Testing
 // Library's own auto-cleanup (which hooks a global `afterEach`) never

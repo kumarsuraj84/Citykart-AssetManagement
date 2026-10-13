@@ -123,7 +123,8 @@ test("Desktop bundle journey: define it, add 2 to a PO, deliver with no-serial d
   await expect(page.getByRole("region", { name: "Received" }).getByText("8 assets created", { exact: true })).toBeVisible();
 
   await page.getByRole("link", { name: "Open PO" }).click();
-  await expect(page.getByRole("button", { name: /^Receive all waiting/ })).toBeDisabled();
+  // S7 (P3-7): nothing waiting any more = no "Receive all waiting" button at all.
+  await expect(page.getByRole("button", { name: /^Receive all waiting/ })).toHaveCount(0);
   // The mouse/keyboard assets took N/A; the CPUs their own serials (seen in each line's units).
   const mouseLine = partLine("row", "Mouse");
   await mouseLine.getByRole("button", { name: /^View units of line/ }).click();

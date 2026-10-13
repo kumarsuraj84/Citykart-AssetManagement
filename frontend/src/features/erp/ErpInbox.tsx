@@ -4,10 +4,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import type { Item } from "../items/types";
 import { ItemFormDialog } from "../items/ItemFormDialog";
+import { hasSuggestion, suggestionWords } from "../items/suggestion-words";
 import { ErpStoresDialog } from "../asset-users/ErpStoresDialog";
 import { reasonWords } from "../purchase-orders/PoDraftCard";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
@@ -40,6 +42,9 @@ export interface InboxItemGroup {
   suggested_item_id: number | null;
   suggested_item_name: string | null;
   suggestion_score?: number | null;
+  /** S7: "same name" / "similar name", and its code SAME_NAME / SIMILAR_NAME. */
+  suggestion_reason?: string | null;
+  suggestion_reason_code?: string | null;
   seen_on_pos?: string[];
   po_count?: number;
 }
@@ -175,7 +180,7 @@ export function ErpInboxScreen({ section }: { section?: InboxSection } = {}) {
       />
       <div className="flex flex-wrap items-center gap-3">
         {companies.length > 1 && (
-          <div className="w-64">
+          <div className="w-full sm:w-64">
             <SearchableSelect
               id="inbox-company" aria-label="Company" value={companyId} onValueChange={setCompanyId}
               options={[{ value: "all", label: "All companies" }, ...companyOptions(companies)]}
@@ -239,6 +244,83 @@ function Results({ lines, label }: { lines: ResultLine[]; label: string }) {
 // New items from ERP
 // ---------------------------------------------------------------------------
 
+/** Groups shown per page (S7 P2-5: the inbox was one 33,000-px page). */
+export const INBOX_PAGE_SIZE = 20;
+/** PO numbers listed for one code before "and N more". */
+export const PO_NUMBERS_SHOWN = 5;
+/** Registrations listed for one supplier before "and N more". */
+const REGISTRATIONS_SHOWN = 3;
+
+/** "SPO/1, SPO/2, … and 95 more". */
+export function poNumbersText(numbers: string[], shown = PO_NUMBERS_SHOWN): string {
+  if (numbers.length <= shown) return numbers.join(", ");
+  return `${numbers.slice(0, shown).join(", ")} and ${(numbers.length - shown).toLocaleString("en-IN")} more`;
+}
+
+/** Every word a group can be found by: its title, codes, product names, PO numbers and the suggestion. */
+function itemGroupText(g: InboxItemGroup): string {
+  return [
+    groupTitle(g), g.company_code, g.department, g.section, g.division, g.suggested_item_name,
+    ...g.codes.flatMap((c) => [c.icode, c.name, ...c.po_numbers]),
+  ].filter(Boolean).join(" ").toLowerCase();
+}
+
+function vendorGroupText(g: InboxVendorGroup): string {
+  return [g.name, g.company_code, g.pan, g.suggested_vendor_name, ...g.registrations.flatMap((r) => [r.erp_code, r.name, r.gstin])]
+    .filter(Boolean).join(" ").toLowerCase();
+}
+
+function matches(text: string, query: string): boolean {
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  return words.every((w) => text.includes(w));
+}
+
+/** Search box + "Showing 21–40 of 131" + Previous / Next, for one inbox section. */
+function useInboxPaging<T>(rows: T[], textOf: (row: T) => string) {
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(0);
+  const filtered = useMemo(() => (query.trim() ? rows.filter((r) => matches(textOf(r), query)) : rows), [rows, query, textOf]);
+  const pages = Math.max(1, Math.ceil(filtered.length / INBOX_PAGE_SIZE));
+  const current = Math.min(page, pages - 1);
+  const shown = filtered.slice(current * INBOX_PAGE_SIZE, (current + 1) * INBOX_PAGE_SIZE);
+  return {
+    query, setQuery: (q: string) => { setQuery(q); setPage(0); },
+    page: current, pages, setPage, filtered, shown,
+  };
+}
+
+function PagingBar({ label, paging, noun }: {
+  label: string;
+  noun: string;
+  paging: { query: string; setQuery: (q: string) => void; page: number; pages: number; setPage: (p: number) => void; filtered: unknown[] };
+}) {
+  const total = paging.filtered.length;
+  const from = total === 0 ? 0 : paging.page * INBOX_PAGE_SIZE + 1;
+  const to = Math.min(total, (paging.page + 1) * INBOX_PAGE_SIZE);
+  return (
+    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+      <Input
+        aria-label={`Search ${label}`} placeholder={`Search ${label}…`} className="h-8 w-full sm:w-72"
+        value={paging.query} onChange={(e) => paging.setQuery(e.target.value)}
+      />
+      <p className="text-xs text-muted-foreground" role="status" aria-label={`${label} shown`}>
+        {total === 0 ? `No ${noun}s match.` : `Showing ${from.toLocaleString("en-IN")}–${to.toLocaleString("en-IN")} of ${plural(total, noun)}`}
+      </p>
+      {paging.pages > 1 && (
+        <div className="flex items-center gap-1 sm:ml-auto">
+          <Button size="sm" variant="outline" disabled={paging.page === 0} onClick={() => paging.setPage(paging.page - 1)} aria-label={`Previous page of ${label}`}>
+            Previous
+          </Button>
+          <span className="px-1 text-xs tabular-nums text-muted-foreground">Page {paging.page + 1} of {paging.pages}</span>
+          <Button size="sm" variant="outline" disabled={paging.page >= paging.pages - 1} onClick={() => paging.setPage(paging.page + 1)} aria-label={`Next page of ${label}`}>
+            Next
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function NewItemsSection({ groups, count, onChanged }: { groups: InboxItemGroup[]; count: number; onChanged: () => void }) {
   const { caps } = useCapabilities();
   const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => apiClient.get<Item[]>("/items") });
@@ -248,9 +330,11 @@ function NewItemsSection({ groups, count, onChanged }: { groups: InboxItemGroup[
   const [scopes, setScopes] = useState<Record<string, InboxScope>>({});
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [open, setOpen] = useState<Set<string>>(new Set());
   const [bulkItem, setBulkItem] = useState("");
   const [newItemFor, setNewItemFor] = useState<InboxItemGroup | null>(null);
   const [results, setResults] = useState<ResultLine[]>([]);
+  const paging = useInboxPaging(groups, itemGroupText);
 
   const scopeOf = (g: InboxItemGroup): InboxScope => {
     const allowed = scopesOf(g);
@@ -277,11 +361,19 @@ function NewItemsSection({ groups, count, onChanged }: { groups: InboxItemGroup[
   });
 
   const chosenGroups = groups.filter((g) => selected.has(groupKey(g)));
-  const withSuggestion = chosenGroups.filter((g) => g.suggested_item_id != null);
+  const withSuggestion = chosenGroups.filter((g) => hasSuggestion(g));
   const toggle = (g: InboxItemGroup, on: boolean) =>
     setSelected((s) => {
       const next = new Set(s);
       if (on) next.add(groupKey(g)); else next.delete(groupKey(g));
+      return next;
+    });
+  const pageKeys = paging.shown.map(groupKey);
+  const allOnPage = pageKeys.length > 0 && pageKeys.every((k) => selected.has(k));
+  const toggleOpen = (key: string) =>
+    setOpen((s) => {
+      const next = new Set(s);
+      if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
 
@@ -298,8 +390,9 @@ function NewItemsSection({ groups, count, onChanged }: { groups: InboxItemGroup[
         <p className="text-sm text-muted-foreground">Nothing needs a decision.</p>
       ) : (
         <>
+          <PagingBar label="ERP groups" noun="group" paging={paging} />
           {chosenGroups.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-2 py-1.5 text-sm" aria-label="Selected groups">
+            <div className="flex flex-col gap-2 rounded-md border bg-muted/40 px-2 py-1.5 text-sm sm:flex-row sm:flex-wrap sm:items-center" aria-label="Selected groups">
               <span>{plural(chosenGroups.length, "group")} selected</span>
               <AsyncButton
                 size="sm" variant="outline" disabled={withSuggestion.length === 0} pending={resolve.isPending}
@@ -307,7 +400,7 @@ function NewItemsSection({ groups, count, onChanged }: { groups: InboxItemGroup[
               >
                 Use the suggestions ({withSuggestion.length})
               </AsyncButton>
-              <div className="w-56">
+              <div className="w-full sm:w-56">
                 <SearchableSelect id="inbox-bulk-item" aria-label="Item for the selected groups" value={bulkItem || undefined} onValueChange={setBulkItem} options={options} placeholder="Pick one Item…" />
               </div>
               <AsyncButton
@@ -324,79 +417,110 @@ function NewItemsSection({ groups, count, onChanged }: { groups: InboxItemGroup[
               </AsyncButton>
             </div>
           )}
+          {paging.shown.length > 0 && (
+            <label className="flex w-fit items-center gap-2 text-xs text-muted-foreground">
+              <Checkbox
+                aria-label="Select every group on this page" checked={allOnPage}
+                onCheckedChange={(v) => setSelected((s) => {
+                  const next = new Set(s);
+                  for (const k of pageKeys) { if (v === true) next.add(k); else next.delete(k); }
+                  return next;
+                })}
+              />
+              Select every group on this page
+            </label>
+          )}
           <ul className="flex flex-col divide-y rounded-md border">
-            {groups.map((g) => {
+            {paging.shown.map((g) => {
               const key = groupKey(g);
               const title = groupTitle(g);
               const scope = scopeOf(g);
               const pick = picked[key] ?? "";
+              const isOpen = open.has(key);
+              const units = g.codes.reduce((n, c) => n + c.units, 0);
+              const poCount = g.po_count ?? new Set(g.codes.flatMap((c) => c.po_numbers)).size;
               return (
                 <li key={key} className="flex flex-col gap-1.5 p-2 text-sm" aria-label={`ERP group ${title}`}>
-                  <div className="flex flex-wrap items-start gap-2">
+                  <div className="flex items-start gap-2">
                     <Checkbox aria-label={`Select ${title}`} checked={selected.has(key)} onCheckedChange={(v) => toggle(g, v === true)} className="mt-0.5" />
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium">
+                      <p className="font-medium break-words">
                         {title} <span className="text-xs font-normal text-muted-foreground">· {g.company_code}</span>
                       </p>
-                      {(g.section || g.department) && (
-                        <p className="text-xs text-muted-foreground">{[g.division, g.section, g.department].filter(Boolean).join(" › ")}</p>
-                      )}
-                      <ul className="mt-0.5 flex flex-col text-xs">
-                        {g.codes.map((c) => (
-                          <li key={c.icode}>
-                            <span className="font-mono">{c.icode}</span> {c.name} · {plural(Math.round(c.units), "unit")}
-                            {c.po_numbers.length > 0 && <span className="text-muted-foreground"> · on {c.po_numbers.join(", ")}</span>}
-                          </li>
-                        ))}
-                      </ul>
+                      <p className="text-xs text-muted-foreground" aria-label={`Counts for ${title}`}>
+                        {plural(g.codes.length, "code")} · {plural(Math.round(units), "unit")} · on {plural(poCount, "PO")}
+                      </p>
                     </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 pl-6">
-                    {g.suggested_item_id != null && (
-                      <>
-                        <span className="text-xs">
-                          Suggested: <span className="font-medium">{g.suggested_item_name}</span>
-                          {g.suggestion_score != null && <span className="text-muted-foreground"> ({Math.round(g.suggestion_score * 100)}% match)</span>}
-                        </span>
-                        <AsyncButton
-                          size="sm" variant="outline" pending={resolve.isPending} aria-label={`Use suggestion for ${title}`}
-                          onClick={() => resolve.mutate([{ group: g, decision: { kind: "item", itemId: g.suggested_item_id! } }])}
-                        >
-                          Use suggestion
-                        </AsyncButton>
-                      </>
-                    )}
-                    <div className="w-56">
-                      <SearchableSelect
-                        id={`inbox-pick-${key}`} aria-label={`Pick another Item for ${title}`} value={pick || undefined}
-                        onValueChange={(v) => setPicked((p) => ({ ...p, [key]: v }))} options={options} placeholder="Pick another…"
-                      />
-                    </div>
-                    {pick && (
-                      <AsyncButton
-                        size="sm" variant="outline" pending={resolve.isPending} aria-label={`Link ${title} to the picked Item`}
-                        onClick={() => resolve.mutate([{ group: g, decision: { kind: "item", itemId: Number(pick) } }])}
-                      >
-                        Link
-                      </AsyncButton>
-                    )}
-                    {canCreate(caps, "item") && (
-                      <Button size="sm" variant="outline" aria-label={`New Item for ${title}`} onClick={() => setNewItemFor(g)}>+ New Item</Button>
-                    )}
-                    <AsyncButton
-                      size="sm" variant="outline" pending={resolve.isPending} aria-label={`Not tracked: ${title}`}
-                      onClick={() => resolve.mutate([{ group: g, decision: { kind: "not_tracked" } }])}
+                    <Button
+                      size="sm" variant="ghost" className="shrink-0" aria-expanded={isOpen} aria-label={`Details for ${title}`}
+                      onClick={() => toggleOpen(key)}
                     >
-                      Not tracked
-                    </AsyncButton>
-                    <div className="w-56">
-                      <SearchableSelect
-                        id={`inbox-scope-${key}`} aria-label={`How far for ${title}`} value={scope}
-                        onValueChange={(v) => setScopes((s) => ({ ...s, [key]: v as InboxScope }))}
-                        options={scopesOf(g).map((s) => ({ value: s, label: SCOPE_WORDS[s] }))}
-                      />
-                    </div>
+                      {isOpen ? "Hide" : "Details"}
+                    </Button>
                   </div>
+                  {hasSuggestion(g) && (
+                    <div className="flex flex-col gap-1.5 pl-6 sm:flex-row sm:flex-wrap sm:items-center">
+                      <span className="text-xs">
+                        Suggested: <span className="font-medium">{g.suggested_item_name}</span>
+                        <span className="text-muted-foreground"> · {suggestionWords(g)}</span>
+                      </span>
+                      <AsyncButton
+                        size="sm" variant="outline" className="w-full sm:w-auto" pending={resolve.isPending} aria-label={`Use suggestion for ${title}`}
+                        onClick={() => resolve.mutate([{ group: g, decision: { kind: "item", itemId: g.suggested_item_id! } }])}
+                      >
+                        Use suggestion
+                      </AsyncButton>
+                    </div>
+                  )}
+                  {isOpen && (
+                    <>
+                      <div className="pl-6">
+                        {(g.section || g.department) && (
+                          <p className="text-xs text-muted-foreground">{[g.division, g.section, g.department].filter(Boolean).join(" › ")}</p>
+                        )}
+                        <ul className="mt-0.5 flex flex-col text-xs">
+                          {g.codes.map((c) => (
+                            <li key={c.icode} className="break-words">
+                              <span className="font-mono">{c.icode}</span> {c.name} · {plural(Math.round(c.units), "unit")}
+                              {c.po_numbers.length > 0 && <span className="text-muted-foreground"> · on {poNumbersText(c.po_numbers)}</span>}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className="flex flex-col gap-2 pl-6 sm:flex-row sm:flex-wrap sm:items-center">
+                        <div className="w-full sm:w-56">
+                          <SearchableSelect
+                            id={`inbox-pick-${key}`} aria-label={`Pick another Item for ${title}`} value={pick || undefined}
+                            onValueChange={(v) => setPicked((p) => ({ ...p, [key]: v }))} options={options} placeholder="Pick another…"
+                          />
+                        </div>
+                        {pick && (
+                          <AsyncButton
+                            size="sm" variant="outline" pending={resolve.isPending} aria-label={`Link ${title} to the picked Item`}
+                            onClick={() => resolve.mutate([{ group: g, decision: { kind: "item", itemId: Number(pick) } }])}
+                          >
+                            Link
+                          </AsyncButton>
+                        )}
+                        {canCreate(caps, "item") && (
+                          <Button size="sm" variant="outline" aria-label={`New Item for ${title}`} onClick={() => setNewItemFor(g)}>+ New Item</Button>
+                        )}
+                        <AsyncButton
+                          size="sm" variant="outline" pending={resolve.isPending} aria-label={`Not tracked: ${title}`}
+                          onClick={() => resolve.mutate([{ group: g, decision: { kind: "not_tracked" } }])}
+                        >
+                          Not tracked
+                        </AsyncButton>
+                        <div className="w-full sm:w-56">
+                          <SearchableSelect
+                            id={`inbox-scope-${key}`} aria-label={`How far for ${title}`} value={scope}
+                            onValueChange={(v) => setScopes((s) => ({ ...s, [key]: v as InboxScope }))}
+                            options={scopesOf(g).map((s) => ({ value: s, label: SCOPE_WORDS[s] }))}
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </li>
               );
             })}
@@ -405,7 +529,7 @@ function NewItemsSection({ groups, count, onChanged }: { groups: InboxItemGroup[
       )}
       <ItemFormDialog
         open={newItemFor !== null}
-        onOpenChange={(open) => !open && setNewItemFor(null)}
+        onOpenChange={(o) => !o && setNewItemFor(null)}
         initialName={newItemFor ? (newItemFor.codes[0]?.name || newItemFor.article_name || undefined) : undefined}
         onSaved={(saved) => {
           if (newItemFor) resolve.mutate([{ group: newItemFor, decision: { kind: "item", itemId: saved.id } }]);
@@ -425,6 +549,8 @@ function NewVendorsSection({ groups, count, onChanged }: { groups: InboxVendorGr
   const vendors = Array.isArray(vendorsQ.data) ? vendorsQ.data : [];
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [results, setResults] = useState<ResultLine[]>([]);
+  const [allShown, setAllShown] = useState<Set<string>>(new Set());
+  const paging = useInboxPaging(groups, vendorGroupText);
 
   const resolve = useMutation({
     mutationFn: async (work: { group: InboxVendorGroup; action: "LINK" | "CREATE"; vendorId?: number }[]) => {
@@ -461,62 +587,79 @@ function NewVendorsSection({ groups, count, onChanged }: { groups: InboxVendorGr
       {groups.length === 0 ? (
         <p className="text-sm text-muted-foreground">Nothing needs a decision.</p>
       ) : (
-        <ul className="flex flex-col divide-y rounded-md border">
-          {groups.map((g) => {
-            const n = g.registrations.length;
-            const all = n === 1 ? "" : ` all ${n}`;
-            const pick = picked[g.group_key] ?? "";
-            return (
-              <li key={g.group_key} className="flex flex-col gap-1.5 p-2 text-sm" aria-label={`Supplier ${g.name}`}>
-                <p className="font-medium">
-                  {g.name}{" "}
-                  <span className="text-xs font-normal text-muted-foreground">
-                    · {g.company_code}{g.pan ? ` · PAN ${g.pan}` : ""} · {plural(n, "registration")}
-                  </span>
-                </p>
-                <ul className="flex flex-col text-xs">
-                  {g.registrations.map((r) => (
-                    <li key={r.erp_code}>
-                      {r.name} · ERP code {r.erp_code}{r.gstin ? ` · GSTIN ${r.gstin}` : ""}
-                      <span className="text-muted-foreground"> · {plural(r.open_pos, "open PO")}</span>
-                    </li>
-                  ))}
-                </ul>
-                <div className="flex flex-wrap items-center gap-2">
-                  {g.suggested_vendor_id != null && (
-                    <AsyncButton
-                      size="sm" variant="outline" pending={resolve.isPending}
-                      onClick={() => resolve.mutate([{ group: g, action: "LINK", vendorId: g.suggested_vendor_id! }])}
+        <>
+          <PagingBar label="suppliers" noun="supplier" paging={paging} />
+          <ul className="flex flex-col divide-y rounded-md border">
+            {paging.shown.map((g) => {
+              const n = g.registrations.length;
+              const all = n === 1 ? "" : ` all ${n}`;
+              const pick = picked[g.group_key] ?? "";
+              const everyRegistration = allShown.has(g.group_key);
+              const regs = everyRegistration ? g.registrations : g.registrations.slice(0, REGISTRATIONS_SHOWN);
+              return (
+                <li key={g.group_key} className="flex flex-col gap-1.5 p-2 text-sm" aria-label={`Supplier ${g.name}`}>
+                  <p className="font-medium break-words">
+                    {g.name}{" "}
+                    <span className="text-xs font-normal text-muted-foreground">
+                      · {g.company_code}{g.pan ? ` · PAN ${g.pan}` : ""} · {plural(n, "registration")}
+                    </span>
+                  </p>
+                  <ul className="flex flex-col text-xs">
+                    {regs.map((r) => (
+                      <li key={r.erp_code} className="break-words">
+                        {r.name} · ERP code {r.erp_code}{r.gstin ? ` · GSTIN ${r.gstin}` : ""}
+                        <span className="text-muted-foreground"> · {plural(r.open_pos, "open PO")}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {n > REGISTRATIONS_SHOWN && (
+                    <Button
+                      size="sm" variant="link" className="h-auto w-fit p-0 text-xs"
+                      onClick={() => setAllShown((s) => {
+                        const next = new Set(s);
+                        if (next.has(g.group_key)) next.delete(g.group_key); else next.add(g.group_key);
+                        return next;
+                      })}
                     >
-                      Link{all} to {g.suggested_vendor_name}{g.suggestion_reason ? ` (${reasonWords(g.suggestion_reason)})` : ""}
-                    </AsyncButton>
+                      {everyRegistration ? "Show fewer" : `and ${n - REGISTRATIONS_SHOWN} more`}
+                    </Button>
                   )}
-                  <div className="w-56">
-                    <SearchableSelect
-                      id={`inbox-vendor-${g.group_key}`} aria-label={`Link ${g.name} to an existing vendor`} value={pick || undefined}
-                      onValueChange={(v) => setPicked((p) => ({ ...p, [g.group_key]: v }))} options={vendorOptions(vendors)}
-                      placeholder="Link to existing…"
-                    />
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                    {g.suggested_vendor_id != null && (
+                      <AsyncButton
+                        size="sm" variant="outline" className="h-auto min-h-8 whitespace-normal text-left" pending={resolve.isPending}
+                        onClick={() => resolve.mutate([{ group: g, action: "LINK", vendorId: g.suggested_vendor_id! }])}
+                      >
+                        Link{all} to {g.suggested_vendor_name}{g.suggestion_reason ? ` (${reasonWords(g.suggestion_reason)})` : ""}
+                      </AsyncButton>
+                    )}
+                    <div className="w-full sm:w-56">
+                      <SearchableSelect
+                        id={`inbox-vendor-${g.group_key}`} aria-label={`Link ${g.name} to an existing vendor`} value={pick || undefined}
+                        onValueChange={(v) => setPicked((p) => ({ ...p, [g.group_key]: v }))} options={vendorOptions(vendors)}
+                        placeholder="Link to existing…"
+                      />
+                    </div>
+                    {pick && (
+                      <AsyncButton
+                        size="sm" variant="outline" pending={resolve.isPending} aria-label={`Link${all} ${g.name} registrations to the picked vendor`}
+                        onClick={() => resolve.mutate([{ group: g, action: "LINK", vendorId: Number(pick) }])}
+                      >
+                        Link{all}
+                      </AsyncButton>
+                    )}
+                    <AsyncButton
+                      size="sm" variant="outline" className="h-auto min-h-8 whitespace-normal" pending={resolve.isPending} aria-label={`Create new vendor for ${g.name}`}
+                      onClick={() => resolve.mutate([{ group: g, action: "CREATE" }])}
+                    >
+                      Create new vendor{n > 1 ? ` (links all ${n})` : ""}
+                    </AsyncButton>
                   </div>
-                  {pick && (
-                    <AsyncButton
-                      size="sm" variant="outline" pending={resolve.isPending} aria-label={`Link${all} ${g.name} registrations to the picked vendor`}
-                      onClick={() => resolve.mutate([{ group: g, action: "LINK", vendorId: Number(pick) }])}
-                    >
-                      Link{all}
-                    </AsyncButton>
-                  )}
-                  <AsyncButton
-                    size="sm" variant="outline" pending={resolve.isPending} aria-label={`Create new vendor for ${g.name}`}
-                    onClick={() => resolve.mutate([{ group: g, action: "CREATE" }])}
-                  >
-                    Create new vendor{n > 1 ? ` (links all ${n})` : ""}
-                  </AsyncButton>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+                </li>
+              );
+            })}
+          </ul>
+        </>
       )}
     </SectionShell>
   );
@@ -534,8 +677,8 @@ function NewStoresSection({ stores, count, companyId }: { stores: InboxStore[]; 
       {stores.length === 0 ? (
         <p className="text-sm text-muted-foreground">Nothing needs a decision.</p>
       ) : (
-        <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-          <p className="text-xs">
+        <div className="flex flex-col gap-2 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <p className="min-w-0 break-words text-xs">
             Open in the ERP, not created here yet: {shown.map((s) => s.code).join(", ")}
             {stores.length > shown.length ? ` and ${(stores.length - shown.length).toLocaleString("en-IN")} more` : ""}.
           </p>

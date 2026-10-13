@@ -7,6 +7,8 @@
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
+import { useAuthStore } from "@/lib/auth-store";
+import { useMyCompanies, type CompanyRef } from "@/lib/capabilities";
 
 export interface SetupCounts {
   companies: number;
@@ -98,6 +100,10 @@ export interface SetupStatus {
   people_count: number;
   store_count: number;
   code_rule_configured: boolean;
+  /** S7: which company these steps are for (null = every company together). */
+  company_id?: number | null;
+  company_name?: string | null;
+  company_code?: string | null;
   steps: { key: string; label: string; done: boolean }[];
   done_count: number;
   total_steps: number;
@@ -129,16 +135,35 @@ export function stepsFromStatus(s: SetupStatus): SetupStep[] {
   return steps.map((step) => (serverDone.has(step.key) ? { ...step, done: serverDone.get(step.key)! } : step));
 }
 
+/** `/setup/status`, or that one company's steps (S7 P2-3: `?company_id=`). */
+export function setupStatusPath(companyId: number | null | undefined): string {
+  return companyId != null ? `/setup/status?company_id=${companyId}` : "/setup/status";
+}
+
 /**
- * The set-up progress from ONE call (S6: `GET /api/setup/status`) instead of eight lists.
+ * The company the set-up guide (and Home's "Finish setting up" row) is about by default
+ * (S7 P2-3): the company the person works in, else the first of theirs; null = not known yet.
+ */
+export function useDefaultSetupCompany(): { companies: CompanyRef[]; companyId: number | null; ready: boolean } {
+  const home = useAuthStore((s) => s.companyId);
+  const { companies, ready } = useMyCompanies();
+  const companyId = home != null && (companies.length === 0 || companies.some((c) => c.id === home))
+    ? home
+    : companies[0]?.id ?? null;
+  return { companies, companyId, ready: ready || home != null };
+}
+
+/**
+ * The set-up progress from ONE call (S6: `GET /api/setup/status`) instead of eight lists --
+ * per company when one is given (S7 P2-3: a brand-new company is no longer "7 of 7 done").
  * Any save made while it is on screen (a Settings form, a quick-create, a wizard step)
  * asks for it again, so a step turns "Done" as soon as its data exists.
  */
-export function useSetupProgress(enabled = true) {
+export function useSetupProgress(enabled = true, companyId?: number | null) {
   const qc = useQueryClient();
   const q = useQuery({
-    queryKey: SETUP_STATUS_KEY,
-    queryFn: () => apiClient.get<SetupStatus>("/setup/status"),
+    queryKey: [...SETUP_STATUS_KEY, companyId ?? "all"],
+    queryFn: () => apiClient.get<SetupStatus>(setupStatusPath(companyId)),
     enabled,
   });
   useEffect(() => {
@@ -152,6 +177,8 @@ export function useSetupProgress(enabled = true) {
   const steps = ok ? stepsFromStatus(data) : computeSetupSteps(EMPTY_COUNTS);
   return {
     steps,
+    /** S7: the company the server counted for ("CKSPL"), when one was asked for. */
+    companyLabel: ok ? (data.company_code || data.company_name || "") : "",
     doneCount: steps.filter((s) => s.done).length,
     total: SETUP_TOTAL,
     isLoading: q.isLoading,

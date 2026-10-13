@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ChevronDown, ChevronRight, Minus, Plus } from "lucide-react";
 import { apiClient } from "@/lib/api-client";
+import { useKeyedMutation } from "@/lib/submit-key";
+import { useUnsavedChangesWarning } from "@/lib/unsaved-changes";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -190,9 +192,21 @@ function ReceiveForm({ info, focusLine, onReceived }: {
     setOtherError(null);
   }
 
-  const receiveMutation = useMutation({
-    mutationFn: () => apiClient.post<ReceiveResult>(`/purchase-orders/${info.po_id}/receive`, buildReceiveBody(info, common, inputs)),
+  // S7 (P2-12): typed invoice details or serials are not lost to a reload or a click elsewhere without a question.
+  const dirty =
+    common.invoiceNumber.trim() !== "" || common.invoiceAmount.trim() !== "" ||
+    Object.values(inputs).some((l) => l.text.trim() !== "") ||
+    Object.values(common.fieldValues).some((v) => typeof v === "string" && v.trim() !== "");
+  const unsaved = useUnsavedChangesWarning(dirty);
+
+  // S7 (P1-2): one Receive = one Idempotency-Key; a second activation while it runs is ignored.
+  const receiveMutation = useKeyedMutation({
+    mutationFn: (_: void, keyed) => {
+      const body = buildReceiveBody(info, common, inputs);
+      return keyed(body, () => apiClient.post<ReceiveResult>(`/purchase-orders/${info.po_id}/receive`, body));
+    },
     onSuccess: (r) => {
+      unsaved.release();
       rememberChoice(info.company_id, "stock_room", common.receivedInto);
       onReceived(r);
     },

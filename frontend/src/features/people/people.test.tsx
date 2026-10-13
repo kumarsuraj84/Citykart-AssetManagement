@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within, act } from "@testing-library/react";
+import { currentIdempotencyKey } from "../../lib/request-key";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { apiClient, ApiError } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
@@ -260,6 +261,30 @@ describe("Add Employee (POST /api/people/employees, no type to pick)", () => {
       login: { enabled: true, role: "OPERATOR", work_area: "IT", extra_company_ids: [2] },
     }));
     expect(await screen.findByRole("status")).toHaveTextContent(/no password yet/i);
+  });
+
+  it("S7 P1-2: a double activation of Add Employee sends ONE request, with an Idempotency-Key", async () => {
+    const keys: (string | null)[] = [];
+    (apiClient.post as any).mockImplementation(() => {
+      keys.push(currentIdempotencyKey());
+      return new Promise(() => {});
+    });
+    renderPeople("employees");
+    await screen.findByText("Ankur");
+    fireEvent.click(screen.getByRole("button", { name: "Add Employee" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add Employee" });
+    fireEvent.change(within(dialog).getByLabelText(/employee code/i), { target: { value: "E60" } });
+    fireEvent.change(within(dialog).getByLabelText(/^name/i), { target: { value: "Twice" } });
+    await pick("Place", "Head Office", dialog);
+    const add = within(dialog).getByRole("button", { name: "Add Employee" });
+    act(() => {
+      add.click();
+      add.click();
+    });
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(apiClient.post).toHaveBeenCalledTimes(1);
+    expect(keys[0]).toMatch(/^[0-9a-f-]{36}$/);
   });
 
   it("the server's refusal (work-area widening) is shown word for word and the form stays open", async () => {

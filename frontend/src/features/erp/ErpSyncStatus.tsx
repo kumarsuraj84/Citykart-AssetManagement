@@ -22,6 +22,23 @@ interface SyncStatus {
   last_success: SyncRun | null;
 }
 
+const lines = (n: number, what: string) => `${n} ${what} PO line${n === 1 ? "" : "s"}`;
+
+/** "Checked just now (6:46 pm): 3 new PO lines, 1 changed PO line." / "... the ERP had nothing newer." (pure; exported for tests) */
+export function refreshResultSentence(run: Pick<SyncRun, "status" | "finished_at" | "started_at" | "po_lines_new" | "po_lines_changed" | "po_lines_gone">): string {
+  const at = run.finished_at ?? run.started_at;
+  const time = at ? new Date(at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }) : "";
+  const head = `Checked just now${time ? ` (${time})` : ""}`;
+  if (run.status === "running") return `${head}: a refresh is already running; the data updates when it ends.`;
+  const parts = [
+    run.po_lines_new > 0 ? lines(run.po_lines_new, "new") : null,
+    run.po_lines_changed > 0 ? lines(run.po_lines_changed, "changed") : null,
+    run.po_lines_gone > 0 ? lines(run.po_lines_gone, "removed") : null,
+  ].filter(Boolean);
+  if (run.status === "skipped" || parts.length === 0) return `${head}: the ERP had nothing newer to copy.`;
+  return `${head}: copied ${parts.join(", ")}.`;
+}
+
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : null);
 
 /**
@@ -51,6 +68,8 @@ export function ErpSyncStatus() {
   const asOf = good ? when(good.source_stamp ?? good.finished_at) : null;
   const failure = status.last && status.last.status === "failed" ? status.last : null;
   const refreshFailed = refresh.data && refresh.data.status === "failed" ? refresh.data : null;
+  // S7 (P3-6): what "Refresh now" just did, in one visible line (it used to change nothing on screen).
+  const refreshDone = refresh.data && refresh.data.status !== "failed" ? refreshResultSentence(refresh.data) : null;
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground" aria-label="ERP data freshness">
@@ -58,6 +77,7 @@ export function ErpSyncStatus() {
       {(refreshFailed ?? failure) && (
         <span className="text-destructive" role="alert">The last refresh did not work: {(refreshFailed ?? failure)!.message}</span>
       )}
+      {refreshDone && <span className="text-foreground" role="status" aria-label="Refresh result">{refreshDone}</span>}
       {refresh.isError && (
         <span className="text-destructive" role="alert">{refresh.error instanceof Error ? refresh.error.message : "Could not refresh."}</span>
       )}

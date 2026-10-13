@@ -80,7 +80,7 @@ function mockGets(units: Unit[], opts: { po?: unknown; groups?: unknown[]; invoi
     if (path === "/purchase-orders/1/invoices") return Promise.resolve(opts.invoices ?? []);
     const m = path.match(/^\/purchase-orders\/1\/line-groups\/(\d+)\/units\?status=(\w+)$/);
     if (m) return Promise.resolve(units.filter((u) => (u.line_no ?? 1) === Number(m[1]) && u.status === UNIT_STATUS[m[2]]));
-    if (path === "/items") {
+    if (path === "/items?work_area=mine") {
       return Promise.resolve([{
         id: 21, name: "Laptop", category_id: 1, subcategory_id: 2, serial_required: true, bundle_id: null,
         default_brand_id: null, default_warranty_years: null, is_active: true, map_count: 0,
@@ -212,7 +212,8 @@ describe("PurchaseOrderDetail: lines, not units (S2)", () => {
     mockGets([DELIVERED_LINE]);
     renderDetailAt();
     await waitFor(() => expect(lineRows()).toHaveLength(1));
-    expect(screen.getByRole("button", { name: /receive all waiting/i })).toBeDisabled();
+    // S7 P3-7: nothing waiting = the button is not offered at all.
+    expect(screen.queryByRole("button", { name: /receive all waiting/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /cancel waiting items/i })).not.toBeInTheDocument();
   });
 
@@ -831,5 +832,25 @@ describe("S6: Edit details of a PO (PUT /purchase-orders/{id})", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(sentence);
     expect(screen.getByRole("dialog", { name: /edit details of/i })).toBeInTheDocument();
+  });
+});
+
+describe("S7 P3-7: a cancelled purchase order", () => {
+  it("keeps showing what was ordered and how much was cancelled, and offers no 'Receive all waiting'", async () => {
+    mockGets([], { groups: [group({ ordered: 0, received: 0, waiting: 0, cancelled: 15, line_value: 0, status: "CANCELLED" })] });
+    renderDetailAt();
+    await waitFor(() => expect(lineRows()).toHaveLength(1));
+    expect(screen.getByText("Ordered units").nextSibling).toHaveTextContent("15");
+    expect(screen.getByText("Cancelled units").nextSibling).toHaveTextContent("15");
+    expect(screen.getByText("Waiting units").nextSibling).toHaveTextContent("0");
+    expect(screen.queryByRole("button", { name: /receive all waiting/i })).not.toBeInTheDocument();
+  });
+
+  it("a PO with nothing cancelled shows no Cancelled tile", async () => {
+    mockGets([], { groups: [group({ ordered: 2, waiting: 2 })] });
+    renderDetailAt();
+    await waitFor(() => expect(lineRows()).toHaveLength(1));
+    expect(screen.queryByText("Cancelled units")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Receive all waiting (2)" })).toBeInTheDocument();
   });
 });

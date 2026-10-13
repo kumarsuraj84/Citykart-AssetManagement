@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { cleanup, render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { currentIdempotencyKey } from "../../lib/request-key";
+import { isAddInputDirty } from "./AddAssetsForm";
+import { emptyInput } from "./add-assets-model";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { createAppRouter } from "../../router";
@@ -368,7 +371,11 @@ describe("Add Assets: the batch form", () => {
   });
 
   it("says why Add is not possible yet, beside the button, starting with the most important", async () => {
-    mockApi({ rooms: [{ id: 4, name: "HO Stock" }, { id: 6, name: "WH Stock" }] });
+    // Two Cost Centres: with only one it is chosen already (S7 P3-13).
+    mockApi({
+      rooms: [{ id: 4, name: "HO Stock" }, { id: 6, name: "WH Stock" }],
+      costCentres: [{ id: 3, code: "HO01", name: "Head Office" }, { id: 8, code: "WH01", name: "Warehouse" }],
+    });
     renderAt();
     await ready();
     await waitFor(() => expect(whyLine()).toHaveTextContent("Why can't I add? Choose the Item. (2 more things to fix)"));
@@ -629,7 +636,7 @@ describe("Add Assets: company, smart defaults and creating what is missing", () 
 
   it("a remembered record that no longer exists is quietly forgotten", async () => {
     window.localStorage.setItem("ckam:last-used:5:1", JSON.stringify({ cost_centre: "99", stock_room: "98" }));
-    mockApi();
+    mockApi({ costCentres: [{ id: 3, code: "HO01", name: "Head Office" }, { id: 8, code: "WH01", name: "Warehouse" }] });
     renderAt();
     await ready();
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/stock-rooms?company_id=1"));
@@ -773,5 +780,72 @@ describe("Add Assets: company, smart defaults and creating what is missing", () 
     mockApi({ caps: VIEWER });
     renderAt();
     expect(await screen.findByText("You don't have access to this area.")).toBeInTheDocument();
+  });
+});
+
+describe("S7 fixes on Add Assets", () => {
+  it("P1-2: a double activation of Add sends ONE batch, carrying an Idempotency-Key", async () => {
+    mockApi();
+    const keys: (string | null)[] = [];
+    const prev = (apiClient.post as any).getMockImplementation();
+    (apiClient.post as any).mockImplementation((path: string, body: unknown) => {
+      if (path === "/assets/batch") {
+        keys.push(currentIdempotencyKey());
+        return new Promise(() => {});
+      }
+      return prev(path, body);
+    });
+    renderAt();
+    await fillEssentials("Mouse", "2");
+    await waitFor(() => expect(addButton()).not.toBeDisabled());
+    const button = addButton();
+    act(() => {
+      button.click();
+      button.click();
+    });
+    await waitFor(() => expect(keys).toHaveLength(1));
+    await new Promise((r) => setTimeout(r, 20));
+    expect((apiClient.post as any).mock.calls.filter(([p]: [string]) => p === "/assets/batch")).toHaveLength(1);
+    expect(keys[0]).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("P3-13: the only Cost Centre of the company is chosen already", async () => {
+    mockApi();
+    renderAt();
+    await ready();
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /^cost centre$/i })).toHaveTextContent("Head Office"));
+  });
+
+  it("P2-12: a typed form warns before the page is left", async () => {
+    mockApi();
+    renderAt();
+    await ready();
+    const clean = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(clean);
+    expect(clean.defaultPrevented).toBe(false);
+    await pick(/^item$/i, "Mouse");
+    await new Promise((r) => setTimeout(r, 0));
+    const typed = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(typed);
+    expect(typed.defaultPrevented).toBe(true);
+  });
+
+  it("P2-1: the Item name typed in the picker starts the New Item dialog", async () => {
+    mockApi();
+    renderAt();
+    await ready();
+    await new Promise((r) => setTimeout(r, 20));
+    fireEvent.click(screen.getByRole("combobox", { name: /^item$/i }));
+    fireEvent.change(await screen.findByPlaceholderText("Search Items…"), { target: { value: "Ceiling Fan" } });
+    fireEvent.click(await screen.findByRole("option", { name: /New Item…/ }));
+    expect(await screen.findByLabelText(/item name/i)).toHaveValue("Ceiling Fan");
+  });
+
+  it("isAddInputDirty: only what the person typed counts", () => {
+    const base = { ...emptyInput(), receivedInto: "4", costCenterId: "3", brandId: "9", warrantyYears: "3" };
+    expect(isAddInputDirty(base)).toBe(false);
+    expect(isAddInputDirty({ ...base, quantity: "5" })).toBe(true);
+    expect(isAddInputDirty({ ...base, serialText: "A1" })).toBe(true);
+    expect(isAddInputDirty({ ...base, fieldValues: { tag: "x" } })).toBe(true);
   });
 });

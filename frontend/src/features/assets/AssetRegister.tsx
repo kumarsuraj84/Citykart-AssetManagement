@@ -7,7 +7,7 @@ import { apiClient } from "../../lib/api-client";
 import { useAccess } from "../../lib/access";
 import { useMyAssetUserId } from "../../lib/auth-store";
 import { useCapabilities } from "../../lib/capabilities";
-import { PLACE_TYPES, placeTypeLabel, workAreaLabel, WORK_AREA_OPTIONS } from "../../lib/labels";
+import { PLACE_TYPES, holderDisplayName, placeTypeLabel, sameText, workAreaLabel, WORK_AREA_OPTIONS } from "../../lib/labels";
 import { categoryOptions, companyOptions, itemOptions, placeOptions, vendorOptions } from "../../lib/option-labels";
 import { useCategoryLookups, usePlaceLookups } from "../../lib/lookups";
 import { cn } from "@/lib/utils";
@@ -123,11 +123,13 @@ const holderTypeOf = (a: AssetRow) => a.holder_type ?? a.current_asset_user_type
 
 /** "Ravi Kumar · Employee · Head Office" (who has it, what they are, where). */
 function WithCell({ a }: { a: AssetRow }) {
-  const name = a.holder_name ?? a.current_asset_user_name;
+  // S7 (P3-4): an old auto-made name ("Stock Point - WH Stores") reads as the plain name; the place is
+  // left out when it only repeats the name.
+  const name = holderDisplayName(a.holder_name ?? a.current_asset_user_name);
   const kind = a.holder_kind_label ?? placeTypeLabel(holderTypeOf(a));
   const place = a.holder_location_name ?? a.current_asset_user_location_name;
   if (!name) return <>—</>;
-  const shownPlace = place && place.toLowerCase() !== name.toLowerCase() ? place : null;
+  const shownPlace = place && place.trim().toLowerCase() !== name.trim().toLowerCase() ? place : null;
   const extra = [kind, shownPlace].filter(Boolean).join(" · ");
   return (
     <span className="whitespace-nowrap">
@@ -152,7 +154,8 @@ const ASSET_OPTIONAL_COLUMNS: AssetColumnDef[] = [
   { key: "item", label: "Item", defaultVisible: true, cell: (a) => dash(a.item_name) },
   {
     key: "description", label: "Description", defaultVisible: true, className: "max-w-[16rem] truncate text-muted-foreground",
-    cell: (a) => <span title={a.description}>{a.description}</span>,
+    // S7 (P3-4): a description that only repeats the Item name is not printed twice.
+    cell: (a) => (sameText(a.description, a.item_name) ? "—" : <span title={a.description}>{a.description}</span>),
   },
   { key: "serial_number", label: "Serial", defaultVisible: true, className: "font-mono text-xs", cell: (a) => (a.serial_pending ? "Pending" : dash(a.serial_number)) },
   { key: "with", label: "With", defaultVisible: true, cell: (a) => <WithCell a={a} /> },

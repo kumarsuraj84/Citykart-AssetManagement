@@ -25,6 +25,8 @@ interface AddPreviewRow {
   row: number;
   legacy_asset_code: string | null;
   company: string;
+  /** S7: the Item's name when the row gave one (it then decides the category). */
+  item?: string | null;
   category: string;
   subcategory: string | null;
   description: string;
@@ -83,9 +85,11 @@ interface CommitResult {
 const ADD_PREVIEW_COLUMNS: DataTableColumn<AddPreviewRow>[] = [
   { key: "row", header: "Row", cell: (r) => r.row },
   { key: "company", header: "Company", cell: (r) => r.company },
+  // S7 (P2-10): the Item the row was matched to (null when the row gives codes instead).
+  { key: "item", header: "Item", cell: (r) => r.item ?? "—" },
   {
     key: "class",
-    header: "Category / Sub-category",
+    header: "Type of asset",
     cell: (r) => (r.subcategory ? `${r.category} / ${r.subcategory}` : r.category),
   },
   { key: "description", header: "Description", cell: (r) => r.description },
@@ -273,9 +277,13 @@ export function ImportScreen() {
           </p>
         )}
         {mode === "add" && (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground" data-testid="add-import-help">
             Every asset created this way lands as one new row -- <span className="font-medium">Quantity</span> creates
-            several identical units at once (a real Serial Number can't be shared, so use "N/A" for those).
+            several identical units at once (a real Serial Number can't be shared, so use "N/A" for those). Give the{" "}
+            <span className="font-medium">Item</span> (its name, as in Settings › Items): it decides the Category,
+            Sub-category and work area, so those two codes and the Description may then stay empty -- the same rules
+            as Add Assets. <span className="font-medium">Received Into Code</span> is the Stock Room the assets go to;{" "}
+            <span className="font-medium">Vendor Code</span> is optional.
           </p>
         )}
         {mode === "po" && (

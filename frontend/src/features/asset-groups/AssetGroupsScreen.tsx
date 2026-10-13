@@ -5,6 +5,8 @@ import { apiClient, ApiError } from "../../lib/api-client";
 import { bulkDeactivate } from "../../lib/bulk-deactivate";
 import { suggestCode } from "../../lib/code-suggest";
 import { WORK_AREA_OPTIONS, workAreaLabel } from "../../lib/labels";
+import { useAccess } from "../../lib/access";
+import { canCreate, canManage, domainManageAreas, inAreas, useCapabilities } from "../../lib/capabilities";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -121,6 +123,18 @@ export function AssetGroupsScreen({ embedded = false }: { embedded?: boolean } =
   const subsQ = useQuery({ queryKey: SUBCATEGORIES_KEY, queryFn: () => apiClient.get<Subcategory[]>("/masters/subcategories") });
   const categories = asList<Category>(categoriesQ.data).slice().sort((a, b) => a.name.localeCompare(b.name));
   const subs = asList<Subcategory>(subsQ.data);
+
+  // S7 (final review): a Full Admin of one work area manages that area's groups here (the server
+  // decides; these are its capabilities). The head-office admin manages everything, as before.
+  const { isPrimaryOwner } = useAccess();
+  const { caps } = useCapabilities();
+  const headOffice = isPrimaryOwner || caps?.is_head_office_admin === true;
+  const manageAreas = headOffice ? WORK_AREA_OPTIONS.map((o) => o.value) : domainManageAreas(caps);
+  const mayManage = (area: string | null | undefined) => headOffice || (canManage(caps, "category") && inAreas(area, manageAreas));
+  const mayAddGroup = headOffice || canCreate(caps, "category");
+  const mayImport = headOffice || canManage(caps, "imports");
+  const mayChangeArea = headOffice || canManage(caps, "change_work_area");
+  const areaOptions = WORK_AREA_OPTIONS.filter((o) => manageAreas.includes(o.value));
 
   const [search, setSearchRaw] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
@@ -268,15 +282,19 @@ export function AssetGroupsScreen({ embedded = false }: { embedded?: boolean } =
         description="What kind of thing an Item is: a group with its Sub-categories. The group's work area says which team looks after its assets. People pick Items, not groups."
         actions={
           <>
-            <BulkImportExport
-              resource="categories" label="Asset Groups" buttonLabel="Import / Export groups"
-              onImported={() => qc.invalidateQueries({ queryKey: CATEGORIES_KEY })}
-            />
-            <BulkImportExport
-              resource="subcategories" label="Sub-categories" buttonLabel="Import / Export sub-categories"
-              onImported={() => qc.invalidateQueries({ queryKey: SUBCATEGORIES_KEY })}
-            />
-            <Button onClick={openAddGroup}>Add Group</Button>
+            {mayImport && (
+              <>
+                <BulkImportExport
+                  resource="categories" label="Asset Groups" buttonLabel="Import / Export groups"
+                  onImported={() => qc.invalidateQueries({ queryKey: CATEGORIES_KEY })}
+                />
+                <BulkImportExport
+                  resource="subcategories" label="Sub-categories" buttonLabel="Import / Export sub-categories"
+                  onImported={() => qc.invalidateQueries({ queryKey: SUBCATEGORIES_KEY })}
+                />
+              </>
+            )}
+            {mayAddGroup && <Button onClick={openAddGroup}>Add Group</Button>}
           </>
         }
       />
@@ -321,19 +339,23 @@ export function AssetGroupsScreen({ embedded = false }: { embedded?: boolean } =
             icon={Inbox}
             title="No asset groups yet"
             description="Add a group (for example IT Fixed Assets, work area IT Team), then its Sub-categories."
-            action={<Button onClick={openAddGroup}>Add Group</Button>}
+            action={mayAddGroup ? <Button onClick={openAddGroup}>Add Group</Button> : undefined}
           />
         )
       ) : (
         <ul aria-label="Asset Groups" className="flex flex-col divide-y rounded-md border">
-          {visible.map(({ cat, subs: own }) => (
+          {visible.map(({ cat, subs: own }) => {
+            const editable = mayManage(cat.asset_domain);
+            return (
             <li key={cat.id} data-group={cat.code}>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-muted/30 px-3 py-2">
-                <Checkbox
-                  aria-label={`Select ${cat.name}`}
-                  checked={selected.includes(`c:${cat.id}`)}
-                  onCheckedChange={(v) => toggle(`c:${cat.id}`, v === true)}
-                />
+                {editable && (
+                  <Checkbox
+                    aria-label={`Select ${cat.name}`}
+                    checked={selected.includes(`c:${cat.id}`)}
+                    onCheckedChange={(v) => toggle(`c:${cat.id}`, v === true)}
+                  />
+                )}
                 <span className="font-semibold">{cat.name}</span>
                 <span className="font-mono text-xs text-muted-foreground">{cat.code}</span>
                 <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
@@ -342,20 +364,24 @@ export function AssetGroupsScreen({ embedded = false }: { embedded?: boolean } =
                 {known(cat.item_count) && (
                   <span className="text-xs text-muted-foreground tabular-nums">{plural(cat.item_count, "Item")}</span>
                 )}
-                <div className="ml-auto flex items-center gap-1">
-                  <Button variant="ghost" size="sm" className="gap-1" aria-label={`Add Sub-category to ${cat.name}`} onClick={() => openAddSub(cat)}>
-                    <Plus className="h-4 w-4" aria-hidden="true" />
-                    Sub-category
-                  </Button>
-                  <Button variant="ghost" size="icon" aria-label={`Edit ${cat.name}`} onClick={() => openEditGroup(cat)}>
-                    <Pencil className="h-4 w-4" aria-hidden="true" />
-                  </Button>
-                  <DeactivateButton
-                    name={cat.name}
-                    blocker={deactivateBlocker({ kind: "category", row: cat, subs: subsOf(cat.id) })}
-                    onClick={() => { deactivateMutation.reset(); setDeactivating({ kind: "category", row: cat }); }}
-                  />
-                </div>
+                {editable ? (
+                  <div className="ml-auto flex items-center gap-1">
+                    <Button variant="ghost" size="sm" className="gap-1" aria-label={`Add Sub-category to ${cat.name}`} onClick={() => openAddSub(cat)}>
+                      <Plus className="h-4 w-4" aria-hidden="true" />
+                      Sub-category
+                    </Button>
+                    <Button variant="ghost" size="icon" aria-label={`Edit ${cat.name}`} onClick={() => openEditGroup(cat)}>
+                      <Pencil className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                    <DeactivateButton
+                      name={cat.name}
+                      blocker={deactivateBlocker({ kind: "category", row: cat, subs: subsOf(cat.id) })}
+                      onClick={() => { deactivateMutation.reset(); setDeactivating({ kind: "category", row: cat }); }}
+                    />
+                  </div>
+                ) : (
+                  <span className="ml-auto text-xs text-muted-foreground">Looked after by the {workAreaLabel(cat.asset_domain)}</span>
+                )}
               </div>
               {own.length === 0 ? (
                 <p className="px-3 py-2 pl-10 text-xs text-muted-foreground">No Sub-category yet: Items need one.</p>
@@ -363,33 +389,38 @@ export function AssetGroupsScreen({ embedded = false }: { embedded?: boolean } =
                 <ul aria-label={`Sub-categories of ${cat.name}`} className="flex flex-col">
                   {own.map((s) => (
                     <li key={s.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t px-3 py-1.5 pl-6 text-sm">
-                      <Checkbox
-                        aria-label={`Select ${s.name}`}
-                        checked={selected.includes(`s:${s.id}`)}
-                        onCheckedChange={(v) => toggle(`s:${s.id}`, v === true)}
-                      />
+                      {editable && (
+                        <Checkbox
+                          aria-label={`Select ${s.name}`}
+                          checked={selected.includes(`s:${s.id}`)}
+                          onCheckedChange={(v) => toggle(`s:${s.id}`, v === true)}
+                        />
+                      )}
                       <span className="text-muted-foreground" aria-hidden="true">›</span>
                       <span>{s.name}</span>
                       <span className="font-mono text-xs text-muted-foreground">{s.code}</span>
                       {known(s.item_count) && (
                         <span className="text-xs text-muted-foreground tabular-nums">{plural(s.item_count, "Item")}</span>
                       )}
-                      <div className="ml-auto flex items-center gap-1">
-                        <Button variant="ghost" size="icon" aria-label={`Edit ${s.name}`} onClick={() => openEditSub(s)}>
-                          <Pencil className="h-4 w-4" aria-hidden="true" />
-                        </Button>
-                        <DeactivateButton
-                          name={s.name}
-                          blocker={deactivateBlocker({ kind: "subcategory", row: s })}
-                          onClick={() => { deactivateMutation.reset(); setDeactivating({ kind: "subcategory", row: s }); }}
-                        />
-                      </div>
+                      {editable && (
+                        <div className="ml-auto flex items-center gap-1">
+                          <Button variant="ghost" size="icon" aria-label={`Edit ${s.name}`} onClick={() => openEditSub(s)}>
+                            <Pencil className="h-4 w-4" aria-hidden="true" />
+                          </Button>
+                          <DeactivateButton
+                            name={s.name}
+                            blocker={deactivateBlocker({ kind: "subcategory", row: s })}
+                            onClick={() => { deactivateMutation.reset(); setDeactivating({ kind: "subcategory", row: s }); }}
+                          />
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>
               )}
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
 
@@ -410,10 +441,11 @@ export function AssetGroupsScreen({ embedded = false }: { embedded?: boolean } =
               <Input id="group-name" value={name} placeholder="IT Fixed Assets" onChange={(e) => changeName(e.target.value, categoryCodes)} />
             </FormField>
             <FormField htmlFor="group-work-area" label="Work area" required helperText="Which team looks after assets of this group.">
-              <Select value={domain || undefined} onValueChange={setDomain}>
+              <Select value={domain || undefined} onValueChange={setDomain} disabled={groupForm?.mode === "edit" && !mayChangeArea}>
                 <SelectTrigger id="group-work-area" aria-label="Work area"><SelectValue placeholder="Choose…" /></SelectTrigger>
                 <SelectContent>
-                  {WORK_AREA_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                  {(groupForm?.mode === "edit" ? WORK_AREA_OPTIONS.filter((o) => areaOptions.includes(o) || o.value === domain) : areaOptions)
+                    .map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </FormField>

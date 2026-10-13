@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useKeyedMutation } from "@/lib/submit-key";
 import { apiClient } from "@/lib/api-client";
 import { canManage, useCapabilities } from "@/lib/capabilities";
 import { ROLES, roleLabel } from "@/lib/labels";
@@ -118,8 +119,9 @@ export function EditPersonDialog({
   });
   const departments = Array.isArray(departmentsQ.data) ? departmentsQ.data : [];
 
-  const mutation = useMutation({
-    mutationFn: (body: Record<string, unknown>) => apiClient.put<PersonRow>(`/asset-users/${row!.id}`, body),
+  // S7 (P1-2): one Save = one Idempotency-Key; a double activation sends one request.
+  const mutation = useKeyedMutation({
+    mutationFn: (body: Record<string, unknown>, keyed) => keyed(body, () => apiClient.put<PersonRow>(`/asset-users/${row!.id}`, body)),
     onSuccess: async (saved) => {
       await qc.invalidateQueries({ queryKey: ["people"] });
       qc.invalidateQueries({ queryKey: ["asset_users"] });

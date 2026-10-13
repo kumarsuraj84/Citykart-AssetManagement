@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within, act } from "@testing-library/react";
+import { currentIdempotencyKey } from "../../lib/request-key";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { createAppRouter } from "../../router";
@@ -754,5 +755,45 @@ describe("Receive screen: loading and access", () => {
     renderAt();
     expect(await screen.findByText(/don't have access/i)).toBeInTheDocument();
     expect(apiClient.get).not.toHaveBeenCalledWith("/purchase-orders/1/receive-info");
+  });
+});
+
+describe("S7 fixes on Receive", () => {
+  it("P1-2: two activations in the same tick send ONE receipt, with an Idempotency-Key", async () => {
+    mockApi(info({ lines: [GANG_BOX] }));
+    const keys: (string | null)[] = [];
+    (apiClient.post as any).mockImplementation((path: string) => {
+      if (path === "/purchase-orders/1/receive") {
+        keys.push(currentIdempotencyKey());
+        return new Promise(() => {});
+      }
+      return Promise.resolve({ conflicts: [] });
+    });
+    await ready();
+    fillInvoice();
+    await waitFor(() => expect(receiveBtn()).not.toBeDisabled());
+    const button = receiveBtn();
+    act(() => {
+      button.click();
+      button.click();
+    });
+    await waitFor(() => expect(receiveCalls()).toHaveLength(1));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(receiveCalls()).toHaveLength(1);
+    expect(keys).toHaveLength(1);
+    expect(keys[0]).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("P2-12: typed invoice details warn before the page is left; a clean form does not", async () => {
+    mockApi(info({ lines: [GANG_BOX] }));
+    await ready();
+    const clean = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(clean);
+    expect(clean.defaultPrevented).toBe(false);
+    fillInvoice();
+    await new Promise((r) => setTimeout(r, 0));
+    const typed = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(typed);
+    expect(typed.defaultPrevented).toBe(true);
   });
 });

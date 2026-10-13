@@ -53,7 +53,9 @@ export interface MoveChoice {
 
 export const MOVE_CHOICES: MoveChoice[] = [
   { key: "employee", label: "Give to Employee", eventType: "MOVED", destination: "EMPLOYEE", destinationLabel: "Employee", doneWord: "given to the employee" },
-  { key: "stock-room", label: "Return to Stock Room", eventType: "MOVED", destination: "STOCK_POINT", destinationLabel: "Stock Room", doneWord: "returned to the stock room" },
+  // S7 (P2-13): "Move to Stock Room" (a store's own stock room STK-… is one of them) vs "Send to Store"
+  // (the assets are then with the store itself). Same events as before; only the words changed.
+  { key: "stock-room", label: "Move to Stock Room", eventType: "MOVED", destination: "STOCK_POINT", destinationLabel: "Stock Room", doneWord: "moved to the stock room" },
   { key: "store", label: "Send to Store", eventType: "MOVED", destination: "STORE", destinationLabel: "Store", doneWord: "sent to the store" },
   { key: "install", label: "Install", eventType: "MOVED", destination: "INSTALLED", destinationLabel: "Install Point", doneWord: "installed" },
   { key: "repair", label: "Send for Repair", eventType: "SENT_FOR_REPAIR", destination: null, doneWord: "sent for repair" },
@@ -68,6 +70,28 @@ export const MOVE_CHOICES: MoveChoice[] = [
 
 export function moveChoice(key: string | null | undefined): MoveChoice | undefined {
   return key ? MOVE_CHOICES.find((c) => c.key === key) : undefined;
+}
+
+/** Sell, Scrap, Dispose: the asset leaves CKAM's working register for good (S7 P2-8: confirmed first). */
+export const END_STATE_EVENTS = ["SOLD", "SCRAPPED", "DISPOSED"];
+
+export function isEndState(choice: MoveChoice | null | undefined): boolean {
+  return !!choice && END_STATE_EVENTS.includes(choice.eventType);
+}
+
+/**
+ * Why some choices are off, as visible words (S7 P3-5: not only a hover title):
+ * "Not possible now: Mark Found (only an admin can do this); Sell, Scrap (not possible for every asset in this batch)."
+ */
+export function unavailableSentence(states: ChoiceState[]): string | null {
+  const byReason = new Map<string, string[]>();
+  for (const s of states) {
+    if (s.enabled || !s.reason) continue;
+    byReason.set(s.reason, [...(byReason.get(s.reason) ?? []), s.choice.label]);
+  }
+  if (byReason.size === 0) return null;
+  const parts = [...byReason].map(([reason, labels]) => `${labels.join(", ")} (${reason.replace(/\.$/, "").replace(/^./, (c) => c.toLowerCase())})`);
+  return `Not possible now: ${parts.join("; ")}.`;
 }
 
 /** True when the server accepts this choice for an asset in this status. */

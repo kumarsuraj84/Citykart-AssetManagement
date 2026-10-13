@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within, act } from "@testing-library/react";
+import { currentIdempotencyKey } from "../../lib/request-key";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { createAppRouter } from "../../router";
@@ -115,7 +116,7 @@ function mockApi({ configured = true, rows = [ROW] as unknown[], posError = null
     }
     if (path.startsWith("/erp/pos/") && path.endsWith("/draft")) return Promise.resolve(d);
     if (path === "/bundles") return Promise.resolve([DESKTOP_BUNDLE]);
-    if (path === "/items") return Promise.resolve(ITEMS);
+    if (path === "/items?work_area=mine") return Promise.resolve(ITEMS);
     if (path === "/asset-users/me/companies") return Promise.resolve(companies);
     if (path === "/masters/vendors") return Promise.resolve([{ id: 7, name: "Vansh Enterprises" }, { id: 31, name: "Blue Star Limited" }, { id: 40, name: "Jagannath Enterprises" }]);
     if (path === "/masters/categories") return Promise.resolve([{ id: 1, name: "Computers" }]);
@@ -352,7 +353,9 @@ describe("ERP review: matched lines folded, exceptions open", () => {
     expect(within(row).getByText("Needs an Item")).toBeInTheDocument();
     expect(within(row).getByText(/48 PORT SWITCH · BLUE STAR/)).toBeInTheDocument();
     expect(within(row).getByText(/IT EQUIPMENTS › FA_IT_OTHERS › FA_IT_OTHERS/)).toBeInTheDocument();
-    expect(within(row).getByText(/\(50% match\)/)).toBeInTheDocument();
+    // S7 P1-3: honest words, never "% match".
+    expect(within(row).getByText(/Similar name \(50%\)/)).toBeInTheDocument();
+    expect(within(row).queryByText(/% match/)).not.toBeInTheDocument();
     expect(within(row).getByLabelText(/^remember$/i)).toHaveTextContent("Use this Item for this product name");
     // The matched line stays folded.
     expect(within(screen.getByLabelText("Line 1")).queryByLabelText(/^remember$/i)).not.toBeInTheDocument();
@@ -499,7 +502,64 @@ describe("Not tracked from the review (ADMIN and OPERATOR)", () => {
     expect(screen.getByRole("option", { name: "The whole Section IT EQUIPMENTS" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("option", { name: "The whole Division FIXED ASSETS" }));
     fireEvent.click(screen.getByRole("button", { name: "Line 2: not tracked" }));
+    // S7 P2-9: a group-wide rule is confirmed first.
+    const confirm = await screen.findByRole("alertdialog");
+    expect(confirm).toHaveTextContent("This will leave every code in the whole Division FIXED ASSETS out of CKAM for everyone in CKSPL");
+    fireEvent.click(within(confirm).getByRole("button", { name: "Leave them out" }));
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/erp/pos/1133610106/not-tracked", { icode: "CT166452", scope: "DIVISION" }));
+  });
+
+  it("S7 P2-9: operators start at the narrowest reach and see it in words; a whole ERP group asks first, Cancel saves nothing", async () => {
+    mockApi({ d: draft({}, [line(), CABLE]) });
+    renderScreen();
+    await openDraft();
+    expect(screen.getByLabelText("Line 2: how far this reaches")).toHaveTextContent("This product name");
+    expect(screen.getByLabelText("Line 2: what not tracked covers")).toHaveTextContent("Leaves every code named “CABLE CAT-6” out of CKAM for everyone in CKSPL.");
+    await choose(screen.getByLabelText("Line 2: how far this reaches"), "Every code in this ERP group");
+    expect(screen.getByLabelText("Line 2: what not tracked covers")).toHaveTextContent("Leaves every code in the ERP group FA_CE_CAMERA out of CKAM");
+    fireEvent.click(screen.getByRole("button", { name: "Line 2: not tracked" }));
+    const confirm = await screen.findByRole("alertdialog");
+    expect(confirm).toHaveTextContent("This will leave every code in the ERP group FA_CE_CAMERA out of CKAM for everyone in CKSPL");
+    expect(confirm).toHaveTextContent("Continue?");
+    fireEvent.click(within(confirm).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(apiClient.post).not.toHaveBeenCalledWith("/erp/pos/1133610106/not-tracked", expect.anything());
+  });
+
+  it("S7 P2-9: after saving, an operator is told who can undo it; the head-office admin gets Undo (when the server names the rule)", async () => {
+    mockApi({ d: draft({}, [line(), CABLE]) });
+    (apiClient.post as any).mockImplementation((path: string) =>
+      Promise.resolve(path.endsWith("/not-tracked")
+        ? { po_code: 1133610106, map_id: 77, lines: [{ item_code: "CT166452", resolution: { state: "NOT_TRACKED", via: "NAME" } }] }
+        : {}));
+    renderScreen();
+    await openDraft();
+    fireEvent.click(screen.getByRole("button", { name: "Line 2: not tracked" }));
+    const saved = await screen.findByLabelText("Not tracked saved");
+    expect(saved).toHaveTextContent("Saved: every code named “CABLE CAT-6” is now left out of CKAM.");
+    expect(saved).toHaveTextContent("Only the head-office admin can undo this");
+    expect(within(saved).queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
+  });
+
+  it("S7 P2-9: the head-office admin undoes the rule right here and the line comes back", async () => {
+    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: true, mustChangePassword: false, assetUserId: 5 });
+    mockApi({ d: draft({}, [line(), CABLE]) });
+    (apiClient.post as any).mockImplementation((path: string) =>
+      Promise.resolve(path.endsWith("/not-tracked")
+        ? { po_code: 1133610106, map_id: 77, lines: [{ item_code: "CT166452", resolution: { state: "NOT_TRACKED", via: "CODE" } }] }
+        : {}));
+    (apiClient.delete as any).mockResolvedValue(undefined);
+    renderScreen();
+    await openDraft();
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/auth/capabilities"));
+    await new Promise((r) => setTimeout(r, 20));
+    await choose(screen.getByLabelText("Line 2: how far this reaches"), "This ERP code only");
+    fireEvent.click(screen.getByRole("button", { name: "Line 2: not tracked" }));
+    const saved = await screen.findByLabelText("Not tracked saved");
+    fireEvent.click(within(saved).getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(apiClient.delete).toHaveBeenCalledWith("/items/maps/77"));
+    expect(await screen.findByLabelText("Line 2")).toBeInTheDocument();
+    expect(screen.queryByText(/line left out/)).not.toBeInTheDocument();
   });
 
   it("a matched line never offers 'not tracked'; the server's refusal is shown as written", async () => {
@@ -811,5 +871,83 @@ describe("S3b-1: inline creation in the ERP review", () => {
     const create = await openDraft();
     expect(screen.getByLabelText("What is left")).toHaveTextContent("Choose the Cost Centre, then you can create the PO.");
     expect(create).toBeDisabled();
+  });
+});
+
+describe("S7 fixes in the ERP review", () => {
+  it("P1-2: a double activation of Create sends ONE request, with an Idempotency-Key", async () => {
+    mockApi();
+    const keys: (string | null)[] = [];
+    (apiClient.post as any).mockImplementation((path: string) => {
+      if (path === "/erp/pos/create") {
+        keys.push(currentIdempotencyKey());
+        return new Promise(() => {});
+      }
+      return Promise.resolve({});
+    });
+    renderScreen();
+    const create = await openDraft();
+    await waitFor(() => expect(create).not.toBeDisabled());
+    act(() => {
+      create.click();
+      create.click();
+    });
+    await waitFor(() => expect(keys).toHaveLength(1));
+    await new Promise((r) => setTimeout(r, 20));
+    expect((apiClient.post as any).mock.calls.filter((c: unknown[]) => c[0] === "/erp/pos/create")).toHaveLength(1);
+    expect(keys[0]).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("Final review: the barcode is optional on every line (none is sent as null)", async () => {
+    mockApi({ d: draft({}, [line({ barcode: "" })]) });
+    renderScreen();
+    const create = await openDraft();
+    await waitFor(() => expect(create).not.toBeDisabled());
+    expect(screen.queryByText(/barcode is required/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Line 1: details" }));
+    expect(screen.getByText("Barcode").closest("label")).not.toHaveTextContent("*");
+    fireEvent.click(create);
+    await waitFor(() => expect(posted("/erp/pos/create")).toBeDefined());
+    expect(posted("/erp/pos/create").lines[0].barcode).toBeNull();
+  });
+
+  it("P2-11: a matched line keeps the ERP's own words visible beside the Item", async () => {
+    mockApi();
+    renderScreen();
+    await openDraft();
+    expect(screen.getByLabelText("Line 1 in the ERP")).toHaveTextContent("In the ERP: DELL DESKTOP REFURB/i3 · HARSHIT INFOSOLUTION · CT324973");
+  });
+
+  it("P1-3: 'Same name' only when the server says so; no suggestion -> nothing shown", async () => {
+    mockApi({ d: draft({}, [switchLine({ suggestion_score: 1, suggestion_reason: "same name", suggestion_reason_code: "SAME_NAME" })]) });
+    renderScreen();
+    await openDraft();
+    const row = screen.getByLabelText("Line 1");
+    expect(within(row).getByText(/Same name/)).toBeInTheDocument();
+    expect(within(row).queryByText(/100%/)).not.toBeInTheDocument();
+    // Never chosen for the person.
+    expect(within(row).getByText("Needs an Item")).toBeInTheDocument();
+  });
+
+  it("P1-3: a line without a suggestion shows no 'Suggested'", async () => {
+    mockApi({ d: draft({}, [switchLine({ suggested_item_id: null, suggested_item_name: null, suggestion_score: null })]) });
+    renderScreen();
+    await openDraft();
+    expect(within(screen.getByLabelText("Line 1")).queryByText(/Suggested/)).not.toBeInTheDocument();
+  });
+
+  it("P3-1: 'ERP data as of' is said once when the sync line already says it", async () => {
+    mockApi();
+    const base = (apiClient.get as any).getMockImplementation();
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (path === "/erp/sync") {
+        const run = { status: "success", trigger: "schedule", started_at: "2026-10-13T06:00:00Z", finished_at: "2026-10-13T06:00:05Z", source_stamp: "2026-10-13T05:44:00Z", message: null, po_lines_new: 0, po_lines_changed: 0, po_lines_gone: 0 };
+        return Promise.resolve({ configured: true, last: run, last_success: run });
+      }
+      return base(path);
+    });
+    renderScreen();
+    await screen.findByText("SPO/012994/26-27");
+    await waitFor(() => expect(screen.getAllByText(/ERP data as of/)).toHaveLength(1));
   });
 });

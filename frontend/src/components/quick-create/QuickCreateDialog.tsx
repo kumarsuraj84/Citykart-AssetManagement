@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
+import { useKeyedMutation } from "../../lib/submit-key";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -24,7 +25,7 @@ export interface QuickField {
   placeholder?: string;
   helperText?: string;
   /** A select can offer its own "+ New ..." (for example the Category inside a new Sub-category). */
-  onCreateNew?: () => void;
+  onCreateNew?: (typed: string) => void;
   createLabel?: string;
   /** Fills this field from another one while the person has not typed in it
    * themselves (a Code suggested from the Name). `from` is the source field's key. */
@@ -41,6 +42,8 @@ export interface QuickCreateProps {
   onOpenChange: (open: boolean) => void;
   /** Called after the record is saved and the lists that show it have refreshed. */
   onCreated: (row: CreatedRecord) => void;
+  /** S7 (P2-1): the name typed in the picker's search box -- the dialog starts with it. */
+  initialName?: string;
 }
 
 /**
@@ -55,7 +58,7 @@ export interface QuickCreateProps {
  */
 export function QuickCreateDialog({
   open, onOpenChange, onCreated, title, endpoint, fields, initial, toBody, refresh, submitLabel = "Save",
-  values: controlledValues, onValuesChange, idPrefix = "qc", canSave: canSaveFn, findExisting, note,
+  values: controlledValues, onValuesChange, idPrefix = "qc", canSave: canSaveFn, findExisting, note, initialName,
 }: QuickCreateProps & {
   /** Prefix of the field ids (qc-name, qc-code...); a dialog opened from another one needs its own. */
   idPrefix?: string;
@@ -103,7 +106,16 @@ export function QuickCreateDialog({
     if (open) {
       setTouched(new Set());
       setMoreOpen(false);
-      setValues(() => ({ ...(initial ?? {}) }));
+      const start: Record<string, string> = { ...(initial ?? {}) };
+      // The name typed in the picker (S7 P2-1), with what is suggested from it (a Code).
+      const typedName = (initialName ?? "").trim();
+      if (typedName && fields.some((f) => f.key === "name")) {
+        start.name = typedName;
+        for (const f of fields) {
+          if (f.suggest && f.suggest.from === "name" && !start[f.key]) start[f.key] = f.suggest.make(typedName);
+        }
+      }
+      setValues(() => start);
     }
     // Starts fresh each time it opens, with the values the caller knows already.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -111,12 +123,13 @@ export function QuickCreateDialog({
 
   const shown = fields.filter((f) => !f.visible || f.visible(values));
 
-  const mutation = useMutation({
-    mutationFn: () => {
+  // S7 (P1-2): one Save = one Idempotency-Key; a double activation sends one request.
+  const mutation = useKeyedMutation({
+    mutationFn: (_: void, keyed) => {
       const body = toBody
         ? toBody(values)
         : Object.fromEntries(shown.map((f) => [f.key, (values[f.key] ?? "").trim()]));
-      return apiClient.post<CreatedRecord>(endpoint, body);
+      return keyed(body, () => apiClient.post<CreatedRecord>(endpoint, body));
     },
     onSuccess: async (row) => {
       await Promise.all(refresh.map((queryKey) => qc.invalidateQueries({ queryKey })));

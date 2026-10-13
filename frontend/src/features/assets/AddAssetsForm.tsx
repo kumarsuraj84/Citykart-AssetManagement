@@ -1,5 +1,5 @@
 import { useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ChevronDown, ChevronRight, Minus, Plus } from "lucide-react";
 import { apiClient } from "@/lib/api-client";
@@ -12,6 +12,8 @@ import {
 } from "@/lib/option-labels";
 import { ASK_TO_ADD, canCreate as may, useCapabilities } from "@/lib/capabilities";
 import { useRemember, useRememberedDefault } from "@/lib/remembered-defaults";
+import { useKeyedMutation } from "@/lib/submit-key";
+import { useUnsavedChangesWarning } from "@/lib/unsaved-changes";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -55,6 +57,16 @@ interface BatchResult {
 }
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-IN")} ${n === 1 ? one : many}`;
+
+/** Something the person typed or chose themselves (the remembered stock room / Cost Centre do not count). */
+export function isAddInputDirty(input: AddInput): boolean {
+  const typed = [
+    input.itemId, input.serialText, input.vendorId, input.poNumber, input.poDate, input.invoiceNumber, input.invoiceDate,
+    input.invoiceAmount, input.purchaseCost, input.taxPercent, input.model, input.description, input.barcode, input.legacyCode,
+  ].some((v) => v.trim() !== "");
+  const fieldTyped = Object.values(input.fieldValues).some((v) => (typeof v === "string" ? v.trim() !== "" : v === true));
+  return typed || fieldTyped || input.quantity.trim() !== "1";
+}
 const asArray = <T,>(d: unknown): T[] => (Array.isArray(d) ? (d as T[]) : []);
 /** How long typing in the serial box settles before the box is checked again. */
 const CHECK_DELAY_MS = 150;
@@ -120,6 +132,9 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
   const [newBrand, setNewBrand] = useState(false);
   const [newVendor, setNewVendor] = useState(false);
   const [newCostCenter, setNewCostCenter] = useState(false);
+  // The name typed in a picker before "+ New …" (S7 P2-1): the New dialog starts with it.
+  const [typedName, setTypedName] = useState("");
+  const opener = (open: (v: boolean) => void) => (typed: string) => { setTypedName(typed); open(true); };
   // An Item made right here is known before the list reloads.
   const [madeItems, setMadeItems] = useState<Item[]>([]);
 
@@ -211,9 +226,17 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
 
   const problemsAt = (place: ProblemPlace) => serverProblems.filter((p) => problemPlace(p, fields) === place).map((p) => p.message);
 
-  const addMutation = useMutation({
-    mutationFn: () => apiClient.post<BatchResult>("/assets/batch", buildAddBody(input, item, fields)),
+  // S7 (P2-12): typed work is not lost to a reload or a click elsewhere without a question.
+  const unsaved = useUnsavedChangesWarning(isAddInputDirty(input));
+
+  // S7 (P1-2): one submit = one Idempotency-Key; a second activation while it runs is ignored.
+  const addMutation = useKeyedMutation({
+    mutationFn: (_: void, keyed) => {
+      const body = buildAddBody(input, item, fields);
+      return keyed(body, () => apiClient.post<BatchResult>("/assets/batch", body));
+    },
     onSuccess: (r) => {
+      unsaved.release();
       rememberChoice(companyId, "cost_centre", input.costCenterId);
       rememberChoice(companyId, "stock_room", input.receivedInto);
       onAdded(r);
@@ -319,7 +342,7 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
               options={itemOptions(items, { categories: categoryNames, subcategories: subcategoryNames })}
               placeholder="Choose the Item"
               searchPlaceholder="Search Items…"
-              onCreateNew={may(caps, "item") ? () => setNewItem(true) : undefined}
+              onCreateNew={may(caps, "item") ? opener(setNewItem) : undefined}
               createLabel="New Item…"
             />
             {item && (
@@ -368,7 +391,7 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
               disabled={costCentersQ.isLoading && companyId != null}
               options={costCentreOptions(costCenters)}
               placeholder="Choose the Cost Centre"
-              onCreateNew={may(caps, "cost_centre") && companyId != null ? () => setNewCostCenter(true) : undefined}
+              onCreateNew={may(caps, "cost_centre") && companyId != null ? opener(setNewCostCenter) : undefined}
               createLabel="New Cost Centre…"
             />
             {capsSettled && costCentersQ.isSuccess && costCenters.length === 0 && (
@@ -466,7 +489,7 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
               onValueChange={(v) => edit({ vendorId: v }, ["purchase"])}
               options={vendorOptions(vendors)}
               placeholder="Choose the vendor"
-              onCreateNew={may(caps, "vendor") ? () => setNewVendor(true) : undefined}
+              onCreateNew={may(caps, "vendor") ? opener(setNewVendor) : undefined}
               createLabel="New Vendor…"
             />
             {capsSettled && vendorsQ.isSuccess && vendors.length === 0 && !may(caps, "vendor") && (
@@ -520,7 +543,7 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
               onValueChange={(v) => edit({ brandId: v }, ["advanced"])}
               options={brandOptions(brands)}
               placeholder="No brand"
-              onCreateNew={may(caps, "brand") ? () => setNewBrand(true) : undefined}
+              onCreateNew={may(caps, "brand") ? opener(setNewBrand) : undefined}
               createLabel="New Brand…"
             />
           </Field>
@@ -562,15 +585,19 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
       <ItemFormDialog
         open={newItem}
         onOpenChange={setNewItem}
+        initialName={typedName}
         onSaved={(saved) => {
           setMadeItems((m) => [...m, saved]);
           chooseItem(saved);
         }}
       />
-      <NewBrandDialog open={newBrand} onOpenChange={setNewBrand} onCreated={(row) => edit({ brandId: String(row.id) })} />
-      <NewVendorDialog open={newVendor} onOpenChange={setNewVendor} onCreated={(row) => edit({ vendorId: String(row.id) })} />
+      <NewBrandDialog open={newBrand} initialName={typedName} onOpenChange={setNewBrand} onCreated={(row) => edit({ brandId: String(row.id) })} />
+      <NewVendorDialog open={newVendor} initialName={typedName} onOpenChange={setNewVendor} onCreated={(row) => edit({ vendorId: String(row.id) })} />
       {companyId != null && (
-        <NewCostCenterDialog companyId={companyId} open={newCostCenter} onOpenChange={setNewCostCenter} onCreated={(row) => edit({ costCenterId: String(row.id) })} />
+        <NewCostCenterDialog
+          companyId={companyId} open={newCostCenter} initialName={typedName} onOpenChange={setNewCostCenter}
+          onCreated={(row) => edit({ costCenterId: String(row.id) })}
+        />
       )}
 
       {/* --- Always-reachable action bar --- */}

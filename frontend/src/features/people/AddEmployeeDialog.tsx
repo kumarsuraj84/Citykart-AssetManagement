@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
+import { useKeyedMutation } from "@/lib/submit-key";
 import { canManage, useCapabilities, useMyCompanies } from "@/lib/capabilities";
 import { ROLES, roleLabel, workAreaLabel } from "@/lib/labels";
 import { companyOptions } from "@/lib/option-labels";
@@ -120,8 +121,12 @@ export function AddEmployeeDialog({
   });
   const departments = Array.isArray(departmentsQ.data) ? departmentsQ.data : [];
 
-  const mutation = useMutation({
-    mutationFn: () => apiClient.post<PersonRow>("/people/employees", employeeBody(d)),
+  // S7 (P1-2): one Add = one Idempotency-Key; a double activation adds one employee.
+  const mutation = useKeyedMutation({
+    mutationFn: (_: void, keyed) => {
+      const body = employeeBody(d);
+      return keyed(body, () => apiClient.post<PersonRow>("/people/employees", body));
+    },
     onSuccess: async (row) => {
       await qc.invalidateQueries({ queryKey: ["people"] });
       qc.invalidateQueries({ queryKey: ["asset_users"] });

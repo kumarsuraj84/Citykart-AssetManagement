@@ -26,6 +26,9 @@ interface PiPreview {
   not_booked: number;
   ckam_invoices: string[];
   delivered_assets: number;
+  /** S7 (P1-1): false = the ERP cannot give purchase invoices (e.g. it does not provide them yet); `message` says why. */
+  available?: boolean;
+  message?: string | null;
 }
 
 interface ApplyResult {
@@ -47,7 +50,12 @@ const keyOf = (r: PiRow) => `${r.pi_number}||${r.ckam_invoice_number}`;
  * received here. A preview first; only ticked rows are recorded, through the
  * same function as Record PI (so the audit trail is the same). Rendered inside
  * the PO page's one Purchase Invoice (PI) dialog, or on its own (ErpPiDialog). */
-export function ErpPiPanel({ poId, onClose }: { poId: number; onClose?: () => void }) {
+export function ErpPiPanel({ poId, onClose, onTypeItIn }: {
+  poId: number;
+  onClose?: () => void;
+  /** S7: offered when the ERP gives no PI (switches the dialog to typing it in). */
+  onTypeItIn?: () => void;
+}) {
   const qc = useQueryClient();
   const [picked, setPicked] = useState<Record<string, boolean>>({});
   const [overwrite, setOverwrite] = useState<Record<string, boolean>>({});
@@ -57,14 +65,22 @@ export function ErpPiPanel({ poId, onClose }: { poId: number; onClose?: () => vo
     queryKey: ["erp", "pi", poId],
     queryFn: async () => {
       const data = await apiClient.get<PiPreview>(`/erp/purchase-orders/${poId}/pi`);
-      setPicked(Object.fromEntries(data.rows.filter((r) => r.status === "ready").map((r) => [keyOf(r), true])));
+      const rowsRead = Array.isArray(data?.rows) ? data.rows : [];
+      setPicked(Object.fromEntries(rowsRead.filter((r) => r.status === "ready").map((r) => [keyOf(r), true])));
       setOverwrite({});
-      return data;
+      return { ...data, rows: rowsRead };
     },
     retry: false,
     gcTime: 0,
   });
   const rows = previewQ.data?.rows ?? [];
+  // S7 (P1-1): the ERP gives no PIs (not provided yet, or unreadable): its plain sentence, calmly, and "Type it in".
+  const unavailable = previewQ.data?.available === false;
+  const calmMessage = unavailable
+    ? previewQ.data?.message || "The ERP does not provide purchase invoices yet."
+    : previewQ.isError
+      ? previewQ.error instanceof Error ? previewQ.error.message : "The ERP could not be read just now."
+      : null;
   const chosen = rows.filter((r) => picked[keyOf(r)] && r.ckam_invoice_number);
 
   const applyMutation = useMutation({
@@ -84,12 +100,15 @@ export function ErpPiPanel({ poId, onClose }: { poId: number; onClose?: () => vo
   return (
     <div className="flex flex-col gap-3">
       {previewQ.isLoading && <p className="text-sm text-muted-foreground">Reading the ERP…</p>}
-      {previewQ.isError && (
-        <p className="text-sm text-destructive" role="alert">
-          {previewQ.error instanceof Error ? previewQ.error.message : "Could not read the PIs from the ERP."}
-        </p>
+      {calmMessage && (
+        <div className="flex flex-col gap-2 rounded-md border bg-muted/30 p-2.5 text-sm" role="note" aria-label="ERP purchase invoices">
+          <p>{calmMessage}</p>
+          {onTypeItIn && (
+            <Button size="sm" variant="outline" className="self-start" onClick={onTypeItIn}>Type it in</Button>
+          )}
+        </div>
       )}
-      {previewQ.data && rows.length === 0 && (
+      {previewQ.data && !unavailable && rows.length === 0 && (
         <p className="text-sm text-muted-foreground">
           The ERP has no PI for this purchase order yet{previewQ.data.not_booked > 0 ? ` (${previewQ.data.not_booked} invoice(s) are not booked)` : ""}.
         </p>

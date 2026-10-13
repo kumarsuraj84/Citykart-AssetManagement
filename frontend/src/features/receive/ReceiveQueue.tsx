@@ -1,8 +1,6 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { PackageCheck } from "lucide-react";
-import { apiClient } from "../../lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -13,6 +11,7 @@ import { AsyncButton } from "@/components/shared/AsyncButton";
 import { poStatusLabel } from "@/lib/labels";
 import { PoStatusBadge } from "../purchase-orders/PoStatusBadge";
 import { type PoListRow, loadedAndTotal, useDebounced, usePoPages } from "../purchase-orders/po-list";
+import { useErpReminders } from "../erp/DeliveryReminders";
 
 /**
  * Receive: the purchase orders that still have units waiting for goods
@@ -22,12 +21,6 @@ import { type PoListRow, loadedAndTotal, useDebounced, usePoPages } from "../pur
  * receipt details once, a quantity per line, serials only where needed.
  */
 
-interface Reminder {
-  po_id: number;
-  to_deliver: number;
-}
-
-const asArray = <T,>(data: unknown): T[] => (Array.isArray(data) ? (data as T[]) : []);
 const num = (n: number | null | undefined) => (typeof n === "number" ? n.toLocaleString("en-IN") : "—");
 const plural = (n: number, word: string) => `${n.toLocaleString("en-IN")} ${word}${n === 1 ? "" : "s"}`;
 
@@ -45,18 +38,9 @@ export function ReceiveQueue() {
   const posQ = usePoPages({ waiting: true, status, q });
 
   // Optional: POs where the ERP shows goods arrived that are not received here yet.
-  const erpStatusQ = useQuery({
-    queryKey: ["erp", "status"],
-    queryFn: () => apiClient.get<{ configured: boolean }>("/erp/status"),
-    retry: false,
-  });
-  const remindersQ = useQuery({
-    queryKey: ["erp", "reminders", "all"],
-    queryFn: () => apiClient.get<Reminder[]>("/erp/reminders"),
-    enabled: erpStatusQ.data?.configured === true,
-    retry: false,
-  });
-  const erpArrived = new Map(asArray<Reminder>(remindersQ.data).map((r) => [r.po_id, r.to_deliver]));
+  // S7 (P1-1): the same reminders call as the PO list; "not available" is simply no information.
+  const remindersQ = useErpReminders();
+  const erpArrived = new Map((remindersQ.data?.available ? remindersQ.data.items : []).map((r) => [r.po_id, r.to_deliver]));
 
   const rows = (posQ.data?.pages ?? []).flatMap((p) => p.rows);
   const { loaded, total } = loadedAndTotal(posQ.data?.pages);

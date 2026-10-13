@@ -1,11 +1,12 @@
 ﻿import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, MoreHorizontal } from "lucide-react";
 import { apiClient, ApiError } from "../../lib/api-client";
 import { authFetch } from "../../lib/auth-fetch";
 import { useAuthStore } from "../../lib/auth-store";
 import { computeWarrantyUpto } from "../../lib/warranty";
+import { useKeyedMutation } from "../../lib/submit-key";
 import { choicesFor, type MoveChoice } from "./actionRules";
 import { fieldLabel, humanizeCode, placeTypeLabel, workAreaLabel } from "../../lib/labels";
 import { brandOptions, categoryOptions, nameOptions, vendorOptions } from "../../lib/option-labels";
@@ -239,7 +240,9 @@ function serialValue(asset: { serial_number: string | null; serial_pending?: boo
   return asset.serial_number;
 }
 
-function warrantyValue(years: number | null, upto: string | null): string | null {
+/** "3 years · until 2029-10-13"; nothing at all when there is no warranty (S7 P3-3: never "0 years · until <today>"). */
+export function warrantyValue(years: number | null, upto: string | null): string | null {
+  if (years === 0) return null;
   if (years == null && !upto) return null;
   const y = years != null ? `${years} year${years === 1 ? "" : "s"}` : null;
   return [y, upto ? `until ${upto}` : null].filter(Boolean).join(" · ");
@@ -341,6 +344,8 @@ export function AssetDetail({ assetId }: { assetId: number }) {
   const { caps } = useCapabilities();
   const [newBrand, setNewBrand] = useState(false);
   const [newVendor, setNewVendor] = useState(false);
+  // The name typed in a picker before "+ New …" (S7 P2-1).
+  const [typedName, setTypedName] = useState("");
   const { data: customFieldDefsRaw = [] } = useQuery({
     queryKey: ["masters", "custom-fields"],
     queryFn: () => apiClient.get<CustomFieldDef[]>("/masters/custom-fields"),
@@ -436,10 +441,11 @@ export function AssetDetail({ assetId }: { assetId: number }) {
   const serialPatch = (typed: string, original: string): { serial_number?: string } =>
     typed !== "" && typed !== original ? { serial_number: typed } : {};
 
-  const editMutation = useMutation({
-    mutationFn: () => {
+  // S7 (P1-2): Save writes field-change rows: a double activation sends one request.
+  const editMutation = useKeyedMutation({
+    mutationFn: (_: void, keyed) => {
       const f = editForm!;
-      return apiClient.put<Asset>(`/assets/${assetId}`, {
+      const body = {
         legacy_asset_code: f.legacyAssetCode || null,
         brand_id: f.brandId ? Number(f.brandId) : null,
         model: f.model || null,
@@ -460,7 +466,8 @@ export function AssetDetail({ assetId }: { assetId: number }) {
         // otherwise the explicit int the user typed (0 included).
         warranty_years: f.warrantyYears.trim() === "" ? null : Number(f.warrantyYears),
         custom_fields: buildEditCustomFieldsPayload(),
-      });
+      };
+      return keyed(body, () => apiClient.put<Asset>(`/assets/${assetId}`, body));
     },
     onSuccess: (updated) => {
       qc.setQueryData(["assets", assetId], updated);
@@ -529,13 +536,14 @@ export function AssetDetail({ assetId }: { assetId: number }) {
   const correctionHasChange = correctionCategoryChanged || correctionSubcategoryChanged || correctionDateChanged;
   const correctionReasonValid = correctionReason.trim().length > 0;
 
-  const correctionMutation = useMutation({
-    mutationFn: () => {
+  // S7 (P1-2): a correction writes an audit row: one submit = one Idempotency-Key, never twice.
+  const correctionMutation = useKeyedMutation({
+    mutationFn: (_: void, keyed) => {
       const body: Record<string, unknown> = { reason: correctionReason.trim() };
       if (correctionCategoryChanged) body.category_id = Number(correctionCategoryId);
       if (correctionSubcategoryChanged) body.subcategory_id = correctionSubcategoryId ? Number(correctionSubcategoryId) : null;
       if (correctionDateChanged) body.purchase_date = correctionPurchaseDate;
-      return apiClient.post<Asset>(`/assets/${assetId}/corrections`, body);
+      return keyed(body, () => apiClient.post<Asset>(`/assets/${assetId}/corrections`, body));
     },
     onSuccess: (updated) => {
       qc.setQueryData(["assets", assetId], updated);
@@ -667,10 +675,10 @@ export function AssetDetail({ assetId }: { assetId: number }) {
                 value={selectValue(editForm.brandId)}
                 onValueChange={(v) => setEditField("brandId", v)}
                 options={brandOptions(brands)}
-                onCreateNew={may(caps, "brand") ? () => setNewBrand(true) : undefined}
+                onCreateNew={may(caps, "brand") ? (typed) => { setTypedName(typed); setNewBrand(true); } : undefined}
                 createLabel="New Brand…"
               />
-              <NewBrandDialog open={newBrand} onOpenChange={setNewBrand} onCreated={(row) => setEditField("brandId", String(row.id))} />
+              <NewBrandDialog open={newBrand} initialName={typedName} onOpenChange={setNewBrand} onCreated={(row) => setEditField("brandId", String(row.id))} />
             </FormField>
             <FormField htmlFor="edit-model" label="Model"><Input id="edit-model" aria-label="Model" value={editForm.model} onChange={(e) => setEditField("model", e.target.value)} /></FormField>
             <FormField
@@ -706,10 +714,10 @@ export function AssetDetail({ assetId }: { assetId: number }) {
                 value={selectValue(editForm.vendorId)}
                 onValueChange={(v) => setEditField("vendorId", v)}
                 options={vendorOptions(vendors)}
-                onCreateNew={may(caps, "vendor") ? () => setNewVendor(true) : undefined}
+                onCreateNew={may(caps, "vendor") ? (typed) => { setTypedName(typed); setNewVendor(true); } : undefined}
                 createLabel="New Vendor…"
               />
-              <NewVendorDialog open={newVendor} onOpenChange={setNewVendor} onCreated={(row) => setEditField("vendorId", String(row.id))} />
+              <NewVendorDialog open={newVendor} initialName={typedName} onOpenChange={setNewVendor} onCreated={(row) => setEditField("vendorId", String(row.id))} />
             </FormField>
             <FormField
               htmlFor="edit-warranty-years" label="Warranty Years"

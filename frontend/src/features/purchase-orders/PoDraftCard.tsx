@@ -2,9 +2,15 @@ import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
+import { useKeyedMutation } from "../../lib/submit-key";
 import type { Bundle } from "../bundles/bundle-parts";
 import type { Item } from "../items/types";
+import { hasSuggestion, suggestionWords } from "../items/suggestion-words";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AsyncButton } from "@/components/shared/AsyncButton";
@@ -85,6 +91,9 @@ export interface DraftLine {
   suggested_item_id?: number | null;
   suggested_item_name?: string | null;
   suggestion_score?: number | null;
+  /** S7: "same name" / "similar name", and its code SAME_NAME / SIMILAR_NAME. */
+  suggestion_reason?: string | null;
+  suggestion_reason_code?: string | null;
   suggested_scope?: SuggestedScope | null;
 }
 
@@ -146,6 +155,16 @@ export interface Draft {
 /** What `POST /erp/pos/{po_code}/not-tracked` answers. */
 interface NotTrackedResult {
   lines?: { item_code: string | null; description?: string; quantity?: number; resolution?: LineResolution | null }[];
+  /** The rule just saved (when the server says it): the head-office admin can undo it right here. */
+  map_id?: number | null;
+}
+
+/** The decision just saved, kept so it can be undone on this screen. */
+interface LastNotTracked {
+  mapId: number | null;
+  scope: NotTrackedScope;
+  words: string;
+  forms: LineForm[];
 }
 
 interface Option {
@@ -219,6 +238,31 @@ function defaultScope(s: DraftLine): SuggestedScope {
 
 const needsItem = (s: DraftLine) => (s.resolution?.state ? s.resolution.state === "NEEDS_ITEM" : s.item_id === null);
 
+/** The widest "not tracked" reaches: saved for everyone, so they are confirmed first (S7 P2-9). */
+const GROUP_WIDE: NotTrackedScope[] = ["ARTICLE", "DEPARTMENT", "SECTION", "DIVISION"];
+
+/**
+ * The reach "Not tracked" starts at (S7 P2-9): the narrowest sensible one -- this product name when the
+ * ERP has one, else this code. Only the head-office admin starts at the server's suggestion (it may be
+ * a whole ERP group); anyone can still pick a wider reach, after a confirmation.
+ */
+export function defaultNotTrackedScope(s: DraftLine, headOffice: boolean): NotTrackedScope {
+  if (headOffice) return defaultScope(s);
+  return s.name_key ? "NAME" : "CODE";
+}
+
+/** What a "not tracked" rule covers, in words (shown before saving and in the confirmation). */
+export function notTrackedReach(s: DraftLine, scope: NotTrackedScope): string {
+  switch (scope) {
+    case "CODE": return `the ERP code ${s.item_code ?? ""}`.trim();
+    case "NAME": return `every code named “${s.erp_name || s.description}”`;
+    case "ARTICLE": return `every code in the ERP group ${s.article_name || s.article_key || ""}`.trim();
+    case "DEPARTMENT": return `every code in the whole Department ${s.department ?? ""}`.trim();
+    case "SECTION": return `every code in the whole Section ${s.section ?? ""}`.trim();
+    case "DIVISION": return `every code in the whole Division ${s.division ?? ""}`.trim();
+  }
+}
+
 /**
  * The review of one ERP purchase order, EXCEPTIONS ONLY (S3b-2): a one-line summary of the header (Change opens
  * it), matched lines folded to one row each (Details opens them), and only what needs a person open: a line with
@@ -248,10 +292,16 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
         itemId: str(l.item_id), partAmounts: partAmountsFor(bundle, l.rate),
         // A line still to decide is remembered by default, as far as the server suggests.
         mapScope: needsItem(l) ? scope : "NONE",
-        notTrackedScope: scope,
+        notTrackedScope: defaultNotTrackedScope(l, caps?.is_head_office_admin === true),
       };
     }),
   );
+  // "Not tracked" for a whole group waits for a confirmation; the last decision can be undone here.
+  const [confirmNotTracked, setConfirmNotTracked] = useState<LineForm | null>(null);
+  const [lastNotTracked, setLastNotTracked] = useState<LastNotTracked | null>(null);
+  // The name typed in a picker before "+ New …" (S7 P2-1): the New dialog starts with it.
+  const [typedName, setTypedName] = useState("");
+  const withName = (open: () => void) => (typed: string) => { setTypedName(typed); open(); };
   const [leftOut, setLeftOut] = useState<UntrackedLine[]>(draft.untracked_lines ?? []);
   const [openDetails, setOpenDetails] = useState<Set<number>>(new Set());
 
@@ -342,7 +392,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
   function lineProblem(l: LineForm): string | null {
     if (l.itemId === "") return "choose the Item";
     if (l.description.trim() === "") return "description is required";
-    if (l.barcode.trim() === "") return "barcode is required";
+    // S7: the barcode is optional on every line (the server allows none).
     const q = Number(l.quantity);
     if (l.quantity.trim() === "" || !(q >= 1) || !Number.isInteger(q)) return "quantity must be a whole number, at least 1";
     if (q > MAX_QUANTITY) return `quantity can be at most ${MAX_QUANTITY.toLocaleString("en-IN")} on one line`;
@@ -370,9 +420,26 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
   const problems = new Map(lines.map((l) => [l.uid, lineProblem(l)]));
   const alreadyCreated = draft.already_created_id !== null;
 
-  const createMutation = useMutation({
-    mutationFn: () =>
-      apiClient.post<{ po_id: number; po_number: string; lines_created: number; units_created?: number }>("/erp/pos/create", {
+  // S7 (P1-2): one Create = one Idempotency-Key; a second activation while it runs is ignored.
+  const createMutation = useKeyedMutation({
+    mutationFn: (_: void, keyed) => {
+      const body = createBody();
+      return keyed(body, () =>
+        apiClient.post<{ po_id: number; po_number: string; lines_created: number; units_created?: number }>("/erp/pos/create", body));
+    },
+    onSuccess: () => {
+      rememberChoice(companyId, "cost_centre", costCenterId);
+      rememberChoice(companyId, "stock_room", deliveryId);
+      qc.invalidateQueries({ queryKey: ["purchase-orders"] });
+      qc.invalidateQueries({ queryKey: ["items"] });
+      qc.invalidateQueries({ queryKey: ["erp", "pos"] });
+      qc.invalidateQueries({ queryKey: ["erp", "inbox"] });
+      if (vendorUnmatched) qc.invalidateQueries({ queryKey: ["masters", "vendors"] });
+    },
+  });
+
+  function createBody() {
+    return {
         // erp_po_code is always sent: the server re-reads this ERP purchase order and takes the number and date from it.
         erp_po_code: draft.erp_po_code, company_id: Number(companyId), po_number: poNumber.trim(), po_date: poDate,
         // A supplier not matched yet sends how to match it instead of a vendor (done in the same create).
@@ -392,7 +459,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
           // The reach the server suggested is its default: only a different one is spelled out.
           const scope = keep && !(l.src.suggested_scope && l.mapScope === l.src.suggested_scope) ? l.mapScope : null;
           return {
-            item_code: l.src.item_code, description: l.description.trim(), barcode: l.barcode.trim(),
+            item_code: l.src.item_code, description: l.description.trim(), barcode: l.barcode.trim() || null,
             quantity: Number(l.quantity), rate: Number(l.rate), tax_percent: Number(l.taxPercent) || 0,
             warranty_years: Number(l.warrantyYears) || 0, item_id: Number(l.itemId),
             brand_id: !bundle && l.brandId ? Number(l.brandId) : null, model: !bundle && l.model ? l.model : null,
@@ -403,17 +470,8 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
             section: keep ? l.src.section : null, department: keep ? l.src.department : null, name_key: keep ? l.src.name_key : null,
           };
         }),
-      }),
-    onSuccess: () => {
-      rememberChoice(companyId, "cost_centre", costCenterId);
-      rememberChoice(companyId, "stock_room", deliveryId);
-      qc.invalidateQueries({ queryKey: ["purchase-orders"] });
-      qc.invalidateQueries({ queryKey: ["items"] });
-      qc.invalidateQueries({ queryKey: ["erp", "pos"] });
-      qc.invalidateQueries({ queryKey: ["erp", "inbox"] });
-      if (vendorUnmatched) qc.invalidateQueries({ queryKey: ["masters", "vendors"] });
-    },
-  });
+    };
+  }
 
   // "Not tracked": CKAM does not manage this (a cable, a hanger). Saved as a rule for this PO's company; the lines it
   // covers leave the review and are listed under "left out".
@@ -426,6 +484,10 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
         if (r.resolution?.state === "NOT_TRACKED" && r.item_code) codes.add(r.item_code.toUpperCase());
       }
       const leaving = lines.filter((x) => codes.has((x.src.item_code ?? "").toUpperCase()));
+      setLastNotTracked({
+        mapId: typeof result?.map_id === "number" ? result.map_id : null,
+        scope: l.notTrackedScope, words: notTrackedReach(l.src, l.notTrackedScope), forms: leaving,
+      });
       setLines((ls) => ls.filter((x) => !codes.has((x.src.item_code ?? "").toUpperCase())));
       setLeftOut((out) => [
         ...out,
@@ -437,6 +499,23 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
       qc.invalidateQueries({ queryKey: ["erp", "pos"] });
       qc.invalidateQueries({ queryKey: ["erp", "inbox"] });
       qc.invalidateQueries({ queryKey: ["items"] });
+    },
+  });
+  /** "Not tracked" pressed: a rule for a whole group is confirmed first, a narrower one is saved at once. */
+  function askNotTracked(l: LineForm) {
+    if (GROUP_WIDE.includes(l.notTrackedScope)) setConfirmNotTracked(l);
+    else notTrackedMutation.mutate(l);
+  }
+  // Undo (the head-office admin only -- the server keeps removing a rule with them): the lines come back.
+  const undoNotTracked = useMutation({
+    mutationFn: (last: LastNotTracked) => apiClient.delete(`/items/maps/${last.mapId}`),
+    onSuccess: (_r, last) => {
+      const back = new Set(last.forms.map((f) => f.uid));
+      setLines((ls) => [...ls, ...last.forms].sort((a, b) => a.uid - b.uid));
+      setLeftOut((out) => out.slice(0, Math.max(0, out.length - back.size)));
+      setLastNotTracked(null);
+      qc.invalidateQueries({ queryKey: ["erp", "pos"] });
+      qc.invalidateQueries({ queryKey: ["erp", "inbox"] });
     },
   });
   const notTrackedChoices = (s: DraftLine): { value: NotTrackedScope; label: string }[] => {
@@ -515,7 +594,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
               <SearchableSelect
                 id={`${id}-item`} value={l.itemId || undefined} onValueChange={(v) => changeItem(l.uid, v)}
                 options={itemSelectOptions} placeholder="Choose the Item"
-                onCreateNew={may(caps, "item") ? () => setNewItemFor(l.uid) : undefined} createLabel="New Item…"
+                onCreateNew={may(caps, "item") ? withName(() => setNewItemFor(l.uid)) : undefined} createLabel="New Item…"
               />
             </FormField>
             {changed ? (
@@ -531,7 +610,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
         <FormField htmlFor={`${id}-description`} label="Description" required className="col-span-3">
           <Input id={`${id}-description`} value={l.description} onChange={(e) => setLine(l.uid, { description: e.target.value })} />
         </FormField>
-        <FormField htmlFor={`${id}-barcode`} label="Barcode" required>
+        <FormField htmlFor={`${id}-barcode`} label="Barcode" helperText="Optional.">
           <Input id={`${id}-barcode`} value={l.barcode} onChange={(e) => setLine(l.uid, { barcode: e.target.value })} />
         </FormField>
         <FormField
@@ -577,7 +656,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
               <SearchableSelect
                 id={`${id}-brand`} value={l.brandId || undefined} onValueChange={(v) => setLine(l.uid, { brandId: v })}
                 options={brandSelectOptions}
-                onCreateNew={may(caps, "brand") ? () => setNewBrandFor(l.uid) : undefined} createLabel="New Brand…"
+                onCreateNew={may(caps, "brand") ? withName(() => setNewBrandFor(l.uid)) : undefined} createLabel="New Brand…"
               />
             </FormField>
             <FormField htmlFor={`${id}-model`} label="Model" className="col-span-2">
@@ -663,7 +742,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
               <SearchableSelect
                 id={`${poNumber}-cost-center`} value={costCenterId || undefined} onValueChange={setCostCenterId}
                 options={costCentreOptions(costCentersQ.data)}
-                onCreateNew={may(caps, "cost_centre") && companyId !== "" ? () => setNewCostCenter(true) : undefined} createLabel="New Cost Centre…"
+                onCreateNew={may(caps, "cost_centre") && companyId !== "" ? withName(() => setNewCostCenter(true)) : undefined} createLabel="New Cost Centre…"
               />
               {costCentersQ.isSuccess && (costCentersQ.data ?? []).length === 0 && !may(caps, "cost_centre") && caps && (
                 <p className="text-xs text-muted-foreground" role="note">{ASK_TO_ADD.cost_centre}</p>
@@ -772,6 +851,13 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
                     Details
                   </Button>
                 </div>
+                {/* S7 (P2-11): a matched line keeps the ERP's own words in view, so a wrong rule is noticed. */}
+                {!exception && (s.erp_description || s.erp_name || s.description) && (
+                  <p className="-mt-1 truncate pl-5 text-xs text-muted-foreground" aria-label={`Line ${i + 1} in the ERP`}>
+                    In the ERP: {s.erp_description || s.erp_name || s.description}
+                    {s.item_code ? <> · <span className="font-mono">{s.item_code}</span></> : null}
+                  </p>
+                )}
 
                 {exception && (
                   <div className="flex flex-col gap-2">
@@ -787,11 +873,11 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
                         {s.warnings.map((w) => <li key={w}>{w}</li>)}
                       </ul>
                     )}
-                    {s.suggested_item_id != null && l.itemId !== String(s.suggested_item_id) && (
+                    {hasSuggestion({ ...s, suggested_item_name: s.suggested_item_name ?? suggestion?.name }) && l.itemId !== String(s.suggested_item_id) && (
                       <div className="flex flex-wrap items-center gap-2 text-xs">
                         <span>
                           Suggested: <span className="font-medium">{s.suggested_item_name ?? suggestion?.name}</span>
-                          {s.suggestion_score != null ? <span className="text-muted-foreground"> ({Math.round(s.suggestion_score * 100)}% match)</span> : null}
+                          <span className="text-muted-foreground"> · {suggestionWords(s)}</span>
                         </span>
                         <Button
                           type="button" size="sm" variant="outline" aria-label={`Line ${i + 1}: use the suggestion ${s.suggested_item_name ?? ""}`.trim()}
@@ -809,7 +895,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
                         <SearchableSelect
                           id={`${id}-item`} value={l.itemId || undefined} onValueChange={(v) => changeItem(l.uid, v)}
                           options={itemSelectOptions} placeholder="Choose Item"
-                          onCreateNew={may(caps, "item") ? () => setNewItemFor(l.uid) : undefined} createLabel="New Item…"
+                          onCreateNew={may(caps, "item") ? withName(() => setNewItemFor(l.uid)) : undefined} createLabel="New Item…"
                         />
                       </FormField>
                       <FormField htmlFor={`${id}-scope`} label="Remember" className="col-span-3">
@@ -820,21 +906,27 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
                       </FormField>
                     </div>
                     {s.item_code && (
-                      <div className="flex flex-wrap items-end gap-2" aria-label={`Line ${i + 1} not tracked`}>
-                        <span className="pb-2 text-xs text-muted-foreground">Not something CKAM tracks (a cable, a hanger)?</span>
-                        <div className="w-64">
-                          <SearchableSelect
-                            id={`${id}-not-tracked-scope`} aria-label={`Line ${i + 1}: how far this reaches`} value={l.notTrackedScope}
-                            onValueChange={(v) => setLine(l.uid, { notTrackedScope: v as NotTrackedScope })}
-                            options={notTrackedChoices(s)}
-                          />
+                      <div className="flex flex-col gap-1" aria-label={`Line ${i + 1} not tracked`}>
+                        <div className="flex flex-wrap items-end gap-2">
+                          <span className="pb-2 text-xs text-muted-foreground">Not something CKAM tracks (a cable, a hanger)?</span>
+                          <div className="w-64 max-w-full">
+                            <SearchableSelect
+                              id={`${id}-not-tracked-scope`} aria-label={`Line ${i + 1}: how far this reaches`} value={l.notTrackedScope}
+                              onValueChange={(v) => setLine(l.uid, { notTrackedScope: v as NotTrackedScope })}
+                              options={notTrackedChoices(s)}
+                            />
+                          </div>
+                          <AsyncButton
+                            type="button" variant="outline" size="sm" pending={notTrackedMutation.isPending && notTrackedMutation.variables?.uid === l.uid}
+                            disabled={notTrackedMutation.isPending}
+                            pendingLabel="Saving…" aria-label={`Line ${i + 1}: not tracked`} onClick={() => askNotTracked(l)}
+                          >
+                            Not tracked
+                          </AsyncButton>
                         </div>
-                        <AsyncButton
-                          type="button" variant="outline" size="sm" pending={notTrackedMutation.isPending && notTrackedMutation.variables?.uid === l.uid}
-                          pendingLabel="Saving…" aria-label={`Line ${i + 1}: not tracked`} onClick={() => notTrackedMutation.mutate(l)}
-                        >
-                          Not tracked
-                        </AsyncButton>
+                        <p className="text-xs text-muted-foreground" aria-label={`Line ${i + 1}: what not tracked covers`}>
+                          Leaves {notTrackedReach(s, l.notTrackedScope)} out of CKAM for everyone{draft.company_code ? ` in ${draft.company_code}` : ""}.
+                        </p>
                       </div>
                     )}
                   </div>
@@ -861,6 +953,30 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
             <p className="text-sm text-destructive" role="alert">
               {notTrackedMutation.error instanceof Error ? notTrackedMutation.error.message : "Could not save that decision."}
             </p>
+          )}
+          {lastNotTracked && (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/20 px-2.5 py-1.5 text-xs" role="status" aria-label="Not tracked saved">
+              <span>Saved: {lastNotTracked.words} is now left out of CKAM.</span>
+              {caps?.is_head_office_admin && lastNotTracked.mapId !== null ? (
+                <AsyncButton
+                  type="button" size="sm" variant="outline" pending={undoNotTracked.isPending} pendingLabel="Undoing…"
+                  onClick={() => undoNotTracked.mutate(lastNotTracked)}
+                >
+                  Undo
+                </AsyncButton>
+              ) : (
+                <span className="text-muted-foreground">
+                  {caps?.is_head_office_admin
+                    ? "To undo it, open Settings › ERP Mapping."
+                    : "Only the head-office admin can undo this (Settings › ERP Mapping)."}
+                </span>
+              )}
+              {undoNotTracked.isError && (
+                <span className="text-destructive" role="alert">
+                  {undoNotTracked.error instanceof Error ? undoNotTracked.error.message : "Could not undo."}
+                </span>
+              )}
+            </div>
           )}
           {leftOut.length > 0 && (
             <details className="rounded-md border bg-muted/20 p-2 text-sm" aria-label="Lines left out">
@@ -891,8 +1007,9 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
       <ItemFormDialog
         open={newItemFor !== null}
         onOpenChange={(open) => !open && setNewItemFor(null)}
-        // Start from the ERP's own words for this product.
+        // What was typed in the picker, else the ERP's own words for this product.
         initialName={(() => {
+          if (typedName.trim()) return typedName.trim();
           const src = lines.find((l) => l.uid === newItemFor)?.src;
           return src ? src.erp_name || src.article_name || undefined : undefined;
         })()}
@@ -900,19 +1017,43 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
       />
       <NewBrandDialog
         open={newBrandFor !== null}
+        initialName={typedName}
         onOpenChange={(open) => !open && setNewBrandFor(null)}
         onCreated={(row) => newBrandFor !== null && setLine(newBrandFor, { brandId: String(row.id) })}
       />
       {companyId !== "" && (
         <NewCostCenterDialog
-          companyId={Number(companyId)} open={newCostCenter} onOpenChange={setNewCostCenter}
+          companyId={Number(companyId)} open={newCostCenter} initialName={typedName} onOpenChange={setNewCostCenter}
           onCreated={(row) => setCostCenterId(String(row.id))}
         />
       )}
+      <AlertDialog open={confirmNotTracked !== null} onOpenChange={(o) => !o && setConfirmNotTracked(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Leave a whole group out of CKAM?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmNotTracked
+                ? `This will leave ${notTrackedReach(confirmNotTracked.src, confirmNotTracked.notTrackedScope)} out of CKAM for everyone${draft.company_code ? ` in ${draft.company_code}` : ""}, on this and every later purchase order. Continue?`
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirmNotTracked) notTrackedMutation.mutate(confirmNotTracked);
+                setConfirmNotTracked(null);
+              }}
+            >
+              Leave them out
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {!locked && (
         <div className="flex flex-col items-start gap-1">
           <AsyncButton
-            onClick={() => createMutation.mutate()} disabled={!canCreate} pending={createMutation.isPending} pendingLabel="Creating…"
+            onClick={() => createMutation.mutate()} disabled={!canCreate || notTrackedMutation.isPending} pending={createMutation.isPending} pendingLabel="Creating…"
             aria-describedby={`${poNumber}-create-why`}
           >
             Create this purchase order

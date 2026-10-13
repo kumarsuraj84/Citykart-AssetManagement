@@ -1,4 +1,5 @@
 import { authFetch } from "./auth-fetch";
+import { currentIdempotencyKey } from "./request-key";
 
 /** Same as a plain Error everywhere existing `instanceof Error` checks look
  * (message-only) -- `status` is additive, so a screen that needs to tell a
@@ -65,16 +66,22 @@ export function errorMessageFrom(body: unknown, status: number): string {
 }
 
 async function send(method: string, path: string, body?: unknown): Promise<Response> {
+  // S7 (P1-2): a submit started inside runWithIdempotencyKey carries its key, so
+  // the server answers a repeat of the same intent with the stored result.
+  // Read before the first await -- the key is only set for that moment.
+  const key = method === "GET" ? null : currentIdempotencyKey();
   // FormData (multipart uploads, e.g. the Excel import screen) must be sent
   // as-is: JSON.stringify-ing it would produce "[object FormData]", and
   // setting Content-Type ourselves would drop the multipart boundary the
   // browser generates. Only set the JSON header/serialize for plain bodies.
   const isFormData = body instanceof FormData;
+  const headers: Record<string, string> = isFormData ? {} : { "Content-Type": "application/json" };
+  if (key) headers["Idempotency-Key"] = key;
   // authFetch attaches the bearer token and handles 401 -> refresh -> retry once
   // -> otherwise redirect to /login (see lib/auth-fetch.ts).
   const res = await authFetch(path, {
     method,
-    headers: isFormData ? {} : { "Content-Type": "application/json" },
+    headers,
     body: isFormData ? body : body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {

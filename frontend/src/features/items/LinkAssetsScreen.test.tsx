@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within, act } from "@testing-library/react";
+import { currentIdempotencyKey } from "../../lib/request-key";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { createAppRouter } from "../../router";
@@ -89,6 +90,29 @@ describe("Link existing assets to Items", () => {
       { asset_id: 1, item_id: 44 }, { asset_id: 2, item_id: 45 },
     ]));
     expect(await screen.findByText("Linked 2 assets to their Items.")).toBeInTheDocument();
+  });
+
+  it("S7 P1-2: a double activation of the confirm sends ONE link request, with an Idempotency-Key", async () => {
+    mockList([row(1)]);
+    const keys: (string | null)[] = [];
+    (apiClient.post as any).mockImplementation(() => {
+      keys.push(currentIdempotencyKey());
+      return new Promise(() => {});
+    });
+    renderAt();
+    const first = await screen.findByRole("listitem", { name: "FA/CK/1" });
+    fireEvent.click(within(first).getByRole("button", { name: "Use Laptop" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review and link 1" }));
+    const dialog = await screen.findByRole("dialog");
+    const link = within(dialog).getByRole("button", { name: "Link 1" });
+    act(() => {
+      link.click();
+      link.click();
+    });
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(apiClient.post).toHaveBeenCalledTimes(1);
+    expect(keys[0]).toMatch(/^[0-9a-f-]{36}$/);
   });
 
   it("Undo takes a staged link back", async () => {

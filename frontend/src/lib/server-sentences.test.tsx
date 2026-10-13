@@ -39,7 +39,7 @@ describe("the server's sentence reaches the screen (real api-client)", () => {
         }));
       }
       if (path.startsWith("/masters/cost-centers")) return Promise.resolve(json(200, [{ id: 3, name: "Head Office" }]));
-      if (path === "/items") {
+      if (path === "/items?work_area=mine") {
         return Promise.resolve(json(200, [{
           id: 12, name: "Laptop", category_id: 1, subcategory_id: null, serial_required: true, serial_later: false, bundle_id: null,
           default_brand_id: null, default_warranty_years: null, is_active: true, map_count: 0,
@@ -51,7 +51,7 @@ describe("the server's sentence reaches the screen (real api-client)", () => {
     await waitFor(() => expect(screen.getByLabelText(/po no/i)).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText(/po no/i), { target: { value: "PO-1" } });
     fireEvent.click(screen.getByLabelText(/cost centre/i));
-    fireEvent.click(await screen.findByText("Head Office"));
+    fireEvent.click(await screen.findByRole("option", { name: /^Head Office/ }));
     fireEvent.click(screen.getByLabelText("Line 1 Item"));
     fireEvent.click(await screen.findByRole("option", { name: /^Laptop/ }));
     fireEvent.change(screen.getByLabelText("Line 1 Unit Cost"), { target: { value: "50000" } });

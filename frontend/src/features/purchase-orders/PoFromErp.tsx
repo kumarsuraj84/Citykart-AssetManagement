@@ -4,7 +4,7 @@ import { DatabaseZap } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import type { Bundle } from "../bundles/BundlesScreen";
-import type { Item } from "../items/types";
+import { useMyItems } from "../items/useMyItems";
 import { PoDraftCard, type Draft } from "./PoDraftCard";
 import { useDebounced } from "./po-list";
 import { Button } from "@/components/ui/button";
@@ -135,7 +135,8 @@ export function PoFromErp() {
     placeholderData: (previous) => previous,
   });
   const bundlesQ = useQuery({ queryKey: ["bundles"], queryFn: () => apiClient.get<Bundle[]>("/bundles") });
-  const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => apiClient.get<Item[]>("/items") });
+  // S7 (P2-6): the review's Item pickers list only this person's own work areas.
+  const { query: itemsQ } = useMyItems();
   const draftQ = useQuery({
     queryKey: ["erp", "draft", selected],
     queryFn: () => apiClient.get<Draft>(`/erp/pos/${selected}/draft`),
@@ -144,10 +145,20 @@ export function PoFromErp() {
     gcTime: 0,
   });
 
+  // The same query (and key) as ErpSyncStatus: when that line already says "ERP data as of …",
+  // this screen does not say it a second time in another format (S7 P3-1).
+  const syncQ = useQuery({
+    queryKey: ["erp", "sync"],
+    queryFn: () => apiClient.get<{ configured?: boolean }>("/erp/sync"),
+    retry: false,
+  });
+  const syncLineShown = !!syncQ.data && typeof syncQ.data === "object" && (syncQ.data as { configured?: boolean }).configured === true;
+
   const envelope = posQ.data;
   const rows = envelope?.pos ?? [];
   const counts = envelope?.counts;
   const freshness = envelope?.freshness;
+  const freshnessProblem = !!freshness && (freshness.refresh_failed === true || freshness.available === false);
   const filtered = readiness !== "ALL" || q.trim() !== "" || companyId !== "";
 
   const columns: DataTableColumn<ErpPoRow>[] = [
@@ -232,9 +243,9 @@ export function PoFromErp() {
             </div>
           </div>
 
-          {freshness && (freshness.data_as_of_text || freshness.message) && (
-            <p className="text-xs text-muted-foreground" aria-label="ERP data freshness">
-              {freshness.refresh_failed || freshness.available === false
+          {freshness && (freshness.data_as_of_text || freshness.message) && (freshnessProblem || !syncLineShown) && (
+            <p className="text-xs text-muted-foreground" aria-label={syncLineShown ? "ERP data problem" : "ERP data freshness"}>
+              {freshnessProblem
                 ? freshness.message ?? `ERP data could not refresh. Using data from ${freshness.data_as_of_text}.`
                 : `ERP data as of ${freshness.data_as_of_text}`}
             </p>

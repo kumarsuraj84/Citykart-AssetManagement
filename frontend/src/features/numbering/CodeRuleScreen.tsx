@@ -44,14 +44,18 @@ interface CodeRule {
 }
 
 interface RuleBody {
-  company_id: null;
+  company_id: number | null;
   prefix_template: string;
   suffix_template: string;
   start_number: number;
   pad_width: number;
 }
 
-export function CodeRuleScreen({ embedded = false }: { embedded?: boolean } = {}) {
+export function CodeRuleScreen({ embedded = false, exampleCompany = null }: {
+  embedded?: boolean;
+  /** S7 (P2-3): show the example for this company (the set-up guide's company), from the server's preview. */
+  exampleCompany?: { id: number; code?: string | null; name?: string | null } | null;
+} = {}) {
   const qc = useQueryClient();
   const { role, isPrimaryOwner } = useAccess();
   // UX only: the server refuses anyone but the head-office admin (403).
@@ -97,9 +101,13 @@ export function CodeRuleScreen({ embedded = false }: { embedded?: boolean } = {}
 
   // The server's own example (POST /code-rules/preview, saves nothing), asked
   // for after the owner pauses typing. Its 422 sentences ("the format needs ...")
-  // are shown inline. Only the owner can type, so only the owner asks.
-  const [debouncedBody, setDebouncedBody] = useState<RuleBody>(body);
-  const bodyKey = JSON.stringify(body);
+  // are shown inline. Only the owner can type, so only the owner asks -- and,
+  // in the set-up guide, anyone sees the example for the guide's company (S7 P2-3:
+  // the rule stays the global one; only the example is that company's).
+  const asks = canEdit || exampleCompany != null;
+  const previewBody: RuleBody = { ...body, company_id: exampleCompany?.id ?? null };
+  const [debouncedBody, setDebouncedBody] = useState<RuleBody>(previewBody);
+  const bodyKey = JSON.stringify(previewBody);
   useEffect(() => {
     const t = setTimeout(() => setDebouncedBody(JSON.parse(bodyKey) as RuleBody), PREVIEW_DEBOUNCE_MS);
     return () => clearTimeout(t);
@@ -108,14 +116,14 @@ export function CodeRuleScreen({ embedded = false }: { embedded?: boolean } = {}
   const previewQ = useQuery({
     queryKey: ["code-rule-preview", debouncedBody],
     queryFn: async () => (await apiClient.post<{ example?: string }>("/code-rules/preview", debouncedBody)) ?? null,
-    enabled: canEdit && !isLoading && !isError && debouncedBody.prefix_template.trim() !== "",
+    enabled: asks && !isLoading && !isError && debouncedBody.prefix_template.trim() !== "",
     retry: false,
     staleTime: 60_000,
   });
   const previewError =
-    canEdit && settled && previewQ.isError && previewQ.error instanceof Error ? previewQ.error.message : null;
+    asks && settled && previewQ.isError && previewQ.error instanceof Error ? previewQ.error.message : null;
   const serverExample =
-    canEdit && settled && !previewQ.isError && typeof previewQ.data?.example === "string" ? previewQ.data.example : null;
+    asks && settled && !previewQ.isError && typeof previewQ.data?.example === "string" ? previewQ.data.example : null;
 
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -133,7 +141,8 @@ export function CodeRuleScreen({ embedded = false }: { embedded?: boolean } = {}
   // Someone who cannot change the format sees the saved rule's example as the server rendered it.
   const shownExample = canEdit
     ? (serverExample ?? clientPreview)
-    : (activeRule?.example || clientPreview);
+    : (serverExample ?? (activeRule?.example || clientPreview));
+  const exampleFor = exampleCompany ? (exampleCompany.code || exampleCompany.name || "") : "";
 
   const statusText = activeRule
     ? canEdit
@@ -226,8 +235,8 @@ export function CodeRuleScreen({ embedded = false }: { embedded?: boolean } = {}
               server's (so it follows the real numbering rules); until it
               arrives, or if it cannot be had, the offline example shows. */}
           <div className="max-w-md rounded-md border border-primary/20 bg-primary/5 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Next Asset Code
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground" data-testid="code-preview-label">
+              Next Asset Code{exampleFor ? ` in ${exampleFor}` : ""}
             </p>
             <p data-testid="code-preview" className="font-mono text-lg font-semibold text-foreground">
               {previewError ? "—" : shownExample}

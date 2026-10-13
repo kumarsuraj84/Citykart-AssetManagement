@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet, RouterProvider, createMemoryHistory, createRootRoute, createRoute, createRouter,
 } from "@tanstack/react-router";
-import { AssetDetail } from "./AssetDetail";
+import { AssetDetail, warrantyValue } from "./AssetDetail";
 import { choicesFor } from "./actionRules";
 import { apiClient, ApiError } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
@@ -827,5 +827,15 @@ describe("AssetDetail -- S3b-1 brand / vendor added in Edit", () => {
     await waitFor(() => expect(screen.getByRole("combobox", { name: /^brand$/i })).toHaveTextContent("Lenovo"));
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     await waitFor(() => expect(apiClient.put).toHaveBeenCalledWith("/assets/1", expect.objectContaining({ brand_id: 12 })));
+  });
+});
+
+describe("S7 P3-3: warranty words on Asset 360", () => {
+  it("no warranty (0 years) shows nothing, never '0 years · until <today>'", () => {
+    expect(warrantyValue(0, "2026-10-13")).toBeNull();
+    expect(warrantyValue(null, null)).toBeNull();
+    expect(warrantyValue(3, "2029-10-13")).toBe("3 years · until 2029-10-13");
+    expect(warrantyValue(1, null)).toBe("1 year");
+    expect(warrantyValue(null, "2027-01-01")).toBe("until 2027-01-01");
   });
 });

@@ -20,7 +20,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { AppNav } from "@/components/app-shell/AppNav";
-import { guarded } from "@/components/app-shell/RouteGuard";
+import { guarded, guardedCatalogue } from "@/components/app-shell/RouteGuard";
 import { apiClient } from "./lib/api-client";
 import { applySession, logoutSession, safeNextPath, type SessionPayload } from "./lib/auth-fetch";
 import { useAuthStore } from "./lib/auth-store";
@@ -305,6 +305,10 @@ export const authedLayoutRoute = createRoute({
 export const dashboardRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/dashboard",
+  // S7 (P3-9): a self-service login's home is My Assets -- sent there instead of a "no access" page.
+  beforeLoad: () => {
+    if (useAuthStore.getState().role === "SELF_SERVICE") throw redirect({ to: "/my-assets" });
+  },
   component: guarded("staff", DashboardRoute),
 });
 
@@ -588,7 +592,8 @@ export const settingsOrganisationRoute = createRoute({
 export const settingsItemsRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/settings/catalogue/items",
-  component: guarded("settings", ItemsSetup),
+  // S7: also a Full Admin who may manage Items of a work area (capabilities).
+  component: guardedCatalogue(ItemsSetup),
 });
 
 // S5b-1: Link existing assets to Items -- any ADMIN (the head-office admin too), like the server.
@@ -601,7 +606,8 @@ export const settingsLinkAssetsRoute = createRoute({
 export const settingsAssetGroupsRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/settings/catalogue/asset-groups",
-  component: guarded("settings", function AssetGroupsComponent() {
+  // S7: also a Full Admin who may manage Asset Groups of a work area (capabilities).
+  component: guardedCatalogue(function AssetGroupsComponent() {
     return <AssetGroupsScreen />;
   }),
 });
@@ -625,7 +631,8 @@ export const settingsVendorsRoute = createRoute({
 export const settingsUsersAccessRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
   path: "/settings/users-access",
-  component: guarded("settings", UsersAccessScreen),
+  // S7 (P3-15): the way into People & Places -- every Full Admin (like the four lists themselves).
+  component: guarded("people", UsersAccessScreen),
 });
 
 /** `?section=items|vendors|stores` -- the part of the ERP Inbox to open at (Home's rows link to it). */

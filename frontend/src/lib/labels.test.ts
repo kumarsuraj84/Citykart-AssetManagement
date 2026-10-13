@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
+  holderDisplayName,
+  sameText,
   ASSET_STATUSES,
   PLACE_TYPES,
   PO_STATUSES,
@@ -78,5 +80,20 @@ describe("labels: the one place codes become words", () => {
     ]);
     expect(poStatusLabel("ON_HOLD")).toBe("On hold");
     expect(poStatusLabel(null)).toBe("");
+  });
+});
+
+describe("S7 P3-4: holder names and repeated texts", () => {
+  it("drops the old auto-made 'Stock Point - ' in front of a name, nothing else", () => {
+    expect(holderDisplayName("Stock Point - WH Stores Farukhnagar")).toBe("WH Stores Farukhnagar");
+    expect(holderDisplayName("stock point – HO")).toBe("HO");
+    expect(holderDisplayName("Ankur Pahwa")).toBe("Ankur Pahwa");
+    expect(holderDisplayName(null)).toBe("");
+  });
+
+  it("sameText ignores case and outer spaces", () => {
+    expect(sameText(" Gondola Rack", "gondola rack ")).toBe(true);
+    expect(sameText("Gondola Rack 4ft", "Gondola Rack")).toBe(false);
+    expect(sameText(null, "x")).toBe(false);
   });
 });

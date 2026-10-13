@@ -39,7 +39,7 @@ function mockApi(pos: Record<string, unknown>[], erp: { configured: boolean; rem
   });
   (apiClient.get as any).mockImplementation((path: string) => {
     if (path === "/erp/status") return erp.fail ? Promise.reject(new Error("503")) : Promise.resolve({ configured: erp.configured });
-    if (path === "/erp/reminders") return Promise.resolve(erp.reminders ?? []);
+    if (path === "/erp/reminders?envelope=true") return Promise.resolve(erp.reminders ?? []);
     return Promise.resolve([]);
   });
 }

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import type { Item } from "../items/types";
 import { ItemFormDialog } from "../items/ItemFormDialog";
+import { useMyItems } from "../items/useMyItems";
 import { NewBrandDialog } from "@/components/quick-create/masters";
 import { useCapabilities, canCreate as may } from "@/lib/capabilities";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -119,12 +120,14 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   });
   const vendorsQ = useQuery({ queryKey: ["masters", "vendors"], queryFn: () => apiClient.get<Option[]>("/masters/vendors") });
   const brandsQ = useQuery({ queryKey: ["masters", "brands"], queryFn: () => apiClient.get<Option[]>("/masters/brands") });
-  const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => apiClient.get<Item[]>("/items") });
+  // S7 (P2-6): Add Line / Edit list only the Items of this person's own work areas.
+  const { items } = useMyItems();
   const { caps } = useCapabilities();
   const [newItemForAdd, setNewItemForAdd] = useState(false);
   const [newBrandForAdd, setNewBrandForAdd] = useState(false);
+  // The name typed in a picker before "+ New …" (S7 P2-1).
+  const [typedName, setTypedName] = useState("");
 
-  const items = itemsQ.data ?? [];
   const categories = categoriesQ.data ?? [];
   const subcategories = subcategoriesQ.data ?? [];
   const costCenters = costCentersQ.data ?? [];
@@ -140,12 +143,14 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const brandSelectOptions = brandOptions(brands);
 
   // Summary: units, counted by the server per line (the caller's work area).
+  // S7 (P3-7): "Ordered" keeps what was ordered, cancelled units included, so a cancelled PO still
+  // reads "15 ordered · 15 cancelled" (a line's own `ordered` is received + waiting).
   const totals = groups.reduce(
     (t, g) => ({
-      ordered: t.ordered + g.ordered, received: t.received + g.received, waiting: t.waiting + g.waiting,
-      value: t.value + (g.line_value ?? 0),
+      ordered: t.ordered + (g.originally_ordered ?? g.ordered + (g.cancelled ?? 0)), received: t.received + g.received, waiting: t.waiting + g.waiting,
+      cancelled: t.cancelled + (g.cancelled ?? 0), value: t.value + (g.line_value ?? 0),
     }),
-    { ordered: 0, received: 0, waiting: 0, value: 0 },
+    { ordered: 0, received: 0, waiting: 0, cancelled: 0, value: 0 },
   );
   const groupsReady = groupsQ.isSuccess && Array.isArray(groupsQ.data);
 
@@ -290,9 +295,12 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
                 Cancel waiting items
               </Button>
             )}
-            <Button onClick={receiveAll} disabled={!groupsReady || totals.waiting === 0}>
-              Receive all waiting{groupsReady && totals.waiting > 0 ? ` (${totals.waiting})` : ""}
-            </Button>
+            {/* S7 (P3-7): nothing waiting (received in full, or cancelled) = nothing to receive here. */}
+            {!(groupsReady && totals.waiting === 0) && (
+              <Button onClick={receiveAll} disabled={!groupsReady}>
+                Receive all waiting{groupsReady && totals.waiting > 0 ? ` (${totals.waiting})` : ""}
+              </Button>
+            )}
           </>
         }
       />
@@ -301,11 +309,12 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
       {po?.erp_po_code != null && <DeliveryReminderBanner poId={poId} fromErp />}
 
       {/* Units, counted per line by the server. */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+      <div className={`grid grid-cols-2 gap-3 ${totals.cancelled > 0 ? "sm:grid-cols-6" : "sm:grid-cols-5"}`}>
         <SummaryTile label="Lines" value={groups.length} />
         <SummaryTile label="Ordered units" value={totals.ordered} />
         <SummaryTile label="Received units" value={totals.received} />
         <SummaryTile label="Waiting units" value={totals.waiting} />
+        {totals.cancelled > 0 && <SummaryTile label="Cancelled units" value={totals.cancelled} />}
         <SummaryTile label="Value" value={money(totals.value)} />
       </div>
 
@@ -354,7 +363,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
                   value={selectValue(lineForm.itemId)}
                   onValueChange={(v) => pickLineItem(items.find((i) => i.id === Number(v)))}
                   options={itemSelectOptions}
-                  onCreateNew={may(caps, "item") ? () => setNewItemForAdd(true) : undefined}
+                  onCreateNew={may(caps, "item") ? (typed) => { setTypedName(typed); setNewItemForAdd(true); } : undefined}
                   createLabel="New Item…"
                 />
               </FormField>
@@ -378,7 +387,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
                   value={selectValue(lineForm.brandId)}
                   onValueChange={(v) => setLineForm((f) => ({ ...f, brandId: v }))}
                   options={brandSelectOptions}
-                  onCreateNew={may(caps, "brand") ? () => setNewBrandForAdd(true) : undefined}
+                  onCreateNew={may(caps, "brand") ? (typed) => { setTypedName(typed); setNewBrandForAdd(true); } : undefined}
                   createLabel="New Brand…"
                 />
               </FormField>
@@ -466,11 +475,12 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
       <ItemFormDialog
         open={newItemForAdd}
         onOpenChange={setNewItemForAdd}
-        initialName={lineForm.description.trim() || undefined}
+        initialName={typedName.trim() || lineForm.description.trim() || undefined}
         onSaved={(saved) => pickLineItem(saved)}
       />
       <NewBrandDialog
         open={newBrandForAdd}
+        initialName={typedName}
         onOpenChange={setNewBrandForAdd}
         onCreated={(row) => setLineForm((f) => ({ ...f, brandId: String(row.id) }))}
       />

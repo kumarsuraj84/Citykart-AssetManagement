@@ -98,6 +98,7 @@ export function NewCategoryDialog({ idPrefix, ...props }: QuickCreateProps & { i
 export function NewSubcategoryDialog({ defaultCategoryId, ...props }: QuickCreateProps & { defaultCategoryId?: string }) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [newCategory, setNewCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
   const { caps } = useCapabilities();
   const areas = domainManageAreas(caps);
   const allCategories = useMasterList<Named>("categories", props.open);
@@ -126,7 +127,8 @@ export function NewSubcategoryDialog({ defaultCategoryId, ...props }: QuickCreat
         fields={[
           { key: "category_id", label: "Category", kind: "select", required: true,
             options: categoryOptions(categories),
-            onCreateNew: canCreate(caps, "category") ? () => setNewCategory(true) : undefined, createLabel: "New Category…" },
+            onCreateNew: canCreate(caps, "category") ? (typed) => { setNewCategoryName(typed); setNewCategory(true); } : undefined,
+            createLabel: "New Category…" },
           { key: "name", label: "Name", required: true, placeholder: "Network Switch" },
           { key: "code", label: "Code", required: true, placeholder: "SWT", more: true,
             helperText: "Made from the name; short and unique within the Category. It becomes part of asset codes and cannot be changed later.",
@@ -137,6 +139,7 @@ export function NewSubcategoryDialog({ defaultCategoryId, ...props }: QuickCreat
       <NewCategoryDialog
         idPrefix="qc-cat"
         open={newCategory}
+        initialName={newCategoryName}
         onOpenChange={setNewCategory}
         onCreated={(row) => setValues((v) => ({ ...v, category_id: String(row.id) }))}
       />

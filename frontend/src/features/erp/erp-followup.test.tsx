@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { InvoicesCard } from "../purchase-orders/InvoicesCard";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { createAppRouter } from "../../router";
@@ -28,7 +29,7 @@ describe("delivery reminders", () => {
   function renderList(reminders: unknown, configured = true, fail = false) {
     (apiClient.get as any).mockImplementation((path: string) => {
       if (path === "/erp/status") return Promise.resolve({ configured });
-      if (path === "/erp/reminders") return fail ? Promise.reject(new Error("The ERP database could not be reached.")) : Promise.resolve(reminders);
+      if (path === "/erp/reminders?envelope=true") return fail ? Promise.reject(new Error("The ERP database could not be reached.")) : Promise.resolve(reminders);
       return Promise.resolve([]);
     });
     const router = createAppRouter(createMemoryHistory({ initialEntries: ["/purchase-orders"] }));
@@ -54,7 +55,7 @@ describe("delivery reminders", () => {
     renderList([REMINDER], false);
     await screen.findByRole("link", { name: "Pick from ERP" });
     expect(screen.queryByLabelText("Delivery reminders")).not.toBeInTheDocument();
-    expect(apiClient.get).not.toHaveBeenCalledWith("/erp/reminders");
+    expect(apiClient.get).not.toHaveBeenCalledWith("/erp/reminders?envelope=true");
   });
 
   it("is silent when the ERP cannot be reached", async () => {
@@ -66,7 +67,7 @@ describe("delivery reminders", () => {
   it("a PO's banner lists what the ERP received against what was delivered here", async () => {
     (apiClient.get as any).mockImplementation((path: string) => {
       if (path === "/erp/status") return Promise.resolve({ configured: true });
-      if (path === "/erp/reminders?po_id=42") return Promise.resolve([REMINDER]);
+      if (path === "/erp/reminders?po_id=42&envelope=true") return Promise.resolve([REMINDER]);
       return Promise.resolve([]);
     });
     render(<QueryClientProvider client={client()}><DeliveryReminderBanner poId={42} fromErp /></QueryClientProvider>);
@@ -74,6 +75,20 @@ describe("delivery reminders", () => {
     expect(banner).toHaveTextContent("3 to deliver");
     expect(banner).toHaveTextContent("ERP received 7, delivered here 4 of 7");
     expect(banner).toHaveTextContent("GRC-1, GRC-2, 2026-09-25");
+  });
+
+  it("S7 P1-1: the envelope's items are read; available:false is 'no information' -- nothing shown, no alert", async () => {
+    renderList({ available: true, message: null, items: [REMINDER] });
+    expect(await screen.findByLabelText("Delivery reminders")).toHaveTextContent("on 1 purchase order");
+  });
+
+  it("S7 P1-1: the ERP gives no goods receipts (available:false): silent", async () => {
+    renderList({ available: false, message: "The ERP does not provide goods receipts yet, so goods-arrived reminders are not available.", items: [] });
+    await screen.findByRole("link", { name: "Pick from ERP" });
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/erp/reminders?envelope=true"));
+    expect(screen.queryByLabelText("Delivery reminders")).not.toBeInTheDocument();
+    expect(screen.queryByText(/goods receipts/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("a PO that did not come from the ERP gets no banner and makes no request", async () => {
@@ -147,8 +162,27 @@ describe("PI from the ERP", () => {
     expect(await screen.findByText(/The ERP has no PI for this purchase order yet \(1 invoice\(s\) are not booked\)/)).toBeInTheDocument();
   });
 
-  it("shows the server's message when the ERP cannot be read", async () => {
-    open(null, new Error("The ERP view this screen reads does not exist yet."));
-    expect(await screen.findByRole("alert")).toHaveTextContent("does not exist yet");
+  it("shows the server's message calmly when the ERP cannot be read (older server)", async () => {
+    open(null, new Error("The ERP database could not be reached."));
+    expect(await screen.findByRole("note", { name: "ERP purchase invoices" })).toHaveTextContent("The ERP database could not be reached.");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("S7 P1-1: 200 + available:false shows the server's plain sentence, never an alarm", async () => {
+    open(preview([], { available: false, message: "The ERP does not provide purchase invoices yet." }));
+    const note = await screen.findByRole("note", { name: "ERP purchase invoices" });
+    expect(note).toHaveTextContent("The ERP does not provide purchase invoices yet.");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByText(/has no PI for this purchase order/)).not.toBeInTheDocument();
+  });
+
+  it("S7 P1-1: inside the PO's Record PI dialog, 'Type it in' is still offered", async () => {
+    (apiClient.get as any).mockImplementation(() => Promise.resolve(preview([], { available: false, message: "The ERP does not provide purchase invoices yet." })));
+    const invoices = [{ invoice_number: "INV-1", invoice_date: "2026-10-01", invoice_amount: 100, units: 1, asset_ids: [1], asset_count: 1, pi_number: null, pi_date: null, pi_status: "PENDING" }];
+    render(<QueryClientProvider client={client()}><InvoicesCard poId={42} invoices={invoices} fromErp /></QueryClientProvider>);
+    fireEvent.click(screen.getByRole("button", { name: "Record PI" }));
+    const note = await screen.findByRole("note", { name: "ERP purchase invoices" });
+    fireEvent.click(within(note).getByRole("button", { name: "Type it in" }));
+    expect(await screen.findByLabelText("PI Number")).toBeInTheDocument();
   });
 });

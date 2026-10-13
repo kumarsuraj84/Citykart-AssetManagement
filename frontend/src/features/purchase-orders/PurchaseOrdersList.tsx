@@ -62,7 +62,17 @@ const columns = (erpChanges: Parameters<typeof ErpChangedBadge>[0]["summary"]): 
   { key: "vendor", header: "Vendor", sortable: true, cell: (po) => po.vendor_name ?? "—" },
   { key: "company", header: "Company", sortable: true, cell: (po) => po.company_name ?? "—" },
   { key: "po_date", header: "Date", sortable: true, cell: (po) => po.po_date },
-  { key: "ordered", header: "Ordered", headerClassName: "text-right", cellClassName: "text-right tabular-nums", cell: (po) => num(po.ordered_units) },
+  {
+    // S7 (P3-7): everything ordered, cancelled units included -- a cancelled PO reads "15 (15 cancelled)", not 0.
+    key: "ordered", header: "Ordered", headerClassName: "text-right", cellClassName: "text-right tabular-nums",
+    cell: (po) => {
+      const cancelled = po.cancelled_units ?? 0;
+      const ordered = po.originally_ordered_units ?? ((po.ordered_units ?? 0) + cancelled);
+      return cancelled > 0
+        ? <>{num(ordered)} <span className="text-xs text-muted-foreground">({num(cancelled)} cancelled)</span></>
+        : num(po.ordered_units);
+    },
+  },
   { key: "received", header: "Received", headerClassName: "text-right", cellClassName: "text-right tabular-nums", cell: (po) => num(po.received_units) },
   {
     key: "waiting", header: "Waiting", headerClassName: "text-right", sortable: true,

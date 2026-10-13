@@ -4,7 +4,11 @@ import {
   Boxes,
   ChevronRight,
   ClipboardList,
+  FolderTree,
   Home,
+  KeyRound,
+  Link2,
+  Tags,
   ListChecks,
   PackageCheck,
   ScanBarcode,
@@ -29,6 +33,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { canUse, type AccessState } from "@/lib/access";
+import { canCreate, canManage, useCapabilities, type Capabilities } from "@/lib/capabilities";
 import {
   SETTINGS_HOME, SETTINGS_SECTIONS, SETUP_WIZARD_PATH, isSettingsLinkActive, isSettingsPath,
 } from "@/features/settings/settings-structure";
@@ -86,8 +91,26 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
 
 export { isSettingsPath };
 
+/** S7 (P3-15): the Admin menu's way into the four People & Places lists and their logins. */
+export const USERS_ACCESS_LINK: NavLinkDef = { to: "/settings/users-access", label: "Users & Access", icon: KeyRound };
+
+/**
+ * S7 (final review): the part of Settings a Full Admin may use -- the Catalogue of their own work
+ * area (the server decides; its capabilities say so). Brands and Vendors stay with the head-office admin.
+ */
+export const ADMIN_CATALOGUE_LINKS: NavLinkDef[] = [
+  { to: "/settings/catalogue/items", label: "Items", icon: Tags, activePrefixes: ["/settings/catalogue/items/"] },
+  { to: "/settings/catalogue/asset-groups", label: "Asset Groups", icon: FolderTree },
+  { to: "/settings/catalogue/link-assets", label: "Link Assets to Items", icon: Link2 },
+];
+
+/** May manage the Catalogue of (some of) the work areas (Items or Asset Groups), per the capabilities endpoint. */
+export function canUseCatalogue(caps: Capabilities | null | undefined): boolean {
+  return canManage(caps, "item") || canManage(caps, "category") || canCreate(caps, "item");
+}
+
 /** The main (non-Settings) sidebar sections a person sees, in order. */
-export function navSectionsFor(s: AccessState): NavSection[] {
+export function navSectionsFor(s: AccessState, caps?: Capabilities | null): NavSection[] {
   if (canUse("self", s)) return [{ links: [MY_ASSETS] }];
   const sections: NavSection[] = [];
   if (canUse("staff", s)) sections.push({ links: [HOME] });
@@ -95,8 +118,15 @@ export function navSectionsFor(s: AccessState): NavSection[] {
   if (canUse("staff", s)) work.push(ASSETS);
   if (canUse("work", s)) work.push(PURCHASE_ORDERS, RECEIVE, MOVE);
   if (work.length > 0) sections.push({ label: "Work", links: work });
-  if (canUse("people", s)) sections.push({ label: "People & Places", links: PEOPLE_LINKS });
+  if (canUse("people", s)) {
+    // The head-office admin finds Users & Access under Settings; a Full Admin here.
+    sections.push({ label: "People & Places", links: canUse("settings", s) ? PEOPLE_LINKS : [...PEOPLE_LINKS, USERS_ACCESS_LINK] });
+  }
   if (canUse("staff", s)) sections.push({ links: [REPORTS] });
+  // A Full Admin (not the head-office admin, whose Settings group has it all): the Catalogue part of Settings.
+  if (canUse("admin", s) && !canUse("settings", s) && canUseCatalogue(caps)) {
+    sections.push({ label: "Settings", links: ADMIN_CATALOGUE_LINKS });
+  }
   return sections;
 }
 
@@ -204,7 +234,8 @@ function SettingsGroupItems({ group, pathname }: { group: SettingsGroup; pathnam
 
 /** The role-aware sidebar navigation. */
 export function AppNav({ access }: { access: AccessState }) {
-  const sections = navSectionsFor(access);
+  const { caps } = useCapabilities();
+  const sections = navSectionsFor(access, caps);
   return (
     <nav aria-label="Main">
       {sections.map((section, i) => (

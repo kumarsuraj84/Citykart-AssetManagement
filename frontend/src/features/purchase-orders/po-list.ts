@@ -25,6 +25,8 @@ export interface PoListRow {
   received_units?: number | null;
   waiting_units?: number | null;
   cancelled_units?: number | null;
+  /** S7: received + waiting + cancelled -- everything ever ordered on the PO. */
+  originally_ordered_units?: number | null;
   /** WAITING | PARTLY_RECEIVED | RECEIVED | CANCELLED */
   status?: string | null;
 }

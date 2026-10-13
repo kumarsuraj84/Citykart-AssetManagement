@@ -54,6 +54,7 @@ export function StockRoomSelect({
   const { caps, settled } = useCapabilities();
   const mayCreate = canCreate(caps, "stock_room");
   const [creating, setCreating] = useState(false);
+  const [typedName, setTypedName] = useState("");
   const own = stockRoomPickerOptions(rows);
   const options = [...extraOptions.filter((x) => !own.some((o) => o.value === x.value)), ...own];
   const none = settled && isSuccess && rows.length === 0 && extraOptions.length === 0;
@@ -67,7 +68,7 @@ export function StockRoomSelect({
         disabled={disabled}
         options={options}
         placeholder={placeholder ?? "Choose the Stock Room"}
-        onCreateNew={mayCreate && companyId != null ? () => setCreating(true) : undefined}
+        onCreateNew={mayCreate && companyId != null ? (typed) => { setTypedName(typed); setCreating(true); } : undefined}
         createLabel="New Stock Room…"
       />
       {none && (
@@ -81,6 +82,7 @@ export function StockRoomSelect({
         <NewStockRoomDialog
           companyId={companyId}
           open={creating}
+          initialName={typedName}
           onOpenChange={setCreating}
           onCreated={(row) => onValueChange(String(row.id))}
         />

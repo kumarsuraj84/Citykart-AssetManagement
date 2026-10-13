@@ -120,8 +120,13 @@ describe("ERP Inbox (head-office admin)", () => {
     expect(screen.getByRole("region", { name: "New vendors from ERP" })).toHaveTextContent("(1)");
     expect(screen.getByRole("region", { name: "New stores" })).toHaveTextContent("(14)");
     const group = screen.getByRole("listitem", { name: "ERP group FA_IT_OTHERS" });
+    // S7 P2-5: folded to its counts and the suggestion; the codes open with Details.
+    expect(within(group).getByLabelText("Counts for FA_IT_OTHERS")).toHaveTextContent("3 codes · 10 units · on 2 POs");
+    // S7 P1-3: honest words, never "% match".
+    expect(group).toHaveTextContent("Suggested: Network Switch · Similar name (50%)");
+    expect(group).not.toHaveTextContent("CT500001");
+    fireEvent.click(within(group).getByRole("button", { name: "Details for FA_IT_OTHERS" }));
     expect(group).toHaveTextContent("CT500001 48 PORT SWITCH · 7 units · on SPO/BS/5001, SPO/BS/5002");
-    expect(group).toHaveTextContent("Suggested: Network Switch (50% match)");
     expect(within(group).getByRole("combobox", { name: "How far for FA_IT_OTHERS" })).toHaveTextContent("Every code in this ERP group");
     expect(screen.getByRole("link", { name: "Advanced mapping rules" })).toHaveAttribute("href", "/settings/erp/mapping");
   });
@@ -145,6 +150,7 @@ describe("ERP Inbox (head-office admin)", () => {
   it("a narrower reach sends one entry per product name or per code; Not tracked marks them so", async () => {
     renderAt("/settings/erp/inbox");
     const group = await screen.findByRole("listitem", { name: "ERP group FA_IT_OTHERS" });
+    fireEvent.click(within(group).getByRole("button", { name: "Details for FA_IT_OTHERS" }));
     fireEvent.click(within(group).getByRole("combobox", { name: "How far for FA_IT_OTHERS" }));
     fireEvent.click(await screen.findByRole("option", { name: "Each product name" }));
     fireEvent.click(within(group).getByRole("button", { name: "Not tracked: FA_IT_OTHERS" }));
@@ -157,6 +163,7 @@ describe("ERP Inbox (head-office admin)", () => {
   it("Pick another links the group to the Item chosen", async () => {
     renderAt("/settings/erp/inbox");
     const group = await screen.findByRole("listitem", { name: "ERP group FA_RACKS" });
+    fireEvent.click(within(group).getByRole("button", { name: "Details for FA_RACKS" }));
     fireEvent.click(within(group).getByRole("combobox", { name: "Pick another Item for FA_RACKS" }));
     fireEvent.click(await screen.findByRole("option", { name: /^Router/ }));
     fireEvent.click(within(group).getByRole("button", { name: "Link FA_RACKS to the picked Item" }));
@@ -232,6 +239,52 @@ describe("ERP Inbox (head-office admin)", () => {
     expect(itemEntries(SWITCH_GROUP, "CODE", { kind: "not_tracked" })).toHaveLength(3);
     expect(itemEntries(NO_ARTICLE, "ARTICLE", { kind: "item", itemId: 1 })).toEqual([{ company_id: 1, icode: "CT777", scope: "CODE", item_id: 1 }]);
     expect(itemEntries(NO_ARTICLE, "NAME", { kind: "item", itemId: 1 })).toEqual([{ company_id: 1, icode: "CT777", scope: "CODE", item_id: 1 }]);
+  });
+
+  it("S7 P2-5: many groups are paged (20 a page), searchable, and a code's PO numbers stop after 5", async () => {
+    const many: InboxItemGroup[] = Array.from({ length: 45 }, (_, i) => ({
+      ...SWITCH_GROUP, article_key: `ART_${String(i + 1).padStart(2, "0")}`, article_name: `ART_${String(i + 1).padStart(2, "0")}`,
+      codes: [{ icode: `C${i}`, name: i === 30 ? "HOP BOX" : `THING ${i}`, units: 1, po_numbers: Array.from({ length: 12 }, (_, k) => `PO/${i}/${k}`), scopes: ["CODE"] }],
+      suggested_item_id: null, suggested_item_name: null, suggestion_score: null,
+    }));
+    mockApi({ ...INBOX, counts: { ...INBOX.counts, items: 45 }, items: many });
+    renderAt("/settings/erp/inbox");
+    expect(await screen.findByLabelText("ERP groups shown")).toHaveTextContent("Showing 1–20 of 45 groups");
+    const region = screen.getByRole("region", { name: "New items from ERP" });
+    expect(within(region).getAllByRole("listitem", { name: /^ERP group / })).toHaveLength(20);
+    fireEvent.click(screen.getByRole("button", { name: "Next page of ERP groups" }));
+    expect(screen.getByLabelText("ERP groups shown")).toHaveTextContent("Showing 21–40 of 45 groups");
+    expect(screen.getByRole("listitem", { name: "ERP group ART_21" })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: "Search ERP groups" }), { target: { value: "hop box" } });
+    expect(screen.getByLabelText("ERP groups shown")).toHaveTextContent("Showing 1–1 of 1 group");
+    const hop = screen.getByRole("listitem", { name: "ERP group ART_31" });
+    fireEvent.click(within(hop).getByRole("button", { name: "Details for ART_31" }));
+    expect(hop).toHaveTextContent("on PO/30/0, PO/30/1, PO/30/2, PO/30/3, PO/30/4 and 7 more");
+  });
+
+  it("S7 P2-5: a selection made on one page is kept on the next, and 'Select every group on this page' ticks the page", async () => {
+    const many: InboxItemGroup[] = Array.from({ length: 25 }, (_, i) => ({ ...SWITCH_GROUP, article_key: `G${i}`, article_name: `G${i}` }));
+    mockApi({ ...INBOX, counts: { ...INBOX.counts, items: 25 }, items: many });
+    renderAt("/settings/erp/inbox");
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Select every group on this page" }));
+    expect(screen.getByLabelText("Selected groups")).toHaveTextContent("20 groups selected");
+    fireEvent.click(screen.getByRole("button", { name: "Next page of ERP groups" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select G22" }));
+    expect(screen.getByLabelText("Selected groups")).toHaveTextContent("21 groups selected");
+  });
+
+  it("S7 P1-3: 'Same name' only when the server says so; a group without a suggestion shows none", async () => {
+    mockApi({
+      ...INBOX,
+      items: [{ ...RACK_GROUP, suggestion_score: 1, suggestion_reason: "same name", suggestion_reason_code: "SAME_NAME" }, NO_ARTICLE],
+    });
+    renderAt("/settings/erp/inbox");
+    const rack = await screen.findByRole("listitem", { name: "ERP group FA_RACKS" });
+    expect(rack).toHaveTextContent("Suggested: Server Rack · Same name");
+    expect(rack).not.toHaveTextContent("100%");
+    const mystery = screen.getByRole("listitem", { name: "ERP group MYSTERY CODE" });
+    expect(mystery).not.toHaveTextContent("Suggested");
+    expect(within(mystery).queryByRole("button", { name: /use suggestion/i })).not.toBeInTheDocument();
   });
 
   it("Settings › ERP Mapping points to the inbox", async () => {

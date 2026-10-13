@@ -98,7 +98,9 @@ export function LineEditDialog({ poId, target, onClose, onSaved, itemSelectOptio
   );
   const [newItemOpen, setNewItemOpen] = useState(false);
   const [newBrandOpen, setNewBrandOpen] = useState(false);
-  const set = (patch: Partial<FormState>) => setForm((f) => ({ ...f, ...patch }));
+  // The name typed in a picker before "+ New …" (S7 P2-1).
+  const [typedName, setTypedName] = useState("");
+  const set =(patch: Partial<FormState>) => setForm((f) => ({ ...f, ...patch }));
 
   const line = target?.kind === "line" ? target.line : null;
   const unit = target?.kind === "unit" ? target.unit : null;
@@ -195,7 +197,7 @@ export function LineEditDialog({ poId, target, onClose, onSaved, itemSelectOptio
                 onValueChange={(v) => set({ itemId: v })}
                 options={itemSelectOptions}
                 disabled={!fieldsEditable}
-                onCreateNew={may(caps, "item") ? () => setNewItemOpen(true) : undefined}
+                onCreateNew={may(caps, "item") ? (typed) => { setTypedName(typed); setNewItemOpen(true); } : undefined}
                 createLabel="New Item…"
               />
             </FormField>
@@ -212,7 +214,7 @@ export function LineEditDialog({ poId, target, onClose, onSaved, itemSelectOptio
                 onValueChange={(v) => set({ brandId: v })}
                 options={brandSelectOptions}
                 disabled={!fieldsEditable}
-                onCreateNew={may(caps, "brand") ? () => setNewBrandOpen(true) : undefined}
+                onCreateNew={may(caps, "brand") ? (typed) => { setTypedName(typed); setNewBrandOpen(true); } : undefined}
                 createLabel="New Brand…"
               />
             </FormField>
@@ -242,11 +244,12 @@ export function LineEditDialog({ poId, target, onClose, onSaved, itemSelectOptio
       <ItemFormDialog
         open={newItemOpen}
         onOpenChange={setNewItemOpen}
-        initialName={form.description.trim() || undefined}
+        initialName={typedName.trim() || form.description.trim() || undefined}
         onSaved={(saved) => set({ itemId: String(saved.id) })}
       />
       <NewBrandDialog
         open={newBrandOpen}
+        initialName={typedName}
         onOpenChange={setNewBrandOpen}
         onCreated={(row) => set({ brandId: String(row.id) })}
       />

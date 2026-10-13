@@ -70,9 +70,16 @@ const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivEleme
 );
 DialogHeader.displayName = "DialogHeader";
 
+// S7 (P2-4): a long dialog scrolls as a whole (AM-13), but its buttons stay in view: the footer
+// sticks to the bottom of the dialog's scroll area (edge to edge over the dialog's p-5, on the
+// card colour so the fields scroll under it). Short dialogs look as before.
 const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
-    className={cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2", className)}
+    data-dialog-footer=""
+    className={cn(
+      "sticky bottom-0 z-10 -mx-5 -mb-5 flex flex-col-reverse gap-2 bg-card px-5 pb-5 pt-2 sm:flex-row sm:justify-end sm:gap-0 sm:space-x-2",
+      className,
+    )}
     {...props}
   />
 );

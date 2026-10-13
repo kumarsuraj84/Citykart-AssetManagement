@@ -1,11 +1,15 @@
-import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Plus, Trash2 } from "lucide-react";
 import { apiClient } from "../../lib/api-client";
+import { useKeyedMutation } from "../../lib/submit-key";
+import { useUnsavedChangesWarning } from "../../lib/unsaved-changes";
 import type { Item } from "../items/types";
 import type { Bundle } from "../bundles/bundle-parts";
 import { ItemFormDialog } from "../items/ItemFormDialog";
+import { useMyItems } from "../items/useMyItems";
+import { clearPoDraft, readPoDraft, writePoDraft } from "./po-draft";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -72,6 +76,18 @@ interface SetRow {
 }
 
 const DEFAULT_TAX = "18";
+/** The line columns on a wide screen (#, Item, Quantity, Unit Cost, Tax %, Amount, actions). */
+const LINE_GRID = "lg:grid-cols-[1.5rem_minmax(12rem,1fr)_5.5rem_7.5rem_4.5rem_7rem_9rem]";
+
+/** On a narrow screen each line is a card, so its boxes carry a small visible name (the box keeps its own label). */
+function NarrowLabel({ text, children }: { text: string; children: ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <span className="text-[11px] text-muted-foreground lg:hidden" aria-hidden="true">{text}</span>
+      {children}
+    </div>
+  );
+}
 const money = (n: number) => n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const trimmedOrUndefined = (v: string) => (v.trim() === "" ? undefined : v.trim());
 
@@ -135,16 +151,33 @@ export function entryForServerMessage(message: string): { kind: "line" | "set"; 
  */
 export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }) {
   const navigate = useNavigate();
-  const [poNumber, setPoNumber] = useState("");
-  const [poDate, setPoDate] = useState(new Date().toISOString().slice(0, 10));
-  const [vendorId, setVendorId] = useState("");
-  const [costCenterId, setCostCenterId] = useState("");
-  const [deliveryId, setDeliveryId] = useState("");
+  // S7 (P2-12): what was being typed before an accidental reload comes back (this tab only).
+  const [draft] = useState(() => {
+    const d = readPoDraft<LineRow, SetRow>();
+    if (d) nextKey = Math.max(nextKey, ...d.lines.map((l) => l.key + 1), ...d.sets.map((s) => s.key + 1));
+    return d;
+  });
+  const [restored, setRestored] = useState(draft !== null);
+  const [poNumber, setPoNumber] = useState(draft?.poNumber ?? "");
+  const [poDate, setPoDate] = useState(draft?.poDate || new Date().toISOString().slice(0, 10));
+  const [vendorId, setVendorId] = useState(draft?.vendorId ?? "");
+  const [costCenterId, setCostCenterId] = useState(draft?.costCenterId ?? "");
+  const [deliveryId, setDeliveryId] = useState(draft?.deliveryId ?? "");
   // AM-24: the caller's home company, selectable when they work in more than one;
   // the Primary Owner (no home company) starts with the first of theirs.
-  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(companyId);
-  const [lines, setLines] = useState<LineRow[]>(() => [newLine()]);
-  const [sets, setSets] = useState<SetRow[]>([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(draft?.companyId ?? companyId);
+  const [lines, setLines] = useState<LineRow[]>(() => (draft && draft.lines.length > 0 ? draft.lines : [newLine()]));
+  const [sets, setSets] = useState<SetRow[]>(() => draft?.sets ?? []);
+
+  function startAgain() {
+    clearPoDraft();
+    setRestored(false);
+    setPoNumber("");
+    setPoDate(new Date().toISOString().slice(0, 10));
+    setVendorId("");
+    setLines([newLine()]);
+    setSets([]);
+  }
 
   const myCompaniesQ = useQuery({ queryKey: ["asset_users", "me", "companies"], queryFn: () => apiClient.get<Option[]>("/asset-users/me/companies") });
   const myCompanies = Array.isArray(myCompaniesQ.data) ? myCompaniesQ.data : [];
@@ -159,8 +192,8 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
   });
   const costCenters = Array.isArray(costCentersQ.data) ? costCentersQ.data : [];
   const stockRoomsQ = useStockRooms(selectedCompanyId);
-  const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => apiClient.get<Item[]>("/items") });
-  const items = (Array.isArray(itemsQ.data) ? itemsQ.data : []).filter((i) => i.is_active !== false);
+  // S7 (P2-6): only the Items of this person's own work areas (the server refuses the others on Save).
+  const { items } = useMyItems();
   const bundlesQ = useQuery({ queryKey: ["bundles"], queryFn: () => apiClient.get<Bundle[]>("/bundles") });
   const bundles = (Array.isArray(bundlesQ.data) ? bundlesQ.data : []).filter((b) => b.is_active !== false);
   const categoriesQ = useQuery({ queryKey: ["masters", "categories"], queryFn: () => apiClient.get<Option[]>("/masters/categories") });
@@ -175,6 +208,9 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
   const [newCostCenter, setNewCostCenter] = useState(false);
   const [newItemFor, setNewItemFor] = useState<number | null>(null);
   const [newBrandFor, setNewBrandFor] = useState<number | null>(null);
+  // The name typed in a picker before "+ New …" (S7 P2-1): the New dialog starts with it.
+  const [typedName, setTypedName] = useState("");
+  const withName = (open: () => void) => (typed: string) => { setTypedName(typed); open(); };
 
   // Smart defaults: the Cost Centre and stock room this person used last for this company.
   const rememberChoice = useRemember();
@@ -267,9 +303,37 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
   if (badEntries > 0) missing.push(`${badEntries === 1 ? "1 line or set" : `${badEntries} lines or sets`} marked in red`);
   const canSave = missing.length === 0;
 
-  const saveMutation = useMutation({
-    mutationFn: () =>
-      apiClient.post<CreatedPurchaseOrder>("/purchase-orders/with-lines", {
+  // S7 (P2-12): typed work warns before the page is left, and is kept for a reload of this tab.
+  const dirty = poNumber.trim() !== "" || vendorId !== "" || sentLines.length > 0 || sentSets.length > 0;
+  const unsaved = useUnsavedChangesWarning(dirty);
+  useEffect(() => {
+    if (!dirty) {
+      clearPoDraft();
+      return;
+    }
+    writePoDraft({ v: 1, companyId: selectedCompanyId, poNumber, poDate, vendorId, costCenterId, deliveryId, lines, sets });
+  }, [dirty, selectedCompanyId, poNumber, poDate, vendorId, costCenterId, deliveryId, lines, sets]);
+
+  // S7 (P1-2): one Save = one Idempotency-Key; a second activation while it runs is ignored.
+  const saveMutation = useKeyedMutation({
+    mutationFn: (_: void, keyed) => {
+      const body = buildBody();
+      return keyed(body, () => apiClient.post<CreatedPurchaseOrder>("/purchase-orders/with-lines", body));
+    },
+    onSuccess: (created) => {
+      unsaved.release();
+      clearPoDraft();
+      rememberChoice(selectedCompanyId, "cost_centre", costCenterId);
+      rememberChoice(selectedCompanyId, "stock_room", deliveryId);
+      const madeLines = created.lines_created ?? lineCount;
+      const madeUnits = created.units_created ?? unitCount;
+      setPoFlash(created.id, `PO created: ${linesAndUnitsSentence(madeLines, madeUnits)}.`);
+      navigate({ to: "/purchase-orders/$id", params: { id: String(created.id) } });
+    },
+  });
+
+  function buildBody() {
+    return {
         company_id: selectedCompanyId,
         po_number: poNumber.trim(),
         po_date: poDate,
@@ -307,16 +371,8 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
             part_amounts: partAmountsPayload(bundle, s.amounts),
           };
         }),
-      }),
-    onSuccess: (created) => {
-      rememberChoice(selectedCompanyId, "cost_centre", costCenterId);
-      rememberChoice(selectedCompanyId, "stock_room", deliveryId);
-      const madeLines = created.lines_created ?? lineCount;
-      const madeUnits = created.units_created ?? unitCount;
-      setPoFlash(created.id, `PO created: ${linesAndUnitsSentence(madeLines, madeUnits)}.`);
-      navigate({ to: "/purchase-orders/$id", params: { id: String(created.id) } });
-    },
-  });
+    };
+  }
 
   // The server names the entry it refused ("Line 2: …", "Set 1: …"): mark it, keep everything typed.
   const saveMessage = saveMutation.isError
@@ -344,6 +400,13 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
         description="The order and its lines on one screen. The Item decides the type of asset and serial rule; open More details only to change a line."
       />
 
+      {restored && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm" role="status">
+          <span>The purchase order you were typing before the page reloaded is back.</span>
+          <Button type="button" variant="link" size="sm" className="h-auto p-0" onClick={startAgain}>Start again</Button>
+        </div>
+      )}
+
       <section aria-label="Purchase order" className="grid grid-cols-2 gap-3 md:grid-cols-3">
         {myCompanies.length > 1 && (
           <FormField htmlFor="company" label="Company" required>
@@ -364,7 +427,7 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
         <FormField htmlFor="vendor" label="Vendor">
           <SearchableSelect
             id="vendor" value={vendorId || undefined} onValueChange={setVendorId} options={vendorOptions(vendors)}
-            onCreateNew={may(caps, "vendor") ? () => setNewVendor(true) : undefined} createLabel="New Vendor…"
+            onCreateNew={may(caps, "vendor") ? withName(() => setNewVendor(true)) : undefined} createLabel="New Vendor…"
           />
           {capsSettled && vendorsQ.isSuccess && vendors.length === 0 && !may(caps, "vendor") && (
             <p className="text-xs text-muted-foreground" role="note">{ASK_TO_ADD.vendor}</p>
@@ -373,7 +436,7 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
         <FormField htmlFor="cost-center" label="Cost Centre" required>
           <SearchableSelect
             id="cost-center" value={costCenterId || undefined} onValueChange={setCostCenterId} options={costCentreOptions(costCenters)}
-            onCreateNew={may(caps, "cost_centre") && selectedCompanyId != null ? () => setNewCostCenter(true) : undefined}
+            onCreateNew={may(caps, "cost_centre") && selectedCompanyId != null ? withName(() => setNewCostCenter(true)) : undefined}
             createLabel="New Cost Centre…"
           />
           {capsSettled && costCentersQ.isSuccess && costCenters.length === 0 && (
@@ -391,133 +454,133 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
 
       <section aria-label="Lines" className="flex flex-col gap-2">
         <h2 className="text-sm font-semibold">Lines</h2>
-        <div className="overflow-x-auto rounded-md border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
-                <th className="w-8 px-2 py-1.5 font-medium">#</th>
-                <th className="min-w-56 px-2 py-1.5 font-medium">Item</th>
-                <th className="w-24 px-2 py-1.5 font-medium">Quantity</th>
-                <th className="w-32 px-2 py-1.5 font-medium">Unit Cost</th>
-                <th className="w-20 px-2 py-1.5 font-medium">Tax %</th>
-                <th className="w-32 px-2 py-1.5 text-right font-medium">Amount</th>
-                <th className="w-36 px-2 py-1.5"><span className="sr-only">Actions</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {lines.map((l, i) => {
-                const item = itemById(l.itemId);
-                const n = i + 1;
-                const problem = isBlankLine(l) ? null : lineProblems.get(l.key) ?? null;
-                const serverSaid = refusedLineKey === l.key ? saveMessage : null;
-                const id = `line-${l.key}`;
-                const category = categoryOf(item);
-                const sub = subcategoryOf(item);
-                const amount = (Number(l.quantity) || 0) * (Number(l.cost) || 0);
-                return [
-                  <tr key={`${l.key}-row`} aria-label={`Line ${n}`} className={`border-b align-top ${serverSaid ? "bg-destructive/5" : ""}`}>
-                    <td className="px-2 py-1.5 text-xs tabular-nums text-muted-foreground">{n}</td>
-                    <td className="px-2 py-1">
-                      <SearchableSelect
-                        id={`${id}-item`} aria-label={`Line ${n} Item`} value={l.itemId || undefined}
-                        onValueChange={(v) => chooseItem(l.key, v)} options={itemSelectOptions} placeholder="Choose the Item"
-                        onCreateNew={may(caps, "item") ? () => setNewItemFor(l.key) : undefined} createLabel="New Item…"
-                      />
-                    </td>
-                    <td className="px-2 py-1">
-                      <Input
-                        id={`${id}-quantity`} aria-label={`Line ${n} Quantity`} type="number" min={1} max={MAX_QUANTITY} step={1}
-                        value={l.quantity} onChange={(e) => patchLine(l.key, { quantity: e.target.value })}
-                      />
-                    </td>
-                    <td className="px-2 py-1">
-                      <Input
-                        id={`${id}-cost`} aria-label={`Line ${n} Unit Cost`} type="number" min={0} step="0.01"
-                        value={l.cost} onChange={(e) => patchLine(l.key, { cost: e.target.value })}
-                        onKeyDown={(e) => enterToNextLine(e, l.key)}
-                      />
-                    </td>
-                    <td className="px-2 py-1">
-                      <Input
-                        id={`${id}-tax`} aria-label={`Line ${n} Tax %`} type="number" min={0} max={100}
-                        value={l.tax} onChange={(e) => patchLine(l.key, { tax: e.target.value })}
-                        onKeyDown={(e) => enterToNextLine(e, l.key)}
-                      />
-                    </td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{amount > 0 ? money(amount) : "—"}</td>
-                    <td className="px-2 py-1 text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          type="button" variant="ghost" size="sm" aria-expanded={l.open} aria-controls={`${id}-more`}
-                          aria-label={`Line ${n}: more details`} onClick={() => patchLine(l.key, { open: !l.open })}
-                        >
-                          More details
-                        </Button>
-                        <Button
-                          type="button" variant="ghost" size="icon" aria-label={`Remove line ${n}`}
-                          disabled={lines.length === 1 && sets.length === 0}
-                          onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}
-                        >
-                          <Trash2 className="h-4 w-4" aria-hidden="true" />
-                        </Button>
+        {/* S7 (P2-4): a table on wide screens, one card per line on narrow ones (no sideways scrolling). */}
+        <div className="rounded-md border text-sm">
+          <div
+            className={`hidden border-b bg-muted/40 px-2 py-1.5 text-xs font-medium text-muted-foreground lg:grid ${LINE_GRID}`}
+            aria-hidden="true"
+          >
+            <span>#</span>
+            <span>Item</span>
+            <span>Quantity</span>
+            <span>Unit Cost</span>
+            <span>Tax %</span>
+            <span className="text-right">Amount</span>
+            <span />
+          </div>
+          {lines.map((l, i) => {
+            const item = itemById(l.itemId);
+            const n = i + 1;
+            const problem = isBlankLine(l) ? null : lineProblems.get(l.key) ?? null;
+            const serverSaid = refusedLineKey === l.key ? saveMessage : null;
+            const id = `line-${l.key}`;
+            const category = categoryOf(item);
+            const sub = subcategoryOf(item);
+            const amount = (Number(l.quantity) || 0) * (Number(l.cost) || 0);
+            return (
+              <div key={l.key} role="group" aria-label={`Line ${n}`} className={`border-b last:border-b-0 ${serverSaid ? "bg-destructive/5" : ""}`}>
+                <div className={`grid grid-cols-3 items-end gap-2 px-2 py-2 lg:items-start lg:py-1 ${LINE_GRID}`}>
+                  <span className="col-span-3 text-xs tabular-nums text-muted-foreground lg:col-span-1 lg:py-2.5">
+                    <span className="lg:hidden">Line </span>{n}
+                  </span>
+                  <div className="col-span-3 min-w-0 lg:col-span-1">
+                    <SearchableSelect
+                      id={`${id}-item`} aria-label={`Line ${n} Item`} value={l.itemId || undefined}
+                      onValueChange={(v) => chooseItem(l.key, v)} options={itemSelectOptions} placeholder="Choose the Item"
+                      onCreateNew={may(caps, "item") ? withName(() => setNewItemFor(l.key)) : undefined} createLabel="New Item…"
+                    />
+                  </div>
+                  <NarrowLabel text="Quantity">
+                    <Input
+                      id={`${id}-quantity`} aria-label={`Line ${n} Quantity`} type="number" min={1} max={MAX_QUANTITY} step={1}
+                      value={l.quantity} onChange={(e) => patchLine(l.key, { quantity: e.target.value })}
+                    />
+                  </NarrowLabel>
+                  <NarrowLabel text="Unit Cost">
+                    <Input
+                      id={`${id}-cost`} aria-label={`Line ${n} Unit Cost`} type="number" min={0} step="0.01"
+                      value={l.cost} onChange={(e) => patchLine(l.key, { cost: e.target.value })}
+                      onKeyDown={(e) => enterToNextLine(e, l.key)}
+                    />
+                  </NarrowLabel>
+                  <NarrowLabel text="Tax %">
+                    <Input
+                      id={`${id}-tax`} aria-label={`Line ${n} Tax %`} type="number" min={0} max={100}
+                      value={l.tax} onChange={(e) => patchLine(l.key, { tax: e.target.value })}
+                      onKeyDown={(e) => enterToNextLine(e, l.key)}
+                    />
+                  </NarrowLabel>
+                  <p className="col-span-1 py-2.5 tabular-nums lg:text-right">
+                    <span className="text-xs text-muted-foreground lg:hidden">Amount </span>
+                    {amount > 0 ? money(amount) : "—"}
+                  </p>
+                  <div className="col-span-2 flex justify-end gap-1 lg:col-span-1">
+                    <Button
+                      type="button" variant="ghost" size="sm" aria-expanded={l.open} aria-controls={`${id}-more`}
+                      aria-label={`Line ${n}: more details`} onClick={() => patchLine(l.key, { open: !l.open })}
+                    >
+                      More details
+                    </Button>
+                    <Button
+                      type="button" variant="ghost" size="icon" aria-label={`Remove line ${n}`}
+                      disabled={lines.length === 1 && sets.length === 0}
+                      onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                  </div>
+                </div>
+                {(l.open || problem || serverSaid) && (
+                  <div className="border-t bg-muted/20 px-2 py-2 lg:pl-10">
+                    {problem && <p className="mb-1 text-xs text-destructive">Line {n}: {problem}.</p>}
+                    {serverSaid && (
+                      <p className="mb-1 text-xs font-medium text-destructive" role="alert" aria-label={`Line ${n} refused`}>{serverSaid}</p>
+                    )}
+                    {l.open && (
+                      <div id={`${id}-more`} className="flex flex-col gap-2">
+                        {item && (
+                          <p className="flex flex-wrap gap-1.5 text-xs" aria-label={`Line ${n} from the Item`}>
+                            <span className="rounded-full bg-muted px-2 py-0.5">{[category?.name, sub && sub.name !== item.name ? sub.name : null].filter(Boolean).join(" › ") || "Type of asset not set"}</span>
+                            {category?.asset_domain && <span className="rounded-full bg-muted px-2 py-0.5">{workAreaLabel(category.asset_domain)}</span>}
+                            <span className="rounded-full bg-muted px-2 py-0.5">
+                              {serialModeLabel(item.serial_later ? "SERIAL_LATER" : item.serial_required ? "HAS_SERIAL" : "NO_SERIAL")}
+                            </span>
+                          </p>
+                        )}
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-5">
+                          <FormField htmlFor={`${id}-description`} label="Description" className="sm:col-span-2">
+                            <Input
+                              id={`${id}-description`} value={l.description} placeholder={item?.name ?? ""}
+                              onChange={(e) => patchLine(l.key, { description: e.target.value, descriptionTouched: true })}
+                            />
+                          </FormField>
+                          <FormField htmlFor={`${id}-barcode`} label="Barcode" helperText="Optional.">
+                            <Input id={`${id}-barcode`} value={l.barcode} onChange={(e) => patchLine(l.key, { barcode: e.target.value })} />
+                          </FormField>
+                          <FormField htmlFor={`${id}-brand`} label="Brand">
+                            <SearchableSelect
+                              id={`${id}-brand`} value={l.brandId || undefined}
+                              onValueChange={(v) => patchLine(l.key, { brandId: v, brandTouched: true })} options={brandSelectOptions}
+                              onCreateNew={may(caps, "brand") ? withName(() => setNewBrandFor(l.key)) : undefined} createLabel="New Brand…"
+                            />
+                          </FormField>
+                          <FormField htmlFor={`${id}-model`} label="Model">
+                            <Input id={`${id}-model`} value={l.model} onChange={(e) => patchLine(l.key, { model: e.target.value })} />
+                          </FormField>
+                          <FormField htmlFor={`${id}-warranty`} label="Warranty Years">
+                            <Input
+                              id={`${id}-warranty`} type="number" min={0} step={1} value={l.warranty}
+                              onChange={(e) => patchLine(l.key, { warranty: e.target.value, warrantyTouched: true })}
+                            />
+                          </FormField>
+                        </div>
                       </div>
-                    </td>
-                  </tr>,
-                  (l.open || problem || serverSaid) && (
-                    <tr key={`${l.key}-more`} className="border-b bg-muted/20">
-                      <td />
-                      <td colSpan={6} className="px-2 py-2">
-                        {problem && <p className="mb-1 text-xs text-destructive">Line {n}: {problem}.</p>}
-                        {serverSaid && (
-                          <p className="mb-1 text-xs font-medium text-destructive" role="alert" aria-label={`Line ${n} refused`}>{serverSaid}</p>
-                        )}
-                        {l.open && (
-                          <div id={`${id}-more`} className="flex flex-col gap-2">
-                            {item && (
-                              <p className="flex flex-wrap gap-1.5 text-xs" aria-label={`Line ${n} from the Item`}>
-                                <span className="rounded-full bg-muted px-2 py-0.5">{[category?.name, sub && sub.name !== item.name ? sub.name : null].filter(Boolean).join(" › ") || "Type of asset not set"}</span>
-                                {category?.asset_domain && <span className="rounded-full bg-muted px-2 py-0.5">{workAreaLabel(category.asset_domain)}</span>}
-                                <span className="rounded-full bg-muted px-2 py-0.5">
-                                  {serialModeLabel(item.serial_later ? "SERIAL_LATER" : item.serial_required ? "HAS_SERIAL" : "NO_SERIAL")}
-                                </span>
-                              </p>
-                            )}
-                            <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
-                              <FormField htmlFor={`${id}-description`} label="Description" className="col-span-2">
-                                <Input
-                                  id={`${id}-description`} value={l.description} placeholder={item?.name ?? ""}
-                                  onChange={(e) => patchLine(l.key, { description: e.target.value, descriptionTouched: true })}
-                                />
-                              </FormField>
-                              <FormField htmlFor={`${id}-barcode`} label="Barcode" helperText="Optional.">
-                                <Input id={`${id}-barcode`} value={l.barcode} onChange={(e) => patchLine(l.key, { barcode: e.target.value })} />
-                              </FormField>
-                              <FormField htmlFor={`${id}-brand`} label="Brand">
-                                <SearchableSelect
-                                  id={`${id}-brand`} value={l.brandId || undefined}
-                                  onValueChange={(v) => patchLine(l.key, { brandId: v, brandTouched: true })} options={brandSelectOptions}
-                                  onCreateNew={may(caps, "brand") ? () => setNewBrandFor(l.key) : undefined} createLabel="New Brand…"
-                                />
-                              </FormField>
-                              <FormField htmlFor={`${id}-model`} label="Model">
-                                <Input id={`${id}-model`} value={l.model} onChange={(e) => patchLine(l.key, { model: e.target.value })} />
-                              </FormField>
-                              <FormField htmlFor={`${id}-warranty`} label="Warranty Years">
-                                <Input
-                                  id={`${id}-warranty`} type="number" min={0} step={1} value={l.warranty}
-                                  onChange={(e) => patchLine(l.key, { warranty: e.target.value, warrantyTouched: true })}
-                                />
-                              </FormField>
-                            </div>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ),
-                ];
-              })}
-            </tbody>
-          </table>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {sets.map((s, i) => {
@@ -621,15 +684,16 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
         </div>
       </div>
 
-      <NewVendorDialog open={newVendor} onOpenChange={setNewVendor} onCreated={(row) => setVendorId(String(row.id))} />
+      <NewVendorDialog open={newVendor} initialName={typedName} onOpenChange={setNewVendor} onCreated={(row) => setVendorId(String(row.id))} />
       {selectedCompanyId != null && (
         <NewCostCenterDialog
-          companyId={selectedCompanyId} open={newCostCenter} onOpenChange={setNewCostCenter}
+          companyId={selectedCompanyId} open={newCostCenter} initialName={typedName} onOpenChange={setNewCostCenter}
           onCreated={(row) => setCostCenterId(String(row.id))}
         />
       )}
       <ItemFormDialog
         open={newItemFor !== null}
+        initialName={typedName}
         onOpenChange={(open) => !open && setNewItemFor(null)}
         onSaved={(saved) => {
           if (newItemFor === null) return;
@@ -645,6 +709,7 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
       />
       <NewBrandDialog
         open={newBrandFor !== null}
+        initialName={typedName}
         onOpenChange={(open) => !open && setNewBrandFor(null)}
         onCreated={(row) => newBrandFor !== null && patchLine(newBrandFor, { brandId: String(row.id), brandTouched: true })}
       />

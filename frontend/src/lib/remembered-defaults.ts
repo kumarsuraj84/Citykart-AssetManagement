@@ -56,7 +56,8 @@ export function useRemember(): (companyId: number | string | null | undefined, k
 /**
  * Picks the remembered value once the screen's list for this company has
  * loaded, when nothing is chosen yet and the remembered record is still in the
- * list. Applied once per company (choosing something else is never undone).
+ * list -- or, for a Cost Centre, the only one the company has. Applied once per
+ * company (choosing something else is never undone).
  */
 export function useRememberedDefault({
   kind, companyId, value, setValue, validIds, ready,
@@ -78,8 +79,11 @@ export function useRememberedDefault({
     if (!ready || company === "" || appliedFor.current === company) return;
     appliedFor.current = company;
     if (value !== "") return;
+    const listed = ids === "" ? [] : ids.split(",");
     const remembered = readRemembered(userId, company, kind);
-    if (remembered && ids.split(",").includes(remembered)) setValue(remembered);
+    if (remembered && listed.includes(remembered)) setValue(remembered);
+    // S7 (P3-13): a company with exactly one Cost Centre has it chosen already.
+    else if (kind === "cost_centre" && listed.length === 1) setValue(listed[0]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, company, ids, userId, kind]);
 }

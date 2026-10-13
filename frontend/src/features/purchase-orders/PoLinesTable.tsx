@@ -99,7 +99,11 @@ export function PoLinesTable({ poId, lines, isLoading, onReceive, onEdit, onCanc
                       </div>
                       {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">{l.ordered}</TableCell>
+                    {/* S7 (P3-7): what was ordered, cancelled units included ("15 · 15 cancelled"). */}
+                    <TableCell className="text-right tabular-nums">
+                      {l.cancelled > 0 ? (l.originally_ordered ?? l.ordered + l.cancelled) : l.ordered}
+                      {l.cancelled > 0 && <div className="text-[11px] text-muted-foreground">{l.cancelled} cancelled</div>}
+                    </TableCell>
                     <TableCell className="text-right tabular-nums">{l.received}</TableCell>
                     <TableCell className={cn("text-right tabular-nums", l.waiting > 0 && "font-semibold")}>{l.waiting}</TableCell>
                     <TableCell className="text-right tabular-nums">

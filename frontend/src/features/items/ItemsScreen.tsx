@@ -9,6 +9,8 @@ import { ItemFormDialog } from "./ItemFormDialog";
 import { ItemLinksDialog } from "./ItemLinksDialog";
 import { yesNo } from "../../lib/serial-rule";
 import { workAreaLabel } from "../../lib/labels";
+import { useAccess } from "../../lib/access";
+import { canCreate, canManage, domainManageAreas, inAreas, useCapabilities } from "../../lib/capabilities";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -38,6 +40,17 @@ export function ItemsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const categories = categoriesQ.data ?? [];
   const subs = subsQ.data ?? [];
   const bundles = bundlesQ.data ?? [];
+
+  // S7 (final review): a Full Admin of one work area edits / deactivates that area's Items here (server-decided;
+  // these are its capabilities). ERP links and "Create from Sub-categories" stay with the head-office admin.
+  const { isPrimaryOwner } = useAccess();
+  const { caps } = useCapabilities();
+  const headOffice = isPrimaryOwner || caps?.is_head_office_admin === true;
+  const manageAreas = domainManageAreas(caps);
+  const areaOf = (i: Item) => i.work_area ?? categories.find((c) => c.id === i.category_id)?.asset_domain ?? null;
+  const mayEdit = (i: Item) => headOffice || (canManage(caps, "item") && inAreas(areaOf(i), manageAreas));
+  const mayAdd = headOffice || canCreate(caps, "item");
+  const mayRules = headOffice || canManage(caps, "item_rules");
 
   const [editing, setEditing] = useState<Item | "new" | null>(null);
   const [linking, setLinking] = useState<Item | null>(null);
@@ -88,17 +101,19 @@ export function ItemsScreen({ embedded = false }: { embedded?: boolean } = {}) {
       key: "bundle", header: "Comes as a set",
       cell: (i) => i.bundle_name ?? bundles.find((b) => b.id === i.bundle_id)?.name ?? (i.is_set || i.bundle_id != null ? "Yes" : "—"),
     },
-    {
-      key: "maps", header: "ERP links", cellClassName: "tabular-nums",
-      cell: (i) => (
-        <Button size="sm" variant="ghost" className="tabular-nums underline" aria-label={`ERP links of ${i.name}`} onClick={() => setLinking(i)}>
-          {i.map_count === 0 ? "Link…" : i.map_count}
-        </Button>
-      ),
-    },
+    ...(mayRules
+      ? [{
+          key: "maps", header: "ERP links", cellClassName: "tabular-nums",
+          cell: (i: Item) => (
+            <Button size="sm" variant="ghost" className="tabular-nums underline" aria-label={`ERP links of ${i.name}`} onClick={() => setLinking(i)}>
+              {i.map_count === 0 ? "Link…" : i.map_count}
+            </Button>
+          ),
+        }]
+      : []),
     {
       key: "actions", header: "",
-      cell: (i) => (
+      cell: (i) => (mayEdit(i) ? (
         <div className="flex justify-end gap-1">
           <Button size="icon" variant="ghost" aria-label={`Edit ${i.name}`} onClick={() => setEditing(i)}>
             <Pencil className="h-4 w-4" aria-hidden="true" />
@@ -107,7 +122,7 @@ export function ItemsScreen({ embedded = false }: { embedded?: boolean } = {}) {
             <Trash2 className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
-      ),
+      ) : null),
     },
   ];
 
@@ -120,11 +135,13 @@ export function ItemsScreen({ embedded = false }: { embedded?: boolean } = {}) {
         actions={
           <>
             <Button asChild variant="outline"><Link to="/settings/catalogue/link-assets">Link existing assets</Link></Button>
-            <Button asChild variant="outline"><Link to="/settings/erp/mapping">ERP Mapping</Link></Button>
-            <Button variant="outline" onClick={() => seedMutation.mutate()} disabled={seedMutation.isPending}>
-              Create from Sub-categories
-            </Button>
-            <Button onClick={() => setEditing("new")}>New Item</Button>
+            {mayRules && <Button asChild variant="outline"><Link to="/settings/erp/mapping">ERP Mapping</Link></Button>}
+            {mayRules && (
+              <Button variant="outline" onClick={() => seedMutation.mutate()} disabled={seedMutation.isPending}>
+                Create from Sub-categories
+              </Button>
+            )}
+            {mayAdd && <Button onClick={() => setEditing("new")}>New Item</Button>}
           </>
         }
       />

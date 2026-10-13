@@ -5,6 +5,7 @@ import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { createAppRouter } from "./router";
 import { apiClient } from "./lib/api-client";
 import { useAuthStore } from "./lib/auth-store";
+import { ADMIN_IT, withCapabilities } from "./test-capabilities";
 
 vi.mock("./lib/api-client");
 
@@ -197,12 +198,29 @@ describe("AppShell navigation (role-aware sidebar)", () => {
     expect(within(nav).getByRole("link", { name: "Items" })).toHaveAttribute("data-active", "false");
   });
 
-  it("gives an ordinary ADMIN the operator menu plus People & Places, but no Settings", async () => {
+  it("gives an ordinary ADMIN the operator menu plus People & Places with Users & Access, but no Settings group", async () => {
     loginAs("ADMIN");
     renderAt("/dashboard");
     const nav = await screen.findByRole("navigation", { name: "Main" });
-    expect(navLinkNames(nav)).toEqual(["Home", "Assets", "Purchase Orders", "Receive", "Move", ...PEOPLE_MENU, "Reports"]);
+    expect(navLinkNames(nav)).toEqual(["Home", "Assets", "Purchase Orders", "Receive", "Move", ...PEOPLE_MENU, "Users & Access", "Reports"]);
+    expect(within(nav).getByRole("link", { name: "Users & Access" })).toHaveAttribute("href", "/settings/users-access");
     expect(within(nav).queryByRole("button", { name: /settings/i })).not.toBeInTheDocument();
+  });
+
+  it("S7: a Full Admin who may manage a work area's catalogue also gets Settings › Items, Asset Groups, Link Assets to Items", async () => {
+    (apiClient.get as any).mockImplementation(withCapabilities(ADMIN_IT, (path: string) => Promise.resolve(path.startsWith("/assets") ? { items: [], total: 0 } : [])));
+    loginAs("ADMIN");
+    renderAt("/dashboard");
+    const nav = await screen.findByRole("navigation", { name: "Main" });
+    await waitFor(() => expect(within(nav).getByRole("link", { name: "Asset Groups" })).toBeInTheDocument());
+    expect(navLinkNames(nav)).toEqual([
+      "Home", "Assets", "Purchase Orders", "Receive", "Move", ...PEOPLE_MENU, "Users & Access", "Reports",
+      "Items", "Asset Groups", "Link Assets to Items",
+    ]);
+    expect(within(nav).getByRole("link", { name: "Items" })).toHaveAttribute("href", "/settings/catalogue/items");
+    // Brands and Vendors stay with the head-office admin.
+    expect(within(nav).queryByRole("link", { name: "Brands" })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Vendors" })).not.toBeInTheDocument();
   });
 
   it("gives an OPERATOR (IT or Non-IT: the same menu) Home, Assets, Purchase Orders, Receive, Move and Reports", async () => {
@@ -266,8 +284,8 @@ describe("route guards by area", () => {
   it("Settings screens and Bulk Import: head-office admin only", async () => {
     for (const url of [
       "/setup/companies", "/setup/custom-fields", "/setup/code-rule", "/setup/erp-articles", "/import",
-      "/settings", "/settings/setup", "/settings/organisation", "/settings/catalogue/asset-groups",
-      "/settings/users-access", "/settings/erp/sync", "/setup/bundles",
+      "/settings", "/settings/setup", "/settings/organisation", "/settings/catalogue/brands",
+      "/settings/vendors", "/settings/erp/sync", "/setup/bundles",
     ]) {
       loginAs("ADMIN", false, true);
       await expectAllowed(url);
@@ -280,8 +298,31 @@ describe("route guards by area", () => {
     }
   });
 
-  it("People & Places: role ADMIN (head-office admin included) only", async () => {
-    for (const url of ["/people/employees", "/people/stores", "/people/stock-rooms", "/people/install-points"]) {
+  it("S7: Catalogue (Items, Asset Groups): the head-office admin, and a Full Admin only when the capabilities allow", async () => {
+    for (const url of ["/settings/catalogue/items", "/settings/catalogue/asset-groups"]) {
+      loginAs("ADMIN", false, true);
+      await expectAllowed(url);
+      cleanupDom();
+      // A Full Admin whose capabilities say "manage Items / Asset Groups of IT".
+      (apiClient.get as any).mockImplementation(withCapabilities(ADMIN_IT, (path: string) => Promise.resolve(path.startsWith("/assets") ? { items: [], total: 0 } : [])));
+      loginAs("ADMIN");
+      await expectAllowed(url);
+      cleanupDom();
+      // The same role without those capabilities (the answer could not be had): no access.
+      mockApi();
+      loginAs("ADMIN");
+      await expectNoAccess(url);
+      cleanupDom();
+      for (const role of ["OPERATOR", "VIEWER", "SELF_SERVICE"]) {
+        loginAs(role);
+        await expectNoAccess(url);
+        cleanupDom();
+      }
+    }
+  });
+
+  it("People & Places (and S7: Users & Access): role ADMIN (head-office admin included) only", async () => {
+    for (const url of ["/people/employees", "/people/stores", "/people/stock-rooms", "/people/install-points", "/settings/users-access"]) {
       loginAs("ADMIN");
       await expectAllowed(url);
       cleanupDom();
@@ -318,10 +359,18 @@ describe("route guards by area", () => {
         await expectAllowed(url);
         cleanupDom();
       }
+      if (url === "/dashboard") continue;   // S7 P3-9: sent to My Assets instead (below)
       loginAs("SELF_SERVICE");
       await expectNoAccess(url);
       cleanupDom();
     }
+  });
+
+  it("S7 P3-9: a self-service login opening /dashboard lands on My Assets", async () => {
+    loginAs("SELF_SERVICE");
+    const router = renderAt("/dashboard");
+    await waitFor(() => expect(router.state.location.pathname).toBe("/my-assets"));
+    expect(screen.queryByText(NO_ACCESS)).not.toBeInTheDocument();
   });
 
   it("the no-access page offers a way back Home (My Assets for a self-service login)", async () => {
@@ -330,7 +379,7 @@ describe("route guards by area", () => {
     expect(await screen.findByRole("link", { name: /go to home/i })).toHaveAttribute("href", "/dashboard");
     cleanupDom();
     loginAs("SELF_SERVICE");
-    renderAt("/dashboard");
+    renderAt("/reports");
     expect(await screen.findByRole("link", { name: /go to my assets/i })).toHaveAttribute("href", "/my-assets");
   });
 

@@ -124,6 +124,25 @@ describe("Home", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  it("S7 P1-1: one ERP figure missing (goods receipts) never hides the others", async () => {
+    mockApiGet(baseDashboardData, { erp_available: false, erp_arrived_pos: null, erp_changed_pos: 2, erp_pos_needing_input: 3 });
+    renderHome();
+    const list = await screen.findByRole("list", { name: "Needs attention" });
+    expect(within(list).getByText(/3 ERP purchase orders need your input/)).toBeInTheDocument();
+    expect(within(list).getByText(/The ERP changed 2 purchase orders/)).toBeInTheDocument();
+    expect(within(list).queryByText(/goods arrived/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("S7 P2-4: the Recent changes / Stock by Place cards may shrink below their table's width (no page-wide scroll)", async () => {
+    mockApiGet(baseDashboardData);
+    renderHome();
+    const recent = await screen.findByText("Recent changes");
+    const card = recent.closest(".min-w-0");
+    expect(card).not.toBeNull();
+    expect(card!.parentElement!.className).toContain("grid-cols-1");
+  });
+
   it("S6: if the Home call fails, the rows the dashboard numbers allow are still shown (no ERP rows, no error)", async () => {
     mockApiGet({
       ...baseDashboardData, serial_pending_count: 5, pending_po_summary: { count: 12, value: 0 },
@@ -229,10 +248,12 @@ describe("attentionRowsFrom (S6: GET /home/attention)", () => {
     expect(attentionRowsFrom(ALL_NULL)).toEqual([]);
   });
 
-  it("ERP numbers count only while the ERP is available", () => {
+  it("S7 P1-1: every ERP figure that came is shown, even when another ERP read failed (erp_available false)", () => {
     const a = { ...ALL_NULL, erp_changed_pos: 2, erp_arrived_pos: 1, erp_pos_needing_input: 1 };
-    expect(attentionRowsFrom(a)).toEqual([]);
     expect(attentionRowsFrom({ ...a, erp_available: true }).map((r) => r.key)).toEqual(["erp-arrived", "erp-needs-input", "erp-changed"]);
+    // The goods-receipts view is missing: only that figure is null; the others still show.
+    const partly = { ...a, erp_available: false, erp_arrived_pos: null };
+    expect(attentionRowsFrom(partly).map((r) => r.key)).toEqual(["erp-needs-input", "erp-changed"]);
   });
 
   it("singular and plural words, and the order of the rows", () => {

@@ -6,6 +6,7 @@ import { apiClient } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
 import { createAppRouter } from "../../router";
 import { AssetGroupsScreen, WORK_AREA_CHANGE_TEXT, deactivateBlocker } from "./AssetGroupsScreen";
+import { ADMIN_IT, withCapabilities } from "../../test-capabilities";
 
 vi.mock("../../lib/api-client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/api-client")>();
@@ -245,5 +246,32 @@ describe("old Categories / Sub-categories addresses", () => {
     render(<QueryClientProvider client={qc}><RouterProvider router={router} /></QueryClientProvider>);
     await waitFor(() => expect(router.state.location.pathname).toBe("/settings/catalogue/asset-groups"));
     expect(await screen.findByRole("heading", { name: "Asset Groups" })).toBeInTheDocument();
+  });
+});
+
+describe("S7: a Full Admin of one work area (capabilities)", () => {
+  beforeEach(() => {
+    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: false, mustChangePassword: false });
+    const base = (apiClient.get as any).getMockImplementation();
+    (apiClient.get as any).mockImplementation(withCapabilities(ADMIN_IT, base));
+  });
+
+  it("edits and deactivates only the groups of their own area; imports stay with the head-office admin", async () => {
+    renderScreen();
+    await screen.findByText("Laptop");
+    await waitFor(() => expect(within(groupRow("IT Fixed Assets")).getByRole("button", { name: "Edit IT Fixed Assets" })).toBeInTheDocument());
+    expect(within(groupRow("IT Fixed Assets")).getByRole("checkbox", { name: "Select IT Fixed Assets" })).toBeInTheDocument();
+    const nonIt = groupRow("Admin Fixed Assets");
+    expect(within(nonIt).queryByRole("button", { name: "Edit Admin Fixed Assets" })).not.toBeInTheDocument();
+    expect(within(nonIt).queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(nonIt).toHaveTextContent("Looked after by the Admin / Non-IT Team");
+    expect(screen.queryByRole("button", { name: "Edit Fan" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit Laptop" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /import \/ export/i })).not.toBeInTheDocument();
+    // A new group can only be in their own area.
+    fireEvent.click(screen.getAllByRole("button", { name: "Add Group" })[0]);
+    fireEvent.click(await screen.findByRole("combobox", { name: "Work area" }));
+    expect(await screen.findByRole("option", { name: "IT Team" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Admin / Non-IT Team" })).not.toBeInTheDocument();
   });
 });

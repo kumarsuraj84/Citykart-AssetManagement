@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
-import { ErpSyncStatus } from "./ErpSyncStatus";
+import { ErpSyncStatus, refreshResultSentence } from "./ErpSyncStatus";
 
 vi.mock("../../lib/api-client");
 
@@ -69,6 +69,21 @@ describe("ERP data freshness", () => {
     renderIt();
     expect(await screen.findByRole("alert")).toHaveTextContent("The last refresh did not work: The ERP database could not be reached");
     expect(screen.getByText(/ERP data as of/)).toBeInTheDocument();
+  });
+
+  it("S7 P3-6: Refresh now says what it did, in a visible line", async () => {
+    asOwner(true);
+    (apiClient.post as any).mockResolvedValue({ ...RUN, trigger: "manual", po_lines_new: 3, po_lines_changed: 1 });
+    renderIt();
+    fireEvent.click(await screen.findByRole("button", { name: /refresh now/i }));
+    const line = await screen.findByRole("status", { name: "Refresh result" });
+    expect(line).toHaveTextContent(/^Checked just now \(.+\): copied 3 new PO lines, 1 changed PO line\.$/);
+  });
+
+  it("S7 P3-6: a refresh with nothing newer says so", () => {
+    expect(refreshResultSentence({ ...RUN, status: "skipped" } as never)).toMatch(/the ERP had nothing newer to copy\.$/);
+    expect(refreshResultSentence({ ...RUN, po_lines_changed: 0 } as never)).toMatch(/nothing newer/);
+    expect(refreshResultSentence({ ...RUN, status: "running", finished_at: null } as never)).toMatch(/already running/);
   });
 
   it("shows a failed manual refresh's message", async () => {

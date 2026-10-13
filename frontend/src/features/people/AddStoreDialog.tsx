@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
 import { useMyCompanies } from "@/lib/capabilities";
+import { isSilentSubmitError, sendKeyed, useSubmitGuard, useSubmitKey } from "@/lib/submit-key";
 import { companyOptions } from "@/lib/option-labels";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,6 +49,8 @@ export function AddStoreDialog({
   const [companyId, setCompanyId] = useState("");
   const [place, setPlace] = useState<PlaceChoice>(EMPTY_PLACE);
   const [pending, setPending] = useState(false);
+  const guard = useSubmitGuard();
+  const submitKey = useSubmitKey();
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<StoreResult | null>(null);
   const onlyCompany = companies.length === 1 ? String(companies[0].id) : "";
@@ -69,13 +72,14 @@ export function AddStoreDialog({
   const canSave = upper !== "" && !codeProblem && name.trim() !== "" && companyId !== "";
 
   async function save() {
-    if (!canSave || pending) return;
+    // S7 (P1-2): a synchronous guard (set before the first await) and one Idempotency-Key per intent.
+    if (!canSave || pending || !guard.begin()) return;
     setPending(true);
     setError(null);
     try {
-      const r = await apiClient.post<StoreResult>("/people/stores", {
-        code: upper, name: name.trim(), company_id: Number(companyId), ...placeBody(place),
-      });
+      const body = { code: upper, name: name.trim(), company_id: Number(companyId), ...placeBody(place) };
+      const r = await sendKeyed(submitKey, (keyed) => keyed(body, () => apiClient.post<StoreResult>("/people/stores", body)));
+      submitKey.renew();
       setResult(r);
       await qc.invalidateQueries({ queryKey: ["people"] });
       qc.invalidateQueries({ queryKey: ["asset_users"] });
@@ -84,9 +88,10 @@ export function AddStoreDialog({
       qc.invalidateQueries({ queryKey: ["setup", "status"] });
       onDone?.(r);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not add the store.");
+      if (!isSilentSubmitError(e)) setError(e instanceof Error ? e.message : "Could not add the store.");
     } finally {
       setPending(false);
+      guard.end();
     }
   }
 

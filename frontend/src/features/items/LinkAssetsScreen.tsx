@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useKeyedMutation } from "@/lib/submit-key";
 import { Link } from "@tanstack/react-router";
 import { Search, X } from "lucide-react";
 import { apiClient } from "@/lib/api-client";
@@ -154,9 +155,12 @@ export function LinkAssetsScreen() {
     setConfirming(true);
   }
 
-  const linkMutation = useMutation({
-    mutationFn: (entries: Staged[]) =>
-      apiClient.post<{ linked: number; unchanged: number }>("/assets/link-items", entries.map((e) => ({ asset_id: e.asset_id, item_id: e.item_id }))),
+  // S7 (P1-2): one "Link" = one Idempotency-Key; a double activation links (and audits) once.
+  const linkMutation = useKeyedMutation({
+    mutationFn: (entries: Staged[], keyed) => {
+      const body = entries.map((e) => ({ asset_id: e.asset_id, item_id: e.item_id }));
+      return keyed(body, () => apiClient.post<{ linked: number; unchanged: number }>("/assets/link-items", body));
+    },
     onSuccess: (r, entries) => {
       setConfirming(false);
       setStaged(new Map());

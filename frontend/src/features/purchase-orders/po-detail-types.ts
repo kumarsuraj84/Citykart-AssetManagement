@@ -55,6 +55,9 @@ export interface LineGroup {
   received: number;
   waiting: number;
   cancelled: number;
+  /** S7: received + waiting + cancelled (everything ever ordered on the line), and the cancelled part's value. */
+  originally_ordered?: number;
+  cancelled_value?: number;
   line_value: number;
   /** WAITING | PARTLY_RECEIVED | RECEIVED | CANCELLED */
   status: string;

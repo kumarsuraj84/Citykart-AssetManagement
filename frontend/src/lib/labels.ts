@@ -84,6 +84,21 @@ export function placeTypeLabel(type: string | null | undefined): string {
   return PLACE_TYPE_LABELS[type] ?? humanizeCode(type);
 }
 
+/**
+ * S7 (P3-4): a holder's name as people read it. Records made by older set-up steps carry an
+ * auto-made "Stock Point - " in front of the name ("Stock Point - WH Stores Farukhnagar");
+ * the screens show just "WH Stores Farukhnagar" (the kind is shown next to it anyway).
+ */
+export function holderDisplayName(name: string | null | undefined): string {
+  if (!name) return "";
+  return name.replace(/^\s*stock\s*point\s*[-–—:]\s*/i, "").trim() || name.trim();
+}
+
+/** The same words, ignoring case and outer spaces (two cells saying the same thing). */
+export function sameText(a: string | null | undefined, b: string | null | undefined): boolean {
+  return !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
 /** "STOCK_POINT" -> "Stock Rooms". */
 export function placeTypePlural(type: string | null | undefined): string {
   if (!type) return "";
