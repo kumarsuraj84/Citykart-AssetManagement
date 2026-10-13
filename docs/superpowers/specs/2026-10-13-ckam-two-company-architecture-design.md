@@ -32,6 +32,12 @@ Facts that shape everything:
 - ERP is loaded **once a day**, so live queries buy no freshness.
 - Large ERP tables time out; the link to the ERP also dropped for about a minute during the last deploy.
 - Rule used everywhere below: every ERP code is the pair **(company, code)**.
+- More read on 2026-10-13: **the ERP holds no serial numbers, brand, model, warranty or fixed-asset register** in any readable layer (the
+  only "department" is the item hierarchy), so CKAM is the only place those facts will live. The warehouse stock snapshot has no fixed-asset
+  rows, so there is nothing to reconcile warehouse stock against. PO numbers: CKSPL `GPO/#/#-#` (348 open) and `SPO/#/#-#` (154) plus 48
+  open POs numbered "Automatic"; CKVPL `PO/#/#-#`; `po_code` never repeats across the companies, but the key in CKAM stays (company, code).
+  `silver.dim_employee` holds employee no, name, designation, department and location but **no email** (personal data: only with an
+  explicit decision, e.g. to pre-fill people users).
 
 ## 3. Three ways to get there
 
@@ -41,7 +47,7 @@ Facts that shape everything:
 | **B. Reshape the weak parts (recommended)** | Keep what is strong (ledger, Item model, labels, roles); change 5 things (section 4) | A few weeks of work, no data to migrate, fits the business exactly |
 | C. Rewrite | Start over | No: the ledger, Item model, serial rules, labels, movement screen are good |
 
-## 4. The recommended architecture: keep 6 things, change 5
+## 4. The recommended architecture: keep 6 things, change 4 (Change 4 was dropped, see below)
 
 ### Keep (already good)
 1. Append-only asset event ledger and the one state machine.
@@ -85,25 +91,20 @@ Location gets a `kind` (STORE, WAREHOUSE, HEAD_OFFICE, OTHER) and `erp_site_code
   NSO1 are real-looking; the rest are DUMMY / test / `xx` / closed). So the button creates users only for codes of 3 letters or
   3 letters + 1 digit whose ERP store status is active, and lists the others as "skipped, please review" for the owner to include or ignore.
   Re-running adds only new stores. No duplicates exist among active short names. The store logs in with that email (login by code or email
-  already works) as a self-service user: it sees only what is allotted to it, and confirms receipts (Change 4) if the owner chooses so.
+  already works) as a self-service user: it sees only what is allotted to it (read-only; it confirms nothing).
 - **HO, WH and Training Room** (no location mailbox; the ERP has no Training Room site): created by hand, two holders each: **stock
   point** (spares, status In stock) and **in use** point (equipment installed there, status Installed). Plus normal named users.
 - **People**: own email, own login; a person in both companies gets one user per company plus the existing company-access grant.
 - A new store opening in the ERP shows up in a "new stores" list; one click creates its user.
 
-### Change 4: transfers become documents with a state (dispatch note)
-Today each asset gets an instant MOVED event. Warehouse to store needs more. New `transfer` (header) and `transfer_line`:
-
-```
- DRAFT ──scan, labels──► DISPATCHED (assets: IN_TRANSIT) ──store scans/confirms──► RECEIVED (assets: allotted to the store user)
-                                                              └─ short or wrong item ─► flagged, shown to the sender
-```
-- Header: from holder, to holder, who, when, optional **ERP packet / challan number** (reference only), notes.
-- New asset status **In transit**; new ledger events DISPATCHED and RECEIVED (the state machine stays the only writer).
-- The store sees "On the way to you: 7 assets" and confirms by scanning each label or "receive all". Sender sees "sent, not received for N days".
-- Partial receipt and quantity items (7 mice without serials) work: lines carry the asset ids; received count vs sent count.
-- Allotting to a person, moving between people, and simple stock moves stay the instant move that exists today.
-- The ERP packet panel ("what the ERP says") plugs into the header later; it is reference only.
+### Change 4 (DROPPED by the owner, 2026-10-13): no in-transit, no receipt step
+Owner decision (option B): **the store does nothing in CKAM.** Moving assets to a store user allots them directly, exactly as the merged
+Move / Dispatch screen does today (one MOVED event per asset). No In-transit status, no dispatch-note header, no store confirmation, no
+"not received" alerts. Anything the ERP says about the packet is shown to the dispatcher as read-only reference (step 7), nothing more.
+- **Straight-to-store deliveries matter instead:** in the last 6 months 3,223 of CKSPL's fixed-asset PO lines (568 POs) were delivered
+  directly to a STORE, 3,258 (1,010 POs) to a warehouse, 15 to HO. So the delivery screen must accept a store user as the delivery
+  location and allot the delivered assets to it in one step (already possible for a Stock-point/Store holder; to be verified and tested).
+  CKVPL deliveries are HO (300 POs) and warehouses (200 POs).
 
 ### Change 5: owner company is not the same as where it sits
 An asset belongs to the company that bought it (books, asset code). Today it can only move to holders of that company. Recommended:
@@ -127,9 +128,9 @@ access to the asset's company and to the holder's company.
 
 1. Nightly sync copies both companies' ERP data. 2. A buyer picks an ERP PO (CKSPL or CKVPL); vendor and Items are resolved through the
 links. 3. Goods arrive: delivery with serials (or Serial Pending) at the PO's delivery location (a WH or straight to a store).
-4. Labels are printed (after receiving or when dispatching). 5. WH creates a transfer: scan assets, pick the store, dispatch; assets are
-In transit. 6. The store logs in and confirms; assets are Allotted to the store (installed). 7. IT/store allots a spare to a person.
-8. If the ERP edits or cancels the PO, the morning list shows "changed in ERP" and the owner applies or keeps.
+4. Labels are printed (after receiving or when dispatching). 5. WH scans the assets, picks the store and applies: the assets are Allotted
+to the store user straight away (a PO delivered directly to a store does the same at delivery). 6. IT allots a spare to a person.
+7. If the ERP edits or cancels the PO, the morning list shows "changed in ERP" and the owner applies or keeps.
 
 ## 6. Build order (each step ships by itself)
 
@@ -138,16 +139,16 @@ In transit. 6. The store logs in and confirms; assets are Allotted to the store 
 | 1 | ERP local copy + nightly sync + CKVPL reader; PO change check reads the copy | none |
 | 2 | Vendor links, GSTIN suggestions, vendor-change as applicable change, "edited here" rule | 1 |
 | 3 | Location kinds + ERP site link + "Create stores from ERP" + email pattern + store login | 1 |
-| 4 | Transfer documents, In transit status, store receipt, "not received" dashboard | 3 |
-| 5 | Inter-company use (owner company vs location company) | decision |
+| 4 | Deliver a PO straight to a store user (allot at delivery); check/test the existing path | 3 |
+| 5 | Cross-company allotment (replace the "same company only" rule; reports by owner and by location company) | decided |
 | 6 | Invoice details from the ERP | 1, 2 |
-| 7 | ERP packet reference on transfers, from silver challan + receipt tables (CKSPL only) | 1, 4 |
+| 7 | ERP packet reference on Move / Dispatch (read-only), from silver challan + receipt tables (CKSPL only) | 1 |
 
 ## 7. Decisions needed from the owner
 
 1. ~~Email pattern~~ **Answered:** `sm.<code>@citykartstores.com` for every site except HO / WH / Training Room.
 2. ~~Cross-company use~~ **Answered:** yes, both directions.
-3. **Open:** does the store confirm that the boxes arrived (recommended), or does IT do it for them? (Asked again in plain words.)
+3. ~~Store confirms receipt?~~ **Answered: option B.** The store does nothing; assets are allotted directly to the store user.
 4. ~~ERP team requests~~ **Answered:** use the silver layer only for now; the owner will share gold views when they exist. Consequence: the
    ERP packet reference is built from `silver.fact_dc_line` (challan lines of fixed assets: challan no, date, destination site, item, qty;
    2.2 s for 30 days, fine for the nightly copy) and `silver.fact_store_receipt_event` (store receipt, where it matches). The per-item
