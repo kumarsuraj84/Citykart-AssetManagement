@@ -8,7 +8,7 @@ from app.erp import vendors as erp_vendors
 from app.erp.changes import apply_changes, changes_summary, po_changes, snapshot_baseline
 from app.erp.invoices import apply_pi, pi_preview
 from app.erp.reminders import delivery_reminders
-from app.erp.schemas import ChangesApplyIn, DraftCreateIn, ErpVendorCodeIn, PiApplyIn, SyncRunOut, SyncStatusOut
+from app.erp.schemas import ChangesApplyIn, DraftCreateIn, ErpVendorLinkIn, PiApplyIn, SyncRunOut, SyncStatusOut
 from app.erp.service import build_draft, create_from_draft, list_available_pos
 from app.erp.source import ErpSource, ErpUnavailable, get_erp_source, is_configured
 from app.erp.sync import last_runs, run_sync
@@ -51,25 +51,31 @@ async def sync_now(reader: WarehouseReader = Depends(get_warehouse_reader), _act
 
 @router.get("/vendors")
 async def list_vendors(
-    session: AsyncSession = Depends(get_session), source: ErpSource = Depends(get_erp_source),
+    company_id: int, session: AsyncSession = Depends(get_session), source: ErpSource = Depends(get_erp_source),
     _actor=Depends(require_primary_owner()),
 ):
+    """The ERP suppliers of ONE company (the same code means a different supplier in the other company)."""
     try:
-        return await erp_vendors.list_erp_vendors(session, source)
+        return await erp_vendors.list_erp_vendors(session, source, company_id)
+    except LookupError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
     except ErpUnavailable as exc:
         raise _unavailable(exc)
 
 
 @router.post("/vendors/import", response_model=VendorOut, status_code=201)
 async def import_vendor(
-    body: ErpVendorCodeIn, session: AsyncSession = Depends(get_session),
+    body: ErpVendorLinkIn, session: AsyncSession = Depends(get_session),
     source: ErpSource = Depends(get_erp_source), actor=Depends(require_primary_owner()),
 ):
     try:
-        vendor = await erp_vendors.import_vendor(session, actor, source, body.erp_vendor_code)
+        vendor = await erp_vendors.import_vendor(session, actor, source, body.company_id, body.erp_vendor_code)
         await session.commit()
     except ErpUnavailable as exc:
         raise _unavailable(exc)
+    except LookupError as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
     except IntegrityError:
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "a vendor with this code already exists")
@@ -82,16 +88,20 @@ async def import_vendor(
 
 @router.post("/vendors/{vendor_id}/link", response_model=VendorOut)
 async def link_vendor(
-    vendor_id: int, body: ErpVendorCodeIn, session: AsyncSession = Depends(get_session),
+    vendor_id: int, body: ErpVendorLinkIn, session: AsyncSession = Depends(get_session),
     source: ErpSource = Depends(get_erp_source), actor=Depends(require_primary_owner()),
 ):
     try:
-        vendor = await erp_vendors.link_vendor(session, actor, source, vendor_id, body.erp_vendor_code)
+        vendor = await erp_vendors.link_vendor(session, actor, source, vendor_id, body.company_id, body.erp_vendor_code)
         await session.commit()
     except ErpUnavailable as exc:
         raise _unavailable(exc)
     except LookupError as exc:
+        await session.rollback()
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "that ERP supplier is already linked")
     except ValueError as exc:
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
@@ -101,12 +111,14 @@ async def link_vendor(
 
 @router.delete("/vendors/{vendor_id}/link", response_model=VendorOut)
 async def unlink_vendor(
-    vendor_id: int, session: AsyncSession = Depends(get_session), actor=Depends(require_primary_owner()),
+    vendor_id: int, company_id: int, erp_vendor_code: str, session: AsyncSession = Depends(get_session),
+    actor=Depends(require_primary_owner()),
 ):
     try:
-        vendor = await erp_vendors.unlink_vendor(session, actor, vendor_id)
+        vendor = await erp_vendors.unlink_vendor(session, actor, vendor_id, company_id, erp_vendor_code)
         await session.commit()
     except LookupError as exc:
+        await session.rollback()
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
     await session.refresh(vendor)
     return vendor

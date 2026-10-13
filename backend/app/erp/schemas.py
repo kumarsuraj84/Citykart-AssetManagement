@@ -53,7 +53,9 @@ class PiApplyIn(BaseModel):
     items: list[PiApplyItemIn] = Field(min_length=1)
 
 
-class ErpVendorCodeIn(BaseModel):
+class ErpVendorLinkIn(BaseModel):
+    """An ERP supplier of one company (the same code means a different supplier in each company)."""
+    company_id: int
     erp_vendor_code: str = Field(min_length=1, max_length=50)
 
 

@@ -37,12 +37,20 @@ class VendorEditIn(BaseModel):
     contact_email: str | None = None
 
 
+class VendorErpLinkOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    company_id: int
+    company_code: str
+    erp_vendor_code: str
+
+
 class VendorOut(VendorIn):
     model_config = ConfigDict(from_attributes=True)
     id: int
     is_active: bool
-    # Read-only here; set only through the ERP link endpoints (/api/erp/vendors).
-    erp_vendor_code: str | None = None
+    # Read-only here; set only through the ERP link endpoints (/api/erp/vendors). One per company
+    # (a vendor can have several codes inside one company too).
+    erp_links: list[VendorErpLinkOut] = []
 
 
 def _blank_to_none(value: str | None) -> str | None:

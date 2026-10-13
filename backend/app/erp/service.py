@@ -11,7 +11,7 @@ from app.core.deps import ensure_company_in_scope, scoped_company_ids
 from app.erp.source import ErpPo, ErpSource
 from app.items.models import Item
 from app.items.service import norm as norm_name, resolve_items, upsert_map
-from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Vendor
+from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Vendor, VendorErpLink
 from app.purchase_orders.models import PurchaseOrder
 from app.purchase_orders.service import add_pending_asset_line, create_purchase_order
 
@@ -122,32 +122,42 @@ async def _match_delivery(session, company, warehouse_code: str, warehouse: str,
     return None, candidates
 
 
-async def linked_vendors(session: AsyncSession) -> dict[str, Vendor]:
-    """Active CKAM vendors that are linked to an ERP supplier, by ERP code."""
+async def linked_vendors(session: AsyncSession, company_id: int) -> dict[str, Vendor]:
+    """Active CKAM vendors linked to a supplier of THIS company's ERP, by that company's supplier code
+    (the same code is a different supplier in the other company)."""
     rows = (await session.execute(
-        select(Vendor).where(Vendor.is_active.is_(True), Vendor.erp_vendor_code.is_not(None))
-    )).scalars().all()
-    return {v.erp_vendor_code: v for v in rows}
+        select(VendorErpLink.erp_vendor_code, Vendor)
+        .join(Vendor, Vendor.id == VendorErpLink.vendor_id)
+        .where(VendorErpLink.company_id == company_id, Vendor.is_active.is_(True))
+    )).all()
+    return {code: vendor for code, vendor in rows}
 
 
 async def list_available_pos(session: AsyncSession, actor: AssetUser, source: ErpSource) -> list[dict]:
-    """OPEN ERP POs of linked vendors that have not been created in CKAM yet."""
-    vendors = await linked_vendors(session)
-    if not vendors:
-        return []
-    pos = await source.open_pos(list(vendors))
+    """OPEN ERP POs, of every company the user may work in, whose vendor is linked in that company and
+    that have not been created in CKAM yet."""
+    allowed = await scoped_company_ids(session, actor)
+    stmt = select(Company).where(Company.is_active.is_(True)).order_by(Company.id)
+    if allowed is not None:
+        stmt = stmt.where(Company.id.in_(allowed))
     created = set((await session.execute(
         select(PurchaseOrder.erp_po_code).where(PurchaseOrder.erp_po_code.is_not(None))
     )).scalars().all())
-    return [
-        {
-            "po_code": p.po_code, "po_number": p.po_number, "po_date": p.po_date.isoformat(),
-            "company_code": p.company_code, "delivery_location": p.delivery_location,
-            "vendor_id": vendors[p.supplier_code].id, "vendor_name": vendors[p.supplier_code].name,
-            "line_count": p.line_count, "net_amount": p.header_net,
-        }
-        for p in pos if p.po_code not in created and p.supplier_code in vendors
-    ]
+    out: list[dict] = []
+    for company in (await session.execute(stmt)).scalars().all():
+        vendors = await linked_vendors(session, company.id)
+        if not vendors:
+            continue
+        for p in await source.open_pos(list(vendors), company.erp_code):
+            if p.po_code in created or p.supplier_code not in vendors:
+                continue
+            out.append({
+                "po_code": p.po_code, "po_number": p.po_number, "po_date": p.po_date.isoformat(),
+                "company_id": company.id, "company_code": p.company_code, "delivery_location": p.delivery_location,
+                "vendor_id": vendors[p.supplier_code].id, "vendor_name": vendors[p.supplier_code].name,
+                "line_count": p.line_count, "net_amount": p.header_net,
+            })
+    return sorted(out, key=lambda r: (r["po_date"], r["po_code"]), reverse=True)
 
 
 async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source: ErpSource) -> dict:
@@ -155,9 +165,10 @@ async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source
     warnings: list[str] = []
     company = await _match_company(session, po, allowed, warnings)
     cost_center = await _match_cost_center(session, company, warnings)
-    vendor = (await linked_vendors(session)).get(po.supplier_code)
+    vendor = (await linked_vendors(session, company.id)).get(po.supplier_code) if company is not None else None
     if vendor is None:
-        warnings.append(f"The vendor {po.supplier_name} is not linked to a CKAM vendor. Add or link it in Vendors first.")
+        where = f" for {company.name}" if company is not None else ""
+        warnings.append(f"The vendor {po.supplier_name} is not linked to a CKAM vendor{where}. Add or link it in Vendors first.")
     warehouse_code, warehouse = split_location(po)
     delivery_id, candidates = await _match_delivery(session, company, warehouse_code, warehouse, warnings)
 

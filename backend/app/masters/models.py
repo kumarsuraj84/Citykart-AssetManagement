@@ -1,5 +1,6 @@
-from sqlalchemy import BigInteger, ForeignKey, JSON, String, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+from datetime import datetime
+from sqlalchemy import BigInteger, DateTime, ForeignKey, JSON, String, UniqueConstraint, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.db import Base
 from app.core.models import AuditMixin, SoftDeleteMixin
 
@@ -93,9 +94,28 @@ class Vendor(Base, AuditMixin, SoftDeleteMixin):
     contact_name: Mapped[str | None] = mapped_column(String(200))
     contact_phone: Mapped[str | None] = mapped_column(String(30))
     contact_email: Mapped[str | None] = mapped_column(String(200))
-    # The ERP supplier code this vendor is the same as (set by "Add from ERP" /
-    # "Link to ERP"); POs are matched to vendors through it, not through names.
-    erp_vendor_code: Mapped[str | None] = mapped_column(String(50))
+    # The ERP supplier codes this vendor is the same as, one or more PER COMPANY (each company's ERP
+    # numbers its suppliers separately: code 61 is a different supplier in each). POs are matched to
+    # vendors through these links, never through names. Set by "Add from ERP" / "Link to ERP".
+    erp_links: Mapped[list["VendorErpLink"]] = relationship(
+        lazy="selectin", order_by="VendorErpLink.id", cascade="all, delete-orphan")
+
+
+class VendorErpLink(Base):
+    """One vendor is one supplier in each company's ERP: (company, ERP supplier code) -> vendor."""
+    __tablename__ = "vendor_erp_link"
+    __table_args__ = (UniqueConstraint("company_id", "erp_vendor_code", name="uq_vendor_erp_link_company_code"),)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    vendor_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("vendor.id"), index=True)
+    company_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("company.id"))
+    erp_vendor_code: Mapped[str] = mapped_column(String(50))
+    created_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("asset_user.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    company: Mapped[Company] = relationship(lazy="selectin")
+
+    @property
+    def company_code(self) -> str:
+        return self.company.code
 
 
 FIELD_TYPES = ("text", "number", "date", "dropdown", "checkbox")

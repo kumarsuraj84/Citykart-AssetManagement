@@ -14,7 +14,7 @@ from app.erp.source import (
 from app.items.models import Item, ItemMap
 from app.main import app
 from app.numbering.models import CodeRule
-from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Department, Location, Vendor
+from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Department, Location, Vendor, VendorErpLink
 from app.purchase_orders.models import PendingAsset, PurchaseOrder
 
 
@@ -143,11 +143,14 @@ async def _setup():
             spl_loc, vpl_loc,
             CostCenter(company_id=spl.id, code="CKSPL", name="CKSPL"),
             CostCenter(company_id=vpl.id, code="CKVPL", name="CKVPL"),
-            Vendor(code="VANSH", name="Vansh Enterprises", erp_vendor_code="11338"),     # linked
+            Vendor(code="VANSH", name="Vansh Enterprises"),                                # linked to CKSPL's supplier 11338 below
             Vendor(code="HARSHIT_INF", name="Harshit Infosolution"),                       # same name as ERP 555, not linked
             Vendor(code="OLDCO", name="Old Company"),
             CodeRule(company_id=None, prefix_template="FA/{company.code}/", suffix_template="", start_number=1, pad_width=4),
         ])
+        await session.flush()
+        vansh_id = (await session.execute(select(Vendor.id).where(Vendor.code == "VANSH"))).scalar_one()
+        session.add(VendorErpLink(vendor_id=vansh_id, company_id=spl.id, erp_vendor_code="11338"))
         await session.flush()
 
         def user(co, loc, code, name, role, type_="EMPLOYEE", owner=False):
@@ -224,52 +227,56 @@ def test_blank_tax_is_worked_out_from_the_po_tax_total_and_snapped_to_a_slab():
 
 async def test_the_erp_vendor_list_shows_links_and_suggestions(client, erp):
     ids = await _setup()
-    resp = await client.get("/api/erp/vendors", headers=await _headers(client))
+    resp = await client.get("/api/erp/vendors", params={"company_id": ids["spl"]}, headers=await _headers(client))
     assert resp.status_code == 200, resp.text
     by = {v["erp_code"]: v for v in resp.json()}
     assert by["11338"]["linked_vendor_id"] == ids["vansh"] and by["11338"]["suggested_vendor_id"] is None
     assert by["555"]["linked_vendor_id"] is None and by["555"]["suggested_vendor_id"] == ids["harshit"]   # same name
+    assert by["555"]["suggestion_reason"] == "name"
     assert by["2264"]["linked_vendor_id"] is None and by["2264"]["suggested_vendor_id"] is None
 
 
 async def test_adding_a_vendor_from_the_erp_copies_its_details_and_links_it(client, erp):
-    await _setup()
+    ids = await _setup()
     h = await _headers(client)
-    resp = await client.post("/api/erp/vendors/import", headers=h, json={"erp_vendor_code": "2264"})
+    resp = await client.post("/api/erp/vendors/import", headers=h, json={"company_id": ids["spl"], "erp_vendor_code": "2264"})
     assert resp.status_code == 201, resp.text
     body = resp.json()
-    assert (body["code"], body["name"], body["erp_vendor_code"]) == ("2264", "JAGANNATH ENTERPRISES", "2264")
-    again = await client.post("/api/erp/vendors/import", headers=h, json={"erp_vendor_code": "2264"})
+    assert (body["code"], body["name"]) == ("2264", "JAGANNATH ENTERPRISES")
+    assert [(l["company_code"], l["erp_vendor_code"]) for l in body["erp_links"]] == [("CKSPL", "2264")]
+    again = await client.post("/api/erp/vendors/import", headers=h, json={"company_id": ids["spl"], "erp_vendor_code": "2264"})
     assert again.status_code == 422 and "already a vendor" in again.json()["detail"]
-    unknown = await client.post("/api/erp/vendors/import", headers=h, json={"erp_vendor_code": "99999"})
+    unknown = await client.post("/api/erp/vendors/import", headers=h, json={"company_id": ids["spl"], "erp_vendor_code": "99999"})
     assert unknown.status_code == 422 and "not found in the ERP" in unknown.json()["detail"]
 
 
 async def test_linking_an_existing_vendor_and_the_one_to_one_rule(client, erp):
     ids = await _setup()
     h = await _headers(client)
-    ok = await client.post(f"/api/erp/vendors/{ids['harshit']}/link", headers=h, json={"erp_vendor_code": "555"})
-    assert ok.status_code == 200 and ok.json()["erp_vendor_code"] == "555"
-    taken = await client.post(f"/api/erp/vendors/{ids['oldco']}/link", headers=h, json={"erp_vendor_code": "555"})
+    body = {"company_id": ids["spl"], "erp_vendor_code": "555"}
+    ok = await client.post(f"/api/erp/vendors/{ids['harshit']}/link", headers=h, json=body)
+    assert ok.status_code == 200 and [l["erp_vendor_code"] for l in ok.json()["erp_links"]] == ["555"]
+    taken = await client.post(f"/api/erp/vendors/{ids['oldco']}/link", headers=h, json=body)
     assert taken.status_code == 422 and "already linked" in taken.json()["detail"]
-    gone = await client.delete(f"/api/erp/vendors/{ids['harshit']}/link", headers=h)
-    assert gone.status_code == 200 and gone.json()["erp_vendor_code"] is None
-    assert (await client.post("/api/erp/vendors/9999/link", headers=h, json={"erp_vendor_code": "555"})).status_code == 404
+    gone = await client.delete(f"/api/erp/vendors/{ids['harshit']}/link", params=body, headers=h)
+    assert gone.status_code == 200 and gone.json()["erp_links"] == []
+    assert (await client.post("/api/erp/vendors/9999/link", headers=h, json=body)).status_code == 404
 
 
 async def test_only_the_primary_owner_manages_vendor_links(client, erp):
     ids = await _setup()
     op = await _headers(client, "OPR")
-    assert (await client.get("/api/erp/vendors", headers=op)).status_code == 403
-    assert (await client.post("/api/erp/vendors/import", headers=op, json={"erp_vendor_code": "2264"})).status_code == 403
-    assert (await client.post(f"/api/erp/vendors/{ids['oldco']}/link", headers=op, json={"erp_vendor_code": "2264"})).status_code == 403
+    body = {"company_id": ids["spl"], "erp_vendor_code": "2264"}
+    assert (await client.get("/api/erp/vendors", params={"company_id": ids["spl"]}, headers=op)).status_code == 403
+    assert (await client.post("/api/erp/vendors/import", headers=op, json=body)).status_code == 403
+    assert (await client.post(f"/api/erp/vendors/{ids['oldco']}/link", headers=op, json=body)).status_code == 403
 
 
 async def test_a_down_erp_gives_a_clear_503_not_a_crash(client, erp):
-    await _setup()
+    ids = await _setup()
     erp.down = "The ERP database could not be reached (OSError)."
     h = await _headers(client)
-    for path in ("/api/erp/vendors", "/api/erp/pos", "/api/erp/pos/1133610106/draft"):
+    for path in (f"/api/erp/vendors?company_id={ids['spl']}", "/api/erp/pos", "/api/erp/pos/1133610106/draft"):
         resp = await client.get(path, headers=h)
         assert resp.status_code == 503 and "could not be reached" in resp.json()["detail"]
 
