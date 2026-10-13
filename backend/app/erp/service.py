@@ -15,8 +15,8 @@ from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, 
 from app.purchase_orders.models import PurchaseOrder
 from app.purchase_orders.service import add_pending_asset_line, create_purchase_order
 
-STANDARD_TAX_SLABS = (0, 5, 12, 18, 28)
-MAX_PLAUSIBLE_TAX_PERCENT = 35
+from app.erp.tax import MAX_PLAUSIBLE_TAX_PERCENT, STANDARD_TAX_SLABS, derive_tax  # noqa: F401  (re-exported: callers import derive_tax from here)
+
 COUNTABLE_UNITS = {"pcs", "pc", "nos", "no", "unit", "units", "set", "sets", "box", "roll", "ea", "each"}
 
 
@@ -36,23 +36,6 @@ def split_location(po: ErpPo) -> tuple[str, str]:
     prefix = f"{po.company_code}-".lower()
     short = location[len(prefix):] if po.company_code and location.lower().startswith(prefix) else location
     return location, short
-
-
-def derive_tax(po: ErpPo) -> tuple[float | None, float]:
-    """Tax % for lines where the ERP left it blank: the PO's total charges
-    against the sum of its line amounts, snapped to the nearest GST slab when
-    close. Returns (percent | None when it cannot be worked out, raw percent)."""
-    base = sum(l.line_net for l in po.lines)
-    if base <= 0 or po.header_net <= base:
-        return None, 0.0
-    # The PO's net total is the lines plus tax (checked on the real data: 1.18 x
-    # the lines on every blank-tax PO). The ERP's own "charges" figure is not
-    # used: on those POs it simply repeats the line total.
-    raw = (po.header_net - base) / base * 100
-    if raw > MAX_PLAUSIBLE_TAX_PERCENT:
-        return None, raw
-    slab = min(STANDARD_TAX_SLABS, key=lambda s: abs(s - raw))
-    return (float(slab) if abs(slab - raw) <= 0.6 else round(raw, 2)), raw
 
 
 async def _match_company(session, po: ErpPo, allowed: list[int] | None, warnings: list[str]):
@@ -182,6 +165,9 @@ async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source
 
     brands = (await session.execute(select(Brand).where(Brand.is_active.is_(True)))).scalars().all()
     derived_tax, raw_tax = derive_tax(po)
+    worked_out = next((ln.tax_percent for ln in po.lines if ln.tax_derived), None)
+    if worked_out is not None:
+        warnings.append(f"The ERP stores no tax % on the lines of this PO; {worked_out:g}% was worked out from the PO's tax total. Check it.")
     # Which CKAM Item each ERP code is (code > product name > Article), and what
     # the ERP says about each code, so the review screen can show words next to
     # the code and ask once for any code that has no Item yet.

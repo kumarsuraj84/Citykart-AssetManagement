@@ -65,6 +65,8 @@ class ErpPoLine:
     line_net: float
     received_qty: float = 0
     cancelled_qty: float = 0
+    # True when `tax_percent` was worked out from the PO's total (the ERP stores none on the line).
+    tax_derived: bool = False
 
 
 @dataclass

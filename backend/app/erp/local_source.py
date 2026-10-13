@@ -15,6 +15,7 @@ from app.erp.mirror_models import ErpItemCopy, ErpPoLineCopy, ErpSyncRun, ErpVen
 from app.erp.source import (
     ErpArticle, ErpArticleCode, ErpInvoice, ErpItem, ErpPo, ErpPoLine, ErpReceipt, ErpSource, ErpVendor, clean_name,
 )
+from app.erp.tax import derive_tax
 from app.erp.warehouse import derive_po_status
 
 
@@ -60,6 +61,14 @@ class LocalErpSource:
                           received_qty=float(l.rcqty or 0), cancelled_qty=float(l.cnlqty or 0))
                 for l in lines
             ]
+            # The warehouse stores no tax % on a line, only the PO's total: work it out from the PO (as the
+            # old gold_ckam view did), and say it was worked out so the draft can ask for a check.
+            if any(l.tax_percent is None for l in po.lines):
+                derived, _ = derive_tax(po)
+                if derived is not None:
+                    for l in po.lines:
+                        if l.tax_percent is None:
+                            l.tax_percent, l.tax_derived = derived, True
         return po
 
     async def _pos(self, where, with_lines: bool) -> list[ErpPo]:

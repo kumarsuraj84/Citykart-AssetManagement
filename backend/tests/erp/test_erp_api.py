@@ -221,6 +221,10 @@ def test_blank_tax_is_worked_out_from_the_po_tax_total_and_snapped_to_a_slab():
     # Real POs exist whose net is more than the lines by far more than any GST
     # slab (a bad figure, not tax): never offered as a tax %.
     assert derive_tax(desktop_po(header_net=400000))[0] is None
+    # A PO that carries something besides its lines (freight) still shows its tax: the charges are exactly 18% of the PO's gross
+    # (here the lines are 140,000 and the gross 150,000), though net / lines would suggest 19.x%.
+    with_freight = desktop_po(header_net=177000, header_charges=27000)
+    assert derive_tax(with_freight)[0] == 18.0
 
 
 # ---------- vendors ----------
@@ -458,3 +462,22 @@ async def test_the_status_says_whether_the_erp_is_set_up(client, monkeypatch):
     for name, value in (("po_source_host", "h"), ("po_source_db", "d"), ("po_source_user", "u"), ("po_source_password", "p")):
         monkeypatch.setattr(settings, name, value)
     assert (await client.get("/api/erp/status", headers=h)).json() == {"configured": True}
+
+
+async def test_a_tax_worked_out_from_the_po_total_is_flagged_once_for_the_whole_po_not_on_every_line(client, erp):
+    from dataclasses import replace
+    await _setup()
+    lines = [replace(line(1, "CT324973", "DELL DESKTOP", 7, 20000, tax=18.0), tax_derived=True),
+             replace(line(2, "CT324973", "DELL DESKTOP 2", 1, 5000, tax=18.0), tax_derived=True)]
+    erp.pos[1133610106] = desktop_po(lines=lines, header_net=165200 + 5900)
+    draft = (await client.get("/api/erp/pos/1133610106/draft", headers=await _headers(client, "OPR"))).json()
+    po_level = [w for w in draft["warnings"] if "stores no tax %" in w]
+    assert len(po_level) == 1 and "18% was worked out" in po_level[0]
+    assert not any("tax" in w for ln in draft["lines"] for w in ln["warnings"])          # no repeated per-line warning
+    assert [ln["tax_percent"] for ln in draft["lines"]] == [18.0, 18.0]
+
+
+async def test_a_po_with_a_real_tax_on_its_lines_has_no_tax_warning(client, erp):
+    await _setup()
+    draft = (await client.get("/api/erp/pos/1133610106/draft", headers=await _headers(client, "OPR"))).json()
+    assert not any("tax" in w.lower() for w in draft["warnings"])

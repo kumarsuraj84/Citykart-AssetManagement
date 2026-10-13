@@ -138,6 +138,23 @@ async def test_the_codes_of_an_article_are_listed_with_their_use(source):
     assert await source.article_codes("01-MOUSE[IT-01]", "CKVPL") == []
 
 
+async def test_a_tax_the_warehouse_does_not_store_is_worked_out_from_the_po_total_and_marked_as_such():
+    wh = FakeWarehouse()
+    wh.lines = [
+        wh_line("CKSPL", "T1", po_code=3001, tax_percent=None, line_netamt=4500.0, hdr_netamt=5310.0),     # 4500 + 18% = 5310
+        wh_line("CKSPL", "T2", po_code=3002, tax_percent=None, line_netamt=4500.0, hdr_netamt=4500.0),     # no tax on top: cannot be worked out
+        wh_line("CKSPL", "T3", po_code=3003, tax_percent=12.0, line_netamt=4500.0, hdr_netamt=5310.0),     # a stored tax is kept as it is
+    ]
+    await run_sync(SessionLocal, wh, "manual")
+    source = LocalErpSource(live=Live(), session_factory=SessionLocal)
+    [t1] = (await source.po(3001)).lines
+    [t2] = (await source.po(3002)).lines
+    [t3] = (await source.po(3003)).lines
+    assert (t1.tax_percent, t1.tax_derived) == (18.0, True)
+    assert (t2.tax_percent, t2.tax_derived) == (None, False)
+    assert (t3.tax_percent, t3.tax_derived) == (12.0, False)
+
+
 async def test_receipts_and_invoices_still_come_from_the_live_source(source):
     assert await source.receipts([1001]) == "live:receipts"
     assert await source.invoices([1001]) == "live:invoices"
