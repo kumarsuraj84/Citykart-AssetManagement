@@ -11,9 +11,32 @@ POs from an uploaded PDF (that code was dropped, never released).
 | Server | `10.0.1.69:5432`, PostgreSQL 17, database `data_extraction` |
 | Login | role `ckpost`, read-only (every connection also sets `default_transaction_read_only`) |
 | Settings | `PO_SOURCE_HOST/PORT/DB/USER/PASSWORD` in `.env` (dev) or `shared\.env` (prod). The password is typed in by the user, never into chat, code or compose files. All empty = ERP screens off |
-| Code | `backend/app/erp/` (`source.py` is the only place that talks to the ERP; tests replace it with a stand-in through the `get_erp_source` dependency) |
+| Code | `backend/app/erp/`: `warehouse.py` reads the warehouse (for the nightly copy), `sync.py` makes the copy, `local_source.py` serves it to the screens, `source.py` is the live reader and the `ErpSource` interface; tests replace the source through the `get_erp_source` dependency and the warehouse through `get_warehouse_reader` |
 
-## What it reads (all in schema `gold_ckam`)
+## CKAM's own copy of the ERP data (built 2026-10-13, both companies)
+
+The screens no longer ask the warehouse live. A sync copies the **fixed-asset** PO lines, the suppliers and the items they
+use into CKAM's own tables (`erp_po_line`, `erp_vendor`, `erp_item`, `erp_sync_run`); `LocalErpSource` serves the same
+`ErpSource` interface from them, so the PO picker, drafts, reminders and the PO change check run unchanged on the copy.
+
+- **Source**: the warehouse's `gold_ckpost` tables (`po_line`, `vendor`, `article`, `site`), which hold **both companies** in one table,
+  told apart by `company` (`CKSPL`, `CKVPL`). They mirror `silver.ckp_*`. `gold_ckam.po_line` (CKSPL only) is no longer read for POs.
+- **When**: at server start and then every `ERP_SYNC_CHECK_MINUTES` (30), a sync runs when the warehouse says it loaded newer data
+  (`meta.v_freshness`, target `gold_ckpost.po_line`), or at least daily if it cannot say. `ERP_SYNC_ENABLED=false` switches it off.
+  Primary Owner: **Refresh now** (`POST /api/erp/sync`); everyone who can work with POs sees "ERP data as of ..." (`GET /api/erp/sync`).
+- **What is copied**: PO lines of the last 548 days plus every PO that still has an open line; the suppliers and items those lines use.
+  A row the warehouse stops returning is marked `is_present = false`, never deleted; `row_hash` (business fields only) tells a real change
+  from a plain reload. Real data (dev, 2026-10-13): 18,358 lines (CKSPL 17,955, CKVPL 403), 191 suppliers, 1,092 items; first copy about
+  75 s, a repeat copy 3 s with nothing changed.
+- **A PO's status** is derived from its lines (all cancelled = CANCELLED, all closed/cancelled = CLOSED, else OPEN); the new layer
+  marks a fully received PO closed sooner than the old `gold_ckam` view did.
+- **Tax**: the warehouse stores no tax % on a line. It is worked out from the PO (charges over gross when that is a GST slab, else the
+  net-over-lines rule below) and flagged once per PO for a check. Where the old view had a tax, the copy agrees.
+- **Codes are per company**: an ERP code is always (company, code). Supplier codes and site codes repeat across the two companies
+  and mean different things; item codes (`CT...` / `CV...`) and PO codes do not.
+- **Receipts and invoices** (`po_receipt_line`, `po_invoice`) are still read live and are not created yet (see below).
+
+## What the live reader reads (schema `gold_ckam`; now only the fallback before the first copy, receipts and invoices)
 
 | View | Used for | Status |
 |---|---|---|
@@ -27,7 +50,7 @@ View names are constants at the top of `source.py`.
 
 ## What exists today
 
-- **Vendors**: `vendor.erp_vendor_code` ties a CKAM vendor to an ERP supplier (unique when set). Vendors screen -> "Add from ERP" lists ERP suppliers; add one as a vendor (CKAM Code = ERP supplier code), link an existing vendor (name/code suggestion shown), or unlink. Primary Owner only. Matching is by the ERP code, so renaming a vendor never breaks it.
+- **Vendors**: `vendor_erp_link(vendor, company, ERP supplier code)` ties a CKAM vendor to an ERP supplier **per company** (unique per company and code; one vendor can have a link in each company, and several inside one company). The same supplier has a different code in each company and the same code is a different supplier (690 clashing codes), so a code alone never identifies a vendor. Vendors screen -> "Add from ERP": pick the company, then add a supplier as a vendor (CKAM Code = the ERP code, or `<COMPANY>-<code>` when the other company's supplier already took it), link an existing vendor, or unlink. A suggestion is the vendor with the same **GSTIN** (its own, or the one the ERP holds for a supplier it is already linked to), else the same name or code; a supplier whose GSTIN is already a vendor cannot be added twice, only linked. Primary Owner only. Matching is by (company, ERP code), so renaming a vendor never breaks it.
 - **Purchase orders**: Purchase Orders -> "Pick from ERP" lists OPEN POs of linked vendors that are not in CKAM yet; "Review" opens an editable draft (same screen the PDF idea had: bundle suggestion, item memory, delivery location pre-selected as the future Initial Asset User); "Create this purchase order" makes the PO and its lines. `purchase_order.erp_po_code` (unique) stops it being created twice. ADMIN and OPERATOR.
 - Each ERP code is resolved to a CityKart **Item** (code > product name > Article rule, see `ITEM_MODEL.md`); category, sub-category, bundle and default brand/warranty come from the Item, and an unlinked code asks for the Item once. The ERP's own words (CAT1..CAT6) and Section > Department > Article are shown beside the code.
 - Draft rules: company by code (no match -> left empty with a warning); cost centre = the company's own code/name; delivery location `CKSPL-WH-TAJNAGAR` -> stock point named like `WH Tajnagar` (an earlier PO's choice for the same location wins); blank tax % is worked out as (PO net total / sum of its lines - 1) and snapped to a GST slab, with a warning (on the real data every blank-tax PO comes out at exactly 18%; the ERP's own "charges" field is NOT used because on those POs it just repeats the line total; anything above 35% is treated as not-tax and left for the user); non-piece units (MTR, KG), fractional quantities and already-received quantities are flagged; fully cancelled lines are dropped.
@@ -58,7 +81,8 @@ CKAM's own lines, so units a person cancelled deliberately here never reappear a
 | quantity raised | `ADD_UNITS` | adds units copied from the existing lines (bundles through the bundle) at the ERP's rate and tax |
 | rate / tax edited | `COST_CHANGED` | pending units get the new cost (a bundle's price is split by its shares); delivered assets keep theirs |
 | new item code | `NEW_ITEM` | not applied automatically: add it with + Add Line / + Add Bundle, then mark it as added |
-| closed, vendor or delivery location changed | `HEADER` | information only; "Noted" |
+| the ERP moved the PO to another supplier | `VENDOR_CHANGED` | moves the PO to the CKAM vendor linked to that supplier **in the PO's company** (refused until it is linked); delivered units keep the vendor they were delivered with |
+| closed or delivery location changed | `HEADER` | information only; "Noted" (acknowledging it does not hide a vendor change, and vice versa) |
 
 Every difference can instead be **kept** (the PO is left alone and the ERP's state is remembered as agreed). Nothing
 changes by itself; only a person applies or keeps, and every choice is logged (`purchase_order_erp_change`, shown on
@@ -71,4 +95,8 @@ there. The ERP's data is as of its daily load, so a change shows the next mornin
 
 ## Open decisions
 
-CKVPL POs (none in the view), whether store deliveries should be offered, and the 48 open POs whose number has no series prefix.
+- Fully received POs: the ERP closes a PO when it is received, so a PO received before anyone picks it here is no longer offered
+  (it was the same with `gold_ckam`, only the new layer shows it a day sooner). Offering recently closed POs is still open.
+- CKVPL has 856 fixed-asset PO lines (about 500 POs, newest 2026-10-09), delivered to HO and its warehouses; its goods receipts are
+  not in `fact_grc_line`, so its received quantity comes from the PO line itself and its invoices cannot be matched to a PO.
+- The 48 open POs whose number has no series prefix.

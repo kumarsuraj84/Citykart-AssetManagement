@@ -2,6 +2,24 @@
 
 Newest first. These override older spec/plan text where they conflict.
 
+## 2026-10-13 — Two companies: CKAM keeps its own copy of the ERP data, and every ERP code is (company, code)
+
+CKSPL and CKVPL buy the same articles from the same vendors, each in its own ERP numbering. Checked on the real data: item
+codes never repeat across them (`CT...` / `CV...`), but **supplier codes do (690 codes, always different suppliers)** and so do
+site codes, while the same real supplier (same GSTIN) has a different code in each. So:
+- **One CKAM vendor, one ERP supplier code per company** (`vendor_erp_link`, unique per company and code; replaces
+  `vendor.erp_vendor_code`). A new supplier is matched to a vendor by GSTIN (the vendor's own, or the one the ERP holds for a supplier
+  it is already linked to), then name or code; a person confirms; a supplier whose GSTIN is already a vendor is linked, not added twice.
+- **CKAM reads the ERP through its own copy**, made by a background sync from the warehouse's `gold_ckpost` tables (both companies, one
+  query shape) and refreshed when the warehouse reports a newer load. Screens never wait on the ERP, keep working when it is down
+  ("ERP data as of ..."), and the PO change check compares with the copy. The ERP is still only ever read.
+- **A vendor the ERP moves a PO to** is an applicable change (moves the PO to the CKAM vendor linked to that supplier in the PO's
+  company); delivered units keep their vendor.
+- Owner decisions the same day (not built yet): store users are made from the ERP site list with the login
+  `sm.<code>@citykartstores.com` (HO / WH / Training Room made by hand); an asset may be allotted or installed across companies in both
+  directions; no in-transit or receipt step: moving to a store user allots directly; use only layers the warehouse offers (silver/gold),
+  gold views are shared when they exist. See `docs/superpowers/specs/2026-10-13-ckam-two-company-architecture-design.md`.
+
 ## 2026-10-12 — ERP cancellations and edits of a PO made from the ERP: CKAM shows, a person decides
 
 A PO made from the ERP is a copy, so a later cancellation or edit in the ERP must not silently rewrite it (assets
