@@ -3,6 +3,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
 from app.core.deps import WRITE_ROLES, require_primary_owner, require_role, scoped_company_ids
+from app.erp import mirror_models  # noqa: F401  (registers the local ERP copy tables on the metadata)
 from app.erp import vendors as erp_vendors
 from app.erp.changes import apply_changes, changes_summary, po_changes, snapshot_baseline
 from app.erp.invoices import apply_pi, pi_preview
