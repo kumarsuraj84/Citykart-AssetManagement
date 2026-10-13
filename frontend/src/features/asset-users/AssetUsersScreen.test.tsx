@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, within } from "@testing-library/rea
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AssetUsersScreen } from "./AssetUsersScreen";
 import { apiClient, ApiError } from "../../lib/api-client";
+import { useAuthStore } from "../../lib/auth-store";
 
 // Keeps the real ApiError class (so `instanceof ApiError` checks inside the
 // bulk-deactivate helper work against the same class this test constructs)
@@ -81,6 +82,20 @@ async function pickSelectOption(label: RegExp | string, optionName: RegExp | str
 }
 
 describe("AssetUsersScreen", () => {
+  it("offers Stores from ERP to the Primary Owner only", async () => {
+    mockGets();
+    useAuthStore.getState().setAuth({ accessToken: "t", role: "ADMIN", companyId: 1, isPrimaryOwner: false, mustChangePassword: false });
+    const { unmount } = renderWithClient(<AssetUsersScreen />);
+    await waitFor(() => expect(screen.getByText("Ankur")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Stores from ERP" })).not.toBeInTheDocument();
+    unmount();
+
+    useAuthStore.getState().setAuth({ accessToken: "t", role: "ADMIN", companyId: 1, isPrimaryOwner: true, mustChangePassword: false });
+    renderWithClient(<AssetUsersScreen />);
+    expect(await screen.findByRole("button", { name: "Stores from ERP" })).toBeInTheDocument();
+    useAuthStore.getState().logout();
+  });
+
   it("resets a asset_user's password and shows the temp password", async () => {
     mockGets();
     (apiClient.post as any).mockResolvedValue({ temp_password: "abc123XYZ" });

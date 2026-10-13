@@ -36,6 +36,21 @@ use into CKAM's own tables (`erp_po_line`, `erp_vendor`, `erp_item`, `erp_sync_r
   and mean different things; item codes (`CT...` / `CV...`) and PO codes do not.
 - **Receipts and invoices** (`po_receipt_line`, `po_invoice`) are still read live and are not created yet (see below).
 
+## Store users from the ERP's site list (built 2026-10-13)
+
+The copy also holds the ERP's sites (`erp_site`, key = company + site code: site codes repeat across the companies). Asset Users ->
+**Stores from ERP** (Primary Owner) lists one company's stores and makes a **Location + a STORE user** (code = the store's short name,
+e.g. `LAM`; login email `sm.<code in lower case>@citykartstores.com`, from `STORE_EMAIL_PATTERN`) for each one ticked.
+- Offered: sites of kind STORE that are switched on in the ERP and whose code is **three letters, optionally one digit** (`LAM`, `SPR2`).
+  Ticked to start with: store status ACTIVE. Upcoming (`UPCOMING_STORE`, they can already receive POs) and closed/inactive stores can be
+  ticked. Dummy and test sites (`UP-DUMMY`, `BRBxx`, `HRD_`...) are listed as "not a store code" and cannot be created. HO, warehouses and
+  Training Room are made by hand.
+- Real data (dev, 2026-10-13, CKSPL): 212 open, 19 upcoming, 47 closed or inactive, 22 not store codes; CKVPL has no stores.
+- A new store user is `SELF_SERVICE`, login-enabled, with **no password**: it cannot sign in until an admin issues one (Reset Password, which
+  shows a temporary password once). It can sign in with its email or its code. Re-running adds only new stores; an existing user with the
+  code, or an email another user already has, is skipped with the reason; an existing Location with the same code is reused.
+- `GET /api/erp/stores?company_id=`, `POST /api/erp/stores/create` `{company_id, codes}`; Primary Owner only.
+
 ## What the live reader reads (schema `gold_ckam`; now only the fallback before the first copy, receipts and invoices)
 
 | View | Used for | Status |

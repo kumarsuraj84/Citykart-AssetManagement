@@ -38,6 +38,7 @@ import { BulkImportExport } from "@/components/shared/BulkImportExport";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { NewDepartmentDialog, NewLocationDialog, useCanCreateMasters } from "@/components/quick-create/masters";
 import { bulkDeactivate, type BulkDeactivateFailure } from "../../lib/bulk-deactivate";
+import { ErpStoresDialog } from "./ErpStoresDialog";
 
 const ASSET_USER_TYPES = ["EMPLOYEE", "STORE", "INSTALLED", "STOCK_POINT"] as const;
 // The Primary Owner is deliberately excluded -- it's fixed, not selectable
@@ -468,6 +469,7 @@ export function AssetUsersScreen() {
               basePath="/asset-users"
               onImported={() => qc.invalidateQueries({ queryKey: ["asset_users"] })}
             />
+            {canCreateMasters && <ErpStoresDialog />}
             <Button onClick={openAdd}>Add</Button>
           </>
         }
