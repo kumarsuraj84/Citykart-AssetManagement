@@ -84,13 +84,18 @@ async def test_an_item_says_yes_by_default_and_can_say_no(client):
     assert (await client.post("/api/items", headers=h, json={"name": "No sub", "category_id": cat["id"]})).status_code == 422   # sub-category is required
 
 
-async def test_only_the_primary_owner_can_change_the_rule(client):
+async def test_an_operator_may_add_an_item_but_not_change_its_rule_afterwards(client):
+    # S3a-1: an OPERATOR may add an Item in the flow (own work area); changing
+    # an existing Item's serial rule needs an admin of its work area.
     await _setup()
     owner, op = await _headers(client, "OWN"), await _headers(client, "OPR")
     cat, _, sw, _ = await _masters(client, owner)
     resp = await client.post("/api/items", headers=op, json={
         "name": "X", "category_id": cat["id"], "subcategory_id": sw["id"], "serial_required": False})
-    assert resp.status_code == 403
+    assert resp.status_code == 201, resp.text
+    changed = await client.put(f"/api/items/{resp.json()['id']}", headers=op, json={
+        "name": "X", "category_id": cat["id"], "subcategory_id": sw["id"], "serial_required": True})
+    assert changed.status_code == 403
 
 
 async def test_a_po_line_takes_its_category_and_serial_default_from_the_item(client):

@@ -14,6 +14,7 @@ from app.erp.sync import sync_loop
 from app.erp.warehouse import get_warehouse_reader
 from app.auth.router import router as auth_router
 from app.asset_users.router import router as asset_users_router
+from app.asset_users.stock_rooms import router as stock_rooms_router
 from app.masters.router import router as masters_router
 from app.numbering.router import router as numbering_router
 from app.assets.router import router as assets_router
@@ -98,6 +99,7 @@ app = FastAPI(title="CityKart Asset Manager API", lifespan=lifespan)
 register_exception_handlers(app)
 app.include_router(auth_router)
 app.include_router(asset_users_router)
+app.include_router(stock_rooms_router)
 app.include_router(masters_router)
 app.include_router(numbering_router)
 app.include_router(assets_router)

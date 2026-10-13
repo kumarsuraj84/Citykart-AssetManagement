@@ -15,11 +15,18 @@ def _required_name(value: str) -> str:
     return require_text(value, "Name")
 
 
+def _optional_code(value: str | None) -> str | None:
+    """S3a-1: vendor / brand / cost centre `code` may be left out (or null) --
+    a readable unique code is then made from the name. A code that IS sent is
+    checked exactly as before (blank refused, trimmed)."""
+    return None if value is None else require_text(value, "Code")
+
+
 class BrandIn(InModel):
-    code: str = Field(max_length=20)
+    code: str | None = Field(default=None, max_length=20)
     name: str = Field(max_length=200)
 
-    _code = field_validator("code")(_required_code)
+    _code = field_validator("code")(_optional_code)
     _name = field_validator("name")(_required_name)
 
 
@@ -38,14 +45,14 @@ class BrandOut(BaseModel):
 
 
 class VendorIn(InModel):
-    code: str = Field(max_length=100)
+    code: str | None = Field(default=None, max_length=100)
     name: str = Field(max_length=200)
     gstin: str | None = Field(default=None, max_length=20)
     contact_name: str | None = Field(default=None, max_length=200)
     contact_phone: str | None = Field(default=None, max_length=30)
     contact_email: str | None = Field(default=None, max_length=200)
 
-    _code = field_validator("code")(_required_code)
+    _code = field_validator("code")(_optional_code)
     _name = field_validator("name")(_required_name)
 
 
@@ -172,10 +179,10 @@ class DepartmentOut(BaseModel):
 
 class CostCenterIn(InModel):
     company_id: int
-    code: str = Field(max_length=20)
+    code: str | None = Field(default=None, max_length=20)
     name: str = Field(max_length=200)
 
-    _code = field_validator("code")(_required_code)
+    _code = field_validator("code")(_optional_code)
     _name = field_validator("name")(_required_name)
 
 
@@ -215,6 +222,10 @@ class AssetCategoryEditIn(InModel):
     # Spec §43: changing this affects FUTURE assets only -- an existing
     # Asset's own asset_domain snapshot is never rewritten by this edit.
     asset_domain: str
+    # S3a-1: moving a category to the other work area (IT <-> Non-IT) must be
+    # confirmed explicitly; without it the change is refused with a sentence
+    # saying what it affects. Ignored when the work area stays the same.
+    confirm_domain_change: bool = False
 
     _name = field_validator("name")(_required_name)
 

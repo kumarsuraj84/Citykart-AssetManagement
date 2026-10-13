@@ -124,12 +124,22 @@ async def list_items(session: AsyncSession) -> list[dict]:
     counts = dict((await session.execute(
         select(ItemMap.item_id, func.count()).where(ItemMap.is_active.is_(True), ItemMap.item_id.is_not(None)).group_by(ItemMap.item_id)
     )).all())
+    # S3a-1 (additive): work area and names, one lookup each per list.
+    category_ids = {i.category_id for i in items}
+    sub_ids = {i.subcategory_id for i in items if i.subcategory_id is not None}
+    categories = {c.id: (c.name, c.asset_domain) for c in (await session.execute(
+        select(AssetCategory).where(AssetCategory.id.in_(category_ids)))).scalars().all()} if category_ids else {}
+    subs = dict((await session.execute(
+        select(AssetSubcategory.id, AssetSubcategory.name).where(AssetSubcategory.id.in_(sub_ids)))).all()) if sub_ids else {}
     return [
         {
             "id": i.id, "name": i.name, "category_id": i.category_id, "subcategory_id": i.subcategory_id,
             "serial_required": i.serial_required, "serial_later": i.serial_later, "bundle_id": i.bundle_id, "default_brand_id": i.default_brand_id,
             "default_warranty_years": i.default_warranty_years, "is_active": i.is_active,
             "map_count": counts.get(i.id, 0),
+            "work_area": categories.get(i.category_id, (None, None))[1],
+            "category_name": categories.get(i.category_id, (None, None))[0],
+            "subcategory_name": subs.get(i.subcategory_id),
         }
         for i in items
     ]

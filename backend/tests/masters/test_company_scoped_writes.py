@@ -44,27 +44,30 @@ async def _owner_headers(client):
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 
-async def test_operator_can_never_write_masters_regardless_of_company_scope(client):
+async def test_operator_adds_cost_centres_only_in_own_company_and_never_edits_them(client):
+    # S3a-1: an OPERATOR may ADD a cost centre in the flow, inside their own
+    # company scope; editing / removing stays with the head-office admin.
     a, b, cc_a, cc_b = await _setup()
     h = await _headers(client, a, "ITA")
 
     assert (await client.post("/api/masters/cost-centers", json={"company_id": b, "code": "X", "name": "X"}, headers=h)).status_code == 403
-    assert (await client.post("/api/masters/cost-centers", json={"company_id": a, "code": "X", "name": "X"}, headers=h)).status_code == 403
+    assert (await client.post("/api/masters/cost-centers", json={"company_id": a, "code": "X", "name": "X"}, headers=h)).status_code == 201
     assert (await client.put(f"/api/masters/cost-centers/{cc_a}", json={"name": "hacked"}, headers=h)).status_code == 403
     assert (await client.delete(f"/api/masters/cost-centers/{cc_b}", headers=h)).status_code == 403
 
 
-async def test_ordinary_admin_can_never_write_masters_either(client):
-    """The rebuild's core new rule: ADMIN alone is no longer enough for
-    master data -- only is_primary_owner=True is."""
+async def test_ordinary_admin_adds_small_records_but_never_edits_or_does_heavy_setup(client):
+    """S3a-1: an ordinary ADMIN (both work areas, every company) may ADD a cost
+    centre and a category of their work area; removing a cost centre and
+    creating a company stay with the head-office admin."""
     a, b, _, cc_b = await _setup()
     admin = await _headers(client, a, "ADM")
 
-    assert (await client.post("/api/masters/cost-centers", json={"company_id": b, "code": "Y", "name": "Y"}, headers=admin)).status_code == 403
+    assert (await client.post("/api/masters/cost-centers", json={"company_id": b, "code": "Y", "name": "Y"}, headers=admin)).status_code == 201
     assert (await client.delete(f"/api/masters/cost-centers/{cc_b}", headers=admin)).status_code == 403
     assert (
         await client.post("/api/masters/categories", json={"code": "IT", "name": "IT", "asset_domain": "IT"}, headers=admin)
-    ).status_code == 403
+    ).status_code == 201
     assert (await client.post("/api/masters/companies", json={"code": "NEW", "name": "New"}, headers=admin)).status_code == 403
 
 

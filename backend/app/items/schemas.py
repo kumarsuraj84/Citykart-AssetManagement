@@ -12,6 +12,9 @@ class ItemIn(BaseModel):
     bundle_id: int | None = None
     default_brand_id: int | None = None
     default_warranty_years: int | None = Field(default=None, ge=0, le=100)
+    # S3a-1, edit only: moving an Item to a category of the other work area
+    # (IT <-> Non-IT) must be confirmed explicitly. Ignored on create.
+    confirm_domain_change: bool = False
 
 
 class ItemOut(BaseModel):
@@ -27,6 +30,11 @@ class ItemOut(BaseModel):
     default_warranty_years: int | None
     is_active: bool
     map_count: int = 0
+    # S3a-1 (additive): the Item's work area (its Category's: "IT" / "NON_IT")
+    # and the names of its Category and Sub-category.
+    work_area: str | None = None
+    category_name: str | None = None
+    subcategory_name: str | None = None
 
 
 class ItemMapIn(BaseModel):

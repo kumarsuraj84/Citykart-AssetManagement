@@ -213,7 +213,10 @@ async def test_units_without_a_number_get_one_after_the_highest_when_the_lines_a
     assert None not in {u.line_no for u in await _units(po["id"])}
 
 
-def test_there_is_exactly_one_migration_head_and_it_is_the_line_number_migration():
+def test_there_is_exactly_one_migration_head_and_it_includes_the_line_number_migration():
+    # S3a-1 added c1d3e5f7a9b0 (master_audit) on top of the line-number migration.
     config = Config(str(APP_DIR / "alembic.ini"))
-    heads = ScriptDirectory.from_config(config).get_heads()
-    assert heads == ["b8d0f2a4c6e8"]
+    script = ScriptDirectory.from_config(config)
+    heads = script.get_heads()
+    assert len(heads) == 1
+    assert "b8d0f2a4c6e8" in {rev.revision for rev in script.walk_revisions("base", heads[0])}

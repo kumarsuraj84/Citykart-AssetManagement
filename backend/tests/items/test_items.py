@@ -22,14 +22,16 @@ def body(ids, **over):
 
 # ---------- items ----------
 
-async def test_only_the_primary_owner_changes_items_and_operators_can_read_them(client):
+async def test_operators_add_items_but_only_admins_change_them_and_operators_can_read_them(client):
+    # S3a-1: an OPERATOR may ADD an Item (own work area); editing / removing stays with admins.
     ids = await _make_ids(client)
     made = await client.post("/api/items", headers=ids["owner"], json=body(ids))
     assert made.status_code == 201, made.text
-    assert (await client.post("/api/items", headers=ids["op"], json=body(ids, name="Other"))).status_code == 403
+    assert (await client.post("/api/items", headers=ids["op"], json=body(ids, name="Other"))).status_code == 201
+    assert (await client.post("/api/items", headers=ids["viewer"], json=body(ids, name="Third"))).status_code == 403
     assert (await client.get("/api/items", headers=ids["viewer"])).status_code == 403
     names = {i["name"] for i in (await client.get("/api/items", headers=ids["op"])).json()}
-    assert names == {"Cable", "Desktop", "UPS", "CPU", "TFT", "Keyboard", "Mouse"}      # the four parts of the Desktop are Items too
+    assert names == {"Cable", "Desktop", "UPS", "Other", "CPU", "TFT", "Keyboard", "Mouse"}   # the four parts of the Desktop are Items too
     assert (await client.put(f"/api/items/{made.json()['id']}", headers=ids["op"], json=body(ids))).status_code == 403
     assert (await client.delete(f"/api/items/{made.json()['id']}", headers=ids["op"])).status_code == 403
 

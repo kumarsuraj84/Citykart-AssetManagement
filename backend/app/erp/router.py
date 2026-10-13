@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.capabilities import ensure_company_for_create, require_small_create
 from app.core.db import SessionLocal, get_session
 from app.core.errors import integrity_message
 from app.core.deps import WRITE_ROLES, allowed_asset_domains, require_primary_owner, require_role, scoped_company_ids
@@ -96,8 +97,11 @@ async def list_vendors(
 @router.post("/vendors/import", response_model=VendorOut, status_code=201)
 async def import_vendor(
     body: ErpVendorLinkIn, session: AsyncSession = Depends(get_session),
-    source: ErpSource = Depends(get_erp_source), actor=Depends(require_primary_owner()),
+    source: ErpSource = Depends(get_erp_source), actor=Depends(require_small_create("a vendor")),
 ):
+    """S3a-1: ADMIN / OPERATOR may add a vendor from an ERP supplier of a company
+    they work in (e.g. while reviewing an ERP PO whose supplier is not linked)."""
+    await ensure_company_for_create(session, actor, body.company_id, "a vendor link")
     try:
         vendor = await erp_vendors.import_vendor(session, actor, source, body.company_id, body.erp_vendor_code)
         await session.commit()
@@ -119,8 +123,11 @@ async def import_vendor(
 @router.post("/vendors/{vendor_id}/link", response_model=VendorOut)
 async def link_vendor(
     vendor_id: int, body: ErpVendorLinkIn, session: AsyncSession = Depends(get_session),
-    source: ErpSource = Depends(get_erp_source), actor=Depends(require_primary_owner()),
+    source: ErpSource = Depends(get_erp_source), actor=Depends(require_small_create("a vendor link")),
 ):
+    """S3a-1: ADMIN / OPERATOR may link an ERP supplier of a company they work
+    in to an existing vendor. Unlinking stays with the head-office admin."""
+    await ensure_company_for_create(session, actor, body.company_id, "a vendor link")
     try:
         vendor = await erp_vendors.link_vendor(session, actor, source, vendor_id, body.company_id, body.erp_vendor_code)
         await session.commit()

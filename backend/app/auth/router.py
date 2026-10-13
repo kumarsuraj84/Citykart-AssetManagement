@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.capabilities import capabilities
 from app.core.config import settings
 from app.core.db import get_session
 from app.core.deps import get_current_asset_user
@@ -185,6 +186,17 @@ async def logout(response: Response):
         REFRESH_COOKIE_NAME, path=REFRESH_COOKIE_PATH, httponly=True,
         secure=settings.cookie_secure, samesite="lax",
     )
+
+
+@router.get("/capabilities")
+async def my_capabilities(
+    session: AsyncSession = Depends(get_session),
+    asset_user: AssetUser = Depends(get_current_asset_user),
+):
+    """S3a-1: what the signed-in person may create and manage, in plain words,
+    computed by the same functions the endpoints use (app.core.capabilities),
+    so the screens offer exactly what the server will allow."""
+    return await capabilities(session, asset_user)
 
 
 @router.post("/change-password", status_code=204)

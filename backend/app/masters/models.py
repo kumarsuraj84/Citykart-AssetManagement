@@ -118,6 +118,24 @@ class VendorErpLink(Base):
         return self.company.code
 
 
+class MasterAudit(Base):
+    """S3a-1: APPEND-ONLY trail of changes to the work-area-owned masters
+    (Category, Sub-category, Item) now that ordinary ADMINs may change them:
+    one row per changed field (name, work area, deactivation, ...). Values are
+    stored as readable text (names, not ids). A database trigger refuses
+    UPDATE and DELETE (migration c1d3e5f7a9b0), the same as asset_event and
+    asset_field_change."""
+    __tablename__ = "master_audit"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    entity: Mapped[str] = mapped_column(String(30))            # "category" / "subcategory" / "item"
+    entity_id: Mapped[int] = mapped_column(BigInteger)
+    field: Mapped[str] = mapped_column(String(100))
+    old_value: Mapped[str | None] = mapped_column(String(1000))
+    new_value: Mapped[str | None] = mapped_column(String(1000))
+    actor_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("asset_user.id"))
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 FIELD_TYPES = ("text", "number", "date", "dropdown", "checkbox")
 
 

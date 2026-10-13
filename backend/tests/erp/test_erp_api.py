@@ -281,13 +281,21 @@ async def test_linking_an_existing_vendor_and_the_one_to_one_rule(client, erp):
     assert (await client.post("/api/erp/vendors/9999/link", headers=h, json=body)).status_code == 404
 
 
-async def test_only_the_primary_owner_manages_vendor_links(client, erp):
+async def test_operators_add_and_link_erp_vendors_but_only_the_primary_owner_lists_and_unlinks(client, erp):
+    # S3a-1: an OPERATOR may add / link a vendor from an ERP supplier of their
+    # own company (inside a PO review); the full supplier list and unlinking
+    # stay with the head-office admin; a viewer can do none of it.
     ids = await _setup()
     op = await _headers(client, "OPR")
+    viewer = await _headers(client, "VWR")
     body = {"company_id": ids["spl"], "erp_vendor_code": "2264"}
     assert (await client.get("/api/erp/vendors", params={"company_id": ids["spl"]}, headers=op)).status_code == 403
-    assert (await client.post("/api/erp/vendors/import", headers=op, json=body)).status_code == 403
-    assert (await client.post(f"/api/erp/vendors/{ids['oldco']}/link", headers=op, json=body)).status_code == 403
+    assert (await client.post("/api/erp/vendors/import", headers=viewer, json=body)).status_code == 403
+    assert (await client.post("/api/erp/vendors/import", headers=op, json=body)).status_code == 201
+    linked = await client.post(f"/api/erp/vendors/{ids['oldco']}/link", headers=op, json={"company_id": ids["spl"], "erp_vendor_code": "555"})
+    assert linked.status_code == 200, linked.text
+    assert (await client.delete(f"/api/erp/vendors/{ids['oldco']}/link", headers=op,
+                                params={"company_id": ids["spl"], "erp_vendor_code": "555"})).status_code == 403
 
 
 async def test_a_down_erp_gives_a_clear_503_not_a_crash(client, erp):
