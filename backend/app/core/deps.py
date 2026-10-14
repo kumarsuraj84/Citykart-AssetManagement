@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
 from app.core.security import decode_token
 from app.asset_users.models import AssetUser, AssetUserCompanyAccess
+from app.observability import context as obs_context
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
@@ -29,6 +30,8 @@ async def get_current_asset_user(
     asset_user = await session.get(AssetUser, int(payload["sub"]))
     if asset_user is None or not asset_user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Account not found or inactive")
+    # S8: who is making this request, for the access log, audit rows and error rows of this request.
+    obs_context.set_actor(asset_user)
     # Server-side half of the forced first-login password change: the frontend
     # routes such a asset_user to its change-password screen, but that is trivially
     # bypassable (curl, devtools), so every route that authenticates through

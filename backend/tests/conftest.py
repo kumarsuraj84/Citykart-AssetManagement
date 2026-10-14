@@ -1,4 +1,8 @@
 import os
+import tempfile
+
+# S8: the test run writes its log files into a throw-away directory, never into the dev stack's /data/logs.
+os.environ["LOG_DIR"] = os.environ.get("CKAM_TEST_LOG_DIR") or tempfile.mkdtemp(prefix="ckam-test-logs-")
 
 import pytest
 import pytest_asyncio
@@ -76,6 +80,11 @@ async def _truncate_tables():
         quoted = ", ".join(f'"{name}"' for name in table_names)
         async with engine.begin() as conn:
             await conn.execute(text(f"TRUNCATE TABLE {quoted} RESTART IDENTITY CASCADE;"))
+    # S8: the in-process throttles / rate limits of the logging start empty for every test.
+    from app.observability import client_reports, writer
+    writer.reset_throttles()
+    client_reports.reset_limits()
+    writer._db_state["down"] = False
     yield
 
 

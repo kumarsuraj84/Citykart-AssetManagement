@@ -16,7 +16,10 @@ from app.core.deps import WRITE_ROLES, allowed_asset_domains, require_role, scop
 from app.core.problems import Refused
 from app.core.validation import InModel
 from app.erp.source import ErpSource, get_erp_source
+from app.items.models import Item
 from app.lifecycle.state_machine import LifecycleError
+from app.observability import audit as obs_audit
+from app.observability import events as obs_events
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
 
@@ -46,6 +49,17 @@ async def add_assets(
     except BaseException:
         await session.rollback()
         raise
+    # S8: ONE row for the whole batch (100 units = 1 row), with the new asset ids.
+    item = await session.get(Item, body.item_id)
+    codes = [a["asset_code"] for a in result["assets"]]
+    obs_audit.record(
+        session, "DATA", "BATCH_ADD",
+        f"{obs_events.who()} added {obs_events.plural(result['assets_created'], 'asset')} of "
+        f"{item.name if item else 'an Item'}" + (f" ({codes[0]} to {codes[-1]})" if codes else "") + ".",
+        entity="item", entity_id=body.item_id, company_id=body.company_id,
+        changes={"item_id": body.item_id, "quantity": result["assets_created"], "serial_pending": result["serial_pending"],
+                 **obs_events.ids_preview(result["label_asset_ids"]), "first_code": codes[0] if codes else None,
+                 "last_code": codes[-1] if codes else None})
     await session.commit()
     return result
 
@@ -118,6 +132,7 @@ async def link_items(
     caller's work area and of the asset's own Category / Sub-category); any problem -> 422 {detail, errors,
     problems: [{entry_index, asset_id, item_id, message}]} and nothing changes. Sets only the Item; one
     field-change row (item_id) per asset."""
+    obs_audit.suppress(session, "asset")      # S8: one LINK row, not one per asset
     try:
         result = await link_assets(
             session, [e.model_dump() for e in body], actor,
@@ -129,5 +144,13 @@ async def link_items(
     except BaseException:
         await session.rollback()
         raise
+    changed = [r for r in result["results"] if r["changed"]]
+    obs_audit.record(
+        session, "DATA", "LINK",
+        f"{obs_events.who()} linked {obs_events.plural(result['linked'], 'asset')} to Items"
+        + (f" ({result['unchanged']} already linked)" if result["unchanged"] else "") + ".",
+        entity="asset", entity_id=changed[0]["asset_id"] if len(changed) == 1 else None,
+        changes={"linked": result["linked"], "unchanged": result["unchanged"],
+                 "links": [{"asset_id": r["asset_id"], "item_id": r["item_id"]} for r in changed][:200]})
     await session.commit()
     return result

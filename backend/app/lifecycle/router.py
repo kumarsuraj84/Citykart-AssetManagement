@@ -9,6 +9,7 @@ from app.lifecycle.models import AssetEvent
 from app.lifecycle.schemas import ApplyEventIn, AssetEventOut
 from app.lifecycle.service import apply_event, with_labels
 from app.lifecycle.state_machine import LifecycleError
+from app.observability.events import lifecycle_summary
 
 router = APIRouter(prefix="/api/assets", tags=["lifecycle"])
 
@@ -40,6 +41,10 @@ async def create_event(
         )
     except LifecycleError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    # S8: the LIFECYCLE audit row (asset_event stays the ledger of the movement itself).
+    await lifecycle_summary(session, "MOVE" if body.event_type == "MOVED" else body.event_type, body.event_type,
+                            [asset.id], [], body.to_asset_user_id, body.reference_no, company_id=asset.company_id,
+                            asset_code=asset.asset_code)
     await session.commit()
     await session.refresh(event)
     [labelled] = await with_labels(session, [event])

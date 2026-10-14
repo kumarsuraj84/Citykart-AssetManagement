@@ -22,6 +22,9 @@ from app.erp.source import ErpSource, ErpUnavailable, ErpViewMissing, get_erp_so
 from app.erp.sync import last_runs, run_sync
 from app.erp.warehouse import WarehouseReader, get_warehouse_reader
 from app.masters.schemas import VendorOut
+from app.observability import audit as obs_audit
+from app.observability import events as obs_events
+from app.observability import writer as obs_writer
 from app.purchase_orders.models import PurchaseOrder
 from app.purchase_orders.service import po_is_visible
 
@@ -53,7 +56,12 @@ async def sync_now(reader: WarehouseReader = Depends(get_warehouse_reader), _act
     run with status "failed" and a message, not as an error."""
     if not is_configured():
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "The ERP connection is not set up on this server.")
-    return await run_sync(SessionLocal, reader, "manual")
+    run = await run_sync(SessionLocal, reader, "manual")
+    # S8: who asked for it (the copy itself is in system_event under this request id).
+    await obs_writer.audit_now("ERP", "ERP_SYNC", f"{obs_events.who()} copied the ERP data now: {run.status}.",
+                               outcome="OK" if run.status in ("success", "skipped") else "FAILED",
+                               changes={"status": run.status, "message": run.message})
+    return run
 
 
 # ---- stores (users made from the ERP's site list) ------------------------
@@ -74,8 +82,20 @@ async def create_stores(
     body: StoresCreateIn, session: AsyncSession = Depends(get_session), actor=Depends(require_primary_owner()),
 ):
     """Makes a Location and a STORE user (login email from the store's code) for each store asked for."""
+    obs_audit.suppress(session, "asset_user", "location")      # S8: one row for the whole run
     try:
         result = await erp_stores.create_erp_stores(session, actor, body.company_id, body.codes)
+        created = result.get("created") or []
+        obs_audit.record(
+            session, "ERP", "STORES_CREATE",
+            f"{obs_events.who()} made {obs_events.plural(len(created), 'store')} from the ERP "
+            f"({len(result.get('skipped') or [])} skipped; {result.get('stock_rooms_created', 0)} stock rooms, "
+            f"{result.get('install_points_created', 0)} install points).",
+            entity="company", entity_id=body.company_id, company_id=body.company_id,
+            changes={"asked": body.codes[:200], "created": [c.get("code") if isinstance(c, dict) else c for c in created][:200],
+                     "skipped": (result.get("skipped") or [])[:200],
+                     "stock_rooms_created": result.get("stock_rooms_created"),
+                     "install_points_created": result.get("install_points_created")})
         await session.commit()
     except LookupError as exc:
         await session.rollback()
@@ -391,8 +411,12 @@ async def erp_po_changes_apply(
     if po.erp_po_code is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "this purchase order was not made from the ERP")
     try:
-        report = await apply_changes(session, actor, source, po, [i.model_dump() for i in body.items],
-                                     await allowed_asset_domains(session, actor))
+        items = [i.model_dump() for i in body.items]
+        report = await apply_changes(session, actor, source, po, items, await allowed_asset_domains(session, actor))
+        obs_audit.record(session, "ERP", "ERP_CHANGES_APPLIED",
+                         f"Purchase order {po.po_number}: {obs_events.who()} decided "
+                         f"{obs_events.plural(len(items), 'ERP change')}.", entity="purchase_order", entity_id=po.id,
+                         company_id=po.company_id, changes={"decisions": items[:100]})
         await session.commit()
     except ErpUnavailable as exc:
         await session.rollback()
@@ -434,11 +458,17 @@ async def pi_apply(
 ):
     """Records the PIs the user confirmed, through the same function as Record PI."""
     po = await _scoped_erp_po(session, actor, po_id)
+    obs_audit.suppress(session, "asset")      # S8: one PI_RECORDED row, not one per asset
     try:
+        items = [i.model_dump() for i in body.items]
         results = await apply_pi(
-            session, actor, source, po, [i.model_dump() for i in body.items],
+            session, actor, source, po, items,
             allowed_domains=await allowed_asset_domains(session, actor),
         )
+        obs_audit.record(session, "ERP", "PI_RECORDED",
+                         f"Purchase order {po.po_number}: {obs_events.who()} recorded "
+                         f"{obs_events.plural(len(items), 'PI')} from the ERP.", entity="purchase_order",
+                         entity_id=po.id, company_id=po.company_id, changes={"items": items[:100]})
         await session.commit()
     except ErpUnavailable as exc:
         await session.rollback()
@@ -553,6 +583,14 @@ async def create_po(
                 await snapshot_baseline(session, await session.get(PurchaseOrder, result["po_id"]), erp_po, untracked)
         except ErpUnavailable:
             pass
+        # S8: the PO header has its own DATA row; this one says it came from the ERP, with its units.
+        obs_audit.record(session, "ERP", "CREATE_FROM_ERP",
+                         f"Purchase order {result['po_number']} created from the ERP with "
+                         f"{obs_events.plural(result['lines_created'], 'line')} "
+                         f"({obs_events.plural(result['units_created'], 'unit')}).",
+                         entity="purchase_order", entity_id=result["po_id"], company_id=body.company_id,
+                         changes={"erp_po_code": body.erp_po_code, "lines_created": result["lines_created"],
+                                  "units_created": result["units_created"]})
         await session.commit()
     except ErpUnavailable as exc:
         await session.rollback()

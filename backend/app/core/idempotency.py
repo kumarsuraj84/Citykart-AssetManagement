@@ -35,6 +35,7 @@ from starlette.responses import JSONResponse
 from app.core import db as core_db
 from app.core.db import Base
 from app.core.security import decode_token
+from app.observability import writer as obs_writer
 
 HEADER = "idempotency-key"
 REPLAY_HEADER = "Idempotency-Replay"
@@ -200,6 +201,16 @@ class IdempotencyMiddleware:
                               headers.get("content-type"))
 
         state, found = await claim(actor_id, key, scope["method"], scope["path"], hashed)
+        if state in ("busy", "different", "done"):
+            # S8: an ACCESS row for every answer that did NOT run the request again.
+            words = {"busy": "was refused while the first one was still running",
+                     "different": "was refused: its key had been used for a different request",
+                     "done": "was answered from the first one (nothing was done twice)"}[state]
+            await obs_writer.access(
+                f"IDEMPOTENT_{'REPLAY' if state == 'done' else 'CONFLICT'}",
+                f"A repeated {scope['method']} {scope['path']} {words}.", actor={"id": actor_id},
+                outcome="OK" if state == "done" else "DENIED",
+                changes={"key_state": state, "path": scope["path"], "first_status": getattr(found, "status_code", None)})
         if state == "busy":
             return await JSONResponse({"detail": BUSY}, status_code=409)(scope, receive, send)
         if state == "different":

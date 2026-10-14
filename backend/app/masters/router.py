@@ -20,6 +20,7 @@ from app.masters.bulk_import_export import (
 from app.masters.custom_fields_router import router as custom_fields_router
 from app.masters.service import MasterCRUDService
 from app.masters import audit, models, schemas
+from app.observability import events as obs_events
 
 router = APIRouter(prefix="/api/masters", tags=["masters"])
 
@@ -248,7 +249,9 @@ def build_master_router(
             asset_user=Depends(require_primary_owner()),
         ):
             allowed = await scoped_company_ids(session, asset_user)
-            content = await export_rows(session, model, import_fields, allowed, company_field)
+            counted: dict = {}
+            content = await export_rows(session, model, import_fields, allowed, company_field, counter=counted)
+            await obs_events.exported(f"the {prefix.strip('/')} list", counted.get("rows"), {"companies": allowed})
             return Response(
                 content=content,
                 media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -271,9 +274,12 @@ def build_master_router(
             content = await file.read()
             allowed = await scoped_company_ids(session, asset_user)
             try:
-                return await preview_import(session, import_fields, content, allowed, company_field)
+                result = await preview_import(session, import_fields, content, allowed, company_field)
             except ImportTemplateError as exc:
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+            await obs_events.import_previewed(f"the {prefix.strip('/')} list", len(result["valid_rows"]),
+                                              len(result["errors"]), file.filename, len(content))
+            return result
 
         @sub.post("/import/commit")
         async def import_commit(
@@ -285,12 +291,17 @@ def build_master_router(
             try:
                 result = await commit_import(session, model, import_fields, content, asset_user, allowed, company_field)
             except ImportScopeError as exc:
+                await obs_events.import_refused(f"the {prefix.strip('/')} list", str(exc))
                 raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc))
             except ImportTemplateError as exc:
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
             except ValueError as exc:
                 await session.rollback()
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+            # S8: one IMPORT_COMMIT row (each new record also has its own DATA row, same request id).
+            obs_events.import_committed(session, f"the {prefix.strip('/')} list",
+                                        {"imported": result["imported"], "rows_with_errors": len(result["errors"])},
+                                        entity=prefix.strip("/"), file_name=file.filename)
             await session.commit()
             return result
 

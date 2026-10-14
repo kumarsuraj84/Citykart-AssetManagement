@@ -10,6 +10,13 @@ validation array) for a problem with the request itself.
   that does not exist (naming the field in words), never the database text.
 * DataError (text too long for its column, a number too big, a NUL character)
   and any other SQLAlchemy statement error -> 422 with a plain sentence.
+
+S8 (additive): every answer made here also carries `request_id` (the same id as the X-Request-ID
+header); HTTPException answers (401 / 403 / 404 / ...) go through `_http_handler`, which keeps FastAPI's
+own `{"detail": ...}` and headers and adds `request_id`. Database errors and a LifecycleError nobody
+caught become error_log rows (app.observability.writer); every 401 / 403 is a throttled SECURITY row; a
+NUL character is a SUSPICIOUS_INPUT row. Expected business refusals are NOT error rows (they are in the
+access log with their status).
 """
 from __future__ import annotations
 
@@ -18,10 +25,14 @@ import re
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+from fastapi.utils import is_body_allowed_for_status_code
 from sqlalchemy.exc import DataError, IntegrityError, InterfaceError, OperationalError, StatementError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.lifecycle.state_machine import LifecycleError
+from app.observability import context as obs_context
+from app.observability import writer as obs_writer
 
 logger = logging.getLogger("ckam.errors")
 
@@ -239,39 +250,126 @@ def data_error_message(exc: Exception) -> str:
     return "Some of the values could not be saved. Check them and try again."
 
 
-async def _validation_handler(_request: Request, exc: RequestValidationError):
+NUL_SENTENCE = "Text cannot contain hidden control characters. Remove them and try again."
+
+
+def _body(content: dict) -> dict:
+    """S8: every error answer made here also carries the request's id (the person can quote it; the
+    administrator finds everything about that request under Logs > by request)."""
+    rid = obs_context.request_id()
+    if rid is not None:
+        content["request_id"] = rid
+    return content
+
+
+def _route(request: Request) -> str:
+    from app.observability.middleware import route_of
+    return route_of(request.scope) or request.url.path
+
+
+def _bind_route(request: Request) -> None:
+    """The route template and path parameters into the request context before an error row is written
+    (the fingerprint uses the template, so /assets/5 and /assets/6 are the same fault)."""
+    ctx = obs_context.current()
+    if ctx is not None:
+        ctx.route = _route(request)
+        ctx.path_params = dict(request.scope.get("path_params") or {})
+
+
+async def _suspicious_input(request: Request, where: str) -> None:
+    await obs_writer.security(
+        "SUSPICIOUS_INPUT", f"A request to {request.method} {_route(request)} was refused: it contained a NUL character.",
+        outcome="DENIED", changes={"where": where},
+        throttle=(f"nul:{(obs_context.current().ip if obs_context.current() else None)}:{_route(request)}", 60),
+    )
+
+
+async def _validation_handler(request: Request, exc: RequestValidationError):
     messages = validation_messages(list(exc.errors()))
+    if NUL_SENTENCE in messages:
+        await _suspicious_input(request, "request body")
     return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                        content={"detail": " ".join(messages), "errors": messages})
+                        content=_body({"detail": " ".join(messages), "errors": messages}))
 
 
-async def _lifecycle_handler(_request: Request, exc: LifecycleError):
-    return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content={"detail": str(exc)})
+async def _lifecycle_handler(request: Request, exc: LifecycleError):
+    # A route that did not turn this into its own 422: still a refused movement, but worth a look.
+    _bind_route(request)
+    await obs_writer.exception(exc, level="WARNING", status_code=422)
+    return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=_body({"detail": str(exc)}))
 
 
 async def _integrity_handler(request: Request, exc: IntegrityError):
     code, message = integrity_message(exc)
     logger.info("integrity error on %s %s: %s", request.method, request.url.path, getattr(exc, "orig", exc))
-    return JSONResponse(status_code=code, content={"detail": message})
+    _bind_route(request)
+    await obs_writer.exception(exc, level="WARNING", source="db", status_code=code, message=message)
+    return JSONResponse(status_code=code, content=_body({"detail": message}))
 
 
 async def _data_handler(request: Request, exc: DataError):
     logger.info("data error on %s %s: %s", request.method, request.url.path, getattr(exc, "orig", exc))
-    return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content={"detail": data_error_message(exc)})
+    _bind_route(request)
+    message = data_error_message(exc)
+    if message == NUL_SENTENCE:
+        await _suspicious_input(request, "database value")
+    await obs_writer.exception(exc, level="WARNING", source="db", status_code=422, message=message)
+    return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=_body({"detail": message}))
 
 
 async def _statement_handler(request: Request, exc: StatementError):
+    _bind_route(request)
     if isinstance(exc, (OperationalError, InterfaceError)):
         logger.error("database unavailable on %s %s: %s", request.method, request.url.path, exc)
+        await obs_writer.exception(exc, level="CRITICAL", source="db", status_code=503)
         return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                            content={"detail": "The database could not be reached. Try again in a moment."})
+                            content=_body({"detail": "The database could not be reached. Try again in a moment."}))
     logger.warning("statement error on %s %s: %s", request.method, request.url.path, exc)
     # asyncpg reports some bad values (a NUL character, an id too big for its
     # column) as a plain driver error rather than a DataError: same answers.
-    return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content={"detail": data_error_message(exc)})
+    message = data_error_message(exc)
+    if message == NUL_SENTENCE:
+        await _suspicious_input(request, "database value")
+    await obs_writer.exception(exc, level="WARNING", source="db", status_code=422, message=message)
+    return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=_body({"detail": message}))
+
+
+# Login, refresh, logout and change-password write their own SECURITY rows (app.auth.router).
+_AUTH_PATHS_WITH_OWN_EVENTS = ("/api/auth/login", "/api/auth/refresh", "/api/auth/logout", "/api/auth/change-password")
+
+
+async def _http_handler(request: Request, exc: StarletteHTTPException):
+    """FastAPI's own answer (`{"detail": ...}`, the exception's headers, no body for 204/304) plus the
+    request id; every 401 / 403 is also a SECURITY row (throttled: one per address and minute for a bad
+    token, one per person and route and minute for a refusal)."""
+    headers = getattr(exc, "headers", None)
+    code = exc.status_code
+    if code in (401, 403) and request.url.path.rstrip("/") not in _AUTH_PATHS_WITH_OWN_EVENTS:
+        ctx = obs_context.current()
+        route = _route(request)
+        detail = exc.detail if isinstance(exc.detail, str) else "refused"
+        if code == 401:
+            await obs_writer.security(
+                "INVALID_TOKEN", f"A request to {request.method} {route} was refused: not signed in or the session "
+                f"has expired ({detail}).", outcome="DENIED", changes={"route": route, "reason": detail},
+                throttle=(f"401:{ctx.ip if ctx else None}", 60),
+            )
+        else:
+            who = (ctx.actor_name if ctx and ctx.actor_name else "Someone")
+            await obs_writer.security(
+                "PERMISSION_DENIED", f"{who} was refused {request.method} {route}: {detail}", outcome="DENIED",
+                changes={"route": route, "method": request.method, "role": ctx.actor_role if ctx else None,
+                         "reason": detail},
+                throttle=(f"403:{ctx.actor_id if ctx else None}:{ctx.ip if ctx and ctx.actor_id is None else ''}:"
+                          f"{request.method}:{route}", 60),
+            )
+    if not is_body_allowed_for_status_code(code):
+        return Response(status_code=code, headers=headers)
+    return JSONResponse(_body({"detail": exc.detail}), status_code=code, headers=headers)
 
 
 def register_exception_handlers(app: FastAPI) -> None:
+    app.add_exception_handler(StarletteHTTPException, _http_handler)
     app.add_exception_handler(RequestValidationError, _validation_handler)
     app.add_exception_handler(LifecycleError, _lifecycle_handler)
     app.add_exception_handler(IntegrityError, _integrity_handler)

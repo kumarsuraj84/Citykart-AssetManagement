@@ -24,6 +24,8 @@ from app.assets.service import find_serials_in_use
 from app.bundles.schemas import BundleLinesIn
 from app.bundles.service import add_bundle_lines
 from app.lifecycle.state_machine import LifecycleError
+from app.observability import audit as obs_audit
+from app.observability import events as obs_events
 from app.purchase_orders.service import (
     PO_STATUSES, UNIT_STATUS_FILTER,
     add_pending_asset_line, attach_asset_codes, cancel_pending_asset_line, cancel_waiting_units, compute_pi_status,
@@ -35,6 +37,14 @@ from app.purchase_orders.service import (
 router = APIRouter(prefix="/api/purchase-orders", tags=["purchase-orders"])
 
 PO_NOT_FOUND = "purchase order not found"
+
+
+def _po_audit(session: AsyncSession, po: PurchaseOrder, action: str, summary: str, changes: dict | None = None,
+              category: str = "DATA") -> None:
+    """S8: the explicit audit row of a PO action (the PO's units are pending_asset rows, which are not audited
+    one by one): one row per action, in the action's own transaction."""
+    obs_audit.record(session, category, action, f"Purchase order {po.po_number}: {summary}", entity="purchase_order",
+                     entity_id=po.id, company_id=po.company_id, changes=changes)
 OUTSIDE_SCOPE = "an asset outside your companies or work area"
 
 
@@ -106,6 +116,9 @@ async def create_po_with_lines_route(
     except HTTPException:
         await session.rollback()
         raise
+    _po_audit(session, po, "LINES_ADDED", f"created with {obs_events.plural(lines_created, 'line')} "
+              f"({obs_events.plural(units_created, 'unit')}).",
+              {"lines_created": lines_created, "units_created": units_created})
     await session.commit()
     await session.refresh(po)
     out = await _po_with_progress(session, po, actor)
@@ -270,17 +283,21 @@ async def edit_line_group(
     """Edits a whole line: the fields sent apply to every still-waiting unit;
     `quantity` (the new ordered total) adds units or cancels waiting ones.
     Received and cancelled units never change."""
-    po, _ = await _get_scoped_group(session, po_id, line_no, actor)
+    po, before = await _get_scoped_group(session, po_id, line_no, actor)
     _open_or_422(po)
     domains = await allowed_asset_domains(session, actor)
+    sent = body.model_dump(exclude_unset=True)
     try:
-        await update_line_group(session, po, line_no, body.model_dump(exclude_unset=True), actor, domains)
+        await update_line_group(session, po, line_no, sent, actor, domains)
     except LookupError as exc:
         await session.rollback()
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
     except ValueError as exc:
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    _po_audit(session, po, "LINE_UPDATE", f"line {line_no} changed: {', '.join(sorted(sent)) or 'nothing'}.",
+              {"line_no": line_no, "sent": sent, "ordered_before": before.get("ordered"),
+               "waiting_before": before.get("waiting")})
     await session.commit()
     [group] = await line_groups(session, po_id, domains, line_no)
     return group
@@ -304,7 +321,9 @@ async def cancel_line_group_waiting(
             f"Only {group['waiting']} of this line {'is' if group['waiting'] == 1 else 'are'} still waiting.",
         )
     domains = await allowed_asset_domains(session, actor)
-    await cancel_waiting_units(session, po, actor, domains, line_no, quantity)
+    cancelled = await cancel_waiting_units(session, po, actor, domains, line_no, quantity)
+    _po_audit(session, po, "CANCEL_WAITING", f"{obs_events.plural(cancelled or 0, 'waiting unit')} of line {line_no} "
+              "cancelled.", {"line_no": line_no, "cancelled_units": cancelled, "asked": quantity})
     await session.commit()
     [group] = await line_groups(session, po_id, domains, line_no)
     return group
@@ -324,6 +343,8 @@ async def cancel_po_waiting(
     cancelled = await cancel_waiting_units(session, po, actor, domains)
     if cancelled == 0:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Nothing on this purchase order is still waiting.")
+    _po_audit(session, po, "CANCEL_WAITING", f"all {obs_events.plural(cancelled, 'waiting unit')} cancelled.",
+              {"cancelled_units": cancelled})
     await session.commit()
     summary = await _po_with_progress(session, po, actor)
     return CancelWaitingOut(cancelled_units=cancelled, status=summary.status)
@@ -355,6 +376,10 @@ async def add_line(
     except ValueError as exc:
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    _po_audit(session, po, "LINES_ADDED", f"a line of {obs_events.plural(len(lines), 'unit')} added "
+              f"({lines[0].description if lines else ''}).",
+              {"units": len(lines), "line_no": lines[0].line_no if lines else None,
+               "item_id": lines[0].item_id if lines else None, "purchase_cost": lines[0].purchase_cost if lines else None})
     await session.commit()
     for line in lines:
         await session.refresh(line)
@@ -377,6 +402,9 @@ async def add_bundle(
     except ValueError as exc:
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    _po_audit(session, po, "LINES_ADDED", f"a set added as {obs_events.plural(len({l.line_no for l in lines}), 'line')} "
+              f"({obs_events.plural(len(lines), 'unit')}).",
+              {"bundle_id": body.bundle_id, "quantity": body.quantity, "units": len(lines)})
     await session.commit()
     for line in lines:
         await session.refresh(line)
@@ -397,6 +425,8 @@ async def edit_line(
     except ValueError as exc:
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    _po_audit(session, po, "LINE_UPDATE", f"unit #{line.id} of line {line.line_no} changed.",
+              {"pending_asset_id": line.id, "line_no": line.line_no, "fields": sorted(body.model_fields_set)})
     await session.commit()
     await session.refresh(line)
     return line
@@ -414,6 +444,8 @@ async def cancel_line(
     except ValueError as exc:
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    _po_audit(session, po, "CANCEL_WAITING", f"unit #{line.id} of line {line.line_no} cancelled.",
+              {"pending_asset_id": line.id, "line_no": line.line_no, "cancelled_units": 1})
     await session.commit()
     await session.refresh(line)
     return line
@@ -466,6 +498,12 @@ async def deliver(
     except Exception:
         await session.rollback()
         raise
+    # S8: ONE RECEIVE row for the whole delivery (100 units = 1 row), with the new asset ids.
+    asset_ids = [line.delivered_asset_id for line in delivered if line.delivered_asset_id is not None]
+    _po_audit(session, po, "RECEIVE", f"{obs_events.plural(len(delivered), 'unit')} received on invoice "
+              f"{body.invoice_number} (delivery).",
+              {"invoice_number": body.invoice_number, "invoice_date": body.invoice_date, "units": len(delivered),
+               **obs_events.ids_preview(asset_ids)})
     await session.commit()
     # One read of every delivered unit (was one refresh per unit).
     fresh = (await session.execute(
@@ -516,6 +554,14 @@ async def receive(
         # Anything unexpected after the checks: the whole receipt is rolled back (nothing half-written).
         await session.rollback()
         raise
+    # S8: ONE RECEIVE row for the whole receipt (100 units = 1 row), with the new asset ids.
+    codes = [a.get("asset_code") for a in result.get("assets") or []]
+    _po_audit(session, po, "RECEIVE", f"{obs_events.plural(result['assets_created'], 'unit')} received on invoice "
+              f"{result['invoice_number']}" + (f" ({codes[0]} to {codes[-1]})" if codes else "") + ".",
+              {"invoice_number": result["invoice_number"], "assets_created": result["assets_created"],
+               "serial_pending": result.get("serial_pending"), "lines": [
+                   {"line_no": line.line_no, "quantity": line.quantity} for line in body.lines][:100],
+               **obs_events.ids_preview(result.get("label_asset_ids") or [])})
     await session.commit()
     return result
 
@@ -537,12 +583,17 @@ async def record_pi(
 ):
     po = await _get_scoped_po(po_id, session, actor)
     _open_or_422(po)
+    obs_audit.suppress(session, "asset")      # S8: one PI_RECORDED row, not one per asset
     result = await record_pi_for_invoice(
         session, po, body.invoice_number, body.pi_number, body.pi_date, body.overwrite, actor,
         allowed_domains=await allowed_asset_domains(session, actor),
     )
     if not result["updated"] and not result["skipped"]:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"No delivered assets were found for invoice {body.invoice_number} on this purchase order.")
+    _po_audit(session, po, "PI_RECORDED", f"PI {body.pi_number} recorded for invoice {body.invoice_number} on "
+              f"{obs_events.plural(len(result['updated']), 'asset')} ({len(result['skipped'])} skipped).",
+              {"invoice_number": body.invoice_number, "pi_number": body.pi_number, "pi_date": body.pi_date,
+               "overwrite": body.overwrite, "updated": result["updated"][:200], "skipped": result["skipped"][:200]})
     await session.commit()
     return result
 
@@ -568,10 +619,15 @@ async def delete_po(
     domains = await allowed_asset_domains(session, actor)
     for line in lines:
         check_work_area(domains, await line_area(session, line))
+    obs_audit.suppress(session, "purchase_order")      # S8: the DELETE_PO row below says it all
     try:
         result = await delete_purchase_order(session, po, lines, actor)
     except ValueError as exc:
         await session.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc))
+    data = result if isinstance(result, dict) else result.model_dump()
+    _po_audit(session, po, "DELETE_PO", f"deleted (kept as a deleted record); "
+              f"{obs_events.plural(data.get('cancelled_lines') or 0, 'waiting unit')} cancelled.",
+              {"cancelled_lines": data.get("cancelled_lines"), "is_active": {"old": True, "new": False}})
     await session.commit()
     return result

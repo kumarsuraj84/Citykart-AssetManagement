@@ -22,6 +22,9 @@ from app.masters.bulk_import_export import (
 )
 from app.masters.models import Company, Department, Location
 from app.masters.schemas import CompanyOut
+from app.observability import audit as obs_audit
+from app.observability import events as obs_events
+from app.observability import writer as obs_writer
 
 router = APIRouter(prefix="/api/asset-users", tags=["asset-users"])
 
@@ -55,7 +58,9 @@ async def export_asset_users(
     asset_user=Depends(require_role("ADMIN")),
 ):
     allowed = await scoped_company_ids(session, asset_user)
-    content = await export_rows(session, AssetUser, ASSET_USER_IMPORT_FIELDS, allowed, "company_id")
+    counted: dict = {}
+    content = await export_rows(session, AssetUser, ASSET_USER_IMPORT_FIELDS, allowed, "company_id", counter=counted)
+    await obs_events.exported("people and places", counted.get("rows"), {"companies": allowed})
     return Response(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -80,9 +85,12 @@ async def asset_users_import_preview(
     content = await file.read()
     allowed = await scoped_company_ids(session, asset_user)
     try:
-        return await preview_import(session, ASSET_USER_IMPORT_FIELDS, content, allowed, "company_id")
+        result = await preview_import(session, ASSET_USER_IMPORT_FIELDS, content, allowed, "company_id")
     except ImportTemplateError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    await obs_events.import_previewed("people and places", len(result["valid_rows"]), len(result["errors"]),
+                                      file.filename, len(content))
+    return result
 
 
 @router.post("/import/commit")
@@ -104,12 +112,17 @@ async def asset_users_import_commit(
         result = await commit_import(session, AssetUser, ASSET_USER_IMPORT_FIELDS, content, asset_user, allowed, "company_id",
                                      after_create=store_rooms)
     except ImportScopeError as exc:
+        await obs_events.import_refused("people and places", str(exc))
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc))
     except ImportTemplateError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
     except ValueError as exc:
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    # S8: one IMPORT_COMMIT row (each new record also has its own DATA row, same request id).
+    obs_events.import_committed(session, "people and places", {"imported": result["imported"],
+                                                               "rows_with_errors": len(result["errors"])},
+                                entity="asset_user", file_name=file.filename)
     await session.commit()
     return result
 
@@ -350,7 +363,44 @@ async def create_asset_user(
     rooms = await _store_rooms_or_422(session, asset_user, obj)
     await session.commit()
     await session.refresh(obj)
+    await _access_event(None, obj)
     return AssetUserOut.model_validate(obj).model_copy(update={"rooms_created": rooms})
+
+
+ACCESS_EVENT_FIELDS = ("login_enabled", "role", "allowed_asset_domains", "primary_asset_domain", "company_id")
+ROLE_WORDS = {"ADMIN": "full admin", "OPERATOR": "can add and move", "VIEWER": "can only view",
+              "SELF_SERVICE": "sees own assets"}
+
+
+def _access_snapshot(user: AssetUser) -> dict:
+    return {f: getattr(user, f) for f in ACCESS_EVENT_FIELDS}
+
+
+async def _access_event(before: dict | None, after: AssetUser) -> None:
+    """S8: a SECURITY row (besides the DATA row) whenever someone's sign-in, access level, work area or home
+    company changes -- or a new account that can sign in is made."""
+    if before is None and not after.login_enabled:
+        return
+    now = _access_snapshot(after)
+    old = before or {}
+    changed = {f: {"old": old.get(f), "new": now[f]} for f in ACCESS_EVENT_FIELDS if old.get(f) != now[f]}
+    if before is None:
+        changed = {f: {"old": None, "new": v} for f, v in now.items() if v is not None}
+    if not changed:
+        return
+    words = []
+    if "login_enabled" in changed:
+        words.append("can now sign in" if now["login_enabled"] else "can no longer sign in")
+    if "role" in changed:
+        words.append(f"access level {ROLE_WORDS.get(now['role'], now['role'])}")
+    if "allowed_asset_domains" in changed:
+        words.append(f"work area {work_area_words(now['allowed_asset_domains']) if now['allowed_asset_domains'] not in (None, 'BOTH') else 'IT and Non-IT'}")
+    if "company_id" in changed and before is not None:
+        words.append("home company changed")
+    verb = "New account" if before is None else "Access changed"
+    await obs_writer.security("ACCESS_CHANGED", f"{verb} for {after.name}: {', '.join(words) or 'details changed'} "
+                              f"(by {obs_events.who()}).", entity="asset_user", entity_id=after.id, changes=changed,
+                              company_id=after.company_id)
 
 
 async def _store_rooms_or_422(session: AsyncSession, actor: AssetUser, obj: AssetUser) -> list[str]:
@@ -413,7 +463,17 @@ async def issue_passwords(
             "Choose a company, or pick the accounts.",
         )
     users = list((await session.execute(stmt.order_by(AssetUser.company_id, AssetUser.code, AssetUser.id))).scalars().all())
+    # S8: ONE security row naming the accounts (never the passwords) instead of a DATA row per account.
+    obs_audit.suppress(session, "asset_user")
     issued = await AssetUserService(session).issue_passwords(users, actor.id)
+    await obs_writer.security(
+        "PASSWORD_RESET", f"{obs_events.who()} issued temporary passwords to {obs_events.plural(len(issued), 'account')}.",
+        entity="asset_user", changes={
+            **obs_events.ids_preview([u.id for u, _ in issued]),
+            "codes": [u.code for u, _ in issued][:200],
+            "filters": {"kind": kind, "company_id": body.company_id, "only_accounts_without_one": body.only_without_password,
+                        "asset_user_ids_given": len(body.asset_user_ids or [])},
+        })
     return [
         IssuedPasswordOut(asset_user_id=u.id, code=u.code, name=u.name, email=u.email, temp_password=temp)
         for u, temp in issued
@@ -464,6 +524,7 @@ async def update_asset_user(
     await _validate_new_values(session, data, target)
     await _refuse_wider_work_area(session, asset_user, data, target)
     becomes_store = data.get("asset_user_type") == "STORE" and target.asset_user_type != "STORE"
+    access_before = _access_snapshot(target)
     try:
         obj = await AssetUserService(session).update(asset_user_id, data, asset_user.id, commit=False)
     except IntegrityError:
@@ -474,6 +535,7 @@ async def update_asset_user(
     rooms = await _store_rooms_or_422(session, asset_user, obj) if becomes_store else []
     await session.commit()
     await session.refresh(obj)
+    await _access_event(access_before, obj)
     return AssetUserOut.model_validate(obj).model_copy(update={"rooms_created": rooms})
 
 
@@ -505,6 +567,8 @@ async def grant_primary_owner(
     obj = await AssetUserService(session).set_primary_owner(asset_user_id, True, actor.id)
     if obj is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
+    await obs_writer.security("PRIMARY_OWNER_GRANTED", f"{actor.name} made {obj.name} a head-office admin.",
+                              entity="asset_user", entity_id=obj.id, company_id=obj.company_id)
     return obj
 
 
@@ -520,6 +584,8 @@ async def revoke_primary_owner(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
     if obj is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
+    await obs_writer.security("PRIMARY_OWNER_REVOKED", f"{actor.name} removed head-office admin from {obj.name}.",
+                              entity="asset_user", entity_id=obj.id, company_id=obj.company_id)
     return obj
 
 
@@ -538,6 +604,9 @@ async def reset_password(
     temp = await AssetUserService(session).reset_password(asset_user_id, actor.id)
     if temp is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
+    await obs_writer.security("PASSWORD_RESET", f"{actor.name} reset the password of {target.name} (a temporary one "
+                              "was issued, to be changed at the next sign-in).", entity="asset_user",
+                              entity_id=target.id, company_id=target.company_id)
     return ResetPasswordOut(temp_password=temp)
 
 
@@ -548,7 +617,7 @@ async def set_company_access(
     session: AsyncSession = Depends(get_session),
     _actor=Depends(require_role("ADMIN")),
 ):
-    await _get_target(session, asset_user_id, _actor)
+    target = await _get_target(session, asset_user_id, _actor)
     company_ids = list(dict.fromkeys(body.company_ids))
     if company_ids:
         found = set((await session.execute(
@@ -557,9 +626,23 @@ async def set_company_access(
         if len(found) != len(company_ids):
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
                                 "One of the companies you chose does not exist or is no longer active.")
+    # S8: the grants are replaced with a bulk DELETE + INSERT, so the change is written here explicitly
+    # (DATA, in the same transaction) and as a SECURITY row afterwards.
+    before = sorted(await AssetUserService(session).get_company_access(asset_user_id) or [])
+    codes = dict((await session.execute(
+        select(Company.id, Company.code).where(Company.id.in_(set(before) | set(company_ids)))
+    )).all()) if (before or company_ids) else {}
+    change = {"companies": {"old": [codes.get(c, c) for c in before], "new": [codes.get(c, c) for c in sorted(company_ids)]}}
+    summary = (f"Extra company access of {target.name} set to "
+               f"{', '.join(str(codes.get(c, c)) for c in sorted(company_ids)) or 'none'}.")
+    obs_audit.record(session, "DATA", "UPDATE", summary, entity="asset_user", entity_id=target.id, changes=change,
+                     company_id=target.company_id)
     ok = await AssetUserService(session).set_company_access(asset_user_id, company_ids)
     if not ok:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
+    if sorted(before) != sorted(company_ids):
+        await obs_writer.security("ACCESS_CHANGED", f"{summary[:-1]} (by {obs_events.who()}).", entity="asset_user",
+                                  entity_id=target.id, changes=change, company_id=target.company_id)
 
 
 @router.get("/{asset_user_id}/company-access", response_model=CompanyAccessOut)

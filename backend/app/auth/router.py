@@ -13,6 +13,8 @@ from app.core.security import (
 from app.asset_users.models import AssetUser
 from app.masters.models import Company
 from app.auth.schemas import ChangePasswordRequest, CompanyOption, LoginRequest, LoginResponse
+from app.observability import context as obs_context
+from app.observability import writer as obs_writer
 
 # Same logger name main.py configures a stderr handler for -- getLogger caches
 # by name, so this reuses that handler rather than silently going nowhere.
@@ -109,6 +111,7 @@ async def login(body: LoginRequest, response: Response, session: AsyncSession = 
         + (await session.execute(primary_owner_stmt)).scalars().all()
     )
     matches.sort(key=lambda h: h.id)
+    attempted = (body.login_id or "")[:200]
     if len(matches) != 1:
         if len(matches) > 1:
             logger.warning(
@@ -116,24 +119,46 @@ async def login(body: LoginRequest, response: Response, session: AsyncSession = 
                 "refusing to guess which one; rename one of the colliding emp_code/email values.",
                 body.login_id, len(matches), [h.id for h in matches],
             )
+        # S8: the attempted login id is recorded, the password never.
+        reason = "matches more than one account" if matches else "no active account can sign in with it"
+        await obs_writer.security("LOGIN_FAILED", f"Sign-in failed for '{attempted}': {reason}.", outcome="FAILED",
+                                  changes={"login_id": attempted, "reason": reason})
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
     asset_user = matches[0]
 
     now = datetime.now(timezone.utc)
     if asset_user.locked_until and asset_user.locked_until > now:
+        await obs_writer.security("LOGIN_FAILED", f"Sign-in refused for {asset_user.name}: the account is locked.",
+                                  outcome="DENIED", actor=asset_user, entity="asset_user", entity_id=asset_user.id,
+                                  changes={"login_id": attempted, "reason": "locked",
+                                           "locked_until": asset_user.locked_until.isoformat()})
         raise HTTPException(status.HTTP_423_LOCKED, "Account locked, try again later")
 
     if not verify_password(body.password, asset_user.password_hash):
         asset_user.failed_login_count += 1
-        if asset_user.failed_login_count >= MAX_FAILED_ATTEMPTS:
+        locked_now = asset_user.failed_login_count >= MAX_FAILED_ATTEMPTS
+        if locked_now:
             asset_user.locked_until = now + timedelta(minutes=LOCKOUT_MINUTES)
+        attempts = asset_user.failed_login_count
         await session.commit()
+        await obs_writer.security("LOGIN_FAILED", f"Sign-in failed for {asset_user.name}: wrong password "
+                                  f"(attempt {attempts}).", outcome="FAILED", actor=asset_user, entity="asset_user",
+                                  entity_id=asset_user.id,
+                                  changes={"login_id": attempted, "reason": "wrong password", "attempt": attempts})
+        if locked_now:
+            await obs_writer.security("LOCKED", f"{asset_user.name}'s account was locked for {LOCKOUT_MINUTES} minutes "
+                                      f"after {attempts} wrong passwords.", outcome="DENIED", actor=asset_user,
+                                      entity="asset_user", entity_id=asset_user.id,
+                                      changes={"attempts": attempts, "minutes": LOCKOUT_MINUTES})
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
 
     asset_user.failed_login_count = 0
     asset_user.locked_until = None
     await session.commit()
 
+    obs_context.set_actor(asset_user)
+    await obs_writer.security("LOGIN", f"{asset_user.name} signed in.", entity="asset_user", entity_id=asset_user.id,
+                              changes={"login_id": attempted, "must_change_at_sign_in": asset_user.must_change_password})
     _set_refresh_cookie(response, asset_user.id)
     return _session_response(asset_user)
 
@@ -157,31 +182,55 @@ async def refresh(
     deactivation takes effect on the next refresh rather than living on in a
     stale token."""
     invalid = HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired refresh token")
+
+    async def refused(reason: str, user: AssetUser | None = None) -> HTTPException:
+        # S8: at most one row per address and minute (a browser left open retries on its own).
+        ctx = obs_context.current()
+        await obs_writer.security(
+            "TOKEN_REFRESH_FAILED", f"A session could not be renewed: {reason}.", outcome="DENIED", actor=user,
+            changes={"reason": reason}, throttle=(f"refresh:{ctx.ip if ctx else None}", 60))
+        return invalid
+
     if not refresh_token:
-        raise invalid
+        raise await refused("no refresh cookie")
     try:
         payload = decode_token(refresh_token)
     except ValueError:
-        raise invalid
+        raise await refused("the refresh token is invalid or has expired")
     if payload.get("type") != "refresh":
-        raise invalid
+        raise await refused("not a refresh token")
     asset_user = await session.get(AssetUser, int(payload["sub"]))
     if asset_user is None or not asset_user.is_active or asset_user.password_hash is None:
-        raise invalid
+        raise await refused("the account is not active", asset_user)
     if not asset_user.is_primary_owner and not asset_user.login_enabled:
-        raise invalid
+        raise await refused("the account can no longer sign in", asset_user)
     if asset_user.locked_until and asset_user.locked_until > datetime.now(timezone.utc):
-        raise invalid
+        raise await refused("the account is locked", asset_user)
 
+    obs_context.set_actor(asset_user)
     _set_refresh_cookie(response, asset_user.id)
     return _session_response(asset_user)
 
 
 @router.post("/logout", status_code=204)
-async def logout(response: Response):
+async def logout(response: Response, session: AsyncSession = Depends(get_session),
+                 refresh_token: str | None = Cookie(default=None)):
     """Clears the refresh cookie so a logged-out browser can't silently mint a new
     access token via /refresh for the rest of the refresh window. Unauthenticated
-    on purpose: logging out must work even with an already-expired access token."""
+    on purpose: logging out must work even with an already-expired access token.
+    S8: a LOGOUT row names the person when the refresh cookie still says who it was."""
+    user = None
+    if refresh_token:
+        try:
+            payload = decode_token(refresh_token)
+            if payload.get("type") == "refresh":
+                user = await session.get(AssetUser, int(payload["sub"]))
+        except (ValueError, KeyError, TypeError):
+            user = None
+    if user is not None:
+        obs_context.set_actor(user)
+    await obs_writer.security("LOGOUT", f"{user.name if user else 'Someone'} signed out.", actor=user,
+                              entity="asset_user" if user else None, entity_id=user.id if user else None)
     response.delete_cookie(
         REFRESH_COOKIE_NAME, path=REFRESH_COOKIE_PATH, httponly=True,
         secure=settings.cookie_secure, samesite="lax",
@@ -209,7 +258,12 @@ async def change_password(
         # 400, not 401: the session is valid, the *input* is wrong. The frontend
         # treats any 401 as "session expired" (refresh, then log out), which would
         # wrongly bounce a user who merely mistyped their current password.
+        await obs_writer.security("PASSWORD_CHANGE_FAILED", f"{asset_user.name} could not change their password: "
+                                  "the current password was wrong.", outcome="FAILED",
+                                  entity="asset_user", entity_id=asset_user.id)
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Old password is incorrect")
     asset_user.password_hash = hash_password(body.new_password)
     asset_user.must_change_password = False
     await session.commit()
+    await obs_writer.security("PASSWORD_CHANGED", f"{asset_user.name} changed their password.",
+                              entity="asset_user", entity_id=asset_user.id)

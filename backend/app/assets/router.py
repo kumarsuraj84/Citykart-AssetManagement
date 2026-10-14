@@ -32,6 +32,9 @@ from app.lifecycle.service import apply_event
 from app.lifecycle.state_machine import LifecycleError
 from app.masters.models import AssetCategory, Brand, Vendor
 from app.reports.export_service import asset_label_png, asset_qr_png
+from app.observability import audit as obs_audit
+from app.observability import events as obs_events
+from app.observability.events import asset_snapshot, lifecycle_summary
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
 
@@ -118,6 +121,10 @@ async def create_asset(
         # with the request, not server faults, so a clean 422 instead of a raw 500.
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    # S8: assets are written with one bulk INSERT (not seen by the automatic audit): the CREATE row here.
+    for a in assets:
+        obs_audit.record(session, "DATA", "CREATE", f"Asset '{a.asset_code}' created ({a.description}).",
+                         entity="asset", entity_id=a.id, company_id=a.company_id, changes=asset_snapshot(a))
     await session.commit()
     for a in assets:
         await session.refresh(a)
@@ -250,6 +257,7 @@ async def bulk_move(
 ):
     moved, failed = await _bulk_apply_event(body.asset_ids, "MOVED", body.to_asset_user_id, None, session, actor,
                                             event_date=body.event_date, reference_no=body.reference_no)
+    await lifecycle_summary(session, "MOVE", "MOVED", body.asset_ids, failed, body.to_asset_user_id, body.reference_no)
     await session.commit()
     return BulkMoveOut(moved=moved, failed=failed)
 
@@ -264,6 +272,8 @@ async def bulk_action(
         body.asset_ids, body.event_type, body.to_asset_user_id, body.remarks, session, actor,
         event_date=body.event_date, reference_no=body.reference_no,
     )
+    await lifecycle_summary(session, "MOVE" if body.event_type == "MOVED" else body.event_type, body.event_type,
+                            body.asset_ids, failed, body.to_asset_user_id, body.reference_no)
     await session.commit()
     return BulkActionOut(done=done, failed=failed)
 
@@ -470,6 +480,14 @@ async def fill_pending_serials(
                             content={"detail": detail, "errors": sentences, "problems": problems})
 
     results: list[SerialFilledOut] = []
+    # S8: one summary row (the field-change audit keeps the per-asset detail).
+    obs_audit.suppress(session, "asset")
+    obs_audit.record(session, "DATA", "SERIALS_FILLED",
+                     f"{obs_events.who()} filled in the pending serial numbers of "
+                     f"{obs_events.plural(len(planned), 'asset')}.", entity="asset",
+                     entity_id=planned[0][1].id if len(planned) == 1 else None,
+                     changes={**obs_events.ids_preview([a.id for _, a, _ in planned]),
+                              "no_serial": sum(1 for _, _, s in planned if s == "N/A")})
     for _index, asset, serial in planned:
         before = {field: getattr(asset, field) for field in AUDITED_SCALAR_FIELDS}
         before["custom_fields"] = dict(asset.custom_fields)

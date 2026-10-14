@@ -7,6 +7,8 @@ from app.masters.models import Company
 from app.numbering.models import CodeRule
 from app.numbering.schemas import CodeRuleIn, CodeRuleOut, CodeRulePreviewOut
 from app.numbering.service import company_example_tokens, make_sole_active_rule, render_example, validate_rule
+from app.observability import events as obs_events
+from app.observability import writer as obs_writer
 
 router = APIRouter(prefix="/api/code-rules", tags=["numbering"])
 
@@ -83,7 +85,19 @@ async def create_rule(body: CodeRuleIn, session: AsyncSession = Depends(get_sess
     await make_sole_active_rule(session, rule)
     await session.commit()
     await session.refresh(rule)
+    await _security_row("created", rule)
     return await _out(session, rule)
+
+
+async def _security_row(verb: str, rule: CodeRule) -> None:
+    """S8: the asset-code format decides every new asset code, so a change is also a SECURITY row (besides
+    the DATA row with the changed fields)."""
+    scope = f"company {rule.company_id}" if rule.company_id else "every company"
+    await obs_writer.security("CODE_RULE_CHANGED", f"{obs_events.who()} {verb} the asset code format for {scope}: "
+                              f"'{rule.prefix_template}{rule.suffix_template or ''}'.", entity="code_rule",
+                              entity_id=rule.id, company_id=rule.company_id,
+                              changes={"prefix_template": rule.prefix_template, "suffix_template": rule.suffix_template,
+                                       "start_number": rule.start_number, "pad_width": rule.pad_width})
 
 
 @router.put("/{rule_id}", response_model=CodeRuleOut)
@@ -99,4 +113,5 @@ async def update_rule(rule_id: int, body: CodeRuleIn, session: AsyncSession = De
     await make_sole_active_rule(session, rule)
     await session.commit()
     await session.refresh(rule)
+    await _security_row("changed", rule)
     return await _out(session, rule)

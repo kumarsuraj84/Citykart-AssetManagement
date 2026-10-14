@@ -22,8 +22,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.asset_users.kinds import INSTALL_POINT_PREFIX, KIND_CHOICE_MESSAGE, KIND_LABELS, KIND_PARAMS, kind_label
 from app.asset_users.models import ALLOWED_ASSET_DOMAINS, ROLES, AssetUser, AssetUserCompanyAccess
 from app.asset_users.router import (
-    _refuse_wider_work_area, _validate_asset_user_fields, _validate_asset_user_references, _validate_new_values,
+    _access_event, _refuse_wider_work_area, _validate_asset_user_fields, _validate_asset_user_references,
+    _validate_new_values,
 )
+from app.observability import audit as obs_audit
+from app.observability import events as obs_events
 from app.asset_users.stock_rooms import resolve_location
 from app.asset_users.store_rooms import ensure_store_rooms, room_codes
 from app.core.capabilities import (
@@ -273,6 +276,7 @@ async def create_employee(
     except IntegrityError:
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, DUPLICATE_CODE.format(code=body.code))
+    await _access_event(None, user)
     return await person_out(session, user.id)
 
 
@@ -370,6 +374,8 @@ async def create_store(
     created += rooms["created"]
     reused += rooms["reused"]
     await session.commit()
+    if "store" in created:
+        await _access_event(None, store)
     rows = await people_out(session, [r.id for r in (store, rooms["stock_room"], rooms["install_point"]) if r is not None])
     if not created:
         response.status_code = status.HTTP_200_OK
@@ -398,16 +404,27 @@ async def ensure_rooms_for_every_store(
     counts = {"stores_checked": len(stores), "stores_completed": 0, "already_complete": 0,
               "stock_rooms_created": 0, "install_points_created": 0}
     problems: list[dict] = []
+    # S8: one summary row for the whole run instead of a DATA row per room / place.
+    obs_audit.suppress(session, "asset_user", "location")
+    completed: list[str] = []
     for store in stores:
         rooms = await ensure_store_rooms(session, actor, store, known)
         counts["stock_rooms_created"] += "stock_room" in rooms["created"]
         counts["install_points_created"] += "install_point" in rooms["created"]
         if rooms["created"]:
             counts["stores_completed"] += 1
+            completed.append(store.code)
         elif not rooms["problems"]:
             counts["already_complete"] += 1
         problems += [{"store_code": store.code, "company_code": companies.get(store.company_id), "message": m}
                      for m in rooms["problems"]]
+    obs_audit.record(
+        session, "DATA", "BATCH_ADD",
+        f"{obs_events.who()} gave {obs_events.plural(counts['stores_completed'], 'store')} their missing rooms "
+        f"({counts['stock_rooms_created']} stock rooms, {counts['install_points_created']} install points).",
+        entity="asset_user", changes={**counts, "problems": len(problems), "company_id": company_id,
+                                      "stores": completed[:200]},
+        company_id=company_id)
     await session.commit()
     return {**counts, "problems": problems}
 

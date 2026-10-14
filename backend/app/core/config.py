@@ -45,6 +45,25 @@ class Settings(BaseSettings):
     store_email_pattern: str = "sm.{code}@citykartstores.com"
     erp_sync_enabled: bool = True
     erp_sync_check_minutes: int = 30
+    # S8: logging, audit and diagnostics (app.observability; docs/ai/LOGGING_AND_DIAGNOSTICS.md).
+    # LOG_DIR holds app.jsonl / error.jsonl / audit.jsonl (20 MB x 10 files each). Docker sets /data/logs
+    # (the `logs` volume); a local run writes ./logs. If it cannot be written the lines go to stderr and a
+    # system_event says so.
+    log_level: str = "INFO"
+    log_dir: str = "./logs"
+    log_slow_request_ms: int = 1000
+    log_slow_sql_ms: int = 500
+    # error_log / system_event / client_report rows older than this are purged daily (REVIEWED client
+    # reports and CRITICAL errors are kept twice as long). audit_log is never purged by the job.
+    log_retention_days: int = 180
+    # Comma-separated IPs / networks of reverse proxies whose X-Forwarded-For is believed. Empty (the
+    # default: one uvicorn process, no proxy) = the connecting address is the client's address.
+    trusted_proxies: str = ""
+    # A name for this server in logs and the diagnostics bundle ("development", "production").
+    environment_name: str = "development"
+    # The release (git commit). Empty = GIT_COMMIT from the environment, else a VERSION file next to the
+    # backend, else "unknown".
+    app_version: str = ""
     model_config = SettingsConfigDict(env_file=".env")
 
 

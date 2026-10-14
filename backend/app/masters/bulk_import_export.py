@@ -99,9 +99,11 @@ def build_template(fields: list[FieldSpec]) -> bytes:
 
 async def export_rows(
     session: AsyncSession, model, fields: list[FieldSpec],
-    allowed_company_ids: list[int] | None, company_field: str | None,
+    allowed_company_ids: list[int] | None, company_field: str | None, counter: dict | None = None,
 ) -> bytes:
-    """`company_field` is the model's own company-scoping attribute name
+    """`counter` (S8, optional): receives {"rows": n} for the export's audit row.
+
+    `company_field` is the model's own company-scoping attribute name
     ("company_id" for a company-owned master, "id" for the Companies master
     itself, None for a global master) -- mirrors
     app.masters.router.SCOPE_COMPANY_ID/SCOPE_SELF/SCOPE_NONE without
@@ -111,6 +113,8 @@ async def export_rows(
     if company_field is not None and allowed_company_ids is not None:
         stmt = stmt.where(getattr(model, company_field).in_(allowed_company_ids))
     rows = (await session.execute(stmt)).scalars().all()
+    if counter is not None:
+        counter["rows"] = len(rows)
 
     wb = openpyxl.Workbook()
     ws = wb.active

@@ -5,6 +5,26 @@ services:
       POSTGRES_DB: ckam
       POSTGRES_USER: ckam
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ckam_dev_pw}
+    # S8: PostgreSQL's own log (docker compose logs db): statements slower than 500 ms, lock waits longer
+    # than deadlock_timeout, checkpoints and big temporary files, each line prefixed with time, process,
+    # role@database. The running dev database got the same settings through ALTER SYSTEM (no restart);
+    # production equivalents: docs/ai/LOGGING_AND_DIAGNOSTICS.md.
+    command:
+      - postgres
+      - -c
+      - log_min_duration_statement=500
+      - -c
+      - log_lock_waits=on
+      - -c
+      - deadlock_timeout=1s
+      - -c
+      - log_checkpoints=on
+      - -c
+      - log_connections=off
+      - -c
+      - "log_line_prefix=%m [%p] %q%u@%d "
+      - -c
+      - log_temp_files=10MB
     volumes:
       - db_data:/var/lib/postgresql/data
       - ./ops/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
@@ -38,6 +58,9 @@ services:
       PO_SOURCE_DB: ${PO_SOURCE_DB:-}
       PO_SOURCE_USER: ${PO_SOURCE_USER:-}
       PO_SOURCE_PASSWORD: ${PO_SOURCE_PASSWORD:-}
+      # S8: JSON-lines logs (app.jsonl / error.jsonl / audit.jsonl, 20 MB x 10 each) in the `logs` volume.
+      LOG_DIR: /data/logs
+      ENVIRONMENT_NAME: ${ENVIRONMENT_NAME:-development}
     depends_on:
       db:
         condition: service_healthy
@@ -48,6 +71,7 @@ services:
       - "127.0.0.1:${API_PORT:-8000}:8000"
     volumes:
       - uploads:/data/uploads
+      - logs:/data/logs
 
   web:
     build: ./frontend
@@ -85,3 +109,4 @@ services:
 volumes:
   db_data:
   uploads:
+  logs:

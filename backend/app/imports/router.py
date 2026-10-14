@@ -9,6 +9,8 @@ from app.imports.asset_import_service import (
 from app.imports import movement_import_service, po_import_service
 from app.imports.schemas import ImportCommitOut, ImportPreviewOut
 from app.lifecycle.state_machine import LifecycleError
+from app.observability import audit as obs_audit
+from app.observability import events as obs_events
 
 router = APIRouter(prefix="/api/imports/assets", tags=["imports"])
 
@@ -35,10 +37,12 @@ async def preview(
 ):
     content = await file.read()
     try:
-        return await preview_import(session, content, await scoped_company_ids(session, actor), mode,
-                                    await allowed_asset_domains(session, actor))
+        result = await preview_import(session, content, await scoped_company_ids(session, actor), mode,
+                                      await allowed_asset_domains(session, actor))
     except ImportTemplateError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    await _previewed(f"assets ({mode})", result, file, content)
+    return result
 
 
 @router.post("/commit", response_model=ImportCommitOut)
@@ -47,12 +51,14 @@ async def commit(
     actor=Depends(require_primary_owner()),
 ):
     content = await file.read()
+    obs_audit.suppress(session, "asset")      # S8: one IMPORT_COMMIT row for the whole file
     try:
         result = await commit_import(session, content, actor, await scoped_company_ids(session, actor), mode,
                                      await allowed_asset_domains(session, actor))
     except ImportScopeError as exc:
         # A write aimed at a company the actor can't access: refuse the whole file
         # (nothing written) with 403, same as POST /api/assets for another company.
+        await obs_events.import_refused(f"assets ({mode})", str(exc))
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc))
     except ImportTemplateError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
@@ -62,8 +68,29 @@ async def commit(
         # never a raw 500.
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    _committed(session, f"assets ({mode})", result, file, entity="asset")
     await session.commit()
     return result
+
+
+def _counts(result) -> dict:
+    data = result if isinstance(result, dict) else result.model_dump()
+    counts = {k: data.get(k) for k in ("imported", "updated", "pos_created", "lines_created", "moved")
+              if data.get(k) is not None}
+    counts["rows_with_errors"] = len(data.get("errors") or [])
+    return counts
+
+
+async def _previewed(what: str, result, file: UploadFile, content: bytes) -> None:
+    """S8: an IMPORT row for every preview (who checked which file, how many rows were ready)."""
+    data = result if isinstance(result, dict) else result.model_dump()
+    await obs_events.import_previewed(what, len(data.get("valid_rows") or []), len(data.get("errors") or []),
+                                      file.filename, len(content))
+
+
+def _committed(session: AsyncSession, what: str, result, file: UploadFile, entity: str) -> None:
+    """S8: ONE IMPORT_COMMIT row in the import's own transaction (counts; the rows' assets / POs follow)."""
+    obs_events.import_committed(session, what, _counts(result), entity=entity, file_name=file.filename)
 
 
 # User-directed feature (2026-09-30): import a Purchase Order and its line
@@ -91,9 +118,11 @@ async def preview_po(
 ):
     content = await file.read()
     try:
-        return await po_import_service.preview_import(session, content, await scoped_company_ids(session, actor))
+        result = await po_import_service.preview_import(session, content, await scoped_company_ids(session, actor))
     except ImportTemplateError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    await _previewed("purchase orders", result, file, content)
+    return result
 
 
 @po_router.post("/commit", response_model=ImportCommitOut)
@@ -105,12 +134,14 @@ async def commit_po(
     try:
         result = await po_import_service.commit_import(session, content, actor, await scoped_company_ids(session, actor))
     except ImportScopeError as exc:
+        await obs_events.import_refused("purchase orders", str(exc))
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc))
     except ImportTemplateError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
     except ValueError as exc:
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    _committed(session, "purchase orders", result, file, entity="purchase_order")
     await session.commit()
     return result
 
@@ -134,11 +165,13 @@ async def preview_movements(
 ):
     content = await file.read()
     try:
-        return await movement_import_service.preview_import(
+        result = await movement_import_service.preview_import(
             session, content, await scoped_company_ids(session, actor), actor.role,
         )
     except ImportTemplateError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    await _previewed("asset movements", result, file, content)
+    return result
 
 
 @movement_router.post("/commit", response_model=ImportCommitOut)
@@ -150,11 +183,13 @@ async def commit_movements(
     try:
         result = await movement_import_service.commit_import(session, content, actor, await scoped_company_ids(session, actor))
     except ImportScopeError as exc:
+        await obs_events.import_refused("asset movements", str(exc))
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc))
     except ImportTemplateError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
     except (ValueError, LifecycleError) as exc:
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    _committed(session, "asset movements", result, file, entity="asset")
     await session.commit()
     return result

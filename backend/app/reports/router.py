@@ -24,6 +24,7 @@ from app.reports.export_service import (
     movement_export_row, movements_to_xlsx,
 )
 from app.reports.schemas import DashboardOut
+from app.observability import events as obs_events
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -175,6 +176,11 @@ async def export_assets(
         )
     labels = await _export_label_maps(session)
     custom_field_keys = await _export_custom_field_keys(session, items)
+    # S8: who exported the register, with which filters, how many rows.
+    await obs_events.exported("the asset register", len(items), {
+        "status": status, "category_id": category_id, "holder_id": asset_user_id or holder_id, "company_id": company_id,
+        "q": q, "exact": exact, "work_area": work_area or domain, "item_id": item_id, "vendor_id": vendor_id,
+        "po_number": po_number, "purchase_from": purchase_from, "purchase_to": purchase_to})
     return Response(
         content=assets_to_xlsx(items, labels, custom_field_keys),
         media_type=XLSX_MEDIA_TYPE,
@@ -350,6 +356,7 @@ async def export_movements(
     "To AssetUser" columns hold what they say, not raw internal ids."""
     stmt = await _movements_query(session, asset_user, from_date, to_date)
     rows = (await session.execute(stmt)).all()
+    await obs_events.exported("the movement log", len(rows), {"from_date": from_date, "to_date": to_date})
     return Response(
         content=movements_to_xlsx(rows),
         media_type=XLSX_MEDIA_TYPE,
@@ -391,6 +398,7 @@ async def export_field_changes(
     if to_date is not None:
         stmt = stmt.where(AssetFieldChange.created_at < to_date + timedelta(days=1))
     rows = (await session.execute(stmt)).all()
+    await obs_events.exported("the field-change audit", len(rows), {"from_date": from_date, "to_date": to_date})
     return Response(
         content=field_changes_to_xlsx(rows),
         media_type=XLSX_MEDIA_TYPE,

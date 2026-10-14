@@ -8,6 +8,8 @@ from app.assets.router import _get_scoped_asset
 from app.documents.models import AssetDocument, DOC_TYPES
 from app.documents.schemas import AssetDocumentOut
 from app.documents.service import MAX_SIZE_BYTES, save_document
+from app.observability import events as obs_events
+from app.observability import writer as obs_writer
 
 router = APIRouter(tags=["documents"])
 
@@ -50,6 +52,10 @@ async def upload_document(
     session.add(doc)
     await session.commit()
     await session.refresh(doc)
+    await obs_writer.access("DOCUMENT_UPLOADED", f"{obs_events.who()} uploaded '{doc.file_name}' ({doc_type}) to asset "
+                            f"{asset.asset_code}.", entity="asset", entity_id=asset.id, company_id=asset.company_id,
+                            changes={"document_id": doc.id, "doc_type": doc_type, "size_bytes": doc.size_bytes,
+                                     "mime_type": doc.mime_type})
     return doc
 
 
@@ -69,5 +75,8 @@ async def download_document(
     doc = await session.get(AssetDocument, doc_id)
     if doc is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
-    await _get_scoped_asset(doc.asset_id, session, asset_user)  # raises 404 if out of scope
+    asset = await _get_scoped_asset(doc.asset_id, session, asset_user)  # raises 404 if out of scope
+    await obs_writer.access("DOCUMENT_DOWNLOADED", f"{obs_events.who()} downloaded '{doc.file_name}' of asset "
+                            f"{asset.asset_code}.", entity="asset", entity_id=asset.id, company_id=asset.company_id,
+                            changes={"document_id": doc.id, "doc_type": doc.doc_type, "size_bytes": doc.size_bytes})
     return FileResponse(doc.stored_path, media_type=doc.mime_type, filename=doc.file_name)

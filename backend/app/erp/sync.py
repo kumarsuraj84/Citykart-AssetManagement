@@ -16,6 +16,8 @@ from app.core.config import settings
 from app.erp.mirror_models import ErpItemCopy, ErpPoLineCopy, ErpSiteCopy, ErpSyncRun, ErpVendorCopy
 from app.erp.source import ErpUnavailable
 from app.erp.warehouse import WarehouseReader, WhItem, WhPoLine, WhSite, WhVendor
+from app.observability import context as obs_context
+from app.observability import writer as obs_writer
 
 logger = logging.getLogger("ckam.erp.sync")
 
@@ -88,6 +90,32 @@ async def needs_sync(session_factory, reader: WarehouseReader) -> bool:
 
 
 async def run_sync(session_factory, reader: WarehouseReader, trigger: str) -> ErpSyncRun:
+    """S8: every copy is also a system_event (started; success / failed / skipped with its counts or its
+    error), carrying the request id of a manual copy or the job id of a scheduled one. erp_sync_run is
+    unchanged."""
+    await obs_writer.system("erp_sync", "sync_started", f"Copying the ERP data ({trigger}).", details={"trigger": trigger})
+    run = await _run_sync(session_factory, reader, trigger)
+    details = {"trigger": trigger, "status": run.status, "po_lines_new": run.po_lines_new or 0,
+               "po_lines_changed": run.po_lines_changed or 0, "po_lines_gone": run.po_lines_gone or 0,
+               "vendors": run.vendors or 0, "items": run.items or 0,
+               "source_stamp": run.source_stamp.isoformat() if run.source_stamp else None,
+               "seconds": round(((run.finished_at or run.started_at) - run.started_at).total_seconds(), 1)
+               if run.started_at else None,
+               "message": run.message}
+    if run.status == "success":
+        await obs_writer.system("erp_sync", "sync_success",
+                                f"ERP data copied: {details['po_lines_new']} new, {details['po_lines_changed']} changed, "
+                                f"{details['po_lines_gone']} gone PO lines; {details['vendors']} vendors, "
+                                f"{details['items']} items.", details=details)
+    elif run.status == "skipped":
+        await obs_writer.system("erp_sync", "sync_skipped", run.message or "The ERP copy was skipped.", details=details)
+    else:
+        await obs_writer.system("erp_sync", "sync_failed", f"The ERP copy failed: {run.message or 'no reason given'}",
+                                level="ERROR", details=details)
+    return run
+
+
+async def _run_sync(session_factory, reader: WarehouseReader, trigger: str) -> ErpSyncRun:
     started = datetime.now(timezone.utc)
     try:
         async with session_factory() as session:
@@ -103,6 +131,8 @@ async def run_sync(session_factory, reader: WarehouseReader, trigger: str) -> Er
         return await _record_failure(session_factory, trigger, started, str(exc))
     except Exception as exc:                       # the background loop must survive anything
         logger.exception("ERP copy failed")
+        ctx = obs_context.current()
+        await obs_writer.exception(exc, source="api" if ctx is not None and ctx.source == "api" else "job")
         return await _record_failure(session_factory, trigger, started, f"The copy failed unexpectedly ({type(exc).__name__}).")
 
 
@@ -234,13 +264,20 @@ async def sync_loop(session_factory, reader: WarehouseReader, stop: asyncio.Even
     """Copies once at start when needed, then checks every `erp_sync_check_minutes`. Never raises."""
     first = True
     while not stop.is_set():
-        try:
-            if await needs_sync(session_factory, reader):
-                await run_sync(session_factory, reader, "startup" if first else "schedule")
-        except ErpUnavailable as exc:
-            logger.warning("ERP check skipped: %s", exc)
-        except Exception:
-            logger.exception("ERP check failed")
+        # S8: each check is a job with its own id (in every log line, system event and error row it writes).
+        with obs_context.job("erp_sync"):
+            try:
+                if await needs_sync(session_factory, reader):
+                    await run_sync(session_factory, reader, "startup" if first else "schedule")
+            except ErpUnavailable as exc:
+                logger.warning("ERP check skipped: %s", exc)
+                await obs_writer.system("erp_sync", "check_skipped", f"ERP check skipped: {exc}", level="WARNING")
+            except Exception as exc:
+                logger.exception("ERP check failed")
+                await obs_writer.exception(exc, source="job")
+                await obs_writer.system("scheduler", "loop_error",
+                                        f"The ERP background check failed ({type(exc).__name__}); it tries again later.",
+                                        level="ERROR")
         first = False
         try:
             await asyncio.wait_for(stop.wait(), timeout=settings.erp_sync_check_minutes * 60)

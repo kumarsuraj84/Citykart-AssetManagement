@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -31,14 +30,27 @@ from app.erp.router import router as erp_router
 from app.items.router import router as items_router
 from app.home.router import router as home_router
 
+from app.core.db import engine
+from app.observability import audit as obs_audit
+from app.observability import filelog as obs_filelog
+from app.observability import sqltiming as obs_sqltiming
+from app.observability import system as obs_system
+from app.observability import writer as obs_writer
+from app.observability.admin_router import router as admin_logs_router
+from app.observability.client_reports import router as client_reports_router
+from app.observability.middleware import RequestContextMiddleware
+from app.observability.redact import register_settings_secrets
+from app.observability.retention import retention_loop
+
+# S8: JSON-lines log files in LOG_DIR (and WARNING+ on stderr, so `docker compose logs api` and the
+# production launcher log still show problems), the automatic data audit, SQL timing, and the server's own
+# secrets registered for redaction -- all before the first request.
+register_settings_secrets(settings)
+obs_filelog.setup(settings.log_dir, settings.log_level)
+obs_audit.install()
+obs_sqltiming.install(engine)
+
 logger = logging.getLogger("ckam.security")
-if not logger.handlers:
-    # uvicorn only configures its own loggers; give this one a stderr handler so
-    # the warning below always reaches `docker compose logs api`.
-    _handler = logging.StreamHandler(sys.stderr)
-    _handler.setFormatter(logging.Formatter("%(levelname)s:     [%(name)s] %(message)s"))
-    logger.addHandler(_handler)
-    logger.setLevel(logging.WARNING)
 
 
 # Every insecure placeholder that is committed anywhere in this repo -- the
@@ -82,20 +94,32 @@ def warn_if_default_jwt_secret(secret: str) -> bool:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     warn_if_default_jwt_secret(settings.jwt_secret)
+    # S8: a system_event for the start (version, migration state, safe config), a WARNING one when the
+    # database's migration is not the code's, and one when LOG_DIR could not be written.
+    try:
+        await obs_system.on_startup()
+    except Exception as exc:          # never stop the app from starting over logging
+        obs_writer.report_failure("startup event", exc)
     # Keep CKAM's own copy of the ERP data up to date in the background (only when the ERP link is set up).
     stop = asyncio.Event()
-    task = None
+    tasks = []
     if settings.erp_sync_enabled and erp_is_configured():
-        task = asyncio.create_task(sync_loop(SessionLocal, get_warehouse_reader(), stop))
+        tasks.append(asyncio.create_task(sync_loop(SessionLocal, get_warehouse_reader(), stop)))
+    # S8: the daily purge of old error / system / client-report rows (audit_log is never purged).
+    tasks.append(asyncio.create_task(retention_loop(stop)))
     try:
         yield
     finally:
         stop.set()
-        if task is not None:
+        for task in tasks:
             try:
                 await asyncio.wait_for(task, timeout=10)
             except (asyncio.TimeoutError, asyncio.CancelledError):
                 task.cancel()
+        try:
+            await obs_system.on_shutdown()
+        except Exception as exc:
+            obs_writer.report_failure("shutdown event", exc)
 
 
 app = FastAPI(title="CityKart Asset Manager API", lifespan=lifespan)
@@ -124,6 +148,9 @@ app.include_router(bundles_router)
 app.include_router(erp_router)
 app.include_router(items_router)
 app.include_router(home_router)
+# S8: admin logs / diagnostics (head-office admin only) and the browser's problem reports.
+app.include_router(admin_logs_router)
+app.include_router(client_reports_router)
 
 
 @app.get("/api/health")
@@ -159,6 +186,12 @@ async def _security_headers(request: Request, call_next):
     if request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"
     return response
+
+
+# S8: added LAST, so it is the OUTERMOST middleware (inside Starlette's own error middleware): every
+# response -- idempotency replays, refusals, unexpected errors, files, the SPA -- carries X-Request-ID, and
+# the access line / error rows see the final status.
+app.add_middleware(RequestContextMiddleware)
 
 
 @app.get("/assets/{file_path:path}")
