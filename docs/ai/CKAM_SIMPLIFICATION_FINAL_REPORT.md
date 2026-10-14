@@ -6,7 +6,7 @@ Local, development / UAT only. Not pushed. Not deployed. Production not touched.
 ## 1. Executive summary
 
 CKAM was strong underneath and too hard on top. The audit of 2026-10-13 found that a normal employee could not do the daily job without understanding how CKAM is built: a PO of three lines was a 104-row page, receiving 50 chairs took about 53 clicks, a purchase operator who needed a missing vendor, Item or stock room hit a dead end, ERP POs from unmatched vendors were invisible, the menu mixed daily work with setup, and a handful of security and integrity holes existed in the API.
-The approved Level-3 programme (new screens and information architecture, a few orchestration endpoints, security fixes; no rebuild, ledgers and model preserved) is implemented in 31 local commits. Headline results measured in a real browser as each kind of user: **receive 50 non-serial units = 2 clicks (was ≈ 53); add 20 identical assets = 8 clicks (was ≈ 200); receiving 100 units takes 0.1 s and never renders a unit list; manual PO with new vendor and Item created inline = 15 clicks, about a minute; every kind of asset is found in under a second**. The user test found 0 P0, 3 P1 and 13 P2; all P1 and P2 are fixed. At the user's request a complete audit trail, logging and diagnostics system (S8) was added so any error can be traced and shared. Final automated results: backend 1577, frontend 1222, Playwright 12 of 12, one Alembic head.
+The approved Level-3 programme (new screens and information architecture, a few orchestration endpoints, security fixes; no rebuild, ledgers and model preserved) is implemented in 29 local commits. Headline results measured in a real browser as each kind of user: **receive 50 non-serial units = 2 clicks (was ≈ 53); add 20 identical assets = 8 clicks (was ≈ 200); receiving 100 units takes 0.1 s and never renders a unit list; manual PO with new vendor and Item created inline = 15 clicks, about a minute; every kind of asset is found in under a second**. The user test found 0 P0, 3 P1 and 13 P2; all P1 and P2 are fixed. At the user's request a complete audit trail, logging and diagnostics system (S8) was added so any error can be traced and shared. Final automated results: backend 1577, frontend 1222, Playwright 12 of 12, one Alembic head.
 
 ## 2. Starting HEAD
 `fc5bda4` (Items → ERP links), then `6607757` (audit documents) at the start of implementation.
@@ -127,7 +127,7 @@ Not started; not part of this programme.
 Repair stays a Move choice (send / receive back); a full repair transaction with vendor, cost and warranty claim is not redesigned.
 
 ## 41. Git status
-All work committed locally in 31+ commits on `worktree-ckam-build`; the working tree is clean at the time of writing. Nothing pushed.
+All work committed locally in 29 commits since `fc5bda4` on `worktree-ckam-build`; the working tree is clean at the time of writing. Nothing pushed.
 
 ## 42. Production confirmation
 No production server, database, NAS or the retired 10.0.1.12 was accessed. The UAT copy runs on this machine (ports 3311 / 8100) and is stopped or discarded at will (`docker compose -p ckam-uat down -v`).
