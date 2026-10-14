@@ -5,11 +5,11 @@
 | | |
 |---|---|
 | Written | 2026-10-14 |
-| Where | Worktree `D:\ANKUR AI PROJECTS\Asset Management\.claude\worktrees\ckam-build`, branch `worktree-ckam-build`, HEAD `c656f33` |
+| Where | Worktree `D:\ANKUR AI PROJECTS\Asset Management\.claude\worktrees\ckam-build`, branch `worktree-ckam-build`, HEAD = the commit that adds `CKAM_SIMPLIFICATION_FINAL_REPORT.md` (see `git log`) |
 | State | **Committed locally. NOT pushed. NOT deployed.** Development / UAT only. Production (10.0.1.98 / 10.0.0.205 / NAS) and the retired 10.0.1.12 were not touched |
-| Scope | The Level-3 programme of `CKAM_SIMPLIFICATION_IMPLEMENTATION_PLAN.md`: stages S0 to S6 built; S7 (full UAT) in progress by other agents |
+| Scope | The Level-3 programme of `CKAM_SIMPLIFICATION_IMPLEMENTATION_PLAN.md`: stages S0 to S6 built, **S7 full UAT done (first UAT, fix round, retest, fix round 2) and S8 (audit trail, logs, diagnostics) built**. Result and verdict: `CKAM_SIMPLIFICATION_FINAL_REPORT.md`, `CKAM_FINAL_UAT.md` |
 | As-built description | `CKAM_FINAL_OPERATING_MODEL.md`, `CKAM_FINAL_INFORMATION_ARCHITECTURE.md`, the eleven `DECISIONS.md` entries dated 2026-10-14, and the stage reports `CKAM_SIMPLIFICATION_S0 … S6BE`. The proposal documents (`CKAM_SIMPLIFIED_OPERATING_MODEL.md`, `CKAM_SIMPLIFIED_INFORMATION_ARCHITECTURE.md`) are superseded where they differ |
-| Alembic | single head `c1d3e5f7a9b0` |
+| Alembic | single head `e6f8a0b2c4d6` (S8 logging tables), after `d2e4f6a8b0c2` (idempotency keys + one live PO number per company) and `c1d3e5f7a9b0` |
 
 ### What changed, in one paragraph
 
@@ -38,6 +38,15 @@ Full Admin and Can Add & Move Assets can create small records in the flow, with 
 | `0adbf44` | S5b-1 | web: batch Add Assets, universal-search register with filters, Link Assets to Items, Move "take N" |
 | `dd254f6` | S6 backend | Move date / reference, Item + set in one call, group counts and safe deactivate, setup status, PO header edit, Home attention |
 | `c656f33` | S5b-2 | web: People & Places forms, bulk password issue, Reports with preview, Home from one call, wiring to the new endpoints |
+| `32a72fa` | S7 | e2e specs ported to the new rules and flows; final operating-model / IA / decision records |
+| `073c75b` | S7 | end-user persona UAT report (16 journeys measured, defect register) |
+| `81804f6` | S7 fix | api: idempotency keys and row locks, PO number uniqueness (migration `d2e4f6a8b0c2`), honest ERP suggestions, independent ERP Home figures, per-company setup status, store rooms on every path, import Item column |
+| `9cf5e6b` | S7 fix | web: double-submit guards with idempotency keys, ERP resilience, small-screen layouts, Move layout, confirmations, per-company wizard, Catalogue for Full Admin |
+| `881e878` | S7 | e2e follow-ups |
+| `9738963` | S7 | retest report on the final build |
+| `8231308` | S7 fix 2 | stricter ERP item suggestions, confirmation before group-wide rules, Undo for Not tracked, per-company code example |
+| `0766563`, `718bb9c` | S8 backend | request ids, automatic audit trail, security / error / system logs, client reports, rotating JSON log files, admin log and diagnostics APIs, DB logging settings (migration `e6f8a0b2c4d6`) |
+| `b74011c` | S8 web | reference ids on errors, automatic error capture, Report a problem, Logs and Diagnostics screens |
 
 ### Migrations added (both additive)
 
@@ -45,20 +54,24 @@ Full Admin and Can Add & Move Assets can create small records in the flow, with 
 |---|---|---|
 | `b8d0f2a4c6e8` | `pending_asset_line_no` | `pending_asset.line_no` (nullable integer) + index `(purchase_order_id, line_no)`; deterministic backfill (dev: 217 units to 9 lines). Down-revision `f6b8d0e2a4c5` |
 | `c1d3e5f7a9b0` | `master_audit` | append-only `master_audit` table with update / delete refused by trigger. Down-revision `b8d0f2a4c6e8` |
+| `d2e4f6a8b0c2` | idempotency keys + PO number | `idempotency_key` table; partial unique index on live PO numbers per company (created only when no duplicates exist; otherwise skipped with a notice and an advisory lock protects the check) |
+| `e6f8a0b2c4d6` | `logging_tables` | `audit_log` (append-only by trigger), `error_log`, `system_event`, `client_report` |
 
 No `create_all`, no table dropped, no data rewritten by any stage.
 
-### Tests at HEAD `c656f33` (as reported by the latest stage reports; not re-run when this section was written)
+### Tests at the final commit (re-run by the controller)
 
-| | Before the programme | At HEAD |
+| | Before the programme | Final |
 |---|---|---|
-| Backend (`docker compose exec -T -e DATABASE_URL=…/ckam_test api python -m pytest -q`) | 689 | **1266 passed**, 0 failed (S0 748 · S2 813 · S3a-1 942 · S3a-2 1022 · S4 1107 · S5 1199 · S6 1266) |
-| Frontend (`npx tsc -b && npx vitest run`) | 454 | **1040 passed** in 75 files, 0 failed; `tsc -b` clean; `npm run build` succeeds (the old > 500 kB chunk warning only) |
+| Backend (`docker compose exec -T -e DATABASE_URL=…/ckam_test api python -m pytest -q`) | 689 | **1577 passed**, 0 failed |
+| Frontend (`npx tsc -b && npx vitest run`) | 454 | **1222 passed** in 89 files, 0 failed; `tsc -b` clean; `npm run build` succeeds (the old > 500 kB chunk warning only) |
+| Playwright e2e (permanent specs, against the UAT copy of the final build) | 9 specs, 1 passing at the start of S7 | **12 of 12 passed** (3 new journeys) |
+| Alembic | – | one head `e6f8a0b2c4d6`; a fresh empty database goes zero to head; the dev copy and the UAT copy are at head |
 
 ### NOT done / pending
 
-* **S7 full UAT** is the release gate and is **not finished**: `CKAM_SIMPLIFICATION_S7_REPORT.md` and the S7 end-to-end report (`S7_E2E_REPORT.md`) are being produced by other agents; this section does not claim their result.
-* **Playwright** end-to-end specs were updated for changed labels and type-checked, but **not run** in any S0–S6 stage. Several stages also recorded **no browser pass against the real dev API** (the containers do not live-mount source, and were not rebuilt for them); screens were checked against a mocked API at 390 / 768 / 1280 px. Before any release: `docker compose up -d --build api web`, then a browser pass per role.
+* **S7 full UAT is finished** (`CKAM_SIMPLIFICATION_S7_REPORT.md` first pass, `S7_RETEST_REPORT.md` on the fixed build, `S7_E2E_REPORT.md`, `CKAM_FINAL_UAT.md` summary). P0 0, P1 0, P2 0 remaining; about 6 P3 polish items remain (see `CKAM_SIMPLIFICATION_FINAL_REPORT.md` §38). The UAT ran on a throw-away copy of the dev database (ports 3311 / 8100, docker project `ckam-uat`), never against production.
+* **Not yet done before any release:** run the permanent Playwright suite and a browser pass on the machine that will be released, on its own database; apply `alembic upgrade head` BEFORE starting the new code (the audit trail writes inside business transactions, so code without the S8 tables fails every save); set `LOG_DIR`, `ENVIRONMENT_NAME` and the `GIT_COMMIT` build argument; apply the PostgreSQL logging settings on the production database server by hand (documented in `LOGGING_AND_DIAGNOSTICS.md`).
 * **Production deployment and `git push` are NOT done** and each needs its own explicit request ("commit and push to git and main" means push only, never deploy). Nothing was changed on any server.
 * **Owner decision D6 is still open**: should an ordinary Full Admin be limited to chosen companies (today a Full Admin works in every company)?
 * **Cross-company allotment** (owner decision of 2026-10-13) is not built; the lifecycle engine still refuses a move to another company.
