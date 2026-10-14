@@ -65,6 +65,8 @@ async def _main():
     parser.add_argument("--password", default="Passw0rd!")
     args = parser.parse_args()
 
+    from app.observability import audit as obs_audit      # S8: DATA audit rows with source "script"
+    obs_audit.install()
     async with SessionLocal() as session:
         result = await ensure_seed_admin(session, args.company_code, args.password)
         await session.commit()

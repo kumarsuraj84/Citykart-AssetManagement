@@ -6,7 +6,7 @@
 | Starting HEAD | `881e878` (the controller then committed the re-test report as `9738963`, docs only) |
 | Source of the work | `CKAM_SIMPLIFICATION_S7_RETEST_REPORT.md` §3: N1 (P2), N2–N5 (P3), plus N1b (Undo in the PO review) |
 | Scope | `backend/` then `frontend/` (incl. e2e static strings: none needed) and this report. Nothing committed. No migration. Playwright not run. Production, the dev stack's ports and the `ckam-uat` project untouched (only read-only Python in the `ckam-uat` api container's memory, see §3). |
-| Backend | full suite **see §8** · exactly one Alembic head (`d2e4f6a8b0c2`, unchanged) |
+| Backend | full suite **1,387 passed, 0 failed** (was 1,364) · exactly one Alembic head (`d2e4f6a8b0c2`, unchanged) |
 | Frontend | `npx tsc -b` clean · `npx vitest run` **78 files, 1,127 tests, all green** (was 1,114) · `npm run build` OK |
 
 ## 1. Per item
@@ -136,7 +136,8 @@ Frontend changed: `src/features/items/suggestion-words.ts`, `src/features/erp/Er
 
 ## 8. Test runs
 
-* Backend: `docker compose up -d --build api`, then `docker compose exec -T -e DATABASE_URL=…/ckam_test api python -m pytest -q` → **RESULT_BACKEND** · `alembic heads` → `d2e4f6a8b0c2 (head)` (one head, no migration).
+* Backend: `docker compose up -d --build api`, then `docker compose exec -T -e DATABASE_URL=…/ckam_test api python -m pytest -q` → **1,387 passed, 0 failed** (364 s; was 1,364: +23 new tests) · `alembic heads` → `d2e4f6a8b0c2 (head)` (one head, no migration).
+* Note: two earlier full runs showed DB deadlocks/errors because another `python -m pytest -q` (not started by this session) was running in the same api container against `ckam_test` at the same time; it was left alone, and the run above was made after it ended.
 * Frontend (`frontend/`): `npx tsc -b` clean; `npx vitest run` → 78 files, **1,127 passed**; `npm run build` → built (the usual >500 kB chunk warning only).
 
 ## 9. e2e strings

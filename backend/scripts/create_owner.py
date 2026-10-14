@@ -112,11 +112,18 @@ async def ensure_owner(session: AsyncSession) -> dict:
 
 
 async def _main():
+    # S8: the records this script makes get their DATA audit rows (source "script"), and a new account is a
+    # SECURITY row too -- never with its password (only the hash is stored, and audit shows it as ***).
+    from app.observability import audit as obs_audit, writer as obs_writer
+    obs_audit.install()
     async with SessionLocal() as session:
         result = await ensure_owner(session)
         await session.commit()
 
     if result["created"]:
+        await obs_writer.security("ACCESS_CHANGED", f"The create_owner script made the full-admin account of "
+                                  f"{ASSET_USER_NAME} ({EMP_CODE}).", entity="asset_user",
+                                  entity_id=result["asset_user_id"], company_id=result["company_id"])
         print(
             f"Owner admin created: company_id={result['company_id']} "
             f"asset_user_id={result['asset_user_id']} emp_code={EMP_CODE} name={ASSET_USER_NAME!r}"
