@@ -218,14 +218,26 @@ export async function sendUserReport(input: {
   return (await res.json()) as ReportAnswer;
 }
 
+/**
+ * Browser notices that are not errors in CKAM: Chrome / Edge fire "ResizeObserver loop completed with undelivered
+ * notifications" whenever a panel resizes while the page is drawing (harmless, nothing is broken). Reporting them
+ * made Home say "3 user reports need a look" for nothing.
+ */
+export function isBenignBrowserNotice(message: string | null | undefined): boolean {
+  const text = (message ?? "").toLowerCase();
+  return text.includes("resizeobserver loop") || text.includes("resizeobserver loop limit exceeded");
+}
+
 /** main.tsx: switch on the automatic reports and breadcrumbs. Returns the stop function. */
 export function installErrorCapture(): () => void {
   if (state.installed) return uninstallErrorCapture;
   state.installed = true;
   const onError = (e: ErrorEvent) => {
+    if (isBenignBrowserNotice(e.message)) return;
     void reportJsError(e.error ?? e.message, "window");
   };
   const onRejection = (e: PromiseRejectionEvent) => {
+    if (isBenignBrowserNotice(e.reason instanceof Error ? e.reason.message : String(e.reason ?? ""))) return;
     void reportJsError(e.reason, "unhandled promise");
   };
   window.addEventListener("error", onError);

@@ -26,7 +26,14 @@ export function LogsHomeRow() {
   const since = new Date(Math.floor((Date.now() - 24 * 60 * 60 * 1000) / 60000) * 60000).toISOString();
   const errorsQ = useQuery({
     queryKey: ["admin-logs", "home", "errors", since],
-    queryFn: async () => (await apiClient.getPage<unknown[]>(`/admin/logs/errors?${queryString({ group: true, from: since, limit: 1 })}`)) ?? null,
+    // Real errors only (ERROR / CRITICAL). Slow-request WARNINGs (e.g. the ERP copy taking 3 s) are in the Logs
+    // screen, but they are not "something is broken" and must not light up Home.
+    queryFn: async () => {
+      const pages = await Promise.all(
+        ["ERROR", "CRITICAL"].map((level) => apiClient.getPage<unknown[]>(`/admin/logs/errors?${queryString({ group: true, level, from: since, limit: 1 })}`)),
+      );
+      return { total: pages.reduce((n, p) => n + countOf(p), 0), data: [] } as unknown as Page<unknown[]>;
+    },
     enabled: allowed,
     retry: false,
     staleTime: 5 * 60 * 1000,

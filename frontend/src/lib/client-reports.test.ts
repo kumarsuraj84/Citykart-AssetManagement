@@ -75,6 +75,20 @@ describe("S8 automatic problem reports", () => {
     expect(sentBodies()[0].message).toBe("Error: async boom");
   });
 
+  it("the harmless browser notice 'ResizeObserver loop completed…' is never reported", async () => {
+    installErrorCapture();
+    window.dispatchEvent(new ErrorEvent("error", { message: "ResizeObserver loop completed with undelivered notifications." }));
+    window.dispatchEvent(new ErrorEvent("error", { message: "ResizeObserver loop limit exceeded" }));
+    const ev = new Event("unhandledrejection") as Event & { reason?: unknown };
+    ev.reason = new Error("ResizeObserver loop completed with undelivered notifications.");
+    window.dispatchEvent(ev);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(fetchMock).not.toHaveBeenCalled();
+    // a real error right after is still reported
+    window.dispatchEvent(new ErrorEvent("error", { message: "boom", error: new Error("boom") }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+  });
+
   it("is never sent when nobody is signed in", async () => {
     installErrorCapture();
     useAuthStore.getState().logout();

@@ -87,7 +87,7 @@ function mockApi() {
   };
   (apiClient.getPage as any).mockImplementation((path: string) => {
     if (path.startsWith("/admin/logs/audit")) return Promise.resolve(path.includes("category=SECURITY") || path.includes("category=ACCESS") ? pages.security : pages.audit);
-    if (path.startsWith("/admin/logs/errors")) return Promise.resolve(path.includes("group=true") ? pages.groups : pages.errors);
+    if (path.startsWith("/admin/logs/errors")) return Promise.resolve(path.includes("level=CRITICAL") ? { data: [], total: 0 } : path.includes("group=true") ? pages.groups : pages.errors);
     if (path.startsWith("/admin/logs/system")) return Promise.resolve(pages.system);
     if (path.startsWith("/admin/logs/client-reports")) return Promise.resolve(pages.reports);
     return Promise.resolve({ data: [], total: 0 });
@@ -398,6 +398,9 @@ describe("S8 Home hint", () => {
     const errorsCall = pageCalls("/admin/logs/errors")[0];
     expect(errorsCall).toContain("group=true");
     expect(errorsCall).toContain("limit=1");
+    // only real errors count on Home: ERROR and CRITICAL, never the slow-request WARNINGs
+    expect(pageCalls("/admin/logs/errors").some((c: string) => c.includes("level=ERROR"))).toBe(true);
+    expect(pageCalls("/admin/logs/errors").some((c: string) => c.includes("level=CRITICAL"))).toBe(true);
     expect(pageCalls("/admin/logs/client-reports")[0]).toContain("status=NEW");
   });
 
