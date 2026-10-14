@@ -293,6 +293,18 @@ describe("PurchaseOrderDetail: editing a line (S2)", () => {
     await waitFor(() => expect(apiClient.put).toHaveBeenCalledWith("/purchase-orders/1/line-groups/1", { quantity: 4 }));
   });
 
+  it("S7 fix 2 (N5): the barcode is optional, as on the server -- no required mark, and clearing it saves null", async () => {
+    const dialog = await openLineEdit();
+    const barcode = within(dialog).getByLabelText(/^barcode/i);
+    expect(within(dialog).getByText("Barcode").closest("label")).not.toHaveTextContent("*");
+    expect(within(dialog).getByText("Optional.")).toBeInTheDocument();
+    fireEvent.change(barcode, { target: { value: "" } });
+    const save = within(dialog).getByRole("button", { name: /^save$/i });
+    await waitFor(() => expect(save).not.toBeDisabled());
+    fireEvent.click(save);
+    await waitFor(() => expect(apiClient.put).toHaveBeenCalledWith("/purchase-orders/1/line-groups/1", { barcode: null }));
+  });
+
   it("a line with nothing waiting can only have its Ordered quantity raised", async () => {
     const dialog = await openLineEdit(group({ ordered: 2, received: 2, waiting: 0, status: "RECEIVED" }));
     expect(within(dialog).getByText(/only the ordered quantity can be raised/i)).toBeInTheDocument();

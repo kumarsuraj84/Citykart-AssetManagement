@@ -111,12 +111,11 @@ export function LineEditDialog({ poId, target, onClose, onSaved, itemSelectOptio
   const changed = line ? Object.keys(payload!).length > 0 : true;
 
   // A unit edit sends every field, so all must be valid; a line edit sends
-  // only what changed, so only those are checked (an old line without a
-  // barcode can still have its quantity changed).
+  // only what changed, so only those are checked. The barcode is optional
+  // (S7 fix 2, N5: the server never required it; an empty one is sent as null).
   const sends = (key: string) => !payload || key in payload;
   const fieldsValid =
     (!sends("description") || form.description.trim() !== "") &&
-    (!sends("barcode") || form.barcode.trim() !== "") &&
     (!sends("purchase_cost") || Number(form.purchaseCost) > 0) &&
     (!sends("warranty_years") || (form.warrantyYears.trim() !== "" && Number(form.warrantyYears) >= 0));
   const canSave = !!target && changed && qtyProblem === null && fieldsValid;
@@ -187,7 +186,8 @@ export function LineEditDialog({ poId, target, onClose, onSaved, itemSelectOptio
             <FormField htmlFor="edit-description" label="Description" required>
               <Input id="edit-description" disabled={!fieldsEditable} value={form.description} onChange={(e) => set({ description: e.target.value })} />
             </FormField>
-            <FormField htmlFor="edit-barcode" label="Barcode" required>
+            {/* S7 fix 2 (N5): optional, as the server treats it (and as in the ERP review). */}
+            <FormField htmlFor="edit-barcode" label="Barcode" helperText="Optional.">
               <Input id="edit-barcode" disabled={!fieldsEditable} value={form.barcode} onChange={(e) => set({ barcode: e.target.value })} />
             </FormField>
             <FormField htmlFor="edit-item" label="Item" helperText="Changing the Item also changes the Category and Sub-category.">

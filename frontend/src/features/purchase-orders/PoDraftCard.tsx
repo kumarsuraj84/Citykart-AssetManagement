@@ -5,7 +5,7 @@ import { apiClient } from "../../lib/api-client";
 import { useKeyedMutation } from "../../lib/submit-key";
 import type { Bundle } from "../bundles/bundle-parts";
 import type { Item } from "../items/types";
-import { hasSuggestion, suggestionWords } from "../items/suggestion-words";
+import { hasSuggestion, suggestionNeedsConfirm, suggestionQuestion, suggestionWords } from "../items/suggestion-words";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -94,6 +94,8 @@ export interface DraftLine {
   /** S7: "same name" / "similar name", and its code SAME_NAME / SIMILAR_NAME. */
   suggestion_reason?: string | null;
   suggestion_reason_code?: string | null;
+  /** S7 fix 2: the reach the server judged the suggestion for (a mixed ERP group: NAME / CODE, not ARTICLE). */
+  suggestion_scope?: SuggestedScope | null;
   suggested_scope?: SuggestedScope | null;
 }
 
@@ -157,11 +159,15 @@ interface NotTrackedResult {
   lines?: { item_code: string | null; description?: string; quantity?: number; resolution?: LineResolution | null }[];
   /** The rule just saved (when the server says it): the head-office admin can undo it right here. */
   map_id?: number | null;
+  /** S7 fix 2: whether this person may undo that rule (the server's rule: the head-office admin). */
+  can_undo?: boolean | null;
 }
 
 /** The decision just saved, kept so it can be undone on this screen. */
 interface LastNotTracked {
   mapId: number | null;
+  /** The server's word on who may undo it; null = an older server (then: the head-office admin). */
+  canUndo: boolean | null;
   scope: NotTrackedScope;
   words: string;
   forms: LineForm[];
@@ -357,16 +363,40 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
       return next;
     });
   }
-  function changeItem(uid: number, itemId: string) {
+  function changeItem(uid: number, itemId: string, reach?: MapScope) {
     const before = lines.find((l) => l.uid === uid);
     if (!before) return;
     const s = before.src;
     // A line still to decide keeps its reach. Changing the Item of a line that was already matched only
     // changes that decision for the head-office admin; anyone else remembers it for this code only.
-    const scope: MapScope = needsItem(s)
+    const scope: MapScope = reach ?? (needsItem(s)
       ? before.mapScope === "NONE" ? "NONE" : before.mapScope
-      : itemId === str(s.item_id) ? "NONE" : caps?.is_head_office_admin ? (s.matched_by ?? defaultScope(s)) : "CODE";
+      : itemId === str(s.item_id) ? "NONE" : caps?.is_head_office_admin ? (s.matched_by ?? defaultScope(s)) : "CODE");
     setLine(uid, { itemId, partAmounts: partAmountsFor(bundleOf(itemId), before.rate), mapScope: scope });
+  }
+
+  /**
+   * The reach "Use suggestion" remembers (S7 fix 2): the reach the server judged the suggestion for -- in a mixed
+   * ERP group that is this product name, not the whole group -- unless the person chose "Don't remember".
+   */
+  function suggestionReach(l: LineForm): MapScope {
+    if (l.mapScope === "NONE") return "NONE";
+    const judged = l.src.suggestion_scope;
+    return judged && scopesFor(l.src).includes(judged) ? judged : l.mapScope;
+  }
+  // "Use suggestion" with a similar name, or for a whole ERP group, waits for a confirmation (S7 fix 2, N1).
+  const [confirmSuggestion, setConfirmSuggestion] = useState<{ uid: number; reach: MapScope; question: string } | null>(null);
+  function takeSuggestion(l: LineForm) {
+    const s = l.src;
+    const reach = suggestionReach(l);
+    if (!suggestionNeedsConfirm(s, reach)) {
+      changeItem(l.uid, String(s.suggested_item_id), reach);
+      return;
+    }
+    const question = suggestionQuestion(s.suggested_item_name ?? itemById(String(s.suggested_item_id))?.name ?? "the suggested Item", reach, {
+      group: s.article_name || s.article_key, name: s.erp_name || s.description, code: s.item_code,
+    });
+    setConfirmSuggestion({ uid: l.uid, reach, question });
   }
   function changeRate(uid: number, rate: string) {
     const l = lines.find((x) => x.uid === uid);
@@ -486,6 +516,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
       const leaving = lines.filter((x) => codes.has((x.src.item_code ?? "").toUpperCase()));
       setLastNotTracked({
         mapId: typeof result?.map_id === "number" ? result.map_id : null,
+        canUndo: typeof result?.can_undo === "boolean" ? result.can_undo : null,
         scope: l.notTrackedScope, words: notTrackedReach(l.src, l.notTrackedScope), forms: leaving,
       });
       setLines((ls) => ls.filter((x) => !codes.has((x.src.item_code ?? "").toUpperCase())));
@@ -881,7 +912,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
                         </span>
                         <Button
                           type="button" size="sm" variant="outline" aria-label={`Line ${i + 1}: use the suggestion ${s.suggested_item_name ?? ""}`.trim()}
-                          disabled={!suggestion} onClick={() => changeItem(l.uid, String(s.suggested_item_id))}
+                          disabled={!suggestion} onClick={() => takeSuggestion(l)}
                         >
                           Use suggestion
                         </Button>
@@ -957,7 +988,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
           {lastNotTracked && (
             <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/20 px-2.5 py-1.5 text-xs" role="status" aria-label="Not tracked saved">
               <span>Saved: {lastNotTracked.words} is now left out of CKAM.</span>
-              {caps?.is_head_office_admin && lastNotTracked.mapId !== null ? (
+              {lastNotTracked.mapId !== null && (lastNotTracked.canUndo ?? caps?.is_head_office_admin === true) ? (
                 <AsyncButton
                   type="button" size="sm" variant="outline" pending={undoNotTracked.isPending} pendingLabel="Undoing…"
                   onClick={() => undoNotTracked.mutate(lastNotTracked)}
@@ -1027,6 +1058,28 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
           onCreated={(row) => setCostCenterId(String(row.id))}
         />
       )}
+      <AlertDialog open={confirmSuggestion !== null} onOpenChange={(o) => !o && setConfirmSuggestion(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Use the suggestion?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmSuggestion ? `${confirmSuggestion.question}${confirmSuggestion.reach !== "NONE" ? " It is saved when you create the purchase order." : ""}` : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const line = confirmSuggestion ? lines.find((x) => x.uid === confirmSuggestion.uid) : undefined;
+                if (confirmSuggestion && line) changeItem(line.uid, String(line.src.suggested_item_id), confirmSuggestion.reach);
+                setConfirmSuggestion(null);
+              }}
+            >
+              Use it
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog open={confirmNotTracked !== null} onOpenChange={(o) => !o && setConfirmNotTracked(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>

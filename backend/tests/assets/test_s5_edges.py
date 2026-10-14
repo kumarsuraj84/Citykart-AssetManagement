@@ -196,7 +196,7 @@ async def test_one_item_in_the_group_is_a_stronger_hint_and_an_asset_without_sub
             await s.commit()
         rows = {r["asset_id"]: r for r in (await client.get("/api/assets/unlinked-items", headers=h)).json()}
         assert rows[chair["id"]]["suggestions"] == [{"item_id": w["item_chair"], "item_name": "Office Chair", "score": 0.4, "reason": "GROUP"}]
-        assert rows[loose["id"]]["suggestions"][0] == {"item_id": w["item_gangbox"], "item_name": "Gang Box", "score": 0.95, "reason": "DESCRIPTION"}
+        assert rows[loose["id"]]["suggestions"][0] == {"item_id": w["item_gangbox"], "item_name": "Gang Box", "score": 0.85, "reason": "DESCRIPTION"}  # S7 fix 2: non-exact capped at 0.85
         linked = await client.post("/api/assets/link-items", headers=h, json=[{"asset_id": loose["id"], "item_id": w["item_camera"]}])
         assert linked.status_code == 200                                     # any Item of its Category fits
         async with SessionLocal() as s:

@@ -76,10 +76,36 @@ def sample_tokens(company_code: str | None = None) -> dict[str, str]:
     }
 
 
+async def company_example_tokens(session: AsyncSession, company_id: int | None) -> dict[str, str]:
+    """S7 fix 2 (N4): the example values of one company -- its own code and its first active location and
+    cost centre -- with the generic sample for anything that company does not have yet (and for the Asset
+    Group / sub-category, which every company shares). No company (or an unknown one): the generic sample."""
+    from app.masters.models import Company, CostCenter, Location
+
+    tokens = sample_tokens(None)
+    company = await session.get(Company, company_id) if company_id is not None else None
+    if company is None:
+        return tokens
+    tokens["company.code"] = company.code
+    location = (await session.execute(
+        select(Location.code).where(Location.company_id == company.id, Location.is_active.is_(True)).order_by(Location.id).limit(1)
+    )).scalar_one_or_none()
+    cost_center = (await session.execute(
+        select(CostCenter.code).where(CostCenter.company_id == company.id, CostCenter.is_active.is_(True))
+        .order_by(CostCenter.id).limit(1)
+    )).scalar_one_or_none()
+    if location:
+        tokens["location.code"] = location
+    if cost_center:
+        tokens["cost_center.code"] = cost_center
+    return tokens
+
+
 def render_example(prefix_template: str, suffix_template: str, start_number: int, pad_width: int,
-                   company_code: str | None = None) -> str:
-    """What the first asset code of a rule looks like, with sample values."""
-    tokens = sample_tokens(company_code)
+                   company_code: str | None = None, tokens: dict[str, str] | None = None) -> str:
+    """What the first asset code of a rule looks like, with sample values (or `tokens`, one company's own
+    values -- see company_example_tokens)."""
+    tokens = tokens or sample_tokens(company_code)
     prefix = _TOKEN_RE.sub(lambda m: tokens.get(m.group(1), m.group(0)), prefix_template)
     number = str(max(start_number, 0))
     if pad_width:

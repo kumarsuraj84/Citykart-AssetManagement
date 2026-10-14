@@ -137,9 +137,14 @@ describe("ERP Inbox (head-office admin)", () => {
     expect(await screen.findAllByText("Nothing needs a decision.")).toHaveLength(3);
   });
 
-  it("Use suggestion decides the whole ERP group and lists the server's answer", async () => {
+  it("Use suggestion decides the whole ERP group (after a confirmation) and lists the server's answer", async () => {
     renderAt("/settings/erp/inbox");
     fireEvent.click(await screen.findByRole("button", { name: "Use suggestion for FA_IT_OTHERS" }));
+    // S7 fix 2 (N1): a similar name for a whole ERP group is asked first
+    const ask = await screen.findByRole("alertdialog", { name: "Use the suggestion?" });
+    expect(ask).toHaveTextContent("Use Network Switch for every code in group FA_IT_OTHERS? This is remembered for everyone.");
+    expect(apiClient.post).not.toHaveBeenCalled();
+    fireEvent.click(within(ask).getByRole("button", { name: "Use it" }));
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/erp/inbox/items/resolve", [
       { company_id: 1, article_key: "FA_IT_OTHERS", scope: "ARTICLE", item_id: 44 },
     ]));
@@ -181,6 +186,9 @@ describe("ERP Inbox (head-office admin)", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "Select FA_RACKS" }));
     expect(screen.getByLabelText("Selected groups")).toHaveTextContent("2 groups selected");
     fireEvent.click(screen.getByRole("button", { name: "Use the suggestions (2)" }));
+    const ask = await screen.findByRole("alertdialog", { name: "Use the suggestion?" });
+    expect(ask).toHaveTextContent("Use the suggested Item for each of the 2 selected groups?");
+    fireEvent.click(within(ask).getByRole("button", { name: "Use it" }));
     await waitFor(() => expect(body("/erp/inbox/items/resolve")).toEqual([
       { company_id: 1, article_key: "FA_IT_OTHERS", scope: "ARTICLE", item_id: 44 },
       { company_id: 1, icode: "CT600001", scope: "NAME", item_id: 45 },
@@ -285,6 +293,35 @@ describe("ERP Inbox (head-office admin)", () => {
     const mystery = screen.getByRole("listitem", { name: "ERP group MYSTERY CODE" });
     expect(mystery).not.toHaveTextContent("Suggested");
     expect(within(mystery).queryByRole("button", { name: /use suggestion/i })).not.toBeInTheDocument();
+  });
+
+  it("S7 fix 2: a same-name suggestion for one product name is one click; Cancel on a question sends nothing", async () => {
+    const sameName = { ...RACK_GROUP, suggestion_score: 1, suggestion_reason: "same name", suggestion_reason_code: "SAME_NAME", suggestion_scope: "NAME" as const };
+    mockApi({ ...INBOX, items: [SWITCH_GROUP, sameName] });
+    renderAt("/settings/erp/inbox");
+    fireEvent.click(await screen.findByRole("button", { name: "Use suggestion for FA_IT_OTHERS" }));
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(apiClient.post).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Use suggestion for FA_RACKS" }));
+    await waitFor(() => expect(body("/erp/inbox/items/resolve")).toEqual([{ company_id: 1, icode: "CT600001", scope: "NAME", item_id: 45 }]));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("S7 fix 2: the reach the server judged the suggestion for is the one saved (a mixed group: per product name)", async () => {
+    const mixed: InboxItemGroup = {
+      ...SWITCH_GROUP, article_key: "FA_FF_TABLE_OFFICE", article_name: "FA_FF_TABLE_OFFICE", suggested_scope: "ARTICLE",
+      codes: [{ icode: "CV2054", name: "OFFICE CHAIR", units: 2, po_numbers: ["SPO/1"], scopes: ["CODE", "NAME", "ARTICLE"] }],
+      suggested_item_id: 46, suggested_item_name: "Router", suggestion_score: 0.85, suggestion_reason: "similar name",
+      suggestion_reason_code: "SIMILAR_NAME", suggestion_scope: "NAME",
+    };
+    mockApi({ ...INBOX, items: [mixed] });
+    renderAt("/settings/erp/inbox");
+    fireEvent.click(await screen.findByRole("button", { name: "Use suggestion for FA_FF_TABLE_OFFICE" }));
+    const ask = await screen.findByRole("alertdialog");
+    expect(ask).toHaveTextContent("Use Router for every code named “OFFICE CHAIR”? This is remembered for everyone.");
+    fireEvent.click(within(ask).getByRole("button", { name: "Use it" }));
+    await waitFor(() => expect(body("/erp/inbox/items/resolve")).toEqual([{ company_id: 1, icode: "CV2054", scope: "NAME", item_id: 46 }]));
   });
 
   it("Settings › ERP Mapping points to the inbox", async () => {

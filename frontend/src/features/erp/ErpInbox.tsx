@@ -4,10 +4,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import type { Item } from "../items/types";
 import { ItemFormDialog } from "../items/ItemFormDialog";
-import { hasSuggestion, suggestionWords } from "../items/suggestion-words";
+import { hasSuggestion, suggestionNeedsConfirm, suggestionQuestion, suggestionWords } from "../items/suggestion-words";
 import { ErpStoresDialog } from "../asset-users/ErpStoresDialog";
 import { reasonWords } from "../purchase-orders/PoDraftCard";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -45,6 +49,8 @@ export interface InboxItemGroup {
   /** S7: "same name" / "similar name", and its code SAME_NAME / SIMILAR_NAME. */
   suggestion_reason?: string | null;
   suggestion_reason_code?: string | null;
+  /** S7 fix 2: the reach the server judged the suggestion for (a mixed group: NAME, never ARTICLE). */
+  suggestion_scope?: InboxScope | null;
   seen_on_pos?: string[];
   po_count?: number;
 }
@@ -88,6 +94,8 @@ interface Named {
 }
 
 type ItemDecision = { kind: "item"; itemId: number } | { kind: "not_tracked" };
+/** One group's decision, at a reach (default: the group's "How far"). */
+type Work = { group: InboxItemGroup; decision: ItemDecision; scope?: InboxScope };
 
 /** One line of the results list: which group, and what the server said. */
 interface ResultLine {
@@ -343,9 +351,23 @@ function NewItemsSection({ groups, count, onChanged }: { groups: InboxItemGroup[
     return g.suggested_scope && allowed.includes(g.suggested_scope) ? g.suggested_scope : allowed[0];
   };
 
+  /**
+   * The reach "Use suggestion" saves (S7 fix 2): what the person chose under "How far", else the reach the server
+   * judged the suggestion for (a mixed ERP group's Item is suggested per product name, never for the whole group),
+   * else the group's default reach.
+   */
+  const suggestionReach = (g: InboxItemGroup): InboxScope => {
+    const allowed = scopesOf(g);
+    const chosen = scopes[groupKey(g)];
+    if (chosen && allowed.includes(chosen)) return chosen;
+    if (g.suggestion_scope && allowed.includes(g.suggestion_scope)) return g.suggestion_scope;
+    return scopeOf(g);
+  };
+  const [askUse, setAskUse] = useState<{ work: Work[]; question: string } | null>(null);
+
   const resolve = useMutation({
-    mutationFn: async (work: { group: InboxItemGroup; decision: ItemDecision }[]) => {
-      const entries = work.flatMap((w) => itemEntries(w.group, scopeOf(w.group), w.decision).map((e) => ({ e, label: groupTitle(w.group) })));
+    mutationFn: async (work: Work[]) => {
+      const entries = work.flatMap((w) => itemEntries(w.group, w.scope ?? scopeOf(w.group), w.decision).map((e) => ({ e, label: groupTitle(w.group) })));
       const answer = await apiClient.post<ResolveResult[]>("/erp/inbox/items/resolve", entries.map((x) => x.e));
       return entries.map((x, i) => ({
         label: x.label,
@@ -359,6 +381,35 @@ function NewItemsSection({ groups, count, onChanged }: { groups: InboxItemGroup[
       onChanged();
     },
   });
+
+  /** "Use suggestion" (one group): a similar name, or a whole ERP group, is confirmed first (S7 fix 2, N1). */
+  const takeSuggestion = (g: InboxItemGroup) => {
+    const reach = suggestionReach(g);
+    const work: Work[] = [{ group: g, decision: { kind: "item", itemId: g.suggested_item_id! }, scope: reach }];
+    if (!suggestionNeedsConfirm(g, reach)) {
+      resolve.mutate(work);
+      return;
+    }
+    const names = [...new Set(g.codes.map((c) => c.name.trim()).filter(Boolean))];
+    setAskUse({
+      work,
+      question: suggestionQuestion(g.suggested_item_name ?? "the suggested Item", reach, {
+        group: groupTitle(g), name: names.length === 1 ? names[0] : null, code: g.codes.length === 1 ? g.codes[0].icode : null,
+      }),
+    });
+  };
+  /** "Use the suggestions (n)": asked once for all of them when any is a similar name or a whole ERP group. */
+  const takeSuggestions = (chosen: InboxItemGroup[]) => {
+    const work: Work[] = chosen.map((g) => ({ group: g, decision: { kind: "item", itemId: g.suggested_item_id! }, scope: suggestionReach(g) }));
+    if (!work.some((w) => suggestionNeedsConfirm(w.group, w.scope))) {
+      resolve.mutate(work);
+      return;
+    }
+    setAskUse({
+      work,
+      question: `Use the suggested Item for each of the ${plural(work.length, "selected group")}? Some names are only similar, or the choice reaches a whole ERP group. This is remembered for everyone.`,
+    });
+  };
 
   const chosenGroups = groups.filter((g) => selected.has(groupKey(g)));
   const withSuggestion = chosenGroups.filter((g) => hasSuggestion(g));
@@ -396,7 +447,7 @@ function NewItemsSection({ groups, count, onChanged }: { groups: InboxItemGroup[
               <span>{plural(chosenGroups.length, "group")} selected</span>
               <AsyncButton
                 size="sm" variant="outline" disabled={withSuggestion.length === 0} pending={resolve.isPending}
-                onClick={() => resolve.mutate(withSuggestion.map((g) => ({ group: g, decision: { kind: "item", itemId: g.suggested_item_id! } })))}
+                onClick={() => takeSuggestions(withSuggestion)}
               >
                 Use the suggestions ({withSuggestion.length})
               </AsyncButton>
@@ -466,7 +517,7 @@ function NewItemsSection({ groups, count, onChanged }: { groups: InboxItemGroup[
                       </span>
                       <AsyncButton
                         size="sm" variant="outline" className="w-full sm:w-auto" pending={resolve.isPending} aria-label={`Use suggestion for ${title}`}
-                        onClick={() => resolve.mutate([{ group: g, decision: { kind: "item", itemId: g.suggested_item_id! } }])}
+                        onClick={() => takeSuggestion(g)}
                       >
                         Use suggestion
                       </AsyncButton>
@@ -527,6 +578,25 @@ function NewItemsSection({ groups, count, onChanged }: { groups: InboxItemGroup[
           </ul>
         </>
       )}
+      <AlertDialog open={askUse !== null} onOpenChange={(o) => !o && setAskUse(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Use the suggestion?</AlertDialogTitle>
+            <AlertDialogDescription>{askUse?.question ?? ""}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (askUse) resolve.mutate(askUse.work);
+                setAskUse(null);
+              }}
+            >
+              Use it
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <ItemFormDialog
         open={newItemFor !== null}
         onOpenChange={(o) => !o && setNewItemFor(null)}

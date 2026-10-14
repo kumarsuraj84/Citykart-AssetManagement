@@ -43,8 +43,10 @@ def test_gang_box_pvc_is_not_ai_box():
 
 
 def test_r51_hop_box_is_hopbox():
-    found = best(["FA_CE_HOPBOX", "FA_CE_HOPBOX", "R-51 HOP BOX", "R-51 HOP BOX"])
-    assert name_of(found) == "HOPBOX" and found.score == 0.95 and found.reason_text == "similar name"
+    # fix round 2: the Article name is the group's context (never "same name"), the product name is the text;
+    # every non-exact suggestion is capped at 0.85 (was 0.95)
+    found = ItemMatcher(UAT_ITEMS).best(["R-51 HOP BOX", "R-51 HOP BOX"], context=["FA_CE_HOPBOX", "FA_CE_HOPBOX"])
+    assert name_of(found) == "HOPBOX" and found.score == 0.85 and found.reason_text == "similar name"
 
 
 def test_hopbox_written_apart_or_with_a_hyphen_is_the_same_name():
@@ -58,7 +60,7 @@ def test_only_an_exact_name_is_a_hundred_percent():
     assert best(["AI BOX"]).score == 1.0
     assert best(["ai-box"]).score == 1.0
     assert best(["NEW AI BOX UNIT"]).score < 1.0
-    assert best(["UPS"]).score == 1.0 and best(["APC UPS 1KVA"]).score == 0.95
+    assert best(["UPS"]).score == 1.0 and best(["APC UPS 1KVA"]).score == 0.85          # fix 2: cap 0.85
 
 
 def test_generic_words_alone_suggest_nothing():
@@ -84,7 +86,12 @@ def test_a_half_match_is_no_suggestion():
 
 def test_rare_words_count_more_than_common_ones():
     printers = items("Zebra Printer", "HP Printer", "Canon Printer", "Epson Printer", "Brother Printer", "Ricoh Printer")
-    assert name_of(best(["ZEBRA GK420T"], printers)) == "Zebra Printer"          # the rare word alone is enough
+    matcher = ItemMatcher(printers)
+    # fix round 2: an Item that ADDS a word the text lacks scores lower, so "ZEBRA GK420T" alone (no PRINTER)
+    # is no longer enough for a suggestion -- but the rare word still counts far more than the common one
+    zebra = matcher.score(printers[0], ["ZEBRA GK420T"])
+    assert zebra is not None and zebra.score > 0.5 and matcher.score(printers[1], ["ZEBRA GK420T"]) is None
+    assert name_of(best(["ZEBRA GK420T LABEL PRINTER"], printers)) == "Zebra Printer"
     assert best(["THERMAL PRINTER 4 INCH"], printers) is None                    # the common word alone is not
 
 
@@ -109,7 +116,7 @@ def test_nothing_below_the_safe_threshold_and_the_words_used():
 
 def test_the_old_entry_point_gives_the_same_answer():
     found, score = suggest_item(UAT_ITEMS, ["R-51 HOP BOX"])
-    assert (found.name, score) == ("HOPBOX", 0.95)
+    assert (found.name, score) == ("HOPBOX", 0.85)
     assert suggest_item(UAT_ITEMS, ["GANG BOX PVC 4X4"]) == (None, 0.0)
 
 
@@ -143,7 +150,7 @@ async def test_the_po_review_suggests_hopbox_and_never_ai_box_for_the_gang_box(c
     assert resp.status_code == 200, resp.text
     gang, hop, ai = resp.json()["lines"]
     assert (gang["suggested_item_id"], gang["suggestion_score"], gang["suggestion_reason"]) == (None, None, None)
-    assert (hop["suggested_item_id"], hop["suggested_item_name"], hop["suggestion_score"]) == (ids["hopbox"], "HOPBOX", 0.95)
+    assert (hop["suggested_item_id"], hop["suggested_item_name"], hop["suggestion_score"]) == (ids["hopbox"], "HOPBOX", 0.85)
     assert (hop["suggestion_reason"], hop["suggestion_reason_code"]) == ("similar name", "SIMILAR_NAME")
     assert (ai["suggested_item_id"], ai["suggestion_score"], ai["suggestion_reason"]) == (ids["ai_box"], 1.0, "same name")
 
@@ -178,5 +185,5 @@ async def test_the_articles_screen_gives_the_score_and_the_reason(client, erp):
                                codes=1, units=2, lines=1, samples=["GANG BOX PVC 4X4"])]
     rows = {r["article_key"]: r for r in (await client.get("/api/items/articles", headers=await _headers(client))).json()}
     assert (rows["FA_CE_HOPBOX"]["suggested_item_id"], rows["FA_CE_HOPBOX"]["suggestion_score"],
-            rows["FA_CE_HOPBOX"]["suggestion_reason"]) == (ids["hopbox"], 0.95, "similar name")
+            rows["FA_CE_HOPBOX"]["suggestion_reason"]) == (ids["hopbox"], 0.85, "similar name")
     assert rows["FA_CE_CAMERA PVC BOX"]["suggested_item_id"] is None

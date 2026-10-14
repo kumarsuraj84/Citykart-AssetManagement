@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -22,10 +23,12 @@ import { companyOptions } from "@/lib/option-labels";
 import type { CompanyRef } from "@/lib/capabilities";
 
 /** Each step opens the normal Settings screen(s) inline: the same forms, rules and permissions. */
-function StepContent({ stepKey, company }: { stepKey: SetupStepKey; company: CompanyRef | null }): ReactNode {
+function StepContent({ stepKey, company, onCompanyCreated }: {
+  stepKey: SetupStepKey; company: CompanyRef | null; onCompanyCreated: (c: CompanyRef) => void;
+}): ReactNode {
   switch (stepKey) {
     case "company":
-      return <CompaniesSetup embedded />;
+      return <CompaniesSetup embedded onCreated={onCompanyCreated} />;
     case "stock-room":
       return (
         <div className="flex flex-col gap-6">
@@ -76,9 +79,22 @@ export function SetupWizard({
 }) {
   // S7 (P2-3): the guide is about ONE company (default: the one the person works in), chosen at the top.
   const defaults = useDefaultSetupCompany();
+  const qc = useQueryClient();
   const [chosenCompanyId, setChosenCompanyId] = useState<number | null>(null);
+  // S7 fix 2 (N3): a company added in step 1 is in the picker (and chosen) at once, while the lists the picker
+  // reads are asked for again; it no longer needs a reload.
+  const [added, setAdded] = useState<CompanyRef[]>([]);
+  const companies = [...defaults.companies, ...added.filter((a) => !defaults.companies.some((c) => c.id === a.id))];
   const companyId = chosenCompanyId ?? defaults.companyId;
-  const company = defaults.companies.find((c) => c.id === companyId) ?? (companyId != null ? { id: companyId, code: "", name: "" } : null);
+  const company = companies.find((c) => c.id === companyId) ?? (companyId != null ? { id: companyId, code: "", name: "" } : null);
+  const companyCreated = (c: CompanyRef) => {
+    setAdded((list) => [...list.filter((a) => a.id !== c.id), { id: c.id, code: c.code, name: c.name }]);
+    setChosenCompanyId(c.id);
+    setFinished(false);
+    qc.invalidateQueries({ queryKey: ["auth", "capabilities"] });
+    qc.invalidateQueries({ queryKey: ["asset_users", "me", "companies"] });
+    qc.invalidateQueries({ queryKey: ["masters", "companies"] });
+  };
   const progress = useSetupProgress(defaults.ready, companyId);
   const companyWord = (company ? company.code || company.name : "") || progress.companyLabel;
   const { steps, doneCount } = progress;
@@ -121,14 +137,14 @@ export function SetupWizard({
         }
       />
 
-      {defaults.companies.length > 1 && (
+      {companies.length > 1 && (
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
           <label htmlFor="setup-company" className="text-sm font-medium">Company being set up</label>
           <div className="w-full sm:w-72">
             <SearchableSelect
               id="setup-company" aria-label="Company being set up" value={companyId != null ? String(companyId) : undefined}
               onValueChange={(v) => { setChosenCompanyId(Number(v)); setFinished(false); }}
-              options={companyOptions(defaults.companies)}
+              options={companyOptions(companies)}
             />
           </div>
           <p className="text-xs text-muted-foreground">Places, stock rooms, cost centres and people are per company; groups, Items and vendors are shared.</p>
@@ -233,7 +249,7 @@ export function SetupWizard({
               <Skeleton className="h-9 w-2/3" />
             </div>
           ) : (
-            <StepContent stepKey={current.key} company={company} />
+            <StepContent stepKey={current.key} company={company} onCompanyCreated={companyCreated} />
           )}
 
           <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">

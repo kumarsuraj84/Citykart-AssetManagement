@@ -167,12 +167,15 @@ export function MasterCrudScreen<T extends object>({
   config,
   extraActions,
   embedded = false,
+  onCreated,
 }: {
   config: MasterConfig<T>;
   /** Extra buttons in the page header, before "Add <singular>" (e.g. Vendors' "Add from ERP"). */
   extraActions?: ReactNode;
   /** Shown inside another page (a Settings tab, a Set up CKAM step): smaller heading. */
   embedded?: boolean;
+  /** Told about a record just added (the server's answer), e.g. so a guide can choose it (S7 fix 2, N3). */
+  onCreated?: (created: T & { id: number }) => void;
 }) {
   const qc = useQueryClient();
   const singular = config.singular ?? config.title;
@@ -214,11 +217,12 @@ export function MasterCrudScreen<T extends object>({
 
   const createMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) =>
-      apiClient.post(`/masters/${config.resource}`, payload),
-    onSuccess: () => {
+      apiClient.post<Row>(`/masters/${config.resource}`, payload),
+    onSuccess: (created) => {
       qc.invalidateQueries({ queryKey: ["masters", config.resource] });
       setCreateOpen(false);
       setCreateDraft({});
+      if (onCreated && created && typeof created === "object" && typeof (created as { id?: unknown }).id === "number") onCreated(created);
     },
   });
 

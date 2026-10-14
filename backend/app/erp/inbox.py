@@ -24,7 +24,7 @@ from app.erp.vendors import (
     REASON_ORDER, _active_vendors, create_vendor_for_codes, group_key, known_gstins, link_codes, pan_of, suggest_vendors,
 )
 from app.items.models import Item
-from app.items.service import ItemMatcher, active_rule_sets, create_item, norm, suggest_item_full, upsert_map
+from app.items.service import ItemMatcher, active_rule_sets, create_item, norm, suggestion_fields, upsert_map
 from app.masters.models import AssetSubcategory, Company
 
 NO_ARTICLE = ""
@@ -132,8 +132,16 @@ async def build_inbox(session: AsyncSession, source: ErpSource, company_id: int 
     for (cid, article_key), g in sorted(groups.items(), key=lambda kv: (kv[0][0], kv[0][1])):
         erp: ErpItem | None = g["erp"]
         code_rows = sorted(g["codes"].values(), key=lambda c: c["icode"])
-        texts = ([erp.article_name, erp.department] if erp is not None else []) + [c["name"] for c in code_rows]
-        suggestion = suggest_item_full(matcher, texts)
+        reach = suggested_scope(erp, names_cache.get(cid, {})) if article_key else "CODE"
+        # S7 fix 2 (N1 / N2): the same suggestion the PO review gives a line of this code (app.items.suggest
+        # ItemMatcher.for_erp): the ERP group's names judged jointly, never "same name" for a mixed group.
+        found, judged_for = matcher.for_erp(
+            [c["name"] for c in code_rows],
+            sorted(names_cache.get(cid, {}).get(article_key, set())) if article_key else [],
+            [erp.article_name, erp.department] if erp is not None and article_key else [],
+            reach, "NAME" if any(c["erp"] is not None and c["erp"].article_key and norm(c["erp"].name) for c in code_rows)
+            else "CODE")
+        suggestion = suggestion_fields(found, judged_for)
         seen = sorted({n for c in code_rows for n in c["po_numbers"]})
         items_out.append({
             "company_id": cid, "company_code": g["company"].code,
@@ -141,10 +149,11 @@ async def build_inbox(session: AsyncSession, source: ErpSource, company_id: int 
             "department": erp.department if erp is not None and article_key else None,
             "section": erp.section if erp is not None and article_key else None,
             "division": erp.division if erp is not None and article_key else None,
-            "suggested_scope": suggested_scope(erp, names_cache.get(cid, {})) if article_key else "CODE",
+            "suggested_scope": reach,
             "codes": [{"icode": c["icode"], "name": c["name"], "units": c["units"], "po_numbers": sorted(c["po_numbers"]),
                        "scopes": _scopes(c["erp"])} for c in code_rows],
-            # S7: + suggestion_reason ("same name" / "similar name") and suggestion_reason_code (additive)
+            # S7: + suggestion_reason ("same name" / "similar name") and suggestion_reason_code (additive);
+            # fix 2: + suggestion_scope (the reach the suggestion was judged for)
             **suggestion,
             "seen_on_pos": seen, "po_count": len(seen),
         })

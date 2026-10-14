@@ -54,7 +54,7 @@ async def test_the_list_suggests_items_by_erp_code_description_and_group(client)
     assert total == 3
     by_id = {r["asset_id"]: r for r in rows}
     gate_s = by_id[gate["id"]]["suggestions"]
-    assert gate_s[0] == {"item_id": w["item_camera"], "item_name": "Indoor Camera", "score": 0.95, "reason": "DESCRIPTION"}
+    assert gate_s[0] == {"item_id": w["item_camera"], "item_name": "Indoor Camera", "score": 0.85, "reason": "DESCRIPTION"}  # S7 fix 2: non-exact capped at 0.85
     assert {s["reason"] for s in gate_s[1:]} == {"GROUP"}            # the other Items of the Laptop sub-category
     coded_s = by_id[coded["id"]]["suggestions"]
     assert coded_s[0] == {"item_id": w["item_ap"], "item_name": "Access Point", "score": 1.0, "reason": "ERP_CODE"}

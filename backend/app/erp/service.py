@@ -18,7 +18,7 @@ from app.erp.vendors import (
 )
 from app.items.models import Item, LEVEL_TYPES
 from app.items.service import (
-    ItemMatcher, active_rule_sets, find_rule, norm as norm_name, resolve_items, suggest_item_full, upsert_map,
+    ItemMatcher, active_rule_sets, find_rule, norm as norm_name, resolve_items, suggestion_fields, upsert_map,
 )
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Vendor, VendorErpLink
 from app.purchase_orders.models import PurchaseOrder
@@ -461,11 +461,19 @@ async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source
             line_warnings.append(f"No Item is linked to this ERP code yet{where}. Choose the Item below; it is remembered for the next PO.")
         category = cat_rows.get(item.category_id) if item else None
         subcategory = sub_rows.get(item.subcategory_id) if item and item.subcategory_id else None
-        suggestion = suggest_item_full(matcher, [])          # all null
+        reach = suggested_scope(erp, names_by_article)
+        suggestion = suggestion_fields()          # all null
         if item is None:
             undecided.add((ln.item_code or "").upper())
-            texts = [erp.article_name, erp.department, erp.name, ln.description] if erp else [ln.description]
-            suggestion = suggest_item_full(matcher, texts)
+            # S7 fix 2 (N1 / N2): the same suggestion the ERP inbox gives this code (ItemMatcher.for_erp): the
+            # ERP item master's product name (the PO line's own text only when the ERP has no record, as in the
+            # inbox), judged for the reach it would be remembered for.
+            found, judged_for = matcher.for_erp(
+                [(erp.name if erp is not None else "") or ln.description[:200]],
+                sorted(names_by_article.get(erp.article_key, set())) if erp is not None and erp.article_key else [],
+                [erp.article_name, erp.department] if erp is not None and erp.article_key else [],
+                reach, "NAME" if erp is not None and erp.article_key and norm_name(erp.name) else "CODE")
+            suggestion = suggestion_fields(found, judged_for)
         lines.append({
             "item_code": ln.item_code, "description": ln.description[:500], "barcode": ln.item_code,
             "quantity": _whole(qty), "rate": ln.rate, "amount": round(ln.rate * qty, 2), "tax_percent": tax,
@@ -487,7 +495,7 @@ async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source
             # S7: suggested_item_id / _name / suggestion_score + (additive) suggestion_reason ("same name" /
             # "similar name") and suggestion_reason_code, from app.items.suggest
             **suggestion,
-            "suggested_scope": suggested_scope(erp, names_by_article),
+            "suggested_scope": reach,
         })
 
     _add_open_units(po, lines)
@@ -793,17 +801,20 @@ async def mark_not_tracked(
         raise ValueError("This code has no product name in the ERP; mark the code or the whole Article instead.")
     current = (await resolve_items(session, [erp], company.id)).get(erp.icode) if erp is not None else None
     if current is not None and current.not_tracked:
-        return await po_line_states(session, source, po, company)          # already not tracked: nothing to do
+        # already not tracked: nothing to do, no rule saved now (so nothing to undo here)
+        return {**await po_line_states(session, source, po, company), "map_id": None, "can_undo": False}
     if current is not None and current.item is not None and not owner:
         raise ValueError(f"This line is already linked to the Item {current.item.name}. Ask the head-office admin to change it.")
     level = {"DEPARTMENT": erp.department, "SECTION": erp.section, "DIVISION": erp.division}.get(scope) if erp else None
     if scope in LEVEL_TYPES and not norm_name(level):
         raise ValueError(f"This code has no {scope.title()} in the ERP.")
-    await upsert_map(session, actor, {
+    rule = await upsert_map(session, actor, {
         "match_type": scope, "not_tracked": True, "company_id": company.id,
         "erp_item_code": erp.icode if erp else icode.strip(), "article_key": erp.article_key if erp else None,
         "name_key": erp.name if erp else None, "level_key": level,
         "section": erp.section if erp else None, "department": erp.department if erp else None,
         "article_name": erp.article_name if erp else None, "note": f"Marked not tracked on PO {po.po_number}"[:300],
     })
-    return await po_line_states(session, source, po, company)
+    # S7 fix 2 (N1b, additive): the rule just saved, so the review can offer Undo (DELETE /api/items/maps/{id}),
+    # and whether this person may undo it (removing a rule stays with the head-office admin).
+    return {**await po_line_states(session, source, po, company), "map_id": rule.id, "can_undo": owner}

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import { useAccess } from "../../lib/access";
+import { useAuthStore } from "../../lib/auth-store";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -61,6 +62,11 @@ export function CodeRuleScreen({ embedded = false, exampleCompany = null }: {
   // UX only: the server refuses anyone but the head-office admin (403).
   const canEdit = role === "ADMIN" && isPrimaryOwner;
   const [form, setForm] = useState({ prefixTemplate: "", suffixTemplate: "", startNumber: 1, padWidth: 0 });
+  // S7 fix 2 (N4): the example is shown in ONE company's own values (its code, location and cost centre):
+  // the set-up guide's company, else the company the person works in; none = the server's generic sample.
+  const homeCompanyId = useAuthStore((s) => s.companyId);
+  const exampleCompanyId = exampleCompany?.id ?? homeCompanyId ?? null;
+  const forCompany = exampleCompanyId != null ? `?company_id=${exampleCompanyId}` : "";
 
   // This screen edits the global rule (company_id null). The API keeps exactly one
   // active rule per scope, so the global entry in the active list IS the rule to edit.
@@ -71,8 +77,8 @@ export function CodeRuleScreen({ embedded = false, exampleCompany = null }: {
     error,
     refetch,
   } = useQuery({
-    queryKey: ["code-rules"],
-    queryFn: () => apiClient.get<CodeRule[]>("/code-rules"),
+    queryKey: ["code-rules", exampleCompanyId],
+    queryFn: () => apiClient.get<CodeRule[]>(`/code-rules${forCompany}`),
   });
   const activeRule = Array.isArray(rules) ? (rules.find((r) => r.company_id === null) ?? null) : null;
 
@@ -105,7 +111,9 @@ export function CodeRuleScreen({ embedded = false, exampleCompany = null }: {
   // in the set-up guide, anyone sees the example for the guide's company (S7 P2-3:
   // the rule stays the global one; only the example is that company's).
   const asks = canEdit || exampleCompany != null;
-  const previewBody: RuleBody = { ...body, company_id: exampleCompany?.id ?? null };
+  // The rule itself is the one for every company (company_id null); the company the example is shown for
+  // travels as `?company_id=` (S7 fix 2, N4).
+  const previewBody: RuleBody = body;
   const [debouncedBody, setDebouncedBody] = useState<RuleBody>(previewBody);
   const bodyKey = JSON.stringify(previewBody);
   useEffect(() => {
@@ -114,8 +122,8 @@ export function CodeRuleScreen({ embedded = false, exampleCompany = null }: {
   }, [bodyKey]);
   const settled = JSON.stringify(debouncedBody) === bodyKey;
   const previewQ = useQuery({
-    queryKey: ["code-rule-preview", debouncedBody],
-    queryFn: async () => (await apiClient.post<{ example?: string }>("/code-rules/preview", debouncedBody)) ?? null,
+    queryKey: ["code-rule-preview", debouncedBody, exampleCompanyId],
+    queryFn: async () => (await apiClient.post<{ example?: string }>(`/code-rules/preview${forCompany}`, debouncedBody)) ?? null,
     enabled: asks && !isLoading && !isError && debouncedBody.prefix_template.trim() !== "",
     retry: false,
     staleTime: 60_000,

@@ -45,7 +45,8 @@ function mockApi(level: Level, erp: { configured?: boolean } = {}) {
         : { configured: false, last: null, last_success: null });
     }
     if (path.startsWith("/erp/")) return Promise.resolve({ configured: false });
-    if (path === "/setup/status") return Promise.resolve(setupStatus(level));
+    // (S7 fix 2: a company just added in step 1 is chosen, so its own status is asked for too)
+    if (path === "/setup/status" || path.startsWith("/setup/status?company_id=")) return Promise.resolve(setupStatus(level));
     if (level === "empty") return Promise.resolve([]);
     if (path === "/masters/companies") return Promise.resolve([{ id: 1, code: "CKS", name: "Citykart Stores", erp_company_code: null }]);
     if (path.startsWith("/masters/locations")) return Promise.resolve([{ id: 1, company_id: 1, code: "HO", name: "Head Office", address: null }]);
@@ -58,7 +59,7 @@ function mockApi(level: Level, erp: { configured?: boolean } = {}) {
     if (path === "/masters/subcategories") return Promise.resolve(some([{ id: 10, category_id: 1, code: "LAP", name: "Laptop" }]));
     if (path === "/items") return Promise.resolve(some([{ id: 1, name: "Laptop", category_id: 1, subcategory_id: 10, serial_required: true, serial_later: false, bundle_id: null, default_brand_id: null, default_warranty_years: null, is_active: true, map_count: 0 }]));
     if (path === "/masters/vendors") return Promise.resolve(some([{ id: 1, code: "ACME", name: "Acme", gstin: null, erp_links: [] }]));
-    if (path === "/code-rules") return Promise.resolve(some([{ id: 1, company_id: null, prefix_template: "FA/{company.code}/", suffix_template: "", start_number: 1, pad_width: 4 }]));
+    if (path === "/code-rules" || path.startsWith("/code-rules?company_id=")) return Promise.resolve(some([{ id: 1, company_id: null, prefix_template: "FA/{company.code}/", suffix_template: "", start_number: 1, pad_width: 4 }]));
     return Promise.resolve([]);
   });
 }
@@ -239,18 +240,43 @@ describe("S7 P2-3: set-up per company", () => {
     renderAt("/settings/setup?step=7");
     await waitFor(() => expect(screen.getByTestId("setup-done-count")).toHaveTextContent("7 of 7 done for CKSPL"));
     expect(apiClient.get).toHaveBeenCalledWith("/setup/status?company_id=2");
-    // Step 7's example is that company's (the preview is asked with its id).
-    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/code-rules/preview", expect.objectContaining({ company_id: 2 })));
+    // Step 7's example is that company's (S7 fix 2, N4: the preview is asked for its id; the rule stays global).
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/code-rules/preview?company_id=2", expect.objectContaining({ company_id: null })));
     expect(screen.getByTestId("code-preview-label")).toHaveTextContent("Next Asset Code in CKSPL");
     fireEvent.click(screen.getByRole("combobox", { name: "Company being set up" }));
     fireEvent.click(await screen.findByRole("option", { name: /UAT New Two/ }));
     await waitFor(() => expect(screen.getByTestId("setup-done-count")).toHaveTextContent("2 of 7 done for NEW2"));
-    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/code-rules/preview", expect.objectContaining({ company_id: 3 })));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/code-rules/preview?company_id=3", expect.objectContaining({ company_id: null })));
     fireEvent.click(screen.getByRole("button", { name: "Finish" }));
     const summary = await screen.findByRole("region", { name: "Set-up summary" });
     expect(summary).toHaveTextContent("2 of 7 steps done for NEW2.");
     expect(summary).toHaveTextContent("Still to do: Cost Centre, Asset Groups and first Items, Vendors, People / Stores, Asset Code Format.");
     expect(within(summary).getByRole("button", { name: "Continue with Cost Centre" })).toBeInTheDocument();
+  });
+
+  it("S7 fix 2 (N3): a company added in step 1 is in the picker at once and chosen, without a reload", async () => {
+    loginAs("ADMIN", true);
+    mockApi("complete");
+    perCompany();
+    (apiClient.post as any).mockImplementation((path: string) =>
+      path === "/masters/companies" ? Promise.resolve({ id: 9, code: "UATRT2", name: "UAT RT Two", erp_company_code: null }) : Promise.resolve({}));
+    const base = (apiClient.get as any).getMockImplementation();
+    (apiClient.get as any).mockImplementation((path: string) =>
+      path === "/setup/status?company_id=9" ? Promise.resolve({ ...setupStatus("partial"), company_id: 9, company_code: "UATRT2" }) : base(path));
+    renderAt("/settings/setup?step=1");
+    await waitFor(() => expect(screen.getByTestId("setup-done-count")).toHaveTextContent("for CKSPL"));
+    const companiesAsked = (apiClient.get as any).mock.calls.filter((c: unknown[]) => c[0] === "/asset-users/me/companies").length;
+    fireEvent.click((await screen.findAllByRole("button", { name: "Add Company" }))[0]);
+    const dialog = await screen.findByRole("dialog");
+    for (const input of within(dialog).getAllByRole("textbox")) fireEvent.change(input, { target: { value: "UATRT2" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: /save/i }));
+    // chosen at once: the count is for the new company, and the picker lists it
+    await waitFor(() => expect(screen.getByTestId("setup-done-count")).toHaveTextContent("2 of 7 done for UATRT2"));
+    expect(apiClient.get).toHaveBeenCalledWith("/setup/status?company_id=9");
+    fireEvent.click(screen.getByRole("combobox", { name: "Company being set up" }));
+    expect(await screen.findByRole("option", { name: /UAT RT Two/ })).toBeInTheDocument();
+    // and the lists the picker reads are asked for again
+    await waitFor(() => expect((apiClient.get as any).mock.calls.filter((c: unknown[]) => c[0] === "/asset-users/me/companies").length).toBeGreaterThan(companiesAsked));
   });
 
   it("Home's 'Finish setting up' row follows the default company (a complete company shows none)", async () => {

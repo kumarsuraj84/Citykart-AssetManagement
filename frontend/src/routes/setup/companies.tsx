@@ -18,10 +18,15 @@ const ERP_CODE_FIELD: FormField = {
   toPayload: (raw) => (String(raw ?? "").trim() === "" ? null : String(raw).trim()),
 };
 
-export default function CompaniesSetup({ embedded = false }: { embedded?: boolean } = {}) {
+export default function CompaniesSetup({ embedded = false, onCreated }: {
+  embedded?: boolean;
+  /** Told about a company just added (Set up CKAM chooses it, S7 fix 2 N3). */
+  onCreated?: (company: Company) => void;
+} = {}) {
   return (
     <MasterCrudScreen<Company>
       embedded={embedded}
+      onCreated={onCreated}
       config={{
         resource: "companies",
         title: "Companies",

@@ -1,28 +1,42 @@
-"""S7 (P1-3): the ONE way CKAM guesses which existing Item a name means -- for the ERP PO review (draft lines),
-the head-office ERP inbox, the ERP Articles screen and "Link existing assets to Items".
+"""The ONE way CKAM guesses which existing Item an ERP name means -- for the ERP PO review (draft lines), the
+head-office ERP inbox, the ERP Articles screen and "Link existing assets to Items".
 
-Before S7 the guess was "the share of the Item name's words found in the text", so "AI BOX" (whose only word
-of 3+ letters is BOX) was a "100% match" for any ERP name with BOX in it -- GANG BOX PVC 4X4, R-51 HOP BOX --
-while the Item HOPBOX was never found because "HOP BOX" was two words. One click then saved a wrong
-group-wide rule. Now each text (Article name, department, product name, description) is compared on its own:
+S7 (P1-3) replaced "the share of the Item name's words found in the text" (AI BOX was a "100% match" for any
+ERP name with BOX in it). The S7 re-test (N1) still found about 1 wrong suggestion in 5 at "Similar name (95%)":
+an Item whose name kept ONE distinctive word after the generic words were dropped (CAMERA BOX PVC -> camera,
+CABLE MANAGER -> manager) matched any text with that word, a barcode printer got BARCODE_PRINTER_STAND, the
+longer-name tie-break beat the right Item, and an ERP group holding a table AND an office chair was "Same name"
+because one of its codes was. The rules now (fix round 2):
 
-* Names are compared on their normalised form too: lower case, every space / hyphen / dot / underscore taken
-  out, so HOPBOX = HOP BOX = Hop-Box. 1.0 ("same name") ONLY when a text and the Item name are the same
-  after that; nothing else is ever 100%.
-* The whole Item name inside the text, as consecutive words (R-51 HOP BOX contains HOPBOX): 0.95
-  ("similar name").
-* Otherwise the words are weighed by how rare they are among the Item names (a word only one Item has says
-  much more than one many Items share), and GENERIC words (box, cable, stand, set, pro, with, for, small, big,
-  size, pvc, cat, wire, mm, inch, sizes and plain numbers like 4x4 ...) count for nothing. At least one
-  distinctive word must match; every distinctive word of the Item found (any order): 0.95 too (of two such
-  Items the one with the longer name wins: "Dell Desktop" before "Desktop"); some of them: 0.9 x their
-  weight share.
-* What a product IS is usually its last word: when a text ends in a word like BOX, STAND, CABLE, COVER, MOUNT
-  that is not part of the Item's name, the Item only says what the thing is FOR (CAMERA PVC BOX is a box,
-  LAPTOP STAND is a stand), so that text does not suggest it.
+* Texts are cleaned of ERP code prefixes first (FA_CE_HOPBOX -> HOPBOX, "FIXED ASSETS-IT EQUIPMENST-FA_IT_LAPTOP"
+  -> LAPTOP, "01-MOUSE[IT-01]" -> 01-MOUSE) and compared on their normalised form too: lower case, every space /
+  hyphen / dot / underscore taken out, so HOPBOX = HOP BOX = Hop-Box.
+* 1.0 ("same name") ONLY when a PRODUCT NAME is the Item name after that. An ERP group's (Article's) name or
+  department is never "same name", and neither is a group whose codes carry several product names.
+* Otherwise BOTH names' words are compared (Jaccard-style), each word weighed by how rare it is among the Item
+  names. Three kinds of word:
+    - filler (with, for, sizes and units such as mm / inch / kva / tr, ERP prefixes, plain numbers like 4x4):
+      count for nothing;
+    - weak (box, cable, stand, set, small, big, pvc, steel, colours ...): never enough on their own, but an Item
+      word all the same -- CAMERA BOX PVC is a box, not a camera;
+    - distinctive: everything else.
+  item_cover = the weight of the Item's words found in the text / the weight of all the Item's words (an Item
+  that ADDS words the text lacks scores lower: CAMERA BOX PVC for INDOOR CAMERA covers 1 word of 3);
+  text_cover = the weight of the text's distinctive words that some Item uses AND this Item covers / the weight
+  of all such words (an Item that MISSES words the text has, words that point at another Item, scores lower:
+  CAMERA BOX PVC misses INDOOR). Brand and model words no Item uses (HIKVISION, GK420T) do not count against.
+  score = 0.85 x item_cover x sqrt(text_cover); at least one distinctive word must match.
+* Every non-exact suggestion is capped at 0.85 ("similar name"); a fit found only in the ERP group's name or
+  department counts x 0.9; below 0.6 there is no suggestion.
+* What a product IS is usually its last word: a text whose last real word is a thing-word (BOX, STAND, CABLE,
+  COVER, MOUNT ...) that the Item's name lacks does not suggest that Item (LAPTOP STAND is a stand).
+* When the best two Items are within 0.1 of each other (UPS SMALL / UPS BIG for "UPS 1000VA"), there is NO
+  suggestion -- better none than a coin flip.
+* An ERP GROUP with several product names (TABLE 4*2 and OFFICE CHAIR) is judged jointly: an Item must fit the
+  names on average (each distinct name scored on its own), or the group's own name / department; x 0.9, never
+  "same name". So one click cannot map a table to Office Chair.
 * An Item whose name is ONLY generic words (e.g. "Cable") can still be suggested when its whole name is in a
-  text, but only when no other Item matched at all ("unless nothing else matches"), at 0.6.
-* Below SUGGESTION_THRESHOLD (0.6) there is no suggestion at all -- better none than a wrong one.
+  text, but only when no other Item matched at all, at 0.6.
 
 Pure functions, no database access: the caller passes the active Items (once per screen)."""
 from __future__ import annotations
@@ -36,22 +50,30 @@ SAME_NAME, SIMILAR_NAME = "SAME_NAME", "SIMILAR_NAME"
 REASON_WORDS = {SAME_NAME: "same name", SIMILAR_NAME: "similar name"}
 
 SCORE_SAME = 1.0
-SCORE_CONTAINED = 0.95
-SCORE_ALL_WORDS = 0.95          # every distinctive word, in any order (the longer name wins a tie)
-SCORE_PART = 0.9                # x the weight share of the distinctive words found
+SCORE_CAP = 0.85                # the most any non-exact suggestion can score
+SCORE_CONTAINED = SCORE_CAP     # kept for older imports: "the whole Item name inside the text" is now <= the cap
 SCORE_GENERIC_ONLY = 0.6
+GROUP_FACTOR = 0.9              # an ERP group of several product names: judged jointly, a little less sure
+CONTEXT_FACTOR = 0.9            # one product known only by its ERP group's name / department: a little less sure
+TIE_MARGIN = 0.1                # the best two closer than this: no suggestion
+TEXT_COVER_POWER = 0.5          # missing a text word counts less than adding an Item word
 MAX_RUN = 6                     # longest run of consecutive words joined when looking for a written-apart name
 
-# Words that say little about WHAT a thing is (sizes, materials, fillers, ERP prefixes).
-GENERIC_WORDS = frozenset({
-    "box", "boxes", "cable", "cables", "stand", "stands", "set", "sets", "pro", "with", "for", "and", "the", "of",
-    "small", "big", "large", "medium", "mini", "size", "pvc", "cat", "wire", "wires", "mm", "cm", "inch", "inches",
-    "ft", "feet", "mtr", "meter", "metre", "kg", "gm", "ltr", "litre", "liter", "watt", "w", "v", "volt", "amp",
-    "pcs", "pc", "nos", "no", "unit", "units", "type", "model", "new", "old", "other", "others", "misc", "item",
+# Words that say nothing about WHAT a thing is: fillers, units and sizes, ERP prefixes.
+FILLER_WORDS = frozenset({
+    "with", "for", "and", "the", "of", "a", "an", "in", "on", "to", "by", "x", "mm", "cm", "inch", "inches", "ft",
+    "feet", "mtr", "meter", "metre", "kg", "gm", "ltr", "litre", "liter", "watt", "w", "v", "volt", "amp", "pcs", "pc",
+    "nos", "no", "new", "old", "ton", "tons", "tr", "kva", "va", "gb", "tb", "mb", "mp", "ghz", "mhz", "hz",
+    "fa", "ce", "ef", "ff", "oe", "pm", "non",
+})
+# Generic nouns, sizes, materials, colours: never enough to suggest an Item, but a word of the Item's name.
+WEAK_WORDS = frozenset({
+    "box", "boxes", "cable", "cables", "stand", "stands", "set", "sets", "pro", "small", "big", "large", "medium",
+    "mini", "size", "pvc", "cat", "wire", "wires", "unit", "units", "type", "model", "other", "others", "misc", "item",
     "items", "general", "accessories", "accessory", "part", "parts", "heavy", "duty", "plastic", "steel", "metal",
     "colour", "color", "black", "white", "grey", "gray", "single", "double", "plus", "standard", "std", "premium",
-    "fa", "ce", "ef", "it", "non", "x", "a", "an", "in", "on", "to", "by",
 })
+GENERIC_WORDS = FILLER_WORDS | WEAK_WORDS          # older name, still exported
 # Last words that name the thing itself; an Item that does not include it only describes what it is for.
 HEAD_NOUNS = frozenset({
     "box", "boxes", "stand", "stands", "cable", "cables", "cover", "covers", "case", "cases", "bag", "bags", "mount",
@@ -64,7 +86,9 @@ TRAILING_FILLER = frozenset({
     "w", "v", "volt", "amp", "pcs", "pc", "nos", "no", "small", "big", "large", "medium", "mini", "black", "white",
     "grey", "gray", "colour", "color", "new", "old", "x",
 })
-_NUMERIC_LIKE = re.compile(r"^\d+([x*]\d+)*[a-z]{0,3}$")      # 4, 48, 4x4, 6u, 12mm, 1x2m
+_NUMERIC_LIKE = re.compile(r"^\d+([x*]\d+)*[a-z]{0,3}$")      # 4, 48, 4x4, 6u, 12mm, 1x2m, 16gb
+_ERP_PREFIX = re.compile(r"(?:^|[\s\-])[a-z]{2}_[a-z]{2}_", re.IGNORECASE)    # FA_CE_ / -FA_IT_ / FF_OE_
+_BRACKETED = re.compile(r"\[[^\]]*\]")                          # [IT-01]
 
 
 def tokens(text: str | None) -> list[str]:
@@ -76,8 +100,25 @@ def compact(text: str | None) -> str:
     return "".join(tokens(text))
 
 
+def clean_erp_text(text: str | None) -> str:
+    """An ERP name without its code prefix: 'FA_CE_HOPBOX' -> 'HOPBOX', 'FIXED ASSETS-IT EQUIPMENST-FA_IT_LAPTOP'
+    -> 'LAPTOP', '01-MOUSE[IT-01]' -> '01-MOUSE '. Item names are never cleaned."""
+    t = _BRACKETED.sub(" ", text or "")
+    last = None
+    for last in _ERP_PREFIX.finditer(t):
+        pass
+    return t[last.end():] if last is not None else t
+
+
+def word_kind(word: str) -> str:
+    """'filler', 'weak' or 'strong' (distinctive)."""
+    if len(word) < 2 or word in FILLER_WORDS or _NUMERIC_LIKE.match(word):
+        return "filler"
+    return "weak" if word in WEAK_WORDS else "strong"
+
+
 def is_generic(word: str) -> bool:
-    return len(word) < 2 or word in GENERIC_WORDS or bool(_NUMERIC_LIKE.match(word))
+    return word_kind(word) != "strong"
 
 
 @dataclass
@@ -99,7 +140,7 @@ class _Text:
 
 
 def _text(text: str | None) -> _Text | None:
-    toks = tokens(text)
+    toks = tokens(clean_erp_text(text))
     if not toks:
         return None
     runs: dict[str, tuple[int, int]] = {}
@@ -111,21 +152,29 @@ def _text(text: str | None) -> _Text | None:
     return _Text(toks, "".join(toks), runs)
 
 
+def _parse(texts) -> list[_Text]:
+    return [t for t in map(_text, texts or []) if t is not None]
+
+
 class ItemMatcher:
-    """Built once per screen from the active Items; `best(texts)` gives the one safe suggestion or None."""
+    """Built once per screen from the active Items. `best(names, context)` gives the one safe suggestion for one
+    product (or None); `best_for_group(names, context)` for an ERP group of codes."""
 
     def __init__(self, items: list):
         self.items = list(items)
         self._tokens = {i.id: tokens(i.name) for i in self.items}
         self._compact = {i.id: "".join(self._tokens[i.id]) for i in self.items}
-        self._distinct = {i.id: {t for t in self._tokens[i.id] if not is_generic(t)} for i in self.items}
+        self._words = {i.id: {t for t in self._tokens[i.id] if word_kind(t) != "filler"} for i in self.items}
+        self._strong = {i.id: {t for t in self._words[i.id] if word_kind(t) == "strong"} for i in self.items}
         df: dict[str, int] = {}
-        for words in self._distinct.values():
+        for words in self._words.values():
             for w in words:
                 df[w] = df.get(w, 0) + 1
         n = len(self.items)
         self._idf = {w: 1.0 + math.log((n + 1) / (c + 1)) for w, c in df.items()}
+        self._vocab = {w for w in df if word_kind(w) == "strong"}       # distinctive words some Item uses
 
+    # ------------------------------------------------------------------ one Item against one text
     def _describes_only(self, item_id: int, text: _Text, last_matched: int) -> bool:
         """The text's last real word (sizes, counts and colours after it skipped) is a thing-word (BOX, STAND,
         SLEEVE ...) after everything the Item matched, and the Item's name does not have that word: the Item
@@ -135,50 +184,139 @@ class ItemMatcher:
             head -= 1
         return last_matched < head and text.toks[head] in HEAD_NOUNS and text.toks[head] not in self._tokens[item_id]
 
-    def _score_in(self, item, text: _Text) -> float:
-        name = self._compact[item.id]
-        distinct = self._distinct[item.id]
-        if name in text.runs:
-            _, end = text.runs[name]
-            return 0.0 if self._describes_only(item.id, text, end) else SCORE_CONTAINED
-        hits = {w: text.runs[w][1] for w in distinct if w in text.runs}    # a word, or one written as two
-        if not hits or self._describes_only(item.id, text, max(hits.values())):
-            return 0.0
-        if len(hits) == len(distinct):
-            return SCORE_ALL_WORDS
-        total = sum(self._idf.get(w, 1.0) for w in distinct)
-        return round(SCORE_PART * sum(self._idf.get(w, 1.0) for w in hits) / total, 4)
+    def _w(self, word: str) -> float:
+        return self._idf.get(word, 1.0)
 
-    def score(self, item, texts: list[str | None], _parsed: list[_Text] | None = None) -> Suggestion | None:
-        parsed = _parsed if _parsed is not None else [t for t in map(_text, texts) if t is not None]
+    def _fit(self, item, text: _Text) -> float:
+        """0..1: how well the Item's name and this text agree (1 = all words of both, 0 = no distinctive word
+        in common, or the text is a different thing). Exactness is judged by the caller."""
+        words, strong = self._words[item.id], self._strong[item.id]
+        if not strong:
+            return 0.0                     # only generic words: see the last resort in _ranked
+        name = self._compact[item.id]
+        covered: set[int] = set()
+        if name in text.runs:              # the whole Item name, written together or apart
+            first, last = text.runs[name]
+            matched = set(words)
+            covered.update(range(first, last + 1))
+        else:
+            matched, last = set(), -1
+            for w in words:
+                if w in text.runs:         # a word, or one written as two
+                    first, end = text.runs[w]
+                    matched.add(w)
+                    covered.update(range(first, end + 1))
+                    last = max(last, end)
+        if not matched & strong or self._describes_only(item.id, text, last):
+            return 0.0
+        item_cover = sum(self._w(w) for w in matched) / sum(self._w(w) for w in words)
+        telling = [k for k, tok in enumerate(text.toks) if tok in self._vocab]   # text words some Item uses
+        total = sum(self._w(text.toks[k]) for k in telling)
+        text_cover = (sum(self._w(text.toks[k]) for k in telling if k in covered) / total) if total else 1.0
+        return item_cover * text_cover ** TEXT_COVER_POWER
+
+    # ------------------------------------------------------------------ one Item against a product / a group
+    def score(self, item, texts: list[str | None], context: list[str | None] | None = None,
+              _parsed: tuple[list[_Text], list[_Text]] | None = None) -> Suggestion | None:
+        """One product: `texts` are its names (an exact one is "same name"), `context` the ERP group's name and
+        department (never "same name")."""
+        names, ctx = _parsed if _parsed is not None else (_parse(texts), _parse(context))
         name = self._compact.get(item.id) or ""
         if not name:
             return None
-        if any(t.whole == name for t in parsed):
+        if any(t.whole == name for t in names):
             return Suggestion(item, SCORE_SAME, SAME_NAME)
-        if not self._distinct.get(item.id):
-            return None                    # only generic words: see candidates() ("nothing else matches")
-        best = max((self._score_in(item, t) for t in parsed), default=0.0)
-        return Suggestion(item, best, SIMILAR_NAME) if best > 0 else None
+        fit = max([self._fit(item, t) for t in names] + [CONTEXT_FACTOR * self._fit(item, t) for t in ctx], default=0.0)
+        return Suggestion(item, round(SCORE_CAP * fit, 4), SIMILAR_NAME) if fit > 0 else None
 
-    def candidates(self, texts: list[str | None], items: list | None = None,
-                   threshold: float = SUGGESTION_THRESHOLD) -> list[Suggestion]:
-        """Every Item (of `items`, default all) at or above the threshold, best first."""
-        parsed = [t for t in map(_text, texts) if t is not None]
-        pool = self.items if items is None else items
-        found = [s for s in (self.score(i, texts, parsed) for i in pool) if s is not None and s.score >= threshold]
-        if not found and SCORE_GENERIC_ONLY >= threshold:
+    def _score_group(self, item, names: list[_Text], ctx: list[_Text]) -> Suggestion | None:
+        """Several product names: the mean fit over the names (each distinct name on its own), or the group's
+        own name / department, x GROUP_FACTOR; never "same name"."""
+        if not self._compact.get(item.id):
+            return None
+        joint = sum(self._fit(item, t) for t in names) / len(names) if names else 0.0
+        fit = max([joint] + [self._fit(item, t) for t in ctx])
+        return Suggestion(item, round(SCORE_CAP * GROUP_FACTOR * fit, 4), SIMILAR_NAME) if fit > 0 else None
+
+    # ------------------------------------------------------------------ ranking
+    def _ranked(self, scored: list[Suggestion], pool: list, parsed: list[_Text], allow_generic: bool) -> list[Suggestion]:
+        found = [s for s in scored if s is not None and s.score > 0]
+        if not found and allow_generic:
             # Nothing distinctive matched: an Item named only with generic words may still be meant when its
             # whole name is in a text ("Cable" for "HDMI CABLE 2M").
             for item in pool:
                 name = self._compact.get(item.id)
-                if self._distinct.get(item.id) or not name:
+                if self._strong.get(item.id) or not name:
                     continue
                 if any(name in t.runs and not self._describes_only(item.id, t, t.runs[name][1]) for t in parsed):
                     found.append(Suggestion(item, SCORE_GENERIC_ONLY, SIMILAR_NAME))
-        return sorted(found, key=lambda s: (-s.score, -len(self._compact.get(s.item.id, "")),
-                                            (s.item.name or "").lower(), s.item.id))
+        return sorted(found, key=lambda s: (-s.score, (s.item.name or "").lower(), s.item.id))
 
-    def best(self, texts: list[str | None], items: list | None = None) -> Suggestion | None:
-        found = self.candidates(texts, items)
-        return found[0] if found else None
+    def candidates(self, texts: list[str | None], items: list | None = None,
+                   threshold: float = SUGGESTION_THRESHOLD, context: list[str | None] | None = None) -> list[Suggestion]:
+        """Every Item (of `items`, default all) at or above the threshold, best first (no tie rule: for screens
+        that list several suggestions)."""
+        names, ctx = _parse(texts), _parse(context)
+        pool = self.items if items is None else items
+        ranked = self._ranked([self.score(i, texts, context, (names, ctx)) for i in pool], pool, names + ctx,
+                              SCORE_GENERIC_ONLY >= threshold)
+        return [s for s in ranked if s.score >= threshold]
+
+    @staticmethod
+    def _safe(ranked: list[Suggestion]) -> Suggestion | None:
+        """The best one when it clears the threshold and no other Item comes within TIE_MARGIN of it."""
+        if not ranked or ranked[0].score < SUGGESTION_THRESHOLD:
+            return None
+        if len(ranked) > 1 and ranked[0].score - ranked[1].score < TIE_MARGIN:
+            return None
+        return ranked[0]
+
+    def best(self, texts: list[str | None], items: list | None = None,
+             context: list[str | None] | None = None) -> Suggestion | None:
+        """The one safe suggestion for ONE product: its names (`texts`) and its ERP group's name / department
+        (`context`)."""
+        names, ctx = _parse(texts), _parse(context)
+        pool = self.items if items is None else items
+        return self._safe(self._ranked([self.score(i, texts, context, (names, ctx)) for i in pool], pool,
+                                       names + ctx, True))
+
+    def best_for_group(self, names: list[str | None], context: list[str | None] | None = None,
+                       items: list | None = None) -> Suggestion | None:
+        """The one safe suggestion for an ERP GROUP (an Article, or codes without one): `names` = the product
+        names of its codes, `context` = the group's name and department. One distinct product name = that
+        product (`best`); several = judged jointly and never "same name"."""
+        distinct: dict[str, str] = {}
+        for n in names or []:
+            key = compact(clean_erp_text(n))
+            if key:
+                distinct.setdefault(key, n or "")
+        if len(distinct) <= 1:
+            return self.best(list(distinct.values()), items, context)
+        parsed, ctx = _parse(distinct.values()), _parse(context)
+        pool = self.items if items is None else items
+        return self._safe(self._ranked([self._score_group(i, parsed, ctx) for i in pool], pool, parsed + ctx, False))
+
+    def for_erp(self, own_names: list[str | None], group_names, context: list[str | None],
+                reach: str | None, product_reach: str = "NAME") -> tuple[Suggestion | None, str | None]:
+        """S7 fix 2 (N1 / N2): the ONE ERP suggestion, used by the PO review (one line = one code) and the ERP
+        inbox (a group of codes) alike, so the same code gets the same answer on both screens. Returns the
+        suggestion and the reach it was judged for:
+
+        * reach ARTICLE (a coherent ERP group, see readiness.suggested_scope): the Item must fit every product
+          name of the group (`own_names` + `group_names`, the names bought in that Article) -> "ARTICLE";
+        * otherwise, or when no Item fits the whole group, the product itself (`own_names`, one distinct
+          name) -> `product_reach` ("NAME", or "CODE" when the code has no ERP product name of its own);
+        * several product names of the inbox group (`own_names`) without a group-wide answer: judged jointly
+          -> "NAME" (each code's product name).
+        `context` = the ERP group's name and department."""
+        own = [n for n in own_names if compact(clean_erp_text(n))]
+        if reach == "ARTICLE":
+            found = self.best_for_group(own + [n for n in group_names or [] if n], context)
+            if found is not None:
+                return found, "ARTICLE"
+        distinct = {compact(clean_erp_text(n)) for n in own}
+        if len(distinct) <= 1:
+            found = self.best(own[:1], context=context)
+            return (found, product_reach) if found is not None else (None, None)
+        found = self.best_for_group(own, context)
+        return (found, "NAME") if found is not None else (None, None)

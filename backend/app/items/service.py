@@ -27,26 +27,30 @@ def _words(text: str) -> set[str]:
 
 def suggest_item(items: list[Item], texts: list[str | None], item_words: dict[int, set[str]] | None = None,
                  matcher: "ItemMatcher | None" = None) -> tuple[Item | None, float]:
-    """The existing Item these texts (an Article's name, department and product names) most likely mean, and
-    how sure: S7 -- delegates to the one scoring of app.items.suggest (exact normalised name = 1.0, whole
-    name inside = 0.95, rare words weighed, generic words ignored, nothing below 0.6). (None, 0) when there
-    is no safe suggestion. `item_words` is accepted for older callers and no longer used; pass a `matcher`
-    built once when calling this many times."""
+    """The existing Item these product names most likely mean, and how sure: delegates to the one scoring of
+    app.items.suggest (exact normalised name = 1.0, anything else at most 0.85, nothing below 0.6, no
+    suggestion when two Items come within 0.1). (None, 0) when there is no safe suggestion. `item_words` is
+    accepted for older callers and no longer used; pass a `matcher` built once when calling this many times."""
     found = (matcher or ItemMatcher(items)).best(texts, items if matcher is not None else None)
     return (found.item, found.score) if found is not None else (None, 0.0)
 
 
-def suggest_item_full(matcher: "ItemMatcher", texts: list[str | None]) -> dict:
-    """The additive suggestion fields of the ERP screens, from the one scoring (S7):
-    {suggested_item_id, suggested_item_name, suggestion_score, suggestion_reason ("same name" / "similar
-    name"), suggestion_reason_code (SAME_NAME / SIMILAR_NAME)} -- all null when there is no safe suggestion."""
-    found = matcher.best(texts)
+def suggestion_fields(found=None, scope: str | None = None) -> dict:
+    """The additive suggestion fields of the ERP screens (S7): {suggested_item_id, suggested_item_name,
+    suggestion_score, suggestion_reason ("same name" / "similar name"), suggestion_reason_code (SAME_NAME /
+    SIMILAR_NAME), suggestion_scope (fix 2: the reach the suggestion was judged for -- ARTICLE = every code
+    of the ERP group, NAME = this product name, CODE = this code)} -- all null when there is no safe one."""
     if found is None:
         return {"suggested_item_id": None, "suggested_item_name": None, "suggestion_score": None,
-                "suggestion_reason": None, "suggestion_reason_code": None}
+                "suggestion_reason": None, "suggestion_reason_code": None, "suggestion_scope": None}
     return {"suggested_item_id": found.item.id, "suggested_item_name": found.item.name,
             "suggestion_score": round(found.score, 2), "suggestion_reason": found.reason_text,
-            "suggestion_reason_code": found.reason}
+            "suggestion_reason_code": found.reason, "suggestion_scope": scope}
+
+
+def suggest_item_full(matcher: "ItemMatcher", texts: list[str | None], context: list[str | None] | None = None) -> dict:
+    """`suggestion_fields` for one product's names (`texts`) and its ERP group's name / department (`context`)."""
+    return suggestion_fields(matcher.best(texts, context=context), None)
 
 
 @dataclass
@@ -392,7 +396,9 @@ async def article_overview(session: AsyncSession, source: ErpSource, company_id:
         mapped = res.item
         suggestion = None
         if mapped is None and not res.not_tracked:
-            suggestion = suggest_item_full(matcher, [a.article_name, a.department, *a.samples])
+            # S7 fix 2 (N1): an Article is a group -- the Item must fit its product names jointly
+            suggestion = suggestion_fields(matcher.best_for_group(list(a.names or a.samples), [a.article_name, a.department]),
+                                           "ARTICLE")
         out.append({
             "article_key": a.article_key, "article_name": a.article_name, "section": a.section, "department": a.department,
             "division": a.division, "codes": a.codes, "units": a.units, "lines": a.lines, "samples": a.samples,
@@ -409,6 +415,7 @@ async def article_overview(session: AsyncSession, source: ErpSource, company_id:
             # S7 (additive): how sure, and why in words ("same name" / "similar name")
             "suggestion_score": suggestion["suggestion_score"] if suggestion else None,
             "suggestion_reason": suggestion["suggestion_reason"] if suggestion else None,
+            "suggestion_reason_code": suggestion["suggestion_reason_code"] if suggestion else None,
         })
     return out
 

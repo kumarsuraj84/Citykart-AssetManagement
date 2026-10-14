@@ -365,6 +365,10 @@ describe("ERP review: matched lines folded, exceptions open", () => {
     expect(screen.getByText("Create is not available yet: 1 line needs an Item.")).toBeInTheDocument();
 
     fireEvent.click(within(row).getByRole("button", { name: /use the suggestion network switch/i }));
+    // S7 fix 2 (N1): only a similar name -> asked first, naming the Item, the product name and the reach
+    const ask = await screen.findByRole("alertdialog", { name: "Use the suggestion?" });
+    expect(ask).toHaveTextContent("Use Network Switch for every code named “48 PORT SWITCH”? This is remembered for everyone.");
+    fireEvent.click(within(ask).getByRole("button", { name: "Use it" }));
     await waitFor(() => expect(create).not.toBeDisabled());
     expect(within(row).getByText("Item chosen")).toBeInTheDocument();
     fireEvent.click(create);
@@ -431,6 +435,7 @@ describe("ERP review: matched lines folded, exceptions open", () => {
     renderScreen();
     const create = await openDraft();
     fireEvent.click(screen.getByRole("button", { name: /use the suggestion/i }));
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Use it" }));
     const sentence = "Line 1 (CT500001): the whole Article FA_IT_OTHERS is already linked to Desktop. Remember this choice for this code only, or ask the head-office admin to change it.";
     (apiClient.post as any).mockRejectedValueOnce(new Error(sentence));
     await waitFor(() => expect(create).not.toBeDisabled());
@@ -560,6 +565,25 @@ describe("Not tracked from the review (ADMIN and OPERATOR)", () => {
     await waitFor(() => expect(apiClient.delete).toHaveBeenCalledWith("/items/maps/77"));
     expect(await screen.findByLabelText("Line 2")).toBeInTheDocument();
     expect(screen.queryByText(/line left out/)).not.toBeInTheDocument();
+  });
+
+  it("S7 fix 2 (N1b): the server's can_undo decides the Undo button", async () => {
+    // the head-office admin, but the server says this rule cannot be undone by them: no Undo, the sentence instead
+    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: true, mustChangePassword: false, assetUserId: 5 });
+    mockApi({ d: draft({}, [line(), CABLE]) });
+    (apiClient.post as any).mockImplementation((path: string) =>
+      Promise.resolve(path.endsWith("/not-tracked")
+        ? { po_code: 1133610106, map_id: 78, can_undo: false, lines: [{ item_code: "CT166452", resolution: { state: "NOT_TRACKED", via: "CODE" } }] }
+        : {}));
+    renderScreen();
+    await openDraft();
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/auth/capabilities"));
+    await new Promise((r) => setTimeout(r, 20));
+    await choose(screen.getByLabelText("Line 2: how far this reaches"), "This ERP code only");
+    fireEvent.click(screen.getByRole("button", { name: "Line 2: not tracked" }));
+    const saved = await screen.findByLabelText("Not tracked saved");
+    expect(within(saved).queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
+    expect(saved).toHaveTextContent("To undo it, open Settings › ERP Mapping.");
   });
 
   it("a matched line never offers 'not tracked'; the server's refusal is shown as written", async () => {
@@ -927,6 +951,47 @@ describe("S7 fixes in the ERP review", () => {
     expect(within(row).queryByText(/100%/)).not.toBeInTheDocument();
     // Never chosen for the person.
     expect(within(row).getByText("Needs an Item")).toBeInTheDocument();
+  });
+
+  it("S7 fix 2: a same-name suggestion for one product name is one click", async () => {
+    mockApi({ d: draft({}, [switchLine({ suggestion_score: 1, suggestion_reason: "same name", suggestion_reason_code: "SAME_NAME", suggestion_scope: "NAME" })]) });
+    renderScreen();
+    const create = await openDraft();
+    fireEvent.click(screen.getByRole("button", { name: /use the suggestion network switch/i }));
+    await waitFor(() => expect(create).not.toBeDisabled());
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    fireEvent.click(create);
+    await waitFor(() => expect(posted("/erp/pos/create")).toBeDefined());
+    expect(posted("/erp/pos/create").lines[0]).toMatchObject({ item_id: 3, remember: true, map_scope: null });
+  });
+
+  it("S7 fix 2: a whole ERP group is asked first even for the same name; Cancel chooses nothing", async () => {
+    mockApi({ d: draft({}, [switchLine({ suggestion_score: 1, suggestion_reason: "same name", suggestion_reason_code: "SAME_NAME",
+      suggested_scope: "ARTICLE", suggestion_scope: "ARTICLE" })]) });
+    renderScreen();
+    const create = await openDraft();
+    fireEvent.click(screen.getByRole("button", { name: /use the suggestion network switch/i }));
+    const ask = await screen.findByRole("alertdialog", { name: "Use the suggestion?" });
+    expect(ask).toHaveTextContent("Use Network Switch for every code in group FA_IT_OTHERS? This is remembered for everyone. It is saved when you create the purchase order.");
+    fireEvent.click(within(ask).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(within(screen.getByLabelText("Line 1")).getByText("Needs an Item")).toBeInTheDocument();
+    expect(create).toBeDisabled();
+  });
+
+  it("S7 fix 2: a mixed ERP group's suggestion is remembered for its product name, not the whole group", async () => {
+    // TABLE_OFFICE: the server's default reach is the whole group, but it judged the chair only for its own name
+    mockApi({ d: draft({}, [switchLine({ suggestion_score: 1, suggestion_reason: "same name", suggestion_reason_code: "SAME_NAME",
+      suggested_scope: "ARTICLE", suggestion_scope: "NAME" })]) });
+    renderScreen();
+    const create = await openDraft();
+    expect(byId(`${ID}-scope`)).toHaveTextContent("Use this Item for every code in this ERP group");
+    fireEvent.click(screen.getByRole("button", { name: /use the suggestion network switch/i }));
+    await waitFor(() => expect(create).not.toBeDisabled());
+    expect(byId(`${ID}-scope`)).toHaveTextContent("Use this Item for this product name");
+    fireEvent.click(create);
+    await waitFor(() => expect(posted("/erp/pos/create")).toBeDefined());
+    expect(posted("/erp/pos/create").lines[0]).toMatchObject({ item_id: 3, remember: true, map_scope: "NAME" });
   });
 
   it("P1-3: a line without a suggestion shows no 'Suggested'", async () => {

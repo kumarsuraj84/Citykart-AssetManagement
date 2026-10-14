@@ -36,5 +36,6 @@ async def test_a_hop_box_is_the_hopbox(client):
     h = await login(client, w, "owner")
     hop = await make_asset(client, h, w, "it", description="R-51 HOP BOX", serial_number="H-1")
     found = [s for s in await suggestions(client, h, hop["id"]) if s["reason"] == "DESCRIPTION"]
-    assert found[0] == {"item_id": ids["hopbox"], "item_name": "HOPBOX", "score": 0.95, "reason": "DESCRIPTION"}
+    # fix round 2: a non-exact name is at most 0.85 (was 0.95)
+    assert found[0] == {"item_id": ids["hopbox"], "item_name": "HOPBOX", "score": 0.85, "reason": "DESCRIPTION"}
     assert ids["ai_box"] not in [s["item_id"] for s in found]

@@ -181,6 +181,25 @@ describe("CodeRuleScreen (anyone else)", () => {
     expect(apiClient.put).not.toHaveBeenCalled();
   });
 
+  it("S7 fix 2 (N4): the example is the person's own company's (asked with ?company_id=)", async () => {
+    loginAs("OPERATOR", false);                                  // works in company 1
+    (apiClient.get as any).mockResolvedValue([{ ...EXISTING, example: "FA/CKSPL-HO/IT/0100-X" }]);
+    renderWithClient(<CodeRuleScreen />);
+    await waitFor(() => expect(screen.getByTestId("code-preview")).toHaveTextContent("FA/CKSPL-HO/IT/0100-X"));
+    expect(apiClient.get).toHaveBeenCalledWith("/code-rules?company_id=1");
+  });
+
+  it("S7 fix 2 (N4): the set-up guide's company is the one the preview is asked for; the rule stays global", async () => {
+    loginAs("ADMIN", true);
+    (apiClient.get as any).mockResolvedValue([EXISTING]);
+    (apiClient.post as any).mockResolvedValue({ example: "FA/HO7/IT/0100-X" });
+    renderWithClient(<CodeRuleScreen embedded exampleCompany={{ id: 7, code: "UATRT" }} />);
+    await waitFor(() => expect(screen.getByTestId("code-preview")).toHaveTextContent("FA/HO7/IT/0100-X"));
+    expect(apiClient.get).toHaveBeenCalledWith("/code-rules?company_id=7");
+    expect(apiClient.post).toHaveBeenCalledWith("/code-rules/preview?company_id=7", expect.objectContaining({ company_id: null }));
+    expect(screen.getByTestId("code-preview-label")).toHaveTextContent("UATRT");
+  });
+
   it("with no rule yet, says the head-office admin must set one up", async () => {
     loginAs("ADMIN", false);
     (apiClient.get as any).mockResolvedValue([]);
