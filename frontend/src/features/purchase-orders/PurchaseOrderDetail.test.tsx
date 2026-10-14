@@ -866,3 +866,31 @@ describe("S7 P3-7: a cancelled purchase order", () => {
     expect(screen.getByRole("button", { name: "Receive all waiting (2)" })).toBeInTheDocument();
   });
 });
+
+describe("S8: History of a purchase order (head-office admin only)", () => {
+  it("the head-office admin gets History, listing the PO's audit trail", async () => {
+    useAuthStore.getState().setAuth({ accessToken: "tok", role: "ADMIN", companyId: 1, isPrimaryOwner: true, mustChangePassword: false });
+    mockGets([PENDING_LINE]);
+    const base = (apiClient.get as any).getMockImplementation();
+    (apiClient.get as any).mockImplementation((path: string) => path === "/admin/logs/entity/purchase_order/1"
+      ? Promise.resolve([{
+          id: 1, at: "2026-10-14T04:20:40Z", request_id: "r1", source: "api", actor_id: 1, actor_code: "S0OWN", actor_name: "Admin",
+          actor_role: "ADMIN", is_head_office_admin: true, company_id: 1, ip: null, category: "DATA", action: "LINES_ADDED",
+          entity: "purchase_order", entity_id: "1", summary: "2 lines added to PO PO-2026-001.", changes: { lines: 2 }, outcome: "OK",
+        }])
+      : base(path));
+    renderDetailAt();
+    fireEvent.click(await screen.findByRole("button", { name: "History of PO PO-2026-001" }));
+    const history = await screen.findByRole("list", { name: "History" });
+    expect(history).toHaveTextContent("2 lines added to PO PO-2026-001.");
+    expect(history).toHaveTextContent("Lines added");
+    expect(apiClient.get).toHaveBeenCalledWith("/admin/logs/entity/purchase_order/1");
+  });
+
+  it("a Full Admin sees no History", async () => {
+    mockGets([PENDING_LINE]);
+    renderDetailAt();
+    await screen.findByRole("heading", { name: /Purchase Order PO-2026-001/ });
+    expect(screen.queryByRole("button", { name: /History/ })).not.toBeInTheDocument();
+  });
+});

@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 interface Doc {
   id: number;
@@ -123,9 +124,10 @@ export function DocumentsTab({ assetId }: { assetId: number }) {
             </Button>
 
             {uploadMutation.isError && (
-              <p className="w-full text-sm text-destructive">
-                {uploadMutation.error instanceof Error ? uploadMutation.error.message : "Upload failed."}
-              </p>
+              <ErrorMessage
+                className="w-full" announce={false} error={uploadMutation.error}
+                message={uploadMutation.error instanceof Error ? uploadMutation.error.message : "Upload failed."}
+              />
             )}
           </CardContent>
         </Card>
@@ -163,7 +165,7 @@ export function DocumentsTab({ assetId }: { assetId: number }) {
               </TableBody>
             </Table>
           )}
-          {downloadError && <p className="mt-2 text-sm text-destructive">{downloadError}</p>}
+          {downloadError && <ErrorMessage className="mt-2" message={downloadError} />}
         </CardContent>
       </Card>
     </div>

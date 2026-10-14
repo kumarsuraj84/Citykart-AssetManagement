@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 // Mirrors backend app.auth.schemas.ChangePasswordRequest (min 8, must differ).
 export const MIN_PASSWORD_LENGTH = 8;
@@ -66,7 +67,7 @@ function PasswordField({
           {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
         </button>
       </div>
-      {error && <span role="alert" className="text-sm text-destructive">{error}</span>}
+      {error && <ErrorMessage as="span" className="text-sm text-destructive" message={error} />}
     </div>
   );
 }

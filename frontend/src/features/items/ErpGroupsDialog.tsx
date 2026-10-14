@@ -5,6 +5,7 @@ import type { GroupLevel, GroupRow } from "./types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 const LEVELS: { key: GroupLevel; label: string; one: string }[] = [
   { key: "DEPARTMENT", label: "Departments", one: "Department" },
@@ -62,9 +63,9 @@ export function ErpGroupsDialog({ companyId, onClose }: { companyId?: string; on
         </div>
         {listQ.isLoading && <p className="text-sm text-muted-foreground">Reading the ERP…</p>}
         {listQ.isError && (
-          <p className="text-sm text-destructive" role="alert">{listQ.error instanceof Error ? listQ.error.message : "Could not read the groups."}</p>
+          <ErrorMessage className="text-sm text-destructive" error={listQ.error} message={listQ.error instanceof Error ? listQ.error.message : "Could not read the groups."} />
         )}
-        {error && <p className="text-sm text-destructive" role="alert">{error instanceof Error ? error.message : "That did not work."}</p>}
+        {error && <ErrorMessage className="text-sm text-destructive" error={error} message={error instanceof Error ? error.message : "That did not work."} />}
         <ul className="flex max-h-96 flex-col divide-y overflow-y-auto rounded-md border">
           {rows.length === 0 && !listQ.isLoading && <li className="p-3 text-sm text-muted-foreground">Nothing matches.</li>}
           {rows.map((g) => (

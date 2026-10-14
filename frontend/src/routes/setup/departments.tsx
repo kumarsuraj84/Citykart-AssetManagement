@@ -11,6 +11,7 @@ export default function DepartmentsSetup({ embedded = false }: { embedded?: bool
       embedded={embedded}
       config={{
         resource: "departments",
+        historyEntity: "department",
         title: "Departments",
         singular: "Department",
         columns: [{ key: "name", label: "Name" }],

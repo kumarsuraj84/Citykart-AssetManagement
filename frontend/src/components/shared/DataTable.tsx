@@ -46,6 +46,8 @@ interface DataTableProps<T> {
   isLoading?: boolean;
   isError?: boolean;
   errorMessage?: string;
+  /** S8: the error itself, so its reference (request id) is shown. */
+  error?: unknown;
   onRetry?: () => void;
   /** Required so every caller has to decide what an empty result looks like. */
   emptyState: ReactNode;
@@ -74,6 +76,7 @@ export function DataTable<T>({
   isLoading,
   isError,
   errorMessage,
+  error,
   onRetry,
   emptyState,
   onRowClick,
@@ -136,7 +139,7 @@ export function DataTable<T>({
             {isError ? (
               <TableRow>
                 <TableCell colSpan={colCount} className="p-0">
-                  <ErrorState message={errorMessage} onRetry={onRetry} />
+                  <ErrorState message={errorMessage} error={error} onRetry={onRetry} />
                 </TableCell>
               </TableRow>
             ) : isLoading ? (

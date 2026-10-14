@@ -12,6 +12,7 @@ import { FormField } from "@/components/shared/FormField";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { EMPTY_PLACE, PlacePicker, placeBody, type PlaceChoice } from "./PlacePicker";
 import { storeResultSentence, type PersonRow } from "./people-model";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 /** The server's own rule (and sentence) for a store code: three letters and at most one more letter or digit. */
 export const STORE_CODE = /^[A-Z]{3}[A-Z0-9]?$/;
@@ -166,7 +167,7 @@ export function AddStoreDialog({
               optionalLabel="The store's own place (made for you)"
               helperText="Leave it to make (or reuse) the store's own place, or pick another place."
             />
-            {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
+            {error && <ErrorMessage className="text-sm text-destructive" message={error} />}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
               <AsyncButton type="submit" disabled={!canSave} pending={pending} pendingLabel="Saving…">Add Store</AsyncButton>

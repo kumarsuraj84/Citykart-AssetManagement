@@ -3,6 +3,7 @@ import { RefreshCw } from "lucide-react";
 import { apiClient } from "../../lib/api-client";
 import { useAuthStore } from "../../lib/auth-store";
 import { AsyncButton } from "@/components/shared/AsyncButton";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 interface SyncRun {
   status: "success" | "failed" | "skipped" | "running";
@@ -79,7 +80,7 @@ export function ErpSyncStatus() {
       )}
       {refreshDone && <span className="text-foreground" role="status" aria-label="Refresh result">{refreshDone}</span>}
       {refresh.isError && (
-        <span className="text-destructive" role="alert">{refresh.error instanceof Error ? refresh.error.message : "Could not refresh."}</span>
+        <ErrorMessage as="span" className="text-destructive" error={refresh.error} message={refresh.error instanceof Error ? refresh.error.message : "Could not refresh."} />
       )}
       {isPrimaryOwner && (
         <AsyncButton size="sm" variant="ghost" pending={refresh.isPending} pendingLabel="Refreshing…" onClick={() => refresh.mutate()}>

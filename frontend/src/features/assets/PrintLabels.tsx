@@ -12,6 +12,7 @@ import { LabelSettingsDisclosure } from "../labels/LabelSettingsDisclosure";
 import { LabelSheet, fetchLabelAssets, labelsWord, parseIdList } from "../labels/PrintLabelsAction";
 import { assetScanQuery } from "../../lib/scan";
 import { ScanBarcode, Printer } from "lucide-react";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 type AssetSearchResult = LabelAsset;
 
@@ -116,7 +117,7 @@ export function PrintLabels({ preloadIds }: { preloadIds?: string }) {
           </Button>
         </div>
       </FormField>
-      {scanError && <p className="text-sm text-destructive" role="alert">{scanError}</p>}
+      {scanError && <ErrorMessage className="text-sm text-destructive" message={scanError} />}
       {preloadQ.isError && <p className="text-sm text-destructive" role="alert">Couldn't load the assets of that delivery.</p>}
       {candidates && (
         <div className="rounded-md border p-2">

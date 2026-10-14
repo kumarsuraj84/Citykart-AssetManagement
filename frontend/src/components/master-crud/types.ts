@@ -58,4 +58,7 @@ export interface MasterConfig<T> {
    * can still see it; it's simply never sent in the PUT body. Matches each
    * master's narrower `*EditIn` schema on the backend. */
   editFields: FormField[];
+  /** S8: the audit-trail record type (e.g. "vendor"): the Edit dialog then offers "History" to the
+   * head-office admin (GET /admin/logs/entity/<this>/<id>). */
+  historyEntity?: string;
 }

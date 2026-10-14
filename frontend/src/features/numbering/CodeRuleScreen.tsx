@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField } from "@/components/shared/FormField";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 const SAMPLE_TOKENS: Record<string, string> = {
   "cost_center.code": "HO01",
@@ -173,7 +174,7 @@ export function CodeRuleScreen({ embedded = false, exampleCompany = null }: {
       />
 
       {isError ? (
-        <ErrorState message={error instanceof Error ? error.message : undefined} onRetry={() => refetch()} />
+        <ErrorState message={error instanceof Error ? error.message : undefined} error={error} onRetry={() => refetch()} />
       ) : isLoading ? (
         <div className="flex max-w-md flex-col gap-4">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -250,9 +251,7 @@ export function CodeRuleScreen({ embedded = false, exampleCompany = null }: {
               {previewError ? "—" : shownExample}
             </p>
             {previewError && (
-              <p role="alert" data-testid="code-preview-error" className="mt-1 text-sm text-destructive">
-                {previewError}
-              </p>
+              <ErrorMessage data-testid="code-preview-error" className="mt-1 text-sm text-destructive" message={previewError} />
             )}
           </div>
 
@@ -268,9 +267,7 @@ export function CodeRuleScreen({ embedded = false, exampleCompany = null }: {
               </AsyncButton>
               {saveMutation.isSuccess && <span className="text-sm text-muted-foreground">Saved.</span>}
               {saveMutation.isError && (
-                <span role="alert" className="text-sm text-destructive">
-                  {saveMutation.error instanceof Error ? saveMutation.error.message : "Save failed."}
-                </span>
+                <ErrorMessage as="span" className="text-sm text-destructive" error={saveMutation.error} message={saveMutation.error instanceof Error ? saveMutation.error.message : "Save failed."} />
               )}
             </div>
           )}

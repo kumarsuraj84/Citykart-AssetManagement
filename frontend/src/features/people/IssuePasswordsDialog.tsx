@@ -10,6 +10,7 @@ import { AsyncButton } from "@/components/shared/AsyncButton";
 import {
   passwordsCsv, passwordsText, peopleListPath, plural, type IssuedPassword, type PersonRow,
 } from "./people-model";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 type Who = "ticked" | "all";
 
@@ -175,7 +176,7 @@ export function IssuePasswordsDialog({
             {replacing > 0 && (
               <p className="text-xs text-muted-foreground">{plural(replacing, "of them already has a password", "of them already have a password")}; it is replaced.</p>
             )}
-            {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
+            {error && <ErrorMessage className="text-sm text-destructive" message={error} />}
             <DialogFooter>
               <Button variant="outline" onClick={() => setStep("choose")}>Back</Button>
               <AsyncButton onClick={issue} pending={pending} pendingLabel="Issuing…">
@@ -228,7 +229,7 @@ export function IssuePasswordsDialog({
                 </div>
               </>
             )}
-            {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
+            {error && <ErrorMessage className="text-sm text-destructive" message={error} />}
             <DialogFooter>
               <Button onClick={close}>Close</Button>
             </DialogFooter>

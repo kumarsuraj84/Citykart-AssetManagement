@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { companyOptions, vendorOptions } from "@/lib/option-labels";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 interface Company {
   id: number;
@@ -252,14 +253,10 @@ export function ErpVendorsDialog() {
           </div>
           {listQ.isLoading && <p className="text-sm text-muted-foreground">Reading the ERP…</p>}
           {listQ.isError && (
-            <p className="text-sm text-destructive" role="alert">
-              {listQ.error instanceof Error ? listQ.error.message : "Could not read the ERP vendors."}
-            </p>
+            <ErrorMessage className="text-sm text-destructive" error={listQ.error} message={listQ.error instanceof Error ? listQ.error.message : "Could not read the ERP vendors."} />
           )}
           {error && (
-            <p className="text-sm text-destructive" role="alert">
-              {error instanceof Error ? error.message : "That did not work."}
-            </p>
+            <ErrorMessage className="text-sm text-destructive" error={error} message={error instanceof Error ? error.message : "That did not work."} />
           )}
           {listQ.data && (
             <div className="max-h-[28rem] overflow-y-auto rounded-md border">

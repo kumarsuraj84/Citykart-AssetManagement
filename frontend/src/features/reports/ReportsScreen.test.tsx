@@ -158,6 +158,17 @@ describe("Reports: filter, preview on screen, download the same", () => {
     expect(await screen.findByText(failPreview)).toBeInTheDocument();
   });
 
+  it("S8: a failed download (the screen keeps only the text) still shows its reference", async () => {
+    window.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: "The register could not be built." }), {
+      status: 503, headers: { "Content-Type": "application/json", "X-Request-ID": "ref-dl-503" },
+    })) as any;
+    renderReports();
+    await screen.findByTestId("report-total");
+    fireEvent.click(screen.getByRole("button", { name: /download excel/i }));
+    const text = await screen.findByText(/register could not be built/);
+    expect(text.closest("[role=alert]")).toHaveTextContent("tell the administrator this reference: ref-dl-503");
+  });
+
   it("a failed download shows the error", async () => {
     window.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 }) as any;
     renderReports();

@@ -19,6 +19,7 @@ import {
   blankPart, desktopExample, draftPartsFromBundle, partsPayload, partsReady, partsSummary,
   type Bundle, type DraftPart,
 } from "./bundle-parts";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 // The types live with the rest of the set logic (bundle-parts.ts); re-exported for existing imports.
 export type { Bundle, BundlePart } from "./bundle-parts";
@@ -156,9 +157,7 @@ export function BundlesScreen() {
           </div>
 
           {saveMutation.isError && (
-            <p className="shrink-0 text-sm text-destructive" role="alert">
-              {saveMutation.error instanceof Error ? saveMutation.error.message : "Could not save the bundle."}
-            </p>
+            <ErrorMessage className="shrink-0 text-sm text-destructive" error={saveMutation.error} message={saveMutation.error instanceof Error ? saveMutation.error.message : "Could not save the bundle."} />
           )}
           <DialogFooter className="shrink-0">
             <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
@@ -187,9 +186,7 @@ export function BundlesScreen() {
             are not changed and its history is kept.
           </p>
           {deleteMutation.isError && (
-            <p className="text-sm text-destructive" role="alert">
-              {deleteMutation.error instanceof Error ? deleteMutation.error.message : "Could not deactivate."}
-            </p>
+            <ErrorMessage className="text-sm text-destructive" error={deleteMutation.error} message={deleteMutation.error instanceof Error ? deleteMutation.error.message : "Could not deactivate."} />
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleting(null)}>Cancel</Button>

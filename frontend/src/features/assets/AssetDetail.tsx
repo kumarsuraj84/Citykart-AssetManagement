@@ -52,6 +52,8 @@ import { ErrorState } from "@/components/shared/ErrorState";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField } from "@/components/shared/FormField";
 import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
+import { RecordHistoryButton } from "@/features/system/RecordHistory";
 
 interface Asset {
   id: number;
@@ -567,7 +569,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
       <div className="flex flex-col gap-4">
         <BackToAssets />
         <PageHeader title="Asset" />
-        <ErrorState message="Couldn't load this asset." onRetry={() => assetQ.refetch()} />
+        <ErrorState message="Couldn't load this asset." error={assetQ.error} onRetry={() => assetQ.refetch()} />
       </div>
     );
   }
@@ -621,6 +623,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
               )}
               <PrintLabelsAction assets={[asset]}>Print Label</PrintLabelsAction>
               <Button variant="secondary" size="sm" onClick={startEdit}>Edit</Button>
+              <RecordHistoryButton entity="asset" entityId={asset.id} name={asset.asset_code} className="gap-1.5" />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" aria-label="More actions">
@@ -801,9 +804,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
           )}
 
           {editMutation.isError && (
-            <p className="text-sm text-destructive" role="alert">
-              {editMutation.error instanceof Error ? editMutation.error.message : "Failed to save changes."}
-            </p>
+            <ErrorMessage className="text-sm text-destructive" error={editMutation.error} message={editMutation.error instanceof Error ? editMutation.error.message : "Failed to save changes."} />
           )}
 
           <div className="flex gap-2">
@@ -998,9 +999,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
               </FormField>
 
               {correctionMutation.isError && (
-                <p className="text-sm text-destructive" role="alert">
-                  {correctionMutation.error instanceof Error ? correctionMutation.error.message : "Correction failed."}
-                </p>
+                <ErrorMessage className="text-sm text-destructive" error={correctionMutation.error} message={correctionMutation.error instanceof Error ? correctionMutation.error.message : "Correction failed."} />
               )}
             </div>
           )}

@@ -9,6 +9,7 @@ import { ItemFormDialog } from "./ItemFormDialog";
 import { useCanCreate } from "@/lib/capabilities";
 import { itemOptions as buildItemOptions } from "@/lib/option-labels";
 import { useCategoryLookups } from "@/lib/lookups";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 /** An ERP item code with the Article it sits in (an Article is a purchasing group, not a statement of what each code is). */
 export interface CodeDecisionRow extends ArticleCodeRow {
@@ -96,7 +97,7 @@ export function CodeDecisionRows({ rows, items, companyId, showArticle = false }
         <Button size="sm" variant={mode === "NAME" ? "default" : "outline"} aria-pressed={mode === "NAME"} onClick={() => setMode("NAME")}>Every code with the same product name</Button>
       </div>
       {failure && (
-        <p className="text-sm text-destructive" role="alert">{failure instanceof Error ? failure.message : "Could not save."}</p>
+        <ErrorMessage className="text-sm text-destructive" error={failure} message={failure instanceof Error ? failure.message : "Could not save."} />
       )}
       {selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm" role="region" aria-label="Selected codes">

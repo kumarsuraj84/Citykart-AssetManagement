@@ -7,6 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 interface Company {
   id: number;
@@ -161,9 +162,7 @@ export function ErpStoresDialog({ triggerLabel = "Stores from ERP", initialCompa
 
           {listQ.isLoading && <p className="text-sm text-muted-foreground">Reading the stores…</p>}
           {listQ.isError && (
-            <p className="text-sm text-destructive" role="alert">
-              {listQ.error instanceof Error ? listQ.error.message : "Could not read the stores."}
-            </p>
+            <ErrorMessage className="text-sm text-destructive" error={listQ.error} message={listQ.error instanceof Error ? listQ.error.message : "Could not read the stores."} />
           )}
           {listQ.data && !listQ.data.copied && (
             <p className="text-sm text-muted-foreground">The ERP data has not been copied yet. Use Refresh now on the Purchase Orders page (Work › Purchase Orders) first.</p>
@@ -222,9 +221,7 @@ export function ErpStoresDialog({ triggerLabel = "Stores from ERP", initialCompa
           )}
 
           {createMutation.isError && (
-            <p className="text-sm text-destructive" role="alert">
-              {createMutation.error instanceof Error ? createMutation.error.message : "That did not work."}
-            </p>
+            <ErrorMessage className="text-sm text-destructive" error={createMutation.error} message={createMutation.error instanceof Error ? createMutation.error.message : "That did not work."} />
           )}
           {result && (
             <div className="text-sm" role="status">

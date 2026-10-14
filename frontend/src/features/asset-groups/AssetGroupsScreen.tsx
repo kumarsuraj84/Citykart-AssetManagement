@@ -325,7 +325,7 @@ export function AssetGroupsScreen({ embedded = false }: { embedded?: boolean } =
       )}
 
       {categoriesQ.isError || subsQ.isError ? (
-        <ErrorState message="Couldn't load the asset groups." onRetry={() => { categoriesQ.refetch(); subsQ.refetch(); }} />
+        <ErrorState message="Couldn't load the asset groups." error={categoriesQ.error ?? subsQ.error} onRetry={() => { categoriesQ.refetch(); subsQ.refetch(); }} />
       ) : isLoading ? (
         <div className="flex flex-col gap-2">
           <Skeleton className="h-9 w-full" />

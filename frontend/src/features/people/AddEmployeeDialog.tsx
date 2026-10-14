@@ -18,6 +18,7 @@ import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { NewDepartmentDialog } from "@/components/quick-create/masters";
 import { EMPTY_PLACE, PlacePicker, placeBody, placeGiven, type PlaceChoice } from "./PlacePicker";
 import type { PersonRow } from "./people-model";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 interface Named {
   id: number;
@@ -246,9 +247,7 @@ export function AddEmployeeDialog({
             </div>
 
             {mutation.isError && (
-              <p className="text-sm text-destructive" role="alert">
-                {mutation.error instanceof Error ? mutation.error.message : "Could not add the employee."}
-              </p>
+              <ErrorMessage className="text-sm text-destructive" error={mutation.error} message={mutation.error instanceof Error ? mutation.error.message : "Could not add the employee."} />
             )}
             {!canSave && (d.code.trim() !== "" || d.name.trim() !== "") && (
               <p className="text-xs text-muted-foreground">Still needed: {missing.join(", ")}.</p>

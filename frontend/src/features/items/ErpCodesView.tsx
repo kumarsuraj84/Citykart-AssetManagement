@@ -15,6 +15,7 @@ import { ItemFormDialog } from "./ItemFormDialog";
 import { useCanCreate } from "@/lib/capabilities";
 import { itemOptions as buildItemOptions } from "@/lib/option-labels";
 import { useCategoryLookups } from "@/lib/lookups";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 type Tab = "undecided" | "linked" | "untracked" | "all";
 
@@ -203,11 +204,11 @@ export function ErpCodesView({ companyId, items, fixedItem }: { companyId?: stri
         </div>
       )}
       {failure && (
-        <p className="text-sm text-destructive" role="alert">{failure instanceof Error ? failure.message : "That did not work."}</p>
+        <ErrorMessage className="text-sm text-destructive" error={failure} message={failure instanceof Error ? failure.message : "That did not work."} />
       )}
 
       {codesQ.isError ? (
-        <ErrorState message={codesQ.error instanceof Error ? codesQ.error.message : "Couldn't read the ERP codes."} onRetry={() => codesQ.refetch()} />
+        <ErrorState message={codesQ.error instanceof Error ? codesQ.error.message : "Couldn't read the ERP codes."} error={codesQ.error} onRetry={() => codesQ.refetch()} />
       ) : (
         <>
           <DataTable

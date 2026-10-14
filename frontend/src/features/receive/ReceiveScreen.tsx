@@ -26,6 +26,7 @@ import {
   type ReceiveResult, type RequiredField, type SerialMode, SERIAL_MODES, asSerialMode, buildReceiveBody, checkReceipt,
   initialLines, lineTitle, problemsFrom, refusalSummary, todayIso, typedSerials, whyNotSentence,
 } from "./receive-model";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-IN")} ${n === 1 ? one : many}`;
 /** How long typing in a serial box settles before the box is checked again. */
@@ -71,7 +72,7 @@ export function ReceiveScreen({ poId, focusLine }: { poId: number; focusLine?: n
   if (infoQ.isError) {
     return (
       <ErrorState
-        message={infoQ.error instanceof Error ? infoQ.error.message : "Couldn't load this purchase order for receiving."}
+        message={infoQ.error instanceof Error ? infoQ.error.message : "Couldn't load this purchase order for receiving."} error={infoQ.error}
         onRetry={() => infoQ.refetch()}
       />
     );
@@ -348,10 +349,10 @@ function ReceiveForm({ info, focusLine, onReceived }: {
       {/* --- Always-reachable action bar --- */}
       <div className="sticky bottom-0 z-20 -mx-4 -mb-4 flex flex-col gap-1.5 border-t bg-background/95 px-4 py-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-6 md:-mb-6 md:px-6">
         {serverSummary && (
-          <p className="text-sm font-medium text-destructive" role="alert">{serverSummary}</p>
+          <ErrorMessage className="text-sm font-medium text-destructive" message={serverSummary} />
         )}
         {otherError && (
-          <p className="text-sm text-destructive" role="alert">{otherError}</p>
+          <ErrorMessage className="text-sm text-destructive" message={otherError} />
         )}
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p id="receive-why" className={cn("min-w-0 text-xs", reasons.length > 0 ? "text-foreground" : "text-muted-foreground")} role="status">

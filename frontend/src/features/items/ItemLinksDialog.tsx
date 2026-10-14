@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { companyOptions } from "@/lib/option-labels";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 interface Company {
   id: number;
@@ -93,10 +94,10 @@ export function ItemLinksDialog({ item, onClose }: { item: Item; onClose: () => 
           <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto pr-1">
             {codesQ.isLoading && <p className="text-sm text-muted-foreground">Reading the ERP codes…</p>}
             {codesQ.isError && (
-              <p className="text-sm text-destructive" role="alert">{codesQ.error instanceof Error ? codesQ.error.message : "Could not read the ERP codes."}</p>
+              <ErrorMessage className="text-sm text-destructive" error={codesQ.error} message={codesQ.error instanceof Error ? codesQ.error.message : "Could not read the ERP codes."} />
             )}
             {unlink.isError && (
-              <p className="text-sm text-destructive" role="alert">{unlink.error instanceof Error ? unlink.error.message : "Could not unlink."}</p>
+              <ErrorMessage className="text-sm text-destructive" error={unlink.error} message={unlink.error instanceof Error ? unlink.error.message : "Could not unlink."} />
             )}
             {codesQ.data && groups.length === 0 && (
               <div className="rounded-md border p-4 text-sm text-muted-foreground">

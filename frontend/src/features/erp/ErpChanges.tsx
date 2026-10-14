@@ -5,6 +5,7 @@ import { GitCompareArrows } from "lucide-react";
 import { apiClient } from "../../lib/api-client";
 import { Button } from "@/components/ui/button";
 import { AsyncButton } from "@/components/shared/AsyncButton";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 export interface ErpChange {
   id: string;
@@ -284,9 +285,7 @@ export function ErpChangesPanel({ poId }: { poId: number }) {
         </>
       ) : null}
       {mutation.isError && (
-        <p className="text-sm text-destructive" role="alert">
-          {mutation.error instanceof Error ? mutation.error.message : "Could not apply the change."}
-        </p>
+        <ErrorMessage className="text-sm text-destructive" error={mutation.error} message={mutation.error instanceof Error ? mutation.error.message : "Could not apply the change."} />
       )}
       {report.log.length > 0 && (
         <div>

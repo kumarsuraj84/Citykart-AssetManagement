@@ -9,6 +9,7 @@ import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField } from "@/components/shared/FormField";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { plural } from "./people-model";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 /** What POST /api/people/stores/ensure-rooms answers. */
 export interface EnsureRoomsResult {
@@ -104,7 +105,7 @@ export function EnsureRoomsDialog({ open, onOpenChange }: { open: boolean; onOpe
                 />
               </FormField>
             )}
-            {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
+            {error && <ErrorMessage className="text-sm text-destructive" message={error} />}
             <DialogFooter>
               <Button variant="outline" onClick={close}>Cancel</Button>
               <AsyncButton onClick={run} pending={pending} pendingLabel="Working…">Create missing rooms</AsyncButton>

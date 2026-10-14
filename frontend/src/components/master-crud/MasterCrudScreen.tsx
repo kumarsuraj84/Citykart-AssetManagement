@@ -39,6 +39,8 @@ import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { useTableSort } from "@/components/shared/useTableSort";
 import { BulkImportExport } from "@/components/shared/BulkImportExport";
 import { bulkDeactivate, type BulkDeactivateFailure } from "../../lib/bulk-deactivate";
+import { RecordHistoryButton } from "@/features/system/RecordHistory";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 function buildPayload(formFields: FormField[], draft: Record<string, unknown>) {
   const payload: Record<string, unknown> = {};
@@ -421,6 +423,7 @@ export function MasterCrudScreen<T extends object>({
         isLoading={isLoading}
         isError={isError}
         errorMessage={error instanceof Error ? error.message : undefined}
+        error={error}
         onRetry={() => refetch()}
         sort={sort}
         onSortToggle={toggleSort}
@@ -473,9 +476,7 @@ export function MasterCrudScreen<T extends object>({
             )}
 
             {createMutation.isError && (
-              <p className="text-sm text-destructive" role="alert">
-                {createMutation.error instanceof ApiError ? createMutation.error.message : `Could not save this ${singular.toLowerCase()}.`}
-              </p>
+              <ErrorMessage className="text-sm text-destructive" error={createMutation.error} message={createMutation.error instanceof ApiError ? createMutation.error.message : `Could not save this ${singular.toLowerCase()}.`} />
             )}
           </div>
 
@@ -495,8 +496,11 @@ export function MasterCrudScreen<T extends object>({
 
       <Dialog open={editRow !== null} onOpenChange={(open) => { if (!open) { setEditRow(null); setEditDraft({}); } }}>
         <DialogContent>
-          <DialogHeader>
+          <DialogHeader className="flex-row flex-wrap items-center gap-2 space-y-0 pr-6">
             <DialogTitle>Edit {singular}</DialogTitle>
+            {config.historyEntity && editRow && (
+              <RecordHistoryButton entity={config.historyEntity} entityId={editRow.id} name={rowLabel(editRow as Record<string, unknown>)} />
+            )}
           </DialogHeader>
 
           <div className="flex flex-col gap-4">
@@ -523,9 +527,7 @@ export function MasterCrudScreen<T extends object>({
             ))}
 
             {updateMutation.isError && (
-              <p className="text-sm text-destructive" role="alert">
-                {updateMutation.error instanceof ApiError ? updateMutation.error.message : `Could not save this ${singular.toLowerCase()}.`}
-              </p>
+              <ErrorMessage className="text-sm text-destructive" error={updateMutation.error} message={updateMutation.error instanceof ApiError ? updateMutation.error.message : `Could not save this ${singular.toLowerCase()}.`} />
             )}
           </div>
 

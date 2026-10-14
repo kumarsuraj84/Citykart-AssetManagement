@@ -12,6 +12,7 @@ import { canCreate as may, useCapabilities } from "@/lib/capabilities";
 import { ItemFormDialog } from "../items/ItemFormDialog";
 import { MAX_QUANTITY } from "@/lib/limits";
 import { type LineGroup, type PendingAssetRow, lineTitle } from "./po-detail-types";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 /** What is being edited: a whole PO line (S2, with its ordered quantity), or one unit of it (as before). */
 export type EditTarget = { kind: "line"; line: LineGroup } | { kind: "unit"; unit: PendingAssetRow };
@@ -226,9 +227,7 @@ export function LineEditDialog({ poId, target, onClose, onSaved, itemSelectOptio
             </FormField>
           </div>
           {mutation.isError && (
-            <p className="shrink-0 text-sm text-destructive" role="alert">
-              {mutation.error instanceof Error ? mutation.error.message : "Failed to save."}
-            </p>
+            <ErrorMessage className="shrink-0 text-sm text-destructive" error={mutation.error} message={mutation.error instanceof Error ? mutation.error.message : "Failed to save."} />
           )}
           <DialogFooter className="shrink-0">
             <Button variant="outline" onClick={onClose}>

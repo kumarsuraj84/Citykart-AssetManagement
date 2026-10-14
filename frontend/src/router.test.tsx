@@ -155,6 +155,8 @@ const SETTINGS_LINKS = [
   "Items", "Link Assets to Items", "Asset Groups", "Brands",
   "Vendors", "Users & Access", "ERP Inbox", "ERP Mapping", "ERP Data Sync",
   "Custom Fields", "Asset Code Format", "Bulk Import",
+  // S8: Settings › System
+  "Logs", "Diagnostics",
 ];
 
 describe("AppShell navigation (role-aware sidebar)", () => {

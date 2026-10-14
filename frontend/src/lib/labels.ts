@@ -255,3 +255,237 @@ export function fieldLabel(fieldName: string, customFieldLabels?: Record<string,
   }
   return FIELD_LABELS[fieldName] ?? humanizeCode(fieldName);
 }
+
+// ---------------------------------------------------------------------------
+// S8: Logs & Diagnostics (audit categories / actions / outcomes, record types,
+// error levels and kinds, system components, problem-report kinds and statuses).
+// The raw code stays visible in the detail views as a muted technical line.
+// ---------------------------------------------------------------------------
+
+export const AUDIT_CATEGORIES = ["DATA", "SECURITY", "ACCESS", "IMPORT", "EXPORT", "ERP", "LIFECYCLE", "SYSTEM"] as const;
+
+const AUDIT_CATEGORY_LABELS: Record<string, string> = {
+  DATA: "Data change",
+  SECURITY: "Security",
+  ACCESS: "Access",
+  IMPORT: "Import",
+  EXPORT: "Export",
+  ERP: "ERP",
+  LIFECYCLE: "Asset movement",
+  SYSTEM: "System",
+};
+
+export function auditCategoryLabel(category: string | null | undefined): string {
+  if (!category) return "";
+  return AUDIT_CATEGORY_LABELS[category.toUpperCase()] ?? humanizeCode(category);
+}
+
+export const AUDIT_OUTCOMES = ["OK", "DENIED", "FAILED"] as const;
+
+const AUDIT_OUTCOME_LABELS: Record<string, string> = { OK: "Done", DENIED: "Refused", FAILED: "Failed" };
+
+export function auditOutcomeLabel(outcome: string | null | undefined): string {
+  if (!outcome) return "";
+  return AUDIT_OUTCOME_LABELS[outcome.toUpperCase()] ?? humanizeCode(outcome);
+}
+
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  CREATE: "Created",
+  UPDATE: "Changed",
+  DEACTIVATE: "Deactivated",
+  REACTIVATE: "Reactivated",
+  DELETE: "Deleted",
+  WRITE: "Saved (no specific entry)",
+  LOGIN: "Signed in",
+  LOGIN_FAILED: "Failed sign-in",
+  LOCKED: "Account locked",
+  LOGOUT: "Signed out",
+  TOKEN_REFRESH_FAILED: "Session could not be renewed",
+  INVALID_TOKEN: "Invalid session",
+  PASSWORD_CHANGED: "Password changed",
+  PASSWORD_CHANGE_FAILED: "Password change failed",
+  PASSWORD_RESET: "Password reset",
+  ACCESS_CHANGED: "Access changed",
+  PRIMARY_OWNER_GRANTED: "Made head-office admin",
+  PRIMARY_OWNER_REVOKED: "No longer head-office admin",
+  PERMISSION_DENIED: "Refused",
+  CODE_RULE_CHANGED: "Asset code format changed",
+  SUSPICIOUS_INPUT: "Suspicious input",
+  EXPORT: "Exported",
+  IMPORT_PREVIEW: "Import checked",
+  IMPORT_COMMIT: "Imported",
+  RECEIVE: "Received",
+  BATCH_ADD: "Assets added",
+  MOVE: "Moved",
+  LINK: "Linked",
+  SERIALS_FILLED: "Serial numbers filled in",
+  LINES_ADDED: "Lines added",
+  LINE_UPDATE: "Line changed",
+  CANCEL_WAITING: "Waiting units cancelled",
+  DELETE_PO: "Purchase order deleted",
+  PI_RECORDED: "Purchase invoice recorded",
+  SENT_FOR_REPAIR: "Sent for repair",
+  RECEIVED_FROM_REPAIR: "Back from repair",
+  DISPOSED: "Disposed",
+  SOLD: "Sold",
+  SCRAPPED: "Scrapped",
+  LOST: "Reported lost",
+  FOUND: "Found",
+  CORRECTION: "Corrected",
+  DOCUMENT_UPLOADED: "Document uploaded",
+  DOCUMENT_DOWNLOADED: "Document downloaded",
+  IDEMPOTENT_REPLAY: "Repeated save answered",
+  IDEMPOTENT_CONFLICT: "Repeated save refused",
+  LOGS_VIEWED: "Logs viewed",
+  DIAGNOSTICS_VIEWED: "Diagnostics viewed",
+  DIAGNOSTICS_BUNDLE: "Diagnostics copied",
+  CLIENT_REPORT_STATUS: "Problem report marked",
+  ERP_SYNC: "ERP data copied",
+  STORES_CREATE: "Stores created from the ERP",
+  CREATE_FROM_ERP: "Created from the ERP",
+  ERP_CHANGES_APPLIED: "ERP changes applied",
+};
+
+/** The audit actions offered in the filter. */
+export const AUDIT_ACTIONS = Object.keys(AUDIT_ACTION_LABELS);
+
+/** "LOGIN_FAILED" -> "Failed sign-in"; an unknown action as its raw value capitalised ("Some new action"). */
+export function auditActionLabel(action: string | null | undefined): string {
+  if (!action) return "";
+  return AUDIT_ACTION_LABELS[action.toUpperCase()] ?? humanizeCode(action);
+}
+
+const ENTITY_LABELS: Record<string, string> = {
+  vendor: "Vendor",
+  vendor_erp_link: "Vendor ERP link",
+  item: "Item",
+  item_map: "ERP item code link",
+  asset_user: "Person / place",
+  purchase_order: "Purchase order",
+  purchase_order_erp_baseline: "Purchase order (ERP copy)",
+  asset: "Asset",
+  asset_document: "Asset document",
+  company: "Company",
+  location: "Place",
+  department: "Department",
+  cost_center: "Cost Centre",
+  category: "Asset group",
+  subcategory: "Sub-category",
+  brand: "Brand",
+  bundle: "Set",
+  bundle_part: "Set part",
+  custom_field: "Custom field",
+  code_rule: "Asset code format",
+  app_setting: "App setting",
+  client_report: "Problem report",
+};
+
+/** The record types offered in the filter. */
+export const AUDIT_ENTITIES = Object.keys(ENTITY_LABELS);
+
+export function entityLabel(entity: string | null | undefined): string {
+  if (!entity) return "";
+  return ENTITY_LABELS[entity] ?? humanizeCode(entity);
+}
+
+export const LOG_LEVELS = ["INFO", "WARNING", "ERROR", "CRITICAL"] as const;
+
+const LOG_LEVEL_LABELS: Record<string, string> = {
+  DEBUG: "Detail",
+  INFO: "Information",
+  WARNING: "Warning",
+  ERROR: "Error",
+  CRITICAL: "Critical",
+};
+
+export function logLevelLabel(level: string | null | undefined): string {
+  if (!level) return "";
+  return LOG_LEVEL_LABELS[level.toUpperCase()] ?? humanizeCode(level);
+}
+
+const ERROR_KIND_LABELS: Record<string, string> = {
+  exception: "Unexpected error",
+  slow_request: "Slow request",
+  slow_sql: "Slow database query",
+};
+
+export const ERROR_KINDS = Object.keys(ERROR_KIND_LABELS);
+
+export function errorKindLabel(kind: string | null | undefined): string {
+  if (!kind) return "";
+  return ERROR_KIND_LABELS[kind] ?? humanizeCode(kind);
+}
+
+const ERROR_SOURCE_LABELS: Record<string, string> = { api: "Server", db: "Database", job: "Background job", client: "Browser" };
+
+export function errorSourceLabel(source: string | null | undefined): string {
+  if (!source) return "";
+  return ERROR_SOURCE_LABELS[source] ?? humanizeCode(source);
+}
+
+const SYSTEM_COMPONENT_LABELS: Record<string, string> = {
+  startup: "Start-up",
+  shutdown: "Shut-down",
+  migration: "Database version",
+  erp_sync: "ERP data copy",
+  backup: "Backup",
+  scheduler: "Background checks",
+  db: "Database",
+  retention: "Log clean-up",
+  config: "Configuration",
+};
+
+export const SYSTEM_COMPONENTS = Object.keys(SYSTEM_COMPONENT_LABELS);
+
+export function systemComponentLabel(component: string | null | undefined): string {
+  if (!component) return "";
+  return SYSTEM_COMPONENT_LABELS[component] ?? humanizeCode(component);
+}
+
+const SYSTEM_EVENT_LABELS: Record<string, string> = {
+  started: "Started",
+  stopped: "Stopped",
+  head_mismatch: "Database version differs",
+  sync_started: "Copy started",
+  sync_success: "Copy finished",
+  sync_failed: "Copy failed",
+  sync_skipped: "Copy skipped",
+  loop_error: "Background check failed",
+  purge_finished: "Old logs removed",
+  log_dir_unwritable: "Log folder not writable",
+  connectivity_lost: "Database unreachable",
+  connectivity_restored: "Database back",
+};
+
+export function systemEventLabel(event: string | null | undefined): string {
+  if (!event) return "";
+  return SYSTEM_EVENT_LABELS[event] ?? humanizeCode(event);
+}
+
+const REPORT_KIND_LABELS: Record<string, string> = {
+  JS_ERROR: "Screen error",
+  API_ERROR: "Failed request",
+  USER_REPORT: "Reported by a person",
+};
+
+export const REPORT_KINDS = Object.keys(REPORT_KIND_LABELS);
+
+export function reportKindLabel(kind: string | null | undefined): string {
+  if (!kind) return "";
+  return REPORT_KIND_LABELS[kind] ?? humanizeCode(kind);
+}
+
+const REPORT_STATUS_LABELS: Record<string, string> = { NEW: "New", REVIEWED: "Reviewed" };
+
+export function reportStatusLabel(status: string | null | undefined): string {
+  if (!status) return "";
+  return REPORT_STATUS_LABELS[status] ?? humanizeCode(status);
+}
+
+const LOG_SOURCE_LABELS: Record<string, string> = { api: "The app", job: "Background job", script: "Set-up script" };
+
+/** Where an audit row came from (api / job / script). */
+export function logSourceLabel(source: string | null | undefined): string {
+  if (!source) return "";
+  return LOG_SOURCE_LABELS[source] ?? humanizeCode(source);
+}

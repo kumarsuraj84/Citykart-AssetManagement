@@ -35,6 +35,7 @@ import { PrintNow, useLabelSettings, type LabelAsset } from "@/components/labels
 import { LabelSettingsDisclosure } from "../labels/LabelSettingsDisclosure";
 import { useScanLabelPrefs } from "../labels/useScanLabelPrefs";
 import { PrintLabelsAction, fetchAssetsByIds, labelsWord, parseIdList } from "../labels/PrintLabelsAction";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 // A person or place (backend: an asset user).
 interface Option {
@@ -693,7 +694,7 @@ export function AssetMovement({ preloadIds, initialChoice }: AssetMovementProps 
             />
           </FormField>
         </div>
-        {scanError && <p className="text-sm text-destructive" role="alert">{scanError}</p>}
+        {scanError && <ErrorMessage className="text-sm text-destructive" message={scanError} />}
         {bulkSummary && <p className="text-sm text-muted-foreground" role="status">{bulkSummary}</p>}
         {preloadQ.isError && <p className="text-sm text-destructive" role="alert">Couldn't load the assets that were sent here. Add them by scanning instead.</p>}
         {candidates && (
@@ -749,7 +750,7 @@ export function AssetMovement({ preloadIds, initialChoice }: AssetMovementProps 
             </Button>
           </div>
         </div>
-        {itemError && <p className="mt-2 text-sm text-destructive" role="alert">{itemError}</p>}
+        {itemError && <ErrorMessage className="mt-2 text-sm text-destructive" message={itemError} />}
       </div>
 
       <FormField
@@ -961,9 +962,7 @@ export function AssetMovement({ preloadIds, initialChoice }: AssetMovementProps 
         )}
         {unconfirmed > 0 && <p className="text-xs text-muted-foreground">{unconfirmed} label{unconfirmed === 1 ? " is" : "s are"} not confirmed yet.</p>}
         {applyMutation.isError && (
-          <p className="text-sm text-destructive" role="alert">
-            {applyMutation.error instanceof Error ? applyMutation.error.message : "Failed to apply the action."}
-          </p>
+          <ErrorMessage className="text-sm text-destructive" error={applyMutation.error} message={applyMutation.error instanceof Error ? applyMutation.error.message : "Failed to apply the action."} />
         )}
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <span className="min-w-0 text-xs text-muted-foreground" id="move-apply-why">

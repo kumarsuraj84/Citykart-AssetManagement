@@ -1,4 +1,6 @@
 import { useAuthStore } from "./auth-store";
+import { addBreadcrumb } from "./breadcrumbs";
+import { notifyApiFailure, pathTemplate, recordRequest, rememberFailure, responseRequestId } from "./request-log";
 
 export const API_BASE: string = import.meta.env.VITE_API_BASE ?? "/api";
 
@@ -113,6 +115,40 @@ function redirectToChangePassword(): void {
  * and the user is sent to /login?next=<current page>.
  */
 export async function authFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  // S8: every call is remembered (method, path template, status, time, request id) in memory, and a
+  // 5xx or a call that got no answer is announced to the automatic problem reports (when switched on).
+  const started = Date.now();
+  const method = (init.method ?? "GET").toUpperCase();
+  const sentId = ((init.headers as Record<string, string> | undefined) ?? {})["X-Request-ID"] ?? null;
+  const template = pathTemplate(path);
+  // The problem report's own call never reports itself (no loops).
+  const reportable = !path.startsWith("/client-reports");
+  try {
+    const res = await authFetchInner(path, init);
+    const requestId = responseRequestId(res) ?? sentId;
+    const status = typeof res?.status === "number" ? res.status : 0;
+    const entry = { at: new Date(started).toISOString(), method, path: template, status, ms: Date.now() - started, requestId };
+    recordRequest(entry);
+    if (reportable) addBreadcrumb("api", `${method} ${template} → ${status}`, { status, requestId });
+    if (status >= 500 && reportable) notifyApiFailure({ ...entry, message: `${status} ${method} ${template}` });
+    return res;
+  } catch (e) {
+    const entry = { at: new Date(started).toISOString(), method, path: template, status: 0, ms: Date.now() - started, requestId: sentId };
+    recordRequest(entry);
+    if (reportable) addBreadcrumb("api", `${method} ${template} → no answer`, { status: 0, requestId: sentId });
+    if (reportable) notifyApiFailure({ ...entry, message: `No answer from the server: ${method} ${template}` });
+    if (e && typeof e === "object") {
+      try {
+        Object.assign(e, { isNetworkError: true, requestId: sentId });
+      } catch {
+        // a frozen error: leave it as it is
+      }
+    }
+    throw e;
+  }
+}
+
+async function authFetchInner(path: string, init: RequestInit): Promise<Response> {
   const send = () => {
     const token = useAuthStore.getState().accessToken;
     const headers: Record<string, string> = {
@@ -154,7 +190,12 @@ export async function downloadFile(path: string, filename: string, failureLabel 
   const res = await authFetch(path);
   if (!res.ok) {
     const message = await errorMessage(res, failureLabel);
-    throw new Error(message.startsWith(failureLabel) ? message : `${failureLabel}: ${message}`);
+    const error = new Error(message.startsWith(failureLabel) ? message : `${failureLabel}: ${message}`);
+    // S8: the reference of the failed download, shown under the sentence.
+    const requestId = responseRequestId(res);
+    Object.assign(error, { status: res.status, requestId });
+    rememberFailure(error.message, requestId, res.status);
+    throw error;
   }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);

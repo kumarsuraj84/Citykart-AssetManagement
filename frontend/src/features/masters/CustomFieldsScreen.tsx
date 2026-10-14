@@ -38,6 +38,7 @@ import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField } from "@/components/shared/FormField";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 const FIELD_TYPES = [
   { value: "text", label: "Text" },
@@ -305,6 +306,7 @@ export function CustomFieldsScreen() {
         isLoading={isLoading}
         isError={isError}
         errorMessage={error instanceof Error ? error.message : undefined}
+        error={error}
         onRetry={() => refetch()}
         emptyState={
           <EmptyState
@@ -422,9 +424,7 @@ export function CustomFieldsScreen() {
             </FormField>
 
             {createMutation.isError && (
-              <p className="text-sm text-destructive" role="alert">
-                {createMutation.error instanceof ApiError ? createMutation.error.message : "Could not save this field."}
-              </p>
+              <ErrorMessage className="text-sm text-destructive" error={createMutation.error} message={createMutation.error instanceof ApiError ? createMutation.error.message : "Could not save this field."} />
             )}
           </div>
 
@@ -535,9 +535,7 @@ export function CustomFieldsScreen() {
               </FormField>
 
               {updateMutation.isError && (
-                <p className="text-sm text-destructive" role="alert">
-                  {updateMutation.error instanceof ApiError ? updateMutation.error.message : "Could not save this field."}
-                </p>
+                <ErrorMessage className="text-sm text-destructive" error={updateMutation.error} message={updateMutation.error instanceof ApiError ? updateMutation.error.message : "Could not save this field."} />
               )}
             </div>
           )}

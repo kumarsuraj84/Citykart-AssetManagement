@@ -12,6 +12,7 @@ import { MAX_QUANTITY, quantityHint, quantityProblem } from "@/lib/limits";
 import { linesAndUnitsSentence } from "./po-list";
 import { useCanManage } from "@/lib/capabilities";
 import { SetPartAmounts, partAmountsFor, partAmountsPayload, partsMatchPrice } from "./SetPartAmounts";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 // The split itself lives in ../bundles/bundle-parts (one copy for the whole app);
 // re-exported here for existing imports.
@@ -151,9 +152,7 @@ export function AddBundleDialog({ poId, open, onOpenChange, onAdded }: Props) {
         </div>
 
         {addMutation.isError && (
-          <p className="shrink-0 text-sm text-destructive" role="alert">
-            {addMutation.error instanceof Error ? addMutation.error.message : "Failed to add the set."}
-          </p>
+          <ErrorMessage className="shrink-0 text-sm text-destructive" error={addMutation.error} message={addMutation.error instanceof Error ? addMutation.error.message : "Failed to add the set."} />
         )}
         <DialogFooter className="shrink-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

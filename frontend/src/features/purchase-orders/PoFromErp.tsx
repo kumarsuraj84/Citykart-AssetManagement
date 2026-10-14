@@ -16,6 +16,7 @@ import { ErrorState } from "@/components/shared/ErrorState";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { companyOptions } from "@/lib/option-labels";
 import { ErpSyncStatus } from "../erp/ErpSyncStatus";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 export interface ErpPoProblem {
   kind: string;
@@ -253,7 +254,7 @@ export function PoFromErp() {
 
           {posQ.isError ? (
             <ErrorState
-              message={posQ.error instanceof Error ? posQ.error.message : "Couldn't load the ERP purchase orders."}
+              message={posQ.error instanceof Error ? posQ.error.message : "Couldn't load the ERP purchase orders."} error={posQ.error}
               onRetry={() => posQ.refetch()}
             />
           ) : (
@@ -277,9 +278,7 @@ export function PoFromErp() {
           </div>
           {draftQ.isLoading && <p className="text-sm text-muted-foreground">Reading the purchase order from the ERP…</p>}
           {draftQ.isError && (
-            <p className="text-sm text-destructive" role="alert">
-              {draftQ.error instanceof Error ? draftQ.error.message : "Could not read this purchase order."}
-            </p>
+            <ErrorMessage className="text-sm text-destructive" error={draftQ.error} message={draftQ.error instanceof Error ? draftQ.error.message : "Could not read this purchase order."} />
           )}
           {draftQ.data && itemsQ.data && bundlesQ.data && (
             <PoDraftCard key={draftQ.data.erp_po_code} draft={draftQ.data} bundles={bundlesQ.data} items={itemsQ.data} />

@@ -170,7 +170,7 @@ export function PurchaseOrdersList() {
 
       {posQ.isError ? (
         <ErrorState
-          message={posQ.error instanceof Error ? posQ.error.message : "Couldn't load purchase orders."}
+          message={posQ.error instanceof Error ? posQ.error.message : "Couldn't load purchase orders."} error={posQ.error}
           onRetry={() => posQ.refetch()}
         />
       ) : (

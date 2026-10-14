@@ -46,6 +46,7 @@ export default function VendorsSetup({ embedded = false }: { embedded?: boolean 
         resource: "vendors",
         title: "Vendors",
         singular: "Vendor",
+        historyEntity: "vendor",
         columns: [
           { key: "code", label: "Code" },
           { key: "name", label: "Name" },

@@ -27,6 +27,8 @@ import { FormField } from "@/components/shared/FormField";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { brandOptions, nameOptions, namesById } from "@/lib/option-labels";
 import { workAreaLabel } from "@/lib/labels";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
+import { RecordHistoryButton } from "@/features/system/RecordHistory";
 
 interface Named {
   id: number;
@@ -265,8 +267,9 @@ export function ItemFormDialog({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
-          <DialogHeader>
+          <DialogHeader className="flex-row flex-wrap items-center gap-2 space-y-0 pr-6">
             <DialogTitle className="text-base">{item ? "Edit Item" : "New Item"}</DialogTitle>
+            {item && <RecordHistoryButton entity="item" entityId={item.id} name={item.name} />}
           </DialogHeader>
           <div className="flex flex-col gap-3">
             <FormField htmlFor="item-name" label="Item name" required>
@@ -443,7 +446,7 @@ export function ItemFormDialog({
           </div>
 
           {errorText && (
-            <p className="text-sm text-destructive" role="alert">{errorText}</p>
+            <ErrorMessage className="text-sm text-destructive" message={errorText} />
           )}
           {!canSave && draft.name.trim() !== "" && (
             <p className="text-xs text-muted-foreground">Still needed: {missing.join(", ")}.</p>

@@ -29,6 +29,7 @@ import { EditPersonDialog } from "./EditPersonDialog";
 import { EnsureRoomsDialog } from "./EnsureRoomsDialog";
 import { IssuePasswordsDialog } from "./IssuePasswordsDialog";
 import { KIND_INFO, PEOPLE_PAGE_SIZE, peopleListPath, plural, yesNoWord, type PeopleKind, type PersonRow } from "./people-model";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 interface Company {
   id: number;
@@ -337,7 +338,7 @@ export function PeopleScreen({ kind, embedded = false }: { kind: PeopleKind; emb
 
       {resetError && (
         <div role="alert" aria-label="Could not reset the password" className="flex items-center justify-between gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          <span>{resetError}</span>
+          <ErrorMessage as="span" className="text-destructive" announce={false} message={resetError} />
           <Button variant="ghost" size="sm" onClick={() => setResetError(null)}>Dismiss</Button>
         </div>
       )}
@@ -349,6 +350,7 @@ export function PeopleScreen({ kind, embedded = false }: { kind: PeopleKind; emb
         isLoading={listQ.isLoading}
         isError={listQ.isError}
         errorMessage={listQ.error instanceof Error ? listQ.error.message : undefined}
+        error={listQ.error}
         onRetry={() => listQ.refetch()}
         selection={{
           isSelected: (r) => selected.has(r.id),
@@ -436,9 +438,7 @@ export function PeopleScreen({ kind, embedded = false }: { kind: PeopleKind; emb
             </div>
           )}
           {accessMutation.isError && (
-            <p className="text-sm text-destructive" role="alert">
-              {accessMutation.error instanceof Error ? accessMutation.error.message : "Could not save company access."}
-            </p>
+            <ErrorMessage className="text-sm text-destructive" error={accessMutation.error} message={accessMutation.error instanceof Error ? accessMutation.error.message : "Could not save company access."} />
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setAccessRow(null)}>Cancel</Button>
@@ -474,9 +474,7 @@ export function PeopleScreen({ kind, embedded = false }: { kind: PeopleKind; emb
           </AlertDialogHeader>
           {/* The server refuses while something is still held ("X still holds 3 assets. Move them ... first, then deactivate."). */}
           {deactivateMutation.isError && (
-            <p className="text-sm text-destructive" role="alert">
-              {deactivateMutation.error instanceof Error ? deactivateMutation.error.message : "Could not deactivate this record."}
-            </p>
+            <ErrorMessage className="text-sm text-destructive" error={deactivateMutation.error} message={deactivateMutation.error instanceof Error ? deactivateMutation.error.message : "Could not deactivate this record."} />
           )}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>

@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField } from "@/components/shared/FormField";
 import { fieldLabel } from "@/lib/labels";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 /** A changed field as people read it: "pi_number" -> "Purchase Invoice (PI) number",
  * "Custom:warranty_card" -> "Custom field: warranty_card". */
@@ -266,7 +267,7 @@ export function ImportScreen() {
           <AsyncButton variant="secondary" onClick={downloadTemplate} pending={isDownloading} pendingLabel="Preparing…">
             Download Template
           </AsyncButton>
-          {templateError && <p className="mt-2 text-sm text-destructive">{templateError}</p>}
+          {templateError && <ErrorMessage className="mt-2 text-sm text-destructive" message={templateError} />}
         </div>
         {mode === "edit" && (
           <p className="text-xs text-muted-foreground">
@@ -321,7 +322,7 @@ export function ImportScreen() {
             Preview
           </AsyncButton>
         </div>
-        {previewError && <p className="text-sm text-destructive">{previewError}</p>}
+        {previewError && <ErrorMessage className="text-sm text-destructive" message={previewError} />}
       </div>
 
       {preview && (
@@ -376,7 +377,7 @@ export function ImportScreen() {
               Commit {preview.valid_rows.length > 0 ? `${preview.valid_rows.length} Row${preview.valid_rows.length === 1 ? "" : "s"}` : ""}
             </AsyncButton>
           </div>
-          {commitError && <p className="text-sm text-destructive">{commitError}</p>}
+          {commitError && <ErrorMessage className="text-sm text-destructive" message={commitError} />}
         </div>
       )}
 

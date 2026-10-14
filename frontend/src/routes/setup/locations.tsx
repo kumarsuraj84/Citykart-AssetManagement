@@ -27,6 +27,7 @@ export default function LocationsSetup({ embedded = false }: { embedded?: boolea
       embedded={embedded}
       config={{
         resource: "locations",
+        historyEntity: "location",
         // Settings › Organisation › Places (backend: locations).
         title: "Places",
         singular: "Place",

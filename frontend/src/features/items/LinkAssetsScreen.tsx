@@ -21,6 +21,7 @@ import { ErrorState } from "@/components/shared/ErrorState";
 import { useDebounced } from "../purchase-orders/po-list";
 import { problemsFrom } from "../receive/receive-model";
 import type { Item } from "./types";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 /** Why an Item is suggested (server reason codes) in plain words. */
 export const REASON_WORDS: Record<string, string> = {
@@ -241,7 +242,7 @@ export function LinkAssetsScreen() {
       )}
 
       {listQ.isError ? (
-        <ErrorState message="Couldn't load the assets without an Item." onRetry={() => listQ.refetch()} />
+        <ErrorState message="Couldn't load the assets without an Item." error={listQ.error} onRetry={() => listQ.refetch()} />
       ) : listQ.isLoading ? (
         <p className="text-sm text-muted-foreground" role="status">Loading…</p>
       ) : rows.length === 0 ? (
@@ -318,7 +319,7 @@ export function LinkAssetsScreen() {
                         </div>
                       </>
                     )}
-                    {refusal && <p className="text-xs text-destructive" role="alert">{refusal}</p>}
+                    {refusal && <ErrorMessage className="text-xs text-destructive" message={refusal} />}
                   </div>
                 </li>
               );

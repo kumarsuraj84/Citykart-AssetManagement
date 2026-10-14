@@ -26,6 +26,7 @@ import { MAX_QUANTITY, quantityHint } from "@/lib/limits";
 import { RATE_HIGH_FACTOR, RATE_LOW_FACTOR, lineIndexesForServerMessage } from "./erp-create-errors";
 import { linesAndUnitsSentence } from "./po-list";
 import { SetPartAmounts, partAmountsFor, partAmountsPayload, partTotal } from "./SetPartAmounts";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 export type MapScope = "NONE" | "ARTICLE" | "NAME" | "CODE";
 /** How far a "not tracked" decision reaches: one code, a product name, an Article, or a whole Department / Section / Division. */
@@ -840,7 +841,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
                 {siblings.map((r) => `${r.name} (${r.erp_code})`).join(", ")}
               </label>
             )}
-            {vendorRefusal && <p className="text-xs font-medium text-destructive" role="alert">{vendorRefusal}</p>}
+            {vendorRefusal && <ErrorMessage className="text-xs font-medium text-destructive" message={vendorRefusal} />}
           </section>
         )}
 
@@ -981,9 +982,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
             );
           })}
           {notTrackedMutation.isError && (
-            <p className="text-sm text-destructive" role="alert">
-              {notTrackedMutation.error instanceof Error ? notTrackedMutation.error.message : "Could not save that decision."}
-            </p>
+            <ErrorMessage className="text-sm text-destructive" error={notTrackedMutation.error} message={notTrackedMutation.error instanceof Error ? notTrackedMutation.error.message : "Could not save that decision."} />
           )}
           {lastNotTracked && (
             <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/20 px-2.5 py-1.5 text-xs" role="status" aria-label="Not tracked saved">
@@ -1003,9 +1002,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
                 </span>
               )}
               {undoNotTracked.isError && (
-                <span className="text-destructive" role="alert">
-                  {undoNotTracked.error instanceof Error ? undoNotTracked.error.message : "Could not undo."}
-                </span>
+                <ErrorMessage as="span" className="text-destructive" error={undoNotTracked.error} message={undoNotTracked.error instanceof Error ? undoNotTracked.error.message : "Could not undo."} />
               )}
             </div>
           )}

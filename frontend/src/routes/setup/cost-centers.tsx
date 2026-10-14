@@ -26,6 +26,7 @@ export default function CostCentersSetup({ embedded = false }: { embedded?: bool
       embedded={embedded}
       config={{
         resource: "cost-centers",
+        historyEntity: "cost_center",
         title: "Cost Centres",
         singular: "Cost Centre",
         columns: [

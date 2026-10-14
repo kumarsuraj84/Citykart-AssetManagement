@@ -17,6 +17,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { AsyncButton } from "@/components/shared/AsyncButton";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 interface Named {
   id: number;
@@ -151,9 +152,7 @@ export function ItemsScreen({ embedded = false }: { embedded?: boolean } = {}) {
         </p>
       )}
       {seedMutation.isError && (
-        <p className="text-sm text-destructive" role="alert">
-          {seedMutation.error instanceof Error ? seedMutation.error.message : "Could not create the Items."}
-        </p>
+        <ErrorMessage className="text-sm text-destructive" error={seedMutation.error} message={seedMutation.error instanceof Error ? seedMutation.error.message : "Could not create the Items."} />
       )}
 
       <DataTable
@@ -179,9 +178,7 @@ export function ItemsScreen({ embedded = false }: { embedded?: boolean } = {}) {
             linked to it keep their link and its history is kept.
           </p>
           {deleteMutation.isError && (
-            <p className="text-sm text-destructive" role="alert">
-              {deleteMutation.error instanceof Error ? deleteMutation.error.message : "Could not deactivate."}
-            </p>
+            <ErrorMessage className="text-sm text-destructive" error={deleteMutation.error} message={deleteMutation.error instanceof Error ? deleteMutation.error.message : "Could not deactivate."} />
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleting(null)}>Cancel</Button>

@@ -9,6 +9,7 @@ import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField } from "@/components/shared/FormField";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 interface PreviewRow {
   row: number;
@@ -196,7 +197,7 @@ export function BulkImportExport({
                   <Download className="h-4 w-4" aria-hidden="true" />
                   Export
                 </AsyncButton>
-                {exportError && <p className="mt-2 text-sm text-destructive">{exportError}</p>}
+                {exportError && <ErrorMessage className="mt-2 text-sm text-destructive" message={exportError} />}
               </div>
             </div>
 
@@ -209,7 +210,7 @@ export function BulkImportExport({
                 <AsyncButton variant="secondary" onClick={doDownloadTemplate} pending={isDownloadingTemplate} pendingLabel="Preparing…">
                   Download Template
                 </AsyncButton>
-                {templateError && <p className="mt-2 text-sm text-destructive">{templateError}</p>}
+                {templateError && <ErrorMessage className="mt-2 text-sm text-destructive" message={templateError} />}
               </div>
 
               <div className="mt-2 flex flex-wrap items-end gap-3">
@@ -220,7 +221,7 @@ export function BulkImportExport({
                   Preview
                 </AsyncButton>
               </div>
-              {previewError && <p className="text-sm text-destructive">{previewError}</p>}
+              {previewError && <ErrorMessage className="text-sm text-destructive" message={previewError} />}
 
               {preview && (
                 <div className="mt-2 flex flex-col gap-3">
@@ -254,7 +255,7 @@ export function BulkImportExport({
                       Commit {preview.valid_rows.length > 0 ? `${preview.valid_rows.length} Row${preview.valid_rows.length === 1 ? "" : "s"}` : ""}
                     </AsyncButton>
                   </div>
-                  {commitError && <p className="text-sm text-destructive">{commitError}</p>}
+                  {commitError && <ErrorMessage className="text-sm text-destructive" message={commitError} />}
                 </div>
               )}
 

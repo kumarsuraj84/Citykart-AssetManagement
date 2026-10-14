@@ -18,6 +18,7 @@ import { serialConflictSentence } from "../purchase-orders/serial-conflict";
 import { SerialBox } from "../receive/SerialBox";
 import { useSerialConflicts } from "../receive/useSerialConflicts";
 import { andNumbers, problemsFrom, serialEntries } from "../receive/receive-model";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 interface PendingRow {
   id: number;
@@ -374,7 +375,7 @@ export function SerialPendingScreen() {
               </table>
             </div>
           </div>
-          {bulkError && <p className="text-sm font-medium text-destructive" role="alert">{bulkError}</p>}
+          {bulkError && <ErrorMessage className="text-sm font-medium text-destructive" message={bulkError} />}
           <div className="flex flex-wrap items-center gap-2">
             <AsyncButton onClick={saveBulk} disabled={!canSaveBulk} pending={bulkMutation.isPending && !confirmNoSerial} pendingLabel="Saving…">
               Save {plural(targets.length, "serial")}
@@ -398,7 +399,7 @@ export function SerialPendingScreen() {
       )}
 
       {listQ.isError ? (
-        <ErrorState message="Couldn't load the list." onRetry={() => listQ.refetch()} />
+        <ErrorState message="Couldn't load the list." error={listQ.error} onRetry={() => listQ.refetch()} />
       ) : (
         <DataTable
           columns={columns} rows={rows} rowKey={(r) => r.id} isLoading={listQ.isLoading}

@@ -9,6 +9,7 @@ import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField } from "@/components/shared/FormField";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { StockRoomSelect } from "@/components/quick-create/StockRoomSelect";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 /** The PO header as GET /purchase-orders/{id} answers it. */
 export interface PoHeader {
@@ -155,9 +156,7 @@ export function PoHeaderEditDialog({
             />
           </FormField>
           {mutation.isError && (
-            <p className="text-sm text-destructive" role="alert">
-              {mutation.error instanceof Error ? mutation.error.message : "Could not save the PO details."}
-            </p>
+            <ErrorMessage className="text-sm text-destructive" error={mutation.error} message={mutation.error instanceof Error ? mutation.error.message : "Could not save the PO details."} />
           )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>

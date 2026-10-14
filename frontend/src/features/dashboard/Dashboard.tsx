@@ -386,7 +386,7 @@ export function Dashboard({ headOfficeSection }: DashboardProps = {}) {
   const canWork = can("work");
 
   // The tables (stock by place, warranty, recent changes) and the status counts.
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data, isLoading, isError, error: homeError, refetch } = useQuery({
     queryKey: ["dashboard", domain],
     queryFn: () =>
       apiClient.get<DashboardData>(`/reports/dashboard${domain !== "ALL" ? `?domain=${domain}` : ""}`),
@@ -448,7 +448,7 @@ export function Dashboard({ headOfficeSection }: DashboardProps = {}) {
       </nav>
 
       {isError ? (
-        <ErrorState message="Couldn't load Home." onRetry={() => refetch()} />
+        <ErrorState message="Couldn't load Home." error={homeError} onRetry={() => refetch()} />
       ) : (
         <>
           <Card>

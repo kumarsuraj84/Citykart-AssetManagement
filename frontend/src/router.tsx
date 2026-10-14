@@ -10,7 +10,10 @@ import {
   useNavigate,
   useRouter,
 } from "@tanstack/react-router";
-import { LogOut } from "lucide-react";
+import { LifeBuoy, LogOut } from "lucide-react";
+import { ErrorFallback } from "@/components/shared/ErrorBoundary";
+import { ReportProblemDialog } from "@/features/support/ReportProblemDialog";
+import { useReportProblem } from "@/features/support/report-problem-store";
 import { Button } from "@/components/ui/button";
 import {
   Sidebar,
@@ -60,6 +63,9 @@ import { ErpSyncScreen } from "./features/settings/ErpSyncScreen";
 import { ErpInboxScreen, type InboxSection } from "./features/erp/ErpInbox";
 import { SetupWizard } from "./features/settings/SetupWizard";
 import { SETUP_TOTAL } from "./features/settings/setup-progress";
+import { LogsScreen, isLogTab, type LogTab } from "./features/system/LogsScreen";
+import { RequestScreen } from "./features/system/RequestScreen";
+import { DiagnosticsScreen } from "./features/system/DiagnosticsScreen";
 import ReceiveRoute from "./routes/receive";
 import ReceivePoRoute from "./routes/receive-po";
 import {
@@ -172,6 +178,7 @@ function AppShell() {
   const role = useAuthStore((s) => s.role);
   const isPrimaryOwner = useAuthStore((s) => s.isPrimaryOwner);
   const navigate = useNavigate();
+  const openReport = useReportProblem((s) => s.openReport);
 
   async function handleLogout() {
     await logoutSession();
@@ -180,6 +187,7 @@ function AppShell() {
 
   return (
     <SidebarProvider>
+      <ReportProblemDialog />
       <div className="flex min-h-screen w-full flex-col">
         {/* Light top header, matching the page canvas -- the logo has dark
             navy/red text with no light-colored plate behind it (transparent
@@ -201,6 +209,14 @@ function AppShell() {
                 {roleLabel(role, isPrimaryOwner)}
               </span>
             )}
+            {/* S8: any signed-in person can report a problem from every screen. */}
+            <Button
+              variant="ghost" size="sm" onClick={() => openReport()} aria-label="Report a problem" title="Report a problem"
+              className="gap-1.5 text-muted-foreground hover:text-foreground"
+            >
+              <LifeBuoy className="h-4 w-4" aria-hidden="true" />
+              <span className="hidden lg:inline">Report a problem</span>
+            </Button>
             <Link to="/change-password" className="hidden text-muted-foreground hover:text-foreground hover:underline sm:inline">
               Change password
             </Link>
@@ -682,6 +698,52 @@ export const settingsImportRoute = createRoute({
   component: guarded("settings", ImportRoute),
 });
 
+// S8: Settings › System (head-office admin): Logs (tabs in `?tab=`), one request's everything, Diagnostics.
+export interface LogsSearch {
+  tab?: LogTab;
+}
+
+export const settingsLogsRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/settings/system/logs",
+  validateSearch: (search: Record<string, unknown>): LogsSearch => ({
+    tab: isLogTab(search.tab) ? search.tab : undefined,
+  }),
+  component: guarded("settings", function LogsComponent() {
+    const { tab } = settingsLogsRoute.useSearch();
+    const navigate = useNavigate();
+    return (
+      <LogsScreen
+        tab={tab ?? "audit"}
+        onTabChange={(t) => void navigate({ to: "/settings/system/logs", search: { tab: t }, replace: true })}
+      />
+    );
+  }),
+});
+
+export const settingsLogsRequestRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/settings/system/logs/request/$id",
+  component: guarded("settings", function LogsRequestComponent() {
+    const { id } = settingsLogsRequestRoute.useParams();
+    return <RequestScreen key={id} requestId={id} />;
+  }),
+});
+
+export const settingsDiagnosticsRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/settings/system/diagnostics",
+  component: guarded("settings", DiagnosticsScreen),
+});
+
+export const settingsSystemRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/settings/system",
+  beforeLoad: () => {
+    throw redirect({ to: "/settings" });
+  },
+});
+
 // A group's own address (no screen of its own) opens the Settings landing page.
 export const settingsCatalogueRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
@@ -865,6 +927,10 @@ const routeTree = rootRoute.addChildren([
     settingsCustomFieldsRoute,
     settingsCodeFormatRoute,
     settingsImportRoute,
+    settingsLogsRoute,
+    settingsLogsRequestRoute,
+    settingsDiagnosticsRoute,
+    settingsSystemRoute,
     settingsCatalogueRoute,
     settingsErpRoute,
     settingsAdvancedRoute,
@@ -887,7 +953,12 @@ const routeTree = rootRoute.addChildren([
 
 /** Factory so tests can drive the real route tree with an in-memory history. */
 export function createAppRouter(history?: RouterHistory) {
-  return createRouter({ routeTree, history });
+  return createRouter({
+    routeTree,
+    history,
+    // S8: a screen that crashes shows plain words, its reference and "Report this problem" (and is reported).
+    defaultErrorComponent: ({ error, reset }) => <ErrorFallback error={error} onRetry={reset} />,
+  });
 }
 
 export const router = createAppRouter();

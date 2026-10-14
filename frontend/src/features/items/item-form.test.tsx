@@ -408,3 +408,21 @@ describe("S3b-1: what each kind of login may do in the Item form", () => {
     expect(within(dialog).getByText(/Still needed: the type of asset/)).toBeInTheDocument();
   });
 });
+
+describe("S8: History of an Item (head-office admin only)", () => {
+  it("Edit Item offers History to the head-office admin", () => {
+    renderForm({ item: ITEMS[0] as never });
+    expect(screen.getByRole("button", { name: "History of CPU" })).toBeInTheDocument();
+  });
+
+  it("not for a Full Admin", () => {
+    loginAs(false);
+    renderForm({ item: ITEMS[0] as never });
+    expect(screen.queryByRole("button", { name: /History/ })).not.toBeInTheDocument();
+  });
+
+  it("not on New Item", () => {
+    renderForm();
+    expect(screen.queryByRole("button", { name: /History/ })).not.toBeInTheDocument();
+  });
+});

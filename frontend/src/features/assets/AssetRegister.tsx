@@ -296,7 +296,7 @@ export function AssetRegister({ search = {}, onSearchChange }: AssetRegisterProp
   }
 
   const queryString = registerQuery(search, { myId: mine ? myId : null, page, pageSize: PAGE_SIZE, sortBy, sortDir });
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data, isLoading, isError, error: listError, refetch } = useQuery({
     queryKey: ["assets", "register", queryString],
     queryFn: () => apiClient.get<{ items: AssetRow[]; total: number }>(`/assets?${queryString}`),
   });
@@ -652,6 +652,7 @@ export function AssetRegister({ search = {}, onSearchChange }: AssetRegisterProp
         isLoading={isLoading}
         isError={isError}
         errorMessage="Couldn't load the asset register."
+        error={listError}
         onRetry={() => refetch()}
         onRowClick={(a) => navigate({ to: "/assets/$id", params: { id: String(a.id) } })}
         sort={sortBy ? { key: sortBy, direction: sortDir } : null}

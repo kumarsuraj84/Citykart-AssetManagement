@@ -21,6 +21,7 @@ import { AsyncButton } from "@/components/shared/AsyncButton";
 import { canCreate, useCapabilities } from "@/lib/capabilities";
 import { useCategoryLookups } from "@/lib/lookups";
 import { companyOptions, itemOptions, vendorOptions } from "@/lib/option-labels";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 export type InboxScope = "ARTICLE" | "NAME" | "CODE";
 export type InboxSection = "items" | "vendors" | "stores";
@@ -209,7 +210,7 @@ export function ErpInboxScreen({ section }: { section?: InboxSection } = {}) {
       {inboxQ.isLoading && <p className="text-sm text-muted-foreground">Reading the ERP…</p>}
       {inboxQ.isError && (
         <ErrorState
-          message={inboxQ.error instanceof Error ? inboxQ.error.message : "Could not read the ERP inbox."}
+          message={inboxQ.error instanceof Error ? inboxQ.error.message : "Could not read the ERP inbox."} error={inboxQ.error}
           onRetry={() => inboxQ.refetch()}
         />
       )}
@@ -434,7 +435,7 @@ function NewItemsSection({ groups, count, onChanged }: { groups: InboxItemGroup[
         ERP item codes on open purchase orders that are not linked to an Item yet, by ERP group. Decide once; every PO with these codes follows.
       </p>
       {resolve.isError && (
-        <p className="text-sm text-destructive" role="alert">{resolve.error instanceof Error ? resolve.error.message : "That did not work."}</p>
+        <ErrorMessage className="text-sm text-destructive" error={resolve.error} message={resolve.error instanceof Error ? resolve.error.message : "That did not work."} />
       )}
       <Results lines={results} label="Item decisions" />
       {groups.length === 0 ? (
@@ -651,7 +652,7 @@ function NewVendorsSection({ groups, count, onChanged }: { groups: InboxVendorGr
         ERP suppliers not matched to a vendor yet, by company PAN (one supplier often has a registration per state). Nothing is linked until you choose.
       </p>
       {resolve.isError && (
-        <p className="text-sm text-destructive" role="alert">{resolve.error instanceof Error ? resolve.error.message : "That did not work."}</p>
+        <ErrorMessage className="text-sm text-destructive" error={resolve.error} message={resolve.error instanceof Error ? resolve.error.message : "That did not work."} />
       )}
       <Results lines={results} label="Vendor decisions" />
       {groups.length === 0 ? (

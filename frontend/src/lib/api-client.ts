@@ -1,5 +1,6 @@
 import { authFetch } from "./auth-fetch";
 import { currentIdempotencyKey } from "./request-key";
+import { newRequestId, rememberFailure, responseRequestId } from "./request-log";
 
 /** Same as a plain Error everywhere existing `instanceof Error` checks look
  * (message-only) -- `status` is additive, so a screen that needs to tell a
@@ -11,12 +12,23 @@ export class ApiError extends Error {
   /** The parsed response body (S4: a refused receipt's structured `problems`
    * live here), or null when the body was not JSON. Additive, like `status`. */
   body: unknown;
-  constructor(message: string, status: number, body: unknown = null) {
+  /** S8: the server's reference for this request (`X-Request-ID`, else `request_id`
+   * in the body, else the id this app sent) -- shown as "Reference: …" under the sentence. */
+  requestId: string | null;
+  constructor(message: string, status: number, body: unknown = null, requestId: string | null = null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.body = body;
+    this.requestId = requestId;
   }
+}
+
+/** The `request_id` an error body carries (S8), or null. */
+export function requestIdFromBody(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null;
+  const id = (body as { request_id?: unknown }).request_id;
+  return typeof id === "string" && id.trim() ? id.trim() : null;
 }
 
 /** Joins sentences with a single space, dropping blanks and exact repeats. */
@@ -77,6 +89,9 @@ async function send(method: string, path: string, body?: unknown): Promise<Respo
   const isFormData = body instanceof FormData;
   const headers: Record<string, string> = isFormData ? {} : { "Content-Type": "application/json" };
   if (key) headers["Idempotency-Key"] = key;
+  // S8: our own request id, so even a call that never got an answer can be quoted (the server keeps it).
+  const sentId = newRequestId();
+  headers["X-Request-ID"] = sentId;
   // authFetch attaches the bearer token and handles 401 -> refresh -> retry once
   // -> otherwise redirect to /login (see lib/auth-fetch.ts).
   const res = await authFetch(path, {
@@ -86,7 +101,10 @@ async function send(method: string, path: string, body?: unknown): Promise<Respo
   });
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    throw new ApiError(errorMessageFrom(body, res.status), res.status, body);
+    const requestId = responseRequestId(res) ?? requestIdFromBody(body) ?? sentId;
+    const message = errorMessageFrom(body, res.status);
+    rememberFailure(message, requestId, res.status);
+    throw new ApiError(message, res.status, body, requestId);
   }
   return res;
 }
@@ -118,5 +136,6 @@ export const apiClient = {
   getPage: <T>(path: string) => requestPage<T>(path),
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
   put: <T>(path: string, body?: unknown) => request<T>("PUT", path, body),
+  patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, body),
   delete: <T>(path: string) => request<T>("DELETE", path),
 };

@@ -16,6 +16,8 @@ import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { NewDepartmentDialog, NewLocationDialog } from "@/components/quick-create/masters";
 import { WORK_AREA_CHOICES, WORK_AREA_ROLES } from "./AddEmployeeDialog";
 import { KIND_INFO, isWiderThanMine, type PeopleKind, type PersonRow } from "./people-model";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
+import { RecordHistoryButton } from "@/features/system/RecordHistory";
 
 interface Named {
   id: number;
@@ -144,8 +146,9 @@ export function EditPersonDialog({
     <>
       <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
         <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
-          <DialogHeader>
+          <DialogHeader className="flex-row flex-wrap items-center gap-2 space-y-0 pr-6">
             <DialogTitle className="text-base">Edit {info.noun}</DialogTitle>
+            <RecordHistoryButton entity="asset_user" entityId={row.id} name={row.name} />
           </DialogHeader>
           <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); if (canSave && !mutation.isPending) mutation.mutate(body); }}>
             <div className="flex justify-between gap-4 rounded-md border bg-muted/50 px-3 py-2 text-sm">
@@ -248,9 +251,7 @@ export function EditPersonDialog({
             )}
 
             {mutation.isError && (
-              <p className="text-sm text-destructive" role="alert">
-                {mutation.error instanceof Error ? mutation.error.message : `Could not save this ${info.noun.toLowerCase()}.`}
-              </p>
+              <ErrorMessage className="text-sm text-destructive" error={mutation.error} message={mutation.error instanceof Error ? mutation.error.message : `Could not save this ${info.noun.toLowerCase()}.`} />
             )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>

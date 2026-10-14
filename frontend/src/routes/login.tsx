@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 const schema = z.object({
   loginId: z.string().min(1, "User ID is required"),
@@ -45,7 +46,7 @@ export function LoginForm({
           {formError && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{formError}</AlertDescription>
+              <AlertDescription><ErrorMessage as="span" announce={false} message={formError} /></AlertDescription>
             </Alert>
           )}
 

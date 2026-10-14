@@ -29,6 +29,8 @@ import { DeliveryReminderBanner } from "../erp/DeliveryReminders";
 import { ErpChangesPanel } from "../erp/ErpChanges";
 import { workAreaLabel } from "@/lib/labels";
 import { brandOptions, itemOptions, namesById } from "@/lib/option-labels";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
+import { RecordHistoryButton } from "@/features/system/RecordHistory";
 
 interface PurchaseOrderOut {
   id: number;
@@ -263,7 +265,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     navigate({ to: "/receive/$poId", params: { poId: String(poId) }, search: {} });
   }
 
-  if (poQ.isError) return <ErrorState message="Couldn't load this purchase order." onRetry={() => poQ.refetch()} />;
+  if (poQ.isError) return <ErrorState message="Couldn't load this purchase order." error={poQ.error} onRetry={() => poQ.refetch()} />;
 
   const po = poQ.data;
   const receivedIntoName = po?.delivery_asset_user_id
@@ -285,6 +287,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
             <Button asChild variant="outline">
               <Link to="/purchase-orders">Close</Link>
             </Button>
+            {po && <RecordHistoryButton entity="purchase_order" entityId={po.id} name={`PO ${po.po_number}`} className="gap-1.5" />}
             {po && (
               <Button variant="outline" disabled={!groupsReady} onClick={() => setHeaderOpen(true)}>
                 Edit details
@@ -337,9 +340,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
           <p className="rounded-md border bg-muted/40 px-2 py-1.5 text-sm" role="status">{notice}</p>
         )}
         {cancelUnitMutation.isError && (
-          <p className="text-sm text-destructive" role="alert">
-            {cancelUnitMutation.error instanceof Error ? cancelUnitMutation.error.message : "Failed to cancel the unit."}
-          </p>
+          <ErrorMessage className="text-sm text-destructive" error={cancelUnitMutation.error} message={cancelUnitMutation.error instanceof Error ? cancelUnitMutation.error.message : "Failed to cancel the unit."} />
         )}
 
         {showAddLine && (
@@ -399,9 +400,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
               </FormField>
             </div>
             {addLineMutation.isError && (
-              <p className="mt-2 text-sm text-destructive" role="alert">
-                {addLineMutation.error instanceof Error ? addLineMutation.error.message : "Failed to add line."}
-              </p>
+              <ErrorMessage className="mt-2 text-sm text-destructive" error={addLineMutation.error} message={addLineMutation.error instanceof Error ? addLineMutation.error.message : "Failed to add line."} />
             )}
             <div className="mt-2 flex gap-2">
               <AsyncButton onClick={() => addLineMutation.mutate()} disabled={!canAddLine} pending={addLineMutation.isPending} pendingLabel="Adding…">
@@ -416,7 +415,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
 
         {groupsQ.isError ? (
           <ErrorState
-            message={groupsQ.error instanceof Error ? groupsQ.error.message : "Couldn't load the lines of this purchase order."}
+            message={groupsQ.error instanceof Error ? groupsQ.error.message : "Couldn't load the lines of this purchase order."} error={groupsQ.error}
             onRetry={() => groupsQ.refetch()}
           />
         ) : (
@@ -499,9 +498,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
             <p className="text-muted-foreground">Nothing has been received under this PO, so no assets are affected.</p>
           </div>
           {deleteMutation.isError && (
-            <p className="text-sm text-destructive" role="alert">
-              {deleteMutation.error instanceof Error ? deleteMutation.error.message : "Failed to delete this purchase order."}
-            </p>
+            <ErrorMessage className="text-sm text-destructive" error={deleteMutation.error} message={deleteMutation.error instanceof Error ? deleteMutation.error.message : "Failed to delete this purchase order."} />
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteOpen(false)}>

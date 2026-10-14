@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { ErpPiPanel } from "../erp/ErpPiDialog";
 import { PrintLabelsAction } from "../labels/PrintLabelsAction";
 import { money } from "./po-detail-types";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 /** One invoice received under a PO (GET /purchase-orders/{id}/invoices). */
 export interface InvoiceSummary {
@@ -206,9 +207,7 @@ function PiEntry({ poId, invoices, fromErp, onClose }: { poId: number; invoices:
             Off (default): only fills in the assets of this invoice that have no PI yet. On: replaces the PI on every asset of this invoice, even ones already set (to fix a typo).
           </p>
           {recordMutation.isError && (
-            <p className="text-sm text-destructive" role="alert">
-              {recordMutation.error instanceof Error ? recordMutation.error.message : "Failed to record the PI."}
-            </p>
+            <ErrorMessage className="text-sm text-destructive" error={recordMutation.error} message={recordMutation.error instanceof Error ? recordMutation.error.message : "Failed to record the PI."} />
           )}
           <DialogFooter>
             <Button variant="outline" onClick={onClose}>Cancel</Button>

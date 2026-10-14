@@ -19,6 +19,7 @@ import { ErpGroupsDialog } from "./ErpGroupsDialog";
 import { useCanCreate } from "@/lib/capabilities";
 import { companyOptions, itemOptions as buildItemOptions } from "@/lib/option-labels";
 import { useCategoryLookups } from "@/lib/lookups";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 const units = (n: number) => Math.round(n).toLocaleString("en-IN");
 
@@ -293,14 +294,12 @@ function ArticlesView({ companyId, items }: { companyId?: string; items: Item[] 
         </div>
       )}
       {failure && (
-        <p className="text-sm text-destructive" role="alert">
-          {failure instanceof Error ? failure.message : "That did not work."}
-        </p>
+        <ErrorMessage className="text-sm text-destructive" error={failure} message={failure instanceof Error ? failure.message : "That did not work."} />
       )}
 
       {articlesQ.isError ? (
         <ErrorState
-          message={articlesQ.error instanceof Error ? articlesQ.error.message : "Couldn't read the ERP Articles."}
+          message={articlesQ.error instanceof Error ? articlesQ.error.message : "Couldn't read the ERP Articles."} error={articlesQ.error}
           onRetry={() => articlesQ.refetch()}
         />
       ) : (
@@ -391,9 +390,7 @@ function ArticleCodesDialog({ article, items, companyId, onClose }: { article: A
         )}
         {codesQ.isLoading && <p className="text-sm text-muted-foreground">Reading the ERP…</p>}
         {codesQ.isError && (
-          <p className="text-sm text-destructive" role="alert">
-            {codesQ.error instanceof Error ? codesQ.error.message : "Could not read the codes."}
-          </p>
+          <ErrorMessage className="text-sm text-destructive" error={codesQ.error} message={codesQ.error instanceof Error ? codesQ.error.message : "Could not read the codes."} />
         )}
         <CodeDecisionRows rows={rows} items={items} companyId={companyId} />
         <div className="flex justify-end"><Button variant="outline" onClick={onClose}>Close</Button></div>

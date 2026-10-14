@@ -38,6 +38,7 @@ import {
   applicableFields, buildAddBody, checkAdd, defaultDescription, emptyInput, itemSerialMode, problemPlace,
   refusalSummary, whyNotSentence,
 } from "./add-assets-model";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 interface Named {
   id: number;
@@ -277,6 +278,7 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
     return (
       <ErrorState
         message="Couldn't load what this form needs."
+        error={itemsQ.error ?? costCentersQ.error ?? customFieldsQ.error}
         onRetry={() => { itemsQ.refetch(); costCentersQ.refetch(); customFieldsQ.refetch(); }}
       />
     );
@@ -602,9 +604,9 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
 
       {/* --- Always-reachable action bar --- */}
       <div className="sticky bottom-0 z-20 -mx-4 -mb-4 flex flex-col gap-1.5 border-t bg-background/95 px-4 py-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-6 md:-mb-6 md:px-6">
-        {serverSummary && <p className="text-sm font-medium text-destructive" role="alert">{serverSummary}</p>}
+        {serverSummary && <ErrorMessage className="text-sm font-medium text-destructive" message={serverSummary} />}
         <ProblemList label="Other problems" items={problemsAt("general")} />
-        {otherError && <p className="text-sm text-destructive" role="alert">{otherError}</p>}
+        {otherError && <ErrorMessage className="text-sm text-destructive" message={otherError} />}
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p id="add-why" className={cn("min-w-0 text-xs", reasons.length > 0 ? "text-foreground" : "text-muted-foreground")} role="status">
             {reasons.length > 0

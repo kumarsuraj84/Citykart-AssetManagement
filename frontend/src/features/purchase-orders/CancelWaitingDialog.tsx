@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { FormField } from "@/components/shared/FormField";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { type LineGroup, lineTitle } from "./po-detail-types";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 const units = (n: number) => `${n.toLocaleString("en-IN")} waiting unit${n === 1 ? "" : "s"}`;
 
@@ -91,9 +92,7 @@ export function CancelWaitingDialog({ poId, target, onClose, onDone }: Props) {
           <p className="text-muted-foreground">Items already received are not affected: they stay in the register as they are.</p>
         </div>
         {mutation.isError && (
-          <p className="text-sm text-destructive" role="alert">
-            {mutation.error instanceof Error ? mutation.error.message : "Failed to cancel."}
-          </p>
+          <ErrorMessage className="text-sm text-destructive" error={mutation.error} message={mutation.error instanceof Error ? mutation.error.message : "Failed to cancel."} />
         )}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>

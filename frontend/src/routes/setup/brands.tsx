@@ -12,6 +12,7 @@ export default function BrandsSetup({ embedded = false }: { embedded?: boolean }
       embedded={embedded}
       config={{
         resource: "brands",
+        historyEntity: "brand",
         title: "Brands",
         singular: "Brand",
         columns: [

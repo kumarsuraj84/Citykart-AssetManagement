@@ -66,6 +66,7 @@ export function MyAssets() {
         isLoading={isLoading}
         isError={isError}
         errorMessage={error instanceof Error ? error.message : undefined}
+        error={error}
         onRetry={() => refetch()}
         emptyState={
           <EmptyState

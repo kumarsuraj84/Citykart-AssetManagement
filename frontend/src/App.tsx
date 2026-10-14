@@ -1,5 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
+import { ErrorBoundary, ErrorFallback } from "@/components/shared/ErrorBoundary";
+import { ReportProblemDialog } from "@/features/support/ReportProblemDialog";
 import { router } from "./router";
 
 const queryClient = new QueryClient();
@@ -7,7 +9,17 @@ const queryClient = new QueryClient();
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      {/* S8: anything that crashes outside a route's own error screen (the router shows that one). */}
+      <ErrorBoundary
+        fallback={(error, reset) => (
+          <>
+            <ErrorFallback error={error} onRetry={reset} fullPage />
+            <ReportProblemDialog />
+          </>
+        )}
+      >
+        <RouterProvider router={router} />
+      </ErrorBoundary>
     </QueryClientProvider>
   );
 }

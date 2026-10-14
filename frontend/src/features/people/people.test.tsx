@@ -663,3 +663,22 @@ describe("Stores: head-office extras", () => {
       .toBe("1 store checked: 0 given their missing rooms, 1 already complete. Nothing new was created.");
   });
 });
+
+describe("S8: History of a person / place (head-office admin only)", () => {
+  it("the head-office admin's Edit dialog offers History", async () => {
+    loginAs(HEAD_OFFICE, { owner: true });
+    renderPeople("employees");
+    await screen.findByText("Priya");
+    fireEvent.click(screen.getByRole("button", { name: "Edit Priya" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit Employee" });
+    expect(within(dialog).getByRole("button", { name: "History of Priya" })).toBeInTheDocument();
+  });
+
+  it("a Full Admin sees no History", async () => {
+    renderPeople("employees");
+    await screen.findByText("Priya");
+    fireEvent.click(screen.getByRole("button", { name: "Edit Priya" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit Employee" });
+    expect(within(dialog).queryByRole("button", { name: /History/ })).not.toBeInTheDocument();
+  });
+});

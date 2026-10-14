@@ -1,3 +1,5 @@
+import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
@@ -6,9 +8,31 @@ import { defineConfig } from "vitest/config";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 
+/**
+ * S8: the release id the app reports with every problem report (`app_version`): VITE_APP_VERSION,
+ * else the GIT_COMMIT build argument, else the current git commit, else the package version.
+ */
+function appVersion(): string {
+  const fromEnv = process.env.VITE_APP_VERSION || process.env.GIT_COMMIT;
+  if (fromEnv && fromEnv.trim()) return fromEnv.trim();
+  try {
+    return execSync("git rev-parse --short HEAD", { cwd: dirname, stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+  } catch {
+    try {
+      const pkg = JSON.parse(readFileSync(path.resolve(dirname, "package.json"), "utf-8")) as { version?: string };
+      return pkg.version ?? "unknown";
+    } catch {
+      return "unknown";
+    }
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion()),
+  },
   resolve: {
     alias: {
       "@": path.resolve(dirname, "./src"),

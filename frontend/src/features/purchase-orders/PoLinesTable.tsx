@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { serialModeLabel, workAreaLabel } from "@/lib/labels";
 import { PoStatusBadge } from "./PoStatusBadge";
 import { type LineGroup, type PendingAssetRow, lineTitle, money } from "./po-detail-types";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 /**
  * A purchase order's LINES (S2): one row per line however many units it
@@ -199,9 +200,7 @@ function LineUnits({ poId, line, onEditUnit, onCancelUnit }: {
         ))}
       </div>
       {q.isError ? (
-        <p className="text-sm text-destructive" role="alert">
-          {q.error instanceof Error ? q.error.message : "Couldn't load the units."}
-        </p>
+        <ErrorMessage className="text-sm text-destructive" error={q.error} message={q.error instanceof Error ? q.error.message : "Couldn't load the units."} />
       ) : q.isLoading ? (
         <p className="text-xs text-muted-foreground">Loading units…</p>
       ) : units.length === 0 ? (

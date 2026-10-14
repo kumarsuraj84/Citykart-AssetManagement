@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField } from "@/components/shared/FormField";
 import { SearchableSelect, type SearchableSelectOption } from "@/components/shared/SearchableSelect";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 /** What every quick-create dialog hands back once the record exists. */
 export interface CreatedRecord {
@@ -205,7 +206,7 @@ export function QuickCreateDialog({
           {note && <p className="text-xs text-muted-foreground">{note}</p>}
           {errorText && (
             <div className="flex flex-col gap-1.5" role="alert">
-              <p className="text-sm text-destructive">{errorText}</p>
+              <ErrorMessage as="span" className="block" announce={false} message={errorText} />
               {existing && (
                 <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => pickExisting(existing)}>
                   Use the existing “{String(existing.name ?? "")}”

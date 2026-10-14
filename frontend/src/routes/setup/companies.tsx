@@ -29,6 +29,7 @@ export default function CompaniesSetup({ embedded = false, onCreated }: {
       onCreated={onCreated}
       config={{
         resource: "companies",
+        historyEntity: "company",
         title: "Companies",
         singular: "Company",
         columns: [

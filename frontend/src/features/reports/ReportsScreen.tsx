@@ -19,6 +19,7 @@ import { ErrorState } from "@/components/shared/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDebounced } from "../purchase-orders/po-list";
 import type { Item } from "../items/types";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 interface Named {
   id: number;
@@ -237,11 +238,11 @@ function AssetReport() {
           Download Excel
         </AsyncButton>
       </div>
-      {download.error && <p className="text-sm text-destructive" role="alert">{download.error}</p>}
+      {download.error && <ErrorMessage message={download.error} />}
 
       {previewQ.isError ? (
         <ErrorState
-          message={previewQ.error instanceof Error ? previewQ.error.message : "Couldn't load the preview."}
+          message={previewQ.error instanceof Error ? previewQ.error.message : "Couldn't load the preview."} error={previewQ.error}
           onRetry={() => previewQ.refetch()}
         />
       ) : !preview ? (
@@ -338,9 +339,9 @@ function MovementReport() {
           Download Excel
         </AsyncButton>
       </section>
-      {download.error && <p className="text-sm text-destructive" role="alert">{download.error}</p>}
+      {download.error && <ErrorMessage message={download.error} />}
       {!valid ? null : previewQ.isError ? (
-        <ErrorState message={previewQ.error instanceof Error ? previewQ.error.message : "Couldn't load the preview."} onRetry={() => previewQ.refetch()} />
+        <ErrorState message={previewQ.error instanceof Error ? previewQ.error.message : "Couldn't load the preview."} error={previewQ.error} onRetry={() => previewQ.refetch()} />
       ) : !preview ? (
         <Skeleton className="h-40 w-full" />
       ) : preview.total === 0 ? (
@@ -381,7 +382,7 @@ function FieldChangeAudit() {
           Download Field Change Audit (Excel)
         </AsyncButton>
       </div>
-      {download.error && <p className="text-sm text-destructive" role="alert">{download.error}</p>}
+      {download.error && <ErrorMessage message={download.error} />}
     </div>
   );
 }

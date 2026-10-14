@@ -99,6 +99,22 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
       { to: "/settings/advanced/import", label: "Bulk Import", line: "Add or update many assets, POs or moves from Excel." },
     ],
   },
+  {
+    label: "System",
+    line: "Find any problem and share it with support.",
+    links: [
+      {
+        to: "/settings/system/logs",
+        label: "Logs",
+        line: "Audit trail, errors, security, system events and user reports; paste a reference to see everything about it.",
+      },
+      {
+        to: "/settings/system/diagnostics",
+        label: "Diagnostics",
+        line: "Health, database, and one copy of everything support needs.",
+      },
+    ],
+  },
 ];
 
 /** A path that belongs to Settings (opens the sidebar's Settings group on arrival). */

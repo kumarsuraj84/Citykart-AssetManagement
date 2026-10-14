@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AsyncButton } from "@/components/shared/AsyncButton";
+import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
 interface PiRow {
   pi_number: string;
@@ -155,9 +156,7 @@ export function ErpPiPanel({ poId, onClose, onTypeItIn }: {
       )}
 
       {applyMutation.isError && (
-        <p className="text-sm text-destructive" role="alert">
-          {applyMutation.error instanceof Error ? applyMutation.error.message : "Could not record the PI."}
-        </p>
+        <ErrorMessage className="text-sm text-destructive" error={applyMutation.error} message={applyMutation.error instanceof Error ? applyMutation.error.message : "Could not record the PI."} />
       )}
       {result && (
         <p className="text-sm text-success" role="status">
