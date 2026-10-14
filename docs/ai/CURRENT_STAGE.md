@@ -6,7 +6,7 @@
 |---|---|
 | Written | 2026-10-14 |
 | Where | Worktree `D:\ANKUR AI PROJECTS\Asset Management\.claude\worktrees\ckam-build`, branch `worktree-ckam-build`, HEAD = the commit that adds `CKAM_SIMPLIFICATION_FINAL_REPORT.md` (see `git log`) |
-| State | **Committed locally. NOT pushed. NOT deployed.** Development / UAT only. Production (10.0.1.98 / 10.0.0.205 / NAS) and the retired 10.0.1.12 were not touched |
+| State | **Pushed to origin (`claude/brave-euler-07879a` and `worktree-ckam-build` at `3b5e842`) and DEPLOYED to production on 2026-10-14 as release `3b5e842`** (10.0.1.98, database 10.0.0.205 at `e6f8a0b2c4d6`; details in `PRODUCTION_INFRASTRUCTURE.md`). The retired 10.0.1.12 was not touched |
 | Scope | The Level-3 programme of `CKAM_SIMPLIFICATION_IMPLEMENTATION_PLAN.md`: stages S0 to S6 built, **S7 full UAT done (first UAT, fix round, retest, fix round 2) and S8 (audit trail, logs, diagnostics) built**. Result and verdict: `CKAM_SIMPLIFICATION_FINAL_REPORT.md`, `CKAM_FINAL_UAT.md` |
 | As-built description | `CKAM_FINAL_OPERATING_MODEL.md`, `CKAM_FINAL_INFORMATION_ARCHITECTURE.md`, the eleven `DECISIONS.md` entries dated 2026-10-14, and the stage reports `CKAM_SIMPLIFICATION_S0 … S6BE`. The proposal documents (`CKAM_SIMPLIFIED_OPERATING_MODEL.md`, `CKAM_SIMPLIFIED_INFORMATION_ARCHITECTURE.md`) are superseded where they differ |
 | Alembic | single head `e6f8a0b2c4d6` (S8 logging tables), after `d2e4f6a8b0c2` (idempotency keys + one live PO number per company) and `c1d3e5f7a9b0` |
@@ -72,7 +72,7 @@ No `create_all`, no table dropped, no data rewritten by any stage.
 
 * **S7 full UAT is finished** (`CKAM_SIMPLIFICATION_S7_REPORT.md` first pass, `S7_RETEST_REPORT.md` on the fixed build, `S7_E2E_REPORT.md`, `CKAM_FINAL_UAT.md` summary). P0 0, P1 0, P2 0 remaining; about 6 P3 polish items remain (see `CKAM_SIMPLIFICATION_FINAL_REPORT.md` §38). The UAT ran on a throw-away copy of the dev database (ports 3311 / 8100, docker project `ckam-uat`), never against production.
 * **Not yet done before any release:** run the permanent Playwright suite and a browser pass on the machine that will be released, on its own database; apply `alembic upgrade head` BEFORE starting the new code (the audit trail writes inside business transactions, so code without the S8 tables fails every save); set `LOG_DIR`, `ENVIRONMENT_NAME` and the `GIT_COMMIT` build argument; apply the PostgreSQL logging settings on the production database server by hand (documented in `LOGGING_AND_DIAGNOSTICS.md`).
-* **Production deployment and `git push` are NOT done** and each needs its own explicit request ("commit and push to git and main" means push only, never deploy). Nothing was changed on any server.
+* **Pushed and deployed (2026-10-14), each on its own explicit request.** Production release `3b5e842` is live and verified; the later documentation-only commits that record this (this file and `PRODUCTION_INFRASTRUCTURE.md`) are committed locally and are NOT pushed. Rollback of the code to `afed57b` needs a database restore from `ckassetmanagement_20261014_141205.dump`.
 * **Owner decision D6 is still open**: should an ordinary Full Admin be limited to chosen companies (today a Full Admin works in every company)?
 * **Cross-company allotment** (owner decision of 2026-10-13) is not built; the lifecycle engine still refuses a move to another company.
 * Known follow-ups recorded in the stage reports and still true in the source:
