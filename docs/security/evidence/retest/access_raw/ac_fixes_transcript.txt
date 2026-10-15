@@ -1,0 +1,72 @@
+SECSELF GET /api/masters/vendors -> 403 {"detail":"Not permitted for this action","request_id":"b994761118654085bf113d57b4bad46d"}
+SECSELF GET /api/masters/companies -> 403 {"detail":"Not permitted for this action","request_id":"0e9fd8fdd82d413d8d9d9771d9f953d8"}
+SECSELF GET /api/masters/departments -> 403 {"detail":"Not permitted for this action","request_id":"6f560f7fae424fd3bd9a6b8ede1d487f"}
+SECSELF GET /api/masters/categories -> 403 {"detail":"Not permitted for this action","request_id":"7363284555cf41159b7f9d072ccda4b6"}
+SECSELF GET /api/masters/subcategories -> 403 {"detail":"Not permitted for this action","request_id":"71ecddbe150e42bdb9d98a6e3f813ba0"}
+SECSELF GET /api/masters/brands -> 403 {"detail":"Not permitted for this action","request_id":"804d066581dd4201a928892b82f41a06"}
+SECSELF GET /api/masters/cost-centers -> 403 {"detail":"Not permitted for this action","request_id":"c11e152c6ae0461d99444c63f1fd0bb6"}
+SECSELF GET /api/masters/custom-fields -> 403 {"detail":"Not permitted for this action","request_id":"605c787a2cec432fa396be0833a31e5b"}
+SECSELF GET /api/masters/locations -> 403 {"detail":"Not permitted for this action","request_id":"f879d039345b488d852302ec8eac343c"}
+SECSELF GET /api/code-rules -> 403 {"detail":"Not permitted for this action","request_id":"aae7302abfbe4558b9c8e86c786c2a63"}
+SECSELF GET /api/bundles -> 403 {"detail":"Not permitted for this action","request_id":"176249fce66e4550a4a101f1172326ec"}
+SECSELFV GET /api/masters/vendors -> 403 {"detail":"Not permitted for this action","request_id":"daee6b09aff740768515948ade4b0a52"}
+SECSELFV GET /api/masters/companies -> 403 {"detail":"Not permitted for this action","request_id":"750b073820a040099d3a692a31511847"}
+SECSELFV GET /api/masters/departments -> 403 {"detail":"Not permitted for this action","request_id":"adba89792fa44ebc898c60b7767fdcbd"}
+SECSELFV GET /api/masters/categories -> 403 {"detail":"Not permitted for this action","request_id":"191292c881c7411dbe7686e3d86549fd"}
+SECSELFV GET /api/masters/subcategories -> 403 {"detail":"Not permitted for this action","request_id":"09c9cb23713b40388f0425bd6ac267be"}
+SECSELFV GET /api/masters/brands -> 403 {"detail":"Not permitted for this action","request_id":"841c2d83f9a747a78f88ca962cffa5b6"}
+SECSELFV GET /api/masters/cost-centers -> 403 {"detail":"Not permitted for this action","request_id":"6035fbc2fa194951aba34b1dacc1d6e5"}
+SECSELFV GET /api/masters/custom-fields -> 403 {"detail":"Not permitted for this action","request_id":"5332d113476a40689b01e6ae73a11738"}
+SECSELFV GET /api/masters/locations -> 403 {"detail":"Not permitted for this action","request_id":"847c0b061fdd431da9dc633984cba371"}
+SECSELFV GET /api/code-rules -> 403 {"detail":"Not permitted for this action","request_id":"514ba67e911e4a02b4baa081a058999f"}
+SECSELFV GET /api/bundles -> 403 {"detail":"Not permitted for this action","request_id":"5e586fc7d2ab46708923f65a7a0d5fec"}
+SPA GET /api/masters/vendors -> 403 {"detail":"Not permitted for this action","request_id":"5ef3e62ced9c47a189db635c88770eb4"}
+SPA GET /api/masters/companies -> 403 {"detail":"Not permitted for this action","request_id":"373102d424024da3aedd73865f5ea21f"}
+SPA GET /api/masters/departments -> 403 {"detail":"Not permitted for this action","request_id":"1431977d6e71477db33a1199e14199ce"}
+SPA GET /api/masters/categories -> 403 {"detail":"Not permitted for this action","request_id":"ea25b125612c4fd59f5be96bfb4735f3"}
+SPA GET /api/masters/subcategories -> 403 {"detail":"Not permitted for this action","request_id":"3d786e224dd84deaab506c09d6617021"}
+SPA GET /api/masters/brands -> 403 {"detail":"Not permitted for this action","request_id":"a2e3f8e47b1649ef8743ded410d21922"}
+SPA GET /api/masters/cost-centers -> 403 {"detail":"Not permitted for this action","request_id":"d320c7069f9741ef8adc86e80626fd26"}
+SPA GET /api/masters/custom-fields -> 403 {"detail":"Not permitted for this action","request_id":"d2c1a6e4a3884b6785c1202ea30ce7a1"}
+SPA GET /api/masters/locations -> 403 {"detail":"Not permitted for this action","request_id":"ecce84c635f64d33b5d8924533daeb76"}
+SPA GET /api/code-rules -> 403 {"detail":"Not permitted for this action","request_id":"02eb6cc8eb5247f48ec2b03cf0d1ac54"}
+SPA GET /api/bundles -> 403 {"detail":"Not permitted for this action","request_id":"093fc3a1ded64be8918349da02af73c4"}
+VPA GET /api/masters/vendors -> 403 {"detail":"Not permitted for this action","request_id":"3d2e2c1331cd495b8f2543c6c04d86eb"}
+VPA GET /api/masters/companies -> 403 {"detail":"Not permitted for this action","request_id":"16d9c2e54d3d485693a88312b009c6bd"}
+VPA GET /api/masters/departments -> 403 {"detail":"Not permitted for this action","request_id":"83fc73f53fb64da7a1be0e3edbeadadc"}
+VPA GET /api/masters/categories -> 403 {"detail":"Not permitted for this action","request_id":"d6e2e990739946e892abeb09ba4e44a4"}
+VPA GET /api/masters/subcategories -> 403 {"detail":"Not permitted for this action","request_id":"fa449c84c724498fbf4bd67d1f68c505"}
+VPA GET /api/masters/brands -> 403 {"detail":"Not permitted for this action","request_id":"25b15410aa7746eb89267684b70350a7"}
+VPA GET /api/masters/cost-centers -> 403 {"detail":"Not permitted for this action","request_id":"d96f045297e94b2f893d88fadfb6d3bc"}
+VPA GET /api/masters/custom-fields -> 403 {"detail":"Not permitted for this action","request_id":"3c74cc1df4b940369095e33bddd5883a"}
+VPA GET /api/masters/locations -> 403 {"detail":"Not permitted for this action","request_id":"64b73b84db914166a58e66ea408d328d"}
+VPA GET /api/code-rules -> 403 {"detail":"Not permitted for this action","request_id":"e7e78d02f656423f82b2c0b312c8f65a"}
+VPA GET /api/bundles -> 403 {"detail":"Not permitted for this action","request_id":"10e4aa67036141379f510f7b9f9a889a"}
+SECSELF POST /api/code-rules/preview {} -> 403 {"detail":"Not permitted for this action","request_id":"2947ad87b5604f56ae88aca7877c2510"}
+SECOPIT GET /api/masters/custom-fields -> 200 company_ids=[1]
+SECVIEW GET /api/masters/custom-fields -> 200 company_ids=[1]
+SECOPNIT GET /api/masters/custom-fields -> 200 company_ids=[1]
+SECOTHER GET /api/masters/custom-fields -> 200 company_ids=[2]
+SECVIEWV GET /api/masters/custom-fields -> 200 company_ids=[2]
+SECOPITV GET /api/masters/custom-fields -> 200 company_ids=[2]
+SECOPX GET /api/masters/custom-fields -> 200 company_ids=[1,2]
+SECFAIT GET /api/masters/custom-fields -> 200 company_ids=[1,2]
+SECFABOTH GET /api/masters/custom-fields -> 200 company_ids=[1,2]
+SECHO GET /api/masters/custom-fields -> 200 company_ids=[1,2]
+SECOPIT GET /api/erp/pos/987654321/draft (non-existent) -> 404 {"detail":"This purchase order was not found in the ERP.","request_id":"055f728453a1403abf93a08e94acb934"}
+SECOPIT GET /api/erp/pos/9002002/draft -> 404 {"detail":"This purchase order was not found in the ERP.","request_id":"65f17be82e2640d29f2a92b564ee799a"}
+SECOPIT GET /api/erp/pos/9002001/draft -> 404 {"detail":"This purchase order was not found in the ERP.","request_id":"130f345f22734710b7a00180aad61f36"}
+SECOTHER GET /api/erp/pos/9001002/draft -> 404 {"detail":"This purchase order was not found in the ERP.","request_id":"a844b1e7c966478c860da17ea0c4adc0"}
+SECOTHER GET /api/erp/pos/9001001/draft -> 404 {"detail":"This purchase order was not found in the ERP.","request_id":"cdce19940d4f461c9ec692dd1bd31ab1"}
+SECOPITV GET /api/erp/pos/9001002/draft -> 404 {"detail":"This purchase order was not found in the ERP.","request_id":"ac13111955ec4fe79cab0bc21998c34d"}
+SECOPITV GET /api/erp/pos/9001001/draft -> 404 {"detail":"This purchase order was not found in the ERP.","request_id":"cbca86d19b3b4e96b450a22c2616ec8e"}
+SECOPIT GET /api/erp/pos/9001002/draft -> 200 {"erp_vendor":{"code":"SUP-SPL-1","name":"SEC ERP Supplier CKSPL","gstin":"06ABCDE1234F1Z5","pan":"ABCDE1234F","group_key":"CKSPL:ABCDE1234F"},"vendor_suggestions":[],"vendor_registrations":[],"vendor
+SECOTHER GET /api/erp/pos/9002002/draft -> 200 {"erp_vendor":{"code":"SUP-VPL-1","name":"SEC ERP Supplier CKVPL","gstin":"06ABCDE1234F1Z5","pan":"ABCDE1234F","group_key":"CKVPL:ABCDE1234F"},"vendor_suggestions":[],"vendor_registrations":[],"vendor
+SECOPITV GET /api/erp/pos/9002002/draft -> 200 {"erp_vendor":{"code":"SUP-VPL-1","name":"SEC ERP Supplier CKVPL","gstin":"06ABCDE1234F1Z5","pan":"ABCDE1234F","group_key":"CKVPL:ABCDE1234F"},"vendor_suggestions":[],"vendor_registrations":[],"vendor
+SECOPX GET /api/erp/pos/9001002/draft -> 200 {"erp_vendor":{"code":"SUP-SPL-1","name":"SEC ERP Supplier CKSPL","gstin":"06ABCDE1234F1Z5","pan":"ABCDE1234F","group_key":"CKSPL:ABCDE1234F"},"vendor_suggestions":[],"vendor_registrations":[],"vendor
+SECOPX GET /api/erp/pos/9002002/draft -> 200 {"erp_vendor":{"code":"SUP-VPL-1","name":"SEC ERP Supplier CKVPL","gstin":"06ABCDE1234F1Z5","pan":"ABCDE1234F","group_key":"CKVPL:ABCDE1234F"},"vendor_suggestions":[],"vendor_registrations":[],"vendor
+SECFAIT GET /api/erp/pos/9002002/draft -> 200 {"erp_vendor":{"code":"SUP-VPL-1","name":"SEC ERP Supplier CKVPL","gstin":"06ABCDE1234F1Z5","pan":"ABCDE1234F","group_key":"CKVPL:ABCDE1234F"},"vendor_suggestions":[],"vendor_registrations":[],"vendor
+SECHO GET /api/erp/pos/9001002/draft -> 200 {"erp_vendor":{"code":"SUP-SPL-1","name":"SEC ERP Supplier CKSPL","gstin":"06ABCDE1234F1Z5","pan":"ABCDE1234F","group_key":"CKSPL:ABCDE1234F"},"vendor_suggestions":[],"vendor_registrations":[],"vendor
+SECOPIT GET /api/erp/pos/9002002/receipts -> 404 {"detail":"Not Found","request_id":"b184e2a430db4466b4faf5bfcb3d6d97"}
+SECOPIT GET /api/erp/pos/9002002/pi -> 404 {"detail":"Not Found","request_id":"e65655d5c98845a4a48d549a76b572a0"}
+SECOPIT POST /api/erp/pos/create -> 422 {"detail":"Company is required. PO number is required. PO date is required. Cost centre is required. Lines is required.","errors":["Company is required.","PO number is required.","PO date is required.

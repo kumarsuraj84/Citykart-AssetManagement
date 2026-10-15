@@ -1,0 +1,7 @@
+server_settings PgErpSource: {'default_transaction_read_only': 'on', 'application_name': 'ckam', 'statement_timeout': '60000'}
+server_settings PgWarehouseReader: {'default_transaction_read_only': 'on', 'application_name': 'ckam', 'statement_timeout': '120000'}
+connect timeout setting: 10
+black-hole listener, default connect timeout | 10.01s | ErpUnavailable -> HTTP 503: The ERP database could not be reached (TimeoutError).
+black-hole listener, ERP_CONNECT_TIMEOUT_SECONDS=3 | 3.00s | ErpUnavailable -> HTTP 503: The ERP database could not be reached (TimeoutError).
+TEST-NET-1 192.0.2.1 (no network in container) | 0.00s | ErpUnavailable -> HTTP 503: The ERP database could not be reached (OSError).
+not configured | 0.00s | ErpUnavailable -> HTTP 503: The ERP connection is not set up on this server.

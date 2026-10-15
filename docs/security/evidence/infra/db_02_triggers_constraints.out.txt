@@ -1,0 +1,132 @@
+== all non-internal triggers
+     table_name     |              tgname              | tgenabled | level | events | timing |             proname             
+--------------------+----------------------------------+-----------+-------+--------+--------+---------------------------------
+ asset              | trg_asset_no_identity_change     | O         | ROW   | UPDATE | BEFORE | forbid_asset_identity_change
+ asset_event        | trg_asset_event_no_delete        | O         | ROW   | DELETE | BEFORE | forbid_asset_event_write
+ asset_event        | trg_asset_event_no_update        | O         | ROW   | UPDATE | BEFORE | forbid_asset_event_write
+ asset_field_change | trg_asset_field_change_no_delete | O         | ROW   | DELETE | BEFORE | forbid_asset_field_change_write
+ asset_field_change | trg_asset_field_change_no_update | O         | ROW   | UPDATE | BEFORE | forbid_asset_field_change_write
+ audit_log          | trg_audit_log_no_delete          | O         | ROW   | DELETE | BEFORE | forbid_audit_log_write
+ audit_log          | trg_audit_log_no_update          | O         | ROW   | UPDATE | BEFORE | forbid_audit_log_write
+ master_audit       | trg_master_audit_no_delete       | O         | ROW   | DELETE | BEFORE | forbid_master_audit_write
+ master_audit       | trg_master_audit_no_update       | O         | ROW   | UPDATE | BEFORE | forbid_master_audit_write
+(9 rows)
+
+== event triggers
+ evtname | evtevent | evtenabled | evtfoid 
+---------+----------+------------+---------
+(0 rows)
+
+== unique indexes / constraints on key business identifiers
+    tablename    |                indexname                |                                                                                                                                                    indexdef                                                                                                                                                     
+-----------------+-----------------------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ asset           | asset_asset_code_key                    | CREATE UNIQUE INDEX asset_asset_code_key ON public.asset USING btree (asset_code)
+ asset           | asset_pkey                              | CREATE UNIQUE INDEX asset_pkey ON public.asset USING btree (id)
+ asset           | ux_asset_serial_number_ci               | CREATE UNIQUE INDEX ux_asset_serial_number_ci ON public.asset USING btree (lower(TRIM(BOTH FROM serial_number))) WHERE ((serial_number IS NOT NULL) AND (TRIM(BOTH FROM serial_number) <> ''::text) AND (lower(TRIM(BOTH FROM serial_number)) <> 'n/a'::text) AND (deleted_at IS NULL))
+ asset_event     | asset_event_pkey                        | CREATE UNIQUE INDEX asset_event_pkey ON public.asset_event USING btree (id)
+ asset_user      | asset_user_company_id_code_key          | CREATE UNIQUE INDEX asset_user_company_id_code_key ON public.asset_user USING btree (company_id, code)
+ asset_user      | asset_user_pkey                         | CREATE UNIQUE INDEX asset_user_pkey ON public.asset_user USING btree (id)
+ asset_user      | ux_asset_user_company_email_ci          | CREATE UNIQUE INDEX ux_asset_user_company_email_ci ON public.asset_user USING btree (company_id, lower((email)::text)) WHERE (email IS NOT NULL)
+ company         | company_code_key                        | CREATE UNIQUE INDEX company_code_key ON public.company USING btree (code)
+ company         | company_pkey                            | CREATE UNIQUE INDEX company_pkey ON public.company USING btree (id)
+ company         | ux_company_erp_code                     | CREATE UNIQUE INDEX ux_company_erp_code ON public.company USING btree (upper((erp_company_code)::text)) WHERE (erp_company_code IS NOT NULL)
+ cost_center     | cost_center_company_id_code_key         | CREATE UNIQUE INDEX cost_center_company_id_code_key ON public.cost_center USING btree (company_id, code)
+ cost_center     | cost_center_pkey                        | CREATE UNIQUE INDEX cost_center_pkey ON public.cost_center USING btree (id)
+ erp_item        | erp_item_pkey                           | CREATE UNIQUE INDEX erp_item_pkey ON public.erp_item USING btree (icode)
+ erp_po_line     | erp_po_line_pkey                        | CREATE UNIQUE INDEX erp_po_line_pkey ON public.erp_po_line USING btree (company_code, po_line_key)
+ erp_vendor      | erp_vendor_pkey                         | CREATE UNIQUE INDEX erp_vendor_pkey ON public.erp_vendor USING btree (company_code, vendor_code)
+ idempotency_key | idempotency_key_pkey                    | CREATE UNIQUE INDEX idempotency_key_pkey ON public.idempotency_key USING btree (id)
+ idempotency_key | uq_idempotency_key_actor_key            | CREATE UNIQUE INDEX uq_idempotency_key_actor_key ON public.idempotency_key USING btree (actor_id, key)
+ item            | item_pkey                               | CREATE UNIQUE INDEX item_pkey ON public.item USING btree (id)
+ item            | ux_item_name_active_ci                  | CREATE UNIQUE INDEX ux_item_name_active_ci ON public.item USING btree (lower((name)::text)) WHERE is_active
+ item_map        | item_map_pkey                           | CREATE UNIQUE INDEX item_map_pkey ON public.item_map USING btree (id)
+ item_map        | ux_item_map_article                     | CREATE UNIQUE INDEX ux_item_map_article ON public.item_map USING btree (COALESCE(company_id, (0)::bigint), article_key) WHERE (is_active AND ((match_type)::text = 'ARTICLE'::text))
+ item_map        | ux_item_map_code                        | CREATE UNIQUE INDEX ux_item_map_code ON public.item_map USING btree (COALESCE(company_id, (0)::bigint), lower((erp_item_code)::text)) WHERE (is_active AND ((match_type)::text = 'CODE'::text))
+ item_map        | ux_item_map_level                       | CREATE UNIQUE INDEX ux_item_map_level ON public.item_map USING btree (COALESCE(company_id, (0)::bigint), match_type, lower((level_key)::text)) WHERE (is_active AND ((match_type)::text = ANY ((ARRAY['DEPARTMENT'::character varying, 'SECTION'::character varying, 'DIVISION'::character varying])::text[])))
+ item_map        | ux_item_map_name                        | CREATE UNIQUE INDEX ux_item_map_name ON public.item_map USING btree (COALESCE(company_id, (0)::bigint), article_key, name_key) WHERE (is_active AND ((match_type)::text = 'NAME'::text))
+ location        | location_pkey                           | CREATE UNIQUE INDEX location_pkey ON public.location USING btree (id)
+ location        | uq_location_company_id_code             | CREATE UNIQUE INDEX uq_location_company_id_code ON public.location USING btree (company_id, code)
+ pending_asset   | pending_asset_pkey                      | CREATE UNIQUE INDEX pending_asset_pkey ON public.pending_asset USING btree (id)
+ purchase_order  | purchase_order_pkey                     | CREATE UNIQUE INDEX purchase_order_pkey ON public.purchase_order USING btree (id)
+ purchase_order  | uq_purchase_order_company_number_active | CREATE UNIQUE INDEX uq_purchase_order_company_number_active ON public.purchase_order USING btree (company_id, lower(btrim((po_number)::text))) WHERE is_active
+ purchase_order  | ux_purchase_order_erp_code              | CREATE UNIQUE INDEX ux_purchase_order_erp_code ON public.purchase_order USING btree (erp_po_code) WHERE (erp_po_code IS NOT NULL)
+ vendor          | vendor_code_key                         | CREATE UNIQUE INDEX vendor_code_key ON public.vendor USING btree (code)
+ vendor          | vendor_pkey                             | CREATE UNIQUE INDEX vendor_pkey ON public.vendor USING btree (id)
+ vendor_erp_link | uq_vendor_erp_link_company_code         | CREATE UNIQUE INDEX uq_vendor_erp_link_company_code ON public.vendor_erp_link USING btree (company_id, erp_vendor_code)
+ vendor_erp_link | vendor_erp_link_pkey                    | CREATE UNIQUE INDEX vendor_erp_link_pkey ON public.vendor_erp_link USING btree (id)
+(34 rows)
+
+== check constraints (count per table) and list for asset/pending_asset/purchase_order
+      tbl       | count 
+----------------+-------
+ asset_category |     1
+ custom_field   |     1
+ asset_user     |     3
+ asset          |     1
+ pending_asset  |     1
+ bundle_part    |     1
+ item_map       |     2
+(7 rows)
+
+      tbl      |            conname            |                                                           pg_get_constraintdef                                                           
+---------------+-------------------------------+------------------------------------------------------------------------------------------------------------------------------------------
+ asset         | ck_asset_asset_domain         | CHECK (((asset_domain IS NULL) OR ((asset_domain)::text = ANY ((ARRAY['IT'::character varying, 'NON_IT'::character varying])::text[]))))
+ pending_asset | ck_pending_asset_asset_domain | CHECK (((asset_domain IS NULL) OR ((asset_domain)::text = ANY ((ARRAY['IT'::character varying, 'NON_IT'::character varying])::text[]))))
+(2 rows)
+
+== FK count per table; tables without any FK but with *_id columns
+             tbl             | count 
+-----------------------------+-------
+ company                     |     2
+ department                  |     2
+ location                    |     3
+ asset_category              |     2
+ cost_center                 |     3
+ custom_field                |     3
+ vendor                      |     2
+ asset_subcategory           |     3
+ asset_user                  |     5
+ asset_user_company_access   |     2
+ code_rule                   |     1
+ asset                       |    10
+ asset_event                 |     4
+ asset_document              |     2
+ asset_field_change          |     2
+ purchase_order              |     6
+ pending_asset               |    12
+ app_setting                 |     1
+ bundle                      |     2
+ bundle_part                 |     6
+ item                        |     6
+ item_map                    |     4
+ purchase_order_erp_baseline |     1
+ purchase_order_erp_change   |     2
+ vendor_erp_link             |     3
+ master_audit                |     1
+ idempotency_key             |     1
+(27 rows)
+
+     table_name     | column_name 
+--------------------+-------------
+ asset_field_change | request_id
+ audit_log          | actor_id
+ audit_log          | company_id
+ audit_log          | entity_id
+ audit_log          | request_id
+ client_report      | actor_id
+ client_report      | request_id
+ error_log          | actor_id
+ error_log          | request_id
+ master_audit       | entity_id
+ system_event       | request_id
+(11 rows)
+
+== audit purge function definition
+          proname          | owner | prosecdef |    proacl     
+---------------------------+-------+-----------+---------------
+ array_append              | ckam  | f         | 
+ forbid_master_audit_write | ckam  | f         | 
+ forbid_audit_log_write    | ckam  | f         | 
+ ckam_purge_audit_log      | ckam  | f         | {ckam=X/ckam}
+(4 rows)
+

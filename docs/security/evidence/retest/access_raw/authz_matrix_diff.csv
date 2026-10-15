@@ -1,0 +1,14 @@
+method,path,intended,persona,old,new
+GET,/api/masters/companies,AUTH,SECSELF,200,403
+GET,/api/masters/locations,AUTH,SECSELF,200,403
+GET,/api/masters/departments,AUTH,SECSELF,200,403
+GET,/api/masters/cost-centers,AUTH,SECSELF,200,403
+GET,/api/masters/categories,AUTH,SECSELF,200,403
+GET,/api/masters/subcategories,AUTH,SECSELF,200,403
+GET,/api/masters/brands,AUTH,SECSELF,200,403
+GET,/api/masters/vendors,AUTH,SECSELF,200,403
+GET,/api/masters/custom-fields,AUTH,SECSELF,200,403
+GET,/api/code-rules,AUTH,SECSELF,200,403
+POST,/api/code-rules/preview,AUTH,SECSELF,422,403
+GET,/api/bundles,AUTH,SECSELF,200,403
+GET,/api/erp/pos/{po_code}/draft,WRITE,SECOTHER,200,404

@@ -1,0 +1,68 @@
+id,area,cwe_or_owasp,case,expected,actual,result,evidence_ref
+IN-T000,INPUT,CWE-89,baseline exact asset search returns one row,1 row,total=1,INFO,battery_results.json
+IN-T001,INPUT,CWE-89,asset search q single quote,no 500 literal match,status=200 ms=7 total=0,PASS,battery_results.json
+IN-T002,INPUT,CWE-89,asset search q boolean ' OR '1'='1,no 500 literal match (not all rows),status=200 ms=7 total=0,PASS,battery_results.json
+IN-T003,INPUT,CWE-89,asset search q comment test'--,no 500 literal match,status=200 ms=7 total=0,PASS,battery_results.json
+IN-T004,INPUT,CWE-89,asset search q stacked pg_sleep(3),no timed delay,status=200 ms=7 total=0,PASS,battery_results.json
+IN-T005,INPUT,CWE-89,asset search q UNION SELECT NULL,no 500,status=200 ms=6 total=0,PASS,battery_results.json
+IN-T006,INPUT,CWE-89,asset search q wildcard percent,literal (escaped) match,status=200 ms=5 total=0,PASS,battery_results.json
+IN-T007,INPUT,CWE-89,asset search q wildcard underscore,literal (escaped) match,status=200 ms=6 total=0,PASS,battery_results.json
+IN-T008,INPUT,CWE-89,asset search q backslash,literal (escaped) match,status=200 ms=6 total=0,PASS,battery_results.json
+IN-T010,INPUT,CWE-89,sort_by stacked id;select pg_sleep(3),ignored no 500 no sleep,status=200 ms=8,PASS,battery_results.json
+IN-T011,INPUT,CWE-89,sort_by raw sql (select 1),ignored no 500,status=200 ms=11,PASS,battery_results.json
+IN-T012,INPUT,CWE-639,sort_by non-whitelisted deleted_at,ignored (whitelist),status=200 ms=7,PASS,battery_results.json
+IN-T013,INPUT,CWE-89,sort_dir injection asc; drop table,ignored no 500,status=200 ms=6,PASS,battery_results.json
+IN-T020,INPUT,CWE-89,category_id=1 OR 1=1,422 type rejection,status=422,PASS,battery_results.json
+IN-T021,INPUT,CWE-89,category_id quote,422 type rejection,status=422,PASS,battery_results.json
+IN-T022,INPUT,CWE-20,limit=-1,validated no 500,status=200,PASS,battery_results.json
+IN-T023,INPUT,CWE-20,limit=999999,validated/capped no 500,status=200,PASS,battery_results.json
+IN-T024,INPUT,CWE-89,status=IN_STOCK' OR '1'='1,literal match no 500,status=200,PASS,battery_results.json
+IN-T025,INPUT,CWE-89,company_id=1;select pg_sleep(3),422 type rejection,status=422,PASS,battery_results.json
+IN-T030,INPUT,CWE-89,vendors list q boolean OR,no 500 no leak,status=200 ms=3,PASS,battery_results.json
+IN-T031,INPUT,CWE-89,vendors list q stacked pg_sleep,no sleep,status=200 ms=4,PASS,battery_results.json
+IN-T032,INPUT,CWE-89,items list q boolean OR,no 500,status=200 ms=4,PASS,battery_results.json
+IN-T033,INPUT,CWE-89,items list q stacked pg_sleep,no sleep,status=200 ms=4,PASS,battery_results.json
+IN-T034,INPUT,CWE-89,assets/pick q boolean OR,422/no 500,status=422,PASS,battery_results.json
+IN-T035,INPUT,CWE-89,purchase-orders q stacked pg_sleep,no sleep,status=200 ms=11,PASS,battery_results.json
+IN-T036,INPUT,CWE-89,admin logs audit q stacked pg_sleep,no sleep,status=200 ms=13,PASS,battery_results.json
+IN-T037,INPUT,CWE-89,admin logs errors level injection,422/no 500,status=422,PASS,battery_results.json
+IN-T038,INPUT,CWE-89,admin logs audit from injection,422/no 500,status=422,PASS,battery_results.json
+IN-T039,INPUT,CWE-89,admin logs errors group=true q OR 1=1,no 500,status=200 ms=10,PASS,battery_results.json
+IN-T050,INPUT,CWE-639,CKVPL operator (SECOTHER) downloads CKSPL doc 1,404 out of scope,status=404,PASS,battery_results.json
+IN-T051,INPUT,CWE-285,SELF_SERVICE holder downloads own doc 1,200 attachment+nosniff,status=200 cd=attachment xcto=nosniff,PASS,battery_results.json
+IN-T052,INPUT,CWE-639,CKSPL self (SECSELF) downloads CKVPL doc 2,404,status=404,PASS,battery_results.json
+IN-T060,INPUT,CWE-22,API /assets traversal ../../../../etc/passwd,404 no file content,status=404 leaked=false,PASS,battery_results.json
+IN-T061,INPUT,CWE-22,API /assets traversal ..%2f encoded,404 no file content,status=404 leaked=false,PASS,battery_results.json
+IN-T062,INPUT,CWE-22,API /assets traversal ....// bypass,404 no file content,status=404 leaked=false,PASS,battery_results.json
+IN-T063,INPUT,CWE-22,web:3411 /assets traversal ..%2f etc/passwd,rejected,nginx HTTP 400,PASS,traversal_3411.txt
+IN-T064,INPUT,CWE-22,web:3411 /assets traversal ../ etc/passwd,rejected,nginx HTTP 400,PASS,traversal_3411.txt
+IN-T065,INPUT,CWE-22,web:3411 /assets traversal ..%5c win.ini,no file content,HTTP 200 returns SPA index not file,PASS,traversal_3411.txt
+IN-T070,INPUT,CWE-200,employees list secret leak (admin wrong path),n/a path 404,status=404,INFO,battery_results.json
+IN-T071,INPUT,CWE-200,capabilities response secret leak (self),no secret fields,status=200 leak=false,PASS,battery_results.json
+IN-T072,INPUT,CWE-200,asset detail secret leak (self),no secret fields,status=200 leak=false,PASS,battery_results.json
+IN-T074,INPUT,CWE-200,asset-users list secret leak (admin),no password_hash/secret,status=200 leak=false,PASS,battery2_results.json
+IN-T075,INPUT,CWE-200,people list secret leak (admin),no password_hash/secret,status=200 leak=false,PASS,battery2_results.json
+IN-T076,INPUT,CWE-285,SELF_SERVICE lists asset-users,403,status=403,PASS,battery2_results.json
+IN-T077,INPUT,CWE-285,SELF_SERVICE lists people,403,status=403,PASS,battery2_results.json
+IN-T078,INPUT,CWE-285,SELF_SERVICE exports asset-users,403,status=403,PASS,battery2_results.json
+IN-T079,INPUT,CWE-285,OPERATOR lists asset-users,no 500,status=200,PASS,battery2_results.json
+IN-T080,INPUT,CWE-639,CKVPL operator people list is company-scoped,only CKVPL rows,sampleHasSPL=false,PASS,battery2_results.json
+IN-T090,INPUT,CWE-79,login SECHO via SPA login page,reach app,url=/dashboard,INFO,xss_results.json
+IN-T091,INPUT,CWE-79,stored XSS vendor name in Vendors master table,inert escaped text,__xss=0 injected=0 textPresent=true,PASS,xss_results.json
+IN-T092,INPUT,CWE-79,stored XSS vendor name in Setup Vendors,inert escaped text,__xss=0 injected=0 textPresent=true,PASS,xss_results.json
+IN-T093,INPUT,CWE-79,stored XSS item name in Items catalogue,inert escaped text,__xss=0 injected=0 textPresent=true,PASS,xss_results.json
+IN-T094,INPUT,CWE-79,stored XSS client-report (SECSELF) in admin Logs UI,inert escaped text,__xss=0 injected=0 textPresent=true,PASS,xss_results.json
+IN-T095,INPUT,CWE-79,reflected XSS asset search ?q=<img onerror>,inert,__xss=0 injected=0,PASS,xss_results.json
+IN-T096,INPUT,CWE-79,stored XSS vendor in asset register surfaces,inert,__xss=0 injected=0,PASS,xss_results.json
+IN-T100,INPUT,CWE-1236,formula injection =HYPERLINK in vendor name -> xlsx export,cell stored as string with leading apostrophe no <f>,B7 t=inlineStr '=HYPERLINK... zero <f> tags,PASS,formula_export_cell.txt
+IN-T101,INPUT,CWE-532,automatic client-report capture redacts tokens/secrets,Authorization/token/password redacted,frontend redact.ts strips Authorization/access_token/password/cookie/api-key (unit tests),PASS,raw_sql_review.md
+IN-T102,INPUT,CWE-116,document download sets Content-Disposition attachment + X-Content-Type-Options nosniff,attachment+nosniff,confirmed on doc 1 download,PASS,battery_results.json
+IN-T110,INPUT,CWE-89,static review raw SQL text()/execute()/getattr column access in backend/app,all parameterized or whitelisted,no user string reaches SQL identifier/text,PASS,raw_sql_review.md
+IN-T111,INPUT,CWE-918,SSRF grep httpx/requests/urlopen/aiohttp in backend/app,no user-controlled outbound HTTP fetch,none present (ERP is a PG source; empty on this stack),N/A,raw_sql_review.md
+IN-T112,INPUT,CWE-78,command injection grep subprocess/os.system/shell/eval/yaml.load in backend/app,none,none present,N/A,raw_sql_review.md
+IN-T113,INPUT,CWE-79,frontend grep dangerouslySetInnerHTML/innerHTML/eval/document.write,no user data in raw-HTML sinks,only chart.tsx CSS (non-user) + a test,PASS,raw_sql_review.md
+IN-T114,INPUT,CWE-601,open redirect login ?next= via safeNextPath,blocks // /\\ non-/ javascript:,guard rejects all,PASS,raw_sql_review.md
+IN-T115,INPUT,CWE-644,QR/label BASE_URL host-header poisoning,uses settings.base_url not Host header,no Host/X-Forwarded-Host used,PASS,raw_sql_review.md
+IN-T116,INPUT,CWE-22,single-port static route /assets/{file_path:path} containment,path confined to dist dir,NO resolve()/is_relative_to containment check,FAIL,raw_sql_review.md
+IN-T117,INPUT,CWE-400,Excel import endpoints read full upload unbounded (await file.read()),API-layer size cap,no cap; whole file buffered (admin-only),FAIL,raw_sql_review.md
+IN-T118,INPUT,CWE-434,document upload extension whitelist vs content (magic bytes),content validated,extension-only; mime trusted from client (neutralized by nosniff+attachment),INFO,raw_sql_review.md

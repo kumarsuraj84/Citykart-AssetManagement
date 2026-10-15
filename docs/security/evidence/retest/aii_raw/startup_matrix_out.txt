@@ -1,0 +1,15 @@
+A prod + committed default dev secret | health=NOCONN | docs=NOCONN | openapi=NOCONN | redoc=NOCONN | refused_line=1 started_line=0 warn_line=0
+B prod + JWT_SECRET unset (falls back to default) | health=NOCONN | docs=NOCONN | openapi=NOCONN | redoc=NOCONN | refused_line=1 started_line=0 warn_line=0
+C prod + .env.example placeholder change_me_too | health=NOCONN | docs=NOCONN | openapi=NOCONN | redoc=NOCONN | refused_line=1 started_line=0 warn_line=0
+D prod + 31-char random secret | health=NOCONN | docs=NOCONN | openapi=NOCONN | redoc=NOCONN | refused_line=1 started_line=0 warn_line=0
+E PROD (upper case) + default | health=NOCONN | docs=NOCONN | openapi=NOCONN | redoc=NOCONN | refused_line=1 started_line=0 warn_line=0
+F ' Production ' (spaces) + default | health=NOCONN | docs=NOCONN | openapi=NOCONN | redoc=NOCONN | refused_line=1 started_line=0 warn_line=0
+G prod + empty JWT_SECRET | health=NOCONN | docs=NOCONN | openapi=NOCONN | redoc=NOCONN | refused_line=1 started_line=0 warn_line=0
+H prod + 48-char FAKE secret (expect start, docs off) | health=200 | docs=404 - | openapi=404 - | redoc=404 | refused_line=0 started_line=1 warn_line=0
+I prod + 32-char exactly (boundary, expect start) | health=200 | docs=404 - | openapi=404 - | redoc=404 | refused_line=0 started_line=1 warn_line=0
+J ENVIRONMENT_NAME unset (default development) + default secret | health=200 | docs=200 swagger | openapi=200 openapi | redoc=200 | refused_line=0 started_line=1 warn_line=1
+K ENVIRONMENT_NAME=prd (typo/alias) + default secret | health=200 | docs=200 swagger | openapi=200 openapi | redoc=200 | refused_line=0 started_line=1 warn_line=1
+L ENVIRONMENT_NAME=live + default secret | health=200 | docs=200 swagger | openapi=200 openapi | redoc=200 | refused_line=0 started_line=1 warn_line=1
+M prod + 40 spaces secret | health=200 | docs=404 - | openapi=404 - | redoc=404 | refused_line=0 started_line=1 warn_line=0
+--- refusal message (A) ---
+RuntimeError: Refusing to start: ENVIRONMENT_NAME is production but JWT_SECRET is a committed placeholder or shorter than 32 characters. Set a long random JWT_SECRET (e.g. `openssl rand -hex 32`) first.

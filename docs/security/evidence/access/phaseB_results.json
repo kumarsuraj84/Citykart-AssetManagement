@@ -1,0 +1,1874 @@
+[
+ {
+  "id": "AC-T001",
+  "cwe": "CWE-639",
+  "case": "GET asset 1 as SECSELF (co1/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T002",
+  "cwe": "CWE-639",
+  "case": "GET asset 3 as SECSELF (co1/IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T003",
+  "cwe": "CWE-639",
+  "case": "GET asset 4 as SECSELF (co1/NON_IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T004",
+  "cwe": "CWE-639",
+  "case": "GET asset 9 as SECSELF (co2/IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T005",
+  "cwe": "CWE-639",
+  "case": "GET asset 11 as SECSELF (co2/IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T006",
+  "cwe": "CWE-639",
+  "case": "GET asset 12 as SECSELF (co2/NON_IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T007",
+  "cwe": "CWE-639",
+  "case": "GET asset 1 as SECSELFV (co1/IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T008",
+  "cwe": "CWE-639",
+  "case": "GET asset 3 as SECSELFV (co1/IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T009",
+  "cwe": "CWE-639",
+  "case": "GET asset 4 as SECSELFV (co1/NON_IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T010",
+  "cwe": "CWE-639",
+  "case": "GET asset 9 as SECSELFV (co2/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T011",
+  "cwe": "CWE-639",
+  "case": "GET asset 11 as SECSELFV (co2/IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T012",
+  "cwe": "CWE-639",
+  "case": "GET asset 12 as SECSELFV (co2/NON_IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T013",
+  "cwe": "CWE-639",
+  "case": "GET asset 1 as SECVIEW (co1/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T014",
+  "cwe": "CWE-639",
+  "case": "GET asset 3 as SECVIEW (co1/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T015",
+  "cwe": "CWE-639",
+  "case": "GET asset 4 as SECVIEW (co1/NON_IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T016",
+  "cwe": "CWE-639",
+  "case": "GET asset 9 as SECVIEW (co2/IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T017",
+  "cwe": "CWE-639",
+  "case": "GET asset 11 as SECVIEW (co2/IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T018",
+  "cwe": "CWE-639",
+  "case": "GET asset 12 as SECVIEW (co2/NON_IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T019",
+  "cwe": "CWE-639",
+  "case": "GET asset 1 as SECVIEWV (co1/IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T020",
+  "cwe": "CWE-639",
+  "case": "GET asset 3 as SECVIEWV (co1/IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T021",
+  "cwe": "CWE-639",
+  "case": "GET asset 4 as SECVIEWV (co1/NON_IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T022",
+  "cwe": "CWE-639",
+  "case": "GET asset 9 as SECVIEWV (co2/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T023",
+  "cwe": "CWE-639",
+  "case": "GET asset 11 as SECVIEWV (co2/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T024",
+  "cwe": "CWE-639",
+  "case": "GET asset 12 as SECVIEWV (co2/NON_IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T025",
+  "cwe": "CWE-639",
+  "case": "GET asset 1 as SECOPIT (co1/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T026",
+  "cwe": "CWE-639",
+  "case": "GET asset 3 as SECOPIT (co1/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T027",
+  "cwe": "CWE-639",
+  "case": "GET asset 4 as SECOPIT (co1/NON_IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T028",
+  "cwe": "CWE-639",
+  "case": "GET asset 9 as SECOPIT (co2/IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T029",
+  "cwe": "CWE-639",
+  "case": "GET asset 11 as SECOPIT (co2/IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T030",
+  "cwe": "CWE-639",
+  "case": "GET asset 12 as SECOPIT (co2/NON_IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T031",
+  "cwe": "CWE-639",
+  "case": "GET asset 1 as SECOP2IT (co1/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T032",
+  "cwe": "CWE-639",
+  "case": "GET asset 3 as SECOP2IT (co1/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T033",
+  "cwe": "CWE-639",
+  "case": "GET asset 4 as SECOP2IT (co1/NON_IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T034",
+  "cwe": "CWE-639",
+  "case": "GET asset 9 as SECOP2IT (co2/IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T035",
+  "cwe": "CWE-639",
+  "case": "GET asset 11 as SECOP2IT (co2/IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T036",
+  "cwe": "CWE-639",
+  "case": "GET asset 12 as SECOP2IT (co2/NON_IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T037",
+  "cwe": "CWE-639",
+  "case": "GET asset 1 as SECOPNIT (co1/IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T038",
+  "cwe": "CWE-639",
+  "case": "GET asset 3 as SECOPNIT (co1/IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T039",
+  "cwe": "CWE-639",
+  "case": "GET asset 4 as SECOPNIT (co1/NON_IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T040",
+  "cwe": "CWE-639",
+  "case": "GET asset 9 as SECOPNIT (co2/IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T041",
+  "cwe": "CWE-639",
+  "case": "GET asset 11 as SECOPNIT (co2/IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T042",
+  "cwe": "CWE-639",
+  "case": "GET asset 12 as SECOPNIT (co2/NON_IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T043",
+  "cwe": "CWE-639",
+  "case": "GET asset 1 as SECOTHER (co1/IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T044",
+  "cwe": "CWE-639",
+  "case": "GET asset 3 as SECOTHER (co1/IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T045",
+  "cwe": "CWE-639",
+  "case": "GET asset 4 as SECOTHER (co1/NON_IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T046",
+  "cwe": "CWE-639",
+  "case": "GET asset 9 as SECOTHER (co2/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T047",
+  "cwe": "CWE-639",
+  "case": "GET asset 11 as SECOTHER (co2/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T048",
+  "cwe": "CWE-639",
+  "case": "GET asset 12 as SECOTHER (co2/NON_IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T049",
+  "cwe": "CWE-639",
+  "case": "GET asset 1 as SECOPX (co1/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T050",
+  "cwe": "CWE-639",
+  "case": "GET asset 3 as SECOPX (co1/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T051",
+  "cwe": "CWE-639",
+  "case": "GET asset 4 as SECOPX (co1/NON_IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T052",
+  "cwe": "CWE-639",
+  "case": "GET asset 9 as SECOPX (co2/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T053",
+  "cwe": "CWE-639",
+  "case": "GET asset 11 as SECOPX (co2/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T054",
+  "cwe": "CWE-639",
+  "case": "GET asset 12 as SECOPX (co2/NON_IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T055",
+  "cwe": "CWE-639",
+  "case": "GET asset 1 as SECFAIT (co1/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T056",
+  "cwe": "CWE-639",
+  "case": "GET asset 3 as SECFAIT (co1/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T057",
+  "cwe": "CWE-639",
+  "case": "GET asset 4 as SECFAIT (co1/NON_IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T058",
+  "cwe": "CWE-639",
+  "case": "GET asset 9 as SECFAIT (co2/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T059",
+  "cwe": "CWE-639",
+  "case": "GET asset 11 as SECFAIT (co2/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T060",
+  "cwe": "CWE-639",
+  "case": "GET asset 12 as SECFAIT (co2/NON_IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T061",
+  "cwe": "CWE-639",
+  "case": "GET asset 1 as SECFANIT (co1/IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T062",
+  "cwe": "CWE-639",
+  "case": "GET asset 3 as SECFANIT (co1/IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T063",
+  "cwe": "CWE-639",
+  "case": "GET asset 4 as SECFANIT (co1/NON_IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T064",
+  "cwe": "CWE-639",
+  "case": "GET asset 9 as SECFANIT (co2/IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T065",
+  "cwe": "CWE-639",
+  "case": "GET asset 11 as SECFANIT (co2/IT)",
+  "expected": "blocked (403/404)",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T066",
+  "cwe": "CWE-639",
+  "case": "GET asset 12 as SECFANIT (co2/NON_IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T067",
+  "cwe": "CWE-639",
+  "case": "GET asset 1 as SECFABOTH (co1/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T068",
+  "cwe": "CWE-639",
+  "case": "GET asset 3 as SECFABOTH (co1/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T069",
+  "cwe": "CWE-639",
+  "case": "GET asset 4 as SECFABOTH (co1/NON_IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T070",
+  "cwe": "CWE-639",
+  "case": "GET asset 9 as SECFABOTH (co2/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T071",
+  "cwe": "CWE-639",
+  "case": "GET asset 11 as SECFABOTH (co2/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T072",
+  "cwe": "CWE-639",
+  "case": "GET asset 12 as SECFABOTH (co2/NON_IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T073",
+  "cwe": "CWE-639",
+  "case": "GET asset 1 as SECHO (co1/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T074",
+  "cwe": "CWE-639",
+  "case": "GET asset 3 as SECHO (co1/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T075",
+  "cwe": "CWE-639",
+  "case": "GET asset 4 as SECHO (co1/NON_IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T076",
+  "cwe": "CWE-639",
+  "case": "GET asset 9 as SECHO (co2/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T077",
+  "cwe": "CWE-639",
+  "case": "GET asset 11 as SECHO (co2/IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T078",
+  "cwe": "CWE-639",
+  "case": "GET asset 12 as SECHO (co2/NON_IT)",
+  "expected": "read (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T079",
+  "cwe": "CWE-639",
+  "case": "download doc 1 (asset 1) as SECSELF",
+  "expected": "download (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T080",
+  "cwe": "CWE-639",
+  "case": "download doc 2 (asset 9) as SECSELF",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T081",
+  "cwe": "CWE-639",
+  "case": "download doc 1 (asset 1) as SECSELFV",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T082",
+  "cwe": "CWE-639",
+  "case": "download doc 2 (asset 9) as SECSELFV",
+  "expected": "download (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T083",
+  "cwe": "CWE-639",
+  "case": "download doc 1 (asset 1) as SECVIEW",
+  "expected": "download (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T084",
+  "cwe": "CWE-639",
+  "case": "download doc 2 (asset 9) as SECVIEW",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T085",
+  "cwe": "CWE-639",
+  "case": "download doc 1 (asset 1) as SECVIEWV",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T086",
+  "cwe": "CWE-639",
+  "case": "download doc 2 (asset 9) as SECVIEWV",
+  "expected": "download (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T087",
+  "cwe": "CWE-639",
+  "case": "download doc 1 (asset 1) as SECOPIT",
+  "expected": "download (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T088",
+  "cwe": "CWE-639",
+  "case": "download doc 2 (asset 9) as SECOPIT",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T089",
+  "cwe": "CWE-639",
+  "case": "download doc 1 (asset 1) as SECOP2IT",
+  "expected": "download (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T090",
+  "cwe": "CWE-639",
+  "case": "download doc 2 (asset 9) as SECOP2IT",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T091",
+  "cwe": "CWE-639",
+  "case": "download doc 1 (asset 1) as SECOPNIT",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T092",
+  "cwe": "CWE-639",
+  "case": "download doc 2 (asset 9) as SECOPNIT",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T093",
+  "cwe": "CWE-639",
+  "case": "download doc 1 (asset 1) as SECOTHER",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T094",
+  "cwe": "CWE-639",
+  "case": "download doc 2 (asset 9) as SECOTHER",
+  "expected": "download (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T095",
+  "cwe": "CWE-639",
+  "case": "download doc 1 (asset 1) as SECOPX",
+  "expected": "download (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T096",
+  "cwe": "CWE-639",
+  "case": "download doc 2 (asset 9) as SECOPX",
+  "expected": "download (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T097",
+  "cwe": "CWE-639",
+  "case": "download doc 1 (asset 1) as SECFAIT",
+  "expected": "download (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T098",
+  "cwe": "CWE-639",
+  "case": "download doc 2 (asset 9) as SECFAIT",
+  "expected": "download (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T099",
+  "cwe": "CWE-639",
+  "case": "download doc 1 (asset 1) as SECFANIT",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T100",
+  "cwe": "CWE-639",
+  "case": "download doc 2 (asset 9) as SECFANIT",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T101",
+  "cwe": "CWE-639",
+  "case": "download doc 1 (asset 1) as SECFABOTH",
+  "expected": "download (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T102",
+  "cwe": "CWE-639",
+  "case": "download doc 2 (asset 9) as SECFABOTH",
+  "expected": "download (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T103",
+  "cwe": "CWE-639",
+  "case": "download doc 1 (asset 1) as SECHO",
+  "expected": "download (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T104",
+  "cwe": "CWE-639",
+  "case": "download doc 2 (asset 9) as SECHO",
+  "expected": "download (2xx)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T105",
+  "cwe": "CWE-639",
+  "case": "GET asset 1 events as SECSELF",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T106",
+  "cwe": "CWE-639",
+  "case": "GET asset 4 events as SECSELF",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T107",
+  "cwe": "CWE-639",
+  "case": "GET asset 9 events as SECSELF",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T108",
+  "cwe": "CWE-639",
+  "case": "GET asset 12 events as SECSELF",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T109",
+  "cwe": "CWE-639",
+  "case": "GET asset 1 events as SECSELFV",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T110",
+  "cwe": "CWE-639",
+  "case": "GET asset 4 events as SECSELFV",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T111",
+  "cwe": "CWE-639",
+  "case": "GET asset 9 events as SECSELFV",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T112",
+  "cwe": "CWE-639",
+  "case": "GET asset 12 events as SECSELFV",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T113",
+  "cwe": "CWE-639",
+  "case": "GET asset 1 events as SECVIEW",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T114",
+  "cwe": "CWE-639",
+  "case": "GET asset 4 events as SECVIEW",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T115",
+  "cwe": "CWE-639",
+  "case": "GET asset 9 events as SECVIEW",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T116",
+  "cwe": "CWE-639",
+  "case": "GET asset 12 events as SECVIEW",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T117",
+  "cwe": "CWE-639",
+  "case": "GET asset 1 events as SECVIEWV",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T118",
+  "cwe": "CWE-639",
+  "case": "GET asset 4 events as SECVIEWV",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T119",
+  "cwe": "CWE-639",
+  "case": "GET asset 9 events as SECVIEWV",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T120",
+  "cwe": "CWE-639",
+  "case": "GET asset 12 events as SECVIEWV",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T121",
+  "cwe": "CWE-639",
+  "case": "GET asset 1 events as SECOPIT",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T122",
+  "cwe": "CWE-639",
+  "case": "GET asset 4 events as SECOPIT",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T123",
+  "cwe": "CWE-639",
+  "case": "GET asset 9 events as SECOPIT",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T124",
+  "cwe": "CWE-639",
+  "case": "GET asset 12 events as SECOPIT",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T125",
+  "cwe": "CWE-639",
+  "case": "GET asset 1 events as SECOP2IT",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T126",
+  "cwe": "CWE-639",
+  "case": "GET asset 4 events as SECOP2IT",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T127",
+  "cwe": "CWE-639",
+  "case": "GET asset 9 events as SECOP2IT",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T128",
+  "cwe": "CWE-639",
+  "case": "GET asset 12 events as SECOP2IT",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T129",
+  "cwe": "CWE-639",
+  "case": "GET asset 1 events as SECOPNIT",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T130",
+  "cwe": "CWE-639",
+  "case": "GET asset 4 events as SECOPNIT",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T131",
+  "cwe": "CWE-639",
+  "case": "GET asset 9 events as SECOPNIT",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T132",
+  "cwe": "CWE-639",
+  "case": "GET asset 12 events as SECOPNIT",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T133",
+  "cwe": "CWE-639",
+  "case": "GET asset 1 events as SECOTHER",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T134",
+  "cwe": "CWE-639",
+  "case": "GET asset 4 events as SECOTHER",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T135",
+  "cwe": "CWE-639",
+  "case": "GET asset 9 events as SECOTHER",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T136",
+  "cwe": "CWE-639",
+  "case": "GET asset 12 events as SECOTHER",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T137",
+  "cwe": "CWE-639",
+  "case": "GET asset 1 events as SECOPX",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T138",
+  "cwe": "CWE-639",
+  "case": "GET asset 4 events as SECOPX",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T139",
+  "cwe": "CWE-639",
+  "case": "GET asset 9 events as SECOPX",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T140",
+  "cwe": "CWE-639",
+  "case": "GET asset 12 events as SECOPX",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T141",
+  "cwe": "CWE-639",
+  "case": "GET asset 1 events as SECFAIT",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T142",
+  "cwe": "CWE-639",
+  "case": "GET asset 4 events as SECFAIT",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T143",
+  "cwe": "CWE-639",
+  "case": "GET asset 9 events as SECFAIT",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T144",
+  "cwe": "CWE-639",
+  "case": "GET asset 12 events as SECFAIT",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T145",
+  "cwe": "CWE-639",
+  "case": "GET asset 1 events as SECFANIT",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T146",
+  "cwe": "CWE-639",
+  "case": "GET asset 4 events as SECFANIT",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T147",
+  "cwe": "CWE-639",
+  "case": "GET asset 9 events as SECFANIT",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T148",
+  "cwe": "CWE-639",
+  "case": "GET asset 12 events as SECFANIT",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T149",
+  "cwe": "CWE-639",
+  "case": "GET asset 1 events as SECFABOTH",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T150",
+  "cwe": "CWE-639",
+  "case": "GET asset 4 events as SECFABOTH",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T151",
+  "cwe": "CWE-639",
+  "case": "GET asset 9 events as SECFABOTH",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T152",
+  "cwe": "CWE-639",
+  "case": "GET asset 12 events as SECFABOTH",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T153",
+  "cwe": "CWE-639",
+  "case": "GET asset 1 events as SECHO",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T154",
+  "cwe": "CWE-639",
+  "case": "GET asset 4 events as SECHO",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T155",
+  "cwe": "CWE-639",
+  "case": "GET asset 9 events as SECHO",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T156",
+  "cwe": "CWE-639",
+  "case": "GET asset 12 events as SECHO",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T157",
+  "cwe": "CWE-639",
+  "case": "GET PO 1 (co1) as SECOPIT",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T158",
+  "cwe": "CWE-639",
+  "case": "GET PO 5 (co2) as SECOPIT",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T159",
+  "cwe": "CWE-639",
+  "case": "GET PO 1 (co1) as SECOPNIT",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T160",
+  "cwe": "CWE-639",
+  "case": "GET PO 5 (co2) as SECOPNIT",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T161",
+  "cwe": "CWE-639",
+  "case": "GET PO 1 (co1) as SECOTHER",
+  "expected": "blocked",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T162",
+  "cwe": "CWE-639",
+  "case": "GET PO 5 (co2) as SECOTHER",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T163",
+  "cwe": "CWE-639",
+  "case": "GET PO 1 (co1) as SECOPX",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T164",
+  "cwe": "CWE-639",
+  "case": "GET PO 5 (co2) as SECOPX",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T165",
+  "cwe": "CWE-639",
+  "case": "GET PO 1 (co1) as SECFAIT",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T166",
+  "cwe": "CWE-639",
+  "case": "GET PO 5 (co2) as SECFAIT",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T167",
+  "cwe": "CWE-639",
+  "case": "GET PO 1 (co1) as SECFANIT",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T168",
+  "cwe": "CWE-639",
+  "case": "GET PO 5 (co2) as SECFANIT",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T169",
+  "cwe": "CWE-639",
+  "case": "GET PO 1 (co1) as SECVIEW",
+  "expected": "blocked",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T170",
+  "cwe": "CWE-639",
+  "case": "GET PO 5 (co2) as SECVIEW",
+  "expected": "blocked",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T171",
+  "cwe": "CWE-639",
+  "case": "GET PO 1 (co1) as SECSELF",
+  "expected": "blocked",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T172",
+  "cwe": "CWE-639",
+  "case": "GET PO 5 (co2) as SECSELF",
+  "expected": "blocked",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T173",
+  "cwe": "CWE-639",
+  "case": "GET PO 1 (co1) as SECHO",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T174",
+  "cwe": "CWE-639",
+  "case": "GET PO 5 (co2) as SECHO",
+  "expected": "2xx",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T175",
+  "cwe": "CWE-285",
+  "case": "PUT asset 9 (out-of-scope) as SECOPIT",
+  "expected": "blocked 403/404 before write",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T176",
+  "cwe": "CWE-285",
+  "case": "PUT asset 4 (out-of-scope) as SECOPIT",
+  "expected": "blocked 403/404 before write",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T177",
+  "cwe": "CWE-285",
+  "case": "PUT asset 1 (out-of-scope) as SECOPNIT",
+  "expected": "blocked 403/404 before write",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T178",
+  "cwe": "CWE-285",
+  "case": "PUT asset 1 (out-of-scope) as SECOTHER",
+  "expected": "blocked 403/404 before write",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T179",
+  "cwe": "CWE-285",
+  "case": "PUT asset 4 (out-of-scope) as SECFAIT",
+  "expected": "blocked 403/404 before write",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T180",
+  "cwe": "CWE-285",
+  "case": "PUT asset 1 (out-of-scope) as SECFANIT",
+  "expected": "blocked 403/404 before write",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T181",
+  "cwe": "CWE-285",
+  "case": "POST event asset 9 (out-of-scope) as SECOPIT",
+  "expected": "blocked 403/404",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T182",
+  "cwe": "CWE-285",
+  "case": "POST event asset 1 (out-of-scope) as SECOPNIT",
+  "expected": "blocked 403/404",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T183",
+  "cwe": "CWE-285",
+  "case": "POST event asset 1 (out-of-scope) as SECOTHER",
+  "expected": "blocked 403/404",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T184",
+  "cwe": "CWE-863",
+  "case": "self-service SECSELF GET /api/people",
+  "expected": "blocked 403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T185",
+  "cwe": "CWE-863",
+  "case": "self-service SECSELF GET /api/asset-users",
+  "expected": "blocked 403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T186",
+  "cwe": "CWE-863",
+  "case": "self-service SECSELF GET /api/purchase-orders",
+  "expected": "blocked 403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T187",
+  "cwe": "CWE-863",
+  "case": "self-service SECSELF GET /api/reports/dashboard",
+  "expected": "blocked 403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T188",
+  "cwe": "CWE-863",
+  "case": "self-service SECSELF GET /api/admin/logs/audit",
+  "expected": "blocked 403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T189",
+  "cwe": "CWE-863",
+  "case": "self-service SECSELF GET /api/masters/cost-centers",
+  "expected": "blocked 403",
+  "actual": "200",
+  "result": "FAIL",
+  "ev": "SELF ESCAPE [{\"id\":1,\"is_active\":true,\"company_id\":1,\"code\":\"CC-SPL-01\",\"name\":\"Cost Centre CKSPL Main\"}]"
+ },
+ {
+  "id": "AC-T190",
+  "cwe": "CWE-863",
+  "case": "self-service SECSELF GET /api/items",
+  "expected": "blocked 403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T191",
+  "cwe": "CWE-863",
+  "case": "self-service SECSELF GET /api/erp/pos",
+  "expected": "blocked 403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T192",
+  "cwe": "CWE-863",
+  "case": "self-service SECSELFV GET /api/people",
+  "expected": "blocked 403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T193",
+  "cwe": "CWE-863",
+  "case": "self-service SECSELFV GET /api/asset-users",
+  "expected": "blocked 403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T194",
+  "cwe": "CWE-863",
+  "case": "self-service SECSELFV GET /api/purchase-orders",
+  "expected": "blocked 403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T195",
+  "cwe": "CWE-863",
+  "case": "self-service SECSELFV GET /api/reports/dashboard",
+  "expected": "blocked 403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T196",
+  "cwe": "CWE-863",
+  "case": "self-service SECSELFV GET /api/admin/logs/audit",
+  "expected": "blocked 403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T197",
+  "cwe": "CWE-863",
+  "case": "self-service SECSELFV GET /api/masters/cost-centers",
+  "expected": "blocked 403",
+  "actual": "200",
+  "result": "FAIL",
+  "ev": "SELF ESCAPE [{\"id\":3,\"is_active\":true,\"company_id\":2,\"code\":\"CC-VPL-01\",\"name\":\"Cost Centre CKVPL Main\"}]"
+ },
+ {
+  "id": "AC-T198",
+  "cwe": "CWE-863",
+  "case": "self-service SECSELFV GET /api/items",
+  "expected": "blocked 403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T199",
+  "cwe": "CWE-863",
+  "case": "self-service SECSELFV GET /api/erp/pos",
+  "expected": "blocked 403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T200",
+  "cwe": "CWE-639",
+  "case": "GET /api/assets list scope SECOPIT (0 rows)",
+  "expected": "only in-scope rows",
+  "actual": "clean",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T201",
+  "cwe": "CWE-639",
+  "case": "GET /api/assets list scope SECOPNIT (0 rows)",
+  "expected": "only in-scope rows",
+  "actual": "clean",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T202",
+  "cwe": "CWE-639",
+  "case": "GET /api/assets list scope SECOTHER (0 rows)",
+  "expected": "only in-scope rows",
+  "actual": "clean",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T203",
+  "cwe": "CWE-639",
+  "case": "GET /api/assets list scope SECVIEW (0 rows)",
+  "expected": "only in-scope rows",
+  "actual": "clean",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T204",
+  "cwe": "CWE-639",
+  "case": "GET /api/assets list scope SECOPX (0 rows)",
+  "expected": "only in-scope rows",
+  "actual": "clean",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T205",
+  "cwe": "CWE-639",
+  "case": "GET /api/assets list scope SECSELF (0 rows)",
+  "expected": "only in-scope rows",
+  "actual": "clean",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T206",
+  "cwe": "CWE-639",
+  "case": "GET /api/assets list scope SECSELFV (0 rows)",
+  "expected": "only in-scope rows",
+  "actual": "clean",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T207",
+  "cwe": "CWE-639",
+  "case": "GET /api/assets list scope SECFAIT (0 rows)",
+  "expected": "only in-scope rows",
+  "actual": "clean",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T208",
+  "cwe": "CWE-639",
+  "case": "GET /api/assets list scope SECFANIT (0 rows)",
+  "expected": "only in-scope rows",
+  "actual": "clean",
+  "result": "PASS",
+  "ev": ""
+ }
+]

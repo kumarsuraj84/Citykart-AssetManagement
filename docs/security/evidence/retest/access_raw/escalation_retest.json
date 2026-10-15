@@ -1,0 +1,155 @@
+[
+ {
+  "id": "RT-AC-T300",
+  "cwe": "CWE-287",
+  "case": "SECMUST (must-change-pw) GET /api/assets",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T301",
+  "cwe": "CWE-287",
+  "case": "SECMUST GET /api/auth/capabilities",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T302",
+  "cwe": "CWE-915",
+  "case": "user create as SECFABOTH w/ forbidden fields",
+  "expected": "201 (fields ignored)",
+  "actual": "422",
+  "result": "FAIL",
+  "ev": "{\"detail\":\"Choose a default work area: IT, Non-IT or all.\",\"request_id\":\"c9c06290ab79488abaa4ff53b678c9f2\"}"
+ },
+ {
+  "id": "RT-AC-T303",
+  "cwe": "CWE-269",
+  "case": "SECFAIT (IT) creates OPERATOR w/ allowed_asset_domains=BOTH",
+  "expected": "403 wider work area",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T304",
+  "cwe": "CWE-269",
+  "case": "SECFANIT (NON_IT) creates OPERATOR w/ allowed_asset_domains=IT",
+  "expected": "403 wider work area",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T305",
+  "cwe": "CWE-269",
+  "case": "SECFAIT PUT primary-owner 1",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T306",
+  "cwe": "CWE-640",
+  "case": "SECFAIT reset-password primary-owner 1",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T307",
+  "cwe": "CWE-269",
+  "case": "SECFAIT deactivate primary-owner 1",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T308",
+  "cwe": "CWE-269",
+  "case": "SECFAIT set company-access primary-owner 1",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T309",
+  "cwe": "CWE-269",
+  "case": "SECFAIT grant primary-owner to 1",
+  "expected": "403 (not primary owner)",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T310",
+  "cwe": "CWE-269",
+  "case": "SECFAIT PUT primary-owner 2",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T311",
+  "cwe": "CWE-640",
+  "case": "SECFAIT reset-password primary-owner 2",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T312",
+  "cwe": "CWE-269",
+  "case": "SECFAIT deactivate primary-owner 2",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T313",
+  "cwe": "CWE-269",
+  "case": "SECFAIT set company-access primary-owner 2",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T314",
+  "cwe": "CWE-269",
+  "case": "SECFAIT grant primary-owner to 2",
+  "expected": "403 (not primary owner)",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T315",
+  "cwe": "CWE-915",
+  "case": "asset PUT mass-assign status/holder/company/domain/code (SECHO, asset 3)",
+  "expected": "all protected fields unchanged",
+  "actual": "put=200 status=IN_STOCK co=1 holder=3 dom=IT code=CKSPL/ITFA-SPL/0003 active=undefined",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T316",
+  "cwe": "CWE-639",
+  "case": "SECOPIT create cost-centre for CKVPL (co2)",
+  "expected": "403 out-of-scope company",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ }
+]

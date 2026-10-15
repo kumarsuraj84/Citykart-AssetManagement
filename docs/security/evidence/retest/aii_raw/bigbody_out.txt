@@ -1,0 +1,5 @@
+before rss/hwm kB (128652, 323876)
+login 256 MB JSON -> (422, 0.67, b'{"detail":"Password is too long (max 128 characters).","errors":["Password is too long (max 128 characters)."],"request_id":"d6695d9be31a4cbba7a695983e14c320"}')
+after login rss/hwm kB (651948, 913920)
+unauthenticated import 256 MB multipart -> (401, 0.49, b'{"detail":"Not authenticated","request_id":"ca46c5a9180e4384a0d0670432c3b070"}')
+after multipart rss/hwm kB (128840, 913920)

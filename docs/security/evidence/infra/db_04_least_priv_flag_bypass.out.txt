@@ -1,0 +1,45 @@
+BEGIN
+ audit_rows | newest_id |           newest_at           
+------------+-----------+-------------------------------
+       1591 |      1591 | 2026-10-15 11:06:56.119463+00
+(1 row)
+
+ master_audit_rows 
+-------------------
+                 0
+(1 row)
+
+ asset_field_change_rows 
+-------------------------
+                       0
+(1 row)
+
+CREATE ROLE
+GRANT
+GRANT
+SET
+D1 DELETE newest audit row without flag (expect trigger error)
+ERROR:  audit_log rows are append-only
+CONTEXT:  PL/pgSQL function forbid_audit_log_write() line 6 at RAISE
+D2 SET LOCAL ckam.allow_audit_purge=on, then DELETE the 10 newest audit rows (any role can set a custom GUC)
+SET
+ d2_deleted |       oldest_deleted_at       |       newest_deleted_at       
+------------+-------------------------------+-------------------------------
+         10 | 2026-10-15 11:05:42.200396+00 | 2026-10-15 11:06:56.119463+00
+(1 row)
+
+D3 same flag does NOT open asset_event (expect trigger error)
+ERROR:  asset_event rows are append-only; insert a CORRECTION event instead
+CONTEXT:  PL/pgSQL function forbid_asset_event_write() line 3 at RAISE
+RESET
+RESET
+ROLLBACK
+ audit_rows_after_rollback 
+---------------------------
+                      1591
+(1 row)
+
+ rolname 
+---------
+(0 rows)
+

@@ -1,0 +1,7 @@
+Pager usage is off.
+                    check                    | violations | sample_ids 
+---------------------------------------------+------------+------------
+ I33 more than one primary owner             |          1 | 1,2
+ I43 asset_user with no audit_log CREATE row |          1 | 1
+(2 rows)
+

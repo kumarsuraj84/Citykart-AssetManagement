@@ -1,0 +1,65 @@
+[
+ {
+  "id": "AC-T400",
+  "cwe": "CWE-639",
+  "case": "cross-company MOVE asset3(CKSPL)->holder8(CKVPL) as SECHO",
+  "expected": "refused 4xx, no change",
+  "actual": "422 holder 3->3",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T401",
+  "cwe": "CWE-639",
+  "case": "idempotency cross-user replay: SECOTHER reuses SECHO seeded key",
+  "expected": "no replay of A data (fresh/own processing)",
+  "actual": "status=422 replay=null",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T402",
+  "cwe": "CWE-837",
+  "case": "idempotency key reuse with different body (SECHO)",
+  "expected": "422 different-request",
+  "actual": "422",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T403",
+  "cwe": "CWE-20",
+  "case": "idempotency key too-short rejected",
+  "expected": "422",
+  "actual": "422",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T404",
+  "cwe": "CWE-20",
+  "case": "idempotency key too-long rejected",
+  "expected": "422",
+  "actual": "422",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T405",
+  "cwe": "CWE-20",
+  "case": "idempotency key bad-chars rejected",
+  "expected": "422",
+  "actual": "422",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "AC-T406",
+  "cwe": "CWE-840",
+  "case": "duplicate PO number create (SEC-SPL-PO-001)",
+  "expected": "refused 4xx",
+  "actual": "422",
+  "result": "PASS",
+  "ev": "{\"detail\":\"PO date is required. Cost centre is required.\",\"errors\":[\"PO date is required.\",\"Cost centre is required.\"],\""
+ }
+]

@@ -1,0 +1,30 @@
+PASS	RT-AU-T401	WEB / (SPA shell): CSP + Permissions-Policy + nosniff/XFO/Referrer + Server without version -> status 200; csp=ok; pp=ok; server=nginx; other=ok
+PASS	RT-AU-T402	WEB SPA route /assets/42: CSP + Permissions-Policy + nosniff/XFO/Referrer + Server without version -> status 200; csp=ok; pp=ok; server=nginx; other=ok
+FAIL	RT-AU-T403	WEB /api/health (proxied): CSP + Permissions-Policy + nosniff/XFO/Referrer + Server without version -> status 200; csp=ok; pp=ok; server=nginx; other=MISSING
+FAIL	RT-AU-T404	WEB /api 401 (no token): CSP + Permissions-Policy + nosniff/XFO/Referrer + Server without version -> status 401; csp=ok; pp=ok; server=nginx; other=MISSING
+FAIL	RT-AU-T405	WEB /api 404: CSP + Permissions-Policy + nosniff/XFO/Referrer + Server without version -> status 404; csp=ok; pp=ok; server=nginx; other=MISSING
+PASS	RT-AU-T406	WEB /index.html: CSP + Permissions-Policy + nosniff/XFO/Referrer + Server without version -> status 200; csp=ok; pp=ok; server=nginx; other=ok
+PASS	RT-AU-T407	WEB index.html Cache-Control no-cache -> no-cache
+PASS	RT-AU-T408	WEB 413 oversize body: CSP + Permissions-Policy + nosniff/XFO/Referrer + Server without version -> status 413; csp=ok; pp=ok; server=nginx; other=ok
+PASS	RT-AU-T409	WEB 12 MB body -> JSON 413 with a plain sentence (AU-15) -> 413 application/json {"detail":"The file is too large to upload. Choose a smaller file and try again."}
+INFO	RT-AU-T410	WEB 413 body has no request_id (nginx answers before the API) -> request_id=no; x-request-id=no
+PASS	RT-AU-T411	GET <bundle>.js.map / .css.map for 2 entry files -> codes 404,404
+PASS	RT-AU-T412	sourceMappingURL comments in served entry bundles -> 0
+FAIL	RT-AU-T413	GET /assets/x.js.map (made-up name) -> 404 <html> <head><title>404 Not F
+PASS	RT-AU-T414	GET /assets/does-not-exist.js -> 404
+PASS	RT-AU-T415	GET /.env and /.git/config on :3411 -> .env 200 shell
+PASS	RT-AU-T416	WEB /assets/..%2f..%2f..%2fetc%2fpasswd -> 400 <html> <head><title
+PASS	RT-AU-T417	WEB /assets/..%5c..%5cetc%5cpasswd -> 200 <!doctype html> <htm
+PASS	RT-AU-T420	API /api/health: CSP + Permissions-Policy + nosniff/XFO/Referrer + Server without version -> status 200; csp=ok; pp=ok; server=uvicorn; other=ok
+PASS	RT-AU-T421	API 401: CSP + Permissions-Policy + nosniff/XFO/Referrer + Server without version -> status 401; csp=ok; pp=ok; server=uvicorn; other=ok
+PASS	RT-AU-T422	API 404: CSP + Permissions-Policy + nosniff/XFO/Referrer + Server without version -> status 404; csp=ok; pp=ok; server=uvicorn; other=ok
+PASS	RT-AU-T423	API 422: CSP + Permissions-Policy + nosniff/XFO/Referrer + Server without version -> status 422; csp=ok; pp=ok; server=uvicorn; other=ok
+PASS	RT-AU-T424	API 200 authenticated: CSP + Permissions-Policy + nosniff/XFO/Referrer + Server without version -> status 200; csp=ok; pp=ok; server=uvicorn; other=ok
+PASS	RT-AU-T425	API Cache-Control no-store on authenticated JSON -> no-store
+INFO	RT-AU-T426	API /docs in this security-test stack (ENVIRONMENT_NAME=security-test) -> 200 csp=no (docs exempt)
+PASS	RT-AU-T430	CORS: API GET with Origin evil.test -> acao=none
+PASS	RT-AU-T431	CORS: preflight from evil origin -> 405 acao=none
+PASS	RT-AU-T432	CSRF: cross-site POST /api/auth/refresh with Origin null, no cookie -> 401 acao=none
+PASS	RT-AU-T433	CORS via WEB :3411 Origin evil.test -> acao=none
+PASS	RT-AU-T434	TRACE on API -> client-refused
+INFO	RT-AU-T435	X-Request-ID with control char + 300 chars -> client refused header

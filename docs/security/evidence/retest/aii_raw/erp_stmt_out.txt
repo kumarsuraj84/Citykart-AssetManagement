@@ -1,0 +1,5 @@
+session settings (read_only, statement_timeout, application_name) | 0.02s | OK [<Record ro='on' dro='on' st='1min' app='ckam'>]
+warehouse reader statement_timeout | 0.01s | OK [<Record st='2min'>]
+pg_sleep(6) with ERP_STATEMENT_TIMEOUT_SECONDS=2 | 2.02s | ErpUnavailable -> HTTP 503: The ERP database took too long to answer. Try again in a few minutes.
+write attempt: CREATE TEMP TABLE | 0.02s | ErpUnavailable -> HTTP 503: The ERP database refused the request (ReadOnlySQLTransactionError).
+write attempt: SET TRANSACTION READ WRITE then nextval | 0.01s | ErpUnavailable -> HTTP 503: The ERP database refused the request (ActiveSQLTransactionError).

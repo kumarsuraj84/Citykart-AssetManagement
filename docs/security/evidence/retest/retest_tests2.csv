@@ -1,0 +1,311 @@
+id,area,cwe_or_owasp,case,expected,actual,result,evidence_ref
+RT-AU-T101a,session,A07:2021,BRUTE13 forced change: temp-password session limited to change-password,403 on other routes,login 200 must_change=true; /capabilities 403,PASS,sessions.mjs
+RT-AU-T101b,session,CWE-613,BRUTE13 change-password returns 204 + a NEW refresh cookie,204 + Set-Cookie refresh_token,204 cookie=yes,PASS,sessions.mjs
+RT-AU-T101c,session,CWE-613,BRUTE13 pre-change access token after change-password,401 session ended,401 Your session has ended. Please sign in again.,PASS,sessions.mjs
+RT-AU-T101d,session,CWE-613,BRUTE13 pre-change refresh token after change-password,401,401,PASS,sessions.mjs
+RT-AU-T101e,session,A07:2021,BRUTE13 new cookie from change-password renews the session (user stays signed in),refresh 200 + capabilities 200,"refresh 200, capabilities 200",PASS,sessions.mjs
+RT-AU-T102,session,CWE-613,Refresh issues a NEW refresh token each call (rotation),cookie differs each call,r1 200 r2 200; d1!=r1:true r1!=r2:true,PASS,sessions.mjs
+RT-AU-T103,session,CWE-384,OLD refresh token reused after it was rotated (reuse detection),401 ideally (reuse detection),200 (old token still accepted until sign-out / expiry),FAIL,sessions.mjs
+RT-AU-T104,session,CWE-330,Two refreshes in the same second produce different tokens (jti),different,different=true,PASS,sessions.mjs
+RT-AU-T105,session,CWE-613,"Logout clears the cookie (Set-Cookie expires, Path=/api/auth, HttpOnly)",204 + cookie cleared,"204 refresh_token=..; expires=Thu, 15 Oct 2026 12:07:19 GMT; HttpOnly; Max-Age=0; Path=/api/auth; SameSite=lax",PASS,sessions.mjs
+RT-AU-T106,session,CWE-613,After logout: same device access token,401,401 Your session has ended. Please sign in again.,PASS,sessions.mjs
+RT-AU-T107,session,CWE-613,After logout: refresh token that was logged out,401,401,PASS,sessions.mjs
+RT-AU-T108,session,CWE-613,"After logout: an older, rotated-away refresh token",401,401,PASS,sessions.mjs
+RT-AU-T109,session,CWE-613,After logout on device 1: device 2 access + refresh (all sessions end by design),401/401 (design: sign-out ends every session),access 401 refresh 401,PASS,sessions.mjs
+RT-AU-T110,session,CWE-613,Unaffected user (SECVIEW) token after BRUTE13 sign-out,200,200,PASS,sessions.mjs
+RT-AU-T111,session,CWE-613,Logout with no cookie,"204, nobody signed out",204,PASS,sessions.mjs
+RT-AU-T112,session,CWE-613,A stale (already ended) refresh cookie cannot sign out the NEW session,new session still 200,logout 204; new session capabilities 200,PASS,sessions.mjs
+RT-AU-T113,session,CWE-384,Access token presented as refresh cookie,401,401,PASS,sessions.mjs
+RT-AU-T114,session,CWE-384,Refresh token presented as bearer access token,401,401,PASS,sessions.mjs
+RT-AU-T115,session,CWE-613,Logout with an ACCESS token as the cookie does not end sessions (only a refresh token does),session still 200,"logout 204, capabilities 200",PASS,sessions.mjs
+RT-AU-T120,session,CWE-613,Deactivated account (DELETE asset-user): live access token,401,deactivate 204; access 401 Account not found or inactive,PASS,sessions.mjs
+RT-AU-T121,session,CWE-613,Deactivated account: live refresh token,401,401,PASS,sessions.mjs
+RT-AU-T122,session,CWE-287,Deactivated account: new sign-in,401 generic,401 Invalid credentials,PASS,sessions.mjs
+RT-AU-T123,session,CWE-613,Sign-in switched off (login_enabled=false): live access token ends at once (AU-07),401,PUT 200; access 401 Your session has ended. Please sign in again.,PASS,sessions.mjs
+RT-AU-T124,session,CWE-613,Sign-in switched off: live refresh token,401,401,PASS,sessions.mjs
+RT-AU-T125,session,CWE-613,Sign-in switched back ON: the old tokens stay dead (version bumped),401/401,PUT 200; access 401 refresh 401,PASS,sessions.mjs
+RT-AU-T126,session,CWE-613,Unrelated edit (phone) does NOT end the session (no unexpected sign-out),200,PUT 200; access 200,PASS,sessions.mjs
+RT-AU-T127,session,CWE-613,Role change OPERATOR->VIEWER: old access token,401,PUT 200; access 401,PASS,sessions.mjs
+RT-AU-T128,session,CWE-613,Role change: old refresh token,401,401,PASS,sessions.mjs
+RT-AU-T129,session,A01:2021,After role change a new sign-in gets exactly the new role,VIEWER,200 role=VIEWER caps=200,PASS,sessions.mjs
+RT-AU-T130,session,CWE-613,Work-area change: old access token,401,PUT 200 ; access 401,PASS,sessions.mjs
+RT-AU-T131,session,CWE-613,Login e-mail changed by admin: existing session,INFO (design: not an access change),PUT 200; access 200,INFO,sessions.mjs
+RT-AU-T132,session,CWE-613,Company access changed: old access + refresh tokens,401/401,POST 204; access 401 refresh 401,PASS,sessions.mjs
+RT-AU-T133,session,CWE-613,Company access re-saved unchanged: session NOT ended,200,POST 204; access 200,PASS,sessions.mjs
+RT-AU-T134,session,CWE-613,Admin password reset: old access + refresh tokens,401/401,reset 200; access 401 refresh 401,PASS,sessions.mjs
+RT-AU-T135,session,CWE-521,Admin-issued temporary password is random (token_urlsafe(9) = 12 chars) and must be changed,>=12 chars + must_change,length 12,PASS,sessions.mjs
+RT-AU-T136,session,A07:2021,Reset -> sign in with temp (must_change) -> choose a strong password accepted,200 then 204,login 200 must_change=true; change 204,PASS,sessions.mjs
+RT-AU-T137,session,CWE-613,Unaffected user (SECVIEW) still signed in after all the above,200,200,PASS,sessions.mjs
+RT-AU-T201,password-policy,CWE-521,change-password: common password,422 plain sentence,422 This password is too common and easy to guess. Choose a different one.,PASS,policy.mjs
+RT-AU-T202,password-policy,CWE-521,"change-password: common password, other case",422 plain sentence,422 This password is too common and easy to guess. Choose a different one.,PASS,policy.mjs
+RT-AU-T203,password-policy,CWE-521,change-password: common digits,422 plain sentence,422 This password is too common and easy to guess. Choose a different one.,PASS,policy.mjs
+RT-AU-T204,password-policy,CWE-521,change-password: digit run,422 plain sentence,422 This password is too simple (the same character or a simple sequence). Choose a different one.,PASS,policy.mjs
+RT-AU-T205,password-policy,CWE-521,change-password: reverse letter run,422 plain sentence,422 This password is too simple (the same character or a simple sequence). Choose a different one.,PASS,policy.mjs
+RT-AU-T206,password-policy,CWE-521,change-password: keyboard run,422 plain sentence,422 This password is too simple (the same character or a simple sequence). Choose a different one.,PASS,policy.mjs
+RT-AU-T207,password-policy,CWE-521,change-password: same character,422 plain sentence,422 This password is too simple (the same character or a simple sequence). Choose a different one.,PASS,policy.mjs
+RT-AU-T208,password-policy,CWE-521,change-password: brand + digits,422 plain sentence,422 A password made of the company or app name and numbers is easy to guess. Choose a different one.,PASS,policy.mjs
+RT-AU-T209,password-policy,CWE-521,change-password: app name + symbols/digits,422 plain sentence,422 A password made of the company or app name and numbers is easy to guess. Choose a different one.,PASS,policy.mjs
+RT-AU-T210,password-policy,CWE-521,change-password: brand upper + symbols,422 plain sentence,422 A password made of the company or app name and numbers is easy to guess. Choose a different one.,PASS,policy.mjs
+RT-AU-T211,password-policy,CWE-521,change-password: contains own login code,422 plain sentence,"422 The password must not contain your name, login code or email. Choose a different one.",PASS,policy.mjs
+RT-AU-T212,password-policy,CWE-521,change-password: contains own name word,422 plain sentence,"422 The password must not contain your name, login code or email. Choose a different one.",PASS,policy.mjs
+RT-AU-T213,password-policy,CWE-521,change-password: contains surname,422 plain sentence,"422 The password must not contain your name, login code or email. Choose a different one.",PASS,policy.mjs
+RT-AU-T214,password-policy,CWE-521,change-password: too short (< 8) -> schema 422,422 plain sentence,422 New password is too short (at least 8 characters).,PASS,policy.mjs
+RT-AU-T215,password-policy,CWE-521,change-password: too long (> 128) -> schema 422,422 plain sentence,422 New password is too long (max 128 characters).,PASS,policy.mjs
+RT-AU-T216,password-policy,CWE-521,change-password: same as old password,422 plain sentence,422 New password must be different from the old password.,PASS,policy.mjs
+RT-AU-T217,password-policy,CWE-521,change-password: GAP probe: Password@year,422 plain sentence,204 ,FAIL,policy.mjs
+RT-AU-T218,password-policy,CWE-521,change-password: GAP probe: Welcome@year,422 plain sentence,204 ,FAIL,policy.mjs
+RT-AU-T219,password-policy,CWE-521,change-password: brand + word (allowed by rule: not only digits/symbols),204 accepted,204 ,INFO,policy.mjs
+RT-AU-T220,password-policy,CWE-521,change-password: strong passphrase accepted,204 accepted,204 ,PASS,policy.mjs
+RT-AU-T221,password-policy,CWE-620,change-password with wrong current password,"400 ""Old password is incorrect""",400 Old password is incorrect,PASS,policy.mjs
+RT-AU-T301,auth-login,CWE-204,AU-02 locked account (SECLOCK) + RIGHT password,423 (accepted LOW),"423 Account locked, try again later",PASS,login_states.mjs
+RT-AU-T302,auth-login,CWE-204,AU-02 locked account + WRONG password (lock is not a guessing oracle),423 same as right password,"423 Account locked, try again later",PASS,login_states.mjs
+RT-AU-T303,auth-login,CWE-287,Deactivated (SECDIS) right password,401 generic,401 Invalid credentials,PASS,login_states.mjs
+RT-AU-T304,auth-login,CWE-287,Sign-in off (SECNOLOGIN) right password,401 generic,401 Invalid credentials,PASS,login_states.mjs
+RT-AU-T305,auth-login,CWE-204,Non-existent id,"401 generic, same text",401 Invalid credentials,PASS,login_states.mjs
+RT-AU-T306,auth-login,CWE-204,Existing id wrong password,"401 generic, same text",401 Invalid credentials,PASS,login_states.mjs
+RT-AU-T307,auth-login,A07:2021,Right password resets the failure counter (SECOP2IT),200,200,PASS,login_states.mjs
+RT-AU-T308,auth-login,A07:2021,must_change_password (SECMUST): login 200 but every other route 403,200 / 403,200 must_change=true / assets 403,PASS,login_states.mjs
+RT-AU-T309,auth-login,CWE-89,SQL-looking login id,401,401 Invalid credentials,PASS,login_states.mjs
+RT-AU-T310,auth-login,A07:2021,"Login by e-mail, mixed case",200,200,PASS,login_states.mjs
+RT-AU-T311,auth-login,CWE-287,"Primary-Owner clash: login ""SECHO"" while an employee with code SECHO exists",200 as head-office admin id 2,200 id=2 primary=true,PASS,login_states.mjs
+RT-AU-T312,auth-login,CWE-287,"Primary-Owner clash: lower-case ""secho"" (name match is case-insensitive)",200 as id 2,200 id=2,PASS,login_states.mjs
+RT-AU-T313,bruteforce,CWE-645,AU-04 residual: 5 wrong guesses lock a real user; right password then 423,"lock still possible (residual, accepted)","guesses 401,401,401,401,401 then right pw 423",INFO,login_states.mjs
+RT-AU-T314,bruteforce,CWE-307,Lock threshold still 5 (BRUTE12),401 x5 then 423,"401,401,401,401,401",PASS,login_states.mjs
+RT-AU-T401,headers,CWE-693,WEB / (SPA shell): CSP + Permissions-Policy + nosniff/XFO/Referrer + Server without version,all present,status 200; csp=ok; pp=ok; server=nginx; other=ok,PASS,headers_raw.json
+RT-AU-T402,headers,CWE-693,WEB SPA route /assets/42: CSP + Permissions-Policy + nosniff/XFO/Referrer + Server without version,all present,status 200; csp=ok; pp=ok; server=nginx; other=ok,PASS,headers_raw.json
+RT-AU-T403,headers,CWE-693,WEB /api/health (proxied): CSP + Permissions-Policy + nosniff/XFO/Referrer + Server without version,"all present, status 200",status 200; csp=ok; pp=ok; server=nginx; other=MISSING | present but X-Content-Type-Options / X-Frame-Options / Referrer-Policy / Cache-Control are sent TWICE on proxied /api responses (API + nginx); CSP/PP once. Cosmetic,INFO,headers_raw.json
+RT-AU-T404,headers,CWE-693,WEB /api 401 (no token): CSP + Permissions-Policy + nosniff/XFO/Referrer + Server without version,"all present, status 401","status 401; csp=ok; pp=ok; server=nginx; other=MISSING | as T403 (duplicate identical values, browsers accept)",INFO,headers_raw.json
+RT-AU-T405,headers,CWE-693,WEB /api 404: CSP + Permissions-Policy + nosniff/XFO/Referrer + Server without version,"all present, status 404","status 404; csp=ok; pp=ok; server=nginx; other=MISSING | as T403 (duplicate identical values, browsers accept)",INFO,headers_raw.json
+RT-AU-T406,headers,CWE-693,WEB /index.html: CSP + Permissions-Policy + nosniff/XFO/Referrer + Server without version,all present,status 200; csp=ok; pp=ok; server=nginx; other=ok,PASS,headers_raw.json
+RT-AU-T407,headers,CWE-524,WEB index.html Cache-Control no-cache,no-cache,no-cache,PASS,headers_raw.json
+RT-AU-T408,headers,CWE-693,WEB 413 oversize body: CSP + Permissions-Policy + nosniff/XFO/Referrer + Server without version,"all present, status 413",status 413; csp=ok; pp=ok; server=nginx; other=ok,PASS,headers_raw.json
+RT-AU-T409,headers,CWE-770,WEB 12 MB body -> JSON 413 with a plain sentence (AU-15),"413 application/json {""detail"": sentence}","413 application/json {""detail"":""The file is too large to upload. Choose a smaller file and try again.""}",PASS,headers_raw.json
+RT-AU-T410,headers,CWE-209,WEB 413 body has no request_id (nginx answers before the API),INFO,request_id=no; x-request-id=no,INFO,headers_raw.json
+RT-AU-T411,headers,CWE-540,GET <bundle>.js.map / .css.map for 2 entry files,"404 each, not index.html","codes 404,404",PASS,headers_raw.json
+RT-AU-T412,headers,CWE-540,sourceMappingURL comments in served entry bundles,0,0,PASS,headers_raw.json
+RT-AU-T413,headers,CWE-540,GET /assets/x.js.map (made-up name),404 not index.html,404 <html> <head><title>404 Not F | 404 nginx error page (not the SPA shell),PASS,headers_raw.json
+RT-AU-T414,headers,CWE-200,GET /assets/does-not-exist.js,404 (not SPA shell),404,PASS,headers_raw.json
+RT-AU-T415,headers,CWE-200,GET /.env and /.git/config on :3411,no real file (SPA shell or 404),.env 200 shell,PASS,headers_raw.json
+RT-AU-T416,headers,CWE-22,WEB /assets/..%2f..%2f..%2fetc%2fpasswd,"400/404, no file",400 <html> <head><title,PASS,headers_raw.json
+RT-AU-T417,headers,CWE-22,WEB /assets/..%5c..%5cetc%5cpasswd,no file,200 <!doctype html> <htm,PASS,headers_raw.json
+RT-AU-T420,headers,CWE-693,API /api/health: CSP + Permissions-Policy + nosniff/XFO/Referrer + Server without version,"all present, status 200",status 200; csp=ok; pp=ok; server=uvicorn; other=ok,PASS,headers_raw.json
+RT-AU-T421,headers,CWE-693,API 401: CSP + Permissions-Policy + nosniff/XFO/Referrer + Server without version,"all present, status 401",status 401; csp=ok; pp=ok; server=uvicorn; other=ok,PASS,headers_raw.json
+RT-AU-T422,headers,CWE-693,API 404: CSP + Permissions-Policy + nosniff/XFO/Referrer + Server without version,"all present, status 404",status 404; csp=ok; pp=ok; server=uvicorn; other=ok,PASS,headers_raw.json
+RT-AU-T423,headers,CWE-693,API 422: CSP + Permissions-Policy + nosniff/XFO/Referrer + Server without version,"all present, status 422",status 422; csp=ok; pp=ok; server=uvicorn; other=ok,PASS,headers_raw.json
+RT-AU-T424,headers,CWE-693,API 200 authenticated: CSP + Permissions-Policy + nosniff/XFO/Referrer + Server without version,"all present, status 200",status 200; csp=ok; pp=ok; server=uvicorn; other=ok,PASS,headers_raw.json
+RT-AU-T425,headers,CWE-524,API Cache-Control no-store on authenticated JSON,no-store,no-store,PASS,headers_raw.json
+RT-AU-T426,headers,CWE-651,API /docs in this security-test stack (ENVIRONMENT_NAME=security-test),"open by design here (prod: 404, see T5xx)",200 csp=no (docs exempt),INFO,headers_raw.json
+RT-AU-T430,headers,CWE-942,CORS: API GET with Origin evil.test,no Access-Control-Allow-Origin,acao=none,PASS,headers_raw.json
+RT-AU-T431,headers,CWE-942,CORS: preflight from evil origin,no CORS allow headers,405 acao=none,PASS,headers_raw.json
+RT-AU-T432,headers,CWE-352,"CSRF: cross-site POST /api/auth/refresh with Origin null, no cookie","401, no ACAO",401 acao=none,PASS,headers_raw.json
+RT-AU-T433,headers,CWE-942,CORS via WEB :3411 Origin evil.test,no ACAO,acao=none,PASS,headers_raw.json
+RT-AU-T434,headers,CWE-16,TRACE on API,405 / refused,client-refused,PASS,headers_raw.json
+RT-AU-T435,headers,CWE-117,X-Request-ID with control char + 300 chars,replaced/sanitised,client refused header,INFO,headers_raw.json
+RT-AU-T451,csp-regression,CWE-693,"SECHO: CSP violations while using 24 main screens (Playwright, :3411)","0 violations, 0 page errors",violations=0 consoleCSP=0 pageErrors=0 bouncedToLogin=0 failedReq=0,PASS,pw_csp_results.json
+RT-AU-T453,csp-regression,CWE-693,SECHO: QR / label images (blob:) render under img-src 'self' data: blob:,>=1 blob image with width>0,blob imgs widths=[370],PASS,pw_csp_results.json
+RT-AU-T455,csp-regression,CWE-693,SECHO: Permissions-Policy effective in browser,camera/microphone/geolocation/payment/usb = false,camera=false microphone=false geolocation=false payment=false usb=false clipboard-write=true fullscreen=true,PASS,pw_csp_results.json
+RT-AU-T457,xss,CWE-79,"SECHO: stored/reflected XSS payloads (vendor, item, client report, ?q=) inert on all visited screens",no execution / no injected element,executed_or_injected_on=none,PASS,pw_csp_results.json
+RT-AU-T452,csp-regression,CWE-693,"SECOPIT: CSP violations while using 10 main screens (Playwright, :3411)","0 violations, 0 page errors",violations=0 consoleCSP=0 pageErrors=0 bouncedToLogin=0 failedReq=0,PASS,pw_csp_results.json
+RT-AU-T454,csp-regression,CWE-693,SECOPIT: QR / label images (blob:) render under img-src 'self' data: blob:,>=1 blob image with width>0,blob imgs widths=[370],PASS,pw_csp_results.json
+RT-AU-T456,csp-regression,CWE-693,SECOPIT: Permissions-Policy effective in browser,camera/microphone/geolocation/payment/usb = false,camera=false microphone=false geolocation=false payment=false usb=false clipboard-write=true fullscreen=true,PASS,pw_csp_results.json
+RT-AU-T458,xss,CWE-79,"SECOPIT: stored/reflected XSS payloads (vendor, item, client report, ?q=) inert on all visited screens",no execution / no injected element,executed_or_injected_on=none,PASS,pw_csp_results.json
+RT-AU-T501,error-handling,CWE-209,POST /api/auth/login malformed,"no 5xx, request id, no stack/SQL/path",422 rid=yes leak=false The request could not be read. Check the values and try again.,PASS,errors.mjs
+RT-AU-T502,error-handling,CWE-209,POST /api/auth/login malformed,"no 5xx, request id, no stack/SQL/path",401 rid=yes leak=false Invalid credentials,PASS,errors.mjs
+RT-AU-T503,error-handling,CWE-209,POST /api/auth/login malformed,"no 5xx, request id, no stack/SQL/path",422 rid=yes leak=false Login must be text.,PASS,errors.mjs
+RT-AU-T504,error-handling,CWE-209,POST /api/auth/change-password malformed,"no 5xx, request id, no stack/SQL/path",422 rid=yes leak=false Current password must be text. New password must be text.,PASS,errors.mjs
+RT-AU-T506,error-handling,CWE-209,GET /api/assets/99999999999999999999 malformed,"no 5xx, request id, no stack/SQL/path",422 rid=yes leak=false One of the numbers is too large.,PASS,errors.mjs
+RT-AU-T507,error-handling,CWE-209,GET /api/assets/-1 malformed,"no 5xx, request id, no stack/SQL/path",404 rid=yes leak=false Not Found,PASS,errors.mjs
+RT-AU-T508,error-handling,CWE-209,GET /api/assets/abc malformed,"no 5xx, request id, no stack/SQL/path",422 rid=yes leak=false Asset must be a number.,PASS,errors.mjs
+RT-AU-T509,error-handling,CWE-209,GET /api/assets?limit=abc&sort_by=%00 malformed,"no 5xx, request id, no stack/SQL/path",422 rid=yes leak=false Limit must be a number.,PASS,errors.mjs
+RT-AU-T510,error-handling,CWE-209,GET /api/purchase-orders/1e309 malformed,"no 5xx, request id, no stack/SQL/path",422 rid=yes leak=false Po must be a number.,PASS,errors.mjs
+RT-AU-T511,error-handling,CWE-209,PUT /api/asset-users/36 malformed,"no 5xx, request id, no stack/SQL/path","422 rid=yes leak=false Choose an access level: full admin, can add and move, can only view, or sees own",PASS,errors.mjs
+RT-AU-T512,error-handling,CWE-209,PUT /api/asset-users/36 malformed,"no 5xx, request id, no stack/SQL/path",422 rid=yes leak=false Email is not a valid email address.,PASS,errors.mjs
+RT-AU-T513,error-handling,CWE-209,POST /api/people/employees malformed,"no 5xx, request id, no stack/SQL/path",422 rid=yes leak=false Code is too long (max 50 characters).,PASS,errors.mjs
+RT-AU-T514,error-handling,CWE-209,POST /api/client-reports malformed,"no 5xx, request id, no stack/SQL/path",422 rid=yes leak=false The request is missing its details.,PASS,errors.mjs
+RT-AU-T515,error-handling,CWE-209,GET /api/admin/logs/audit?from=2026-13-45 malformed,"no 5xx, request id, no stack/SQL/path",422 rid=yes leak=false Dates must look like 2026-10-14 or 2026-10-14T09:30:00.,PASS,errors.mjs
+RT-AU-T516,error-handling,CWE-209,GET /api/erp/pos/abc/draft malformed,"no 5xx, request id, no stack/SQL/path",422 rid=yes leak=false Po code must be a number.,PASS,errors.mjs
+RT-AU-T517,error-handling,CWE-209,GET /api/erp/pos/9002002/draft malformed,"no 5xx, request id, no stack/SQL/path",404 rid=yes leak=false This purchase order was not found in the ERP.,PASS,errors.mjs
+RT-AU-T518,error-handling,CWE-209,POST /api/documents/upload malformed,"no 5xx, request id, no stack/SQL/path",405 rid=yes leak=false Method Not Allowed,PASS,errors.mjs
+RT-AU-T601,input,CWE-639,IF-03 CKSPL operator -> CKVPL open ERP PO draft 9002002,403/404,404 This purchase order was not found in the ERP.,PASS,input_fixes.mjs
+RT-AU-T602,input,CWE-639,IF-03 CKVPL operator -> CKSPL open ERP PO draft 9001002,403/404,404 This purchase order was not found in the ERP.,PASS,input_fixes.mjs
+RT-AU-T603,input,CWE-639,IF-03 control: CKSPL operator -> own CKSPL draft,200,200 company=CKSPL,PASS,input_fixes.mjs
+RT-AU-T604,input,CWE-639,IF-03 CKSPL operator ERP PO list has no CKVPL rows,only CKSPL,200 companies=CKSPL,PASS,input_fixes.mjs
+RT-AU-T605,input,CWE-639,IF-03 CKSPL operator -> /api/erp/pos/9002002/receipts,403/404,404,PASS,input_fixes.mjs
+RT-AU-T606,input,CWE-639,IF-03 CKSPL operator -> /api/erp/pos/9002002/pi,403/404,404,PASS,input_fixes.mjs
+RT-AU-T607,input,CWE-639,IF-03 CKSPL operator -> /api/erp/pos/9002001/draft,403/404,404,PASS,input_fixes.mjs
+RT-AU-T608,input,CWE-639,IF-03 head-office admin -> CKVPL draft (all companies by design),200,200,PASS,input_fixes.mjs
+RT-AU-T610,input,CWE-400,IN-02 16 MB asset import straight to the API,413 plain sentence,413 This file is larger than 15 MB. Split it into smaller files and upload them one by one.,PASS,input_fixes.mjs
+RT-AU-T611,input,CWE-400,IN-02 16 MB PO import straight to the API,413 (or 404 if route differs),413 This file is larger than 15 MB. Split it into smaller files and upload them one by one.,PASS,input_fixes.mjs
+RT-AU-T612,input,CWE-20,IN-02 non-workbook .xlsx to import preview,"4xx plain sentence, no 500",422 That file is not a valid Excel file.,PASS,input_fixes.mjs
+RT-AU-T620,input,CWE-434,IN-03 upload HTML disguised as .png,422,422 This file is not a real PNG file. Upload the original document.,PASS,input_fixes.mjs
+RT-AU-T621,input,CWE-434,IN-03 upload shell text disguised as .pdf,422,422 This file is not a real PDF file. Upload the original document.,PASS,input_fixes.mjs
+RT-AU-T622,input,CWE-434,IN-03 upload PNG bytes named .jpg,422,422 This file is not a real JPG file. Upload the original document.,PASS,input_fixes.mjs
+RT-AU-T623,input,CWE-434,IN-03 upload bare zip header named .xlsx,422,422 This file is not a real XLSX file. Upload the original document.,PASS,input_fixes.mjs
+RT-AU-T624,input,CWE-434,IN-03 upload .html extension,422,422 file type '.html' is not allowed,PASS,input_fixes.mjs
+RT-AU-T625,input,CWE-434,IN-03 upload real PNG with client-claimed text/html type,201,201 image/png,PASS,input_fixes.mjs
+RT-AU-T626,input,CWE-116,"IN-03 download of that PNG: type from extension, attachment, nosniff",image/png + attachment + nosniff,"200 image/png | attachment; filename=""ok.png"" | nosniff",PASS,input_fixes.mjs
+RT-AU-T627,input,CWE-434,"IN-03 HTML/PDF polyglot (%PDF- inside first 1 KB, not at byte 0)",INFO: accepted is harmless (served application/pdf attachment + nosniff),201 application/pdf,INFO,input_fixes.mjs
+RT-AU-T7000,input-battery,CWE-89,baseline exact search returns 1,1 row,total=1,INFO,rt_api_battery.mjs;battery_results.json
+RT-AU-T7001,input-battery,CWE-89,q quote,"no 500, no timed sleep, literal match",status=200 ms=8 total=0,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7002,input-battery,CWE-89,q boolean OR,"no 500, no timed sleep, literal match",status=200 ms=8 total=0,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7003,input-battery,CWE-89,q comment,"no 500, no timed sleep, literal match",status=200 ms=7 total=0,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7004,input-battery,CWE-89,q stacked pg_sleep,"no 500, no timed sleep, literal match",status=200 ms=6 total=0,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7005,input-battery,CWE-89,q union,"no 500, no timed sleep, literal match",status=200 ms=6 total=0,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7006,input-battery,CWE-89,q wildcard pct,"no 500, no timed sleep, literal match",status=200 ms=6 total=0,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7007,input-battery,CWE-89,q wildcard underscore,"no 500, no timed sleep, literal match",status=200 ms=5 total=0,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7008,input-battery,CWE-89,q backslash,"no 500, no timed sleep, literal match",status=200 ms=5 total=0,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7010,input-battery,CWE-89,sort_by stacked,"ignored/validated, no 500, no sleep",status=200 ms=8,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7011,input-battery,CWE-89,sort_by raw sql,"ignored/validated, no 500, no sleep",status=200 ms=6,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7012,input-battery,CWE-639,sort_by non-whitelisted col deleted_at,"ignored/validated, no 500, no sleep",status=200 ms=7,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7013,input-battery,CWE-89,sort_dir injection,"ignored/validated, no 500, no sleep",status=200 ms=6,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7020,input-battery,CWE-89,category_id OR injection,"422/400 or empty, no 500, no sleep",status=422 ms=3,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7021,input-battery,CWE-89,category_id quote,"422/400 or empty, no 500, no sleep",status=422 ms=3,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7022,input-battery,CWE-20,limit negative,"422/400 or empty, no 500, no sleep",status=200 ms=7,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7023,input-battery,CWE-20,limit huge,"422/400 or empty, no 500, no sleep",status=200 ms=5,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7024,input-battery,CWE-89,status injection,"422/400 or empty, no 500, no sleep",status=200 ms=5,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7025,input-battery,CWE-89,company_id injection,"422/400 or empty, no 500, no sleep",status=422 ms=3,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7030,input-battery,CWE-89,vendors list q boolean,"no 500, no sleep",status=200 ms=3,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7031,input-battery,CWE-89,vendors list q sleep,"no 500, no sleep",status=200 ms=3,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7032,input-battery,CWE-89,items q boolean,"no 500, no sleep",status=200 ms=5,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7033,input-battery,CWE-89,items q sleep,"no 500, no sleep",status=200 ms=6,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7034,input-battery,CWE-89,assets/pick q injection,"no 500, no sleep",status=422 ms=2,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7035,input-battery,CWE-89,purchase-orders q injection,"no 500, no sleep",status=200 ms=11,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7036,input-battery,CWE-89,admin logs audit q sleep,"no 500, no sleep",status=200 ms=13,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7037,input-battery,CWE-89,admin logs errors level inj,"no 500, no sleep",status=422 ms=4,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7038,input-battery,CWE-89,admin logs audit from inj,"no 500, no sleep",status=422 ms=2,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7039,input-battery,CWE-89,admin logs group by,"no 500, no sleep",status=200 ms=11,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7050,input-battery,CWE-639/285,CKVPL operator downloads CKSPL doc 1,404 (out of scope),status=404,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7051,input-battery,CWE-285,SELF_SERVICE holder downloads own doc 1,200 + attachment/nosniff,"status=200 cd=attachment; filename=""inv-spl-001.pdf"" xcto=nosniff",INFO,rt_api_battery.mjs;battery_results.json
+RT-AU-T7052,input-battery,CWE-639,CKSPL self downloads CKVPL doc 2,404,status=404,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7060,input-battery,CWE-22,static /assets traversal ../../../../etc/passwd,404/no file content,status=404 leaked=false,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7061,input-battery,CWE-22,static /assets traversal ..%2f..%2f..%2fetc%2fpasswd,404/no file content,status=404 leaked=false,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7062,input-battery,CWE-22,static /assets traversal ....//....//etc/passwd,404/no file content,status=404 leaked=false,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7070,input-battery,CWE-200/213,employees list secret leak (admin),no password_hash/secret fields,status=404 leak=false,INFO,rt_api_battery.mjs;battery_results.json
+RT-AU-T7071,input-battery,CWE-200/213,capabilities secret leak (self),no password_hash/secret fields,status=200 leak=false,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7072,input-battery,CWE-200/213,asset detail secret leak,no password_hash/secret fields,status=200 leak=false,PASS,rt_api_battery.mjs;battery_results.json
+RT-AU-T7073,input-battery,CWE-285,SELF_SERVICE lists all employees,403 (not allowed),status=404,INFO,rt_api_battery.mjs;battery_results.json
+RT-AU-T7074,input-battery,CWE-200/285,asset-users list secret leak (admin),no password_hash/secret,status=200 leak=false,PASS,rt_api_battery2.mjs
+RT-AU-T7075,input-battery,CWE-200/285,people list secret leak (admin),no password_hash/secret,status=200 leak=false,PASS,rt_api_battery2.mjs
+RT-AU-T7076,input-battery,CWE-200/285,SELF_SERVICE lists asset-users,403,status=403,PASS,rt_api_battery2.mjs
+RT-AU-T7077,input-battery,CWE-200/285,SELF_SERVICE lists people,403,status=403,PASS,rt_api_battery2.mjs
+RT-AU-T7078,input-battery,CWE-200/285,SELF_SERVICE exports asset-users,403,status=403,PASS,rt_api_battery2.mjs
+RT-AU-T7079,input-battery,CWE-200/285,OPERATOR lists asset-users,no 500,status=200,PASS,rt_api_battery2.mjs
+RT-AU-T7080,input-battery,CWE-200/285,CKVPL operator people list company-scoped,only CKVPL,status=200 sampleHasSPL=false,PASS,rt_api_battery2.mjs
+RT-AU-T801,static-route,CWE-22,IF-01 single-port prod: control asset /assets/a.js,200 file,200 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T802,static-route,CWE-22,IF-01 single-port prod: control nested asset /assets/sub/b.css,200 file,200 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T803,static-route,CWE-22,IF-01 single-port prod: raw ../ (unencoded) /assets/../../secret_outside.txt,"404, no file",404 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T804,static-route,CWE-22,IF-01 single-port prod: ..%2f encoded x2 -> dist /assets/..%2f..%2fsecret_outside.txt,"404, no file",404 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T805,static-route,CWE-22,IF-01 single-port prod: %2e%2e/ encoded dots /assets/%2e%2e/%2e%2e/secret_outside.txt,"404, no file",404 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T806,static-route,CWE-22,IF-01 single-port prod: ..%2F upper to /etc/passwd /assets/..%2F..%2F..%2F..%2F..%2F..%2F..%2Fetc%2Fpasswd,"404, no file",404 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T807,static-route,CWE-22,IF-01 single-port prod: all-encoded %2e%2e%2f to /etc/passwd /assets/%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd,"404, no file",404 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T808,static-route,CWE-22,IF-01 single-port prod: double-encoded %252e%252e%252f /assets/%252e%252e%252f%252e%252e%252fsecret_outside.txt,"404, no file",404 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T809,static-route,CWE-22,IF-01 single-port prod: ....// filter-bypass /assets/....//....//secret_outside.txt,"404, no file",404 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T810,static-route,CWE-22,IF-01 single-port prod: absolute //etc/passwd /assets//etc/passwd,"404, no file",404 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T811,static-route,CWE-22,IF-01 single-port prod: absolute %2fetc%2fpasswd /assets/%2fetc%2fpasswd,"404, no file",404 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T812,static-route,CWE-22,IF-01 single-port prod: backslash ..%5c /assets/..%5c..%5c..%5c..%5cshared%5c.env,"404, no file",404 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T813,static-route,CWE-22,IF-01 single-port prod: mixed ..%5c/..%2f /assets/..%5c..%2f..%2f..%2f..%2fshared/.env,"404, no file",404 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T814,static-route,CWE-22,IF-01 single-port prod: tomcat ..;/ /assets/..;/..;/..;/..;/shared/.env,"404, no file",404 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T815,static-route,CWE-22,IF-01 single-port prod: NUL %00 in name /assets/a.js%00.png,"404, no file",404 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T816,static-route,CWE-22,IF-01 single-port prod: NUL then traversal /assets/..%2f..%2f..%2f..%2fshared%2f.env%00,"404, no file",404 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T817,static-route,CWE-22,IF-01 single-port prod: overlong utf8 %c0%ae /assets/%c0%ae%c0%ae/%c0%ae%c0%ae/secret_outside.txt,"404, no file",404 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T818,static-route,CWE-22,IF-01 single-port prod: sibling prefix dir assets-evil /assets/..%2fassets-evil%2fsecret.txt,"404, no file",404 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T819,static-route,CWE-22,IF-01 single-port prod: sibling prefix dir frontend-dist-evil /assets/..%2f..%2ffrontend-dist-evil%2fsecret.txt,"404, no file",404 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T820,static-route,CWE-22,IF-01 single-port prod: dist index.html via .. /assets/..%2findex.html,"404, no file",404 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T821,static-route,CWE-22,IF-01 single-port prod: symlink inside assets -> outside /assets/link_out.txt,"404, no file",404 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T822,static-route,CWE-22,IF-01 single-port prod: dir itself /assets/sub,"404, no file",404 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T823,static-route,CWE-22,IF-01 single-port prod: prod layout shared/.env /assets/..%2f..%2f..%2f..%2fshared%2f.env,"404, no file",404 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T824,static-route,CWE-22,IF-01 single-port prod: prod layout shared/nas.pw /assets/..%2f..%2f..%2f..%2fshared%2fnas.pw,"404, no file",404 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T825,static-route,CWE-22,IF-01 single-port prod: climb out and back in (legit file) /assets/..%2f..%2f..%2f..%2freleases%2fabc%2ffrontend-dist%2fassets%2fa.js,200 file,200 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T826,static-route,CWE-22,IF-01 single-port prod: shell traversal /..%2f..%2f..%2f..%2fshared%2f.env,"SPA shell, no file",200 shell,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T827,static-route,CWE-22,IF-01 single-port prod: shell traversal raw /../../../../shared/.env,"SPA shell, no file",200 shell,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T828,static-route,CWE-22,IF-01 single-port prod: shell absolute //etc/passwd,"SPA shell, no file",200 shell,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T829,static-route,CWE-22,IF-01 single-port prod: favicon.svg (allow-list) /favicon.svg,200 file,200 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T830,static-route,CWE-22,IF-01 single-port prod: logo.png (allow-list) /logo.png,200 file,200 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T831,static-route,CWE-22,IF-01 single-port prod: favicon list + traversal /favicon.svg%2f..%2f..%2f..%2f..%2fshared%2f.env,"SPA shell, no file",200 shell,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T832,static-route,CWE-22,IF-01 single-port prod: root non-listed file /secret_in_dist.txt,"SPA shell, no file",200 shell,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T833,static-route,CWE-22,IF-01 single-port prod: api health /api/health,200 file,200 -,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T834,static-route,CWE-22,IF-01 single-port prod: /docs /docs,"SPA shell, no file",200 shell,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T835,static-route,CWE-22,IF-01 single-port prod: /redoc /redoc,"SPA shell, no file",200 shell,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T836,static-route,CWE-22,IF-01 single-port prod: /openapi.json /openapi.json,"SPA shell, no file",200 shell,PASS,probe_dist2.py;if01_run1.txt;if01_run2.txt
+RT-AU-T901,startup,CWE-798/CWE-651,IF-04/AU-09/AU-11: A prod + committed default dev secret,refuse to start,health=NOCONN | docs=NOCONN | openapi=NOCONN | redoc=NOCONN | refused_line=1 started_line=0 warn_line=0,PASS,startup_matrix.sh;startup_matrix_out.txt
+RT-AU-T902,startup,CWE-798/CWE-651,IF-04/AU-09/AU-11: B prod + JWT_SECRET unset (falls back to default),refuse to start,health=NOCONN | docs=NOCONN | openapi=NOCONN | redoc=NOCONN | refused_line=1 started_line=0 warn_line=0,PASS,startup_matrix.sh;startup_matrix_out.txt
+RT-AU-T903,startup,CWE-798/CWE-651,IF-04/AU-09/AU-11: C prod + .env.example placeholder change_me_too,refuse to start,health=NOCONN | docs=NOCONN | openapi=NOCONN | redoc=NOCONN | refused_line=1 started_line=0 warn_line=0,PASS,startup_matrix.sh;startup_matrix_out.txt
+RT-AU-T904,startup,CWE-798/CWE-651,IF-04/AU-09/AU-11: D prod + 31-char random secret,refuse to start,health=NOCONN | docs=NOCONN | openapi=NOCONN | redoc=NOCONN | refused_line=1 started_line=0 warn_line=0,PASS,startup_matrix.sh;startup_matrix_out.txt
+RT-AU-T905,startup,CWE-798/CWE-651,IF-04/AU-09/AU-11: E PROD (upper case) + default,refuse to start,health=NOCONN | docs=NOCONN | openapi=NOCONN | redoc=NOCONN | refused_line=1 started_line=0 warn_line=0,PASS,startup_matrix.sh;startup_matrix_out.txt
+RT-AU-T906,startup,CWE-798/CWE-651,IF-04/AU-09/AU-11: F ' Production ' (spaces) + default,refuse to start,health=NOCONN | docs=NOCONN | openapi=NOCONN | redoc=NOCONN | refused_line=1 started_line=0 warn_line=0,PASS,startup_matrix.sh;startup_matrix_out.txt
+RT-AU-T907,startup,CWE-798/CWE-651,IF-04/AU-09/AU-11: G prod + empty JWT_SECRET,refuse to start,health=NOCONN | docs=NOCONN | openapi=NOCONN | redoc=NOCONN | refused_line=1 started_line=0 warn_line=0,PASS,startup_matrix.sh;startup_matrix_out.txt
+RT-AU-T908,startup,CWE-798/CWE-651,"IF-04/AU-09/AU-11: H prod + 48-char FAKE secret (expect start, docs off)",start; /docs /redoc /openapi.json 404,health=200 | docs=404 - | openapi=404 - | redoc=404 | refused_line=0 started_line=1 warn_line=0,PASS,startup_matrix.sh;startup_matrix_out.txt
+RT-AU-T909,startup,CWE-798/CWE-651,"IF-04/AU-09/AU-11: I prod + 32-char exactly (boundary, expect start)",start; /docs /redoc /openapi.json 404,health=200 | docs=404 - | openapi=404 - | redoc=404 | refused_line=0 started_line=1 warn_line=0,PASS,startup_matrix.sh;startup_matrix_out.txt
+RT-AU-T910,startup,CWE-798/CWE-651,IF-04/AU-09/AU-11: J ENVIRONMENT_NAME unset (default development) + default secret,"non-production name: starts with warning, docs open (by design)",health=200 | docs=200 swagger | openapi=200 openapi | redoc=200 | refused_line=0 started_line=1 warn_line=1,INFO,startup_matrix.sh;startup_matrix_out.txt
+RT-AU-T911,startup,CWE-798/CWE-651,IF-04/AU-09/AU-11: K ENVIRONMENT_NAME=prd (typo/alias) + default secret,"non-production name: starts with warning, docs open (by design)",health=200 | docs=200 swagger | openapi=200 openapi | redoc=200 | refused_line=0 started_line=1 warn_line=1,INFO,startup_matrix.sh;startup_matrix_out.txt
+RT-AU-T912,startup,CWE-798/CWE-651,IF-04/AU-09/AU-11: L ENVIRONMENT_NAME=live + default secret,"non-production name: starts with warning, docs open (by design)",health=200 | docs=200 swagger | openapi=200 openapi | redoc=200 | refused_line=0 started_line=1 warn_line=1,INFO,startup_matrix.sh;startup_matrix_out.txt
+RT-AU-T913,startup,CWE-798/CWE-651,IF-04/AU-09/AU-11: M prod + 40 spaces secret,start; /docs /redoc /openapi.json 404,health=200 | docs=404 - | openapi=404 - | redoc=404 | refused_line=0 started_line=1 warn_line=0,INFO,startup_matrix.sh;startup_matrix_out.txt
+RT-AU-T950,headers-prod,CWE-693,single-port prod headers: GET /api/health -> 200,"CSP+PP+nosniff+XFO+Referrer, Server without version",server=uvicorn | csp=Y pp=Y xcto=Y xfo=Y rp=Y cc=no-store rid=Y,PASS,prod_headers.py;prod_headers_out.txt
+RT-AU-T951,headers-prod,CWE-693,single-port prod headers: GET /api/auth/capabilities -> 401,"CSP+PP+nosniff+XFO+Referrer, Server without version",server=uvicorn | csp=Y pp=Y xcto=Y xfo=Y rp=Y cc=no-store rid=Y,PASS,prod_headers.py;prod_headers_out.txt
+RT-AU-T952,headers-prod,CWE-693,single-port prod headers: GET /api/nope -> 200,"CSP+PP+nosniff+XFO+Referrer, Server without version",server=uvicorn | csp=Y pp=Y xcto=Y xfo=Y rp=Y cc=no-store rid=Y | unknown /api path answers 200 SPA shell (INFO),INFO,prod_headers.py;prod_headers_out.txt
+RT-AU-T953,headers-prod,CWE-693,single-port prod headers: GET /assets/missing.js -> 404,"CSP+PP+nosniff+XFO+Referrer, Server without version",server=uvicorn | csp=Y pp=Y xcto=Y xfo=Y rp=Y cc=- rid=Y,PASS,prod_headers.py;prod_headers_out.txt
+RT-AU-T954,headers-prod,CWE-693,single-port prod headers: GET /assets/a.js -> 200,"CSP+PP+nosniff+XFO+Referrer, Server without version",server=uvicorn | csp=Y pp=Y xcto=Y xfo=Y rp=Y cc=- rid=Y,PASS,prod_headers.py;prod_headers_out.txt
+RT-AU-T955,headers-prod,CWE-693,single-port prod headers: GET /some/spa/route -> 200,"CSP+PP+nosniff+XFO+Referrer, Server without version",server=uvicorn | csp=Y pp=Y xcto=Y xfo=Y rp=Y cc=no-cache rid=Y,PASS,prod_headers.py;prod_headers_out.txt
+RT-AU-T956,headers-prod,CWE-693,single-port prod headers: POST /api/auth/login -> 422,"CSP+PP+nosniff+XFO+Referrer, Server without version",server=uvicorn | csp=Y pp=Y xcto=Y xfo=Y rp=Y cc=no-store rid=Y,PASS,prod_headers.py;prod_headers_out.txt
+RT-AU-T957,headers-prod,CWE-693,single-port prod headers: TRACE /api/health -> 405,"CSP+PP+nosniff+XFO+Referrer, Server without version",server=uvicorn | csp=Y pp=Y xcto=Y xfo=Y rp=Y cc=no-store rid=Y,PASS,prod_headers.py;prod_headers_out.txt
+RT-AU-T958,headers-prod,CWE-693,single-port prod headers: GET /assets/x.js.map -> 404,"CSP+PP+nosniff+XFO+Referrer, Server without version",server=uvicorn | csp=Y pp=Y xcto=Y xfo=Y rp=Y cc=- rid=Y,PASS,prod_headers.py;prod_headers_out.txt
+RT-AU-T960,resource,CWE-770,single-port prod: unauthenticated 256 MB JSON body to /api/auth/login,refused early (413) without buffering,"422 after full read; uvicorn RSS 129 MB -> 652 MB, peak 914 MB (64 MB body -> peak 324 MB)",FAIL,bigbody.py;bigbody_out.txt
+RT-AU-T961,resource,CWE-770,single-port prod: unauthenticated 256 MB multipart to import preview,refused without buffering,"401 in 0.49 s, RSS unchanged (auth before body)",PASS,bigbody.py;bigbody_out.txt
+RT-AU-T970,erp,CWE-400,"IF-10 ERP session settings: default_transaction_read_only=on, statement_timeout, application_name=ckam (PgErpSource)",applied,"{'default_transaction_read_only': 'on', 'application_name': 'ckam', 'statement_timeout': '60000'}",PASS,erp_timeout.py;erp_connect_out.txt;erp_stmt_out.txt
+RT-AU-T971,erp,CWE-400,IF-10 ERP background copy reader statement_timeout,120 s,statement_timeout '120000',PASS,erp_timeout.py;erp_connect_out.txt;erp_stmt_out.txt
+RT-AU-T972,erp,CWE-400,"IF-10 ERP connect to a black-hole listener, default timeout",ErpUnavailable -> 503 within ~10 s,"10.01 s, 503 ""The ERP database could not be reached (TimeoutError).""",PASS,erp_timeout.py;erp_connect_out.txt;erp_stmt_out.txt
+RT-AU-T973,erp,CWE-400,IF-10 ERP connect timeout honours ERP_CONNECT_TIMEOUT_SECONDS=3,~3 s,"3.00 s, 503",PASS,erp_timeout.py;erp_connect_out.txt;erp_stmt_out.txt
+RT-AU-T974,erp,CWE-400,"IF-10 ERP host 192.0.2.1 (TEST-NET, network-less container)",ErpUnavailable 503,"0.00 s, 503 (OSError)",PASS,erp_timeout.py;erp_connect_out.txt;erp_stmt_out.txt
+RT-AU-T975,erp,CWE-400,IF-10 ERP not configured,ErpUnavailable 503 plain sentence,"503 ""The ERP connection is not set up on this server.""",PASS,erp_timeout.py;erp_connect_out.txt;erp_stmt_out.txt
+RT-AU-T976,erp,CWE-400,IF-10 ERP session as seen by the server (stand-in = local sec Postgres): transaction_read_only / statement_timeout / application_name,on / 1min / ckam,ro='on' dro='on' st='1min' app='ckam',PASS,erp_timeout.py;erp_connect_out.txt;erp_stmt_out.txt
+RT-AU-T977,erp,CWE-400,IF-10 ERP slow query pg_sleep(6) with ERP_STATEMENT_TIMEOUT_SECONDS=2,"cancelled ~2 s, friendly 503","2.02 s, 503 ""The ERP database took too long to answer...""",PASS,erp_timeout.py;erp_connect_out.txt;erp_stmt_out.txt
+RT-AU-T978,erp,CWE-400,IF-10 ERP write attempt CREATE TEMP TABLE,refused (read-only),503 ReadOnlySQLTransactionError,PASS,erp_timeout.py;erp_connect_out.txt;erp_stmt_out.txt
+RT-AU-T979,erp,CWE-400,IF-10 ERP attempt to switch the transaction to read-write,refused,503 ActiveSQLTransactionError,PASS,erp_timeout.py;erp_connect_out.txt;erp_stmt_out.txt
+RT-AU-T9800,audit-db,CWE-778,AU-10/IF-05/IF-06 T1 UPDATE audit_log,error,ERROR audit_log rows are append-only,PASS,rt_append_only.sql;rt_append_only.out.txt
+RT-AU-T9801,audit-db,CWE-778,AU-10/IF-05/IF-06 T2 DELETE newest audit_log row,error,ERROR append-only,PASS,rt_append_only.sql;rt_append_only.out.txt
+RT-AU-T9802,audit-db,CWE-778,AU-10/IF-05/IF-06 T3 TRUNCATE audit_log,error,ERROR ... TRUNCATE is not allowed,PASS,rt_append_only.sql;rt_append_only.out.txt
+RT-AU-T9803,audit-db,CWE-778,AU-10/IF-05/IF-06 T4 UPDATE asset_event,error,ERROR append-only; insert a CORRECTION event,PASS,rt_append_only.sql;rt_append_only.out.txt
+RT-AU-T9804,audit-db,CWE-778,AU-10/IF-05/IF-06 T5 DELETE asset_event,error,ERROR append-only,PASS,rt_append_only.sql;rt_append_only.out.txt
+RT-AU-T9805,audit-db,CWE-778,AU-10/IF-05/IF-06 T6 TRUNCATE asset_event CASCADE,error,ERROR TRUNCATE is not allowed,PASS,rt_append_only.sql;rt_append_only.out.txt
+RT-AU-T9806,audit-db,CWE-778,AU-10/IF-05/IF-06 T7 TRUNCATE master_audit,error,ERROR TRUNCATE is not allowed,PASS,rt_append_only.sql;rt_append_only.out.txt
+RT-AU-T9807,audit-db,CWE-778,AU-10/IF-05/IF-06 T8 TRUNCATE asset_field_change,error,ERROR TRUNCATE is not allowed,PASS,rt_append_only.sql;rt_append_only.out.txt
+RT-AU-T9808,audit-db,CWE-778,AU-10/IF-05/IF-06 T9 UPDATE/DELETE asset_field_change (master_audit has 0 rows here: row triggers present but not exercisable),error,asset_field_change ERROR x2; master_audit UPDATE 0/DELETE 0 (empty),PASS,rt_append_only.sql;rt_append_only.out.txt
+RT-AU-T9809,audit-db,CWE-778,AU-10/IF-05/IF-06 T10 IF-06 SET LOCAL ckam.allow_audit_purge=on + DELETE newest audit row,error (5-year floor),ERROR append-only,PASS,rt_append_only.sql;rt_append_only.out.txt
+RT-AU-T9810,audit-db,CWE-778,AU-10/IF-05/IF-06 T11 flag on + DELETE all rows younger than 5 years,error,ERROR append-only,PASS,rt_append_only.sql;rt_append_only.out.txt
+RT-AU-T9811,audit-db,CWE-778,AU-10/IF-05/IF-06 T12 flag on: a row INSERTed with at=now()-6y can be deleted,allowed by design (only old-dated rows),INSERT 1 / DELETE 1 (the at column is client-settable on INSERT),INFO,rt_append_only.sql;rt_append_only.out.txt
+RT-AU-T9812,audit-db,CWE-778,AU-10/IF-05/IF-06 T14 ckam_purge_audit_log(now()),refused,ERROR needs a cut-off at least 5 years in the past,PASS,rt_append_only.sql;rt_append_only.out.txt
+RT-AU-T9813,audit-db,CWE-778,AU-10/IF-05/IF-06 T15 ckam_purge_audit_log(now()-4y11m),refused,ERROR needs >= 5 years,PASS,rt_append_only.sql;rt_append_only.out.txt
+RT-AU-T9814,audit-db,CWE-778,AU-10/IF-05/IF-06 T16 ckam_purge_audit_log(now()-6y),"allowed, removes only older rows",0 rows,PASS,rt_append_only.sql;rt_append_only.out.txt
+RT-AU-T9815,audit-db,CWE-778,AU-10/IF-05/IF-06 T17 purge function without the flag,refused,ERROR purge is not allowed,PASS,rt_append_only.sql;rt_append_only.out.txt
+RT-AU-T9816,audit-db,CWE-778,AU-10/IF-05/IF-06 T18 EXECUTE on purge function revoked from PUBLIC,owner only,proacl {ckam=X/ckam},PASS,rt_append_only.sql;rt_append_only.out.txt
+RT-AU-T9817,audit-db,CWE-778,AU-10/IF-05/IF-06 T19 RESIDUAL owner/superuser DISABLE TRIGGER then TRUNCATE,"possible (residual, EXT-07)","ALTER TABLE ok, TRUNCATE ok, 0 rows (rolled back)",FAIL,rt_append_only.sql;rt_append_only.out.txt
+RT-AU-T9818,audit-db,CWE-778,AU-10/IF-05/IF-06 T20 RESIDUAL superuser session_replication_role=replica skips triggers,"possible (residual, EXT-07)",DELETE 1 on asset_event (rolled back),FAIL,rt_append_only.sql;rt_append_only.out.txt
+RT-AU-T9819,audit-db,CWE-778,AU-10/IF-05/IF-06 T21 least-privilege role simulation: TRUNCATE / DISABLE TRIGGER / purge / DELETE with flag,all refused,permission denied / must be owner / permission denied / append-only,PASS,rt_append_only.sql;rt_append_only.out.txt
+RT-AU-T9820,audit-db,CWE-778,AU-10/IF-05/IF-06 App DB role in the Docker stack,non-superuser,ckam rolsuper=t (Docker dev/test design; prod = owner role ckassetapp),INFO,rt_append_only.sql;rt_append_only.out.txt
+RT-AU-T9821,audit-db,CWE-778,"AU-10/IF-05/IF-06 After ROLLBACK: rows and triggers unchanged, probe role gone",unchanged,"audit 1492 / events 25, 4 truncate triggers enabled, role gone",PASS,rt_append_only.sql;rt_append_only.out.txt
+RT-AU-T990,auth-timing,CWE-208,"AU-01 sign-in time: existing, wrong password (n=36)",within a few ms of the others,"median 41.84 ms (p10 37.47 / p90 51.53) codes {""401"":36}",PASS,timing.py;timing_out.json
+RT-AU-T991,auth-timing,CWE-208,AU-01 sign-in time: non-existent (n=36),within a few ms of the others,"median 39.39 ms (p10 36.66 / p90 44.36) codes {""401"":36}",PASS,timing.py;timing_out.json
+RT-AU-T992,auth-timing,CWE-208,AU-01 sign-in time: deactivated (SECDIS) (n=36),within a few ms of the others,"median 39.39 ms (p10 37.56 / p90 47.34) codes {""401"":36}",PASS,timing.py;timing_out.json
+RT-AU-T993,auth-timing,CWE-208,AU-01 sign-in time: sign-in off (SECNOLOGIN) (n=36),within a few ms of the others,"median 42.16 ms (p10 37.23 / p90 47.51) codes {""401"":36}",PASS,timing.py;timing_out.json
+RT-AU-T994,auth-timing,CWE-208,"AU-01 sign-in time: locked (SECLOCK), wrong pw (n=36)",within a few ms of the others,"median 40.05 ms (p10 36.59 / p90 47.15) codes {""423"":36}",PASS,timing.py;timing_out.json
+RT-AU-T995,auth-timing,CWE-208,"AU-01 sign-in time: existing, right password (n=10)",within a few ms of the others,"median 41.95 ms (p10 38.99 / p90 56.47) codes {""200"":10}",PASS,timing.py;timing_out.json
+RT-AU-T996,auth-timing,CWE-208,AU-01 spread of medians across all six states,< 5 ms,39.39 .. 42.16 ms (2.8 ms; before: 41.7 vs 7.4 ms),PASS,timing_out.json
+RT-AU-T1001,bruteforce,CWE-362,AU-16 20 parallel wrong guesses on one throw-away account (BRUTE11),"failed_login_count 5, one LOCKED event","10x401 + 10x429 (per-login-id limit); failed_login_count=5; 1 LOCKED; 5 counted + 5 ""wrong while locked (not counted)""",PASS,race.py
+RT-AU-T1002,rate-limit,CWE-307,"AU-03 login per address: 21 attempts, distinct ids",429 on #21 + Retry-After + plain sentence,"first 429 at #21, Retry-After 60, ""Too many sign-in attempts. Wait a minute and try again.""",PASS,ratelimit.py;ratelimit_out.json
+RT-AU-T1003,rate-limit,CWE-307,AU-03 login per login id: 11 attempts same id,429 on #11,"first 429 at #11, Retry-After 60",PASS,ratelimit_out.json
+RT-AU-T1004,rate-limit,CWE-307,"AU-03 per-login-id key ignores case and surrounding spaces (""RL-SAME-ID "")",429,429,PASS,ratelimit_out.json
+RT-AU-T1005,rate-limit,CWE-307,AU-03 refresh per address: 61 calls,429 on #61,first 429 at #61,PASS,ratelimit_out.json
+RT-AU-T1006,rate-limit,CWE-307,AU-03 change-password per address: 11 calls (unauthenticated calls count too),429 on #11,first 429 at #11 (limit runs before authentication),PASS,ratelimit_out.json
+RT-AU-T1007,rate-limit,CWE-307,AU-03 window recovers after 60 s,normal answer,401,PASS,ratelimit_out.json
+RT-AU-T1008,rate-limit,CWE-348,"AU-03 X-Forwarded-For after limit, peer = network address (like a LAN client / nginx)",429 (XFF ignored),"21st plain 429, 22nd with XFF 429",PASS,xff.py;xff_out.json
+RT-AU-T1009,rate-limit,CWE-348,"AU-03 X-Forwarded-For after limit, peer = 127.0.0.1 (uvicorn default --forwarded-allow-ips=127.0.0.1)",429,22nd with XFF answered 401 (fresh bucket); audit_log ip = the forged 203.0.113.77,FAIL,xff.py;xff_out.json;RT-AII-N2
+RT-AU-T1010,rate-limit,CWE-770,AU-03 Docker stack: every :3411 browser user has the address of the nginx container,real client address,Playwright sign-ins recorded as 172.25.0.4 (nginx); TRUSTED_PROXIES empty and nginx sends no X-Forwarded-For -> one shared 20/min bucket for all web users (dev/UAT only),FAIL,audit query;RT-AII-N3
+RT-AU-T1011,logging,A09:2021,"RATE_LIMITED SECURITY rows written (endpoint, by, retry), no password","present, no secret","7 rows; changes={endpoint, limited_by, retry_after_seconds[, login_id]}",PASS,audit query
+RT-AU-T1012,logging,CWE-532,Test password Sec#Test2026ok in /data/logs (app/audit/error .jsonl),0 files,none,PASS,grep
+RT-AU-T1013,logging,CWE-532,"Other passwords typed in this retest (new, wrong, weak probes) in /data/logs",0 files,none,PASS,grep
+RT-AU-T1014,logging,CWE-532,JWTs / refresh_token= values in /data/logs,0 files,none,PASS,grep
+RT-AU-T1015,logging,CWE-532,"Passwords / JWTs in audit_log, error_log, client_report, system_event",0 rows,0 / 0 / 0 / 0,PASS,SQL
+RT-AU-T1016,error-handling,CWE-209,error_log rows with status >= 500 during the whole retest,0,0 (all malformed input answered 4xx with request id),PASS,SQL
+RT-AU-T1017,logging,A09:2021,Session-ended / revoked-token replays are audited,SECURITY row,INVALID_TOKEN rows (max 1/min per address; actor not named),INFO,errors.py
+RT-AU-T1018,dependencies,A06:2021,npm audit --omit=dev (frontend),0,0 vulnerabilities of 141 prod packages (unchanged),PASS,npm_audit_prod.json
+RT-AU-T1019,dependencies,A06:2021,pip freeze of rebuilt api image vs earlier pip_audit input,no new advisories,"identical versions; constraints.txt pins ecdsa 0.19.2 / python-jose 3.5.0 (IF-12 accepted, unchanged)",PASS,pip_freeze_rebuilt.txt

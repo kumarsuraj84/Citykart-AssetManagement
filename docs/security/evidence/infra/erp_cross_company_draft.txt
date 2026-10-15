@@ -1,0 +1,24 @@
+
+### CKSPL operator -> CKVPL open ERP PO draft (expect 403/404)
+SECOPIT GET /api/erp/pos/9002002/draft -> 200
+{"erp_vendor":{"code":"SUP-VPL-1","name":"SEC ERP Supplier CKVPL","gstin":null,"pan":null},"vendor_suggestions":[],"vendor_registrations":[],"vendor":null,"vendor_linked":false,"undecided_item_count":1,"readiness":"NEEDS_INPUT","problems":[{"kind":"VENDOR_UNMATCHED","message":"Vendor needs matching."},{"kind":"ITEMS_UNDECIDED","count":1,"message":"1 item needs a decision."}],"untracked_lines":[],"erp_po_code":9002002,"po_number":"ERP-VPL-0002","po_date":"2026-09-30","company_id":null,"company_code":"CKVPL","company_name":"CKVPL","cost_center_id":null,"vendor_id":null,"vendor_name":"SEC ERP Sup...
+
+### CKSPL operator -> own CKSPL ERP PO draft (control, expect 200)
+SECOPIT GET /api/erp/pos/9001002/draft -> 200
+{"erp_vendor":{"code":"SUP-SPL-1","name":"SEC ERP Supplier CKSPL","gstin":"06ABCDE1234F1Z5","pan":"ABCDE1234F","group_key":"CKSPL:ABCDE1234F"},"vendor_suggestions":[],"vendor_registrations":[],"vendor":{"id":1,"name":"SEC IT Supplies CKSPL"},"vendor_linked":true,"undecided_item_count":0,"readiness":"READY","problems":[],"untracked_lines":[],"erp_po_code":9001002,"po_number":"ERP-SPL-0002","po_date":"2026-09-30","company_id":1,"company_code":"CKSPL","company_name":"CityKart Stores SEC-TEST (CKSPL)","cost_center_id":null,"vendor_id":1,"vendor_name":"SEC ERP Supplier CKSPL","warehouse_code":"SPA"...
+
+### CKVPL operator -> CKSPL open ERP PO draft (expect 403/404)
+SECOPITV GET /api/erp/pos/9001002/draft -> 200
+{"erp_vendor":{"code":"SUP-SPL-1","name":"SEC ERP Supplier CKSPL","gstin":null,"pan":null},"vendor_suggestions":[],"vendor_registrations":[],"vendor":null,"vendor_linked":false,"undecided_item_count":1,"readiness":"NEEDS_INPUT","problems":[{"kind":"VENDOR_UNMATCHED","message":"Vendor needs matching."},{"kind":"ITEMS_UNDECIDED","count":1,"message":"1 item needs a decision."}],"untracked_lines":[],"erp_po_code":9001002,"po_number":"ERP-SPL-0002","po_date":"2026-09-30","company_id":null,"company_code":"CKSPL","company_name":"CKSPL","cost_center_id":null,"vendor_id":null,"vendor_name":"SEC ERP Sup...
+
+### CKSPL operator ERP PO list: must not list CKVPL POs
+SECOPIT GET /api/erp/pos?envelope=true -> 200
+{"pos":[{"po_code":9001002,"po_number":"ERP-SPL-0002","po_date":"2026-09-30","company_id":1,"company_code":"CKSPL","delivery_location":"SPA","vendor_id":1,"vendor_name":"SEC IT Supplies CKSPL","line_count":1,"net_amount":64900,"tracked_lines":1,"untracked_lines":0,"erp_vendor_code":"SUP-SPL-1","erp_vendor_name":"SEC ERP Supplier CKSPL","vendor_linked":true,"undecided_item_count":0,"tracked_line_count":1,"untracked_line_count":0,"readiness":"READY","problems":[],"suggested_vendor":null}],"counts":{"all":1,"ready":1,"needs_input":0},"freshness":{"configured":false,"copied":true,"data_as_of":"202...
+
+### CKSPL operator -> CKVPL receipts
+SECOPIT GET /api/erp/pos/9002002/receipts -> 404
+{"detail":"Not Found","request_id":"a5855d67d9834be993f049c3b9f51180"}
+
+### CKSPL operator -> CKVPL PI
+SECOPIT GET /api/erp/pos/9002002/pi -> 404
+{"detail":"Not Found","request_id":"98a78585cc454b18b182dea32f1dd433"}

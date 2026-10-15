@@ -1,0 +1,415 @@
+[
+ {
+  "label": "web-root",
+  "url": "http://localhost:3411/",
+  "status": 200,
+  "headers": {
+   "accept-ranges": "bytes",
+   "cache-control": "no-cache",
+   "connection": "keep-alive",
+   "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+   "content-type": "text/html",
+   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+   "referrer-policy": "strict-origin-when-cross-origin",
+   "server": "nginx",
+   "x-content-type-options": "nosniff",
+   "x-frame-options": "SAMEORIGIN"
+  },
+  "body": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <link rel=\"icon\" type=\"image/webp\" href=\"/favicon.webp\" />\n    <meta name=\"viewport\" "
+ },
+ {
+  "label": "web-spa",
+  "url": "http://localhost:3411/assets/42",
+  "status": 200,
+  "headers": {
+   "accept-ranges": "bytes",
+   "cache-control": "no-cache",
+   "connection": "keep-alive",
+   "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+   "content-type": "text/html",
+   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+   "referrer-policy": "strict-origin-when-cross-origin",
+   "server": "nginx",
+   "x-content-type-options": "nosniff",
+   "x-frame-options": "SAMEORIGIN"
+  },
+  "body": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <link rel=\"icon\" type=\"image/webp\" href=\"/favicon.webp\" />\n    <meta name=\"viewport\" "
+ },
+ {
+  "label": "web-api-health",
+  "url": "http://localhost:3411/api/health",
+  "status": 200,
+  "headers": {
+   "cache-control": "no-store, no-store",
+   "connection": "keep-alive",
+   "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+   "content-type": "application/json",
+   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+   "referrer-policy": "strict-origin-when-cross-origin, strict-origin-when-cross-origin",
+   "server": "nginx",
+   "x-content-type-options": "nosniff, nosniff",
+   "x-frame-options": "SAMEORIGIN, SAMEORIGIN",
+   "x-request-id": "fba378c8256f4e85bc224e764ff79cdf"
+  },
+  "body": "{\"status\":\"ok\"}"
+ },
+ {
+  "label": "web-401",
+  "url": "http://localhost:3411/api/auth/capabilities",
+  "status": 401,
+  "headers": {
+   "cache-control": "no-store, no-store",
+   "connection": "keep-alive",
+   "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+   "content-type": "application/json",
+   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+   "referrer-policy": "strict-origin-when-cross-origin, strict-origin-when-cross-origin",
+   "server": "nginx",
+   "www-authenticate": "Bearer",
+   "x-content-type-options": "nosniff, nosniff",
+   "x-frame-options": "SAMEORIGIN, SAMEORIGIN",
+   "x-request-id": "ba3f13f7c7d143c6af42804e2dfa38d5"
+  },
+  "body": "{\"detail\":\"Not authenticated\",\"request_id\":\"ba3f13f7c7d143c6af42804e2dfa38d5\"}"
+ },
+ {
+  "label": "web-404",
+  "url": "http://localhost:3411/api/nope-rt",
+  "status": 404,
+  "headers": {
+   "cache-control": "no-store, no-store",
+   "connection": "keep-alive",
+   "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+   "content-type": "application/json",
+   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+   "referrer-policy": "strict-origin-when-cross-origin, strict-origin-when-cross-origin",
+   "server": "nginx",
+   "x-content-type-options": "nosniff, nosniff",
+   "x-frame-options": "SAMEORIGIN, SAMEORIGIN",
+   "x-request-id": "a3655bf2b8854d01aa46a36726c1ae92"
+  },
+  "body": "{\"detail\":\"Not Found\",\"request_id\":\"a3655bf2b8854d01aa46a36726c1ae92\"}"
+ },
+ {
+  "label": "web-index",
+  "url": "http://localhost:3411/index.html",
+  "status": 200,
+  "headers": {
+   "accept-ranges": "bytes",
+   "cache-control": "no-cache",
+   "connection": "keep-alive",
+   "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+   "content-type": "text/html",
+   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+   "referrer-policy": "strict-origin-when-cross-origin",
+   "server": "nginx",
+   "x-content-type-options": "nosniff",
+   "x-frame-options": "SAMEORIGIN"
+  },
+  "body": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <link rel=\"icon\" type=\"image/webp\" href=\"/favicon.webp\" />\n    <meta name=\"viewport\" "
+ },
+ {
+  "label": "web-413",
+  "url": "http://localhost:3411/api/auth/login",
+  "status": 413,
+  "headers": {
+   "cache-control": "no-store",
+   "connection": "close",
+   "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+   "content-type": "application/json",
+   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+   "referrer-policy": "strict-origin-when-cross-origin",
+   "server": "nginx",
+   "x-content-type-options": "nosniff",
+   "x-frame-options": "SAMEORIGIN"
+  },
+  "body": "{\"detail\":\"The file is too large to upload. Choose a smaller file and try again.\"}"
+ },
+ {
+  "label": "map /assets/index-CC_Q2ZKn.js",
+  "url": "http://localhost:3411/assets/index-CC_Q2ZKn.js.map",
+  "status": 404,
+  "headers": {
+   "connection": "keep-alive",
+   "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+   "content-type": "text/html",
+   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+   "referrer-policy": "strict-origin-when-cross-origin",
+   "server": "nginx",
+   "x-content-type-options": "nosniff",
+   "x-frame-options": "SAMEORIGIN"
+  },
+  "body": "<html>\r\n<head><title>404 Not Found</title></head>\r\n<body>\r\n<center><h1>404 Not Found</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n"
+ },
+ {
+  "label": "map /assets/index-De2GExsP.css",
+  "url": "http://localhost:3411/assets/index-De2GExsP.css.map",
+  "status": 404,
+  "headers": {
+   "connection": "keep-alive",
+   "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+   "content-type": "text/html",
+   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+   "referrer-policy": "strict-origin-when-cross-origin",
+   "server": "nginx",
+   "x-content-type-options": "nosniff",
+   "x-frame-options": "SAMEORIGIN"
+  },
+  "body": "<html>\r\n<head><title>404 Not Found</title></head>\r\n<body>\r\n<center><h1>404 Not Found</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n"
+ },
+ {
+  "label": "fake-map",
+  "url": "http://localhost:3411/assets/x.js.map",
+  "status": 404,
+  "headers": {
+   "connection": "keep-alive",
+   "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+   "content-type": "text/html",
+   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+   "referrer-policy": "strict-origin-when-cross-origin",
+   "server": "nginx",
+   "x-content-type-options": "nosniff",
+   "x-frame-options": "SAMEORIGIN"
+  },
+  "body": "<html>\r\n<head><title>404 Not Found</title></head>\r\n<body>\r\n<center><h1>404 Not Found</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n"
+ },
+ {
+  "label": "fake-js",
+  "url": "http://localhost:3411/assets/does-not-exist.js",
+  "status": 404,
+  "headers": {
+   "connection": "keep-alive",
+   "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+   "content-type": "text/html",
+   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+   "referrer-policy": "strict-origin-when-cross-origin",
+   "server": "nginx",
+   "x-content-type-options": "nosniff",
+   "x-frame-options": "SAMEORIGIN"
+  },
+  "body": "<html>\r\n<head><title>404 Not Found</title></head>\r\n<body>\r\n<center><h1>404 Not Found</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n"
+ },
+ {
+  "label": "dotenv",
+  "url": "http://localhost:3411/.env",
+  "status": 200,
+  "headers": {
+   "accept-ranges": "bytes",
+   "cache-control": "no-cache",
+   "connection": "keep-alive",
+   "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+   "content-type": "text/html",
+   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+   "referrer-policy": "strict-origin-when-cross-origin",
+   "server": "nginx",
+   "x-content-type-options": "nosniff",
+   "x-frame-options": "SAMEORIGIN"
+  },
+  "body": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <link rel=\"icon\" type=\"image/webp\" href=\"/favicon.webp\" />\n    <meta name=\"viewport\" "
+ },
+ {
+  "label": "trav-web",
+  "url": "http://localhost:3411/assets/..%2f..%2f..%2fetc%2fpasswd",
+  "status": 400,
+  "headers": {
+   "connection": "close",
+   "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+   "content-type": "text/html",
+   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+   "referrer-policy": "strict-origin-when-cross-origin",
+   "server": "nginx",
+   "x-content-type-options": "nosniff",
+   "x-frame-options": "SAMEORIGIN"
+  },
+  "body": "<html>\r\n<head><title>400 Bad Request</title></head>\r\n<body>\r\n<center><h1>400 Bad Request</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n"
+ },
+ {
+  "label": "trav-web-5c",
+  "url": "http://localhost:3411/assets/..%5c..%5cetc%5cpasswd",
+  "status": 200,
+  "headers": {
+   "accept-ranges": "bytes",
+   "cache-control": "no-cache",
+   "connection": "keep-alive",
+   "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+   "content-type": "text/html",
+   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+   "referrer-policy": "strict-origin-when-cross-origin",
+   "server": "nginx",
+   "x-content-type-options": "nosniff",
+   "x-frame-options": "SAMEORIGIN"
+  },
+  "body": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <link rel=\"icon\" type=\"image/webp\" href=\"/favicon.webp\" />\n    <meta name=\"viewport\" "
+ },
+ {
+  "label": "api-health",
+  "url": "http://127.0.0.1:8200/api/health",
+  "status": 200,
+  "headers": {
+   "cache-control": "no-store",
+   "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+   "content-type": "application/json",
+   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+   "referrer-policy": "strict-origin-when-cross-origin",
+   "server": "uvicorn",
+   "x-content-type-options": "nosniff",
+   "x-frame-options": "SAMEORIGIN",
+   "x-request-id": "79e74ae833404a5982f4eb91611a3028"
+  },
+  "body": "{\"status\":\"ok\"}"
+ },
+ {
+  "label": "api-401",
+  "url": "http://127.0.0.1:8200/api/auth/capabilities",
+  "status": 401,
+  "headers": {
+   "cache-control": "no-store",
+   "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+   "content-type": "application/json",
+   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+   "referrer-policy": "strict-origin-when-cross-origin",
+   "server": "uvicorn",
+   "www-authenticate": "Bearer",
+   "x-content-type-options": "nosniff",
+   "x-frame-options": "SAMEORIGIN",
+   "x-request-id": "3758ff1c4c75441ebb691eb5be6de2fc"
+  },
+  "body": "{\"detail\":\"Not authenticated\",\"request_id\":\"3758ff1c4c75441ebb691eb5be6de2fc\"}"
+ },
+ {
+  "label": "api-404",
+  "url": "http://127.0.0.1:8200/api/nope-rt",
+  "status": 404,
+  "headers": {
+   "cache-control": "no-store",
+   "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+   "content-type": "application/json",
+   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+   "referrer-policy": "strict-origin-when-cross-origin",
+   "server": "uvicorn",
+   "x-content-type-options": "nosniff",
+   "x-frame-options": "SAMEORIGIN",
+   "x-request-id": "8c81f517bb4c4706b64c16be13842f79"
+  },
+  "body": "{\"detail\":\"Not Found\",\"request_id\":\"8c81f517bb4c4706b64c16be13842f79\"}"
+ },
+ {
+  "label": "api-422",
+  "url": "http://127.0.0.1:8200/api/auth/login",
+  "status": 422,
+  "headers": {
+   "cache-control": "no-store",
+   "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+   "content-type": "application/json",
+   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+   "referrer-policy": "strict-origin-when-cross-origin",
+   "server": "uvicorn",
+   "x-content-type-options": "nosniff",
+   "x-frame-options": "SAMEORIGIN",
+   "x-request-id": "0a52d3675302403186bba41205aa8acc"
+  },
+  "body": "{\"detail\":\"Login must be text. Password is required.\",\"errors\":[\"Login must be text.\",\"Password is required.\"],\"request_id\":\"0a52d3675302403186bba41205aa8acc\"}"
+ },
+ {
+  "label": "api-200-auth",
+  "url": "http://127.0.0.1:8200/api/auth/capabilities",
+  "status": 200,
+  "headers": {
+   "cache-control": "no-store",
+   "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+   "content-type": "application/json",
+   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+   "referrer-policy": "strict-origin-when-cross-origin",
+   "server": "uvicorn",
+   "x-content-type-options": "nosniff",
+   "x-frame-options": "SAMEORIGIN",
+   "x-request-id": "5e2a4459b93b44918dcc8b402468682f"
+  },
+  "body": "{\"role\":\"VIEWER\",\"role_label\":\"View Only\",\"is_head_office_admin\":false,\"work_areas\":[\"IT\",\"NON_IT\"],\"work_area_label\":\"IT and Non-IT\",\"can_create\":{\"vendor\":fal"
+ },
+ {
+  "label": "api-docs",
+  "url": "http://127.0.0.1:8200/docs",
+  "status": 200,
+  "headers": {
+   "content-type": "text/html; charset=utf-8",
+   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+   "referrer-policy": "strict-origin-when-cross-origin",
+   "server": "uvicorn",
+   "x-content-type-options": "nosniff",
+   "x-frame-options": "SAMEORIGIN",
+   "x-request-id": "69efa5148cd940769fcc123eaf30752f"
+  },
+  "body": "\n    <!DOCTYPE html>\n    <html>\n    <head>\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <link type=\"text/css\" rel=\"stylesheet\""
+ },
+ {
+  "label": "cors-evil",
+  "url": "http://127.0.0.1:8200/api/auth/companies",
+  "status": 200,
+  "headers": {
+   "cache-control": "no-store",
+   "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+   "content-type": "application/json",
+   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+   "referrer-policy": "strict-origin-when-cross-origin",
+   "server": "uvicorn",
+   "x-content-type-options": "nosniff",
+   "x-frame-options": "SAMEORIGIN",
+   "x-request-id": "2f6fff7af9d14b6eb01ea37e41479230"
+  },
+  "body": "[{\"id\":1,\"name\":\"CityKart Stores SEC-TEST (CKSPL)\"},{\"id\":2,\"name\":\"CityKart Ventures SEC-TEST (CKVPL)\"}]"
+ },
+ {
+  "label": "cors-pre",
+  "url": "http://127.0.0.1:8200/api/auth/login",
+  "status": 405,
+  "headers": {
+   "allow": "POST",
+   "cache-control": "no-store",
+   "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+   "content-type": "application/json",
+   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+   "referrer-policy": "strict-origin-when-cross-origin",
+   "server": "uvicorn",
+   "x-content-type-options": "nosniff",
+   "x-frame-options": "SAMEORIGIN",
+   "x-request-id": "728024434c664b3ea7423a8f1c010598"
+  },
+  "body": "{\"detail\":\"Method Not Allowed\",\"request_id\":\"728024434c664b3ea7423a8f1c010598\"}"
+ },
+ {
+  "label": "cors-null",
+  "url": "http://127.0.0.1:8200/api/auth/refresh",
+  "status": 401,
+  "headers": {
+   "cache-control": "no-store",
+   "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+   "content-type": "application/json",
+   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+   "referrer-policy": "strict-origin-when-cross-origin",
+   "server": "uvicorn",
+   "x-content-type-options": "nosniff",
+   "x-frame-options": "SAMEORIGIN",
+   "x-request-id": "69c5df1ff15c45e1b60d84ebee34a22e"
+  },
+  "body": "{\"detail\":\"Invalid or expired refresh token\",\"request_id\":\"69c5df1ff15c45e1b60d84ebee34a22e\"}"
+ },
+ {
+  "label": "cors-web",
+  "url": "http://localhost:3411/api/auth/companies",
+  "status": 200,
+  "headers": {
+   "cache-control": "no-store, no-store",
+   "connection": "keep-alive",
+   "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+   "content-type": "application/json",
+   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+   "referrer-policy": "strict-origin-when-cross-origin, strict-origin-when-cross-origin",
+   "server": "nginx",
+   "x-content-type-options": "nosniff, nosniff",
+   "x-frame-options": "SAMEORIGIN, SAMEORIGIN",
+   "x-request-id": "b1d22a4464354484bc2993172c68ec92"
+  },
+  "body": "[{\"id\":1,\"name\":\"CityKart Stores SEC-TEST (CKSPL)\"},{\"id\":2,\"name\":\"CityKart Ventures SEC-TEST (CKVPL)\"}]"
+ }
+]

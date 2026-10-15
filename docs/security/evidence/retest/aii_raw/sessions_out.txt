@@ -1,0 +1,37 @@
+PASS	RT-AU-T101a	BRUTE13 forced change: temp-password session limited to change-password -> login 200 must_change=true; /capabilities 403
+PASS	RT-AU-T101b	BRUTE13 change-password returns 204 + a NEW refresh cookie -> 204 cookie=yes
+PASS	RT-AU-T101c	BRUTE13 pre-change access token after change-password -> 401 Your session has ended. Please sign in again.
+PASS	RT-AU-T101d	BRUTE13 pre-change refresh token after change-password -> 401
+PASS	RT-AU-T101e	BRUTE13 new cookie from change-password renews the session (user stays signed in) -> refresh 200, capabilities 200
+PASS	RT-AU-T102	Refresh issues a NEW refresh token each call (rotation) -> r1 200 r2 200; d1!=r1:true r1!=r2:true
+FAIL	RT-AU-T103	OLD refresh token reused after it was rotated (reuse detection) -> 200 (old token still accepted until sign-out / expiry)
+PASS	RT-AU-T104	Two refreshes in the same second produce different tokens (jti) -> different=true
+PASS	RT-AU-T105	Logout clears the cookie (Set-Cookie expires, Path=/api/auth, HttpOnly) -> 204 refresh_token=..; expires=Thu, 15 Oct 2026 12:07:19 GMT; HttpOnly; Max-Age=0; Path=/api/auth; SameSite=lax
+PASS	RT-AU-T106	After logout: same device access token -> 401 Your session has ended. Please sign in again.
+PASS	RT-AU-T107	After logout: refresh token that was logged out -> 401
+PASS	RT-AU-T108	After logout: an older, rotated-away refresh token -> 401
+PASS	RT-AU-T109	After logout on device 1: device 2 access + refresh (all sessions end by design) -> access 401 refresh 401
+PASS	RT-AU-T110	Unaffected user (SECVIEW) token after BRUTE13 sign-out -> 200
+PASS	RT-AU-T111	Logout with no cookie -> 204
+PASS	RT-AU-T112	A stale (already ended) refresh cookie cannot sign out the NEW session -> logout 204; new session capabilities 200
+PASS	RT-AU-T113	Access token presented as refresh cookie -> 401
+PASS	RT-AU-T114	Refresh token presented as bearer access token -> 401
+PASS	RT-AU-T115	Logout with an ACCESS token as the cookie does not end sessions (only a refresh token does) -> logout 204, capabilities 200
+PASS	RT-AU-T120	Deactivated account (DELETE asset-user): live access token -> deactivate 204; access 401 Account not found or inactive
+PASS	RT-AU-T121	Deactivated account: live refresh token -> 401
+PASS	RT-AU-T122	Deactivated account: new sign-in -> 401 Invalid credentials
+PASS	RT-AU-T123	Sign-in switched off (login_enabled=false): live access token ends at once (AU-07) -> PUT 200; access 401 Your session has ended. Please sign in again.
+PASS	RT-AU-T124	Sign-in switched off: live refresh token -> 401
+PASS	RT-AU-T125	Sign-in switched back ON: the old tokens stay dead (version bumped) -> PUT 200; access 401 refresh 401
+PASS	RT-AU-T126	Unrelated edit (phone) does NOT end the session (no unexpected sign-out) -> PUT 200; access 200
+PASS	RT-AU-T127	Role change OPERATOR->VIEWER: old access token -> PUT 200; access 401
+PASS	RT-AU-T128	Role change: old refresh token -> 401
+PASS	RT-AU-T129	After role change a new sign-in gets exactly the new role -> 200 role=VIEWER caps=200
+PASS	RT-AU-T130	Work-area change: old access token -> PUT 200 ; access 401
+INFO	RT-AU-T131	Login e-mail changed by admin: existing session -> PUT 200; access 200
+PASS	RT-AU-T132	Company access changed: old access + refresh tokens -> POST 204; access 401 refresh 401
+PASS	RT-AU-T133	Company access re-saved unchanged: session NOT ended -> POST 204; access 200
+PASS	RT-AU-T134	Admin password reset: old access + refresh tokens -> reset 200; access 401 refresh 401
+PASS	RT-AU-T135	Admin-issued temporary password is random (token_urlsafe(9) = 12 chars) and must be changed -> length 12
+PASS	RT-AU-T136	Reset -> sign in with temp (must_change) -> choose a strong password accepted -> login 200 must_change=true; change 204
+PASS	RT-AU-T137	Unaffected user (SECVIEW) still signed in after all the above -> 200

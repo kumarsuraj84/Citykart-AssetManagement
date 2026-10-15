@@ -1,0 +1,506 @@
+{
+ "personas": {
+  "SECHO": {
+   "landed": "/dashboard",
+   "visits": [
+    {
+     "route": "/dashboard",
+     "url": "/dashboard",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/assets",
+     "url": "/assets",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/assets/1",
+     "url": "/assets/1",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 1,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/assets/9",
+     "url": "/assets/9",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 1,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/print-labels",
+     "url": "/print-labels",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/purchase-orders",
+     "url": "/purchase-orders",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/purchase-orders/1",
+     "url": "/purchase-orders/1",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/receive",
+     "url": "/receive",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/reports",
+     "url": "/reports",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/people/employees",
+     "url": "/people/employees",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/people/stores",
+     "url": "/people/stores",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/asset-movement",
+     "url": "/asset-movement",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/import",
+     "url": "/settings/advanced/import",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/settings",
+     "url": "/settings",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/settings/vendors",
+     "url": "/settings/vendors",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/setup/vendors",
+     "url": "/settings/vendors",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/settings/catalogue/items",
+     "url": "/settings/catalogue/items",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/settings/users-access",
+     "url": "/settings/users-access",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/settings/system/logs",
+     "url": "/settings/system/logs",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/settings/system/diagnostics",
+     "url": "/settings/system/diagnostics",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/settings/erp",
+     "url": "/settings",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/purchase-orders/from-erp",
+     "url": "/purchase-orders/from-erp",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/assets?q=%3Cimg%20src%3Dx%20onerror%3Dwindow.__xss%3D1%3E",
+     "url": "/assets?q=%3Cimg%20src%3Dx%20onerror%3Dwindow.__xss%3D1%3E",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/change-password",
+     "url": "/change-password",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    }
+   ],
+   "perms": "camera=false microphone=false geolocation=false payment=false usb=false clipboard-write=true fullscreen=true",
+   "qrBlobImgs": [
+    370
+   ],
+   "csp": [],
+   "console": [],
+   "pageErrors": [],
+   "failed": []
+  },
+  "SECOPIT": {
+   "landed": "/dashboard",
+   "visits": [
+    {
+     "route": "/dashboard",
+     "url": "/dashboard",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/assets",
+     "url": "/assets",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/assets/1",
+     "url": "/assets/1",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 1,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/assets/3",
+     "url": "/assets/3",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 1,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/print-labels",
+     "url": "/print-labels",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/purchase-orders",
+     "url": "/purchase-orders",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/receive",
+     "url": "/receive",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/asset-movement",
+     "url": "/asset-movement",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/reports",
+     "url": "/reports",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    },
+    {
+     "route": "/settings/vendors",
+     "url": "/settings/vendors",
+     "csp": 0,
+     "xss": 0,
+     "injected": {
+      "imgs": 0,
+      "svgs": 0
+     },
+     "onLogin": false,
+     "imgs": 0,
+     "brokenImgs": 0,
+     "fontsOk": "loaded"
+    }
+   ],
+   "perms": "camera=false microphone=false geolocation=false payment=false usb=false clipboard-write=true fullscreen=true",
+   "qrBlobImgs": [
+    370
+   ],
+   "csp": [],
+   "console": [],
+   "pageErrors": [],
+   "failed": []
+  }
+ }
+}

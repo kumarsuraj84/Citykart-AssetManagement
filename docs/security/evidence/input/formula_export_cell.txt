@@ -1,0 +1,18 @@
+Formula-injection export confirmation (IN-T100)
+
+Plant: POST /api/masters/vendors as SECHO
+  name = =HYPERLINK("http://evil.test","IN-FORMULA")   -> vendor id 8, HTTP 201
+
+Download: GET /api/masters/vendors/export (SECHO) -> 200, 5240 bytes xlsx
+
+Inspected inside api container with python zipfile:
+  xl/worksheets/sheet1.xml, cell B7:
+    <c r="B7" t="inlineStr"><is><t>'=HYPERLINK("http://evil.test","IN-FORMULA")</t></is></c>
+  - cell type = inlineStr (string), NOT a formula
+  - value carries a LEADING APOSTROPHE (') added by app.reports.export_service._sanitize_cell
+  - count of <f> (formula) tags in the whole sheet = 0
+
+Verdict: PASS. Every xlsx/csv export routes free-text through _sanitize_row / _csv_value,
+which prefixes a leading ' to any value starting with = + - @, so Excel/LibreOffice treats
+the cell as literal text. Confirmed for the reports export, masters export, asset-users export
+(all call _sanitize_row) and the admin logs CSV export (_csv_value).

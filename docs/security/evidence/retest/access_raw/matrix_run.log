@@ -1,0 +1,10 @@
+rows: 217 rate-limited (retried once): []
+post-matrix capabilities SECSELF 200
+post-matrix capabilities SECVIEW 200
+post-matrix capabilities SECOPIT 200
+post-matrix capabilities SECOPNIT 200
+post-matrix capabilities SECFAIT 200
+post-matrix capabilities SECFANIT 200
+post-matrix capabilities SECFABOTH 200
+post-matrix capabilities SECOTHER 200
+post-matrix capabilities SECHO 200

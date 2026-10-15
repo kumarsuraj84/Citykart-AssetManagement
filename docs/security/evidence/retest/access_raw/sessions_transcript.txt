@@ -1,0 +1,56 @@
+created throw-away operator id=32 code=RT-SESS-A-771711
+PASS | A first sign-in with issued password -> must_change_password | true
+PASS | A forced change-password | 204 cookie=yes
+PASS | AU-05 forced change-password: OLD must-change access / OLD refresh / NEW cookie | 401 / 401 / 200
+PASS | AU-05 control before logout: OLD access token / OLD refresh cookie | 200 / 200
+PASS | AU-05 control before logout: other users' sessions unaffected (SECOP2IT, SECHO) | 200 / 200
+PASS | AU-05 logout with own refresh cookie | 204
+PASS | AU-05 after logout: OLD access token / OLD refresh cookie | 401 / 401 detail="Your session has ended. Please sign in again."
+PASS | AU-05 after logout: other users' sessions unaffected (SECOP2IT, SECHO) | 200 / 200
+PASS | logout with bearer only (no cookie) is a no-op for sessions | 204 caps=200
+PASS | AU-05 self change-password | 204
+PASS | AU-05 after own password change: OLD access token / OLD refresh cookie | 401 / 401 detail="Your session has ended. Please sign in again."
+PASS | AU-05 after own password change: other users' sessions unaffected (SECOP2IT, SECHO) | 200 / 200
+PASS | AU-05 the NEW cookie from change-password keeps the person signed in | 200
+PASS | old password no longer signs in | 401
+PASS | AU-07 SECHO changes role OPERATOR->VIEWER | 200
+PASS | AU-07 after role change: OLD access token / OLD refresh cookie | 401 / 401 detail="Your session has ended. Please sign in again."
+PASS | AU-07 after role change: other users' sessions unaffected (SECOP2IT, SECHO) | 200 / 200
+PASS | AU-07 sign-in after role change carries the NEW role | VIEWER
+PASS | unrelated edit (phone) by SECHO | 200
+PASS | no over-revocation: after a phone-only edit: OLD access token / OLD refresh cookie | 200 / 200
+PASS | no over-revocation: after a phone-only edit: other users' sessions unaffected (SECOP2IT, SECHO) | 200 / 200
+PASS | AU-07 SECHO changes work area IT->BOTH | 200 
+PASS | AU-07 after work-area change: OLD access token / OLD refresh cookie | 401 / 401 detail="Your session has ended. Please sign in again."
+PASS | AU-07 after work-area change: other users' sessions unaffected (SECOP2IT, SECHO) | 200 / 200
+PASS | AU-07 SECHO grants company access CKVPL | 204 
+PASS | AU-07 after company-access change: OLD access token / OLD refresh cookie | 401 / 401 detail="Your session has ended. Please sign in again."
+PASS | AU-07 after company-access change: other users' sessions unaffected (SECOP2IT, SECHO) | 200 / 200
+PASS | AU-05 SECHO resets the password | 200
+PASS | AU-05 after password reset: OLD access token / OLD refresh cookie | 401 / 401 detail="Your session has ended. Please sign in again."
+PASS | AU-05 after password reset: other users' sessions unaffected (SECOP2IT, SECHO) | 200 / 200
+PASS | pre-reset password no longer signs in | 401
+PASS | cleanup: soft-deactivate throw-away A (id 32) | 204
+created throw-away self-service id=33 code=RT-SESS-B-771711
+PASS | B forced change-password | 204
+PASS | AU-07 SECHO switches sign-in off | 200
+PASS | AU-07 after sign-in switched off (immediate, not after 15 min): OLD access token / OLD refresh cookie | 401 / 401 detail="Your session has ended. Please sign in again."
+PASS | AU-07 after sign-in switched off (immediate, not after 15 min): other users' sessions unaffected (SECOP2IT, SECHO) | 200 / 200
+PASS | sign-in while switched off | 401
+PASS | SECHO switches sign-in back on | 200
+PASS | sign-in after re-enable gives a fresh working session | 200
+PASS | the session from BEFORE the switch-off stays dead after re-enable | 401
+PASS | AU-05 SECHO soft-deactivates throw-away B (id 33) | 204
+PASS | AU-05 after deactivation: OLD access token / OLD refresh cookie | 401 / 401 detail="Account not found or inactive"
+PASS | AU-05 after deactivation: other users' sessions unaffected (SECOP2IT, SECHO) | 200 / 200
+PASS | sign-in after deactivation | 401
+SECHO row: name=undefined code=undefined company_id=undefined is_primary_owner=undefined
+created clash employee id=34 code=SECHO company 1 with a password (so it matches the company-scoped login query)
+INFO | SECHO can create an employee whose code equals the Primary Owner name (setup) | id=34
+PASS | clash: SECHO signs in with login id "SECHO" while an employee coded SECHO with a password exists | 200 asset_user_id=2 is_primary_owner=true
+PASS | clash: lower-case "secho" also resolves to the Primary Owner | 200 id=2
+PASS | clash: the employee's own password with login id "SECHO" does NOT open the employee nor SECHO | 401
+PASS | SECHO signs in again (counter reset) | 200 id=2
+PASS | cleanup: soft-deactivate clash employee (id 34) | 204
+PASS | mass-assign on POST /api/asset-users as SECFABOTH (is_primary_owner, token_version, password_hash, id in body) | 201 id=35 is_primary_owner=false
+cleanup mass-assign user 35 -> 204

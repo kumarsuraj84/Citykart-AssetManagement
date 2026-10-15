@@ -1,0 +1,461 @@
+[
+ {
+  "id": "RT-AC-T700",
+  "cwe": "CWE-620",
+  "case": "A first sign-in with issued password -> must_change_password",
+  "expected": "true",
+  "actual": "true",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T701",
+  "cwe": "CWE-620",
+  "case": "A forced change-password",
+  "expected": "204 + new refresh cookie",
+  "actual": "204 cookie=yes",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T702",
+  "cwe": "CWE-613",
+  "case": "AU-05 forced change-password: OLD must-change access / OLD refresh / NEW cookie",
+  "expected": "401 / 401 / 200",
+  "actual": "401 / 401 / 200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T703",
+  "cwe": "CWE-613",
+  "case": "AU-05 control before logout: OLD access token / OLD refresh cookie",
+  "expected": "200 / 200",
+  "actual": "200 / 200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T704",
+  "cwe": "CWE-613",
+  "case": "AU-05 control before logout: other users' sessions unaffected (SECOP2IT, SECHO)",
+  "expected": "200 / 200",
+  "actual": "200 / 200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T705",
+  "cwe": "CWE-613",
+  "case": "AU-05 logout with own refresh cookie",
+  "expected": "204",
+  "actual": "204",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T706",
+  "cwe": "CWE-613",
+  "case": "AU-05 after logout: OLD access token / OLD refresh cookie",
+  "expected": "401 / 401",
+  "actual": "401 / 401 detail=\"Your session has ended. Please sign in again.\"",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T707",
+  "cwe": "CWE-613",
+  "case": "AU-05 after logout: other users' sessions unaffected (SECOP2IT, SECHO)",
+  "expected": "200 / 200",
+  "actual": "200 / 200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T708",
+  "cwe": "CWE-613",
+  "case": "logout with bearer only (no cookie) is a no-op for sessions",
+  "expected": "204, session still alive",
+  "actual": "204 caps=200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T709",
+  "cwe": "CWE-620",
+  "case": "AU-05 self change-password",
+  "expected": "204",
+  "actual": "204",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T710",
+  "cwe": "CWE-613",
+  "case": "AU-05 after own password change: OLD access token / OLD refresh cookie",
+  "expected": "401 / 401",
+  "actual": "401 / 401 detail=\"Your session has ended. Please sign in again.\"",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T711",
+  "cwe": "CWE-613",
+  "case": "AU-05 after own password change: other users' sessions unaffected (SECOP2IT, SECHO)",
+  "expected": "200 / 200",
+  "actual": "200 / 200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T712",
+  "cwe": "CWE-613",
+  "case": "AU-05 the NEW cookie from change-password keeps the person signed in",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T713",
+  "cwe": "CWE-620",
+  "case": "old password no longer signs in",
+  "expected": "401",
+  "actual": "401",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T714",
+  "cwe": "CWE-613",
+  "case": "AU-07 SECHO changes role OPERATOR->VIEWER",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T715",
+  "cwe": "CWE-613",
+  "case": "AU-07 after role change: OLD access token / OLD refresh cookie",
+  "expected": "401 / 401",
+  "actual": "401 / 401 detail=\"Your session has ended. Please sign in again.\"",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T716",
+  "cwe": "CWE-613",
+  "case": "AU-07 after role change: other users' sessions unaffected (SECOP2IT, SECHO)",
+  "expected": "200 / 200",
+  "actual": "200 / 200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T717",
+  "cwe": "CWE-269",
+  "case": "AU-07 sign-in after role change carries the NEW role",
+  "expected": "VIEWER",
+  "actual": "VIEWER",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T718",
+  "cwe": "CWE-613",
+  "case": "unrelated edit (phone) by SECHO",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T719",
+  "cwe": "CWE-613",
+  "case": "no over-revocation: after a phone-only edit: OLD access token / OLD refresh cookie",
+  "expected": "200 / 200",
+  "actual": "200 / 200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T720",
+  "cwe": "CWE-613",
+  "case": "no over-revocation: after a phone-only edit: other users' sessions unaffected (SECOP2IT, SECHO)",
+  "expected": "200 / 200",
+  "actual": "200 / 200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T721",
+  "cwe": "CWE-613",
+  "case": "AU-07 SECHO changes work area IT->BOTH",
+  "expected": "200",
+  "actual": "200 ",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T722",
+  "cwe": "CWE-613",
+  "case": "AU-07 after work-area change: OLD access token / OLD refresh cookie",
+  "expected": "401 / 401",
+  "actual": "401 / 401 detail=\"Your session has ended. Please sign in again.\"",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T723",
+  "cwe": "CWE-613",
+  "case": "AU-07 after work-area change: other users' sessions unaffected (SECOP2IT, SECHO)",
+  "expected": "200 / 200",
+  "actual": "200 / 200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T724",
+  "cwe": "CWE-613",
+  "case": "AU-07 SECHO grants company access CKVPL",
+  "expected": "204",
+  "actual": "204 ",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T725",
+  "cwe": "CWE-613",
+  "case": "AU-07 after company-access change: OLD access token / OLD refresh cookie",
+  "expected": "401 / 401",
+  "actual": "401 / 401 detail=\"Your session has ended. Please sign in again.\"",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T726",
+  "cwe": "CWE-613",
+  "case": "AU-07 after company-access change: other users' sessions unaffected (SECOP2IT, SECHO)",
+  "expected": "200 / 200",
+  "actual": "200 / 200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T727",
+  "cwe": "CWE-640",
+  "case": "AU-05 SECHO resets the password",
+  "expected": "200 (temp password returned once)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T728",
+  "cwe": "CWE-613",
+  "case": "AU-05 after password reset: OLD access token / OLD refresh cookie",
+  "expected": "401 / 401",
+  "actual": "401 / 401 detail=\"Your session has ended. Please sign in again.\"",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T729",
+  "cwe": "CWE-613",
+  "case": "AU-05 after password reset: other users' sessions unaffected (SECOP2IT, SECHO)",
+  "expected": "200 / 200",
+  "actual": "200 / 200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T730",
+  "cwe": "CWE-640",
+  "case": "pre-reset password no longer signs in",
+  "expected": "401",
+  "actual": "401",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T731",
+  "cwe": "CWE-613",
+  "case": "cleanup: soft-deactivate throw-away A (id 32)",
+  "expected": "204",
+  "actual": "204",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T732",
+  "cwe": "CWE-620",
+  "case": "B forced change-password",
+  "expected": "204",
+  "actual": "204",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T733",
+  "cwe": "CWE-613",
+  "case": "AU-07 SECHO switches sign-in off",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T734",
+  "cwe": "CWE-613",
+  "case": "AU-07 after sign-in switched off (immediate, not after 15 min): OLD access token / OLD refresh cookie",
+  "expected": "401 / 401",
+  "actual": "401 / 401 detail=\"Your session has ended. Please sign in again.\"",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T735",
+  "cwe": "CWE-613",
+  "case": "AU-07 after sign-in switched off (immediate, not after 15 min): other users' sessions unaffected (SECOP2IT, SECHO)",
+  "expected": "200 / 200",
+  "actual": "200 / 200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T736",
+  "cwe": "CWE-613",
+  "case": "sign-in while switched off",
+  "expected": "401",
+  "actual": "401",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T737",
+  "cwe": "CWE-613",
+  "case": "SECHO switches sign-in back on",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T738",
+  "cwe": "CWE-613",
+  "case": "sign-in after re-enable gives a fresh working session",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T739",
+  "cwe": "CWE-613",
+  "case": "the session from BEFORE the switch-off stays dead after re-enable",
+  "expected": "401",
+  "actual": "401",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T740",
+  "cwe": "CWE-613",
+  "case": "AU-05 SECHO soft-deactivates throw-away B (id 33)",
+  "expected": "204",
+  "actual": "204",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T741",
+  "cwe": "CWE-613",
+  "case": "AU-05 after deactivation: OLD access token / OLD refresh cookie",
+  "expected": "401 / 401",
+  "actual": "401 / 401 detail=\"Account not found or inactive\"",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T742",
+  "cwe": "CWE-613",
+  "case": "AU-05 after deactivation: other users' sessions unaffected (SECOP2IT, SECHO)",
+  "expected": "200 / 200",
+  "actual": "200 / 200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T743",
+  "cwe": "CWE-613",
+  "case": "sign-in after deactivation",
+  "expected": "401",
+  "actual": "401",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T744",
+  "cwe": "CWE-287",
+  "case": "SECHO can create an employee whose code equals the Primary Owner name (setup)",
+  "expected": "201 (allowed: codes are per company)",
+  "actual": "id=34",
+  "result": "INFO",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T745",
+  "cwe": "CWE-287",
+  "case": "clash: SECHO signs in with login id \"SECHO\" while an employee coded SECHO with a password exists",
+  "expected": "200 as the Primary Owner (id 2)",
+  "actual": "200 asset_user_id=2 is_primary_owner=true",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T746",
+  "cwe": "CWE-287",
+  "case": "clash: lower-case \"secho\" also resolves to the Primary Owner",
+  "expected": "200 id 2",
+  "actual": "200 id=2",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T747",
+  "cwe": "CWE-287",
+  "case": "clash: the employee's own password with login id \"SECHO\" does NOT open the employee nor SECHO",
+  "expected": "401",
+  "actual": "401",
+  "result": "PASS",
+  "ev": "functional side effect: that employee cannot sign in by code; one failed attempt is counted on SECHO"
+ },
+ {
+  "id": "RT-AC-T748",
+  "cwe": "CWE-287",
+  "case": "SECHO signs in again (counter reset)",
+  "expected": "200 id 2",
+  "actual": "200 id=2",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T749",
+  "cwe": "CWE-287",
+  "case": "cleanup: soft-deactivate clash employee (id 34)",
+  "expected": "204",
+  "actual": "204",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T750",
+  "cwe": "CWE-915",
+  "case": "mass-assign on POST /api/asset-users as SECFABOTH (is_primary_owner, token_version, password_hash, id in body)",
+  "expected": "201 with is_primary_owner=false, id auto",
+  "actual": "201 id=35 is_primary_owner=false",
+  "result": "PASS",
+  "ev": ""
+ }
+]

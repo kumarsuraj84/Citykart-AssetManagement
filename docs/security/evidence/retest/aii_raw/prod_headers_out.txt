@@ -1,0 +1,9 @@
+GET /api/health -> 200 | server=uvicorn | csp=Y pp=Y xcto=Y xfo=Y rp=Y cc=no-store rid=Y
+GET /api/auth/capabilities -> 401 | server=uvicorn | csp=Y pp=Y xcto=Y xfo=Y rp=Y cc=no-store rid=Y
+GET /api/nope -> 200 | server=uvicorn | csp=Y pp=Y xcto=Y xfo=Y rp=Y cc=no-store rid=Y
+GET /assets/missing.js -> 404 | server=uvicorn | csp=Y pp=Y xcto=Y xfo=Y rp=Y cc=- rid=Y
+GET /assets/a.js -> 200 | server=uvicorn | csp=Y pp=Y xcto=Y xfo=Y rp=Y cc=- rid=Y
+GET /some/spa/route -> 200 | server=uvicorn | csp=Y pp=Y xcto=Y xfo=Y rp=Y cc=no-cache rid=Y
+POST /api/auth/login -> 422 | server=uvicorn | csp=Y pp=Y xcto=Y xfo=Y rp=Y cc=no-store rid=Y
+TRACE /api/health -> 405 | server=uvicorn | csp=Y pp=Y xcto=Y xfo=Y rp=Y cc=no-store rid=Y
+GET /assets/x.js.map -> 404 | server=uvicorn | csp=Y pp=Y xcto=Y xfo=Y rp=Y cc=- rid=Y

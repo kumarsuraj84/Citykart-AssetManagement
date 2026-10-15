@@ -1,0 +1,392 @@
+[
+  {
+    "id": "IN-T000",
+    "area": "INPUT",
+    "cwe": "89",
+    "case": "baseline exact search returns 1",
+    "expected": "1 row",
+    "actual": "total=1",
+    "result": "INFO",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T001",
+    "area": "INPUT",
+    "cwe": "89",
+    "case": "q quote",
+    "expected": "no 500, no timed sleep, literal match",
+    "actual": "status=200 ms=8 total=0",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T002",
+    "area": "INPUT",
+    "cwe": "89",
+    "case": "q boolean OR",
+    "expected": "no 500, no timed sleep, literal match",
+    "actual": "status=200 ms=8 total=0",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T003",
+    "area": "INPUT",
+    "cwe": "89",
+    "case": "q comment",
+    "expected": "no 500, no timed sleep, literal match",
+    "actual": "status=200 ms=7 total=0",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T004",
+    "area": "INPUT",
+    "cwe": "89",
+    "case": "q stacked pg_sleep",
+    "expected": "no 500, no timed sleep, literal match",
+    "actual": "status=200 ms=6 total=0",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T005",
+    "area": "INPUT",
+    "cwe": "89",
+    "case": "q union",
+    "expected": "no 500, no timed sleep, literal match",
+    "actual": "status=200 ms=6 total=0",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T006",
+    "area": "INPUT",
+    "cwe": "89",
+    "case": "q wildcard pct",
+    "expected": "no 500, no timed sleep, literal match",
+    "actual": "status=200 ms=6 total=0",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T007",
+    "area": "INPUT",
+    "cwe": "89",
+    "case": "q wildcard underscore",
+    "expected": "no 500, no timed sleep, literal match",
+    "actual": "status=200 ms=5 total=0",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T008",
+    "area": "INPUT",
+    "cwe": "89",
+    "case": "q backslash",
+    "expected": "no 500, no timed sleep, literal match",
+    "actual": "status=200 ms=5 total=0",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T010",
+    "area": "INPUT",
+    "cwe": "89",
+    "case": "sort_by stacked",
+    "expected": "ignored/validated, no 500, no sleep",
+    "actual": "status=200 ms=8",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T011",
+    "area": "INPUT",
+    "cwe": "89",
+    "case": "sort_by raw sql",
+    "expected": "ignored/validated, no 500, no sleep",
+    "actual": "status=200 ms=6",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T012",
+    "area": "INPUT",
+    "cwe": "639",
+    "case": "sort_by non-whitelisted col deleted_at",
+    "expected": "ignored/validated, no 500, no sleep",
+    "actual": "status=200 ms=7",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T013",
+    "area": "INPUT",
+    "cwe": "89",
+    "case": "sort_dir injection",
+    "expected": "ignored/validated, no 500, no sleep",
+    "actual": "status=200 ms=6",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T020",
+    "area": "INPUT",
+    "cwe": "89",
+    "case": "category_id OR injection",
+    "expected": "422/400 or empty, no 500, no sleep",
+    "actual": "status=422 ms=3",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T021",
+    "area": "INPUT",
+    "cwe": "89",
+    "case": "category_id quote",
+    "expected": "422/400 or empty, no 500, no sleep",
+    "actual": "status=422 ms=3",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T022",
+    "area": "INPUT",
+    "cwe": "20",
+    "case": "limit negative",
+    "expected": "422/400 or empty, no 500, no sleep",
+    "actual": "status=200 ms=7",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T023",
+    "area": "INPUT",
+    "cwe": "20",
+    "case": "limit huge",
+    "expected": "422/400 or empty, no 500, no sleep",
+    "actual": "status=200 ms=5",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T024",
+    "area": "INPUT",
+    "cwe": "89",
+    "case": "status injection",
+    "expected": "422/400 or empty, no 500, no sleep",
+    "actual": "status=200 ms=5",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T025",
+    "area": "INPUT",
+    "cwe": "89",
+    "case": "company_id injection",
+    "expected": "422/400 or empty, no 500, no sleep",
+    "actual": "status=422 ms=3",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T030",
+    "area": "INPUT",
+    "cwe": "89",
+    "case": "vendors list q boolean",
+    "expected": "no 500, no sleep",
+    "actual": "status=200 ms=3",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T031",
+    "area": "INPUT",
+    "cwe": "89",
+    "case": "vendors list q sleep",
+    "expected": "no 500, no sleep",
+    "actual": "status=200 ms=3",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T032",
+    "area": "INPUT",
+    "cwe": "89",
+    "case": "items q boolean",
+    "expected": "no 500, no sleep",
+    "actual": "status=200 ms=5",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T033",
+    "area": "INPUT",
+    "cwe": "89",
+    "case": "items q sleep",
+    "expected": "no 500, no sleep",
+    "actual": "status=200 ms=6",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T034",
+    "area": "INPUT",
+    "cwe": "89",
+    "case": "assets/pick q injection",
+    "expected": "no 500, no sleep",
+    "actual": "status=422 ms=2",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T035",
+    "area": "INPUT",
+    "cwe": "89",
+    "case": "purchase-orders q injection",
+    "expected": "no 500, no sleep",
+    "actual": "status=200 ms=11",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T036",
+    "area": "INPUT",
+    "cwe": "89",
+    "case": "admin logs audit q sleep",
+    "expected": "no 500, no sleep",
+    "actual": "status=200 ms=13",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T037",
+    "area": "INPUT",
+    "cwe": "89",
+    "case": "admin logs errors level inj",
+    "expected": "no 500, no sleep",
+    "actual": "status=422 ms=4",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T038",
+    "area": "INPUT",
+    "cwe": "89",
+    "case": "admin logs audit from inj",
+    "expected": "no 500, no sleep",
+    "actual": "status=422 ms=2",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T039",
+    "area": "INPUT",
+    "cwe": "89",
+    "case": "admin logs group by",
+    "expected": "no 500, no sleep",
+    "actual": "status=200 ms=11",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T050",
+    "area": "INPUT",
+    "cwe": "639/285",
+    "case": "CKVPL operator downloads CKSPL doc 1",
+    "expected": "404 (out of scope)",
+    "actual": "status=404",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T051",
+    "area": "INPUT",
+    "cwe": "285",
+    "case": "SELF_SERVICE holder downloads own doc 1",
+    "expected": "200 + attachment/nosniff",
+    "actual": "status=200 cd=attachment; filename=\"inv-spl-001.pdf\" xcto=nosniff",
+    "result": "INFO",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T052",
+    "area": "INPUT",
+    "cwe": "639",
+    "case": "CKSPL self downloads CKVPL doc 2",
+    "expected": "404",
+    "actual": "status=404",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T060",
+    "area": "INPUT",
+    "cwe": "22",
+    "case": "static /assets traversal ../../../../etc/passwd",
+    "expected": "404/no file content",
+    "actual": "status=404 leaked=false",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T061",
+    "area": "INPUT",
+    "cwe": "22",
+    "case": "static /assets traversal ..%2f..%2f..%2fetc%2fpasswd",
+    "expected": "404/no file content",
+    "actual": "status=404 leaked=false",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T062",
+    "area": "INPUT",
+    "cwe": "22",
+    "case": "static /assets traversal ....//....//etc/passwd",
+    "expected": "404/no file content",
+    "actual": "status=404 leaked=false",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T070",
+    "area": "INPUT",
+    "cwe": "200/213",
+    "case": "employees list secret leak (admin)",
+    "expected": "no password_hash/secret fields",
+    "actual": "status=404 leak=false",
+    "result": "INFO",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T071",
+    "area": "INPUT",
+    "cwe": "200/213",
+    "case": "capabilities secret leak (self)",
+    "expected": "no password_hash/secret fields",
+    "actual": "status=200 leak=false",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T072",
+    "area": "INPUT",
+    "cwe": "200/213",
+    "case": "asset detail secret leak",
+    "expected": "no password_hash/secret fields",
+    "actual": "status=200 leak=false",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T073",
+    "area": "INPUT",
+    "cwe": "285",
+    "case": "SELF_SERVICE lists all employees",
+    "expected": "403 (not allowed)",
+    "actual": "status=404",
+    "result": "INFO",
+    "evidence_ref": ""
+  }
+]

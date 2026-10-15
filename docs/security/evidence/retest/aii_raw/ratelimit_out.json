@@ -1,0 +1,162 @@
+{
+ "login_per_address": {
+  "codes": [
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   429
+  ],
+  "first_429_at": 21,
+  "retry_after": "60",
+  "body": {
+   "detail": "Too many sign-in attempts. Wait a minute and try again.",
+   "errors": [
+    "Too many sign-in attempts. Wait a minute and try again."
+   ],
+   "request_id": "f450737cfa7244e3be09436b5a4bc3e0"
+  }
+ },
+ "login_xff_spoof_after_limit": 401,
+ "login_xff_chain_after_limit": 401,
+ "login_per_login_id": {
+  "codes": [
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   429
+  ],
+  "first_429_at": 11,
+  "retry_after": "60",
+  "body": {
+   "detail": "Too many sign-in attempts. Wait a minute and try again.",
+   "errors": [
+    "Too many sign-in attempts. Wait a minute and try again."
+   ],
+   "request_id": "55eb355d6d7d4c359c72501370de1892"
+  }
+ },
+ "login_per_login_id_case_variant": 429,
+ "refresh_per_address": {
+  "codes": [
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   429
+  ],
+  "first_429_at": 61,
+  "retry_after": "60",
+  "body": {
+   "detail": "Too many sign-in attempts. Wait a minute and try again.",
+   "errors": [
+    "Too many sign-in attempts. Wait a minute and try again."
+   ],
+   "request_id": "b7de5639962141ca98692536eba95142"
+  }
+ },
+ "change_password_unauth": {
+  "codes": [
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   401,
+   429
+  ],
+  "first_429_at": 11,
+  "retry_after": "60",
+  "body": {
+   "detail": "Too many sign-in attempts. Wait a minute and try again.",
+   "errors": [
+    "Too many sign-in attempts. Wait a minute and try again."
+   ],
+   "request_id": "97b5981632704376a4fa59f93354a405"
+  }
+ },
+ "login_after_window": 401
+}

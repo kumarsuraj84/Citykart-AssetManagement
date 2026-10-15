@@ -1,0 +1,123 @@
+method,path,tag,audited,reason
+PATCH,/api/admin/logs/client-reports/{report_id},admin-logs,YES,ACCESS CLIENT_REPORT_STATUS row (confirmed)
+POST,/api/asset-users,asset-users,YES,explicit _access_event + automatic ORM DATA audit (confirmed CREATE/UPDATE/DEACTIVATE rows)
+POST,/api/asset-users/import/commit,asset-users,YES,explicit _access_event + automatic ORM DATA audit (confirmed CREATE/UPDATE/DEACTIVATE rows)
+POST,/api/asset-users/import/preview,asset-users,INTENTIONALLY_NO,read-only simulation/preview, no DB write to audit
+POST,/api/asset-users/issue-passwords,asset-users,YES,SECURITY PASSWORD_RESET row (confirmed)
+DELETE,/api/asset-users/{asset_user_id},asset-users,YES,explicit _access_event + automatic ORM DATA audit (confirmed CREATE/UPDATE/DEACTIVATE rows)
+PUT,/api/asset-users/{asset_user_id},asset-users,YES,explicit _access_event + automatic ORM DATA audit (confirmed CREATE/UPDATE/DEACTIVATE rows)
+POST,/api/asset-users/{asset_user_id}/company-access,asset-users,YES,SECURITY ACCESS_CHANGED row
+DELETE,/api/asset-users/{asset_user_id}/primary-owner,asset-users,YES,SECURITY ACCESS_CHANGED row
+POST,/api/asset-users/{asset_user_id}/primary-owner,asset-users,YES,SECURITY ACCESS_CHANGED row
+POST,/api/asset-users/{asset_user_id}/reset-password,asset-users,YES,SECURITY PASSWORD_RESET row (confirmed)
+POST,/api/assets,assets,YES,explicit asset audit + LIFECYCLE rows + automatic ORM DATA audit
+POST,/api/assets/batch,assets,YES,explicit asset audit + LIFECYCLE rows + automatic ORM DATA audit
+POST,/api/assets/bulk-action,assets,YES,explicit asset audit + LIFECYCLE rows + automatic ORM DATA audit
+POST,/api/assets/bulk-move,assets,YES,explicit asset audit + LIFECYCLE rows + automatic ORM DATA audit
+POST,/api/assets/link-items,assets,YES,explicit asset audit + LIFECYCLE rows + automatic ORM DATA audit
+PUT,/api/assets/serials,assets,YES,explicit asset audit + LIFECYCLE rows + automatic ORM DATA audit
+DELETE,/api/assets/{asset_id},assets,YES,explicit asset audit + LIFECYCLE rows + automatic ORM DATA audit
+PUT,/api/assets/{asset_id},assets,YES,explicit asset audit + LIFECYCLE rows + automatic ORM DATA audit
+POST,/api/assets/{asset_id}/corrections,assets,YES,explicit asset audit + LIFECYCLE rows + automatic ORM DATA audit
+PUT,/api/assets/{asset_id}/serial,assets,YES,explicit asset audit + LIFECYCLE rows + automatic ORM DATA audit
+POST,/api/auth/change-password,auth,YES,SECURITY PASSWORD_CHANGED / PASSWORD_CHANGE_FAILED (confirmed)
+POST,/api/auth/login,auth,YES,SECURITY LOGIN / LOGIN_FAILED / LOCKED rows (confirmed)
+POST,/api/auth/logout,auth,YES,SECURITY LOGOUT row (confirmed)
+POST,/api/auth/refresh,auth,YES,SECURITY TOKEN_REFRESH_FAILED on failure; success is a session renew
+POST,/api/bundles,bundles,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+DELETE,/api/bundles/{bundle_id},bundles,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+PUT,/api/bundles/{bundle_id},bundles,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/client-reports,client-reports,INTENTIONALLY_NO,writes its own client_report table (not business data); not an audit_log event
+POST,/api/assets/{asset_id}/documents,documents,YES,explicit asset audit + LIFECYCLE rows + automatic ORM DATA audit
+POST,/api/erp/inbox/items/resolve,erp,YES,ERP CREATE_FROM_ERP / explicit erp audit rows + ORM DATA audit
+POST,/api/erp/inbox/vendors/resolve,erp,YES,ERP CREATE_FROM_ERP / explicit erp audit rows + ORM DATA audit
+POST,/api/erp/pos/create,erp,YES,ERP CREATE_FROM_ERP / explicit erp audit rows + ORM DATA audit
+POST,/api/erp/pos/{po_code}/not-tracked,erp,YES,ERP CREATE_FROM_ERP / explicit erp audit rows + ORM DATA audit
+POST,/api/erp/purchase-orders/{po_id}/changes/apply,erp,YES,ERP CREATE_FROM_ERP / explicit erp audit rows + ORM DATA audit
+POST,/api/erp/purchase-orders/{po_id}/pi/apply,erp,YES,ERP CREATE_FROM_ERP / explicit erp audit rows + ORM DATA audit
+POST,/api/erp/stores/create,erp,YES,ERP CREATE_FROM_ERP / explicit erp audit rows + ORM DATA audit
+POST,/api/erp/sync,erp,YES,erp sync run recorded; ERP off on this stack
+POST,/api/erp/vendors/import,erp,YES,ERP CREATE_FROM_ERP / explicit erp audit rows + ORM DATA audit
+POST,/api/erp/vendors/import-group,erp,YES,ERP CREATE_FROM_ERP / explicit erp audit rows + ORM DATA audit
+DELETE,/api/erp/vendors/{vendor_id}/link,erp,YES,ERP CREATE_FROM_ERP / explicit erp audit rows + ORM DATA audit
+POST,/api/erp/vendors/{vendor_id}/link,erp,YES,ERP CREATE_FROM_ERP / explicit erp audit rows + ORM DATA audit
+POST,/api/erp/vendors/{vendor_id}/link-many,erp,YES,ERP CREATE_FROM_ERP / explicit erp audit rows + ORM DATA audit
+POST,/api/imports/assets/commit,imports,YES,import commit audited (BATCH_ADD) + ORM DATA audit
+POST,/api/imports/assets/preview,imports,INTENTIONALLY_NO,read-only simulation/preview, no DB write to audit
+POST,/api/imports/movements/commit,imports,YES,import commit audited (BATCH_ADD) + ORM DATA audit
+POST,/api/imports/movements/preview,imports,INTENTIONALLY_NO,read-only simulation/preview, no DB write to audit
+POST,/api/imports/purchase-orders/commit,imports,YES,import commit audited (BATCH_ADD) + ORM DATA audit
+POST,/api/imports/purchase-orders/preview,imports,INTENTIONALLY_NO,read-only simulation/preview, no DB write to audit
+POST,/api/items,items,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/items/maps,items,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+DELETE,/api/items/maps/{map_id},items,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/items/seed-from-subcategories,items,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+DELETE,/api/items/{item_id},items,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+PUT,/api/items/{item_id},items,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/assets/{asset_id}/events,lifecycle,YES,explicit asset audit + LIFECYCLE rows + automatic ORM DATA audit
+POST,/api/masters/brands,masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/masters/brands/import/commit,masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/masters/brands/import/preview,masters,INTENTIONALLY_NO,read-only simulation/preview, no DB write to audit
+DELETE,/api/masters/brands/{item_id},masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+PUT,/api/masters/brands/{item_id},masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/masters/categories,masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/masters/categories/import/commit,masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/masters/categories/import/preview,masters,INTENTIONALLY_NO,read-only simulation/preview, no DB write to audit
+DELETE,/api/masters/categories/{item_id},masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+PUT,/api/masters/categories/{item_id},masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/masters/companies,masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/masters/companies/import/commit,masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/masters/companies/import/preview,masters,INTENTIONALLY_NO,read-only simulation/preview, no DB write to audit
+DELETE,/api/masters/companies/{item_id},masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+PUT,/api/masters/companies/{item_id},masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/masters/cost-centers,masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/masters/cost-centers/import/commit,masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/masters/cost-centers/import/preview,masters,INTENTIONALLY_NO,read-only simulation/preview, no DB write to audit
+DELETE,/api/masters/cost-centers/{item_id},masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+PUT,/api/masters/cost-centers/{item_id},masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/masters/custom-fields,masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+DELETE,/api/masters/custom-fields/{item_id},masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+PUT,/api/masters/custom-fields/{item_id},masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/masters/departments,masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/masters/departments/import/commit,masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/masters/departments/import/preview,masters,INTENTIONALLY_NO,read-only simulation/preview, no DB write to audit
+DELETE,/api/masters/departments/{item_id},masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+PUT,/api/masters/departments/{item_id},masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/masters/locations,masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/masters/locations/import/commit,masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/masters/locations/import/preview,masters,INTENTIONALLY_NO,read-only simulation/preview, no DB write to audit
+DELETE,/api/masters/locations/{item_id},masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+PUT,/api/masters/locations/{item_id},masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/masters/subcategories,masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/masters/subcategories/import/commit,masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/masters/subcategories/import/preview,masters,INTENTIONALLY_NO,read-only simulation/preview, no DB write to audit
+DELETE,/api/masters/subcategories/{item_id},masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+PUT,/api/masters/subcategories/{item_id},masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/masters/vendors,masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/masters/vendors/import/commit,masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/masters/vendors/import/preview,masters,INTENTIONALLY_NO,read-only simulation/preview, no DB write to audit
+DELETE,/api/masters/vendors/{item_id},masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+PUT,/api/masters/vendors/{item_id},masters,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/code-rules,numbering,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/code-rules/preview,numbering,INTENTIONALLY_NO,read-only simulation/preview, no DB write to audit
+PUT,/api/code-rules/{rule_id},numbering,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)
+POST,/api/people/employees,people,YES,explicit _access_event + automatic ORM DATA audit (confirmed CREATE/UPDATE/DEACTIVATE rows)
+POST,/api/people/install-points,people,YES,explicit _access_event + automatic ORM DATA audit (confirmed CREATE/UPDATE/DEACTIVATE rows)
+POST,/api/people/stores,people,YES,explicit _access_event + automatic ORM DATA audit (confirmed CREATE/UPDATE/DEACTIVATE rows)
+POST,/api/people/stores/ensure-rooms,people,YES,explicit _access_event + automatic ORM DATA audit (confirmed CREATE/UPDATE/DEACTIVATE rows)
+POST,/api/purchase-orders,purchase-orders,YES,explicit PO audit rows (RECEIVE/LINES_ADDED/CANCEL_WAITING) + ORM DATA audit
+POST,/api/purchase-orders/check-serials,purchase-orders,INTENTIONALLY_NO,read-only simulation/preview, no DB write to audit
+PUT,/api/purchase-orders/lines/{line_id},purchase-orders,YES,explicit PO audit rows (RECEIVE/LINES_ADDED/CANCEL_WAITING) + ORM DATA audit
+POST,/api/purchase-orders/lines/{line_id}/cancel,purchase-orders,YES,explicit PO audit rows (RECEIVE/LINES_ADDED/CANCEL_WAITING) + ORM DATA audit
+POST,/api/purchase-orders/with-lines,purchase-orders,YES,explicit PO audit rows (RECEIVE/LINES_ADDED/CANCEL_WAITING) + ORM DATA audit
+DELETE,/api/purchase-orders/{po_id},purchase-orders,YES,explicit PO audit rows (RECEIVE/LINES_ADDED/CANCEL_WAITING) + ORM DATA audit
+PUT,/api/purchase-orders/{po_id},purchase-orders,YES,explicit PO audit rows (RECEIVE/LINES_ADDED/CANCEL_WAITING) + ORM DATA audit
+POST,/api/purchase-orders/{po_id}/bundle-lines,purchase-orders,YES,explicit PO audit rows (RECEIVE/LINES_ADDED/CANCEL_WAITING) + ORM DATA audit
+POST,/api/purchase-orders/{po_id}/cancel-waiting,purchase-orders,YES,explicit PO audit rows (RECEIVE/LINES_ADDED/CANCEL_WAITING) + ORM DATA audit
+POST,/api/purchase-orders/{po_id}/deliver,purchase-orders,YES,explicit PO audit rows (RECEIVE/LINES_ADDED/CANCEL_WAITING) + ORM DATA audit
+PUT,/api/purchase-orders/{po_id}/line-groups/{line_no},purchase-orders,YES,explicit PO audit rows (RECEIVE/LINES_ADDED/CANCEL_WAITING) + ORM DATA audit
+POST,/api/purchase-orders/{po_id}/line-groups/{line_no}/cancel-waiting,purchase-orders,YES,explicit PO audit rows (RECEIVE/LINES_ADDED/CANCEL_WAITING) + ORM DATA audit
+POST,/api/purchase-orders/{po_id}/lines,purchase-orders,YES,explicit PO audit rows (RECEIVE/LINES_ADDED/CANCEL_WAITING) + ORM DATA audit
+POST,/api/purchase-orders/{po_id}/receive,purchase-orders,YES,explicit PO audit rows (RECEIVE/LINES_ADDED/CANCEL_WAITING) + ORM DATA audit
+POST,/api/purchase-orders/{po_id}/record-pi,purchase-orders,YES,explicit PO audit rows (RECEIVE/LINES_ADDED/CANCEL_WAITING) + ORM DATA audit
+POST,/api/stock-rooms,stock-rooms,YES,automatic ORM DATA audit (CREATE/UPDATE/DEACTIVATE) + CODE_RULE_CHANGED where applicable; safety-net never fired (0 gaps)

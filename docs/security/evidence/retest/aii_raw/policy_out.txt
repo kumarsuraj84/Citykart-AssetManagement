@@ -1,0 +1,21 @@
+PASS	RT-AU-T201	change-password: common password -> 422 This password is too common and easy to guess. Choose a different one.
+PASS	RT-AU-T202	change-password: common password, other case -> 422 This password is too common and easy to guess. Choose a different one.
+PASS	RT-AU-T203	change-password: common digits -> 422 This password is too common and easy to guess. Choose a different one.
+PASS	RT-AU-T204	change-password: digit run -> 422 This password is too simple (the same character or a simple sequence). Choose a different one.
+PASS	RT-AU-T205	change-password: reverse letter run -> 422 This password is too simple (the same character or a simple sequence). Choose a different one.
+PASS	RT-AU-T206	change-password: keyboard run -> 422 This password is too simple (the same character or a simple sequence). Choose a different one.
+PASS	RT-AU-T207	change-password: same character -> 422 This password is too simple (the same character or a simple sequence). Choose a different one.
+PASS	RT-AU-T208	change-password: brand + digits -> 422 A password made of the company or app name and numbers is easy to guess. Choose a different one.
+PASS	RT-AU-T209	change-password: app name + symbols/digits -> 422 A password made of the company or app name and numbers is easy to guess. Choose a different one.
+PASS	RT-AU-T210	change-password: brand upper + symbols -> 422 A password made of the company or app name and numbers is easy to guess. Choose a different one.
+PASS	RT-AU-T211	change-password: contains own login code -> 422 The password must not contain your name, login code or email. Choose a different one.
+PASS	RT-AU-T212	change-password: contains own name word -> 422 The password must not contain your name, login code or email. Choose a different one.
+PASS	RT-AU-T213	change-password: contains surname -> 422 The password must not contain your name, login code or email. Choose a different one.
+PASS	RT-AU-T214	change-password: too short (< 8) -> schema 422 -> 422 New password is too short (at least 8 characters).
+PASS	RT-AU-T215	change-password: too long (> 128) -> schema 422 -> 422 New password is too long (max 128 characters).
+PASS	RT-AU-T216	change-password: same as old password -> 422 New password must be different from the old password.
+FAIL	RT-AU-T217	change-password: GAP probe: Password@year -> 204 
+FAIL	RT-AU-T218	change-password: GAP probe: Welcome@year -> 204 
+INFO	RT-AU-T219	change-password: brand + word (allowed by rule: not only digits/symbols) -> 204 
+PASS	RT-AU-T220	change-password: strong passphrase accepted -> 204 
+PASS	RT-AU-T221	change-password with wrong current password -> 400 Old password is incorrect

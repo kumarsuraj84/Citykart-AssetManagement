@@ -1,0 +1,5 @@
+web:3411 is nginx/1.31.7 fronting the built frontend (production uses single-port uvicorn with NO nginx).
+..%2f..%2f..%2fetc/passwd  -> HTTP 400 (nginx rejects)
+../../../../etc/passwd (--path-as-is) -> HTTP 400 (nginx rejects)
+..%5c..%5cwindows%5cwin.ini -> HTTP 200 but returns the SPA index.html shell (796 bytes), not win.ini.
+Conclusion: nginx normalises/blocks traversal on the sec stack. The FastAPI route in main.py (used in production where there is no nginx) has no containment check (see IN-01).

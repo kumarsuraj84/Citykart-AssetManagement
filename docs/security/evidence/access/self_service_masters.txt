@@ -1,0 +1,29 @@
+Self-service (SECSELF, role SELF_SERVICE, company CKSPL id1, holds only asset 1) reading masters surface:
+
+GET /api/masters/companies         -> 200  rows=2  company_ids=[null]
+GET /api/masters/locations         -> 200  rows=2  company_ids=[1]
+GET /api/masters/departments       -> 200  rows=2  company_ids=[null]
+GET /api/masters/cost-centers      -> 200  rows=1  company_ids=[1]
+GET /api/masters/categories        -> 200  rows=4  company_ids=[null]
+GET /api/masters/subcategories     -> 200  rows=4  company_ids=[null]
+GET /api/masters/brands            -> 200  rows=1  company_ids=[null]
+GET /api/masters/vendors           -> 200  rows=6  company_ids=[null]
+GET /api/masters/custom-fields     -> 200  rows=2  company_ids=[1,2]
+GET /api/code-rules                -> 200  rows=1
+GET /api/bundles                   -> 200  rows=1
+
+-- vendor rows expose GSTIN + contact name/phone/email of BOTH companies (vendors are a global table) --
+[
+ {
+  "id": 1,
+  "name": "SEC IT Supplies CKSPL",
+  "gstin": "06ABCDE1234F1Z5",
+  "contact_email": "it.spl@vendor.sec.test"
+ },
+ {
+  "id": 4,
+  "name": "SEC IT Supplies CKVPL",
+  "gstin": "07ABCDE5678G1Z3",
+  "contact_email": "it.vpl@vendor.sec.test"
+ }
+]

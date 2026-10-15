@@ -1,0 +1,136 @@
+Pager usage is off.
+ role | is_superuser | alembic_head 
+------+--------------+--------------
+ ckam | t            | a3c5e7f9b1d4
+(1 row)
+
+        tbl         |               tgname               | tgenabled 
+--------------------+------------------------------------+-----------
+ asset_event        | trg_asset_event_no_delete          | O
+ asset_event        | trg_asset_event_no_truncate        | O
+ asset_event        | trg_asset_event_no_update          | O
+ asset_field_change | trg_asset_field_change_no_delete   | O
+ asset_field_change | trg_asset_field_change_no_truncate | O
+ asset_field_change | trg_asset_field_change_no_update   | O
+ audit_log          | trg_audit_log_no_delete            | O
+ audit_log          | trg_audit_log_no_truncate          | O
+ audit_log          | trg_audit_log_no_update            | O
+ master_audit       | trg_master_audit_no_delete         | O
+ master_audit       | trg_master_audit_no_truncate       | O
+ master_audit       | trg_master_audit_no_update         | O
+(12 rows)
+
+BEGIN
+ audit_before | events_before | master_before | afc_before 
+--------------+---------------+---------------+------------
+         1492 |            25 |             0 |          9
+(1 row)
+
+### T1 UPDATE audit_log (expect append-only error)
+psql:/tmp/rt_append_only.sql:15: ERROR:  audit_log rows are append-only
+CONTEXT:  PL/pgSQL function forbid_audit_log_write() line 8 at RAISE
+### T2 DELETE audit_log newest row (expect error)
+psql:/tmp/rt_append_only.sql:17: ERROR:  audit_log rows are append-only
+CONTEXT:  PL/pgSQL function forbid_audit_log_write() line 8 at RAISE
+### T3 TRUNCATE audit_log (expect TRUNCATE not allowed)
+psql:/tmp/rt_append_only.sql:19: ERROR:  audit_log rows are append-only; TRUNCATE is not allowed
+CONTEXT:  PL/pgSQL function forbid_append_only_truncate() line 3 at RAISE
+### T4 UPDATE asset_event (expect error)
+psql:/tmp/rt_append_only.sql:21: ERROR:  asset_event rows are append-only; insert a CORRECTION event instead
+CONTEXT:  PL/pgSQL function forbid_asset_event_write() line 3 at RAISE
+### T5 DELETE asset_event (expect error)
+psql:/tmp/rt_append_only.sql:23: ERROR:  asset_event rows are append-only; insert a CORRECTION event instead
+CONTEXT:  PL/pgSQL function forbid_asset_event_write() line 3 at RAISE
+### T6 TRUNCATE asset_event (expect error)
+psql:/tmp/rt_append_only.sql:25: ERROR:  asset_event rows are append-only; TRUNCATE is not allowed
+CONTEXT:  PL/pgSQL function forbid_append_only_truncate() line 3 at RAISE
+### T7 TRUNCATE master_audit (expect error)
+psql:/tmp/rt_append_only.sql:27: ERROR:  master_audit rows are append-only; TRUNCATE is not allowed
+CONTEXT:  PL/pgSQL function forbid_append_only_truncate() line 3 at RAISE
+### T8 TRUNCATE asset_field_change (expect error)
+psql:/tmp/rt_append_only.sql:29: ERROR:  asset_field_change rows are append-only; TRUNCATE is not allowed
+CONTEXT:  PL/pgSQL function forbid_append_only_truncate() line 3 at RAISE
+### T9 UPDATE/DELETE master_audit + asset_field_change (row triggers; tables may be empty -> 0 rows)
+UPDATE 0
+DELETE 0
+psql:/tmp/rt_append_only.sql:33: ERROR:  asset_field_change rows are append-only
+CONTEXT:  PL/pgSQL function forbid_asset_field_change_write() line 3 at RAISE
+psql:/tmp/rt_append_only.sql:34: ERROR:  asset_field_change rows are append-only
+CONTEXT:  PL/pgSQL function forbid_asset_field_change_write() line 3 at RAISE
+### T10 IF-06: SET LOCAL ckam.allow_audit_purge=on then DELETE the newest audit row (expect error: floor 5 y)
+SET
+psql:/tmp/rt_append_only.sql:37: ERROR:  audit_log rows are append-only
+CONTEXT:  PL/pgSQL function forbid_audit_log_write() line 8 at RAISE
+### T11 same flag: DELETE all rows younger than 5 years (expect error)
+psql:/tmp/rt_append_only.sql:39: ERROR:  audit_log rows are append-only
+CONTEXT:  PL/pgSQL function forbid_audit_log_write() line 8 at RAISE
+### T12 same flag: plant a 6-year-old row? (INSERT allowed; then DELETE it -> allowed by design)
+ planted_old_id 
+----------------
+           1493
+(1 row)
+
+INSERT 0 1
+DELETE 1
+### T13 backdate: INSERT a row claiming at = now()-6y is accepted (no check on at) -> it could later be purged
+### T14 ckam_purge_audit_log with cut-off = now() (expect refused: needs >= 5 years)
+psql:/tmp/rt_append_only.sql:47: ERROR:  audit_log purge needs a cut-off date at least 5 years in the past
+CONTEXT:  PL/pgSQL function ckam_purge_audit_log(timestamp with time zone) line 9 at RAISE
+### T15 ckam_purge_audit_log cut-off now()-4y11m (expect refused)
+psql:/tmp/rt_append_only.sql:49: ERROR:  audit_log purge needs a cut-off date at least 5 years in the past
+CONTEXT:  PL/pgSQL function ckam_purge_audit_log(timestamp with time zone) line 9 at RAISE
+### T16 ckam_purge_audit_log cut-off now()-6y (allowed by design; removes only rows older than that)
+ purged_old_rows 
+-----------------
+               0
+(1 row)
+
+### T17 ckam_purge_audit_log without the flag (expect refused)
+RESET
+SET
+psql:/tmp/rt_append_only.sql:55: ERROR:  audit_log purge is not allowed: export the rows first, then SET LOCAL ckam.allow_audit_purge = on in the same transaction
+CONTEXT:  PL/pgSQL function ckam_purge_audit_log(timestamp with time zone) line 6 at RAISE
+### T18 EXECUTE privilege on purge function: PUBLIC revoked?
+       proname        |    proacl     
+----------------------+---------------
+ ckam_purge_audit_log | {ckam=X/ckam}
+(1 row)
+
+### T19 RESIDUAL: owner/superuser can disable the TRUNCATE trigger and then truncate (inside this rolled-back txn)
+ALTER TABLE
+TRUNCATE TABLE
+ audit_rows_after_owner_bypass 
+-------------------------------
+                             0
+(1 row)
+
+### T20 RESIDUAL: superuser session_replication_role=replica skips the triggers
+SET
+DELETE 1
+SET
+### T21 least-privilege runtime role simulation (created in this txn): TRUNCATE/DISABLE TRIGGER/DROP/purge
+CREATE ROLE
+GRANT
+SET
+psql:/tmp/rt_append_only.sql:70: ERROR:  permission denied for table asset_event
+psql:/tmp/rt_append_only.sql:71: ERROR:  must be owner of table asset_event
+psql:/tmp/rt_append_only.sql:72: ERROR:  permission denied for function ckam_purge_audit_log
+SET
+psql:/tmp/rt_append_only.sql:74: ERROR:  asset_event rows are append-only; insert a CORRECTION event instead
+CONTEXT:  PL/pgSQL function forbid_asset_event_write() line 3 at RAISE
+RESET
+ROLLBACK
+### after ROLLBACK
+ audit_after | events_after | probe_role_left | planted_left 
+-------------+--------------+-----------------+--------------
+        1492 |           25 |               0 |            0
+(1 row)
+
+        tbl         |               tgname               | tgenabled 
+--------------------+------------------------------------+-----------
+ asset_event        | trg_asset_event_no_truncate        | O
+ asset_field_change | trg_asset_field_change_no_truncate | O
+ audit_log          | trg_audit_log_no_truncate          | O
+ master_audit       | trg_master_audit_no_truncate       | O
+(4 rows)
+

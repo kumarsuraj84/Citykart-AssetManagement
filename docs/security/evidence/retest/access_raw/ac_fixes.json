@@ -1,0 +1,1172 @@
+[
+ {
+  "id": "RT-AC-T600",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SECSELF GET /api/masters/vendors",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T601",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SECSELF GET /api/masters/companies",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T602",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SECSELF GET /api/masters/departments",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T603",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SECSELF GET /api/masters/categories",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T604",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SECSELF GET /api/masters/subcategories",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T605",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SECSELF GET /api/masters/brands",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T606",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SECSELF GET /api/masters/cost-centers",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T607",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SECSELF GET /api/masters/custom-fields",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T608",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SECSELF GET /api/masters/locations",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T609",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SECSELF GET /api/code-rules",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T610",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SECSELF GET /api/bundles",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T611",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SECSELFV GET /api/masters/vendors",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T612",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SECSELFV GET /api/masters/companies",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T613",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SECSELFV GET /api/masters/departments",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T614",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SECSELFV GET /api/masters/categories",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T615",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SECSELFV GET /api/masters/subcategories",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T616",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SECSELFV GET /api/masters/brands",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T617",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SECSELFV GET /api/masters/cost-centers",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T618",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SECSELFV GET /api/masters/custom-fields",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T619",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SECSELFV GET /api/masters/locations",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T620",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SECSELFV GET /api/code-rules",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T621",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SECSELFV GET /api/bundles",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T622",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SPA GET /api/masters/vendors",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T623",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SPA GET /api/masters/companies",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T624",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SPA GET /api/masters/departments",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T625",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SPA GET /api/masters/categories",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T626",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SPA GET /api/masters/subcategories",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T627",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SPA GET /api/masters/brands",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T628",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SPA GET /api/masters/cost-centers",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T629",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SPA GET /api/masters/custom-fields",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T630",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SPA GET /api/masters/locations",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T631",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SPA GET /api/code-rules",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T632",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SPA GET /api/bundles",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T633",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service VPA GET /api/masters/vendors",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T634",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service VPA GET /api/masters/companies",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T635",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service VPA GET /api/masters/departments",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T636",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service VPA GET /api/masters/categories",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T637",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service VPA GET /api/masters/subcategories",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T638",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service VPA GET /api/masters/brands",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T639",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service VPA GET /api/masters/cost-centers",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T640",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service VPA GET /api/masters/custom-fields",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T641",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service VPA GET /api/masters/locations",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T642",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service VPA GET /api/code-rules",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T643",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service VPA GET /api/bundles",
+  "expected": "403",
+  "actual": "403",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T644",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECVIEW GET /api/masters/vendors",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T645",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECVIEW GET /api/masters/companies",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T646",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECVIEW GET /api/masters/departments",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T647",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECVIEW GET /api/masters/categories",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T648",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECVIEW GET /api/masters/subcategories",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T649",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECVIEW GET /api/masters/brands",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T650",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECVIEW GET /api/masters/cost-centers",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T651",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECVIEW GET /api/masters/custom-fields",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T652",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECVIEW GET /api/masters/locations",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T653",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECVIEW GET /api/code-rules",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T654",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECVIEW GET /api/bundles",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T655",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECOPIT GET /api/masters/vendors",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T656",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECOPIT GET /api/masters/companies",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T657",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECOPIT GET /api/masters/departments",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T658",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECOPIT GET /api/masters/categories",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T659",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECOPIT GET /api/masters/subcategories",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T660",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECOPIT GET /api/masters/brands",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T661",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECOPIT GET /api/masters/cost-centers",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T662",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECOPIT GET /api/masters/custom-fields",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T663",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECOPIT GET /api/masters/locations",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T664",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECOPIT GET /api/code-rules",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T665",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECOPIT GET /api/bundles",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T666",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECOTHER GET /api/masters/vendors",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T667",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECOTHER GET /api/masters/companies",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T668",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECOTHER GET /api/masters/departments",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T669",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECOTHER GET /api/masters/categories",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T670",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECOTHER GET /api/masters/subcategories",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T671",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECOTHER GET /api/masters/brands",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T672",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECOTHER GET /api/masters/cost-centers",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T673",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECOTHER GET /api/masters/custom-fields",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T674",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECOTHER GET /api/masters/locations",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T675",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECOTHER GET /api/code-rules",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T676",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECOTHER GET /api/bundles",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T677",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECFAIT GET /api/masters/vendors",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T678",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECFAIT GET /api/masters/companies",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T679",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECFAIT GET /api/masters/departments",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T680",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECFAIT GET /api/masters/categories",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T681",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECFAIT GET /api/masters/subcategories",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T682",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECFAIT GET /api/masters/brands",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T683",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECFAIT GET /api/masters/cost-centers",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T684",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECFAIT GET /api/masters/custom-fields",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T685",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECFAIT GET /api/masters/locations",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T686",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECFAIT GET /api/code-rules",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T687",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECFAIT GET /api/bundles",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T688",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECHO GET /api/masters/vendors",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T689",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECHO GET /api/masters/companies",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T690",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECHO GET /api/masters/departments",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T691",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECHO GET /api/masters/categories",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T692",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECHO GET /api/masters/subcategories",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T693",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECHO GET /api/masters/brands",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T694",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECHO GET /api/masters/cost-centers",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T695",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECHO GET /api/masters/custom-fields",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T696",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECHO GET /api/masters/locations",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T697",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECHO GET /api/code-rules",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T698",
+  "cwe": "CWE-863",
+  "case": "AC-1 no-regression staff SECHO GET /api/bundles",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T699",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SECSELF still reads own asset 1",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T700",
+  "cwe": "CWE-863",
+  "case": "AC-1 self-service SECSELF capabilities",
+  "expected": "200",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T701",
+  "cwe": "CWE-863",
+  "case": "AC-1 adjacent: self-service SECSELF POST /api/code-rules/preview (not in the fixed list)",
+  "expected": "INFO: record",
+  "actual": "403",
+  "result": "PASS",
+  "ev": "INFO"
+ },
+ {
+  "id": "RT-AC-T702",
+  "cwe": "CWE-639",
+  "case": "AC-2 GET /api/masters/custom-fields as SECOPIT (expected companies [1])",
+  "expected": "200, company_ids subset of [1]+null",
+  "actual": "200 company_ids=[1]",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T703",
+  "cwe": "CWE-639",
+  "case": "AC-2 GET /api/masters/custom-fields as SECVIEW (expected companies [1])",
+  "expected": "200, company_ids subset of [1]+null",
+  "actual": "200 company_ids=[1]",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T704",
+  "cwe": "CWE-639",
+  "case": "AC-2 GET /api/masters/custom-fields as SECOPNIT (expected companies [1])",
+  "expected": "200, company_ids subset of [1]+null",
+  "actual": "200 company_ids=[1]",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T705",
+  "cwe": "CWE-639",
+  "case": "AC-2 GET /api/masters/custom-fields as SECOTHER (expected companies [2])",
+  "expected": "200, company_ids subset of [2]+null",
+  "actual": "200 company_ids=[2]",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T706",
+  "cwe": "CWE-639",
+  "case": "AC-2 GET /api/masters/custom-fields as SECVIEWV (expected companies [2])",
+  "expected": "200, company_ids subset of [2]+null",
+  "actual": "200 company_ids=[2]",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T707",
+  "cwe": "CWE-639",
+  "case": "AC-2 GET /api/masters/custom-fields as SECOPITV (expected companies [2])",
+  "expected": "200, company_ids subset of [2]+null",
+  "actual": "200 company_ids=[2]",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T708",
+  "cwe": "CWE-639",
+  "case": "AC-2 GET /api/masters/custom-fields as SECOPX (expected companies [1,2])",
+  "expected": "200, company_ids subset of [1,2]+null",
+  "actual": "200 company_ids=[1,2]",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T709",
+  "cwe": "CWE-639",
+  "case": "AC-2 GET /api/masters/custom-fields as SECFAIT (expected companies all)",
+  "expected": "200, company_ids subset of all",
+  "actual": "200 company_ids=[1,2]",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T710",
+  "cwe": "CWE-639",
+  "case": "AC-2 GET /api/masters/custom-fields as SECFABOTH (expected companies all)",
+  "expected": "200, company_ids subset of all",
+  "actual": "200 company_ids=[1,2]",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T711",
+  "cwe": "CWE-639",
+  "case": "AC-2 GET /api/masters/custom-fields as SECHO (expected companies all)",
+  "expected": "200, company_ids subset of all",
+  "actual": "200 company_ids=[1,2]",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T712",
+  "cwe": "CWE-639",
+  "case": "AC-2 SECOPIT GET /api/masters/custom-fields?company_id=2 (parameter tampering)",
+  "expected": "no company 2 rows",
+  "actual": "200 company_ids=[1]",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T713",
+  "cwe": "CWE-639",
+  "case": "IF-03 SECOPIT GET other-company ERP draft 9002002",
+  "expected": "404 identical to a non-existent PO (no rates/supplier)",
+  "actual": "404 detail=\"This purchase order was not found in the ERP.\"",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T714",
+  "cwe": "CWE-639",
+  "case": "IF-03 SECOPIT GET other-company ERP draft 9002001",
+  "expected": "404 identical to a non-existent PO (no rates/supplier)",
+  "actual": "404 detail=\"This purchase order was not found in the ERP.\"",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T715",
+  "cwe": "CWE-639",
+  "case": "IF-03 SECOTHER GET other-company ERP draft 9001002",
+  "expected": "404 identical to a non-existent PO (no rates/supplier)",
+  "actual": "404 detail=\"This purchase order was not found in the ERP.\"",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T716",
+  "cwe": "CWE-639",
+  "case": "IF-03 SECOTHER GET other-company ERP draft 9001001",
+  "expected": "404 identical to a non-existent PO (no rates/supplier)",
+  "actual": "404 detail=\"This purchase order was not found in the ERP.\"",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T717",
+  "cwe": "CWE-639",
+  "case": "IF-03 SECOPITV GET other-company ERP draft 9001002",
+  "expected": "404 identical to a non-existent PO (no rates/supplier)",
+  "actual": "404 detail=\"This purchase order was not found in the ERP.\"",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T718",
+  "cwe": "CWE-639",
+  "case": "IF-03 SECOPITV GET other-company ERP draft 9001001",
+  "expected": "404 identical to a non-existent PO (no rates/supplier)",
+  "actual": "404 detail=\"This purchase order was not found in the ERP.\"",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T719",
+  "cwe": "CWE-639",
+  "case": "IF-03 control: SECOPIT GET own/allowed ERP draft 9001002",
+  "expected": "200 (or a controlled 4xx for an already-created PO)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T720",
+  "cwe": "CWE-639",
+  "case": "IF-03 control: SECOTHER GET own/allowed ERP draft 9002002",
+  "expected": "200 (or a controlled 4xx for an already-created PO)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T721",
+  "cwe": "CWE-639",
+  "case": "IF-03 control: SECOPITV GET own/allowed ERP draft 9002002",
+  "expected": "200 (or a controlled 4xx for an already-created PO)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T722",
+  "cwe": "CWE-639",
+  "case": "IF-03 control: SECOPX GET own/allowed ERP draft 9001002",
+  "expected": "200 (or a controlled 4xx for an already-created PO)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T723",
+  "cwe": "CWE-639",
+  "case": "IF-03 control: SECOPX GET own/allowed ERP draft 9002002",
+  "expected": "200 (or a controlled 4xx for an already-created PO)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T724",
+  "cwe": "CWE-639",
+  "case": "IF-03 control: SECFAIT GET own/allowed ERP draft 9002002",
+  "expected": "200 (or a controlled 4xx for an already-created PO)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T725",
+  "cwe": "CWE-639",
+  "case": "IF-03 control: SECHO GET own/allowed ERP draft 9001002",
+  "expected": "200 (or a controlled 4xx for an already-created PO)",
+  "actual": "200",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T726",
+  "cwe": "CWE-639",
+  "case": "IF-03 adjacent: SECOPIT GET /api/erp/pos/9002002/receipts (CKVPL PO)",
+  "expected": "refused 4xx, nothing created, no data",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T727",
+  "cwe": "CWE-639",
+  "case": "IF-03 adjacent: SECOPIT GET /api/erp/pos/9002002/pi (CKVPL PO)",
+  "expected": "refused 4xx, nothing created, no data",
+  "actual": "404",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T728",
+  "cwe": "CWE-639",
+  "case": "IF-03 adjacent: SECOPIT POST /api/erp/pos/create (CKVPL PO)",
+  "expected": "refused 4xx, nothing created, no data",
+  "actual": "422",
+  "result": "PASS",
+  "ev": ""
+ },
+ {
+  "id": "RT-AC-T729",
+  "cwe": "CWE-639",
+  "case": "IF-03 adjacent: SECOPIT ERP PO list has no CKVPL PO",
+  "expected": "no 9002xxx",
+  "actual": "200 codes=[9001002]",
+  "result": "PASS",
+  "ev": ""
+ }
+]

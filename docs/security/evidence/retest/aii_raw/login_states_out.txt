@@ -1,0 +1,14 @@
+PASS	RT-AU-T301	AU-02 locked account (SECLOCK) + RIGHT password -> 423 Account locked, try again later
+PASS	RT-AU-T302	AU-02 locked account + WRONG password (lock is not a guessing oracle) -> 423 Account locked, try again later
+PASS	RT-AU-T303	Deactivated (SECDIS) right password -> 401 Invalid credentials
+PASS	RT-AU-T304	Sign-in off (SECNOLOGIN) right password -> 401 Invalid credentials
+PASS	RT-AU-T305	Non-existent id -> 401 Invalid credentials
+PASS	RT-AU-T306	Existing id wrong password -> 401 Invalid credentials
+PASS	RT-AU-T307	Right password resets the failure counter (SECOP2IT) -> 200
+PASS	RT-AU-T308	must_change_password (SECMUST): login 200 but every other route 403 -> 200 must_change=true / assets 403
+PASS	RT-AU-T309	SQL-looking login id -> 401 Invalid credentials
+PASS	RT-AU-T310	Login by e-mail, mixed case -> 200
+PASS	RT-AU-T311	Primary-Owner clash: login "SECHO" while an employee with code SECHO exists -> 200 id=2 primary=true
+PASS	RT-AU-T312	Primary-Owner clash: lower-case "secho" (name match is case-insensitive) -> 200 id=2
+INFO	RT-AU-T313	AU-04 residual: 5 wrong guesses lock a real user; right password then 423 -> guesses 401,401,401,401,401 then right pw 423
+PASS	RT-AU-T314	Lock threshold still 5 (BRUTE12) -> 401,401,401,401,401

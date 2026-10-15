@@ -1,0 +1,103 @@
+id,area,cwe_or_owasp,case,expected,actual,result,evidence_ref
+AU-T001,auth-login,A07:2021,Valid login SECHO/SECOPIT/SECVIEW/SECSELF correct pw,200 + token,200 all,PASS,t1_auth.sh
+AU-T002,auth-login,CWE-287,Wrong password existing user,401 generic,401 Invalid credentials,PASS,t1_auth.sh
+AU-T003,auth-login,CWE-204,Non-existent user,401 generic,401 Invalid credentials,PASS,t1_auth.sh
+AU-T004,auth-login,CWE-287,Deactivated account (is_active=false) SECDIS,401 generic,401,PASS,t1_auth.sh
+AU-T005,auth-login,CWE-287,login_enabled=false SECNOLOGIN,401 generic,401,PASS,t1_auth.sh
+AU-T006,auth-login,CWE-204,Locked account SECLOCK returns distinct status,generic 401 desired,423 Account locked (enumerable),FAIL,AU-02;t1_auth.sh
+AU-T007,auth-login,CWE-307,Locked account wrong pw still 423 before pw check,n/a,423,INFO,t1_auth.sh
+AU-T008,auth-login,A07:2021,must_change_password SECMUST login,200 + must_change flag,200,PASS,t1_auth.sh
+AU-T009,auth-login,A07:2021,must_change_password SECMUST other routes blocked,403,403 capabilities/assets,PASS,t1_auth.sh
+AU-T010,auth-login,CWE-287,Login by email address,200,200,PASS,t1_auth.sh
+AU-T011,auth-login,INFO,Login by code is case-sensitive (secopit),n/a,401,INFO,AU-I2;t1_auth.sh
+AU-T012,auth-login,INFO,Login by email is case-insensitive,n/a,200,INFO,AU-I2;t1_auth.sh
+AU-T013,auth-login,CWE-89,SQL-looking login ids,401 no SQLi,401 both,PASS,t1_auth.sh
+AU-T014,auth-token,CWE-345,Valid access token on protected route,200,200,PASS,t1_auth.sh
+AU-T015,auth-token,CWE-287,No token on protected route,401,401,PASS,t1_auth.sh
+AU-T016,auth-token,CWE-345,Garbage bearer token,401,401,PASS,t1_auth.sh
+AU-T017,auth-token,CWE-347,Middle-of-signature bit flip,401,401,PASS,t2_tokens.sh;crafted.txt
+AU-T018,auth-token,CWE-347,Payload role->ADMIN with old signature,401,401 role=none,PASS,t2_tokens.sh;crafted.txt
+AU-T019,auth-token,CWE-347,alg:none unsigned token (role ADMIN),401,401,PASS,t2_tokens.sh
+AU-T020,auth-token,CWE-347,alg None/NONE/nOnE case variants,401,401 all,PASS,t2_tokens.sh
+AU-T021,auth-token,CWE-347,HS256 signed with committed dev_secret_change_me,401,401 (stack uses strong secret),PASS,t2_tokens.sh
+AU-T022,auth-token,CWE-345,Last-char signature flip (base64url redundancy),verify,200 then confirmed non-issue,INFO,AU-09;t1_auth.sh
+AU-T023,auth-token,CWE-384,Refresh token used as access bearer,401,401,PASS,t1_auth.sh
+AU-T024,auth-token,CWE-384,Access token used as refresh cookie,401,401,PASS,t1_auth.sh
+AU-T025,auth-refresh,CWE-287,Refresh with no cookie,401,401,PASS,t1_auth.sh
+AU-T026,auth-refresh,A07:2021,Refresh with valid refresh token,200 new token,200,PASS,t1_auth.sh;t8_refresh.sh
+AU-T027,auth-timing,CWE-208,Timing existing-active login (35 samples),indistinguishable,mean 41.7ms,FAIL,AU-01;t_existing.txt
+AU-T028,auth-timing,CWE-208,Timing non-existent login (35 samples),indistinguishable,mean 7.4ms,FAIL,AU-01;t_nonexist.txt
+AU-T029,auth-timing,CWE-208,Timing locked login (35 samples),n/a,mean 7.3ms,FAIL,AU-01;t_locked.txt
+AU-T030,auth-timing,CWE-208,Timing disabled login (35 samples),n/a,mean 7.1ms,FAIL,AU-01;t_disabled.txt
+AU-T031,bruteforce,CWE-307,Lockout threshold BRUTE01 5 wrong then lock,lock at 5,6th=423 correct=423,PASS,t4_lockout.sh
+AU-T032,bruteforce,CWE-645,Lockout DoS of legit user (correct pw after lock),availability concern,423 (DoS confirmed),FAIL,AU-04;t4_lockout.sh
+AU-T033,bruteforce,CWE-307,Lockout resets on successful login (BRUTE04),reset,reset confirmed,PASS,t4_lockout.sh
+AU-T034,bruteforce,CWE-307,X-Forwarded-For spoof to evade per-account lock,no evasion,per-account lock (XFF ignored),FAIL,AU-04;t4_lockout.sh
+AU-T035,bruteforce,CWE-362,20 parallel wrong guesses race (threshold 5),<=5 processed,6 x401 14x423,FAIL,AU-16;t5_race.sh;race_codes.txt
+AU-T036,bruteforce,CWE-307,No per-IP/global login rate limit (171 fails no block),throttle,none,FAIL,AU-03;audit_check.sql
+AU-T037,session,CWE-613,Refresh after logout replays old token,invalidated,200 still valid,FAIL,AU-05;t8_refresh.sh
+AU-T038,session,CWE-613,Refresh token rotation on each call,rotate,identical within same second,FAIL,AU-06;t8_refresh.sh
+AU-T039,session,CWE-384,Old refresh token reuse after rotation,rejected,200 accepted,FAIL,AU-06;t8_refresh.sh
+AU-T040,session,CWE-614,Refresh cookie flags HttpOnly/SameSite/Secure/Path,all secure,HttpOnly+Lax+Path ok Secure=off,FAIL,AU-13;t8_refresh.sh
+AU-T041,session,CWE-613,login_enabled=false revokes live access token,revoked,200 still works 15min,FAIL,AU-07;t9_revocation.sh
+AU-T042,session,CWE-613,is_active=false revokes access token immediately,revoked,revoked (implicit),PASS,deps.py;t9_revocation.sh
+AU-T043,session,A01:2021,Role re-read from DB (OPERATOR->VIEWER),immediate,VIEWER reflected,PASS,t9_revocation.sh
+AU-T044,password,CWE-916,Hashing algorithm argon2id salted,argon2id,$argon2id$v=19 len97,PASS,checks.sql
+AU-T045,password,CWE-521,Change-password min length enforced,422,422 (len5),PASS,t10_val_authz.sh
+AU-T046,password,CWE-521,Change-password new==old rejected,422,422,PASS,t10_val_authz.sh
+AU-T047,password,CWE-521,No complexity/common-password/history check,policy gap,no checks present,FAIL,AU-08;schemas.py
+AU-T048,password,CWE-532,Old-password check on change,400 on wrong old,400,PASS,t10_val_authz.sh
+AU-T049,password,CWE-532,No plaintext pw in audit_log/error/system/client/idempotency,0 hits,0 everywhere,PASS,checks.sql
+AU-T050,password,CWE-522,Temp password returned once only (issue-passwords),response-only,confirmed not persisted,PASS,checks.sql;router.py
+AU-T051,jwt,CWE-798,Default JWT secret only warns never refuses in prod,refuse,warn-only,FAIL,AU-09;main.py;config.py
+AU-T052,jwt,CWE-345,JWT claims (no iss/aud/iat/jti),hardening,only sub/role/company_scope/type/exp,INFO,AU-06;security.py
+AU-T053,csrf,CWE-352,Cross-origin POST /api/auth/refresh (Origin evil/null),no ACAO,401 no CORS headers,PASS,t6_headers.sh
+AU-T054,cors,A05:2021,Reflected/null origin on API,no reflection,no ACAO any origin,PASS,t6_headers.sh
+AU-T055,cors,A05:2021,Preflight OPTIONS from evil origin,no CORS,405,PASS,t6_headers.sh
+AU-T056,headers,CWE-693,X-Content-Type-Options nosniff API+web,present,present,PASS,t6_headers.sh
+AU-T057,headers,CWE-1021,X-Frame-Options SAMEORIGIN (clickjacking),present,present API+web,PASS,t6_headers.sh
+AU-T058,headers,CWE-200,Cache-Control no-store on API responses,present,present,PASS,t6_headers.sh
+AU-T059,headers,CWE-693,Content-Security-Policy present,present,ABSENT,FAIL,AU-14;t6_headers.sh
+AU-T060,headers,CWE-693,Permissions-Policy present,present,ABSENT,FAIL,AU-14;t6_headers.sh
+AU-T061,headers,CWE-200,Server banner minimised,hidden,uvicorn / nginx/1.31.7,FAIL,AU-15;t6_headers.sh
+AU-T062,headers,CWE-200,X-Request-ID on all responses incl 401/404/422,present,present,PASS,t6_headers.sh
+AU-T063,config,CWE-651,/docs exposed unauthenticated,gated in prod,200 (open),FAIL,AU-11;t6_headers.sh
+AU-T064,config,CWE-651,/openapi.json exposed unauthenticated,gated in prod,200 283KB,FAIL,AU-11;t6_headers.sh
+AU-T065,config,CWE-540,Source maps .js.map reachable at :3411,absent in prod,200,FAIL,AU-12;t7_misc.sh
+AU-T066,config,CWE-200,Dotfiles /.env /.git/config at :3411,404/deny,200 SPA fallback (no real file),INFO,t7_misc.sh
+AU-T067,config,CWE-16,TRACE method,blocked,405 API+web,PASS,t6_headers.sh
+AU-T068,resource,CWE-770,nginx client_max_body_size 11m enforced,413,413 (nginx page no request_id),FAIL,AU-15;t7_misc.sh
+AU-T069,inputval,CWE-20,Login missing password,422,422,PASS,t10_val_authz.sh
+AU-T070,inputval,CWE-20,Login wrong type (int password),422,422,PASS,t10_val_authz.sh
+AU-T071,inputval,CWE-915,Login unknown extra field,ignored/4xx,200 ignored,INFO,AU-I1;t10_val_authz.sh
+AU-T072,inputval,CWE-20,Login empty login_id,4xx,401,PASS,t10_val_authz.sh
+AU-T073,inputval,CWE-20,Login array where string,422,422,PASS,t10_val_authz.sh
+AU-T074,inputval,CWE-158,Login NUL char in login_id,4xx no 500,422 + SUSPICIOUS_INPUT,PASS,t10_val_authz.sh;err_check.sql
+AU-T075,inputval,CWE-400,Login 10k-char login_id,422,422,PASS,t10_val_authz.sh
+AU-T076,inputval,CWE-20,Login malformed JSON,422,422,PASS,t10_val_authz.sh
+AU-T077,inputval,CWE-400,Login 5000-char password (>128),422,422,PASS,t10_val_authz.sh
+AU-T078,errorhandling,CWE-209,No 500 / stack leak on malformed inputs,no 5xx,0 5xx rows,PASS,err_check.sql
+AU-T079,errorhandling,CWE-778,Invalid token recorded as security event,audited,INVALID_TOKEN x2,PASS,err_check.sql
+AU-T080,authz-admin,A01:2021,SECHO (Primary Owner) /api/admin/logs/audit,200,200,PASS,t10_val_authz.sh
+AU-T081,authz-admin,A01:2021,SECFAIT (ADMIN non-owner) /api/admin/logs/audit,403,403,PASS,t10_val_authz.sh
+AU-T082,authz-admin,A01:2021,OPERATOR /api/admin/logs/audit,403,403,PASS,t10_val_authz.sh
+AU-T083,authz-admin,A01:2021,SECFAIT /api/admin/diagnostics/bundle,403,403,PASS,t10_val_authz.sh
+AU-T084,authz-admin,A01:2021,OPERATOR issue-passwords,403,403,PASS,t10_val_authz.sh
+AU-T085,authz-admin,A01:2021,Full Admin (ADMIN) can issue/reset passwords,by design,200,INFO,AU-I3;t10_val_authz.sh
+AU-T086,logging,CWE-117,Log injection via CRLF/forged-JSON in login_id,escaped no split,escaped string only,PASS,log grep
+AU-T087,logging,CWE-117,Log injection via User-Agent CRLF,escaped,no forged line,PASS,log grep
+AU-T088,logging,CWE-117,X-Request-ID CRLF+300 chars validated,sanitised,echoed 'abc',PASS,t7_misc.sh
+AU-T089,logging,CWE-532,Diagnostics bundle leaks JWT secret,0,0,PASS,bundle.json
+AU-T090,logging,CWE-532,Diagnostics bundle leaks DB password,0,0,PASS,bundle.json
+AU-T091,audit,CWE-778,audit_log UPDATE by app role blocked by trigger,blocked,ERROR append-only,PASS,checks.sql
+AU-T092,audit,CWE-778,audit_log DELETE by app role blocked,blocked,blocked,PASS,checks.sql
+AU-T093,audit,CWE-778,asset_event UPDATE blocked by trigger,blocked,ERROR append-only,PASS,checks.sql
+AU-T094,audit,CWE-778,audit_log TRUNCATE by app role,blocked,SUCCEEDS (gap),FAIL,AU-10;checks.sql
+AU-T095,audit,CWE-250,App DB role is Postgres superuser,non-superuser,rolsuper=t,FAIL,AU-10;checks.sql
+AU-T096,audit,A09:2021,Security events for login/fail/lock/logout/pwchange/reset/perm-denied,present,all present,PASS,audit_check.sql
+AU-T097,audit,A09:2021,Automatic ORM data-audit covers writes (safety net 0 gaps),covered,0 safety-net rows,PASS,audit_check.sql;audit_coverage.csv
+AU-T098,clientreport,CWE-862,SELF_SERVICE submit problem report,201,201 stored,PASS,t10_val_authz.sh
+AU-T099,clientreport,CWE-639,SELF_SERVICE list others' reports,403,403,PASS,t10_val_authz.sh
+AU-T100,clientreport,CWE-79,Stored-XSS payload stored verbatim (render is frontend),stored redacted,stored verbatim,INFO,AU-I4;t10_val_authz.sh
+AU-T101,clientreport,CWE-770,report-a-problem rate limit 30/min + 512KB cap,limited,enforced in code,PASS,client_reports.py
+AU-T102,audit-coverage,A09:2021,Classify 122 write routes for audit coverage,all audited/intentional,see csv,PASS,audit_coverage.csv

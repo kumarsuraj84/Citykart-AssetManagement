@@ -1,0 +1,10 @@
+ORIG_HEADER {"alg": "HS256", "typ": "JWT"}
+ORIG_PAYLOAD {"sub": "16", "role": "OPERATOR", "company_scope": 1, "type": "access", "exp": 1792063042}
+SIG_MIDDLE_FLIP eyJhbGciO...[redacted]
+PAYLOAD_ADMIN_OLDSIG eyJhbGciO...[redacted]
+ALG_NONE_NOSIG eyJhbGciO...[redacted]
+ALG_NONE_EMPTY eyJhbGciO...[redacted]
+ALG_None eyJhbGciO...[redacted]
+ALG_NONE eyJhbGciO...[redacted]
+ALG_nOnE eyJhbGciO...[redacted]
+HS256_DEFAULTSECRET eyJhbGciO...[redacted]

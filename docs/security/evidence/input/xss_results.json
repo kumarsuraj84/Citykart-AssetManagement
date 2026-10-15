@@ -1,0 +1,72 @@
+[
+  {
+    "id": "IN-T090",
+    "area": "INPUT",
+    "cwe": "79",
+    "case": "login SECHO reached app",
+    "expected": "payload inert (no window.__xss, no injected element)",
+    "actual": "http://localhost:3411/dashboard",
+    "result": "INFO",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T091",
+    "area": "INPUT",
+    "cwe": "79",
+    "case": "stored XSS vendor name in Vendors master",
+    "expected": "payload inert (no window.__xss, no injected element)",
+    "actual": "__xss=0 injectedImg=0 injectedSvg=0 textPresent=true",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T092",
+    "area": "INPUT",
+    "cwe": "79",
+    "case": "stored XSS vendor name in Setup Vendors",
+    "expected": "payload inert (no window.__xss, no injected element)",
+    "actual": "__xss=0 injectedImg=0 injectedSvg=0 textPresent=true",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T093",
+    "area": "INPUT",
+    "cwe": "79",
+    "case": "stored XSS item name in Items catalogue",
+    "expected": "payload inert (no window.__xss, no injected element)",
+    "actual": "__xss=0 injectedImg=0 injectedSvg=0 textPresent=true",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T094",
+    "area": "INPUT",
+    "cwe": "79",
+    "case": "stored XSS client-report (admin Logs, attacker=SECSELF)",
+    "expected": "payload inert (no window.__xss, no injected element)",
+    "actual": "__xss=0 injectedImg=0 injectedSvg=0 textPresent=true",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T095",
+    "area": "INPUT",
+    "cwe": "79",
+    "case": "reflected XSS asset search q param",
+    "expected": "payload inert (no window.__xss, no injected element)",
+    "actual": "__xss=0 injectedImg=0 injectedSvg=0 textPresent=false",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T096",
+    "area": "INPUT",
+    "cwe": "79",
+    "case": "stored XSS vendor in asset register vendor filter",
+    "expected": "payload inert (no window.__xss, no injected element)",
+    "actual": "__xss=0 injectedImg=0 injectedSvg=0 textPresent=false",
+    "result": "PASS",
+    "evidence_ref": ""
+  }
+]

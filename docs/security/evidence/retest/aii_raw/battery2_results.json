@@ -1,0 +1,72 @@
+[
+  {
+    "id": "IN-T074",
+    "area": "INPUT",
+    "cwe": "200",
+    "case": "",
+    "expected": "asset-users list secret leak (admin)",
+    "actual": "status=200 leak=false len=15913",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T075",
+    "area": "INPUT",
+    "cwe": "200",
+    "case": "",
+    "expected": "people list secret leak (admin)",
+    "actual": "status=200 leak=false len=19188",
+    "result": "PASS",
+    "evidence_ref": ""
+  },
+  {
+    "id": "IN-T076",
+    "area": "INPUT",
+    "cwe": "285",
+    "case": "",
+    "expected": "SELF lists asset-users",
+    "actual": "expect 403",
+    "result": "status=403",
+    "evidence_ref": "PASS"
+  },
+  {
+    "id": "IN-T077",
+    "area": "INPUT",
+    "cwe": "285",
+    "case": "",
+    "expected": "SELF lists people",
+    "actual": "expect 403",
+    "result": "status=403",
+    "evidence_ref": "PASS"
+  },
+  {
+    "id": "IN-T078",
+    "area": "INPUT",
+    "cwe": "285",
+    "case": "",
+    "expected": "SELF exports asset-users",
+    "actual": "expect 403",
+    "result": "status=403",
+    "evidence_ref": "PASS"
+  },
+  {
+    "id": "IN-T079",
+    "area": "INPUT",
+    "cwe": "285",
+    "case": "",
+    "expected": "OPERATOR lists asset-users",
+    "actual": "expect no 500",
+    "result": "status=200",
+    "evidence_ref": "PASS"
+  },
+  {
+    "id": "IN-T080",
+    "area": "INPUT",
+    "cwe": "639",
+    "case": "",
+    "expected": "CKVPL operator sees only CKVPL people",
+    "actual": "status=200 sampleHasSPL=false",
+    "result": "INFO",
+    "evidence_ref": "STK-HOSTOCKROOMCKVPL,STK-VPA,INS-VPA,SECEMPV1,SECFAITV,SECFABOTHV,SECOTHER,SECSELFV,SECVIEWV,VPA,SECOPITV"
+  }
+]
