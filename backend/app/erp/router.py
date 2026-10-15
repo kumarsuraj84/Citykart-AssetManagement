@@ -563,6 +563,9 @@ async def po_draft(
         return await build_draft(session, actor, po, source)
     except ErpUnavailable as exc:
         raise _unavailable(exc)
+    except NotAllowed:
+        # Same answer as a PO that does not exist: another company's PO is not even confirmed to exist.
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "This purchase order was not found in the ERP.")
 
 
 @router.post("/pos/create", status_code=201)

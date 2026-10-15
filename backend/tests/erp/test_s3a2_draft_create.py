@@ -94,9 +94,10 @@ async def test_the_draft_of_a_linked_supplier_has_no_suggestions(client, erp):
 async def test_another_companys_supplier_details_are_not_shown(client, erp):
     await build_s3a2_world(erp)
     erp.pos[5002] = bs_po(po_code=5002, supplier="77", name="BLUE STAR LTD", company="CKVPL")
-    d = await draft(client, "OPR", 5002)                       # a CKSPL operator looking at a CKVPL PO
-    assert d["company_id"] is None and d["vendor_suggestions"] == [] and d["vendor_registrations"] == []
-    assert d["erp_vendor"]["gstin"] is None
+    # a CKSPL operator looking at a CKVPL PO: security fix IF-03 (intended change) -- the draft is no longer shown
+    # at all (it used to come back with the supplier details blanked, but with rates, warehouse and lines).
+    resp = await client.get("/api/erp/pos/5002/draft", headers=await _headers(client, "OPR"))
+    assert resp.status_code == 404 and "BLUE STAR" not in resp.text
 
 
 # ---------- create with the vendor matched in the flow ----------

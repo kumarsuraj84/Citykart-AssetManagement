@@ -329,6 +329,21 @@ async def test_only_open_pos_are_offered_and_an_unlinked_vendors_po_is_shown_as_
     assert by["SPO/2"]["problems"] == [{"kind": "VENDOR_UNMATCHED", "message": "Vendor needs matching."}]
 
 
+async def test_an_operator_cannot_open_the_draft_of_another_companys_po(client, erp):
+    """IF-03: the draft of a PO of a company the login does not work in is not shown (rates, supplier, warehouse):
+    the answer is the same 404 as for a PO that does not exist. The head-office admin and the own company still work."""
+    await _setup()
+    erp.pos[2] = desktop_po(po_code=2, po_number="SPO/V/1", company_code="CKVPL", company_name="CITYKART VENTURES",
+                            delivery_location="CKVPL-WH-TAJNAGAR", supplier_name="SECRET VENDOR")
+    op = await _headers(client, "OPR")
+    foreign = await client.get("/api/erp/pos/2/draft", headers=op)
+    missing = await client.get("/api/erp/pos/987654/draft", headers=op)
+    assert foreign.status_code == 404 and foreign.json()["detail"] == missing.json()["detail"]
+    assert "SECRET" not in foreign.text and "20000" not in foreign.text
+    assert (await client.get("/api/erp/pos/1133610106/draft", headers=op)).status_code == 200
+    assert (await client.get("/api/erp/pos/2/draft", headers=await _headers(client, "OWN"))).status_code == 200
+
+
 async def test_a_po_becomes_a_fully_matched_draft(client, erp):
     ids = await _setup()
     resp = await client.get("/api/erp/pos/1133610106/draft", headers=await _headers(client, "OPR"))

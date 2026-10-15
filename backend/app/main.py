@@ -91,8 +91,22 @@ def warn_if_default_jwt_secret(secret: str) -> bool:
     return True
 
 
+def refuse_to_start_with_insecure_secret(environment_name: str, secret: str) -> None:
+    """Security (IF-04): a server that says it is production must not run with a committed placeholder or a too
+    short JWT_SECRET -- that would let anyone who has read the source forge ADMIN tokens. Development, the test
+    suite and UAT (any other ENVIRONMENT_NAME) are unchanged: they only get the warning above."""
+    if (environment_name or "").strip().lower() not in {"production", "prod"}:
+        return
+    if secret in _KNOWN_INSECURE_JWT_SECRETS or len(secret or "") < _MIN_SECURE_JWT_SECRET_LENGTH:
+        raise RuntimeError(
+            "Refusing to start: ENVIRONMENT_NAME is production but JWT_SECRET is a committed placeholder or shorter than "
+            f"{_MIN_SECURE_JWT_SECRET_LENGTH} characters. Set a long random JWT_SECRET (e.g. `openssl rand -hex 32`) first."
+        )
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    refuse_to_start_with_insecure_secret(settings.environment_name, settings.jwt_secret)
     warn_if_default_jwt_secret(settings.jwt_secret)
     # S8: a system_event for the start (version, migration state, safe config), a WARNING one when the
     # database's migration is not the code's, and one when LOG_DIR could not be written.

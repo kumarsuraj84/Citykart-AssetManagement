@@ -372,6 +372,10 @@ async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source
     allowed = await scoped_company_ids(session, actor)
     warnings: list[str] = []
     company = await _match_company(session, po, allowed, warnings)
+    if company is None and any("do not have access" in w for w in warnings):
+        # Security (IF-03): a PO of a company this login does not work in must not be shown at all
+        # (rates, supplier, warehouse); the router answers it exactly like a missing PO.
+        raise NotAllowed("You can only work on purchase orders of your own company. Ask the head-office admin.")
     cost_center = await _match_cost_center(session, company, warnings)
     links = await linked_vendors(session, company.id) if company is not None else {}
     vendor = links.get(po.supplier_code)
