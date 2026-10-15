@@ -91,11 +91,26 @@ def warn_if_default_jwt_secret(secret: str) -> bool:
     return True
 
 
+_PRODUCTION_NAMES = {"production", "prod"}
+
+
+def is_production(environment_name: str | None) -> bool:
+    return (environment_name or "").strip().lower() in _PRODUCTION_NAMES
+
+
+def docs_urls(environment_name: str | None) -> dict:
+    """Security AU-11: production publishes no API map -- /docs, /redoc and /openapi.json are switched off there
+    (FastAPI constructor arguments). Every other environment keeps FastAPI's defaults."""
+    if is_production(environment_name):
+        return {"docs_url": None, "redoc_url": None, "openapi_url": None}
+    return {}
+
+
 def refuse_to_start_with_insecure_secret(environment_name: str, secret: str) -> None:
     """Security (IF-04): a server that says it is production must not run with a committed placeholder or a too
     short JWT_SECRET -- that would let anyone who has read the source forge ADMIN tokens. Development, the test
     suite and UAT (any other ENVIRONMENT_NAME) are unchanged: they only get the warning above."""
-    if (environment_name or "").strip().lower() not in {"production", "prod"}:
+    if not is_production(environment_name):
         return
     if secret in _KNOWN_INSECURE_JWT_SECRETS or len(secret or "") < _MIN_SECURE_JWT_SECRET_LENGTH:
         raise RuntimeError(
@@ -136,7 +151,7 @@ async def lifespan(_app: FastAPI):
             obs_writer.report_failure("shutdown event", exc)
 
 
-app = FastAPI(title="CityKart Asset Manager API", lifespan=lifespan)
+app = FastAPI(title="CityKart Asset Manager API", lifespan=lifespan, **docs_urls(settings.environment_name))
 # S0.7: friendly 422/409 answers instead of bare 500s or raw validation arrays.
 register_exception_handlers(app)
 # S7 (P1-2): the Idempotency-Key header on create / receive / move requests (app.core.idempotency). Added
@@ -191,12 +206,29 @@ def _frontend_dist_dir() -> Path | None:
     return candidate if candidate.is_dir() else None
 
 
+# Security AU-14/AU-15: the same values frontend/nginx.conf sends in the Docker stack. Google Fonts serves the Inter /
+# IBM Plex stylesheet and font files. No in-browser camera use exists (labels are scanned with the phone's own
+# camera app, which opens the asset link), so the camera is off like the rest.
+CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; "
+    "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+)
+PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+# FastAPI's own /docs and /redoc pages load Swagger / ReDoc from a CDN with an inline script; they exist only
+# outside production (docs_urls), so they are left without the CSP instead of being broken in development.
+_DOCS_PATHS = frozenset({"/docs", "/docs/oauth2-redirect", "/redoc"})
+
+
 @app.middleware("http")
 async def _security_headers(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = PERMISSIONS_POLICY
+    if request.url.path not in _DOCS_PATHS or app.docs_url is None:
+        response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
     if request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"
     return response

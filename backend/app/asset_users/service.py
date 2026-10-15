@@ -5,7 +5,7 @@ import secrets
 from sqlalchemy import delete, func, select
 from app.assets.models import Asset
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.security import hash_password
+from app.core.security import end_all_sessions, hash_password
 from app.asset_users.models import AssetUser, AssetUserCompanyAccess
 
 # argon2 hashes of temporary passwords issued in bulk: at most this many at the same time (each uses ~64 MB).
@@ -96,6 +96,7 @@ class AssetUserService:
                 "Move them to someone else or back to a stock room first, then deactivate."
             )
         asset_user.is_active = False
+        end_all_sessions(asset_user)            # security AU-05: a deactivated account's tokens die with it
         asset_user.updated_by = actor_id
         await self.session.commit()
         return True
@@ -109,6 +110,7 @@ class AssetUserService:
         asset_user.must_change_password = True
         asset_user.failed_login_count = 0
         asset_user.locked_until = None
+        end_all_sessions(asset_user)            # security AU-05: whoever was signed in with the old password is out
         asset_user.updated_by = actor_id
         await self.session.commit()
         return temp_password
@@ -131,6 +133,7 @@ class AssetUserService:
             user.must_change_password = True
             user.failed_login_count = 0
             user.locked_until = None
+            end_all_sessions(user)              # security AU-05
             user.updated_by = actor_id
         await self.session.commit()
         return list(zip(users, temps))
@@ -149,6 +152,8 @@ class AssetUserService:
             return None
         if not value and asset_user.is_primary_owner and await self.count_active_primary_owners() <= 1:
             raise ValueError("The last remaining head-office admin cannot be removed.")
+        if asset_user.is_primary_owner and not value:
+            end_all_sessions(asset_user)        # security AU-05: no live session keeps head-office rights
         asset_user.is_primary_owner = value
         asset_user.updated_by = actor_id
         await self.session.commit()
@@ -159,9 +164,14 @@ class AssetUserService:
         asset_user = await self.session.get(AssetUser, asset_user_id)
         if asset_user is None:
             return False
+        before = set((await self.session.execute(
+            select(AssetUserCompanyAccess.company_id).where(AssetUserCompanyAccess.asset_user_id == asset_user_id)
+        )).scalars().all())
         await self.session.execute(delete(AssetUserCompanyAccess).where(AssetUserCompanyAccess.asset_user_id == asset_user_id))
         for cid in company_ids:
             self.session.add(AssetUserCompanyAccess(asset_user_id=asset_user_id, company_id=cid))
+        if before != set(company_ids):
+            end_all_sessions(asset_user)        # security AU-05: company access changed -> sign in again
         await self.session.commit()
         return True
 

@@ -34,8 +34,9 @@ async def _seed():
             {"at": _ago(200), "kind": "JS_ERROR", "status": "REVIEWED", "message": "old reviewed"},
             {"at": _ago(400), "kind": "JS_ERROR", "status": "REVIEWED", "message": "ancient reviewed"},
         ])
+        # Security IF-06 (intended change): older than the 5-year floor, so the guarded archive may remove it.
         await s.execute(insert(AuditLog), [
-            {"at": _ago(1000), "source": "api", "category": "DATA", "action": "UPDATE", "summary": "very old audit",
+            {"at": _ago(2000), "source": "api", "category": "DATA", "action": "UPDATE", "summary": "very old audit",
              "outcome": "OK", "is_head_office_admin": False}])
         await s.commit()
 
@@ -75,7 +76,8 @@ async def test_the_archive_function_refuses_without_the_setting():
 async def test_the_archive_function_refuses_a_recent_cut_off():
     async with SessionLocal() as s:
         await s.execute(text("SET LOCAL ckam.allow_audit_purge = 'on'"))
-        with pytest.raises(Exception, match="at least one day"):
+        # Security IF-06 (intended change): the floor is now 5 years (was one day).
+        with pytest.raises(Exception, match="at least 5 years"):
             await s.execute(text("SELECT ckam_purge_audit_log(now())"))
 
 
@@ -86,7 +88,7 @@ async def test_the_guarded_archive_removes_only_older_rows_inside_its_transactio
                                             "outcome": "OK", "is_head_office_admin": False}])
         await s.commit()
     async with SessionLocal() as s:
-        removed = await purge_audit_log_before(s, _ago(500))
+        removed = await purge_audit_log_before(s, _ago(1900))
         await s.commit()
     assert removed == 1 and [a.summary for a in await audit()] == ["today"]
     async with SessionLocal() as s:                        # the setting was LOCAL: gone with that transaction
@@ -101,5 +103,6 @@ async def test_the_triggers_and_function_exist():
         functions = set((await s.execute(text(
             "SELECT proname FROM pg_proc WHERE proname IN ('ckam_purge_audit_log', 'forbid_audit_log_write')"
         ))).scalars().all())
-    assert triggers == {"trg_audit_log_no_update", "trg_audit_log_no_delete"}
+    # Security IF-05 (intended change): plus the statement-level TRUNCATE guard.
+    assert triggers == {"trg_audit_log_no_update", "trg_audit_log_no_delete", "trg_audit_log_no_truncate"}
     assert functions == {"ckam_purge_audit_log", "forbid_audit_log_write"}

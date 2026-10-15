@@ -3,11 +3,12 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
-from app.core.security import decode_token
+from app.core.security import decode_token, token_is_current
 from app.asset_users.models import AssetUser, AssetUserCompanyAccess
 from app.observability import context as obs_context
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+SESSION_ENDED_DETAIL = "Your session has ended. Please sign in again."
 
 # The only authenticated routes a asset_user may call while `must_change_password`
 # is still set (spec §7.1 "Forced password change on first login"). Login and
@@ -27,9 +28,19 @@ async def get_current_asset_user(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
     if payload.get("type") != "access":
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
-    asset_user = await session.get(AssetUser, int(payload["sub"]))
+    try:
+        asset_user = await session.get(AssetUser, int(payload["sub"]))
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
     if asset_user is None or not asset_user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Account not found or inactive")
+    # Security AU-07: sign-in switched off ends a live session at once, not when the 15-minute token runs out
+    # (the head-office admin signs in by name and is exempt, exactly as at /api/auth/refresh).
+    if not asset_user.is_primary_owner and not asset_user.login_enabled:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, SESSION_ENDED_DETAIL)
+    # Security AU-05: a token from before a sign-out, password change / reset or access change.
+    if not token_is_current(payload, asset_user):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, SESSION_ENDED_DETAIL)
     # S8: who is making this request, for the access log, audit rows and error rows of this request.
     obs_context.set_actor(asset_user)
     # Server-side half of the forced first-login password change: the frontend

@@ -1,17 +1,20 @@
 import logging
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
-from sqlalchemy import func, or_, select
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
+from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core import rate_limit
 from app.core.capabilities import capabilities
 from app.core.config import settings
 from app.core.db import get_session
 from app.core.deps import get_current_asset_user
 from app.core.security import (
-    create_access_token, create_refresh_token, decode_token, hash_password, verify_password,
+    burn_password_check, create_access_token, create_refresh_token, decode_token, end_all_sessions, hash_password,
+    token_is_current, verify_password,
 )
 from app.asset_users.models import AssetUser
 from app.masters.models import Company
+from app.auth.password_policy import password_problem
 from app.auth.schemas import ChangePasswordRequest, CompanyOption, LoginRequest, LoginResponse
 from app.observability import context as obs_context
 from app.observability import writer as obs_writer
@@ -32,10 +35,11 @@ REFRESH_COOKIE_NAME = "refresh_token"
 REFRESH_COOKIE_PATH = "/api/auth"
 
 
-def _set_refresh_cookie(response: Response, asset_user_id: int) -> None:
+def _set_refresh_cookie(response: Response, asset_user: AssetUser) -> None:
     response.set_cookie(
         REFRESH_COOKIE_NAME,
-        create_refresh_token(asset_user_id),
+        # Security AU-05/AU-06: a new token every time (its own jti), for the account's current session version.
+        create_refresh_token(asset_user.id, asset_user.token_version or 0),
         httponly=True,
         # See Settings.cookie_secure: off by default for this app's plain-HTTP LAN
         # deployment (a Secure cookie is never sent over HTTP, which would break
@@ -52,7 +56,7 @@ def _session_response(asset_user: AssetUser) -> LoginResponse:
     # is_primary_owner=True), so this already covers it with no special case.
     company_scope = None if asset_user.role == "ADMIN" else asset_user.company_id
     return LoginResponse(
-        access_token=create_access_token(asset_user.id, asset_user.role, company_scope),
+        access_token=create_access_token(asset_user.id, asset_user.role, company_scope, asset_user.token_version or 0),
         must_change_password=asset_user.must_change_password,
         role=asset_user.role,
         company_id=asset_user.company_id,
@@ -73,7 +77,9 @@ async def list_login_companies(session: AsyncSession = Depends(get_session)):
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(body: LoginRequest, response: Response, session: AsyncSession = Depends(get_session)):
+async def login(body: LoginRequest, request: Request, response: Response, session: AsyncSession = Depends(get_session)):
+    # Security AU-03/AU-04: per address and per login id, before any lookup or password check.
+    await rate_limit.limit_login(request, body.login_id or "")
     # The login screen no longer asks which company to sign into -- login_id
     # (Code OR email address, case-insensitively) must resolve to exactly one
     # asset_user across every ACTIVE company. Code and email are only unique
@@ -122,6 +128,9 @@ async def login(body: LoginRequest, response: Response, session: AsyncSession = 
     matches.sort(key=lambda h: h.id)
     attempted = (body.login_id or "")[:200]
     if len(matches) != 1:
+        # Security AU-01: the same Argon2 work as a real password check, so the answer time does not say whether
+        # the login id exists (or is disabled / switched off / ambiguous).
+        burn_password_check(body.password)
         if len(matches) > 1:
             logger.warning(
                 "Login id %r matched asset users in %d different companies (asset user ids: %s) -- "
@@ -135,21 +144,51 @@ async def login(body: LoginRequest, response: Response, session: AsyncSession = 
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
     asset_user = matches[0]
 
+    # Security AU-01/AU-02: the password is checked first, whatever the account's state, so every answer costs the
+    # same and "locked" (423) is said only to someone who typed the right password. A wrong password on a locked
+    # account is the generic 401 and neither counts nor extends the lock.
+    password_ok = verify_password(body.password, asset_user.password_hash)
     now = datetime.now(timezone.utc)
-    if asset_user.locked_until and asset_user.locked_until > now:
+    not_locked = or_(AssetUser.locked_until.is_(None), AssetUser.locked_until <= now)
+
+    async def refuse_locked() -> HTTPException:
         await obs_writer.security("LOGIN_FAILED", f"Sign-in refused for {asset_user.name}: the account is locked.",
                                   outcome="DENIED", actor=asset_user, entity="asset_user", entity_id=asset_user.id,
-                                  changes={"login_id": attempted, "reason": "locked",
-                                           "locked_until": asset_user.locked_until.isoformat()})
-        raise HTTPException(status.HTTP_423_LOCKED, "Account locked, try again later")
+                                  changes={"login_id": attempted, "reason": "locked", **(
+                                      {"locked_until": asset_user.locked_until.isoformat()}
+                                      if asset_user.locked_until else {})})
+        return HTTPException(status.HTTP_423_LOCKED, "Account locked, try again later")
 
-    if not verify_password(body.password, asset_user.password_hash):
-        asset_user.failed_login_count += 1
-        locked_now = asset_user.failed_login_count >= MAX_FAILED_ATTEMPTS
-        if locked_now:
-            asset_user.locked_until = now + timedelta(minutes=LOCKOUT_MINUTES)
-        attempts = asset_user.failed_login_count
+    async def refuse_wrong_while_locked() -> HTTPException:
+        await obs_writer.security("LOGIN_FAILED", f"Sign-in failed for {asset_user.name}: wrong password while the "
+                                  "account is locked (not counted).", outcome="DENIED", actor=asset_user,
+                                  entity="asset_user", entity_id=asset_user.id,
+                                  changes={"login_id": attempted, "reason": "wrong password while locked"})
+        return HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
+
+    if asset_user.locked_until and asset_user.locked_until > now:
+        # Lead decision: a lock is a lock. Saying "locked" only to the right password would turn the lock into a
+        # password-guessing oracle (a correct guess is recognisable while locked, so the lock would stop slowing
+        # guesses). Cost of the plain 423: it tells a stranger that this id exists and is locked (AU-02, LOW, accepted).
+        raise await refuse_locked()
+
+    if not password_ok:
+        # Security AU-16: one atomic UPDATE ... RETURNING that only counts while the account is not locked, so
+        # parallel guesses cannot each read "4 failures" and all get a try: the count stops at the threshold.
+        counted = (await session.execute(
+            update(AssetUser)
+            .where(AssetUser.id == asset_user.id, not_locked)
+            .values(failed_login_count=AssetUser.failed_login_count + 1,
+                    locked_until=case((AssetUser.failed_login_count + 1 >= MAX_FAILED_ATTEMPTS,
+                                       now + timedelta(minutes=LOCKOUT_MINUTES)), else_=AssetUser.locked_until))
+            .returning(AssetUser.failed_login_count)
+            .execution_options(synchronize_session=False)
+        )).first()
         await session.commit()
+        if counted is None:                       # a parallel attempt locked it a moment ago
+            raise await refuse_wrong_while_locked()
+        attempts = counted[0]
+        locked_now = attempts >= MAX_FAILED_ATTEMPTS
         await obs_writer.security("LOGIN_FAILED", f"Sign-in failed for {asset_user.name}: wrong password "
                                   f"(attempt {attempts}).", outcome="FAILED", actor=asset_user, entity="asset_user",
                                   entity_id=asset_user.id,
@@ -161,20 +200,28 @@ async def login(body: LoginRequest, response: Response, session: AsyncSession = 
                                       changes={"attempts": attempts, "minutes": LOCKOUT_MINUTES})
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
 
-    asset_user.failed_login_count = 0
-    asset_user.locked_until = None
+    # Security AU-16: the reset, too, only while not locked -- a right guess racing the lock does not undo it.
+    reset = (await session.execute(
+        update(AssetUser).where(AssetUser.id == asset_user.id, not_locked)
+        .values(failed_login_count=0, locked_until=None).returning(AssetUser.id)
+        .execution_options(synchronize_session=False)
+    )).first()
     await session.commit()
+    if reset is None:
+        raise await refuse_locked()
+    asset_user.failed_login_count, asset_user.locked_until = 0, None
 
     obs_context.set_actor(asset_user)
     await obs_writer.security("LOGIN", f"{asset_user.name} signed in.", entity="asset_user", entity_id=asset_user.id,
                               changes={"login_id": attempted, "must_change_at_sign_in": asset_user.must_change_password})
-    _set_refresh_cookie(response, asset_user.id)
+    _set_refresh_cookie(response, asset_user)
     return _session_response(asset_user)
 
 
 @router.post("/refresh", response_model=LoginResponse)
 async def refresh(
     response: Response,
+    _limited: None = Depends(rate_limit.limit_refresh),
     session: AsyncSession = Depends(get_session),
     refresh_token: str | None = Cookie(default=None),
 ):
@@ -208,16 +255,22 @@ async def refresh(
         raise await refused("the refresh token is invalid or has expired")
     if payload.get("type") != "refresh":
         raise await refused("not a refresh token")
-    asset_user = await session.get(AssetUser, int(payload["sub"]))
+    try:
+        asset_user = await session.get(AssetUser, int(payload["sub"]))
+    except (KeyError, TypeError, ValueError):
+        raise await refused("the refresh token is invalid or has expired")
     if asset_user is None or not asset_user.is_active or asset_user.password_hash is None:
         raise await refused("the account is not active", asset_user)
     if not asset_user.is_primary_owner and not asset_user.login_enabled:
         raise await refused("the account can no longer sign in", asset_user)
     if asset_user.locked_until and asset_user.locked_until > datetime.now(timezone.utc):
         raise await refused("the account is locked", asset_user)
+    # Security AU-05/AU-06: refused after sign-out, a password change / reset or an access change.
+    if not token_is_current(payload, asset_user):
+        raise await refused("the session was ended (signed out, password or access changed)", asset_user)
 
     obs_context.set_actor(asset_user)
-    _set_refresh_cookie(response, asset_user.id)
+    _set_refresh_cookie(response, asset_user)
     return _session_response(asset_user)
 
 
@@ -227,13 +280,20 @@ async def logout(response: Response, session: AsyncSession = Depends(get_session
     """Clears the refresh cookie so a logged-out browser can't silently mint a new
     access token via /refresh for the rest of the refresh window. Unauthenticated
     on purpose: logging out must work even with an already-expired access token.
-    S8: a LOGOUT row names the person when the refresh cookie still says who it was."""
+    S8: a LOGOUT row names the person when the refresh cookie still says who it was.
+
+    Security AU-05: a still-valid refresh cookie also ends EVERY session of that account (its token_version goes
+    up), so a copied refresh or access token stops working too -- on every device. A stale or foreign cookie
+    only clears the cookie (it cannot sign anybody else out)."""
     user = None
     if refresh_token:
         try:
             payload = decode_token(refresh_token)
             if payload.get("type") == "refresh":
                 user = await session.get(AssetUser, int(payload["sub"]))
+                if user is not None and token_is_current(payload, user):
+                    end_all_sessions(user)
+                    await session.commit()
         except (ValueError, KeyError, TypeError):
             user = None
     if user is not None:
@@ -260,9 +320,14 @@ async def my_capabilities(
 @router.post("/change-password", status_code=204)
 async def change_password(
     body: ChangePasswordRequest,
+    response: Response,
+    _limited: None = Depends(rate_limit.limit_change_password),
     session: AsyncSession = Depends(get_session),
     asset_user: AssetUser = Depends(get_current_asset_user),
 ):
+    """Still 204 with no body (the frontend relies on that). Security AU-05: every earlier token of the account
+    stops working, and the answer carries a NEW refresh cookie for the new session version -- the browser's next
+    request gets a 401 for its old access token, refreshes once with this cookie and carries on signed in."""
     if not verify_password(body.old_password, asset_user.password_hash or ""):
         # 400, not 401: the session is valid, the *input* is wrong. The frontend
         # treats any 401 as "session expired" (refresh, then log out), which would
@@ -271,8 +336,17 @@ async def change_password(
                                   "the current password was wrong.", outcome="FAILED",
                                   entity="asset_user", entity_id=asset_user.id)
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Old password is incorrect")
+    # Security AU-08: no common, simple or personal password.
+    problem = password_problem(body.new_password, code=asset_user.code, email=asset_user.email, name=asset_user.name)
+    if problem:
+        await obs_writer.security("PASSWORD_CHANGE_FAILED", f"{asset_user.name} could not change their password: "
+                                  "the new one is too easy to guess.", outcome="FAILED",
+                                  entity="asset_user", entity_id=asset_user.id, changes={"reason": problem})
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, problem)
     asset_user.password_hash = hash_password(body.new_password)
     asset_user.must_change_password = False
+    end_all_sessions(asset_user)
     await session.commit()
+    _set_refresh_cookie(response, asset_user)
     await obs_writer.security("PASSWORD_CHANGED", f"{asset_user.name} changed their password.",
                               entity="asset_user", entity_id=asset_user.id)

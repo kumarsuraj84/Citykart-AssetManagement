@@ -172,11 +172,22 @@ async def test_pi_lookup_for_a_po_not_from_the_erp_keeps_its_422(client, erp, er
 
 async def test_a_missing_view_in_the_erp_is_told_apart_from_a_down_erp(monkeypatch):
     class Conn:
-        async def fetch(self, *_a):
+        # Security IF-10 (intended change): reads now run inside conn.transaction(readonly=True) with a timeout.
+        def transaction(self, **_kw):
+            return _NoTransaction()
+
+        async def fetch(self, *_a, **_kw):
             raise asyncpg.UndefinedTableError('relation "gold_ckam.po_receipt_line" does not exist')
 
-        async def close(self):
+        async def close(self, **_kw):
             pass
+
+    class _NoTransaction:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_exc):
+            return False
 
     reader = PgReadOnly()
 

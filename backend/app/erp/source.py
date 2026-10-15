@@ -231,38 +231,65 @@ def _f(value) -> float | None:
     return None if value is None else float(value)
 
 
+ERP_TOO_SLOW = "The ERP database took too long to answer. Try again in a few minutes."
+APPLICATION_NAME = "ckam"
+
+
 class PgReadOnly:
     """A read-only connection to the ERP warehouse. Every connection is opened with
-    default_transaction_read_only, so a mistake in a query cannot write to the ERP."""
-    statement_timeout_ms: int | None = None      # None = the server's own default
+    default_transaction_read_only, so a mistake in a query cannot write to the ERP.
+
+    Security IF-10: every connection also has a connect timeout (ERP_CONNECT_TIMEOUT_SECONDS), a server-side
+    statement_timeout (ERP_STATEMENT_TIMEOUT_SECONDS; the background copy's reader uses
+    ERP_COPY_STATEMENT_TIMEOUT_SECONDS), application_name=ckam (so the ERP team can see whose query it is), and
+    each query runs inside an explicit READ ONLY transaction. A query over the limit becomes ErpUnavailable."""
+
+    def statement_timeout_seconds(self) -> int:
+        return settings.erp_statement_timeout_seconds
+
+    def _server_settings(self) -> dict[str, str]:
+        server_settings = {"default_transaction_read_only": "on", "application_name": APPLICATION_NAME}
+        seconds = self.statement_timeout_seconds()
+        if seconds and seconds > 0:
+            server_settings["statement_timeout"] = str(int(seconds) * 1000)
+        return server_settings
 
     async def _connect(self) -> asyncpg.Connection:
         if not is_configured():
             raise ErpUnavailable("The ERP connection is not set up on this server.")
-        server_settings = {"default_transaction_read_only": "on"}
-        if self.statement_timeout_ms:
-            server_settings["statement_timeout"] = str(self.statement_timeout_ms)
         try:
             return await asyncpg.connect(
                 host=settings.po_source_host, port=settings.po_source_port, database=settings.po_source_db,
                 user=settings.po_source_user, password=settings.po_source_password,
-                timeout=CONNECT_TIMEOUT_SECONDS, server_settings=server_settings,
+                timeout=settings.erp_connect_timeout_seconds or CONNECT_TIMEOUT_SECONDS,
+                server_settings=self._server_settings(),
             )
         except (OSError, TimeoutError, asyncpg.PostgresError) as exc:
             raise ErpUnavailable(f"The ERP database could not be reached ({type(exc).__name__}).") from exc
 
     async def _fetch(self, sql: str, *args) -> list[asyncpg.Record]:
         conn = await self._connect()
+        seconds = self.statement_timeout_seconds()
+        # The client-side limit is a little longer than the server's, so the server normally cancels first.
+        client_timeout = seconds + 5 if seconds and seconds > 0 else None
         try:
-            return await conn.fetch(sql, *args)
+            async with conn.transaction(readonly=True):
+                return await conn.fetch(sql, *args, timeout=client_timeout)
         except asyncpg.UndefinedTableError as exc:
             raise ErpViewMissing("The ERP view this screen reads does not exist yet.") from exc
         except asyncpg.InsufficientPrivilegeError as exc:
             raise ErpUnavailable("CKAM is not allowed to read the ERP view (a database grant is missing).") from exc
+        except (asyncpg.QueryCanceledError, TimeoutError) as exc:
+            raise ErpUnavailable(ERP_TOO_SLOW) from exc
         except asyncpg.PostgresError as exc:
             raise ErpUnavailable(f"The ERP database refused the request ({type(exc).__name__}).") from exc
+        except (OSError, asyncpg.InterfaceError) as exc:
+            raise ErpUnavailable(f"The ERP database could not be reached ({type(exc).__name__}).") from exc
         finally:
-            await conn.close()
+            try:
+                await conn.close(timeout=5)
+            except Exception:  # noqa: BLE001 - a broken connection cannot be closed politely; nothing to keep
+                conn.terminate()
 
 
 class PgErpSource(PgReadOnly):

@@ -6,6 +6,7 @@ from app.core.validation import check_email
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.uploads import read_upload_bounded
 from app.core.db import get_session
+from app.core.security import end_all_sessions
 from app.core.deps import (
     READ_ROLES, allowed_asset_domains, get_current_asset_user, require_primary_owner, require_role, scoped_company_ids,
     work_area_words,
@@ -377,6 +378,16 @@ def _access_snapshot(user: AssetUser) -> dict:
     return {f: getattr(user, f) for f in ACCESS_EVENT_FIELDS}
 
 
+def _access_reduced_or_changed(before: dict, after: AssetUser) -> bool:
+    """Security AU-05/AU-07: sign-in switched off, or a new role, work area or home company -> every token the
+    person holds stops working (they sign in again and get exactly the new access)."""
+    if before.get("login_enabled") and not after.login_enabled:
+        return True
+    if (before.get("allowed_asset_domains") or "BOTH") != (after.allowed_asset_domains or "BOTH"):
+        return True
+    return before.get("role") != after.role or before.get("company_id") != after.company_id
+
+
 async def _access_event(before: dict | None, after: AssetUser) -> None:
     """S8: a SECURITY row (besides the DATA row) whenever someone's sign-in, access level, work area or home
     company changes -- or a new account that can sign in is made."""
@@ -533,6 +544,8 @@ async def update_asset_user(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "A person or place with this code already exists in this company.")
     if obj is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
+    if _access_reduced_or_changed(access_before, obj):
+        end_all_sessions(obj)
     rooms = await _store_rooms_or_422(session, asset_user, obj) if becomes_store else []
     await session.commit()
     await session.refresh(obj)

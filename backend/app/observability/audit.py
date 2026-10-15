@@ -61,7 +61,7 @@ SPECS: dict[str, EntitySpec] = {spec_table: spec for spec_table, spec in (
     ("bundle", EntitySpec("bundle", "Set", ("name",))),
     ("bundle_part", EntitySpec("bundle_part", "Set part", ("name",))),
     ("asset_user", EntitySpec("asset_user", "Person or place", ("name", "code"),
-                              frozenset({"failed_login_count", "locked_until"}))),
+                              frozenset({"failed_login_count", "locked_until", "token_version"}))),
     ("purchase_order", EntitySpec("purchase_order", "Purchase order", ("po_number",), frozenset({"erp_synced_at"}))),
     ("purchase_order_erp_baseline", EntitySpec("purchase_order_erp_baseline", "ERP baseline of a PO item", ("item_code",))),
     ("asset_document", EntitySpec("asset_document", "Document", ("file_name",), frozenset({"stored_path"}))),

@@ -7,7 +7,7 @@ from app.core.deps import WRITE_ROLES, get_current_asset_user, require_role
 from app.assets.router import _get_scoped_asset
 from app.documents.models import AssetDocument, DOC_TYPES
 from app.documents.schemas import AssetDocumentOut
-from app.documents.service import MAX_SIZE_BYTES, save_document
+from app.documents.service import MAX_SIZE_BYTES, media_type_for, save_document
 from app.observability import events as obs_events
 from app.observability import writer as obs_writer
 
@@ -79,4 +79,6 @@ async def download_document(
     await obs_writer.access("DOCUMENT_DOWNLOADED", f"{obs_events.who()} downloaded '{doc.file_name}' of asset "
                             f"{asset.asset_code}.", entity="asset", entity_id=asset.id, company_id=asset.company_id,
                             changes={"document_id": doc.id, "doc_type": doc.doc_type, "size_bytes": doc.size_bytes})
-    return FileResponse(doc.stored_path, media_type=doc.mime_type, filename=doc.file_name)
+    # Security IN-03: the type comes from the stored file's own extension (only allowed ones are ever stored), not
+    # from the mime_type the uploading browser sent (older rows still hold that); always a download (attachment).
+    return FileResponse(doc.stored_path, media_type=media_type_for(doc.stored_path), filename=doc.file_name)

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Protocol
 
+from app.core.config import settings
 from app.erp.source import PgReadOnly
 
 SCHEMA = "gold_ckpost"
@@ -120,7 +121,9 @@ def _f(value) -> float | None:
 
 
 class PgWarehouseReader(PgReadOnly):
-    statement_timeout_ms = 120_000          # the PO table has about a million rows; this runs at night
+    def statement_timeout_seconds(self) -> int:
+        # The PO table has about a million rows and this runs in the background (security IF-10: still bounded).
+        return settings.erp_copy_statement_timeout_seconds
 
     async def po_lines(self, since: date, also_po_codes: frozenset[int] = frozenset()) -> list[WhPoLine]:
         rows = await self._fetch(

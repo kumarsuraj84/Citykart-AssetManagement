@@ -62,8 +62,13 @@ async def test_change_password_is_allowed_and_then_unblocks_everything(client):
     )
     assert resp.status_code == 204
 
-    # Same access token now works -- get_current_asset_user re-reads the asset_user row.
-    assert (await client.get("/api/assets", headers=headers)).status_code == 200
+    # Security AU-05 (intended change): the access token from before the change no longer works (it used to);
+    # the change-password answer set a new refresh cookie, and the session renewed with it is unblocked.
+    assert (await client.get("/api/assets", headers=headers)).status_code == 401
+    renewed = await client.post("/api/auth/refresh")
+    assert renewed.status_code == 200 and renewed.json()["must_change_password"] is False
+    new_headers = {"Authorization": f"Bearer {renewed.json()['access_token']}"}
+    assert (await client.get("/api/assets", headers=new_headers)).status_code == 200
 
     # And a fresh login with the new password reports the flag cleared.
     body2 = await _login(client, co, asset_user, password="Brand-New-Passw0rd")

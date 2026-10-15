@@ -365,7 +365,10 @@ async def _http_handler(request: Request, exc: StarletteHTTPException):
             )
     if not is_body_allowed_for_status_code(code):
         return Response(status_code=code, headers=headers)
-    return JSONResponse(_body({"detail": exc.detail}), status_code=code, headers=headers)
+    content = {"detail": exc.detail}
+    if code == 429 and isinstance(exc.detail, str):     # security AU-03: the sentence also as the errors list
+        content["errors"] = [exc.detail]
+    return JSONResponse(_body(content), status_code=code, headers=headers)
 
 
 def register_exception_handlers(app: FastAPI) -> None:

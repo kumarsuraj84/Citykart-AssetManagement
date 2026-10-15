@@ -45,6 +45,20 @@ class Settings(BaseSettings):
     store_email_pattern: str = "sm.{code}@citykartstores.com"
     erp_sync_enabled: bool = True
     erp_sync_check_minutes: int = 30
+    # Security IF-10: limits on every read from the ERP warehouse (app.erp.source / app.erp.warehouse). A
+    # connection that cannot be made, or a query that runs longer, becomes the friendly "ERP unavailable".
+    erp_connect_timeout_seconds: int = 10
+    erp_statement_timeout_seconds: int = 60
+    # The background copy (app.erp.warehouse) scans the PO table (about a million rows), so it may take longer.
+    erp_copy_statement_timeout_seconds: int = 120
+    # Security AU-03: in-process sliding-window limits on the sign-in endpoints (app.core.rate_limit), per
+    # client address (TRUSTED_PROXIES aware) and, for sign-in, per login id. Requests over the limit get 429.
+    rate_limit_enabled: bool = True
+    rate_limit_window_seconds: int = 60
+    rate_limit_login_per_ip: int = 20
+    rate_limit_login_per_login_id: int = 10
+    rate_limit_refresh_per_ip: int = 60
+    rate_limit_change_password_per_ip: int = 10
     # S8: logging, audit and diagnostics (app.observability; docs/ai/LOGGING_AND_DIAGNOSTICS.md).
     # LOG_DIR holds app.jsonl / error.jsonl / audit.jsonl (20 MB x 10 files each). Docker sets /data/logs
     # (the `logs` volume); a local run writes ./logs. If it cannot be written the lines go to stderr and a

@@ -59,6 +59,9 @@ class AssetUser(Base, AuditMixin, SoftDeleteMixin):
     must_change_password: Mapped[bool] = mapped_column(default=True)
     failed_login_count: Mapped[int] = mapped_column(Integer, default=0)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Security AU-05/AU-07: the session version. Every access / refresh token carries the version it was issued
+    # for (`tv`); raising it (app.core.security.end_all_sessions) ends every session of the account at once.
+    token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 class AssetUserCompanyAccess(Base):

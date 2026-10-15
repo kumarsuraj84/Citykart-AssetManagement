@@ -79,11 +79,20 @@ async def _truncate_tables():
     if table_names:
         quoted = ", ".join(f'"{name}"' for name in table_names)
         async with engine.begin() as conn:
+            # Security IF-05: the append-only tables refuse TRUNCATE (a BEFORE TRUNCATE trigger). `replica` skips
+            # ordinary triggers for this one transaction; only a superuser (the dev/test role) may set it.
+            await conn.execute(text("SET LOCAL session_replication_role = replica"))
             await conn.execute(text(f"TRUNCATE TABLE {quoted} RESTART IDENTITY CASCADE;"))
     # S8: the in-process throttles / rate limits of the logging start empty for every test.
     from app.observability import client_reports, writer
     writer.reset_throttles()
     client_reports.reset_limits()
+    # Security AU-03: the sign-in rate limits are off for the suite (tests sign in far more often than a person)
+    # and start empty; tests/auth/test_rate_limit.py switches them on for itself.
+    from app.core import rate_limit
+    from app.core.config import settings
+    settings.rate_limit_enabled = False
+    rate_limit.reset()
     writer._db_state["down"] = False
     yield
 
