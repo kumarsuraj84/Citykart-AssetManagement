@@ -11,6 +11,7 @@ from app.core.capabilities import (
     require_domain_admin, require_head_office, require_small_create,
 )
 from app.core.codes import unique_code
+from app.core.uploads import read_upload_bounded
 from app.core.db import get_session
 from app.core.deps import ensure_company_in_scope, get_current_asset_user, require_primary_owner, scoped_company_ids
 from app.masters.bulk_import_export import (
@@ -271,7 +272,7 @@ def build_master_router(
             file: UploadFile = File(...), session: AsyncSession = Depends(get_session),
             asset_user=Depends(require_primary_owner()),
         ):
-            content = await file.read()
+            content = await read_upload_bounded(file)
             allowed = await scoped_company_ids(session, asset_user)
             try:
                 result = await preview_import(session, import_fields, content, allowed, company_field)
@@ -286,7 +287,7 @@ def build_master_router(
             file: UploadFile = File(...), session: AsyncSession = Depends(get_session),
             asset_user=Depends(require_primary_owner()),
         ):
-            content = await file.read()
+            content = await read_upload_bounded(file)
             allowed = await scoped_company_ids(session, asset_user)
             try:
                 result = await commit_import(session, model, import_fields, content, asset_user, allowed, company_field)

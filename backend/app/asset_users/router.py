@@ -4,6 +4,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from app.core.validation import check_email
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.uploads import read_upload_bounded
 from app.core.db import get_session
 from app.core.deps import (
     READ_ROLES, allowed_asset_domains, get_current_asset_user, require_primary_owner, require_role, scoped_company_ids,
@@ -82,7 +83,7 @@ async def asset_users_import_preview(
     file: UploadFile = File(...), session: AsyncSession = Depends(get_session),
     asset_user=Depends(require_role("ADMIN")),
 ):
-    content = await file.read()
+    content = await read_upload_bounded(file)
     allowed = await scoped_company_ids(session, asset_user)
     try:
         result = await preview_import(session, ASSET_USER_IMPORT_FIELDS, content, allowed, "company_id")
@@ -98,7 +99,7 @@ async def asset_users_import_commit(
     file: UploadFile = File(...), session: AsyncSession = Depends(get_session),
     asset_user=Depends(require_role("ADMIN")),
 ):
-    content = await file.read()
+    content = await read_upload_bounded(file)
     allowed = await scoped_company_ids(session, asset_user)
 
     async def store_rooms(obj: AssetUser) -> None:

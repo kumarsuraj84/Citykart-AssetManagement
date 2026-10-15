@@ -1,6 +1,7 @@
 ﻿from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.uploads import read_upload_bounded
 from app.core.db import get_session
 from app.core.deps import allowed_asset_domains, require_primary_owner, scoped_company_ids
 from app.imports.asset_import_service import (
@@ -35,7 +36,7 @@ async def preview(
     file: UploadFile = File(...), mode: str = ImportMode, session: AsyncSession = Depends(get_session),
     actor=Depends(require_primary_owner()),
 ):
-    content = await file.read()
+    content = await read_upload_bounded(file)
     try:
         result = await preview_import(session, content, await scoped_company_ids(session, actor), mode,
                                       await allowed_asset_domains(session, actor))
@@ -50,7 +51,7 @@ async def commit(
     file: UploadFile = File(...), mode: str = ImportMode, session: AsyncSession = Depends(get_session),
     actor=Depends(require_primary_owner()),
 ):
-    content = await file.read()
+    content = await read_upload_bounded(file)
     obs_audit.suppress(session, "asset")      # S8: one IMPORT_COMMIT row for the whole file
     try:
         result = await commit_import(session, content, actor, await scoped_company_ids(session, actor), mode,
@@ -116,7 +117,7 @@ async def preview_po(
     file: UploadFile = File(...), session: AsyncSession = Depends(get_session),
     actor=Depends(require_primary_owner()),
 ):
-    content = await file.read()
+    content = await read_upload_bounded(file)
     try:
         result = await po_import_service.preview_import(session, content, await scoped_company_ids(session, actor))
     except ImportTemplateError as exc:
@@ -130,7 +131,7 @@ async def commit_po(
     file: UploadFile = File(...), session: AsyncSession = Depends(get_session),
     actor=Depends(require_primary_owner()),
 ):
-    content = await file.read()
+    content = await read_upload_bounded(file)
     try:
         result = await po_import_service.commit_import(session, content, actor, await scoped_company_ids(session, actor))
     except ImportScopeError as exc:
@@ -163,7 +164,7 @@ async def preview_movements(
     file: UploadFile = File(...), session: AsyncSession = Depends(get_session),
     actor=Depends(require_primary_owner()),
 ):
-    content = await file.read()
+    content = await read_upload_bounded(file)
     try:
         result = await movement_import_service.preview_import(
             session, content, await scoped_company_ids(session, actor), actor.role,
@@ -179,7 +180,7 @@ async def commit_movements(
     file: UploadFile = File(...), session: AsyncSession = Depends(get_session),
     actor=Depends(require_primary_owner()),
 ):
-    content = await file.read()
+    content = await read_upload_bounded(file)
     try:
         result = await movement_import_service.commit_import(session, content, actor, await scoped_company_ids(session, actor))
     except ImportScopeError as exc:
