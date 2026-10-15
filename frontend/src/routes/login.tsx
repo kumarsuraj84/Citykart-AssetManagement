@@ -1,14 +1,17 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import "@/lib/zod-config";
 import { z } from "zod";
-import { UserRound, Lock, Eye, EyeOff, ArrowRight, AlertCircle } from "lucide-react";
+import { UserRound, Lock, Eye, EyeOff, ArrowRight, AlertCircle, Info } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ErrorMessage } from "@/components/shared/ErrorMessage";
+import { ApiError } from "@/lib/api-client";
+import { LOGIN_NOTICE_KEY, SESSION_ENDED_NOTICE } from "@/lib/auth-fetch";
 
 const schema = z.object({
   loginId: z.string().min(1, "User ID is required"),
@@ -16,10 +19,53 @@ const schema = z.object({
 });
 type FormValues = z.infer<typeof schema>;
 
+export const WRONG_CREDENTIALS_MESSAGE = "The User ID or password is not correct.";
+export const ACCOUNT_LOCKED_MESSAGE = "This account is locked for now. Try again later, or ask the administrator to unlock it.";
+export const TOO_MANY_ATTEMPTS_MESSAGE = "Too many sign-in attempts. Wait a minute and try again.";
+
+/**
+ * The one sentence for a refused sign-in, by the server's status: 401 is the same words whether the User ID
+ * is unknown or the password is wrong (nothing tells an outsider which one), 423 a locked account, 429 the
+ * server's own "too many attempts" sentence. Anything else (no answer, a server fault) keeps its message.
+ */
+export function loginErrorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 401) return WRONG_CREDENTIALS_MESSAGE;
+    if (err.status === 423) return ACCOUNT_LOCKED_MESSAGE;
+    if (err.status === 429) {
+      const detail = (err.body as { detail?: unknown } | null)?.detail;
+      return typeof detail === "string" && detail.trim() ? detail.trim() : TOO_MANY_ATTEMPTS_MESSAGE;
+    }
+  }
+  return err instanceof Error && err.message ? err.message : "Something went wrong. Please try again.";
+}
+
+/** The one-line notice left by a session that ended on its own (lib/auth-fetch.ts redirectToLogin), read once. */
+export function useLoginNotice(): string | null {
+  const [notice] = useState<string | null>(() => {
+    try {
+      return window.sessionStorage.getItem(LOGIN_NOTICE_KEY) === "expired" ? SESSION_ENDED_NOTICE : null;
+    } catch {
+      return null;
+    }
+  });
+  useEffect(() => {
+    try {
+      window.sessionStorage.removeItem(LOGIN_NOTICE_KEY);
+    } catch {
+      // nothing to forget
+    }
+  }, []);
+  return notice;
+}
+
 export function LoginForm({
   onSubmit,
+  notice = null,
 }: {
   onSubmit: (values: FormValues) => Promise<void>;
+  /** A one-line, non-error notice above the form (e.g. "Your session has ended."). */
+  notice?: string | null;
 }) {
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -35,7 +81,7 @@ export function LoginForm({
     try {
       await onSubmit(data);
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setFormError(loginErrorMessage(err));
     }
   });
 
@@ -43,6 +89,12 @@ export function LoginForm({
     <Card className="w-full max-w-[420px] rounded-xl border shadow-md">
       <CardContent className="px-8 py-8">
         <form onSubmit={submit} className="flex flex-col gap-5" noValidate>
+          {notice && !formError && (
+            <Alert data-testid="login-notice">
+              <Info className="h-4 w-4" />
+              <AlertDescription>{notice}</AlertDescription>
+            </Alert>
+          )}
           {formError && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />

@@ -1,3 +1,5 @@
+// First on purpose: zod must be configured before any module builds a schema (CSP, see the file).
+import "./lib/zod-config";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";

@@ -1,10 +1,9 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { ErrorBoundary, ErrorFallback } from "@/components/shared/ErrorBoundary";
 import { ReportProblemDialog } from "@/features/support/ReportProblemDialog";
+import { queryClient } from "./lib/query-client";
 import { router } from "./router";
-
-const queryClient = new QueryClient();
 
 function App() {
   return (

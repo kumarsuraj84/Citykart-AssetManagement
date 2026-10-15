@@ -38,6 +38,11 @@ export default defineConfig({
       "@": path.resolve(dirname, "./src"),
     },
   },
+  build: {
+    // AU-12: never ship source maps (or a `sourceMappingURL` comment) in the production bundle -- they
+    // would hand anyone the app's original source. `vite` dev keeps its own in-memory maps regardless.
+    sourcemap: false,
+  },
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test-setup.ts"],

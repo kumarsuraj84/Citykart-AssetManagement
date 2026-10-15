@@ -51,7 +51,11 @@ function joinSentences(parts: string[]): string {
  * `detail.message`; and only then the status code.
  */
 export function errorMessageFrom(body: unknown, status: number): string {
-  const fallback = `Request failed: ${status}`;
+  // A 429 / 413 without a sentence of its own (e.g. a proxy's page) still reads as plain words.
+  const fallback =
+    status === 429 ? "Too many requests. Wait a minute and try again."
+      : status === 413 ? "The file is too large to upload. Choose a smaller file and try again."
+        : `Request failed: ${status}`;
   if (!body || typeof body !== "object") return fallback;
   const b = body as { detail?: unknown; errors?: unknown };
   if (typeof b.detail === "string" && b.detail.trim()) return b.detail.trim();

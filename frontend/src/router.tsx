@@ -25,12 +25,18 @@ import {
 import { AppNav } from "@/components/app-shell/AppNav";
 import { guarded, guardedCatalogue } from "@/components/app-shell/RouteGuard";
 import { apiClient } from "./lib/api-client";
-import { applySession, logoutSession, safeNextPath, type SessionPayload } from "./lib/auth-fetch";
+import {
+  applyPasswordChangeResult,
+  applySession,
+  logoutSession,
+  safeNextPath,
+  type SessionPayload,
+} from "./lib/auth-fetch";
 import { useAuthStore } from "./lib/auth-store";
 import { canUse, currentAccess, homePathFor } from "./lib/access";
 import { roleLabel } from "./lib/labels";
 import type { RegisterSearch } from "./features/assets/register-filters";
-import { LoginForm } from "./routes/login";
+import { LoginForm, useLoginNotice } from "./routes/login";
 import { ChangePasswordForm, type ChangePasswordValues } from "./routes/change-password";
 
 import DashboardRoute from "./routes/dashboard";
@@ -96,6 +102,8 @@ function LoginPage() {
   const { next } = loginRoute.useSearch();
   const navigate = useNavigate();
   const router = useRouter();
+  // "Your session has ended. Please sign in again." after a session ran out on its own.
+  const notice = useLoginNotice();
 
   async function handleLogin(values: { loginId: string; password: string }) {
     const result = await apiClient.post<SessionPayload>("/auth/login", {
@@ -128,7 +136,7 @@ function LoginPage() {
           Your company&apos;s Asset Management platform
         </p>
       </div>
-      <LoginForm onSubmit={handleLogin} />
+      <LoginForm onSubmit={handleLogin} notice={notice} />
     </main>
   );
 }
@@ -140,18 +148,12 @@ function ChangePasswordPage() {
   const router = useRouter();
 
   async function handleSubmit(values: ChangePasswordValues) {
-    await apiClient.post("/auth/change-password", {
+    const result = await apiClient.post<unknown>("/auth/change-password", {
       old_password: values.oldPassword,
       new_password: values.newPassword,
     });
-    const s = useAuthStore.getState();
-    if (s.accessToken && s.role !== null) {
-      s.setAuth({
-        accessToken: s.accessToken, role: s.role, companyId: s.companyId,
-        isPrimaryOwner: s.isPrimaryOwner, mustChangePassword: false,
-      });
-    }
-    router.history.push(destinationAfterAuth(s.role, next));
+    applyPasswordChangeResult(result);
+    router.history.push(destinationAfterAuth(useAuthStore.getState().role, next));
   }
 
   async function handleLogout() {
