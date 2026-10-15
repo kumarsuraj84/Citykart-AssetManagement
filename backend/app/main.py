@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from app.core.config import DEFAULT_DEV_JWT_SECRET, settings
+from app.core.body_limit import BodyLimitMiddleware
 from app.core.errors import register_exception_handlers
 from app.core.idempotency import IdempotencyMiddleware
 from app.core.db import SessionLocal
@@ -91,11 +92,13 @@ def warn_if_default_jwt_secret(secret: str) -> bool:
     return True
 
 
-_PRODUCTION_NAMES = {"production", "prod"}
+# Security (N4): only these names are "not production"; anything else (prod, prd, live, a typo) is treated as production,
+# so a mistyped ENVIRONMENT_NAME can never silently switch the production protections off.
+_NON_PRODUCTION_NAMES = {"development", "dev", "test", "testing", "uat", "security-test", "local", "ci"}
 
 
 def is_production(environment_name: str | None) -> bool:
-    return (environment_name or "").strip().lower() in _PRODUCTION_NAMES
+    return (environment_name or "").strip().lower() not in _NON_PRODUCTION_NAMES
 
 
 def docs_urls(environment_name: str | None) -> dict:
@@ -112,7 +115,8 @@ def refuse_to_start_with_insecure_secret(environment_name: str, secret: str) -> 
     suite and UAT (any other ENVIRONMENT_NAME) are unchanged: they only get the warning above."""
     if not is_production(environment_name):
         return
-    if secret in _KNOWN_INSECURE_JWT_SECRETS or len(secret or "") < _MIN_SECURE_JWT_SECRET_LENGTH:
+    value = (secret or "").strip()
+    if value in _KNOWN_INSECURE_JWT_SECRETS or len(value) < _MIN_SECURE_JWT_SECRET_LENGTH or len(set(value)) < 8:
         raise RuntimeError(
             "Refusing to start: ENVIRONMENT_NAME is production but JWT_SECRET is a committed placeholder or shorter than "
             f"{_MIN_SECURE_JWT_SECRET_LENGTH} characters. Set a long random JWT_SECRET (e.g. `openssl rand -hex 32`) first."
@@ -157,6 +161,9 @@ register_exception_handlers(app)
 # S7 (P1-2): the Idempotency-Key header on create / receive / move requests (app.core.idempotency). Added
 # before the security-headers middleware below, so a replayed answer gets those headers too.
 app.add_middleware(IdempotencyMiddleware)
+# Security N1: bigger-than-useful request bodies are refused before anything reads them (added after the
+# idempotency middleware so it sits outside it, and before the security-headers one so a 413 carries them).
+app.add_middleware(BodyLimitMiddleware)
 app.include_router(auth_router)
 app.include_router(asset_users_router)
 app.include_router(stock_rooms_router)

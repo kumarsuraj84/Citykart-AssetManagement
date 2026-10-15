@@ -28,6 +28,16 @@ test1234 test@123 changeme changeme1 default1 secret12 mustang1 batman12 pokemon
 bharat123 krishna1 ganesh123 jaishreeram omsairam saibaba1 123qweasd 1234qwer qwer1234
 """.split())
 
+# Words that, with only digits / symbols around them, are not a password (compared after look-alikes are undone).
+COMMON_BASE_WORDS = frozenset("""
+password passwd pass welcome admin administrator letmein qwerty qwertyui qwertyuiop india delhi mumbai
+test testing user login changeme change temp temporary abcd secret system manager asset assets store
+stores hello monkey dragon master shadow sunshine princess football iloveyou cricket krishna ganesh bharat
+""".split())
+_LOOKALIKES = str.maketrans({"0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "8": "b", "@": "a", "$": "s"})
+
+_AROUND = "0123456789 _-.,;:!?@#$%^&*()+=~/\\|<>[]{}'\""
+
 _RUNS = ("abcdefghijklmnopqrstuvwxyz", "0123456789", "01234567890", "qwertyuiopasdfghjklzxcvbnm", "1qaz2wsx3edc4rfv")
 _BRAND = re.compile(r"^(ckam|citykart)[\W\d_]*$", re.IGNORECASE)
 _WORD = re.compile(r"[a-z0-9]+")
@@ -57,6 +67,12 @@ def password_problem(new_password: str, *, code: str | None = None, email: str |
         return "This password is too common and easy to guess. Choose a different one."
     if len(set(lowered)) == 1 or _is_run(lowered):
         return "This password is too simple (the same character or a simple sequence). Choose a different one."
+    # Security AU-08 (retest): a common word with digits / symbols around it is as easy to guess as the word
+    # itself (Password@2026, Welcome@2026, Adm1n#123, P@ssw0rd99): look-alike characters are mapped back first.
+    plain = re.sub(r"[^a-z]", "", lowered)
+    core = lowered.strip(_AROUND).translate(_LOOKALIKES)             # 'P@ssw0rd99' -> 'p@ssw0rd' -> 'password'
+    if plain in COMMON_BASE_WORDS or re.sub(r"[^a-z]", "", core) in COMMON_BASE_WORDS:
+        return "A common word with a few numbers or symbols added is easy to guess. Choose a different password."
     if _BRAND.match(new_password or ""):
         return "A password made of the company or app name and numbers is easy to guess. Choose a different one."
     for part in _personal_parts(code, email, name):

@@ -62,7 +62,7 @@ async def test_an_empty_document_is_refused(client):
 
 
 async def test_an_absurd_password_length_is_refused(client):
-    resp = await client.post("/api/auth/login", json={"login_id": "x", "password": "p" * 100_000})
+    resp = await client.post("/api/auth/login", json={"login_id": "x", "password": "p" * 20_000})
     assert resp.status_code == 422 and "too long" in resp.json()["detail"]
 
 

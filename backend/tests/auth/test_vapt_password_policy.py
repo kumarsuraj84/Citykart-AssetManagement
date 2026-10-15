@@ -34,8 +34,13 @@ def test_the_persons_own_name_code_or_email_is_refused(password):
     assert "name, login code or email" in password_problem(password, **ME)
 
 
+@pytest.mark.parametrize("password", ["Password@2026", "Welcome@2026", "Adm1n#123", "P@ssw0rd99", "Passw0rd!", "Letmein#1", "Qwerty@12345", "Delhi@1234"])
+def test_a_common_word_with_digits_or_symbols_around_it_is_refused(password):
+    assert "common word" in password_problem(password, **ME)
+
+
 @pytest.mark.parametrize("password", [
-    PASSWORD, "Passw0rd!", "BrandNew#2026", "Brand-New-Passw0rd", "Walker#2026x", "NewPassw0rd!", "TempPassw0rd!",
+    "BrandNew#2026", "Brand-New-Passw0rd", "Walker#2026x", "NewPassw0rd!", "TempPassw0rd!",
     "Citykart rocks 2026", "Ckam-store-tracker", "Sec#Test2026ok",
 ])
 def test_reasonable_passwords_and_every_password_the_test_suite_uses_are_fine(password):

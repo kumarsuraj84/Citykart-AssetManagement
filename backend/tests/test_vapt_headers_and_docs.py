@@ -53,7 +53,7 @@ def test_production_has_no_api_docs(name):
     assert docs_urls(name) == {"docs_url": None, "redoc_url": None, "openapi_url": None}
 
 
-@pytest.mark.parametrize("name", ["development", "uat", "", None])
+@pytest.mark.parametrize("name", ["development", "uat", "dev", "security-test"])   # "" and None count as production (N4)
 def test_other_environments_keep_the_defaults(name):
     assert docs_urls(name) == {}
 

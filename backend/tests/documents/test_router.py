@@ -145,7 +145,7 @@ async def test_oversized_upload_is_rejected_via_bounded_read(client, tmp_path, m
     resp = await client.post("/api/auth/login", json={"company_id": co.id, "login_id": it_admin.code, "password": "Passw0rd!"})
     headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
-    huge = io.BytesIO(b"0" * (2 * MAX_SIZE_BYTES))
+    huge = io.BytesIO(b"0" * (MAX_SIZE_BYTES + 5 * 1024 * 1024))   # 15 MB: above the 10 MB document limit, below the 16 MB global upload limit (core/body_limit.py, N1)
     upload_resp = await client.post(
         f"/api/assets/{asset_id}/documents",
         files={"file": ("huge.pdf", huge, "application/pdf")},
