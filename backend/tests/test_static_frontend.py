@@ -54,6 +54,45 @@ async def test_unknown_asset_404s_instead_of_falling_back_to_shell(client, tmp_p
         settings.frontend_dist_dir = None
 
 
+async def test_assets_route_cannot_read_files_outside_the_assets_folder(client, tmp_path):
+    """IF-01: `..`, encoded `..`, an absolute path or a sibling folder must never leave <dist>/assets."""
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "assets" / "ok.js").write_text("ok")
+    (dist / "index.html").write_text("<html>shell</html>")
+    (dist / "secret-in-dist.txt").write_text("TOP-SECRET-DIST")
+    (tmp_path / "shared").mkdir()
+    secret = tmp_path / "shared" / ".env"
+    secret.write_text("JWT_SECRET=TOP-SECRET-ENV")
+    sibling = tmp_path / "dist-evil"
+    sibling.mkdir()
+    (sibling / "x.txt").write_text("TOP-SECRET-SIBLING")
+    settings.frontend_dist_dir = str(dist)
+    try:
+        attacks = [
+            "/assets/%2e%2e/secret-in-dist.txt",
+            "/assets/..%2fsecret-in-dist.txt",
+            "/assets/%2e%2e%2f%2e%2e%2fshared%2f.env",
+            "/assets/..%5c..%5cshared%5c.env",
+            "/assets/../../shared/.env",
+            "/assets/%2e%2e/%2e%2e/dist-evil/x.txt",
+            "/assets/" + str(secret).replace("\\", "/"),          # absolute path (leading slash after /assets/)
+            "/assets//" + str(secret).replace("\\", "/").lstrip("/"),
+            "/assets/" + str(secret).replace("\\", "%5c"),
+            "/assets/ok.js%00.txt",
+        ]
+        for url in attacks:
+            resp = await client.get(url)
+            assert "TOP-SECRET" not in resp.text, url
+            assert resp.status_code in (404, 400, 200), url
+            if resp.status_code == 200:
+                # a normalising client may land on the SPA shell, never on a secret
+                assert resp.text == "<html>shell</html>", url
+        assert (await client.get("/assets/ok.js")).text == "ok"
+    finally:
+        settings.frontend_dist_dir = None
+
+
 async def test_root_level_static_file_served_directly(client, tmp_path):
     dist = tmp_path / "dist"
     (dist / "assets").mkdir(parents=True)

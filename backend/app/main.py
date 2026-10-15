@@ -204,8 +204,15 @@ async def _serve_frontend_asset(file_path: str):
     dist_dir = _frontend_dist_dir()
     if dist_dir is None:
         raise HTTPException(status_code=404)
-    candidate = dist_dir / "assets" / file_path
-    if not candidate.is_file():
+    # Security (IF-01): `file_path` comes from the URL and may hold `..` segments (percent-encoded) or an absolute
+    # path, which `Path /` would happily follow out of the folder. Resolve first, then require the result to sit
+    # inside <dist>/assets; anything else is a plain 404 (never reveal that the file exists).
+    assets_root = (dist_dir / "assets").resolve()
+    try:
+        candidate = (assets_root / file_path).resolve()
+    except (OSError, ValueError):
+        raise HTTPException(status_code=404)
+    if not candidate.is_relative_to(assets_root) or not candidate.is_file():
         raise HTTPException(status_code=404)
     return FileResponse(candidate)
 
