@@ -53,6 +53,40 @@ Rules that apply to every change, regardless of stage. Read before editing.
   allowlist (`documents/router.py`) — don't buffer an unbounded body before
   checking size.
 
+### Security rules from the 2026-10 security assurance programme
+(Full standard: `docs/security/CKAM_SECURITY_BASELINE.md`.)
+
+- **Every new write route needs an authorization test** — wrong role, other
+  company and other work area must each be refused — before it is committed.
+  A new list/read route is staff-only (`require_role(*READ_ROLES)`) unless a
+  self-service screen genuinely needs it; never use `get_current_asset_user`
+  alone for business or setup data.
+- **Any code that turns a URL or a user-supplied name into a file path** must
+  resolve the path and prove it is inside the intended folder (see
+  `main.py::_serve_frontend_asset`, `core/uploads.py`) and has a regression
+  test with `..`, encoded `..`, absolute and sibling-folder variants.
+- **Every new table gets an audit decision**: automatic data audit, or a
+  written reason it is exempt; append-only tables also get UPDATE, DELETE and
+  TRUNCATE guards (see migration `a3c5e7f9b1d4`).
+- **Every query is parameterized** — no f-strings or string joins inside SQL;
+  sort columns come from a whitelist; LIKE input goes through `escape_like`.
+- **A new file upload or download route needs a file-security review**: size
+  cap read in pieces, extension + signature check, server-chosen media type,
+  `Content-Disposition: attachment`.
+- **A new dependency or a version change needs `npm audit` / `pip-audit`**
+  first; production installs use `backend/constraints.txt`.
+- **Anything that signs people in or keeps them signed in** (tokens, cookies,
+  passwords, lock-out) goes through the `token_version` / rate-limit / password
+  policy code; changing a role, work area, company access, sign-in switch or
+  password ends that person's sessions.
+- **Never log or return secrets**: passwords, tokens, cookies, connection
+  strings and ERP/NAS credentials stay out of logs, audit rows, client
+  reports, idempotency responses and the diagnostics bundle (redaction lives
+  in `observability/redact.py`).
+- Production-only settings: `ENVIRONMENT_NAME=production` makes the app refuse
+  to start with a placeholder/short `JWT_SECRET` and hides `/docs`; keep it set
+  on the production server.
+
 ## Testing
 
 - **Test before every commit.** Backend and frontend suites must pass; a

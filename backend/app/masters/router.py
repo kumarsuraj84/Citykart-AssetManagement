@@ -2,7 +2,7 @@
 from typing import Awaitable, Callable
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from app.core.validation import check_email, check_gstin
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -317,6 +317,10 @@ async def _refuse_duplicate_name(session: AsyncSession, model, name: str, noun: 
     against each other; a deactivated twin does not block (it cannot be chosen
     any more, and there is no way to reactivate it)."""
     value = (name or "").strip()
+    # Security (concurrency): two requests with one name used to pass this check at the same moment and both
+    # insert. A transaction-level advisory lock on (table, name) makes the second wait until the first has
+    # committed, so it then sees the row and is refused.
+    await session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": f"{model.__tablename__}:{value.lower()}"})
     stmt = select(model.id).where(func.lower(func.trim(model.name)) == value.lower(), model.is_active.is_(True))
     if (await session.execute(stmt.limit(1))).first() is not None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"A {noun} with this name already exists.")

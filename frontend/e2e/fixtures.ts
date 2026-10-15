@@ -442,7 +442,8 @@ export async function createTestLogin(
   });
   reg.asset_userIds.push(created.id);
   const reset = await api<{ temp_password: string }>(baseURL, "POST", `/api/asset-users/${created.id}/reset-password`, ownerToken);
-  const password = `E2e-${opts.role}-${Date.now().toString(36)}!`;
+  // no part of the person's name, code or role in the password: the password policy (AU-08) refuses those
+  const password = `Zq9-${Date.now().toString(36)}-Xk!`;
   const first = await api<{ access_token: string }>(baseURL, "POST", "/api/auth/login", undefined, {
     company_id: ctx.company.id, login_id: opts.code, password: reset.temp_password,
   });
