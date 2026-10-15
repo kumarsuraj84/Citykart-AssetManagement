@@ -145,8 +145,7 @@ async def login(body: LoginRequest, request: Request, response: Response, sessio
     asset_user = matches[0]
 
     # Security AU-01/AU-02: the password is checked first, whatever the account's state, so every answer costs the
-    # same and "locked" (423) is said only to someone who typed the right password. A wrong password on a locked
-    # account is the generic 401 and neither counts nor extends the lock.
+    # same. A locked account answers 423 for ANY password and neither counts nor extends the lock (see below).
     password_ok = verify_password(body.password, asset_user.password_hash)
     now = datetime.now(timezone.utc)
     not_locked = or_(AssetUser.locked_until.is_(None), AssetUser.locked_until <= now)

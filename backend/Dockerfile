@@ -10,4 +10,5 @@ COPY alembic.ini ./
 ARG GIT_COMMIT=
 ENV GIT_COMMIT=${GIT_COMMIT}
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Security N2: uvicorn must not rewrite the client address from X-Forwarded-For (the app does its own trusted-proxy check).
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]
