@@ -13,7 +13,7 @@ from app.core.capabilities import (
 from app.core.codes import unique_code
 from app.core.uploads import read_upload_bounded
 from app.core.db import get_session
-from app.core.deps import ensure_company_in_scope, get_current_asset_user, require_primary_owner, scoped_company_ids
+from app.core.deps import READ_ROLES, ensure_company_in_scope, get_current_asset_user, require_primary_owner, require_role, scoped_company_ids
 from app.masters.bulk_import_export import (
     FieldSpec, ImportScopeError, ImportTemplateError,
     build_template as build_import_template, commit_import, export_rows, preview_import,
@@ -127,7 +127,7 @@ def build_master_router(
     async def list_items(
         company_id: int | None = Query(None),
         session: AsyncSession = Depends(get_session),
-        asset_user=Depends(get_current_asset_user),
+        asset_user=Depends(require_role(*READ_ROLES)),     # security AC-1: staff roles only, not self-service logins
     ):
         # AM-08: an optional, opt-in filter for a company-owned master (Cost
         # Centres) -- a data-entry screen like Add Asset passes its own

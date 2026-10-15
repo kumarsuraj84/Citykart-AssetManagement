@@ -5,7 +5,7 @@ from app.bundles.models import Bundle
 from app.bundles.schemas import BundleIn, BundleOut
 from app.bundles.service import create_bundle, deactivate_bundle, list_bundles, update_bundle
 from app.core.db import get_session
-from app.core.deps import get_current_asset_user, require_primary_owner
+from app.core.deps import READ_ROLES, get_current_asset_user, require_primary_owner, require_role
 
 router = APIRouter(prefix="/api/bundles", tags=["bundles"])
 
@@ -22,7 +22,7 @@ async def _get_active_bundle(session: AsyncSession, bundle_id: int) -> Bundle:
 
 
 @router.get("", response_model=list[BundleOut])
-async def list_all(session: AsyncSession = Depends(get_session), _user=Depends(get_current_asset_user)):
+async def list_all(session: AsyncSession = Depends(get_session), _user=Depends(require_role(*READ_ROLES))):
     return await list_bundles(session)
 
 

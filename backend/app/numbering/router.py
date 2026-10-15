@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
-from app.core.deps import get_current_asset_user, require_primary_owner
+from app.core.deps import READ_ROLES, get_current_asset_user, require_primary_owner, require_role
 from app.masters.models import Company
 from app.numbering.models import CodeRule
 from app.numbering.schemas import CodeRuleIn, CodeRuleOut, CodeRulePreviewOut
@@ -51,7 +51,7 @@ async def _validated(session: AsyncSession, body: CodeRuleIn) -> dict:
 
 @router.get("", response_model=list[CodeRuleOut])
 async def list_rules(company_id: int | None = None, session: AsyncSession = Depends(get_session),
-                     _h=Depends(get_current_asset_user)):
+                     _h=Depends(require_role(*READ_ROLES))):
     """The active rules. S7 fix 2 (N4): `?company_id=` shows each rule's example in that company's values
     (code, location, cost centre); a company's own rule always uses its own."""
     example_company = await _example_company(session, company_id)
@@ -61,7 +61,7 @@ async def list_rules(company_id: int | None = None, session: AsyncSession = Depe
 
 @router.post("/preview", response_model=CodeRulePreviewOut)
 async def preview_rule(body: CodeRuleIn, company_id: int | None = None, session: AsyncSession = Depends(get_session),
-                       _h=Depends(get_current_asset_user)):
+                       _h=Depends(require_role(*READ_ROLES))):
     """S0.9: checks a code format and shows what its first code would look like, without saving anything.
     S7 fix 2 (N4): the example uses one company's own values (code, first location, first cost centre;
     the generic sample for what it does not have yet): `?company_id=` (e.g. the company being set up while

@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
-from app.core.deps import get_current_asset_user, require_primary_owner
+from app.core.deps import READ_ROLES, get_current_asset_user, require_primary_owner, require_role, scoped_company_ids
 from app.assets.custom_field_values import any_asset_has_value_for
 from app.masters.models import FIELD_TYPES, CustomField
 from app.masters.schemas import CustomFieldEditIn, CustomFieldIn, CustomFieldOut
@@ -29,14 +29,16 @@ def _validate_field_type(field_type: str) -> None:
 @router.get("", response_model=list[CustomFieldOut])
 async def list_custom_fields(
     session: AsyncSession = Depends(get_session),
-    _asset_user=Depends(get_current_asset_user),
+    asset_user=Depends(require_role(*READ_ROLES)),
 ):
-    """Unrestricted read, same as every other master (Vendors/Categories/...
-    are globally visible to any authenticated staff member) -- AM-05 only
-    scopes *mutation* authorization (§20), not visibility of the
-    administration list itself. Add Asset/Asset 360 narrow this down to the
-    applicable subset client-side (see AM-05_MASTERS_ASSET_USERS_REPORT.md)."""
-    return await MasterCRUDService(CustomField, session).list_active()
+    """Staff roles only (security AC-1: a self-service login has no use for the setup lists). Security AC-2: a
+    login limited to some companies sees the global fields and its own companies' fields, not the other
+    company's; the head-office admin and a Full Admin (not company-scoped) see all."""
+    rows = await MasterCRUDService(CustomField, session).list_active()
+    allowed = await scoped_company_ids(session, asset_user)
+    if allowed is None:
+        return rows
+    return [r for r in rows if r.company_id is None or r.company_id in allowed]
 
 
 @router.post("", response_model=CustomFieldOut, status_code=201)

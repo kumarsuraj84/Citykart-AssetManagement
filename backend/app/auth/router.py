@@ -110,6 +110,15 @@ async def login(body: LoginRequest, response: Response, session: AsyncSession = 
         (await session.execute(company_scoped_stmt)).scalars().all()
         + (await session.execute(primary_owner_stmt)).scalars().all()
     )
+    # Security: the same row can come back from both queries (a Primary Owner who also has a company, whose code
+    # equals its name), and an employee created with the Primary Owner's name as code must not be able to
+    # make the Primary Owner's own login ambiguous (a lock-out of the head-office admin by anyone who can add
+    # an employee). Same row twice counts once; Primary Owner (matched by its exact name) wins a clash.
+    matches = list({h.id: h for h in matches}.values())
+    if len(matches) > 1:
+        owners = [h for h in matches if h.is_primary_owner and (h.name or "").lower() == (body.login_id or "").lower()]
+        if len(owners) == 1:
+            matches = owners
     matches.sort(key=lambda h: h.id)
     attempted = (body.login_id or "")[:200]
     if len(matches) != 1:
