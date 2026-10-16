@@ -1,0 +1,11 @@
+{"label":"secho-cat-IT-identical-20","kind":"categories","n":20,"dist":{"201":1,"422":19},"created201":1,"dup422":19,"err5xx":0,"sampleDup":"A category with this name already exists."}
+{"label":"secho-cat-IT-case-ws-variants","kind":"categories","n":6,"dist":{"201":1,"422":5},"created201":1,"dup422":5,"err5xx":0,"sampleDup":"A category with this name already exists."}
+{"label":"secho-cat-NONIT-sameName-otherArea","kind":"categories","n":5,"dist":{"201":1,"422":4},"created201":1,"dup422":4,"err5xx":0,"sampleDup":"A category with this name already exists."}
+{"label":"secfanit-cat-NONIT-identical-20","kind":"categories","n":20,"dist":{"201":1,"422":19},"created201":1,"dup422":19,"err5xx":0,"sampleDup":"A category with this name already exists."}
+{"label":"secfanit-cat-IT-forbidden","kind":"categories","n":1,"dist":{"403":1},"created201":0,"dup422":0,"err5xx":0,"sampleDup":""}
+{"label":"secho-subcat-identical-20","kind":"subcategories","n":20,"dist":{"201":1,"422":19},"created201":1,"dup422":19,"err5xx":0,"sampleDup":"A sub-category with this name already exists."}
+{"label":"secho-subcat-sameName-otherCategory","kind":"subcategories","n":1,"dist":{"201":1},"created201":1,"dup422":0,"err5xx":0,"sampleDup":""}
+{"label":"secho-rename-onto-existing-name","put_status":422,"detail":"Work area (IT / Non-IT) is required."}
+{"label":"secho-rename-onto-othername-otherarea-allowed","put_status":422,"detail":"Work area (IT / Non-IT) is required."}
+CREATED categories: 7 subcategories: 2
+NAME_STAMP 009757

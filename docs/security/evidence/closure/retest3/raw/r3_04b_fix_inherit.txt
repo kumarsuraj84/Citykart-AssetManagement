@@ -1,0 +1,6 @@
+GRANT ROLE
+ mig_create_after 
+------------------
+ f
+(1 row)
+

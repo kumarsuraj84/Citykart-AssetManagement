@@ -2,8 +2,9 @@
 
 | | |
 |---|---|
-| Date | 2026-10-15 (FINAL state after remediation and retest; HEAD `d04779a`, 8 local security commits, none pushed or deployed) |
-| Related reports | `CKAM_VAPT_REPORT.md`, `CKAM_SECURITY_FINDINGS_REGISTER.md`, `CKAM_SECURITY_REMEDIATION_REPORT.md` (separate writer) |
+| Date | 2026-10-16 (WP-M2b: STRIDE status column re-set from the lead's final fact sheet; new components added in sections 8.15-8.20). First version 2026-10-15 (HEAD `d04779a`) |
+| Code state | Local HEAD `fd34520`: 21 local security commits, **none pushed or deployed**; production still runs `3b5e842` |
+| Related reports | `CKAM_SECURITY_CLOSURE_REGISTER.md`, `CKAM_SECURITY_MASTER_HANDOVER.md`, `CKAM_VAPT_REPORT.md`, `CKAM_SECURITY_FINDINGS_REGISTER.md`, `CKAM_SECURITY_REMEDIATION_REPORT.md` (separate writer) |
 | Method | Data-flow diagram, trust boundaries, STRIDE per component (Spoofing, Tampering, Repudiation, Information disclosure, Denial of service, Elevation of privilege) |
 | Inputs | `docs/ai/PRODUCTION_INFRASTRUCTURE.md`, `docs/ai/ERP_INTEGRATION.md`, `docs/ai/LOGGING_AND_DIAGNOSTICS.md`, `docs/ai/DECISIONS.md`, VAPT evidence `docs/security/evidence/` |
 | Finding ids | As in `CKAM_ISO27001_READINESS.md` section 6 (IF-xx, AU-xx, AC-x, IN-xx). Risk ids R-xx as in its section 9 |
@@ -48,8 +49,8 @@ needed.
 |---|---|---|
 | `http://ckam.citykartstores.com:3211` / `http://10.0.1.98:3211` | Internet (router forward) and LAN | Plain HTTP; single uvicorn process serves API + SPA; no nginx in production |
 | `/api/*` (217 routes in the authorization matrix) | Mostly authenticated | See section 7 |
-| `/assets/{file_path}` static route | Anyone | IF-01 FIXED in code and retested; **still exploitable in production** until deployed |
-| `/docs`, `/redoc`, `/openapi.json` | Anyone today | IF-14 / AU-11 FIXED (off in production after deploy) |
+| `/assets/{file_path}` static route and SPA fallback | Anyone | IF-01 + IF-01-WIN FIXED in code and retested (native Windows 0 of 28 leaks); **still exploitable in production** until deployed. Deep links `/assets/<id>`, `/assets/new` broken in production (CL2-IF-04), fixed in code |
+| `/docs`, `/redoc`, `/openapi.json`, unknown `/api/...` | Anyone today | IF-14 / AU-11 / N6 FIXED (JSON 404 in production after deploy) |
 | `/api/health`, `/api/auth/companies`, `/api/auth/login`, `/refresh`, `/logout` | Anyone | Public by design |
 | PostgreSQL 5432 on 10.0.0.205 | 10.0.1.98 only for `ckassetapp` (`pg_hba`) | Superuser steps typed by the owner |
 | SMB to NAS | 10.0.1.98 as `ckappuser` | |
@@ -112,7 +113,7 @@ ASCII summary of the same picture:
 
 | Store | Content | Protection | Gap |
 |---|---|---|---|
-| `ckassetmanagement` | All business data, audit, ERP copy | App role not superuser; pg_hba; triggers | Owner = runtime role; encryption at rest NOT EVIDENCED |
+| `ckassetmanagement` | All business data, audit, ERP copy; *(code, not deployed)* `auth_session` (refresh sessions: SHA-256 of the token id only) | App role not superuser; pg_hba; triggers; *(code)* lifecycle-field guard | Owner = runtime role until the role split (`ops/db/`, EXT-07); encryption at rest NOT EVIDENCED |
 | `shared\.env`, `shared\nas.pw` | Secrets | Administrators/SYSTEM only | Readable via IF-01 until deployed; rotation pending (EXT-02) |
 | `logs\app\*.jsonl` | Access, error, audit lines | Server-only; redacted | Same server; rotation 20 MB x 11 |
 | NAS folder | Documents | NAS user | Backup NOT EVIDENCED |
@@ -121,7 +122,7 @@ ASCII summary of the same picture:
 
 ## 6. External dependencies, privileged operations, sensitive information
 
-- **External dependencies:** ERP warehouse (data); NAS; PostgreSQL 18; Python 3.13 runtime and 57 Python packages (`backend/constraints.txt` added, IF-11, not yet used by the production install; python-jose/ecdsa advisories, IF-12 ACCEPTED); 141 npm production packages (0 known vulnerabilities); Google Fonts CDN (EXT-11); GitHub (source); the AI coding assistant used in development.
+- **External dependencies:** ERP warehouse (data); NAS; PostgreSQL 18; Python 3.13 runtime and 57 Python packages (`backend/constraints.txt` added, IF-11, not yet used by the production install; python-jose/ecdsa advisories, IF-12 ACCEPTED); 141 npm production packages (0 known vulnerabilities at the closure re-check; one dev-only HIGH in a build tool, OBS-NPM-DEV); Google Fonts CDN in production until deploy (self-hosted in code, `79dbae7`); GitHub (source); the AI coding assistant used in development. python-jose / ecdsa have no fixed versions (not reachable, ACCEPTED; PyJWT replacement EXT-47).
 - **Privileged operations:** grant/revoke head-office admin; change access level, company access or work area; reset/issue passwords; code-rule changes; companies, places, departments, custom fields; bulk import; ERP Inbox / mapping / sync / stores from ERP; moving a Category or Item to the other work area; audit purge function (`ckam_purge_audit_log`, guarded); diagnostics and logs screens; deploy, migration, secret rotation, DB superuser steps (server side).
 - **Sensitive information:** secrets (section 5); password hashes; temporary passwords (shown once); vendor GSTIN and contacts; invoice/PO values; staff personal data; IP addresses and typed login ids in failed sign-ins; client-report breadcrumbs.
 
@@ -155,7 +156,8 @@ in `docs/security/evidence/auth/audit_coverage.csv` (107 audited, 15 intentional
 
 Legend for **Status**: `CONTROLLED` (control in place in production and evidenced), `FIXED (not deployed)`
 (fixed in a local commit and retested; production still runs `3b5e842` without it until EXT-01), `MITIGATED`
-(residual remains), `ACCEPTED`, `PARTIAL`, `OPEN` (finding or external action pending).
+(residual remains), `ACCEPTED`, `PARTIAL`, `OPEN` (finding or external action pending). Statuses re-set on
+2026-10-16 from the lead's fact sheet; where a row changed, the 2026-10-15 status is given in brackets.
 
 ### 8.1 Frontend (React SPA)
 
@@ -165,7 +167,7 @@ Legend for **Status**: `CONTROLLED` (control in place in production and evidence
 | T | Script injected via stored data (vendor name, client report) | React escaping; no `dangerouslySetInnerHTML` with data | `input/xss_results.json`, `raw_sql_review.md` s.4 | CONTROLLED |
 | T | Clickjacking | `X-Frame-Options: SAMEORIGIN` | AU-T057 | CONTROLLED |
 | I | Source maps reveal code | No source maps in the build | AU-12 FIXED (`4fa5c9b`) | FIXED (not deployed) |
-| I | Third-party font CDN sees user IPs | Self-host fonts | EXT-11 | OPEN |
+| I | Third-party font CDN sees user IPs | Self-hosted Inter + IBM Plex Mono; CSP without Google hosts; `check:build` refuses external hosts | FONTS FIXED (`79dbae7`, `b401e9f`); retest 2: 0 Google requests | FIXED (not deployed) (was OPEN) |
 | I | Open redirect after login | `safeNextPath()` | `raw_sql_review.md` s.5 | CONTROLLED |
 | E | Hidden buttons used directly | Backend is authoritative; screen only hides | `access/authz_matrix.csv` | CONTROLLED |
 | — | No Content-Security-Policy | CSP + Permissions-Policy on responses | AU-14 FIXED (`4fa5c9b`, `ae706bb`); `backend/tests/test_vapt_headers_and_docs.py` | FIXED (not deployed) |
@@ -175,14 +177,14 @@ Legend for **Status**: `CONTROLLED` (control in place in production and evidence
 
 | STRIDE | Threat | Control | Evidence / finding | Status |
 |---|---|---|---|---|
-| I | Arbitrary file read through `/assets/{file_path}` | Containment check (resolve + is_relative_to) | IF-01 FIXED `3e134c1`, retested; **production still exposed** until EXT-01 + EXT-02 | OPEN (prod) |
-| I | API docs reveal every route | `/docs`, `/redoc`, `/openapi.json` off in production | IF-14 / AU-11 FIXED (`ae706bb`) | FIXED (not deployed) |
-| I | Version banners | Banner removed | AU-15 FIXED (`4fa5c9b`, `d04779a`) | FIXED (not deployed) |
-| S | Forged client address via `X-Forwarded-For` from 127.0.0.1 | Start uvicorn with `--no-proxy-headers`; app believes only `TRUSTED_PROXIES` | N2, EXT-38 | OPEN |
+| I | Arbitrary file read through `/assets/{file_path}` (incl. Windows path forms) | Lexical refusal before any filesystem call, then containment (resolve + is_relative_to) and symlink refusal | IF-01 FIXED `3e134c1`, IF-01-WIN FIXED `7b039fb`; native Windows 0 of 28 leaks; **production still exposed** until EXT-01 + EXT-02 | OPEN (prod) / FIXED in code |
+| I | API docs reveal every route; unknown `/api` paths reveal framework behaviour | Docs off in production; JSON 404 for docs paths and unknown `/api` | IF-14 / AU-11 FIXED (`ae706bb`), N6 FIXED (`7b039fb`, `b401e9f`) | FIXED (not deployed) |
+| I | Version banners | Banner removed; uvicorn `--no-server-header` | AU-15 FIXED (`4fa5c9b`, `d04779a`); server banner FIXED (`ca94574`); production launcher flag EXT-38 | FIXED (not deployed) |
+| S | Forged client address via `X-Forwarded-For` from 127.0.0.1 | uvicorn `--no-proxy-headers` in every repository launch path; app believes only `TRUSTED_PROXIES`; nginx overwrites the header (dev) | N2 code side FIXED (`a3e8fce`, `79dbae7`), N3 FIXED; `backend/tests/core/test_n2_forwarded_for.py`; production launcher still EXT-38 | FIXED (not deployed) (was OPEN) |
 | T | SQL injection | ORM / bound parameters; sort whitelist; escaped LIKE | `input/raw_sql_review.md` s.1, `input/battery_results.json` | CONTROLLED |
 | T | SSRF, command injection, unsafe deserialization | None of these sinks exist | IN-T111, IN-T112 | CONTROLLED |
 | D | Large uploads, imports or bodies exhaust memory | Bounded reads, 15 MB import cap; request-size limits 413 (64 KB sign-in, 5 MB JSON, 16 MB uploads) | IN-02 FIXED (`ba04371`), N1 FIXED (`d04779a`), `backend/tests/core/test_body_limit.py` | FIXED (not deployed) |
-| T | Same-name vendor/brand created twice by concurrent requests | Serialized creation | RACE-1 FIXED (`da790d1`), `backend/tests/core/test_security_concurrency.py` | FIXED (not deployed) |
+| T | Same-name vendor/brand/category created twice by concurrent requests or imports | Advisory lock + duplicate check on every create and import path; friendly 422 for the loser | RACE-1 FIXED (`da790d1`, `7b039fb`), CL2-SE-N01/N03 FIXED (`fafa225`); burst tests x20 no duplicates | FIXED (not deployed) |
 | D | Internet DoS on 3211 | Port-forward decision; proxy | EXT-05 | OPEN |
 | E | Process compromise = server compromise | Low-privilege service account | IF-07, EXT-06 | OPEN |
 | I | Errors leak internals | Controlled 4xx/5xx with request id only | AU-T078 | CONTROLLED |
@@ -196,8 +198,9 @@ Legend for **Status**: `CONTROLLED` (control in place in production and evidence
 | S | `alg:none`, tampered payload, refresh used as access | HS256 pinned; type claim checked | AU-T017..AU-T024 | CONTROLLED |
 | I | Token or cookie sniffed on the network | HTTPS + Secure cookie | IF-02, AU-13 | OPEN |
 | S | Refresh token still valid after logout | `token_version` revocation on sign-out | AU-05 FIXED (`ae706bb`, migration `f9a1c3e5b7d2`) | FIXED (not deployed) |
-| S | Old refresh token reusable | Rotation on each refresh | AU-06 MITIGATED: an older rotated token stays valid until sign-out or expiry | MITIGATED |
-| E | Disabled login or changed rights keep working up to 15 min | `token_version` bumped on login switch-off, deactivation, role, work-area, company-access or password change | AU-07 FIXED; `backend/tests/auth/test_vapt_sessions.py` | FIXED (not deployed) |
+| S | Old refresh token reusable (stolen cookie) | Server-side `auth_session`: rotate once; reuse ⇒ 401 + every session of that person ended + `REFRESH_REUSE` row; 10 s grace for parallel tabs | AU-06 FIXED (`69c3a51`, migration `b5d7f9a1c3e5`); residual grace window R-34 (section 8.15) | FIXED (not deployed) (was MITIGATED) |
+| E | Disabled login or changed rights keep working up to 15 min | `token_version` bumped **atomically** on login switch-off, deactivation, role, work-area, company-access or password change; server-side refresh sessions ended too | AU-07 FIXED; OBS-TV FIXED (`69c3a51`); `backend/tests/auth/test_vapt_sessions.py`, `test_wpa2_token_version_atomic.py` | FIXED (not deployed) |
+| E | A session never expires while it keeps being renewed | Absolute session lifetime | No absolute lifetime today; decision SD-14 / EXT-50 (R-38) | OPEN (decision) |
 | S | CSRF on refresh | SameSite=Lax, no CORS, JSON API | AU-T053..AU-T055 | CONTROLLED |
 | S | Password guessing / enumeration | Lockout 5 / 15 min; generic 401; rate limit 429 (20 sign-ins per minute per address, also per login id); constant-time sign-in; race-safe counter | AU-01, AU-03, AU-16 FIXED (`ae706bb`); AU-04 MITIGATED (residual lock-out DoS); AU-02 ACCEPTED (423 for any password on a locked account, so it is not a guessing oracle); users behind one NAT share the per-address limit (EXT-40) | FIXED (not deployed) |
 | S | Stolen password alone is enough | MFA | MFA absent, EXT-19 | OPEN |
@@ -208,8 +211,8 @@ Legend for **Status**: `CONTROLLED` (control in place in production and evidence
 |---|---|---|---|---|
 | T | Rewrite asset history or audit rows | UPDATE/DELETE triggers on 4 append-only tables; `asset_code` immutable | `infra/db_02_*.out.txt`, `db_03` A1-A5 | CONTROLLED (app role) |
 | T | TRUNCATE audit tables; purge flag used to delete recent audit rows | TRUNCATE guards; purge refused for rows younger than 5 years | IF-05/AU-10, IF-06 (`ae706bb`, migration `a3c5e7f9b1d4`); `backend/tests/observability/test_vapt_append_only.py` | MITIGATED (not deployed) |
-| T | Owner or superuser disables or drops the triggers | Owner/runtime role split | `db_03` A8, C1-C3; EXT-07 | OPEN |
-| T | Write `asset.status` outside `apply_events` | Code rule; no DB guard | `db_03` A9 | PARTIAL |
+| T | Owner or superuser disables or drops the triggers | Owner / migrator / runtime role split | `db_03` A8, C1-C3; scripts `ops/db/` proven on a disposable DB (40/40 forbidden refused); EXT-07, EXT-45 | OPEN (prod; scripts ready) |
+| T | Write `asset.status` / holder / `status_since` outside `apply_events` | Code rule + DB trigger requiring the `apply_events` marker | OBS-STATUS FIXED (`734fd19`, migration `c6e8a0b2d4f6`); residual: marker settable by anyone with SQL as the app role (R-36) | MITIGATED (not deployed) (was PARTIAL) |
 | I | DB traffic sniffed | TLS on PostgreSQL connection | NOT EVIDENCED | OPEN |
 | I | DB password stolen | Secrets ACL; rotation | IF-01, EXT-02 | OPEN |
 | D | Data lost | Daily dump | IF-08, EXT-08 | PARTIAL |
@@ -234,7 +237,7 @@ Legend for **Status**: `CONTROLLED` (control in place in production and evidence
 | T | CKAM writes to the ERP by mistake | Read-only role; `default_transaction_read_only` per connection; SELECT-only code | `backend/app/erp/source.py`; `docs/ai/ERP_INTEGRATION.md` | CONTROLLED (code side) |
 | T | Browser sends altered ERP values on PO create | Server re-reads the ERP copy; rate within half to double; units ≤ open | `DECISIONS.md` 2026-10-14 (7) | CONTROLLED |
 | I | Another company's ERP PO draft readable | Company scoping on drafts | IF-03 FIXED (`7e57844`) | FIXED (not deployed) |
-| I | ERP password or data sniffed | TLS | IF-16, EXT-25 | OPEN |
+| I | ERP password or data sniffed | TLS (`PO_SOURCE_SSLMODE` / `PO_SOURCE_SSLROOTCERT`; default `prefer`, not mandatory) | IF-16 code side FIXED (`7b039fb`); ERP owner must confirm TLS (EXT-25) | OPEN (prod; code side done) |
 | D | ERP slow/unreachable hangs requests or the sync | Local copy; connection and statement timeouts | IF-10 FIXED (`ae706bb`); `backend/tests/erp/test_vapt_erp_limits.py` | FIXED (not deployed) |
 | S | ERP grant lost / wrong data loaded | "ERP data as of"; sync_failed events | `ERP_INTEGRATION.md` | PARTIAL |
 | R | Who applied an ERP change | `purchase_order_erp_change` log; ERP audit rows | `ERP_INTEGRATION.md` | CONTROLLED |
@@ -246,7 +249,8 @@ Legend for **Status**: `CONTROLLED` (control in place in production and evidence
 | R | User denies an action | Actor, company, IP, request id, summary, old/new on every audit row; security rows survive rollback | `auth/audit_coverage.csv`; AU-T096, AU-T097 | CONTROLLED |
 | R | Action done with a forged token leaves no LOGIN row | Rotation; review actions without matching LOGIN | EXT-02, EXT-03 | OPEN |
 | T | Log injection (CRLF, forged JSON) | JSON encoding; request-id validation | AU-T086..AU-T088 | CONTROLLED |
-| T | Audit deleted by owner | Role split; off-server copy | IF-05/06, EXT-07, EXT-21 | OPEN |
+| T | Audit deleted by owner | Role split; off-server copy | IF-05/06 code side closed; role split scripts ready, not run (EXT-07, EXT-45); EXT-21 | OPEN (prod) |
+| R | An audit row silently fails to be written | Writer reports the failure at once and then once a minute with a count (`log_write_failed` + `system_event`) | `ca94574`; `backend/tests/observability/test_log_write_failure_reporting.py`; no alert yet (EXT-48) | FIXED (not deployed); alerting OPEN |
 | I | Secrets in logs | Redaction by key and value pattern | AU-T049, AU-T089, AU-T090 | CONTROLLED |
 | I | Personal data in logs read by the wrong person | Logs head-office-admin only; every view audited | AU-T080..AU-T083 | CONTROLLED |
 | D | Logs fill the disk | 20 MB x 11 rotation per file; 180-day purge | `LOGGING_AND_DIAGNOSTICS.md` s.4-5 | CONTROLLED |
@@ -278,6 +282,7 @@ Legend for **Status**: `CONTROLLED` (control in place in production and evidence
 | T | Host-header poisoning puts a wrong URL in the QR | URL built from `BASE_URL` setting, never from request headers | `raw_sql_review.md` s.6 | CONTROLLED |
 | S | A fake sticker with a QR to a look-alike site | Labels from Print Labels carry only the asset code; users sign in only at the known address; HTTPS lets users check it | `PRODUCTION_INFRASTRUCTURE.md`; EXT-04 | PARTIAL |
 | I | QR reveals data | QR opens the asset page, which needs a login | `/api/assets/{id}/qr.png` is authenticated | CONTROLLED |
+| D | A scanned label opens an error page instead of the asset (single-port production) | SPA fallback serves `/assets/<id>` and `/assets/new` | CL2-IF-04 FIXED (`ca94574`); **broken in production `3b5e842` today**; EXT-44 | FIXED (not deployed) |
 
 ### 8.11 Password reset and user creation
 
@@ -324,19 +329,82 @@ Legend for **Status**: `CONTROLLED` (control in place in production and evidence
 | I | User reads others' reports | Listing is head-office admin only | AU-T099 | CONTROLLED |
 | D | Report flood | Rate limit 30 per minute, size cap, de-duplication | AU-T101 | CONTROLLED |
 
+### 8.15 Refresh-token sessions (`auth_session`, rotation and reuse detection) — new 2026-10-16
+
+| STRIDE | Threat | Control | Evidence / finding | Status |
+|---|---|---|---|---|
+| S | Stolen refresh cookie used after the real user renewed | Rotate once; a second use of an already-rotated token ⇒ 401, every session of that person ended, `REFRESH_REUSE` row | AU-06 FIXED (`69c3a51`); `backend/tests/auth/test_wpa2_refresh_reuse.py`; retest 2 sessions A1 | FIXED (not deployed) |
+| S | Stolen cookie used inside the 10 s grace window (parallel-tab allowance) | Grace kept small (`REFRESH_REUSE_GRACE_SECONDS`, 0 = strict); `REFRESH_DUPLICATE` row; access token 15 min | R-34; alert on bursts (EXT-48); HTTPS (EXT-04) | MITIGATED (not deployed) |
+| I | Session table leaks usable tokens | Only a SHA-256 hash of the token id is stored, never the token | Migration `b5d7f9a1c3e5` | FIXED (not deployed) |
+| T | Race between two renewals of the same cookie creates two valid chains | Row lock decides; parallel refresh of one cookie x20 in retest 2 produced exactly one chain | `evidence/closure/retest2/sessions/raw/b_concurrency.json` | FIXED (not deployed) |
+| R | Who renewed or reused a session | `REFRESH_REUSE` / `REFRESH_DUPLICATE` audit rows (kept forever) | `backend/app/auth/router.py` | FIXED (not deployed) |
+| D | Session table grows without limit | Expired session rows (operational records, not audit) are deleted by the daily retention job after a keep period | `backend/app/auth/sessions.py` (`purge_expired_sessions`) | FIXED (not deployed) |
+| — | Legacy tokens issued before the deploy | Upgraded once on first refresh after the deploy | retest 2 `a1b_legacy.json` | FIXED (not deployed) |
+
+### 8.16 Rate limiter — new 2026-10-16
+
+| STRIDE | Threat | Control | Evidence / finding | Status |
+|---|---|---|---|---|
+| S | Password guessing from one address or against one login | 20 sign-ins/min per address and 10/min per login id; 429 with `Retry-After`; `RATE_LIMITED` row (one per key per minute) | AU-03 FIXED (`ae706bb`); `backend/tests/auth/test_rate_limit.py`; retest 2 sessions A3 (via nginx and direct) | FIXED (not deployed) |
+| S | Limit sidestepped with a forged `X-Forwarded-For` | Address taken from the socket unless the peer is in `TRUSTED_PROXIES`; `--no-proxy-headers` | N2, N3 FIXED in code; production launcher EXT-38 | FIXED (not deployed) |
+| D | Many staff behind one NAT address refused at shift start | Per-address limit is configurable; plain-language 429 | R-33; EXT-40 watch; EXT-49 / SD-08 per-office policy | OPEN (decision) |
+| D | Known-user lock-out by an attacker (AU-04) | Rate limit narrows it; lock-out model decision | AU-04 MITIGATED; SD-06 options A / B / C | OPEN (decision) |
+| — | Limiter state is per process | Single uvicorn process in production; a second process would need a shared store | Design note; NOT EVIDENCED for multi-process | ACCEPTED (single process) |
+
+### 8.17 Request-body limit middleware — new 2026-10-16
+
+| STRIDE | Threat | Control | Evidence / finding | Status |
+|---|---|---|---|---|
+| D | Oversized bodies exhaust memory | 413 at 64 KB sign-in, 5 MB JSON, 16 MB uploads, counted while streaming (also without `Content-Length`) | N1 FIXED (`d04779a`); `backend/tests/core/test_body_limit.py`; retest 2 A6 (flat memory) | FIXED (not deployed) |
+| D | Limit bypass via chunked encoding | Counted on the stream, not only the header | same | FIXED (not deployed) |
+| — | Performance cost | ~7.5 µs per request | `evidence/closure/perf/PERF_REPORT.md` | CONTROLLED (measured) |
+
+### 8.18 Database role split (owner / migrator / runtime) — new 2026-10-16, prepared, not applied
+
+| STRIDE | Threat | Control | Evidence / finding | Status |
+|---|---|---|---|---|
+| T | Runtime account drops or disables audit triggers, TRUNCATEs, ALTERs | Runtime role owns nothing; no TRUNCATE / DDL; INSERT/SELECT only on append-only tables | `ops/db/role_split.sql`; `evidence/closure/db/WPB_RESULTS.md` (40/40 forbidden refused); retest 2 ~70 break-out attempts refused | OPEN (prod; scripts ready, EXT-07) |
+| D | Runtime account breaks audit/ledger id sequences with `setval` | Sequences USAGE/SELECT only | CL2-IF-01 FIXED in the script (`ca94574`); EXT-45 | FIXED in scripts (not applied) |
+| D | Runtime account sets its own `default_transaction_read_only` and blocks all writes | `ALTER ROLE … RESET ALL` (also per database) + detection | CL2-IF-02 FIXED in the script; EXT-45 | FIXED in scripts (not applied) |
+| E | Migrator / owner credential misused outside deploys | Used only during deploys (`ALEMBIC_SET_ROLE`), kept in the vault | R-35; EXT-23 | OPEN (procedure) |
+| T | Grants drift after later migrations | `check_least_privilege.sql` (34 checks) after every deploy; pytest | EXT-46; `backend/tests/security/test_least_privilege_role_split.py` | OPEN (procedure; script ready) |
+
+### 8.19 Static route and SPA fallback (single-port server) — new 2026-10-16
+
+| STRIDE | Threat | Control | Evidence / finding | Status |
+|---|---|---|---|---|
+| I | Path traversal incl. Windows forms (`..%5c`, `C:%2f…`, `%5c%5cserver%5cshare`, ADS, device names) | Lexical refusal before any filesystem call; resolve + containment; symlinks refused; identical plain 404 | IF-01 / IF-01-WIN FIXED; `backend/tests/test_static_frontend_windows.py`; native Windows runs | FIXED (not deployed); **OPEN in production** |
+| D | App routes opened from outside (QR labels) fail | Fallback serves the app page for `/assets/<id>`, `/assets/new` | CL2-IF-04 FIXED; `backend/tests/test_static_frontend_spa_assets.py` | FIXED (not deployed); broken in production |
+| I | Unknown `/api` paths fall through to the SPA and confuse clients | JSON 404 for unknown `/api/...` | N6 FIXED | FIXED (not deployed) |
+| — | Performance cost of the path check | ~2.5 µs | `evidence/closure/perf/PERF_REPORT.md` | CONTROLLED (measured) |
+
+### 8.20 nginx edge (dev and UAT only; production has no nginx) — new 2026-10-16
+
+| STRIDE | Threat | Control | Evidence / finding | Status |
+|---|---|---|---|---|
+| S | Client forges `X-Forwarded-For` through nginx | nginx overwrites the header; API trusts only nginx's fixed address (`CKAM_EDGE_SUBNET` / `CKAM_WEB_IP`) | N3 FIXED (`79dbae7`); `evidence/closure/infra/raw/docker/n3_result.json` | FIXED (dev/UAT) |
+| I | Headers duplicated or contradicting between nginx and the API | Each header set exactly once; config test + live check | N5 FIXED; `frontend/src/security/nginx-config.test.ts`, `frontend/scripts/check-nginx-live.mjs` | FIXED (dev/UAT) |
+| R | nginx-served answers carry no request id | `X-Request-ID` on nginx answers too | CL2-IF-03 FIXED (`ca94574`) | FIXED (dev/UAT) |
+| E | Containers run as root | uid 10001, runtime image without test tooling, capabilities dropped, tmpfs `/tmp` | IF-13 FIXED (`79dbae7`); retest 2 IF-13 checks | FIXED (dev/UAT) |
+| — | Production relevance | Production is a single uvicorn process with no nginx: only the app's own controls apply there | `docs/ai/PRODUCTION_INFRASTRUCTURE.md` | n/a in production |
+
 ---
 
 ## 9. Top threats to act on (ranked)
 
-1. IF-01 arbitrary file read on production → secret theft → forged admin tokens (R-02, R-03). Code fixed;
-   **deploy and rotate: EXT-01, EXT-39, EXT-02, EXT-03.**
-2. Internet exposure over plain HTTP (R-01, R-18). **EXT-04, EXT-05, EXT-38.**
+1. IF-01 arbitrary file read on production → secret theft → forged admin tokens (R-02, R-03). Code fixed incl.
+   Windows forms; **preserve logs, precheck, deploy, flags, rotate, assess: EXT-41, EXT-39, EXT-01, EXT-38, EXT-02,
+   EXT-03.** The same deploy fixes the broken QR deep links (EXT-44, R-39).
+2. Internet exposure over plain HTTP (R-01, R-18). **EXT-04, EXT-05.**
 3. Data loss / ransomware with single-location backups (R-13, R-14). **EXT-08, EXT-37.**
-4. SYSTEM service on shared servers and table-owner runtime role (R-06, R-07, R-12). **EXT-06, EXT-07, EXT-24.**
-5. Account takeover by guessing: rate limit, policy and session revocation are fixed in code; deploy them and
-   decide MFA (R-05, R-04). **EXT-01, EXT-19.**
+4. SYSTEM service on shared servers and table-owner runtime role (R-06, R-07, R-12). **EXT-06, EXT-07 with the
+   current scripts (EXT-45) and the post-deploy check (EXT-46), EXT-24.**
+5. Account takeover by guessing or a stolen session: rate limit, policy, revocation and refresh-reuse detection
+   are fixed in code; deploy them, decide MFA, lock-out model and session lifetime (R-05, R-04, R-38). **EXT-01,
+   EXT-19, SD-06, EXT-50.**
 
-**Overall:** after remediation, every threat whose control is pure application code is either FIXED (not
-deployed), MITIGATED or ACCEPTED. The threats still OPEN are infrastructure and process threats
-(transport, exposure, service account, DB role split, backups, monitoring, D6/MFA decisions) and, until
-deployment, every production threat listed as FIXED (not deployed).
+**Overall (2026-10-16):** every threat whose control is pure application code is FIXED (not deployed),
+MITIGATED or ACCEPTED, and was independently retested twice. The threats still OPEN are infrastructure, process
+and decision threats (transport, exposure, service account, applying the DB role split, backups, monitoring and
+alerting, D6 / MFA / lock-out / session-lifetime / NAT decisions) and, **until deployment, every production
+threat listed as FIXED (not deployed)** — including the CRITICAL IF-01.

@@ -2,9 +2,10 @@
 
 | | |
 |---|---|
-| Date | 2026-10-15 (remediation + retest), extended 2026-10-16 by the security closure programme (added EXT-41/42/43, per-item prerequisite/rollback/evidence matrix, runbook/HTTPS/service-account/backup plan pointers). No item marked complete; production still runs `3b5e842` |
+| Date | 2026-10-15 (remediation + retest), extended 2026-10-16 by the security closure programme (added EXT-41/42/43, per-item prerequisite/rollback/evidence matrix, runbook/HTTPS/service-account/backup plan pointers), and **updated 2026-10-16 by WP-M2b** from the lead's final fact sheet (status column; code sides of EXT-11/12/13/25/38 recorded; EXT-44 … EXT-50 added). **No item is complete**; production still runs `3b5e842` |
 | Purpose | Every security action that **cannot be completed by changing CKAM code on the dev PC**: server, network, database administration, supplier, people and management actions |
-| Code state | All code findings are FIXED, MITIGATED or ACCEPTED in 8 **local** commits (`3e134c1`, `7e57844`, `ba04371`, `77431ba`, `4fa5c9b`, `ae706bb`, `da790d1`, `d04779a`; HEAD `d04779a`). **None is pushed or deployed**: production still runs `3b5e842` |
+| Code state | Final local HEAD `fd34520`: 22 **local** security commits (`3e134c1` … `fd34520`) on top of `4ba4e94`, 22 commits ahead of origin `c66378d`. No code-fixable Critical/High/Medium item remains open locally. **Nothing is pushed, nothing is deployed, production was never touched**: production still runs `3b5e842` with IF-01 and the QR deep-link bug (CL2-IF-04). Alembic head in code `c6e8a0b2d4f6` (four new migrations) |
+| Honesty rule | **Nothing is complete until it is deployed (or done on the real system) and verified there.** "CODE DONE" below means only that the repository side exists and was tested locally |
 | Related | `CKAM_ISO27001_READINESS.md` (finding summary section 6, risk register section 9), `CKAM_SOC2_READINESS.md`, `CKAM_THREAT_MODEL.md`; and from the separate writer `CKAM_VAPT_REPORT.md`, `CKAM_SECURITY_FINDINGS_REGISTER.md`, `CKAM_SECURITY_REMEDIATION_REPORT.md` |
 
 How to read this list:
@@ -20,60 +21,74 @@ How to read this list:
 
 ## Summary
 
-| ID | Action | Owner | Timing |
-|---|---|---|---|
-| EXT-01 | Deploy the release with all 8 security commits (IF-01 fix first among them) to production | Management + IT | **URGENT** |
-| EXT-02 | Rotate JWT secret, `ckassetapp` DB password, NAS password, ERP password after EXT-01 | IT + Infra | **URGENT** |
-| EXT-03 | Check whether IF-01 was used against production (compromise assessment) | Security + IT | **URGENT** |
-| EXT-04 | HTTPS for production | Infra | 30 days |
-| EXT-05 | Stop the internet port-forward of 3211 or restrict it (VPN) | Infra + Management | **URGENT** (decision) / 30 days |
-| EXT-06 | Run CKAM as a low-privilege service account instead of SYSTEM | Infra | 30 days |
-| EXT-07 | Separate low-privilege runtime DB role from the owner role | Infra (DBA) + Dev | 30 days |
-| EXT-08 | Off-server encrypted backups, NAS file backup, quarterly restore test | Infra | 30 days |
-| EXT-09 | OS / runtime / database / NAS patching | Infra | 30 days, then monthly |
-| EXT-10 | Lock down dev PC `.env` and `backups\`; encrypt disk; purge old dumps | IT + Dev | **URGENT** |
-| EXT-11 | Self-host the Google Fonts | Dev | 90 days |
-| EXT-12 | Reproducible (locked) Python installs in production deploys | Dev + IT | 30 days |
-| EXT-13 | Put the production launcher and release script in git; Windows runbook | Dev + IT | 30 days |
-| EXT-14 | External VAPT by an independent firm | Management + Audit | 90 days (after EXT-01..08) |
-| EXT-15 | ISO 27001 certification body engagement | Management | 12 months |
-| EXT-16 | SOC 2 auditor (CPA firm) selection | Management | 12 months |
-| EXT-17 | Policy set | Management + Security | 90 days |
-| EXT-18 | Quarterly access review | Management (CKAM owner) | 30 days, then quarterly |
-| EXT-19 | MFA decision (head-office admin and Full Admin first) | Management + Dev | 90 days |
-| EXT-20 | Incident response plan | Security + Management | 30 days |
-| EXT-21 | Log retention and off-server log shipping | Infra + Dev | 90 days |
-| EXT-22 | Monitoring and alerting; weekly security-log review | IT + Management | 30 days |
-| EXT-23 | Password manager for server secrets, with break-glass | IT + Management | 30 days |
-| EXT-24 | Segregation from shared servers (Spinwheel, Citykart Desk) | Infra + Management | 12 months |
-| EXT-25 | ERP read-only DB role with TLS | Vendor (ERP warehouse owner) + Infra | 90 days |
-| EXT-26 | Decision D6: limit Full Admin to chosen companies | Management | 30 days |
-| EXT-27 | Apply PostgreSQL slow-query / lock logging on 10.0.0.205 | Infra (DBA) | 90 days |
-| EXT-28 | Company-owned repository with MFA and branch protection; CI | Management + Dev | 90 days |
-| EXT-29 | BCP / DR plan, RTO/RPO, reboot test, server-room check | Management + Infra | 90 days |
-| EXT-30 | Rule for shared store logins | Management + HR | 90 days |
-| EXT-31 | Legal review: personal data, incident reporting, record keeping | Management (Legal) | 90 days |
-| EXT-32 | Awareness training; screening/NDA confirmation | HR + Security | 90 days, then yearly |
-| EXT-33 | Joiner / mover / leaver process | HR + IT | 30 days |
-| EXT-34 | Supplier review | Management + IT | 90 days, then yearly |
-| EXT-35 | Change record per release; emergency change rule | Dev + Management | 30 days |
-| EXT-36 | ISMS roles, risk-register ownership, internal audit, management review | Management + Audit | 90 days / 12 months |
-| EXT-37 | Antimalware / EDR on servers and NAS | Infra | 30 days |
-| EXT-38 | Start production uvicorn with `--no-proxy-headers` (N2) | IT | **URGENT** (with EXT-01) |
-| EXT-39 | Pre-deploy checks for the new release: JWT secret strength, `ENVIRONMENT_NAME=production`, `alembic upgrade head` before start, constraints | IT + Dev | **URGENT** (with EXT-01) |
-| EXT-40 | Watch the sign-in rate limit for users behind one NAT address | IT + Dev | 30 days after deploy |
-| EXT-41 | Preserve and copy production logs off-server before the deploy, for the compromise assessment | IT + Security | **URGENT** (with EXT-01/EXT-03) |
-| EXT-42 | Keep a signed change record and emergency-change note for the IF-01 deploy | Dev + Management | **URGENT** (with EXT-01) |
-| EXT-43 | Give CKAM its own NAS account if `ckappuser` is shared, before rotating the NAS password | Infra + NAS admin | **URGENT** (decision) / 30 days |
+Status words (2026-10-16): **OPEN EXTERNAL** = needs work outside the repository; **CODE DONE — OPEN EXTERNAL** = the
+repository side exists and was tested locally, the real-system side is still to do; **OPEN DECISION** = the owner
+decides first (SD-xx in `CKAM_SECURITY_DECISIONS_REQUIRED.md`); "draft" = a DRAFT document exists in
+`docs/security/policies/` (DRAFT — MANAGEMENT APPROVAL REQUIRED; not evidence).
 
-> **Status of every item below: OPEN EXTERNAL.** Nothing in this list is complete. Each item's **Timing** column is
-> also its classification bucket (`URGENT` / `30 days` / `90 days` / `12 months`). Section "Prerequisite, rollback
-> and audit evidence per item" after EXT-43 gives those three fields for every EXT at a glance; the per-item
-> sections give the full action, why, risk and verification.
+| ID | Action | Owner | Timing | Status 2026-10-16 |
+|---|---|---|---|---|
+| EXT-01 | Deploy the release with all 21 security commits (HEAD `fd34520` or later; IF-01 fix first among them) to production | Management + IT | **URGENT** | OPEN EXTERNAL (code ready, runbook prepared; decision SD-01) |
+| EXT-02 | Rotate JWT secret, `ckassetapp` DB password, NAS password, ERP password after EXT-01 | IT + Infra | **URGENT** | OPEN EXTERNAL (runbook phases 8-11 prepared) |
+| EXT-03 | Check whether IF-01 was used against production (compromise assessment) | Security + IT | **URGENT** | OPEN EXTERNAL (runbook phase 13 prepared) |
+| EXT-04 | HTTPS for production | Infra | 30 days | OPEN EXTERNAL (plan prepared; decision SD-05) |
+| EXT-05 | Stop the internet port-forward of 3211 or restrict it (VPN) | Infra + Management | **URGENT** (decision) / 30 days | OPEN DECISION (SD-04) |
+| EXT-06 | Run CKAM as a low-privilege service account instead of SYSTEM | Infra | 30 days | OPEN EXTERNAL (plan prepared) |
+| EXT-07 | Separate low-privilege runtime DB role from the owner role | Infra (DBA) + Dev | 30 days | CODE DONE — OPEN EXTERNAL (`ops/db/` scripts + runbook + local proof; decision SD-11) |
+| EXT-08 | Off-server encrypted backups, NAS file backup, quarterly restore test | Infra | 30 days | OPEN EXTERNAL (plan prepared; policy draft) |
+| EXT-09 | OS / runtime / database / NAS patching | Infra | 30 days, then monthly | OPEN EXTERNAL |
+| EXT-10 | Lock down dev PC `.env` and `backups\`; encrypt disk; purge old dumps | IT + Dev | **URGENT** | OPEN EXTERNAL (ACL plan prepared; nothing changed on the PC) |
+| EXT-11 | Self-host the Google Fonts | Dev | 90 days | CODE DONE — OPEN until deployed (`79dbae7`, `b401e9f`) |
+| EXT-12 | Reproducible (locked) Python installs in production deploys | Dev + IT | 30 days | CODE DONE — OPEN EXTERNAL (`constraints.txt`; reference deploy script uses it) |
+| EXT-13 | Put the production launcher and release script in git; Windows runbook | Dev + IT | 30 days | REFERENCE DONE — OPEN EXTERNAL (`ops/windows/` templates; live launcher still not in git) |
+| EXT-14 | External VAPT by an independent firm | Management + Audit | 90 days (after EXT-01..08) | OPEN (decision SD-10) |
+| EXT-15 | ISO 27001 certification body engagement | Management | 12 months | OPEN (decision SD-16) |
+| EXT-16 | SOC 2 auditor (CPA firm) selection | Management | 12 months | OPEN (decision SD-16) |
+| EXT-17 | Policy set | Management + Security | 90 days | OPEN (15 drafts written, 0 approved; SD-16) |
+| EXT-18 | Quarterly access review | Management (CKAM owner) | 30 days, then quarterly | OPEN (draft procedure + form) |
+| EXT-19 | MFA decision (head-office admin and Full Admin first) | Management + Dev | 90 days | OPEN DECISION (SD-03) |
+| EXT-20 | Incident response plan | Security + Management | 30 days | OPEN (draft plan + form) |
+| EXT-21 | Log retention and off-server log shipping | Infra + Dev | 90 days | OPEN (decision SD-15) |
+| EXT-22 | Monitoring and alerting; weekly security-log review | IT + Management | 30 days | OPEN EXTERNAL |
+| EXT-23 | Password manager for server secrets, with break-glass | IT + Management | 30 days | OPEN EXTERNAL |
+| EXT-24 | Segregation from shared servers (Spinwheel, Citykart Desk) | Infra + Management | 12 months | OPEN EXTERNAL |
+| EXT-25 | ERP read-only DB role with TLS | Vendor (ERP warehouse owner) + Infra | 90 days | CODE DONE — OPEN EXTERNAL (`PO_SOURCE_SSLMODE`, default `prefer`; ERP owner must confirm) |
+| EXT-26 | Decision D6: limit Full Admin to chosen companies | Management | 30 days | OPEN DECISION (SD-02) |
+| EXT-27 | Apply PostgreSQL slow-query / lock logging on 10.0.0.205 | Infra (DBA) | 90 days | OPEN EXTERNAL |
+| EXT-28 | Company-owned repository with MFA and branch protection; CI | Management + Dev | 90 days | OPEN |
+| EXT-29 | BCP / DR plan, RTO/RPO, reboot test, server-room check | Management + Infra | 90 days | OPEN (draft plan) |
+| EXT-30 | Rule for shared store logins | Management + HR | 90 days | OPEN DECISION (SD-07) |
+| EXT-31 | Legal review: personal data, incident reporting, record keeping | Management (Legal) | 90 days | OPEN (decision SD-09) |
+| EXT-32 | Awareness training; screening/NDA confirmation | HR + Security | 90 days, then yearly | OPEN (draft plan) |
+| EXT-33 | Joiner / mover / leaver process | HR + IT | 30 days | OPEN (draft procedure + form) |
+| EXT-34 | Supplier review | Management + IT | 90 days, then yearly | OPEN (draft) |
+| EXT-35 | Change record per release; emergency change rule | Dev + Management | 30 days | OPEN (draft procedure + form) |
+| EXT-36 | ISMS roles, risk-register ownership, internal audit, management review | Management + Audit | 90 days / 12 months | OPEN (drafts; SD-16) |
+| EXT-37 | Antimalware / EDR on servers and NAS | Infra | 30 days | OPEN EXTERNAL |
+| EXT-38 | Start production uvicorn with `--no-proxy-headers` (N2) and `--no-server-header` | IT | **URGENT** (with EXT-01) | CODE DONE — OPEN EXTERNAL (every repository launch path and the reference launcher; production launcher not changed) |
+| EXT-39 | Pre-deploy checks for the new release: JWT secret strength, `ENVIRONMENT_NAME=production`, `alembic upgrade head` (four migrations) before start, constraints | IT + Dev | **URGENT** (with EXT-01) | OPEN EXTERNAL (runbook phase 1 prepared) |
+| EXT-40 | Watch the sign-in rate limit for users behind one NAT address | IT + Dev | 30 days after deploy | OPEN (after deploy; SD-08) |
+| EXT-41 | Preserve and copy production logs off-server before the deploy, for the compromise assessment | IT + Security | **URGENT** (with EXT-01/EXT-03) | OPEN EXTERNAL |
+| EXT-42 | Keep a signed change record and emergency-change note for the IF-01 deploy | Dev + Management | **URGENT** (with EXT-01) | OPEN (draft form) |
+| EXT-43 | Give CKAM its own NAS account if `ckappuser` is shared, before rotating the NAS password | Infra + NAS admin | **URGENT** (decision) / 30 days | OPEN DECISION |
+| EXT-44 | Deploy the QR / Asset 360 deep-link fix (CL2-IF-04) — a production functional bug today | Management + IT | **URGENT** (same deploy as EXT-01) | CODE DONE — OPEN EXTERNAL (`ca94574`) |
+| EXT-45 | Run the **updated** `ops/db` role-split scripts (sequence privilege USAGE/SELECT only, `RESET ALL`) — never an older copy | Infra (DBA) + Dev | 30 days (part of EXT-07) | CODE DONE — OPEN EXTERNAL |
+| EXT-46 | Re-run `ops/db/check_least_privilege.sql` after every deploy and keep the output | IT / DBA + Dev | Every deploy (from the first deploy after EXT-07) | OPEN (script ready) |
+| EXT-47 | Replace `python-jose` with PyJWT (follow-up to IF-12) | Dev | 90 days | OPEN (development task; normal release) |
+| EXT-48 | Alert on the audit-write failure line (`log_write_failed`) and on REFRESH_REUSE bursts | IT + Dev | 30 days after deploy (with EXT-22) | OPEN (code produces the line; no alert) |
+| EXT-49 | Set a per-office NAT policy for the sign-in limit (20/min per address) | Management + IT | 30 days after deploy | OPEN DECISION (SD-08) |
+| EXT-50 | Decide an absolute session lifetime | Management + Dev | 90 days | OPEN DECISION (SD-14) |
 
-Order that matters: **EXT-41 (preserve logs) → EXT-39 (prechecks) → EXT-01 (deploy with migrations) →
-EXT-38 (start with `--no-proxy-headers`) → verify IF-01 closed → EXT-02 (rotate secrets, EXT-43 settled first) →
-EXT-03 (compromise assessment)**, all recorded under EXT-42. Rationale: changing secrets while the hole is still
+> **Status: nothing in this list is complete.** Items marked CODE DONE / REFERENCE DONE have only their repository
+> side finished; they become complete only when deployed (or done on the real system) **and verified there**.
+> Each item's **Timing** column is also its classification bucket (`URGENT` / `30 days` / `90 days` / `12 months`).
+> Section "Prerequisite, rollback and audit evidence per item" after EXT-50 gives those three fields for every EXT
+> at a glance; the per-item sections give the full action, why, risk and verification.
+
+Urgent order (unchanged): **EXT-39 (prechecks) → EXT-01 (deploy with the four migrations; carries EXT-44) →
+EXT-38 (start with `--no-proxy-headers --no-server-header`) → verify IF-01 closed and the QR deep link opens →
+EXT-02 (rotate secrets, EXT-43 settled first)**, preceded by EXT-41 (preserve logs) and followed by EXT-03
+(compromise assessment), all recorded under EXT-42. Rationale: changing secrets while the hole is still
 open is wasted effort, because the new secrets could be read the same way, so rotate only after the fixed release
 is verified. The full numbered procedure is in `docs/security/CKAM_URGENT_PRODUCTION_SECURITY_RUNBOOK.md`.
 **EXT-05 decision as soon as possible** (closing or narrowing the internet forward reduces the danger while EXT-01
@@ -87,12 +102,13 @@ in their own windows — see `CKAM_HTTPS_IMPLEMENTATION_PLAN.md`, `CKAM_SERVICE_
 
 | | |
 |---|---|
-| What | After the owner approves the push and, separately, the deploy: deploy a release at `d04779a` or later, which contains all 8 security commits (`3e134c1` path-traversal fix for `GET /assets/{file_path:path}`, `7e57844`, `ba04371`, `77431ba`, `4fa5c9b`, `ae706bb`, `da790d1`, `d04779a`; all fixed and retested), following the normal deploy steps in `docs/ai/PRODUCTION_INFRASTRUCTURE.md` (backup first, release by commit, `alembic upgrade head`, restart, verify) **plus the pre-deploy checks in EXT-39** and the start flag in EXT-38 |
+| What | After the owner approves the push and, separately, the deploy: deploy a release at `fd34520` or later, which contains all 21 security commits (`3e134c1` … `fd34520`; the IF-01 fix incl. the Windows path forms, the QR deep-link fix EXT-44, refresh-token reuse detection, the lifecycle DB guard and everything else; all retested locally), following `docs/security/CKAM_URGENT_PRODUCTION_SECURITY_RUNBOOK.md` phases 1-7 (precheck, approved push, backup, `alembic upgrade head` with the four migrations `f9a1c3e5b7d2`, `a3c5e7f9b1d4`, `b5d7f9a1c3e5`, `c6e8a0b2d4f6` **before** the new code starts, deploy the release folder + `FRONTEND_DIST_DIR`, start with the EXT-38 flags, verify) **plus the pre-deploy checks in EXT-39**. *(Original 2026-10-15 text: release at `d04779a` with 8 commits; superseded.)* |
 | Why (plain words) | The live server (release `3b5e842`) hands out any file on the server to anyone who asks in a special way, including the file with the database password and the key that signs logins. The fix, and all other fixes of 2026-10-15, exist on the dev PC only |
 | Risk if ignored | Full takeover of CKAM: an attacker can forge a head-office-admin login, read or change all data in `ckassetmanagement`, read NAS documents, and use the ERP password. The server is reachable from the internet (R-02, R-03, R-18) |
 | Owner | Management (approve) + IT (deploy) |
 | Timing | **URGENT** |
-| Done when | On production: `GET /assets/..%2f..%2f..%2fshared%2f.env` and `GET /assets/%2fetc%2fpasswd`-style probes return 404 (never 200); `/docs` and `/openapi.json` return 404; responses carry `Content-Security-Policy`; `alembic current` = head (`a3c5e7f9b1d4` / `f9a1c3e5b7d2` applied); `system_event` `app_started` shows the new version and `production`; a change record exists (EXT-35) |
+| Done when | On production: `GET /assets/..%2f..%2f..%2fshared%2f.env`-style probes **and the Windows forms** (`..%5c`, `%2e%2e%5c`, `C:%2fWindows%2fwin.ini`, `%5c%5cserver%5cshare`) return plain 404 (never 200); unknown `/api/...` paths and `/docs`, `/redoc`, `/openapi.json` return JSON 404; security headers appear exactly once incl. `Content-Security-Policy` without Google hosts; no `Server` header; `/assets/<id>` (QR deep link) opens the app page (EXT-44); sign-in, receive and move smoke tests pass; `alembic current` = `c6e8a0b2d4f6`; `system_event` `app_started` shows the new version and `production`; `ops/db/check_least_privilege.sql` output kept once EXT-07 is done (EXT-46); a change record exists (EXT-42) |
+| Status 2026-10-16 | OPEN EXTERNAL. Code ready and retested locally (backend 2541 passed / 1 skipped, frontend 1257, security journeys 14/14, two closure retests); nothing pushed or deployed |
 
 ## EXT-02 Rotate production secrets after EXT-01 — URGENT
 
@@ -153,7 +169,8 @@ in their own windows — see `CKAM_HTTPS_IMPLEMENTATION_PLAN.md`, `CKAM_SERVICE_
 
 | | |
 |---|---|
-| What | Split the database account into (a) an **owner/migration role** that owns the schema and is used only during deploys for `alembic upgrade head`, and (b) a **runtime role** used by the running app, which can read and write business tables, can only INSERT and SELECT on the audit tables (`audit_log`, `asset_event`, `asset_field_change`, `master_audit`), cannot TRUNCATE, cannot ALTER or DROP anything, cannot disable triggers and cannot run the audit purge function. The exact least-privilege role design and grant script will be supplied by the backend engineer in the remediation report under `docs/security/` (file name to be confirmed); this document does not define the SQL. The owner runs it as superuser on 10.0.0.205 |
+| What | Split the database account into (a) an **owner/migration role** that owns the schema and is used only during deploys for `alembic upgrade head`, and (b) a **runtime role** used by the running app, which can read and write business tables, can only INSERT and SELECT on the audit tables (`audit_log`, `asset_event`, `asset_field_change`, `master_audit`), cannot TRUNCATE, cannot ALTER or DROP anything, cannot disable triggers and cannot run the audit purge function. **Update 2026-10-16:** the design and scripts now exist and were proven on a disposable database: `ops/db/role_split.sql`, `ops/db/role_split_verify.sql`, `ops/db/check_least_privilege.sql`, `ops/db/ROLE_SPLIT_RUNBOOK.md` (owner / migrator / runtime; Alembic runs as the migrator via `ALEMBIC_SET_ROLE`; runtime role 7/7 needed actions work, 40/40 forbidden actions refused; verify 45/45; 34 least-privilege checks; `docs/security/evidence/closure/db/WPB_RESULTS.md`). Use only the **current** scripts (sequence privilege USAGE/SELECT only and `RESET ALL`: EXT-45). The owner runs them as superuser on 10.0.0.205; this document does not repeat the SQL |
+| Status 2026-10-16 | CODE DONE — OPEN EXTERNAL. Nothing changed on 10.0.0.205; decision SD-11 (window, role names) |
 | Why | Today the production app connects as `ckassetapp`, which runs Alembic and therefore owns the tables. A table owner can switch off or drop the append-only triggers and wipe the audit trail (IF-05, IF-06; `db_03` section C). The code fix (TRUNCATE guards and a 5-year audit purge floor, migration `a3c5e7f9b1d4`, status MITIGATED) narrows this but cannot stop an owner or superuser |
 | Risk if ignored | An attacker with the runtime password, or a bug, can rewrite history that auditors rely on (R-12) |
 | Owner | Infra (DBA) + Dev |
@@ -192,6 +209,7 @@ in their own windows — see `CKAM_HTTPS_IMPLEMENTATION_PLAN.md`, `CKAM_SERVICE_
 | Owner | IT + Dev |
 | Timing | **URGENT** |
 | Done when | `icacls` output shows only the developer and Administrators; BitLocker status "on"; dump count reduced |
+| Status 2026-10-16 | OPEN EXTERNAL. A step-by-step ACL plan exists (`docs/security/evidence/closure/infra/IF-09_ACL_PLAN.md`); **nothing was changed on the PC** |
 
 ## EXT-11 Self-host the Google Fonts — 90 days
 
@@ -203,6 +221,7 @@ in their own windows — see `CKAM_HTTPS_IMPLEMENTATION_PLAN.md`, `CKAM_SERVICE_
 | Owner | Dev |
 | Timing | 90 days |
 | Done when | Browser network tab shows no request to Google; fonts still render |
+| Status 2026-10-16 | CODE DONE — OPEN until deployed. Inter and IBM Plex Mono (latin, latin-ext) are self-hosted (`frontend/src/fonts.css`, `79dbae7`); backend CSP without Google hosts (`b401e9f`); `npm run check:build` fails on any Google host; retest 2 Playwright run showed 0 Google requests (`evidence/closure/retest2/infra/raw/fonts_csp_playwright_summary.txt`). Production `3b5e842` still loads Google Fonts until EXT-01 |
 
 ## EXT-12 Reproducible Python installs in production — 30 days
 
@@ -214,6 +233,7 @@ in their own windows — see `CKAM_HTTPS_IMPLEMENTATION_PLAN.md`, `CKAM_SERVICE_
 | Owner | Dev + IT |
 | Timing | 30 days |
 | Done when | Each `releases\<sha>\` has a `pip freeze` file identical to the tested set |
+| Status 2026-10-16 | CODE DONE — OPEN EXTERNAL. `backend/constraints.txt` exists and the reference `ops/windows/deploy_ckam.ps1.template` installs with `-c constraints.txt`; pip-audit on the pinned set re-run (`evidence/closure/backend/dependency_recheck.md`): python-jose / ecdsa have no fixed version, not reachable, ACCEPTED (PyJWT follow-up EXT-47). Never used on 10.0.1.98 yet |
 
 ## EXT-13 Production launcher and release script in git; Windows runbook — 30 days
 
@@ -225,6 +245,7 @@ in their own windows — see `CKAM_HTTPS_IMPLEMENTATION_PLAN.md`, `CKAM_SERVICE_
 | Owner | Dev + IT |
 | Timing | 30 days |
 | Done when | Scripts in git; runbook matches what the operator actually does |
+| Status 2026-10-16 | REFERENCE DONE — OPEN EXTERNAL. `ops/windows/` holds secret-free templates (`run_ckam_web.ps1.template` with `--no-proxy-headers --no-server-header`, `deploy_ckam.ps1.template`, `rollback_release.ps1.template`, `verify_release.ps1`, README), checked with the PowerShell parser and `-WhatIf` dry runs (`evidence/closure/infra/raw/windows/`). The **live** launcher on 10.0.1.98 is still not in git and has not been compared with the reference; IT must confirm |
 
 ## EXT-14 External VAPT by an independent firm — 90 days
 
@@ -266,6 +287,7 @@ in their own windows — see `CKAM_HTTPS_IMPLEMENTATION_PLAN.md`, `CKAM_SERVICE_
 | Owner | Management + Security |
 | Timing | 90 days |
 | Done when | Signed and dated policies; staff acknowledgement records |
+| Status 2026-10-16 | OPEN. 15 documents and 6 blank record forms were written in `docs/security/policies/` — all **DRAFT — MANAGEMENT APPROVAL REQUIRED**, 0 approved, 0 operating (decision SD-16). A draft is not evidence |
 
 ## EXT-18 Quarterly access review — 30 days, then quarterly
 
@@ -316,6 +338,7 @@ in their own windows — see `CKAM_HTTPS_IMPLEMENTATION_PLAN.md`, `CKAM_SERVICE_
 | Owner | IT + Management |
 | Timing | 30 days |
 | Done when | Alert test messages received; weekly review notes exist |
+| Note 2026-10-16 | After the deploy the code also produces `RATE_LIMITED`, `REFRESH_REUSE` and `REFRESH_DUPLICATE` security rows and a `log_write_failed` error line when an audit row cannot be written; alerting on those is EXT-48 |
 
 ## EXT-23 Password manager for server secrets — 30 days
 
@@ -341,7 +364,8 @@ in their own windows — see `CKAM_HTTPS_IMPLEMENTATION_PLAN.md`, `CKAM_SERVICE_
 
 | | |
 |---|---|
-| What | With the ERP warehouse owner on 10.0.1.69: confirm role `ckpost` has **SELECT only** on the views CKAM reads (no INSERT/UPDATE/DELETE/TRUNCATE, no ownership); set `default_transaction_read_only = on` **on the role itself** (`ALTER ROLE ... SET`), not only per connection as CKAM does today; require TLS for this role (`hostssl` in `pg_hba.conf`); then add a TLS option on the CKAM side (IF-16, code change) |
+| What | With the ERP warehouse owner on 10.0.1.69: confirm role `ckpost` has **SELECT only** on the views CKAM reads (no INSERT/UPDATE/DELETE/TRUNCATE, no ownership); set `default_transaction_read_only = on` **on the role itself** (`ALTER ROLE ... SET`), not only per connection as CKAM does today; require TLS for this role (`hostssl` in `pg_hba.conf`); then switch CKAM to `PO_SOURCE_SSLMODE=require` or `verify-full` with `PO_SOURCE_SSLROOTCERT` (the CKAM-side option now exists, IF-16 code side, `7b039fb`; default `prefer` = today's behaviour, TLS not mandatory) |
+| Status 2026-10-16 | CODE DONE — OPEN EXTERNAL. Tested only with stand-ins (`backend/tests/erp/test_erp_tls_settings.py`); the real ERP was never contacted; the ERP owner must confirm TLS support and the SELECT-only grant |
 | Why | Today read-only is guaranteed by CKAM's own connection setting; the ERP password and data travel unencrypted on the LAN |
 | Owner | Vendor (ERP warehouse owner) + Infra |
 | Timing | 90 days |
@@ -470,18 +494,19 @@ in their own windows — see `CKAM_HTTPS_IMPLEMENTATION_PLAN.md`, `CKAM_SERVICE_
 | Risk if ignored | Wrong IP addresses in investigations; weaker rate limiting (R-32) |
 | Owner | IT |
 | Timing | **URGENT**, in the same deploy as EXT-01 |
-| Done when | Launcher command line shows `--no-proxy-headers`; a test request from the server with a forged `X-Forwarded-For` is logged with `127.0.0.1`, not the forged address |
+| Done when | Launcher command line shows `--no-proxy-headers --no-server-header`; a test request from the server with a forged `X-Forwarded-For` is logged with `127.0.0.1`, not the forged address; responses carry no `Server` header |
+| Status 2026-10-16 | CODE DONE — OPEN EXTERNAL. Every repository launch path (Docker dev/UAT, reference Windows launcher) uses both flags; `backend/tests/core/test_n2_forwarded_for.py`; in the dev stack nginx overwrites `X-Forwarded-For` and the API trusts only nginx (N3). The production launcher `shared\run_ckam_web.ps1` is unchanged until the deploy |
 
 ## EXT-39 Pre-deploy checks for the security release — URGENT (with EXT-01)
 
 | | |
 |---|---|
-| What | Before starting the new code on 10.0.1.98: (1) confirm `shared\.env` has `ENVIRONMENT_NAME=production` (any name outside `development, dev, test, testing, uat, security-test, local, ci` is treated as production anyway); (2) confirm the **current** `JWT_SECRET` is at least 32 characters with at least 8 different characters (check the length and variety without printing the value); if not, generate the new secret now (EXT-02 step 1); (3) run `alembic upgrade head` as the app role **before** starting the new code (it adds `f9a1c3e5b7d2` asset_user.token_version and `a3c5e7f9b1d4` TRUNCATE guards and audit purge floor; new code on the old schema fails); (4) install with `backend/constraints.txt` (EXT-12); (5) check the uvicorn flag (EXT-38) |
+| What | Before starting the new code on 10.0.1.98: (1) confirm `shared\.env` has `ENVIRONMENT_NAME=production` set **explicitly** (an unset value now also counts as production and fails closed, CL1-N4-01; any name outside `development, dev, test, testing, uat, security-test, local, ci` counts as production); (2) confirm the **current** `JWT_SECRET` is at least 32 characters with at least 8 different characters (check the length and variety without printing the value); if not, generate the new secret now (EXT-02 step 1); (3) run `alembic upgrade head` **before** starting the new code: four migrations, `f9a1c3e5b7d2` (asset_user.token_version), `a3c5e7f9b1d4` (TRUNCATE guards + 5-year audit purge floor), `b5d7f9a1c3e5` (auth_session for refresh-token reuse detection), `c6e8a0b2d4f6` (DB guard on asset.status / holder / status_since); head `c6e8a0b2d4f6`; new code on the old schema fails; (4) install with `backend/constraints.txt` (EXT-12); (5) check the uvicorn flags (EXT-38); (6) note the new settings and their defaults (`RATE_LIMIT_*`, `REFRESH_REUSE_GRACE_SECONDS=10`, `PO_SOURCE_SSLMODE`, ERP timeouts, `TRUSTED_PROXIES` empty) |
 | Why (plain words) | The new code deliberately refuses to start in production with a weak secret, and needs the two new database changes. Without these checks the deploy fails and the old, vulnerable release stays live longer |
 | Risk if ignored | Failed deploy and downtime; IF-01 stays exposed |
 | Owner | IT + Dev |
 | Timing | **URGENT**, part of EXT-01 |
-| Done when | Change record shows the five checks ticked; `alembic current` = head; launcher log shows a normal start with `production` |
+| Done when | Change record shows the six checks ticked; `alembic current` = `c6e8a0b2d4f6`; launcher log shows a normal start with `production` |
 
 ## EXT-40 Sign-in rate limit and shared NAT addresses — 30 days after deploy
 
@@ -493,6 +518,7 @@ in their own windows — see `CKAM_HTTPS_IMPLEMENTATION_PLAN.md`, `CKAM_SERVICE_
 | Owner | IT + Dev |
 | Timing | Review 30 days after deploy |
 | Done when | A note with the observed 429 counts and the decision (keep / change the value) |
+| Note 2026-10-16 | The standing per-office rule (which offices share an address, what value applies) is EXT-49 / decision SD-08 |
 
 ## EXT-41 Preserve and copy production logs off-server for the compromise assessment — URGENT
 
@@ -527,6 +553,90 @@ in their own windows — see `CKAM_HTTPS_IMPLEMENTATION_PLAN.md`, `CKAM_SERVICE_
 | Timing | Decision **URGENT** (blocks runbook Phase 10); CKAM-only account within 30 days |
 | Done when | Written confirmation whether `ckappuser`/`ckpost` are CKAM-only; if shared, a CKAM-only NAS account exists and CKAM uploads/downloads work through it; `icacls`/NAS rights evidence kept |
 
+## EXT-44 Deploy the QR / Asset 360 deep-link fix (CL2-IF-04) — URGENT (same deploy as EXT-01)
+
+| | |
+|---|---|
+| What | Nothing extra to build: the fix is in `ca94574` and ships with the EXT-01 release. In single-port mode (production) `/assets/<id>` — the Asset 360 page that a printed QR label opens — and `/assets/new` must serve the app page, not a JSON 404. Add the check to the runbook's phase 7 verification and to the change record (EXT-42) |
+| Why (plain words) | Release `3b5e842` has this bug **today**: staff who scan a printed asset label most likely get an error page instead of the asset. It is a functional bug, not a security hole, but it blocks physical verification with the labels |
+| Risk if ignored | Labels are useless for verification; staff stop trusting them (R-39) |
+| Owner | Management (approve) + IT (deploy) |
+| Timing | **URGENT**, part of EXT-01 |
+| Done when | On production after the deploy: `/assets/<a real asset id>` and `/assets/new` return 200 with the app page; a phone scan of one printed label opens the asset after sign-in; the IF-01 probes (EXT-01) still return 404 |
+| Status 2026-10-16 | CODE DONE — OPEN EXTERNAL. Tested in `backend/tests/test_static_frontend_spa_assets.py`, the retest-2 single-port check (`evidence/closure/retest2/infra/raw/singleport_deeplinks.txt`) and the final native Windows run (`/assets/1234` → 200, `evidence/closure/windows/native_windows_final_release_fafa225.txt`) |
+
+## EXT-45 Run the updated `ops/db` role-split scripts — 30 days (part of EXT-07)
+
+| | |
+|---|---|
+| What | When EXT-07 is carried out, use **only the current versions** of `ops/db/role_split.sql`, `role_split_verify.sql` and `check_least_privilege.sql` from the deployed release (at `fd34520` or later). They contain two closure fixes: (1) the runtime role gets **USAGE, SELECT only** on sequences (CL2-IF-01: an earlier version granted UPDATE, which let `setval` break the audit/ledger id sequences); (2) `ALTER ROLE … RESET ALL` (also per database) so the runtime role cannot keep a self-set `default_transaction_read_only` or other setting (CL2-IF-02). Follow `ops/db/ROLE_SPLIT_RUNBOOK.md`; the owner types every password on the server |
+| Why (plain words) | An older copy of the script would leave a quiet way to break new record numbers for the audit trail and the asset ledger |
+| Risk if ignored | Write failures or broken id sequences after the split (R-37) |
+| Owner | Infra (DBA) + Dev |
+| Timing | With EXT-07 |
+| Done when | `role_split_verify.sql` passes all checks (45 in the local proof); `check_least_privilege.sql` shows no sequence UPDATE and no role-level settings for the runtime role; normal sign-in, receive and move work |
+| Status 2026-10-16 | CODE DONE — OPEN EXTERNAL (scripts proven on a disposable DB; retest 2 tried about 70 break-out attempts as the runtime role, all refused) |
+
+## EXT-46 Re-run `check_least_privilege.sql` after every deploy — every deploy
+
+| | |
+|---|---|
+| What | After each production deploy (and after any manual grant or migration), run `ops/db/check_least_privilege.sql` (34 read-only checks) and attach the output to the change record. Until EXT-07 is done, the output is expected to show the known findings (runtime role = owner) and is kept as a baseline |
+| Why (plain words) | Grants drift: a migration or a helpful manual fix can quietly give the app's account more power than it needs |
+| Risk if ignored | Least privilege erodes unnoticed (R-35, R-37) |
+| Owner | IT / DBA + Dev |
+| Timing | Every deploy, starting with the first deploy after EXT-07 (baseline run at EXT-01) |
+| Done when | Each change record carries the check output with 0 unexpected rows |
+| Status 2026-10-16 | OPEN (script ready and covered by `backend/tests/security/test_least_privilege_role_split.py`) |
+
+## EXT-47 Replace `python-jose` with PyJWT — 90 days
+
+| | |
+|---|---|
+| What | Development task in a normal release: replace `python-jose` (and with it `ecdsa`) by PyJWT, keep HS256 pinned and the `type` claim check, update `backend/constraints.txt`, run the full test suite and the JWT tamper tests |
+| Why (plain words) | `python-jose` (HS256 forgery advisory) and `ecdsa` (timing advisory) have **no fixed versions**. They are not reachable in CKAM today (HS256 pinned, no asymmetric keys), so they are ACCEPTED (IF-12), but an unmaintained token library is a standing risk |
+| Risk if ignored | A future advisory in an unmaintained library with no fix (R-15) |
+| Owner | Dev |
+| Timing | 90 days |
+| Done when | `pip-audit` on the constraints list shows no python-jose / ecdsa entries; JWT tests green; released |
+| Status 2026-10-16 | OPEN (not started) |
+
+## EXT-48 Alert on audit-write failures and refresh-token reuse — 30 days after deploy
+
+| | |
+|---|---|
+| What | Part of EXT-22: alert when the error log contains kind `log_write_failed` (written at the first failure to store an audit/log row and then at most once a minute with a running count) or the matching `system_event`; alert on bursts of `REFRESH_REUSE` / `REFRESH_DUPLICATE` security rows. Small follow-up: show the audit-failure count on the Logs > Diagnostics screen (the function exists) |
+| Why (plain words) | If the audit trail silently stops recording, every later investigation has a hole; a reused sign-in cookie is a strong sign of theft |
+| Risk if ignored | Missing audit rows or stolen sessions noticed late or never (R-40, R-34) |
+| Owner | IT + Dev |
+| Timing | 30 days after deploy |
+| Done when | A test failure produces an alert message; a forced reuse in a test environment produces an alert; note kept |
+| Status 2026-10-16 | OPEN (the code produces the line and rows after deploy; no alerting exists) |
+
+## EXT-49 Per-office NAT policy for the sign-in limit — 30 days after deploy
+
+| | |
+|---|---|
+| What | Owner decision SD-08: list the offices and stores whose users share one public or NAT address, decide whether the default 20 sign-ins per minute per address (`RATE_LIMIT_LOGIN_PER_IP`) stays, and record the value and the review date. The per-login-id limit (10/min) stays regardless. Use the EXT-40 observations |
+| Why (plain words) | At shift start many staff behind one address could be refused for up to a minute; raising the value too far weakens protection for everyone |
+| Risk if ignored | Users refused at busy times, or an ad-hoc change that weakens the limit (R-33) |
+| Owner | Management + IT |
+| Timing | 30 days after deploy |
+| Done when | Written per-office rule with the chosen value; the setting on the server matches it |
+| Status 2026-10-16 | OPEN DECISION (SD-08; recommendation: keep 20/min and watch) |
+
+## EXT-50 Decide an absolute session lifetime — 90 days
+
+| | |
+|---|---|
+| What | Owner decision SD-14: today a session can be renewed for as long as it keeps being used (8-hour refresh window, rotated on each renewal); there is no absolute maximum. Options include an absolute daily limit, shorter for admins. If decided, it is a small code change in a normal release |
+| Why (plain words) | A session on a shared store PC could stay signed in for days if the browser stays open |
+| Risk if ignored | Long-lived sessions on shared devices (R-38) |
+| Owner | Management (decision) + Dev (build) |
+| Timing | 90 days |
+| Done when | Decision recorded; if "limit", built, tested and deployed |
+| Status 2026-10-16 | OPEN DECISION (SD-14; recommendation B) |
+
 ---
 
 ## Prerequisite, rollback and audit evidence per item
@@ -544,11 +654,11 @@ already broken out in its section: **prerequisite** (what must be true first), *
 | EXT-04 | 30 days | Owner HTTPS decisions (`CKAM_HTTPS_IMPLEMENTATION_PLAN.md` §16); 443 free in `PORTS.md`; certificate | Revert `COOKIE_SECURE=false`, `BASE_URL` to http, re-bind/forward 3211, stop proxy, restart | TLS scan (valid cert, TLS 1.2+); redirect check; `Secure` cookie; real client IPs in audit |
 | EXT-05 | URGENT (decision) / 30 days | Owner decision on who needs CKAM from outside | Re-add the router forward from its saved export | Router config export (before/after); outside-network reachability test result |
 | EXT-06 | 30 days | After EXT-01/EXT-02; NAS credential handling settled (EXT-43); venv/log/secret rights planned (`CKAM_SERVICE_ACCOUNT_PLAN.md`) | Re-point `CKAM-Web` to SYSTEM from the saved principal; re-grant any over-removed read | Task principal = `svc_ckam`/gMSA; `icacls` of `shared\`; reboot test; uploads/NAS OK |
-| EXT-07 | 30 days | After EXT-02; maintenance window; backup; owner types superuser + role passwords; role SQL in remediation report §7 (and the WP-B tested version) | `ALTER ROLE ckassetapp LOGIN`; revert `DATABASE_URL`; the design is additive and reversible before `ckassetapp NOLOGIN` | `pg_roles`/owner query shows runtime role not owner, no TRUNCATE; `db_03`-style refusals; normal flows OK |
+| EXT-07 | 30 days | After EXT-02; maintenance window; backup; owner types superuser + role passwords; use the current `ops/db/` scripts and runbook (EXT-45), not the earlier SQL sketch in the remediation report | `ALTER ROLE ckassetapp LOGIN`; revert `DATABASE_URL`; the design is additive and reversible before `ckassetapp NOLOGIN` | `pg_roles`/owner query shows runtime role not owner, no TRUNCATE; `db_03`-style refusals; normal flows OK |
 | EXT-08 | 30 days | Off-server target + decryption key in password manager (EXT-23); non-production restore host | n/a (adds copies; a bad config is corrected, not rolled back) | Off-server copy log; immutable/offline copy exists; NAS backup log; quarterly restore-drill report (`CKAM_BACKUP_RESTORE_PLAN.md` §7) |
 | EXT-09 | 30 days then monthly | Patch window agreed; vendor advisories subscribed | Standard OS/patch rollback (restore point / uninstall update) | Monthly patch report per server (installed, pending, reboot date) |
 | EXT-10 | URGENT | Dev-PC local admin; do not lock out the Docker service | Re-grant removed ACLs if a needed account was cut; BitLocker stays on | `icacls .env`/`backups` show only developer + Administrators; BitLocker on; dump count reduced |
-| EXT-11 | 90 days | Internet fetch of the two font families explicitly allowed by the task (brief rule 1); normal release | Revert the frontend commit; CSP re-allows Google hosts | Playwright run shows no Google request; CSP test without Google hosts; 0 CSP violations |
+| EXT-11 | 90 days | Code side done (`79dbae7`, `b401e9f`); remaining prerequisite: the EXT-01 deploy | Revert the frontend commit; CSP re-allows Google hosts | Playwright run shows no Google request; CSP test without Google hosts; 0 CSP violations |
 | EXT-12 | 30 days | `backend/constraints.txt` present (done, `ae706bb`); `pip-audit` clean on the pinned set | Deploy without `-c` if a pin has no Windows wheel (note it, keep EXT-12 open) | `pip freeze` per release equals the tested set; `pip-audit` result |
 | EXT-13 | 30 days | Reference scripts in `ops/windows/` (WP-C); IT confirms the live launcher | n/a (documents/scripts) | Scripts in git with no secrets and `--no-proxy-headers`; IT confirms server copy equals repo copy |
 | EXT-14 | 90 days | After EXT-01..08; written scope; owner's written approval for any production test | n/a | Signed independent report; findings tracked to closure |
@@ -581,3 +691,10 @@ already broken out in its section: **prerequisite** (what must be true first), *
 | EXT-41 | URGENT | Access to `<ROOT>\logs\`; an off-server evidence target | n/a | Hashed off-server copy of pre-deploy logs; SHA-256 list |
 | EXT-42 | URGENT | Change-record template; owner approval (may be by message for the emergency) | n/a | Signed change record for the IF-01 deploy with Phase 7 evidence |
 | EXT-43 | URGENT (decision) / 30 days | NAS admin / ERP owner confirm whether `ckappuser`/`ckpost` are shared | If a CKAM-only account causes an upload failure, fix the mapping; the shared account is untouched | Written shared/not-shared confirmation; if new account: `icacls`/NAS rights, upload/download test |
+| EXT-44 | URGENT (with EXT-01) | Same as EXT-01 | Same as EXT-01 (previous release folder) | `/assets/<id>` and `/assets/new` 200 on production; one real label scan; recorded in EXT-42 |
+| EXT-45 | 30 days (with EXT-07) | EXT-07 prerequisites; scripts taken from the deployed release, not an older copy | `ops/db/ROLE_SPLIT_RUNBOOK.md` rollback (additive design; `ckassetapp` can be restored before NOLOGIN) | `role_split_verify.sql` and `check_least_privilege.sql` output; smoke results |
+| EXT-46 | Every deploy | Script in the deployed release; DBA access (read-only queries) | n/a (read-only check) | Check output attached to each change record |
+| EXT-47 | 90 days | Normal development cycle; full test suite | Revert the commit | `pip-audit` without python-jose / ecdsa; JWT tests green; release record |
+| EXT-48 | 30 days after deploy | EXT-22 alert channel; deploy done | Disable the alert rule | Alert test messages; note of the test |
+| EXT-49 | 30 days after deploy | EXT-40 observations; owner decision SD-08 | Set `RATE_LIMIT_LOGIN_PER_IP` back and restart | Written per-office rule; setting matches |
+| EXT-50 | 90 days | Owner decision SD-14 | If built: revert the code change | Decision record; if built: tests and release record |

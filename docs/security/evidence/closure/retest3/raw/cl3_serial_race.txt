@@ -1,0 +1,5 @@
+{"label":"validate-single","status":201,"id":75,"detail":""}
+{"label":"identical-serial-20","n":20,"dist":{"201":1,"422":19},"created201":1,"loser422":19,"bare409or5xx":[],"dupSamples":["serial number \"CL3-RACE1-197489\" is already used by asset CKSPL/ITFA-SPL/0012","This serial number is already used by another asset. Check the serial number and try again."]}
+{"label":"case-ws-variants","n":7,"dist":{"201":1,"422":6},"created201":1,"loser422":6,"bare409or5xx":[],"dupSamples":["This serial number is already used by another asset. Check the serial number and try again.","serial number \"CL3-ABC-1-197489\" is already used by asset CKSPL/ITFA-SPL/0013","serial number \"cl3-abc-1-197489\" is already used by asset CKSPL/ITFA-SPL/0013"]}
+{"label":"identical-serial-20b","n":20,"dist":{"201":1,"422":19},"created201":1,"loser422":19,"bare409or5xx":[],"dupSamples":["This serial number is already used by another asset. Check the serial number and try again.","serial number \"CL3-RACE2-197489\" is already used by asset CKSPL/ITFA-SPL/0014"]}
+CREATED assets: 4 STAMP 197489

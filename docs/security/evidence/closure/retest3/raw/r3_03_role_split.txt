@@ -1,0 +1,10 @@
+BEGIN
+DO
+DO
+DO
+DO
+DO
+DO
+DO
+COMMIT
+role_split.sql: done. Now run ops/db/role_split_verify.sql with the same -v names (every row must be PASS).

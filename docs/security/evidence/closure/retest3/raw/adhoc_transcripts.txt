@@ -1,0 +1,40 @@
+CL3 retest3 — faithful transcripts of the ad-hoc curl/psql checks that were not tee'd to their own file.
+
+================ CL2-IF-02 fresh r3_app session under stored defaults (before RESET) ================
+$ psql -U r3_app -d ckam_r3_rs -c "SELECT current_user, current_setting('transaction_read_only') ro;"
+WARNING:  permission denied to set role "r3_owner"
+ current_user | ro
+--------------+----
+ r3_app       | on
+$ psql -U r3_app -d ckam_r3_rs -c "INSERT INTO audit_log(...) VALUES(...);"
+WARNING:  permission denied to set role "r3_owner"
+ERROR:  cannot execute INSERT in a read-only transaction
+# -> stored role=r3_owner rejected at login (no escalation); stored default_transaction_read_only=on bricks writes (detected + repairable)
+
+================ CL2-SE-N01 category rename (corrected body with asset_domain) ================
+Cat E id=23
+$ PUT /api/masters/categories/23 {"name":"CL3 Cat A 009757","asset_domain":"IT"}
+{"detail":"A category with this name already exists.","request_id":"0a29d08b..."}  HTTP=422
+$ PUT /api/masters/categories/23 {"name":"CL3 Cat C 009757","asset_domain":"IT"}   # C only exists as NON_IT
+{"id":23,"is_active":true,"code":"CL3CATE009757","name":"CL3 Cat C 009757","asset_domain":"IT",...}  HTTP=200
+
+================ ckam-r3 regression sanity sweep (nginx :4011, SECHO) ================
+/api/health                                   HTTP=200
+/api/assets/3                                 HTTP=200
+/api/assets/3/events                          HTTP=200
+/api/reports/dashboard                        HTTP=200
+/api/reports/assets/preview?limit=5           HTTP=200
+/api/admin/logs/audit?limit=3                 HTTP=200
+/api/admin/logs/system?limit=3                HTTP=200
+GET /assets/3  (SPA page via nginx)           HTTP=200 ctype=text/html
+sign-in SECHO                                 HTTP=200
+MOVE asset 3 -> asset_user 7 (MOVED)          HTTP=201  status IN_STOCK->ALLOTTED, event id 25
+receive PO2 line2 (no invoice amount)         HTTP=422  {"detail":"Invoice amount is required."}  (friendly)
+receive PO2 line2 (with amount)               HTTP=200  asset 17 created, PO PARTLY_RECEIVED, waiting_units 1
+
+================ cleanup proofs ================
+DROP DATABASE ckam_r3_rs; DROP ROLE r3_app/r3_migrator/r3_owner  -> all succeeded
+SELECT datname FROM pg_database WHERE datname LIKE 'ckam_r3%';  -> 0 rows
+SELECT rolname FROM pg_roles WHERE rolname LIKE 'r3\_%';         -> 0 rows
+docker ckam-r3 containers/images/volumes                        -> 0 / 0 / 0
+ckam-sec active CL3 categories / subcats / live assets          -> 0 / 0 / 0

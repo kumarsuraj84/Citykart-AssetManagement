@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | System | CKAM (CityKart Asset Manager): FastAPI + PostgreSQL backend, React frontend |
-| Test dates | 2026-10-15 (initial test, remediation, retest) |
-| Code tested | Initial: HEAD `4ba4e94`/`77431ba`. Retest: `ae706bb` (with `4fa5c9b`, `77431ba`, `ba04371`, `7e57844`, `3e134c1`). Final state: `d04779a` (permanent regression tests) |
+| Test dates | 2026-10-15 (initial test, remediation, retest); **2026-10-16 closure: closure retest 1, second and third independent retests, native Windows test, performance (addendum at the end)** |
+| Code tested | Initial: HEAD `4ba4e94`/`77431ba`. Retest: `ae706bb` (with `4fa5c9b`, `77431ba`, `ba04371`, `7e57844`, `3e134c1`). State at the first report: `d04779a` (permanent regression tests). **Closure retest 1: the `ckam-sec-api` image built from the `d04779a` / `a3e8fce` code; retest 2: HEAD `734fd19`; retest 3 and final code: HEAD `fd34520`** |
 | Testers | The CKAM engineering team's internal security-assurance agents (access, authentication, input, infrastructure, retest) under a security lead. **Not an independent test** (see EXT-14) |
 | Type | Grey-box (source code, configuration and test accounts available), authenticated and unauthenticated |
 | Production touched | **NO** |
@@ -47,9 +47,14 @@ HTTPS (IF-02), a low-privilege Windows account (IF-07), off-server backups (IF-0
 role so the app can no longer switch off its own audit protections (IF-05/IF-06), and the dev PC's file
 permissions (IF-09).
 
-**Verdict:** `CKAM SECURITY ASSURANCE READY WITH NON-BLOCKING OBSERVATIONS (for the local/UAT code at HEAD) —
-with a BLOCKING EXTERNAL condition: production is NOT ready until the IF-01 fix is deployed, the three secrets
-are rotated, and HTTPS is planned` (section 13).
+**Verdict (final, 2026-10-16, replaces the 2026-10-15 verdict):** **`CKAM LOCAL SECURITY REMEDIATION COMPLETE
+WITH EXTERNAL ACTIONS`** for the code at `fd34520` — and **PRODUCTION REMAINS NOT REMEDIATED**: live release
+`3b5e842` still contains IF-01 and the QR/Asset-360 deep-link bug; nothing is deployed (section 16 and the
+closure addendum).
+
+*Superseded verdict of 2026-10-15, kept for history:* `CKAM SECURITY ASSURANCE READY WITH NON-BLOCKING
+OBSERVATIONS (for the local/UAT code at HEAD) — with a BLOCKING EXTERNAL condition: production is NOT ready until
+the IF-01 fix is deployed, the three secrets are rotated, and HTTPS is planned` (section 13).
 
 ---
 
@@ -308,6 +313,10 @@ Commits (local, not pushed, not deployed): `3e134c1` (IF-01), `7e57844` (IF-03, 
 
 ## 14. Limitations
 
+> Dated note 2026-10-16: limitations 1, 2 and 4 were addressed in the closure stage (native Windows run on the dev
+> PC; external concurrency bursts in retest 2; late fixes re-attacked in closure retest 1 and retest 2). The
+> remaining and new limitations are in the closure addendum, "Limitations".
+
 1. **IF-01 on Windows not executed.** All traversal tests ran on Linux containers. Production is Windows. The fix
    (`Path.resolve()` + `is_relative_to`) covers backslash, drive-letter and UNC forms by design, but this was not
    executed. Run the EXT-01 probes plus `..%5c`, `C:%2fWindows%2fwin.ini`, `%5c%5cserver%5cshare` on production
@@ -333,6 +342,9 @@ Commits (local, not pushed, not deployed): `3e134c1` (IF-01), `7e57844` (IF-03, 
 ---
 
 ## 15. Security domains
+
+> Dated note 2026-10-16: the final domain results (after the closure stage) are in the closure addendum,
+> "Security domains (final)". The table below is the 2026-10-15 state.
 
 | Domain | Result | One-line evidence |
 |---|---|---|
@@ -370,12 +382,144 @@ bypass, SQL injection, stored XSS or unsafe file access remains; audit integrity
 security regression tests pass. Applied to **production**: IF-01 (unsafe file access and secret leakage) is
 still live.
 
-> ## `CKAM SECURITY ASSURANCE READY WITH NON-BLOCKING OBSERVATIONS (for the local/UAT code at HEAD) — with a BLOCKING EXTERNAL condition: production is NOT ready until the IF-01 fix is deployed, the three secrets are rotated, and HTTPS is planned`
+> ## `CKAM LOCAL SECURITY REMEDIATION COMPLETE WITH EXTERNAL ACTIONS`
+>
+> **Code-side (local, HEAD `fd34520`):** no Critical, High or Medium item that code can close remains open;
+> all 32 fixed findings were attacked again by independent testers (closure retest 1, retest 2, and retest 3 for
+> the six WP-F / WP-F2 fixes made after retest 2: 52/52 assertions PASS, 0 new findings). Security regression
+> suites pass (backend 2541 passed / 1 skipped; vitest
+> 1257; security journeys 14/14).
+>
+> **Production-side: PRODUCTION REMAINS NOT REMEDIATED.** The live release `3b5e842` still contains IF-01
+> (unauthenticated arbitrary file read on the single-port server, present since 2026-09-30) and the QR/Asset-360
+> deep-link bug (CL2-IF-04). Nothing is pushed or deployed. Production is **not** fixed until the release is
+> deployed, the JWT secret, `ckassetapp` database password, NAS password and ERP password are rotated, and the
+> IF-01 compromise assessment is done.
 
-**Why this verdict.** The code at HEAD meets every condition of the rule: the only remaining High needs a server
-change, not a code change, and every open item in the code is low, accepted or mitigated with a stated residual.
-But production still runs the release with IF-01 and its secrets may already be known, so calling production
-ready would be false; the blocking condition says exactly what must happen first.
+**Why this verdict.** Applied to the code at `fd34520`, the rule above holds: the only remaining Critical (IF-01)
+and High (IF-02) need deploy, secret rotation, a compromise check and HTTPS — server work, not code; every other
+open item is external, a management decision, accepted with a re-confirmed reason, or mitigated with an external
+residual (closure register section 0: 51 findings, 32 fixed, 4 mitigated, 3 accepted, 0 remaining code, 12
+external of which 3 decisions). Applied to production, IF-01 is still live and its secrets may already be known,
+so the word "fixed" is never used for production.
 
-"The three secrets" are the JWT secret, the production database password and the NAS password; the ERP
-password should be rotated at the same time (EXT-02).
+*Superseded verdict of 2026-10-15 (kept for history):* `CKAM SECURITY ASSURANCE READY WITH NON-BLOCKING
+OBSERVATIONS (for the local/UAT code at HEAD) — with a BLOCKING EXTERNAL condition: production is NOT ready until
+the IF-01 fix is deployed, the three secrets are rotated, and HTTPS is planned`. "The three secrets" were the JWT
+secret, the production database password and the NAS password, with the ERP password at the same time (EXT-02).
+
+---
+
+## Addendum — closure and second retest (2026-10-16)
+
+Everything in this addendum ran **locally** (dev PC 10.0.0.47, throw-away Docker stacks `ckam-sec`, `ckam-r2c`,
+`ckam-nr`, `ckam-pf-old` / `ckam-pf-new`, disposable databases and roles). **Production, 10.0.0.205, the NAS, the
+ERP warehouse and 10.0.1.12 were never contacted.** Testers in the closure retests did not write the fixes they
+attacked; they are still part of the CKAM build programme, so this is **not** an independent external test
+(EXT-14 / SD-10).
+
+### A.1 Test campaigns (whole programme)
+
+| # | Campaign | Code / target | Cases | Result | Evidence |
+|---|---|---|---|---|---|
+| 1 | Initial VAPT (4 parallel testers) | `4ba4e94` / `77431ba`, `ckam-sec` | access 467 (217 routes × 11 personas, IDOR, mass assignment, business logic) + auth/session/web/logging 102 + input/injection/XSS/files/frontend 67 = **636** CSV cases, plus ≈ 60 infra/config/DB/dependency/secret checks as text | 1 Critical (IF-01), 1 High (IF-02), many Medium/Low; SQLi, XSS, formula injection, SSRF, command injection held | `evidence/access`, `evidence/auth`, `evidence/input`, `evidence/infra` |
+| 2 | Retest 1 | `ae706bb` | access 646 (0 failures) + auth/input/infra 310 = **956** | New N1–N4 | `evidence/retest/` |
+| 3 | Closure retest 1 (late fixes, black-box) | image of `d04779a` / `a3e8fce` | **137** | 133 PASS, 1 FAIL (CL1-N4-01, since fixed), 2 PARTIAL, 1 OBS | `evidence/closure/retest1/RETEST1.md`, `tests.csv` |
+| 4 | Native Windows test of IF-01 | Portable Python in a temp folder (since deleted), production-style layout, FAKE canary secrets, dev PC | 28 payloads per release | Old `4ba4e94`: **10 of 28 leaked** (fake `.env`, `nas.pw`, `C:\Windows\win.ini`, also via `\\localhost\C$`); `7b039fb` and final `fafa225`: **0 leaks, 0 5xx**, legitimate asset 200, SPA route 200, unknown `/api` JSON 404 | `evidence/closure/windows/native_windows_old_release_4ba4e94.txt`, `…_fixed_release_7b039fb.txt`, `…_final_release_fafa225.txt`, `attack.mjs` |
+| 5a | Retest 2 — access | HEAD `734fd19`, Alembic `c6e8a0b2d4f6` | **319** | 318 PASS, 1 OBS; 217 routes × 14 identities = 3,038 cells, **0 escalations**; no new finding | `evidence/closure/retest2/access/RETEST2_ACCESS.md`, `authz_matrix.csv` |
+| 5b | Retest 2 — infra | same | **122** | 106 PASS, 6 FAIL → 4 new findings (CL2-IF-01 MEDIUM, CL2-IF-02 LOW, CL2-IF-03 INFO, CL2-IF-04 functional), all fixed in WP-F `ca94574`; 2 PARTIAL; 8 INFO | `evidence/closure/retest2/infra/RETEST2_INFRA.md` |
+| 5c | Retest 2 — sessions + external concurrency burst | same | **56** | 56 PASS: refresh reuse, revocation × 8 triggers, rate limits via nginx and direct, lock-out, password policy, size limits with flat memory, timing medians within 3.8 ms; bursts of 20 (same PO number, same PO line receive — exactly 6 of 6 units, idempotency key, same serial, batch, sold twice, moved to two holders, same Vendor/Brand/Item/Category name, parallel refresh of one cookie) and create+deactivate+receive × 12 — no duplicates, no over-receiving, no 500, no deadlock. Found CL2-SE-N01 (Category names), N02 (info), N03 (serial message) | `evidence/closure/retest2/sessions/RETEST2_SESSIONS.md`, `concurrency_results.md` |
+| 5d | **Retest 3** — third independent retest of the six WP-F / WP-F2 fixes + regression sweep | HEAD `fd34520`; throw-away `ckam-r3`, `ckam-sec`, a network-less single-port container of the final image, disposable DB `ckam_r3_rs` | **≈ 360** cases; 52 logged assertions | **52/52 PASS, 0 new findings**: CL2-IF-04 (app routes → shell, canary files never served, ≈ 45 traversal payloads 0 leaks), CL2-IF-01 (all `setval` / `ALTER SEQUENCE` denied; failures re-reported with counts), CL2-IF-02 (stored defaults all detected; reset works), CL2-IF-03 (one id everywhere), CL2-SE-N01 (20 parallel → 1), CL2-SE-N03 (20 parallel → 1, no 409/5xx); regression sweep (sign-in, Asset 360, reports, logs, move, receive) OK | `evidence/closure/retest3/RETEST3.md`, `tests.csv`, `raw/` |
+| 6 | Performance before/after | old `4ba4e94` vs new `734fd19`, identical data (150 POs, 1,960 assets) | 31 operations | None over threshold | `evidence/closure/perf/PERF_REPORT.md` |
+| 7 | Database role-split simulation | Disposable DB, owner / migrator / runtime roles | 7 CAN, 40 CANNOT; verify 45/45; 34 least-privilege checks | Runtime role refused all 40 (≈ 70 more break-out attempts in retest 2, all refused) — except CL2-IF-01/02, fixed in the scripts | `evidence/closure/db/WPB_RESULTS.md`, `rs_05_can_cannot_matrix.out.txt` |
+| 8 | Dependencies | `npm audit`, `pip-audit` on `backend/constraints.txt` | — | npm production 0; one dev-only HIGH (`source-map-js`, OBS-NPM-DEV); `python-jose` / `ecdsa` no fixed versions, not reachable → ACCEPTED | `evidence/closure/infra/npm_audit_recheck.md`, `evidence/closure/backend/dependency_recheck.md` |
+| 9 | Secret scan (regex) | Working tree, 299+ commits, built frontend, image layers, container env (key names) | — | No real secret; only placeholders, fake canaries, throw-away test values | `evidence/closure/retest1/raw/secret_scan.txt`, retest 2 infra item 8 |
+
+Closure-stage case total: 137 + 319 + 122 + 56 + ≈ 360 (retest 3) = **≈ 994** cases, plus 3 × 28 native Windows
+payloads, 31 performance operations and the database simulation.
+
+### A.2 Findings from the closure stage
+
+| ID | Severity | Status | Commit |
+|---|---|---|---|
+| CL1-N4-01 | Low–Medium (counted MEDIUM) | FIXED — retested | `7b039fb` |
+| CL2-IF-01 | MEDIUM | FIXED — retested (retest 3) in `ops/db/`; production via EXT-07 | `ca94574` |
+| CL2-IF-02 | LOW | FIXED — retested (retest 3; detection + reset) | `ca94574` |
+| CL2-IF-03 | INFO | FIXED — retested (retest 3) | `ca94574` |
+| CL2-IF-04 | functional MEDIUM / security INFO | FIXED — retested locally (retest 3); **also live in production** | `ca94574` |
+| CL2-SE-N01 | LOW | FIXED — retested (retest 3) | `fafa225` |
+| CL2-SE-N02 | INFO | ACCEPTED | — |
+| CL2-SE-N03 | LOW | FIXED — retested (retest 3) | `fafa225` |
+
+Final totals across the programme (counting rule in `CKAM_SECURITY_FINDINGS_REGISTER.md`): **51 findings — 1
+Critical, 1 High, 16 Medium, 25 Low, 8 Info; 32 fixed, 4 mitigated, 3 accepted, 0 remaining code, 12 external (3
+of them decisions); all 32 fixed findings re-attacked by an independent tester.**
+
+### A.3 Performance (summary)
+
+Threshold: new ≤ old + 25 % or + 50 ms, whichever is larger. **No operation exceeds it.** Three are measurably
+slower, all explained: refused sign-in 6 → 39 ms (+33 ms, deliberate equal-cost check, AU-01); bulk Move of 50
+assets +23…34 ms (the lifecycle marker adds 2 statements per asset; the trigger itself costs nothing measurable;
+over a LAN the cost grows with round-trip time, ≈ +50 ms per 50 assets at 0.5 ms RTT); token refresh 2.3 → 3.6 ms
+(server-side session record). Successful sign-in +3…5 ms. In-process: the lexical static-path check 2.5 µs (the
+whole safe-path lookup +40 µs per static file); body-limit middleware +7.5 µs per 4 MB request.
+
+### A.4 Regression on the final code (`fd34520`)
+
+Backend pytest **2541 passed, 1 skipped** (baseline 1577); frontend `tsc -b` clean, vitest **1257 passed in 92
+files**; `npm run build` and `npm run check:build` OK; Playwright permanent journeys 11 passed, 1 skipped; security
+journeys **14/14**.
+
+### A.5 Security domains (final)
+
+| Domain | Result | One-line evidence |
+|---|---|---|
+| Authentication | PASS (code) | Constant-time refusals (medians within 0.6 ms across refused kinds), rate limits, lock-out without oracle, refresh reuse detection, password policy — retest 2 sessions A1–A7. External: no MFA (SD-03), plain HTTP (IF-02) |
+| Authorization | PASS | 3,038 cells, 0 escalations (retest 2 access) |
+| Company isolation | PASS | Cross-company PO / ERP draft / custom fields / custody 404 (retest 2 access IDOR); D6 is an open decision |
+| IT / NON_IT isolation | PASS | Full-Admin work-area scoping holds (SECFANIT 404 on an IT asset); category names per work area (CL2-SE-N01) |
+| Self Service | PASS | SECSELF / store logins see only held assets; setup lists 403 (retest 2 access) |
+| IDOR / BOLA | PASS | Retest 2 access IDOR battery incl. idempotency keys per actor |
+| Injection | PASS | SQLi on search/sort/filter: 0 × 500; formula injection neutralised in exports |
+| XSS | PASS | Stored payloads inert in the real UI; CSP `'self'` only, 0 violations |
+| Files | PASS (code); **production FAIL until deployed** | IF-01 0 leaks on Linux and natively on Windows; uploads refused / stored as UUID; downloads attachment + `nosniff` |
+| Audit integrity | PASS (application role); production residual EXT-07 | TRUNCATE / UPDATE / DELETE refused; lifecycle field trigger; role split proven locally; CL2-IF-01/02 fixed in the scripts |
+| Concurrency | PASS | External bursts of 20 across 11 scenarios, integrity SQL clean; CL2-SE-N01/N03 fixed |
+| Rate limiting | PASS | 429 at the 21st per IP and 11th per login id, through nginx and direct, forged XFF ignored |
+| Secrets | PASS (repository); **production FAIL until rotation (EXT-02)** | Regex scan clean; start-up refuses weak secrets (also with `ENVIRONMENT_NAME` unset) |
+| Dependencies | PASS (accepted residual) | npm production 0; python-jose / ecdsa not reachable, accepted; PyJWT recommended |
+
+### A.6 Limitations (closure stage)
+
+1. **Production and every 10.x host were never touched.** Production impact of CL2-IF-04 and N2 is inferred from
+   code plus local reproduction.
+2. **Real ERP never contacted**; ERP TLS and timeouts were proven with stand-ins. **Real HTTPS not tested.**
+3. **Native Windows behaviour was tested for the path-traversal fix only**, on the dev PC (not the production
+   server); junctions, real 8.3 aliases and SMB lookups were not exercised. The final native run file
+   (`native_windows_final_release_fafa225.txt`) probes a generic SPA route (`/some/spa/route`), not an
+   `/assets/<id>` QR deep link, and does not record the `Server` header; those two statements in the fact sheet /
+   commit message are therefore **not evidenced in that file**. CL2-IF-04 is covered by permanent tests and by
+   retest 3 in a single-port production-mode **Linux** container (`evidence/closure/retest3/raw/if04_result.txt`),
+   not natively on Windows. The "distinct_refusal_bodies=28" in that file comes from the per-request id inside
+   each 404 body (the script compares the first 80 characters including it); the permanent tests and retests 2
+   and 3 compare bodies with the request id removed and found them identical.
+4. **Secret scan is regex-only** (no gitleaks / trufflehog image available locally); images and PNGs not OCR-scanned.
+5. **Container OS packages were not scanned for CVEs.**
+6. **The dev Docker app role is a superuser**, so least privilege was proven on a disposable database, not on the
+   dev stack.
+7. **Retest 3 DBA note:** `ops/db/role_split.sql`'s idempotent re-grant guard (`IF NOT pg_has_role(…)`) does not
+   repair a **pre-existing** migrator role that already has `INHERIT` membership (it could then create objects as
+   itself). The documented runbook path creates the migrator fresh and is unaffected. A DBA must drop/recreate such
+   a role or run `GRANT <owner> TO <migrator> WITH INHERIT FALSE`, then the verify; this belongs as a note in
+   `ops/db/ROLE_SPLIT_RUNBOOK.md` (not edited in this documentation step).
+8. **Retest 3 coverage note:** the direct OBS-STATUS status UPDATE as the runtime role was inconclusive on a fresh
+   empty database (0 rows matched); the guard was verified present and enabled, and its behaviour is covered by
+   application-level tests (`backend/tests/lifecycle/test_obs_status_guard.py`), WP-B `rs_05` and retest 2.
+9. Rate limiting could not be switched off on `ckam-sec`, so parallel sign-in scenarios were paced; the 20-way
+   lock-out race reached the counter with 10 requests (the limiter refused the rest by design).
+10. **Not an external test: the retest testers are AI agents** of the build programme (independent of the fix
+    authors, not of the organisation); external VAPT recommended (SD-10 / EXT-14). Point in time: code at
+    `fd34520`, 2026-10-16.
+
+*(Dated note: the earlier limitation "WP-F / WP-F2 fixes had no separate third retest" was removed on 2026-10-16
+after retest 3 re-attacked all six.)*

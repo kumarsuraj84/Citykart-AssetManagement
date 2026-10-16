@@ -1,0 +1,3 @@
+[parameters: ('INFO', 'startup... (cut, 457 more characters)). Failure 1; while it continues it is reported again at most once a minute with a count.
+[SQL: INSERT INTO audit_log (request_id, source, actor_id, actor_code, actor_name, actor_role, is_head_office_admin, company_id, ip, category, action, entity, entity_id,... (cut, 644 more characters)). Failure 1; while it continues it is reported again at most once a minute with a count.
+[SQL: INSERT INTO audit_log (request_id, source, actor_id, actor_code, actor_name, actor_role, is_head_office_admin, company_id, ip, category, action, entity, entity_id,... (cut, 672 more characters)). 6 failures so far, 5 since the last report 125 s ago.

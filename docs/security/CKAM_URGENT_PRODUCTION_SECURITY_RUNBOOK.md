@@ -10,6 +10,18 @@
 | Sources | `CKAM_EXTERNAL_SECURITY_ACTIONS.md` (EXT-01, 02, 03, 38, 39, 41-43), `CKAM_SECURITY_REMEDIATION_REPORT.md` §5, `CKAM_SECURITY_CLOSURE_REGISTER.md`, `docs/ai/PRODUCTION_INFRASTRUCTURE.md`, `docs/ai/LOGGING_AND_DIAGNOSTICS.md`, `CKAM_SECURITY_BASELINE.md` §11 |
 | Scripts | Secret-free reference scripts are being written under `ops/windows/` (launcher `ops/windows/run_ckam_web.ps1` and the release script; see that folder for exact names). This runbook says **what** must happen and **how to check it**; it does not repeat those scripts |
 
+> ### UPDATE 2026-10-16 (lead) — order change: DEPLOY BEFORE PUSH; the GitHub repository is PUBLIC
+> Checked on 2026-10-16: `https://github.com/kumarsuraj84/Citykart-AssetManagement` and its API answer an unauthenticated
+> request (HTTP 200), i.e. the repository is publicly readable. The vulnerable code and the server documents are
+> already public. Releases are packaged on the dev PC and copied to the server (`releases\<sha>`), so **the deploy
+> does not depend on a push**. Therefore: do **Phase 2 ("approved git push") AFTER Phase 7 (verify the hole is closed)
+> and the rotation phases** — or make the repository private first, or push without `docs/security/evidence/**`.
+> Pushing exploit details to a public repository while production is still open helps an attacker.
+> Also: after migration `c6e8a0b2d4f6` the OLD release cannot record receives/moves/sales (the lifecycle trigger refuses
+> them), so a code-only rollback to `3b5e842` needs the trigger removed; plan to roll forward. Start uvicorn with
+> `--no-proxy-headers --no-server-header`; verify the QR deep link `/assets/<id>` opens the app (CL2-IF-04). The
+> migration list in Phase 4 is: `f9a1c3e5b7d2` → `a3c5e7f9b1d4` → `b5d7f9a1c3e5` → `c6e8a0b2d4f6` (head).
+
 ## In plain words
 
 The live CKAM server has a hole (IF-01): a stranger can ask it for any file and get it, including the file that
@@ -281,9 +293,10 @@ file copy/snapshot exists; settings copies exist in `<EVIDENCE-DIR>`.
 |---|---|---|---|
 | 1 | `f9a1c3e5b7d2` | `asset_user.token_version` (sessions end on access change) | security programme |
 | 2 | `a3c5e7f9b1d4` | TRUNCATE guards on the four append-only tables; 5-year floor for the audit purge | security programme |
-| 3 | `<ADD CLOSURE MIGRATIONS HERE>` | e.g. WP-A2 refresh-token session record (AU-06), WP-B lifecycle-field guard (OBS-STATUS), optional N9. **DEV fills in the exact revision ids and order from `alembic history` of `<RELEASE-SHA>` before the window** | closure programme |
+| 3 | `b5d7f9a1c3e5` | `auth_session` table (refresh-token reuse detection, AU-06); new code writes a row at every sign-in, so this MUST be applied before the new code starts | closure WP-A2 |
+| 4 | `c6e8a0b2d4f6` | trigger that refuses changes to `asset.status`, `current_asset_user_id`, `status_since` outside the ledger writer (OBS-STATUS). **After this the OLD release cannot record receives/moves/sales: roll forward only** | closure WP-B |
 
-Expected final head: `<FINAL-HEAD>` (DEV fills in; today `a3c5e7f9b1d4` if no closure migration ships).
+Expected final head: `c6e8a0b2d4f6` (confirm with `alembic heads` of the release you build; `<FINAL-HEAD>` below means this value).
 
 **Steps (IT, 10.0.1.98):**
 

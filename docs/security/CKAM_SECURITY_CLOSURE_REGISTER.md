@@ -3,10 +3,10 @@
 | | |
 |---|---|
 | System | CKAM (CityKart Asset Manager) |
-| Date | 2026-10-16 (baseline, written **before** any closure fix starts) |
-| Code state read | HEAD `627ed73` (parent `a3e8fce`), Alembic head `a3c5e7f9b1d4`, worktree `ckam-build`. At the time of reading `git status` showed no modified code files |
+| Date | 2026-10-16 (baseline, written **before** any closure fix starts). **FINAL status added 2026-10-16 after the closure programme (section 0)** |
+| Code state read | Baseline: HEAD `627ed73` (parent `a3e8fce`), Alembic head `a3c5e7f9b1d4`, worktree `ckam-build`. At the time of reading `git status` showed no modified code files. **Final: HEAD `fd34520`, Alembic single head `c6e8a0b2d4f6`**; working tree clean except the untracked demo walkthrough (`docs/ai/CKAM_DEMO_WALKTHROUGH.md`, `docs/ai/demo-screens/`) |
 | Inputs | `CKAM_SECURITY_COMPLETE_REPORT.md` (Parts A-G; checked line by line to be identical to the individual files), `CKAM_SECURITY_FINDINGS_REGISTER.md`, `CKAM_SECURITY_REMEDIATION_REPORT.md`, `CKAM_EXTERNAL_SECURITY_ACTIONS.md`, `CKAM_VAPT_REPORT.md`, `evidence/retest/*` (`retest_access.md`, `retest_auth_input_infra.md`, `concurrency_results.md`, `retest_tests2.csv`), and the current source (`backend/app`, `backend/Dockerfile`, `docker-compose.yml`, `frontend/nginx.conf`, `frontend/index.html`, `frontend/vite.config.ts`, `frontend/src/lib/auth-fetch.ts`) |
-| Production | Not touched. Production (10.0.1.98) still runs `3b5e842`; nothing is pushed or deployed |
+| Production | Not touched. Production (10.0.1.98) still runs `3b5e842`; nothing is pushed or deployed. **This is still true at the final status: PRODUCTION REMAINS NOT REMEDIATED** |
 | Owner of this file | Security closure programme. Update a row only with a commit, a test or an evidence file under `docs/security/evidence/closure/` |
 
 > This is an internal tracking register, not a certification. CKAM is not ISO/IEC 27001 certified and has no SOC 2 report.
@@ -46,7 +46,195 @@ server or management step. **No item is closed in production until it is deploye
 
 ---
 
-## 1. Summary counts (the 43 findings)
+## 0. FINAL STATUS — closure complete (added 2026-10-16, HEAD `fd34520`)
+
+> Dated note, 2026-10-16 (closure writer WP-M2a): sections 1–7 below are the **baseline** written in the morning
+> at `627ed73`; they are kept unchanged as history. This section gives the **final** classification of every
+> row, using the same vocabulary, plus a closure outcome. Sources: the fact sheet of the programme lead, the
+> commits `7b039fb` … `fd34520`, and the evidence under `evidence/closure/`. Every path below is relative to
+> `docs/security/` unless it starts with `backend/`, `frontend/`, `ops/` or is a commit.
+
+### 0.1 In plain words
+
+All the problems that could be fixed in the code are now fixed on the development PC, and every one of them was
+attacked again by testers who did not write the fixes (the last six in a third retest, 52/52 checks passed). **Nothing is pushed or deployed. PRODUCTION REMAINS NOT
+REMEDIATED:** the live server (`3b5e842`) still has IF-01 (anyone can read files on the server) and the QR-label
+link bug (CL2-IF-04). What is left needs a server, a database administrator, a supplier or a management decision.
+
+Verdict (code / local): **`CKAM LOCAL SECURITY REMEDIATION COMPLETE WITH EXTERNAL ACTIONS`**. No Critical, High
+or Medium item that code can close is still open.
+
+### 0.2 Counting rule
+
+1. **Universe = 51 findings**: the 43 of the first register, plus 8 found during the closure retests:
+   CL1-N4-01, CL2-IF-01, CL2-IF-02, CL2-IF-03, CL2-IF-04, CL2-SE-N01, CL2-SE-N02, CL2-SE-N03. Observations
+   (section 0.5) are **not** counted.
+2. **Severity** as given by the tester who found it. Two split ratings are counted once, at a stated value:
+   CL1-N4-01 "Low–Medium" is counted at the **higher** value (MEDIUM, conservative). CL2-IF-04 "functional
+   MEDIUM, security INFO" is counted at its **security** severity (INFO), because this is a security register;
+   its functional weight is stated in its row.
+3. **One classification per finding** (the key above). FIXED — RETESTED needs an independent re-attack in
+   closure retest 1, 2 or 3 (or the original retest, where nothing changed since). *Update 2026-10-16:* the six
+   WP-F / WP-F2 fixes (CL2-IF-01…04, CL2-SE-N01, CL2-SE-N03), first classified FIXED — NEEDS INDEPENDENT RETEST,
+   were re-attacked in the **third independent retest** (`evidence/closure/retest3/RETEST3.md`: ≈ 360 cases,
+   52/52 logged assertions PASS, 0 new findings) and are now FIXED — RETESTED. Note: all retest testers are AI
+   agents of the build programme, independent of the fix authors but not an external firm (SD-10 / EXT-14).
+4. **Production does not change a classification** except where something beyond the normal deploy is still
+   needed: every fixed item still needs the deploy (EXT-01); IF-01 needs secret rotation and a compromise check
+   too, so it stays OPEN — EXTERNAL although its code is fixed and retested.
+
+### 0.3 Final counts (51 findings)
+
+Severity × classification (the register's vocabulary):
+
+| Severity | FIXED — RETESTED | FIXED — NEEDS IND. RETEST | MITIGATED — CODE CAN CLOSE | MITIGATED — EXTERNAL | OPEN — CODE FIXABLE | OPEN — EXTERNAL | ACCEPTED | DECISION REQUIRED | Total |
+|---|---|---|---|---|---|---|---|---|---|
+| CRITICAL | | | | | | 1 | | | 1 |
+| HIGH | | | | | | 1 | | | 1 |
+| MEDIUM | 10 | 0 | | 2 | | 3 | | 1 | 16 |
+| LOW | 18 | 0 | | 2 | | 3 | 2 | | 25 |
+| INFO | 4 | 0 | | | | 1 | 1 | 2 | 8 |
+| **Total** | **32** | **0** | **0** | **4** | **0** | **9** | **3** | **3** | **51** |
+
+(Before retest 3 the FIXED columns were 26 RETESTED / 6 NEEDS IND. RETEST; totals unchanged.)
+
+Closure outcome (the owner's columns; Fixed = both FIXED columns; External = OPEN — EXTERNAL + DECISION REQUIRED):
+
+| Severity | Found | Fixed | Mitigated | Accepted | Remaining code | External (of which decision) |
+|---|---|---|---|---|---|---|
+| CRITICAL | 1 | 0 | 0 | 0 | 0 | 1 (0) |
+| HIGH | 1 | 0 | 0 | 0 | 0 | 1 (0) |
+| MEDIUM | 16 | 10 | 2 | 0 | 0 | 4 (1) |
+| LOW | 25 | 18 | 2 | 2 | 0 | 3 (0) |
+| INFO | 8 | 4 | 0 | 1 | 0 | 3 (2) |
+| **Total** | **51** | **32** | **4** | **3** | **0** | **12 (3)** |
+
+IDs per cell:
+
+- CRITICAL / OPEN — EXTERNAL: IF-01 (code FIXED — RETESTED on Linux and natively on Windows; production exposed).
+- HIGH / OPEN — EXTERNAL: IF-02.
+- MEDIUM: FIXED — RETESTED IF-03, IF-04, IF-10, AU-01, AU-03, AU-05, AC-1, N1, CL1-N4-01, CL2-IF-01 ·
+  MITIGATED — EXTERNAL IF-05, IF-06 · OPEN — EXTERNAL IF-07, IF-08, IF-09 · DECISION REQUIRED AU-04.
+- LOW: FIXED — RETESTED IF-13, IF-14, AU-06, AU-07, AU-08, AU-12, AU-14, AU-15, AU-16, AC-2, IN-02, N3, N4,
+  PO-LOGIN, RACE-1, CL2-IF-02, CL2-SE-N01, CL2-SE-N03 · MITIGATED — EXTERNAL IF-11, IF-15 · OPEN — EXTERNAL
+  IF-16, AU-13, N2 · ACCEPTED IF-12, AU-02.
+- INFO: FIXED — RETESTED IN-03, FONTS, CL2-IF-03, CL2-IF-04 · OPEN — EXTERNAL IF-17 · ACCEPTED CL2-SE-N02 ·
+  DECISION REQUIRED D6, MFA.
+
+Movement since the baseline (section 1): OPEN — CODE FIXABLE 4 → **0** (IF-13, N3, FONTS fixed and retested;
+IF-15 code side done, residual external); MITIGATED — CODE CAN CLOSE 1 → **0** (AU-06 fixed and retested);
+FIXED — NEEDS IND. RETEST 5 → all 5 retested (N1, AU-08, AU-15, N4, RACE-1); 8 new findings, 7 fixed (all
+re-attacked: CL1-N4-01 in retest 2, the other six in retest 3) and 1 accepted. **All 32 fixed findings were
+re-attacked by an independent tester.** **Open CODE-FIXABLE findings: 0. Open EXTERNAL: 9 (+ 4 MITIGATED with an external residual). Decision
+required: 3 findings** (and 16 owner decisions SD-01…SD-16 in `CKAM_SECURITY_DECISIONS_REQUIRED.md`).
+
+### 0.4 Final register (every finding; closure outcome)
+
+Columns: **ID | Sev. | Baseline (section 2) | FINAL classification | Closure outcome | Commit(s) | Retest / evidence | Production.**
+
+| ID | Sev. | Baseline | FINAL | Closure outcome | Commit(s) | Retest / evidence | Production |
+|---|---|---|---|---|---|---|---|
+| IF-01 | CRITICAL | OPEN — EXTERNAL | **OPEN — EXTERNAL** (code FIXED — RETESTED) | EXTERNAL: deploy (EXT-01), then rotate JWT, `ckassetapp`, NAS and ERP secrets (EXT-02), compromise assessment (EXT-03) | `3e134c1`, `7b039fb` (IF-01-WIN), `ca94574` (guard kept first) | Linux: closure retest 1 `CL1-T082`…`T104` (`evidence/closure/retest1/RETEST1.md`); retest 2 production-mode container, 23 payloads, 0 leaks (`evidence/closure/retest2/access/raw/prod_file_probe.json`). **Native Windows (dev PC)**: old `4ba4e94` leaked 10 of 28 (`evidence/closure/windows/native_windows_old_release_4ba4e94.txt`), fixed `7b039fb` and final `fafa225` 0 of 28, 0 5xx (`…_fixed_release_7b039fb.txt`, `…_final_release_fafa225.txt`) | **Still exposed** (`3b5e842`, since 2026-09-30) |
+| IF-02 | HIGH | OPEN — EXTERNAL | **OPEN — EXTERNAL** | EXTERNAL: HTTPS (EXT-04), internet forward (EXT-05); decisions SD-04, SD-05 | — | Plan `CKAM_HTTPS_IMPLEMENTATION_PLAN.md` | Plain HTTP |
+| IF-03 | MEDIUM | FIXED — RETESTED | FIXED — RETESTED | FIXED — RETESTED | `7e57844` | Retest 2 access, IDOR ERP draft 404 both ways, grant 200 (`evidence/closure/retest2/access/raw/idor.json`) | After deploy |
+| IF-04 | MEDIUM | FIXED — RETESTED | FIXED — RETESTED | FIXED — RETESTED | `7e57844`, `d04779a`, `7b039fb` | Retest 2 infra item 5: 72 weak combinations refused, 49 start (`evidence/closure/retest2/infra/RETEST2_INFRA.md`, T054–T066) | After deploy; EXT-39 precheck |
+| IF-05 | MEDIUM | MITIGATED — EXTERNAL | **MITIGATED — EXTERNAL** (code/scripts side closed) | MITIGATED — residual EXTERNAL: production role split by a DBA (EXT-07, SD-11) | `ae706bb`, `734fd19`, `ca94574` | Local role split: 7/7 CAN, 40/40 CANNOT (`evidence/closure/db/WPB_RESULTS.md`, `rs_05_can_cannot_matrix.out.txt`); retest 2 infra 6b, ~70 break-out attempts refused | App role still owner |
+| IF-06 | MEDIUM | MITIGATED — EXTERNAL | **MITIGATED — EXTERNAL** | As IF-05 (purge function refused for the runtime role) | `ae706bb`, `734fd19` | As IF-05 | As IF-05 |
+| IF-07 | MEDIUM | OPEN — EXTERNAL | OPEN — EXTERNAL | EXTERNAL: EXT-06 | — | Plan `CKAM_SERVICE_ACCOUNT_PLAN.md` | Runs as SYSTEM |
+| IF-08 | MEDIUM | OPEN — EXTERNAL | OPEN — EXTERNAL | EXTERNAL: EXT-08 | — | Plan `CKAM_BACKUP_RESTORE_PLAN.md` | Unchanged |
+| IF-09 | MEDIUM | OPEN — EXTERNAL | OPEN — EXTERNAL | EXTERNAL: EXT-10 (dev-PC administrator); **nothing changed on the PC** | — | Plan `evidence/closure/infra/IF-09_ACL_PLAN.md` | n/a (dev PC) |
+| IF-10 | MEDIUM | FIXED — RETESTED | FIXED — RETESTED | FIXED — RETESTED (TLS is IF-16) | `ae706bb` | RT-AU-T970…T979 (`evidence/retest/aii_raw/erp_connect_out.txt`); code unchanged since except the TLS argument (`backend/tests/erp/test_erp_tls_settings.py`) | After deploy |
+| AU-01 | MEDIUM | FIXED — RETESTED | FIXED — RETESTED | FIXED — RETESTED | `ae706bb` | Retest 2 sessions A7: medians within 3.8 ms, refused categories within 0.6 ms (`evidence/closure/retest2/sessions/RETEST2_SESSIONS.md`) | After deploy |
+| AU-03 | MEDIUM | FIXED — RETESTED | FIXED — RETESTED | FIXED — RETESTED | `ae706bb`, `79dbae7` | Retest 2 sessions A3 (per id, per IP through nginx and direct, forged XFF, two sources) | After deploy; EXT-40 watch |
+| AU-04 | MEDIUM | DECISION REQUIRED | **DECISION REQUIRED** | DECISION: SD-06 (options A/B/C, recommendation C hybrid); no code change | — | `evidence/closure/backend/AU-04_OPTIONS.md`; retest 2 A4 shows a stranger cannot extend the lock | Unchanged |
+| AU-05 | MEDIUM | FIXED — RETESTED | FIXED — RETESTED | FIXED — RETESTED | `ae706bb`, `4fa5c9b`, `69c3a51` | Retest 2 sessions A2: 8 triggers, old access and refresh tokens 401 | After deploy |
+| AC-1 | MEDIUM | FIXED — RETESTED | FIXED — RETESTED | FIXED — RETESTED | `77431ba` | Retest 2 access: 217 routes × 14 identities = 3,038 cells, 0 escalations (`evidence/closure/retest2/access/authz_matrix.csv`) | After deploy |
+| N1 | MEDIUM | FIXED — NEEDS IND. RETEST | **FIXED — RETESTED** | FIXED — RETESTED | `d04779a` | Closure retest 1 `CL1-T001`…`T018` (RSS flat at 143,664 kB through 256 MB floods); retest 2 sessions A6 | After deploy |
+| CL1-N4-01 *(new)* | MEDIUM (rated Low–Medium) | — | **FIXED — RETESTED** | FIXED — RETESTED: unset `ENVIRONMENT_NAME` now counts as production (`backend/app/core/config.py` default `production`) | `7b039fb` | Found by `CL1-T019` (retest 1); closed per retest 2 infra item 5 | After deploy; production must keep `ENVIRONMENT_NAME=production` |
+| CL2-IF-01 *(new)* | MEDIUM | — | **FIXED — RETESTED** (scripts; was NEEDS IND. RETEST until retest 3) | FIXED in `ops/db/role_split.sql` (sequences USAGE, SELECT only) + checks 19/20; audit-write failures counted and repeated once a minute. Production: the DBA must run the **updated** scripts (EXT-07) | `ca94574` | Before/after: `evidence/closure/wpf/wpf_01_if01_if02_repro_BEFORE_head734fd19.out.txt` (setval succeeded, checks silent) vs `wpf_02_if01_if02_AFTER_wpf.out.txt` (refused); `backend/tests/security/test_least_privilege_role_split.py`, `backend/tests/observability/test_log_write_failure_reporting.py`; retester's own candidate-fix proof T100. **Retest 3:** every `setval` / `ALTER SEQUENCE` on all 32 sequences denied for the runtime role, `nextval` OK, verify 49/49; audit failure re-reported with a running count, `system_event` row, resumes after repair (`evidence/closure/retest3/RETEST3.md`, `raw/r3_06_runtime_matrix.txt`, `raw/if01b_03_reports.txt`) | No role split yet (worse: the app owns everything) |
+| IF-11 | LOW | MITIGATED — EXTERNAL | MITIGATED — EXTERNAL | MITIGATED — residual EXTERNAL: install with `-c constraints.txt` in production (EXT-12) | `ae706bb`, `79dbae7` | Dockerfile and `ops/windows/deploy_ckam.ps1.template` use `-c constraints.txt` (`evidence/closure/infra/WP-C_closure_evidence.md` §2, §5) | Unpinned until EXT-12 |
+| IF-12 | LOW | ACCEPTED | **ACCEPTED — VALID DECISION (re-confirmed 2026-10-16)** | ACCEPTED: no fixed versions of `python-jose` / `ecdsa` exist; not reachable (HS256 pinned on decode; only `jose.jwt` used; 6 forged tokens refused; `ecdsa` never imported). Follow-up: replace python-jose with PyJWT | `7b039fb` (pin test) | `evidence/closure/backend/dependency_recheck.md`; `backend/tests/auth/test_jwt_algorithm_pinned.py`; retest 2 infra T109–T113 | Same |
+| IF-13 | LOW | OPEN — CODE FIXABLE | **FIXED — RETESTED** | FIXED — RETESTED (uid 10001, capabilities 0, `no-new-privileges`, runtime target without test tooling, `volume-init`; `/tmp` and `/var/tmp` tmpfs `noexec`) | `79dbae7`, `ca94574` | Retest 2 infra item 1, T001–T018 (2 PARTIAL on `/var/tmp`, closed by the tmpfs change in `ca94574`, effective at the owner's next rebuild) | n/a (no Docker in production) |
+| IF-14 | LOW | FIXED — RETESTED | FIXED — RETESTED | FIXED — RETESTED; `/docs`, `/redoc`, `/openapi.json` now a JSON 404 where docs are off | `ae706bb`, `d04779a`, `b401e9f` | Retest 2 access production-mode container: all JSON 404 (`raw/prod_file_probe.json`); retest 2 infra item 5 | After deploy |
+| IF-15 | LOW | OPEN — CODE FIXABLE (partly) | **MITIGATED — EXTERNAL** | Code/reference side FIXED (`ops/windows/` secret-free launcher, deploy, verify, rollback; runbook Windows section); residual EXTERNAL: IT confirms the live launcher equals the repo copy (EXT-13) | `79dbae7`, `ca94574` | PowerShell parser 0 errors; `-WhatIf` dry runs (`evidence/closure/infra/raw/windows/dryrun.out.txt`); PSScriptAnalyzer not run (not installed) | Live launcher not in git |
+| IF-16 | LOW | OPEN — EXTERNAL | **OPEN — EXTERNAL** (code side done) | EXTERNAL: ERP owner must confirm TLS, SELECT-only, role-level read-only (EXT-25). Code: `PO_SOURCE_SSLMODE` / `PO_SOURCE_SSLROOTCERT`, default `prefer` = today's behaviour; TLS **not** mandatory | `7b039fb` | `backend/tests/erp/test_erp_tls_settings.py` (a TLS mode refuses a plain-text stand-in before the password is sent) | Unchanged |
+| AU-02 | LOW | ACCEPTED | **ACCEPTED — VALID DECISION (re-confirmed 2026-10-16)** | ACCEPTED: 423 for any password on a locked account; answering "locked" only to the right password would be a guessing oracle. Re-open only if SD-06 changes the lock model | `ae706bb` | Retest 2 sessions A4 (423 on the correct password; lock not extendable by a stranger) | Same |
+| AU-06 | LOW | MITIGATED — CODE CAN CLOSE | **FIXED — RETESTED** | FIXED — RETESTED: server-side `auth_session` (SHA-256 of `jti` only), rotate once, 10 s grace, reuse ⇒ 401 + every session of that person ended + `REFRESH_REUSE` audit row | `69c3a51` (migration `b5d7f9a1c3e5`) | Retest 2 sessions A1, 15/15; burst (h) 20 parallel refreshes → exactly one rotation (`evidence/closure/retest2/sessions/concurrency_results.md`) | After deploy (legacy tokens upgraded once) |
+| AU-07 | LOW | FIXED — RETESTED | FIXED — RETESTED | FIXED — RETESTED | `ae706bb` | Retest 2 sessions A2 (sign-in off, role, work area, deactivation); retest 2 access throw-away replays 401 | After deploy |
+| AU-08 | LOW | FIXED — NEEDS IND. RETEST | **FIXED — RETESTED** | FIXED — RETESTED (plus look-alike name and run-plus-number refusals) | `ae706bb`, `d04779a`, `7b039fb` | Closure retest 1 `CL1-T047`…`T067` (19 refused, 2 accepted); retest 2 sessions A5 (13 refused, passphrase accepted) | After deploy |
+| AU-12 | LOW | FIXED — RETESTED (no permanent test) | FIXED — RETESTED | FIXED — RETESTED, now with permanent checks | `4fa5c9b`, `79dbae7` | `frontend/src/security/nginx-config.test.ts`, `npm run check:build`, `npm run check:nginx-live`; retest 2 infra T032–T038 | n/a (no nginx in production; no maps built) |
+| AU-13 | LOW | OPEN — EXTERNAL | OPEN — EXTERNAL | EXTERNAL: `COOKIE_SECURE=true` with HTTPS (EXT-04) | — | — | Cookie not `Secure` |
+| AU-14 | LOW | FIXED — RETESTED | FIXED — RETESTED | FIXED — RETESTED; CSP now without any Google host (nginx and backend) | `4fa5c9b`, `ae706bb`, `79dbae7`, `b401e9f` | Retest 2 infra items 2–3: exact CSP, 0 violations, 0 page errors, 41 steps × 3 personas | After deploy |
+| AU-15 | LOW | FIXED — NEEDS IND. RETEST | **FIXED — RETESTED** | FIXED — RETESTED; repository launch paths also drop the `server: uvicorn` banner (`--no-server-header`) | `4fa5c9b`, `d04779a`, `ca94574` | Closure retest 1 (N1); retest 2 infra headers (no version) | Live launcher needs `--no-server-header` (EXT-13) |
+| AU-16 | LOW | FIXED — RETESTED | FIXED — RETESTED | FIXED — RETESTED | `ae706bb` | Retest 2 sessions A4: parallel guesses → exactly 5 counted | After deploy |
+| AC-2 | LOW | FIXED — RETESTED | FIXED — RETESTED | FIXED — RETESTED | `77431ba` | Retest 2 access IDOR (custom fields [1] / [2], widening refused) | After deploy |
+| IN-02 | LOW | FIXED — RETESTED | FIXED — RETESTED | FIXED — RETESTED | `ba04371` | Retest 2 access upload: 16 MB import → 413 (`raw/upload.json`) | After deploy |
+| N2 | LOW | OPEN — EXTERNAL (Docker part fixed) | **OPEN — EXTERNAL** (repository side done) | EXTERNAL: production launcher `--no-proxy-headers` (EXT-38, EXT-13). Repository: Dockerfile CMDs, reference launcher, permanent tests | `a3e8fce`, `7b039fb`, `79dbae7`, `ca94574` | `backend/tests/core/test_n2_forwarded_for.py`; retest 2 infra item 4 (forged headers ignored; 429 on the 21st) | Live launcher unchanged |
+| N3 | LOW | OPEN — CODE FIXABLE | **FIXED — RETESTED** | FIXED — RETESTED (nginx overwrites `X-Forwarded-For`; API trusts only nginx's fixed address) | `79dbae7` | Retest 2 infra item 4; retest 2 sessions A3 (two sources, two buckets) | n/a (Docker only) |
+| N4 | LOW | FIXED — NEEDS IND. RETEST | **FIXED — RETESTED** | FIXED — RETESTED (with CL1-N4-01) | `d04779a`, `7b039fb` | Closure retest 1 `CL1-T020`…`T044`; retest 2 infra item 5 | After deploy |
+| PO-LOGIN | LOW | FIXED — RETESTED | FIXED — RETESTED | FIXED — RETESTED (code unchanged since the first retest) | `77431ba` | RT-AU-T311/T312 (`evidence/retest/`) | After deploy |
+| RACE-1 | LOW | FIXED — NEEDS IND. RETEST | **FIXED — RETESTED** | FIXED — RETESTED; residual (Excel import) closed too | `da790d1`, `7b039fb` | Closure retest 1 `CL1-T069`…`T077` (one 201, rest 422, 0 5xx); retest 2 burst (f): vendor/brand/item one active each | After deploy |
+| CL2-IF-02 *(new)* | LOW | — | **FIXED — RETESTED** (detection + reset) | FIXED in scripts: `RESET ALL` for the runtime role, checks 21 / verify 12 FAIL on any stored setting. Cannot be prevented inside PostgreSQL; detection is the control. Production: EXT-07 | `ca94574` | `wpf_01` (accepted, not detected) vs `wpf_02` (both scripts FAIL); role-split pytest case 4b. **Retest 3:** 4 stored defaults all reported by check 21, a stored `role=<owner>` rejected at login (no escalation), superuser reset clears them (`evidence/closure/retest3/raw/r3_06_runtime_matrix.txt`, `r3_07_reset.txt`) | With EXT-07 |
+| CL2-SE-N01 *(new)* | LOW | — | **FIXED — RETESTED** | FIXED: one active Category name per work area, one Sub-category name per Category (screen, rename, move, Excel import), advisory lock | `fafa225` | `backend/tests/masters/test_wpf2_category_names.py` (20 parallel → exactly 1); `evidence/closure/wpf/WPF2_RESULTS.md`. **Retest 3:** 20 parallel creates (two personas) 201 × 1 / 422 × 19, sub-categories likewise, other work area allowed, out-of-area 403, import duplicates refused (`evidence/closure/retest3/raw/cl3_masters_race.txt`, `cl3_import_commit.txt`) | After deploy |
+| CL2-SE-N03 *(new)* | LOW | — | **FIXED — RETESTED** | FIXED: the serial index answers 422 with a plain sentence (`CONSTRAINT_REFUSALS`) | `fafa225` | `backend/tests/core/test_wpf2_serial_race_message.py`: 3 bursts × 20 → 1 success, 19 × 422, no 409, no 500. **Retest 3:** 20 parallel adds 201 × 1 / 422 × 19, no 409/5xx, case/space variants one asset (`evidence/closure/retest3/raw/cl3_serial_race.txt`, `cl3_serial_verify_sql.txt`) | After deploy |
+| IN-03 | INFO | FIXED — RETESTED | FIXED — RETESTED | FIXED — RETESTED (polyglot residual = observation) | `ae706bb` | Closure retest 1 FILES; retest 2 access upload | After deploy |
+| IF-17 | INFO | OPEN — EXTERNAL | OPEN — EXTERNAL | EXTERNAL: EXT-28 | — | — | n/a |
+| D6 | INFO | DECISION REQUIRED | DECISION REQUIRED | DECISION: SD-02 (recommendation B, limit Full Admin to chosen companies) | — | Retest 2 access confirms the designed behaviour and the work-area limit | Unchanged |
+| MFA | INFO | DECISION REQUIRED | DECISION REQUIRED | DECISION: SD-03 | — | — | None |
+| FONTS | INFO | OPEN — CODE FIXABLE | **FIXED — RETESTED** | FIXED — RETESTED (self-hosted Inter + IBM Plex Mono, latin + latin-ext) | `79dbae7`, `b401e9f` | Retest 2 infra item 2: 0 foreign requests, 144 same-origin font responses, ₹ glyph in both fonts | After deploy |
+| CL2-IF-03 *(new)* | INFO | — | **FIXED — RETESTED** | FIXED: `X-Request-ID` on nginx's own answers; the application's id passes through under `/api/` | `ca94574` | Fixer's live check 11/11 (`evidence/closure/wpf/wpf_03_xrequestid_live.out.txt`); `nginx-config.test.ts`. **Retest 3:** exactly one id on static, SPA, 404, map-404, 413 and API answers; unsafe client ids replaced (`evidence/closure/retest3/raw/if03_reqid_result.txt`) | n/a (Docker only) |
+| CL2-IF-04 *(new)* | INFO (security); functional MEDIUM | — | **FIXED — RETESTED** (retest 3: `/assets/<id>`, `/assets/new`, multi-segment → shell with `no-cache`; route-looking canary files in `<dist>/assets` never served; ≈ 45 traversal payloads identical 404, 0 leaks, 0 5xx — `evidence/closure/retest3/raw/if04_result.txt`) | FIXED: in single-port mode `/assets/<id>` (Asset 360, the QR-label address) and `/assets/new` serve the app page; the IF-01 lexical guard still runs first | `ca94574` | `backend/tests/test_static_frontend_spa_assets.py` (11 functions, 31 cases, incl. every route of `frontend/src/router.tsx`). **Note:** commit `fd34520` says "QR deep link 200", but `native_windows_final_release_fafa225.txt` records only `/some/spa/route` → 200, not an `/assets/<id>` probe | **Bug also live in `3b5e842`**: scanned labels likely show a JSON error until deployed |
+| CL2-SE-N02 *(new)* | INFO | — | **ACCEPTED — VALID DECISION** | ACCEPTED: a malformed `Content-Length` is refused with 400 by uvicorn's parser before the app; body never read; no action | — | Retest 2 sessions A6 | Same |
+
+### 0.5 Observations (not counted) — final status
+
+| ID | Baseline | FINAL | Commit / evidence |
+|---|---|---|---|
+| IF-01-WIN | HARDEN NOW | **FIXED — RETESTED** (lexical refusal before any filesystem call; then resolve + containment + symlink refusal) | `7b039fb` (`backend/app/core/static_safety.py`); native Windows run 0/28 leaks; limits: junctions, real 8.3 aliases and SMB lookups not exercised natively; run on the dev PC, not on the production server |
+| N5 | HARDEN NOW | FIXED — RETESTED | `79dbae7`; retest 2 infra item 3 (each header once on 20 response kinds) |
+| N6 | HARDEN NOW | FIXED — RETESTED | `7b039fb`; retest 2 access + infra (unknown `/api` → JSON 404) |
+| N7 | ACCEPT / DEFER | ACCEPT / DEFER | Follows SD-07 (shared store logins) |
+| N8 | ACCEPT / DEFER | ACCEPTED | — |
+| N9 | ACCEPT / DEFER | DEFER | Not done in WP-B (optional) |
+| OBS-TV | HARDEN NOW | FIXED — RETESTED | `69c3a51`; retest 2 burst (g) `token_version` consistent |
+| OBS-STATUS | HARDEN NOW | FIXED — RETESTED (honest limit: the app role can set the marker itself; the barrier is the role split) | `734fd19` (migration `c6e8a0b2d4f6`); retest 2 access DB guard + infra 6a |
+| OBS-COMMENT | FIXED — RETESTED | unchanged | `a3e8fce` |
+| OBS-IDS | ACCEPT / DEFER | ACCEPTED | Closure evidence uses unique `CL1-` / `CL2-` ids |
+| OBS-DOCS | HARDEN NOW | Assigned to the parallel documentation package (ISO / SOC 2 / threat model / evidence index); **not verified by this writer** | — |
+| OBS-REG-STALE | HARDEN NOW | FIXED (documents): dated addenda in the findings register, remediation report (Part 2) and VAPT report, 2026-10-16 | This update |
+| OBS-EXT07-STALE | HARDEN NOW | Remediation report §7 now marked SUPERSEDED by `ops/db/role_split.sql`; the EXT-07 text itself belongs to `CKAM_EXTERNAL_SECURITY_ACTIONS.md` (another writer) | This update |
+| OBS-AU12-TEST | HARDEN NOW | FIXED — RETESTED | `79dbae7` (12 static nginx/vite checks, `check:build`, `check:nginx-live`) |
+| OBS-GUARD-MSG (= CL1-OBS-N4-02) | HARDEN NOW | FIXED — RETESTED | `7b039fb`; retest 2 infra item 5 (message names all three rules, never the secret) |
+| OBS-DOCKER-SU | HARDEN NOW | ACCEPT / DEFER — tools ready, owner decision. The dev/UAT app role is still a superuser; least privilege is proven on a disposable database and by a permanent pytest | `734fd19`; `evidence/closure/db/rs_08_dev_stack_check.out.txt` |
+| OBS-NAME-IMPORT | ACCEPT / DEFER | FIXED — RETESTED for the category import (retest 3, `raw/cl3_import_commit.txt`); the brand/vendor import uses the same `_import_name_checks` and is covered by permanent tests only (brand/vendor import refuses duplicate names; categories since `fafa225`). SD-12 is therefore already implemented as option A | `7b039fb`, `fafa225`; `backend/tests/masters/test_import_duplicate_names.py` |
+| OBS-CSP-STYLE | ACCEPT / DEFER | DEFER | — |
+| OBS-T410 | ACCEPT / DEFER | FIXED (nginx's 413 now carries an `X-Request-ID`, CL2-IF-03) | `ca94574` |
+| OBS-NPM-DEV | ACCEPT / DEFER | ACCEPT / DEFER (re-confirmed: production dependencies 0; one dev-only HIGH in `source-map-js` 1.2.1) | `evidence/closure/infra/npm_audit_recheck.md`; retest 2 T109 |
+| OBS-POLYGLOT (= CL1-OBS-FILES-01 = CL2-AC-OBS-01) | ACCEPT / DEFER | ACCEPTED (served only as attachment + `nosniff`; revisit if a screen ever renders a document inline) | Retest 1 `CL1-T116`…`T118`; retest 2 access upload |
+| CL1-OBS-SECRET-01 *(new)* | — | ACCEPT / DEFER: the untracked demo walkthrough holds a demo-only password; it is deliberately **not committed** | `docs/ai/CKAM_DEMO_WALKTHROUGH.md` (untracked) |
+| CL2-IF-OBS-01 *(new)* writable `/var/tmp` | — | FIXED in the repository (tmpfs `noexec`); effective at the owner's next `docker compose up -d --build api` | `ca94574` |
+| CL2-IF-OBS-02 *(new)* runtime-image run flags | — | OPEN — DEFER (documentation only; production has no Docker) | — |
+| CL2-IF-OBS-03 *(new)* silent audit-write failure | — | FIXED (counted, repeated once a minute, `system_event`); the Logs → Diagnostics screen does **not yet show** the count (function `failure_counts()` exists) | `ca94574` |
+| CL2-IF-OBS-04 *(new)* stale Google Fonts comment | — | FIXED | `ca94574` |
+| CL2-IF-OBS-05 *(new)* `server: uvicorn` | — | FIXED in the repository (`--no-server-header`); live launcher needs it (EXT-13) | `ca94574` |
+| CL2-IF-OBS-06 *(new)* shared UAT persona password | — | ACCEPTED (UAT only; "NEVER RUN AGAINST PRODUCTION" warning added) | `ca94574` |
+| OBS-HEAD405 *(new)* | — | DEFER (functional, pre-existing): in single-port mode every SPA page answers `HEAD` with 405; phones open labels with GET | `evidence/closure/wpf/WPF_RESULTS.md` |
+| OBS-ROLE-INHERIT *(new, retest 3)* | — | DBA NOTE (not a finding): if a migrator role **already exists** with `INHERIT` membership when `ops/db/role_split.sql` runs, the idempotent `IF NOT pg_has_role(…)` guard skips the re-grant and does not repair the inherit flag (the migrator could then create objects as itself). The documented runbook path creates the migrator fresh (`NOINHERIT`), so it is unaffected. The DBA should drop/recreate a pre-existing migrator or issue `GRANT <owner> TO <migrator> WITH INHERIT FALSE`, then re-run `role_split_verify.sql`. To be added as a note to `ops/db/ROLE_SPLIT_RUNBOOK.md` in a later code change (`ops/` not edited by this documentation step) | `evidence/closure/retest3/RETEST3.md` methodology note 1 |
+| OBS-STATUS-R3 *(new, retest 3)* | — | COVERAGE NOTE: the direct `UPDATE asset SET status …` as the runtime role was inconclusive in retest 3 (fresh database with no asset rows, 0 rows matched). The guard was verified present and enabled by `role_split_verify.sql`; its behaviour is covered by `backend/tests/lifecycle/test_obs_status_guard.py`, WP-B `rs_05` (CANNOT-39/40) and retest 2 | `evidence/closure/retest3/RETEST3.md` note 3 |
+| CL2-IF-03 client id *(new, retest 3)* | — | ACCEPTED (intended): the API honours a well-formed client `X-Request-ID` (1–64 of `A-Za-z0-9._-`) for correlation; unsafe values are replaced; nginx-served answers always use nginx's id | `evidence/closure/retest3/RETEST3.md` note 2 |
+| OBS-LEGACY-REFRESH *(new)* | — | DEFER to the release after the deploy: the AU-06 legacy-token path (tokens without `sid`) accepts a forged legacy token once if the JWT key is known; remove it once all pre-deploy tokens have expired (8 h). EXT-02 is the real control | `evidence/closure/backend/WPA2_RESULTS.md` (residual 7) |
+
+### 0.6 Re-confirmed decisions (ACCEPTED), 2026-10-16
+
+| ID | Rationale re-checked today | Still valid? |
+|---|---|---|
+| IF-12 | `backend/app/core/security.py::decode_token` pins `algorithms=["HS256"]`; pip-audit again reports no fixed version for `python-jose` 3.5.0 / `ecdsa` 0.19.2; forged-token probes refused (retest 2 T109–T113) | Yes; recommend PyJWT at the next auth rework |
+| AU-02 | Lock answer is the same for any password (retest 2 A4); alternative is a password oracle | Yes, unless SD-06 changes the lock model |
+| CL2-SE-N02 | Request is refused (400) before the app reads the body; the middleware branch is only belt-and-braces | Yes |
+
+---
+
+## 1. Summary counts (the 43 findings) — BASELINE before the closure fixes (kept for history; final: section 0)
 
 | Severity | FIXED — RETESTED | FIXED — NEEDS IND. RETEST | MITIGATED — CODE CAN CLOSE | MITIGATED — EXTERNAL | OPEN — CODE FIXABLE | OPEN — EXTERNAL | ACCEPTED | DECISION REQUIRED | Total |
 |---|---|---|---|---|---|---|---|---|---|
@@ -85,7 +273,10 @@ OBS-POLYGLOT) · FIXED — RETESTED (by reading the source) 1 (OBS-COMMENT).
 
 ---
 
-## 2. Register: the 43 findings
+## 2. Register: the 43 findings (BASELINE)
+
+> Dated note 2026-10-16 (closure): the "Current status" column below is the morning baseline at `627ed73`. The
+> final status of every row, with the closure outcome, commit and retest evidence, is in **section 0.4**.
 
 Columns: **ID | Severity | Current status | Current evidence | Can code close it? | Proposed action | Risk of change | Test needed | Final target.**
 Evidence paths are relative to `docs/security/` unless they start with `backend/`, `frontend/` or a commit.
@@ -155,7 +346,9 @@ Evidence paths are relative to `docs/security/` unless they start with `backend/
 
 ---
 
-## 3. Observations (not counted in the 43)
+## 3. Observations (not counted in the 43) (BASELINE)
+
+> Dated note 2026-10-16 (closure): final status of these rows and of the new observations is in **section 0.5**.
 
 | ID | Sev. | Current status | Current evidence | Can code close it? | Proposed action | Risk of change | Test needed | Final target |
 |---|---|---|---|---|---|---|---|---|
@@ -185,7 +378,14 @@ Evidence paths are relative to `docs/security/` unless they start with `backend/
 
 ## 4. OPEN — CODE FIXABLE
 
-Findings:
+> **Final (2026-10-16): none.** IF-13, N3 and FONTS are FIXED — RETESTED; IF-15's code/reference side is done
+> and only the external residual (EXT-13) remains; AU-06 is FIXED — RETESTED; every HARDEN-NOW code observation
+> is fixed (section 0.5). Code-side work still possible but **not a finding** and deliberately deferred: PyJWT
+> instead of python-jose (IF-12 follow-up), showing `failure_counts()` on the Diagnostics screen, removing the
+> AU-06 legacy-token path after the deploy, `style-src 'unsafe-inline'` (OBS-CSP-STYLE), N9, OBS-HEAD405,
+> CL2-IF-OBS-02. The list below is the baseline.
+
+Findings (baseline):
 
 1. **IF-13** — dev/UAT image as root with dev dependencies and tests (WP-C).
 2. **IF-15** — production launcher, release script and Windows runbook not in git (WP-C scripts, WP-D runbook; reconciliation with the server = EXT-13).
@@ -201,6 +401,12 @@ Also code-closable, though not labelled OPEN:
   role split and tests, IF-11 reference release script.
 
 ## 5. Every OPEN item and why it is open
+
+> **Final (2026-10-16).** Still open: IF-01, IF-02, IF-07, IF-08, IF-09, IF-16, AU-13, N2, IF-17 (OPEN —
+> EXTERNAL; the reasons below still hold, IF-16 and N2 now with their repository side done) and AU-04, D6, MFA
+> (DECISION REQUIRED). Residual external work on MITIGATED items: IF-05, IF-06 (EXT-07, now also carrying the
+> CL2-IF-01/02 script fixes), IF-11 (EXT-12), IF-15 (EXT-13). **No longer open:** IF-13, IF-15 (code side), N3,
+> FONTS. The table below is the baseline.
 
 | ID | Classification | Why it is still open |
 |---|---|---|
@@ -220,6 +426,11 @@ Also code-closable, though not labelled OPEN:
 
 ## 6. Items that need a management decision
 
+> **Final (2026-10-16):** these were written up as SD-01 … SD-16 in `CKAM_SECURITY_DECISIONS_REQUIRED.md`
+> (row 1 → SD-01, 2 → SD-04, 3 → SD-05, 4 → SD-06, 5 → SD-02, 6 → SD-03, 7 → SD-07, 8 → SD-11, 9 → SD-08,
+> 10 → SD-09, 11 → SD-10, 12 → SD-12). **None is decided.** Row 12 (same-name import rule) was built as option A
+> in `7b039fb` / `fafa225`; the owner may still overrule it.
+
 | # | Decision | Linked items | Why the owner must decide | Options (to be written as a plain A/B paper in WP-D) |
 |---|---|---|---|---|
 | 1 | Deploy the security release, then rotate the secrets | IF-01, EXT-01, EXT-02, EXT-39 | Deploying needs the owner's explicit request; the owner types the server passwords | Deploy now (recommended) / keep production exposed |
@@ -237,7 +448,31 @@ Also code-closable, though not labelled OPEN:
 
 ---
 
-## 7. Work packages
+## 7. Work packages — RESULTS (final, 2026-10-16)
+
+All commits are **local only** (branch `worktree-ckam-build`, 22 commits ahead of origin `c66378d`: `4ba4e94` plus
+21 security commits). Backend counts are full `pytest -q` runs in the dev api container against `ckam_test`.
+
+| WP | Scope (items) | Commit(s) | Result | Tests at the end of the package | Evidence |
+|---|---|---|---|---|---|
+| WP-A1 | IF-01-WIN, N6, N2 tests, IF-16 TLS settings, OBS-GUARD-MSG, CL1-N4-01 (unset = production), AU-08 revalidation, RACE-1 import residual, dependency recheck | `7b039fb`; follow-up `b401e9f` (backend CSP without Google hosts, JSON 404 for `/docs` `/redoc` `/openapi.json` where docs are off) | DONE; every item retested in retest 2 (CL1-N4-01 closed) | 2437 passed, 1 skipped | `evidence/closure/backend/WPA1_RESULTS.md`, `raw/repro_before_after.txt`, `dependency_recheck.md` |
+| WP-A2 | AU-06 reuse detection, OBS-TV atomic version, AU-04 options paper | `69c3a51` (migration `b5d7f9a1c3e5`) | DONE (AU-04 stays DECISION REQUIRED); retested in retest 2 sessions A1/A2 and burst (g)/(h) | 2464 passed, 2 skipped | `evidence/closure/backend/WPA2_RESULTS.md`, `AU-04_OPTIONS.md`, `wpa2_probe_output.txt` |
+| WP-B | OBS-STATUS trigger, IF-05/IF-06 local role split, repeatable least-privilege checks | `734fd19` (migration `c6e8a0b2d4f6`) | DONE locally; production role split still needs a DBA (EXT-07); retest 2 found CL2-IF-01/02 in the scripts (fixed in WP-F) | 2484 passed, 2 skipped | `evidence/closure/db/WPB_RESULTS.md`, `rs_01`…`rs_08` |
+| WP-C | FONTS, IF-13, N3, N5, AU-12 permanent checks, IF-15 reference scripts (+ N2 launcher, IF-11 release script), IF-09 plan, npm recheck | `79dbae7` | DONE; retested in retest 2 infra items 1–4 | vitest 1256 in 92 files; `check:build` OK; `check:nginx-live` OK | `evidence/closure/infra/WP-C_closure_evidence.md`, `IF-09_ACL_PLAN.md`, `npm_audit_recheck.md` |
+| WP-D1 | Urgent production runbook, HTTPS, service-account and backup/restore plans, EXT-41/42/43 | `f746e71` | DONE — documents only; **PREPARED, NOT DONE** in production | — | `evidence/closure/docs/INDEX.md` |
+| WP-D2 | Decisions paper SD-01…SD-16, 15 DRAFT policies, 6 record templates, SoA working draft | `f746e71` | DONE — all DRAFT, none approved, none operating | — | `evidence/closure/docs/WPD2_INDEX.md` |
+| WP-R1 | Closure retest 1 of the late fixes (N1, N4, AU-08, RACE-1, IF-01 incl. Windows-style payloads, files, secrets) | evidence in `f746e71` | 137 cases: 133 PASS, 1 FAIL (CL1-N4-01, fixed in `7b039fb`), 2 PARTIAL, 1 OBS | — | `evidence/closure/retest1/RETEST1.md`, `tests.csv` |
+| WP-R2a | Retest 2 — access (route matrix, IDOR, mass assignment, files in production mode, uploads, injection, XSS, business logic) on HEAD `734fd19` | evidence in `8664b77` | 319 cases: 318 PASS, 1 OBS; 3,038 cells, 0 escalations; no new finding | — | `evidence/closure/retest2/access/RETEST2_ACCESS.md`, `authz_matrix.csv` |
+| WP-R2b | Retest 2 — infra (containers, fonts/CSP, headers, proxy address, start-up guard, database guards and role split, dependencies, secrets) | evidence in `8664b77` | 122 cases: 106 PASS, 6 FAIL (→ CL2-IF-01…04, all fixed in WP-F), 2 PARTIAL, 8 INFO | — | `evidence/closure/retest2/infra/RETEST2_INFRA.md` |
+| WP-R2c | Retest 2 — sessions + external concurrency burst | evidence in `8664b77` | 56 cases, 56 PASS; 3 LOW/INFO findings (CL2-SE-N01, N03 fixed in WP-F2; N02 accepted) | — | `evidence/closure/retest2/sessions/RETEST2_SESSIONS.md`, `concurrency_results.md` |
+| WP-F | CL2-IF-01…04, audit-write failure reporting, `--no-server-header`, tmpfs, stale comment, UAT seed warning | `ca94574` (no migration) | DONE; re-attacked in retest 3 (all PASS) | 2521 passed, 1 skipped; vitest 1257 in 92 files | `evidence/closure/wpf/WPF_RESULTS.md`, `wpf_01`…`wpf_04` |
+| WP-F2 | CL2-SE-N01, CL2-SE-N03 | `fafa225` (no migration) | DONE; re-attacked in retest 3 (all PASS) | **2541 passed, 1 skipped** (final) | `evidence/closure/wpf/WPF2_RESULTS.md` |
+| WP-R3 | Third independent retest of CL2-IF-01…04, CL2-SE-N01, CL2-SE-N03 + regression sweep, on HEAD `fd34520` | evidence `evidence/closure/retest3/` (uncommitted at the time of writing) | ≈ 360 cases, **52/52 logged assertions PASS, 0 new findings**; 3 notes (role INHERIT for a pre-existing migrator — DBA note; intended client request-id behaviour; OBS-STATUS direct UPDATE inconclusive on an empty DB) | — | `evidence/closure/retest3/RETEST3.md`, `tests.csv`, `raw/` |
+| Perf | Old `4ba4e94` vs new `734fd19`, identical data (150 POs, 1,960 assets), 31 operations | evidence in `8664b77` | None over threshold; refused sign-in +33 ms by design (AU-01); bulk Move of 50 +23…34 ms (lifecycle marker) | — | `evidence/closure/perf/PERF_REPORT.md` |
+| Windows native | IF-01 on a real Windows file system (dev PC, portable Python since deleted, fake canaries) | `8664b77`, `fd34520` | Old 10 of 28 leaked; `7b039fb` and `fafa225` 0 of 28, 0 5xx | — | `evidence/closure/windows/*.txt`, `attack.mjs` |
+| Final | Final Windows run file; Playwright lifecycle journey timing stabilised (bounded wait) | `fd34520` | Permanent Playwright 11 passed, 1 skipped; security journeys 14/14 | — | `frontend/e2e/asset-lifecycle.spec.ts` |
+
+### Original plan (baseline, kept for history)
 
 Packages hold only OPEN or HARDEN-NOW **code** items (plus WP-D documents). Every package: one logical commit
 per area by the lead, Conventional Commits, tests per CLAUDE.md rule 4, evidence in

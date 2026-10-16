@@ -1,0 +1,42 @@
+DO
+                                              check                                               | result |                          detail                           
+--------------------------------------------------------------------------------------------------+--------+-----------------------------------------------------------
+ runtime role exists                                                                              | PASS   | r3_app
+ runtime role: not superuser / createrole / createdb / replication / bypassrls                    | PASS   | super=f createrole=f createdb=f replication=f bypassrls=f
+ runtime role is not a member of a superuser role or a powerful predefined role                   | PASS   | none
+ runtime role owns nothing in this database (tables, sequences, views, functions, types, schemas) | PASS   | relations (tables, indexes, sequences)=0 functions=0
+ table owners are not the runtime role (nor a role it can become)                                 | PASS   | none
+ runtime role does not own the database                                                           | PASS   | owner=r3_owner
+ runtime role cannot CREATE in any schema                                                         | PASS   | none
+ runtime role cannot create schemas or temporary tables in the database                           | PASS   | create=f temp=f
+ runtime role can CONNECT and USE the schema                                                      | PASS   | public
+ runtime role has SELECT/INSERT/UPDATE/DELETE on every ordinary table                             | PASS   | 35 tables
+ append-only asset_event: SELECT+INSERT only (no UPDATE, DELETE, TRUNCATE)                        | PASS   | select=t insert=t update=f delete=f truncate=f
+ append-only asset_field_change: SELECT+INSERT only (no UPDATE, DELETE, TRUNCATE)                 | PASS   | select=t insert=t update=f delete=f truncate=f
+ append-only audit_log: SELECT+INSERT only (no UPDATE, DELETE, TRUNCATE)                          | PASS   | select=t insert=t update=f delete=f truncate=f
+ append-only master_audit: SELECT+INSERT only (no UPDATE, DELETE, TRUNCATE)                       | PASS   | select=t insert=t update=f delete=f truncate=f
+ runtime role has no TRUNCATE, TRIGGER or REFERENCES privilege on any table                       | PASS   | none
+ alembic_version: runtime role may only read it                                                   | PASS   | select=t insert=f update=f delete=f
+ runtime role can use every sequence (needed to add rows)                                         | PASS   | 32 sequences
+ ckam_purge_audit_log: no EXECUTE for the runtime role or PUBLIC                                  | PASS   | runtime=f public=f
+ runtime role cannot SET session_replication_role (would skip every guard trigger)                | PASS   | has SET=false
+ trigger trg_asset_event_no_delete on asset_event present and enabled                             | PASS   | enabled=origin
+ trigger trg_asset_event_no_truncate on asset_event present and enabled                           | PASS   | enabled=origin
+ trigger trg_asset_event_no_update on asset_event present and enabled                             | PASS   | enabled=origin
+ trigger trg_asset_field_change_no_delete on asset_field_change present and enabled               | PASS   | enabled=origin
+ trigger trg_asset_field_change_no_truncate on asset_field_change present and enabled             | PASS   | enabled=origin
+ trigger trg_asset_field_change_no_update on asset_field_change present and enabled               | PASS   | enabled=origin
+ trigger trg_asset_lifecycle_fields_guard on asset present and enabled                            | PASS   | enabled=origin
+ trigger trg_asset_no_identity_change on asset present and enabled                                | PASS   | enabled=origin
+ trigger trg_audit_log_no_delete on audit_log present and enabled                                 | PASS   | enabled=origin
+ trigger trg_audit_log_no_truncate on audit_log present and enabled                               | PASS   | enabled=origin
+ trigger trg_audit_log_no_update on audit_log present and enabled                                 | PASS   | enabled=origin
+ trigger trg_master_audit_no_delete on master_audit present and enabled                           | PASS   | enabled=origin
+ trigger trg_master_audit_no_truncate on master_audit present and enabled                         | PASS   | enabled=origin
+ trigger trg_master_audit_no_update on master_audit present and enabled                           | PASS   | enabled=origin
+ every CKAM table, sequence and function is owned by the owner role                               | PASS   | 80 objects, all owned by r3_owner
+ runtime role has no UPDATE on any sequence (setval could rewind or exhaust an id sequence)       | PASS   | 32 sequences, none updatable
+ id sequences: next id above the highest id, far from the maximum, no absurd jump                 | PASS   | 32 sequences checked
+ runtime role has no stored session defaults (pg_db_role_setting), in any database                | PASS   | none
+(37 rows)
+

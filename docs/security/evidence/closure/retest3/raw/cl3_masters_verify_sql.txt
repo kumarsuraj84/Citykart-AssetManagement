@@ -1,0 +1,11 @@
+         name          | asset_domain | active | total 
+-----------------------+--------------+--------+-------
+ CL3 Cat A 009757      | IT           |      1 |     1
+ CL3 Cat A 009757      | NON_IT       |      1 |     1
+ CL3 Cat B 009757      | IT           |      1 |     1
+ CL3 Cat C 009757      | NON_IT       |      1 |     1
+ CL3 Cat E 009757      | IT           |      1 |     1
+ CL3 SubParent 009757  | IT           |      1 |     1
+ CL3 SubParent2 009757 | IT           |      1 |     1
+(7 rows)
+

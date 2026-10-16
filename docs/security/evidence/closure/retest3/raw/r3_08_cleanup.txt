@@ -1,0 +1,16 @@
+ pg_terminate_backend 
+----------------------
+(0 rows)
+
+DROP DATABASE
+DROP ROLE
+DROP ROLE
+DROP ROLE
+ datname 
+---------
+(0 rows)
+
+ rolname 
+---------
+(0 rows)
+

@@ -1,0 +1,210 @@
+Pager usage is off.
+============ WHO AM I ============
+SELECT current_user, session_user, (SELECT rolsuper FROM pg_roles WHERE rolname=current_user) AS super,
+       current_setting('transaction_read_only') AS read_only;
+ current_user | session_user | super | read_only 
+--------------+--------------+-------+-----------
+ r3_app       | r3_app       | f     | off
+(1 row)
+
+============ CAN (the application needs these) ============
+[CAN-01] read tables + ledgers + alembic head
+SELECT (SELECT count(*) FROM asset) assets, (SELECT count(*) FROM audit_log) audit_rows,
+       (SELECT version_num FROM alembic_version) head;
+ assets | audit_rows |     head     
+--------+------------+--------------
+      0 |          0 | c6e8a0b2d4f6
+(1 row)
+
+[CAN-02] INSERT an audit row (append-only INSERT allowed)
+INSERT INTO audit_log (source,category,action,summary,outcome,is_head_office_admin)
+VALUES ('api','DATA','CREATE','CL3 matrix row','OK',false) RETURNING id;
+ id 
+----
+  1
+(1 row)
+
+INSERT 0 1
+[CAN-03] nextval on a ledger id sequence is ALLOWED (USAGE)
+SELECT nextval('audit_log_id_seq') > 0 AS audit_seq_nextval_ok;
+ audit_seq_nextval_ok 
+----------------------
+ t
+(1 row)
+
+SELECT nextval('asset_event_id_seq') > 0 AS event_seq_nextval_ok;
+ event_seq_nextval_ok 
+----------------------
+ t
+(1 row)
+
+[CAN-04] nextval on an ordinary sequence
+SELECT nextval(pg_get_serial_sequence('vendor','id')) > 0 AS vendor_seq_ok;
+ vendor_seq_ok 
+---------------
+ t
+(1 row)
+
+============ CANNOT: CL2-IF-01 setval / ALTER SEQUENCE (ledger id sequences FIRST) ============
+[SEQ-01] setval audit_log_id_seq := 1 (would exhaust/collide; not undone by rollback)
+SELECT setval('audit_log_id_seq', 1);
+psql:/tmp/r3_runtime_matrix.sql:25: ERROR:  permission denied for sequence audit_log_id_seq
+[SEQ-02] setval asset_event_id_seq := 1 (would make every movement fail)
+SELECT setval('asset_event_id_seq', 1);
+[SEQ-03] setval audit_log_id_seq := max bigint (exhaust)
+SELECT setval('audit_log_id_seq', 9223372036854775806);
+psql:/tmp/r3_runtime_matrix.sql:27: ERROR:  permission denied for sequence asset_event_id_seq
+psql:/tmp/r3_runtime_matrix.sql:29: ERROR:  permission denied for sequence audit_log_id_seq
+[SEQ-04] setval master_audit_id_seq
+SELECT setval('master_audit_id_seq', 1);
+psql:/tmp/r3_runtime_matrix.sql:31: ERROR:  permission denied for sequence master_audit_id_seq
+[SEQ-05] setval asset_field_change_id_seq
+SELECT setval('asset_field_change_id_seq', 1);
+psql:/tmp/r3_runtime_matrix.sql:33: ERROR:  permission denied for sequence asset_field_change_id_seq
+[SEQ-06] ALTER SEQUENCE audit_log_id_seq RESTART
+ALTER SEQUENCE audit_log_id_seq RESTART WITH 1;
+[SEQ-07] ALTER SEQUENCE asset_event_id_seq MAXVALUE
+ALTER SEQUENCE asset_event_id_seq MAXVALUE 100;
+psql:/tmp/r3_runtime_matrix.sql:35: ERROR:  must be owner of sequence audit_log_id_seq
+[SEQ-08] setval an ordinary sequence (vendor id)
+SELECT setval(pg_get_serial_sequence('vendor','id'), 1);
+psql:/tmp/r3_runtime_matrix.sql:37: ERROR:  must be owner of sequence asset_event_id_seq
+psql:/tmp/r3_runtime_matrix.sql:39: ERROR:  permission denied for sequence vendor_id_seq
+[SEQ-09] loop setval over EVERY sequence (expect every line permission denied)
+DO $$ DECLARE s record; BEGIN
+  FOR s IN SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+           WHERE n.nspname='public' AND c.relkind='S' ORDER BY c.relname LOOP
+    BEGIN EXECUTE format('SELECT setval(%L,1)', s.relname);
+          RAISE WARNING 'LEAK: setval succeeded on %', s.relname;
+    EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  END LOOP;
+  RAISE NOTICE 'setval loop finished with no LEAK warnings = all denied';
+END $$;
+DO
+============ CANNOT: append-only ledgers (UPDATE/DELETE/TRUNCATE) ============
+[LED-01] UPDATE audit_log
+UPDATE audit_log SET summary='rewritten';
+psql:/tmp/r3_runtime_matrix.sql:49: NOTICE:  setval loop finished with no LEAK warnings = all denied
+psql:/tmp/r3_runtime_matrix.sql:53: ERROR:  permission denied for table audit_log
+[LED-02] DELETE FROM audit_log
+DELETE FROM audit_log;
+[LED-03] purge flag on, DELETE recent audit rows
+BEGIN;
+psql:/tmp/r3_runtime_matrix.sql:55: ERROR:  permission denied for table audit_log
+BEGIN
+SET LOCAL ckam.allow_audit_purge='on';
+SET
+DELETE FROM audit_log WHERE at > now()-interval '1 day';
+psql:/tmp/r3_runtime_matrix.sql:57: ERROR:  permission denied for table audit_log
+ROLLBACK;
+ROLLBACK
+[LED-04] TRUNCATE audit_log
+TRUNCATE audit_log;
+psql:/tmp/r3_runtime_matrix.sql:59: ERROR:  permission denied for table audit_log
+[LED-05] UPDATE asset_event
+UPDATE asset_event SET remarks='x';
+psql:/tmp/r3_runtime_matrix.sql:61: ERROR:  permission denied for table asset_event
+[LED-06] DELETE asset_event
+DELETE FROM asset_event;
+psql:/tmp/r3_runtime_matrix.sql:63: ERROR:  permission denied for table asset_event
+[LED-07] TRUNCATE asset_event
+TRUNCATE asset_event;
+[LED-08] UPDATE master_audit
+UPDATE master_audit SET summary='x';
+psql:/tmp/r3_runtime_matrix.sql:65: ERROR:  permission denied for table asset_event
+psql:/tmp/r3_runtime_matrix.sql:67: ERROR:  column "summary" of relation "master_audit" does not exist
+LINE 1: UPDATE master_audit SET summary='x';
+                                ^
+[LED-09] UPDATE asset_field_change
+UPDATE asset_field_change SET new_value='x';
+psql:/tmp/r3_runtime_matrix.sql:69: ERROR:  permission denied for table asset_field_change
+[LED-10] TRUNCATE an ordinary table
+TRUNCATE asset CASCADE;
+psql:/tmp/r3_runtime_matrix.sql:71: ERROR:  permission denied for table asset
+============ CANNOT: DDL / triggers / replication / purge / SET ROLE ============
+[DDL-01] ALTER TABLE add column
+ALTER TABLE asset ADD COLUMN evil int;
+psql:/tmp/r3_runtime_matrix.sql:75: ERROR:  must be owner of table asset
+[DDL-02] DISABLE TRIGGER ALL on asset_event
+ALTER TABLE asset_event DISABLE TRIGGER ALL;
+psql:/tmp/r3_runtime_matrix.sql:77: ERROR:  must be owner of table asset_event
+[DDL-03] DISABLE the audit delete guard
+ALTER TABLE audit_log DISABLE TRIGGER trg_audit_log_no_delete;
+psql:/tmp/r3_runtime_matrix.sql:79: ERROR:  must be owner of table audit_log
+[DDL-04] DROP the OBS-STATUS asset guard
+DROP TRIGGER trg_asset_lifecycle_fields_guard ON asset;
+psql:/tmp/r3_runtime_matrix.sql:81: ERROR:  must be owner of relation asset
+[DDL-05] ENABLE REPLICA on the asset guard (skip it in normal sessions)
+ALTER TABLE asset ENABLE REPLICA TRIGGER trg_asset_lifecycle_fields_guard;
+psql:/tmp/r3_runtime_matrix.sql:83: ERROR:  must be owner of table asset
+[DDL-06] DROP TABLE audit_log
+DROP TABLE audit_log;
+[DDL-07] CREATE OR REPLACE a guard trigger function
+CREATE OR REPLACE FUNCTION forbid_audit_log_write() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN OLD; END $$;
+psql:/tmp/r3_runtime_matrix.sql:85: ERROR:  must be owner of table audit_log
+psql:/tmp/r3_runtime_matrix.sql:87: ERROR:  permission denied for schema public
+[DDL-08] CREATE TABLE in public
+CREATE TABLE public.evil (id int);
+psql:/tmp/r3_runtime_matrix.sql:89: ERROR:  permission denied for schema public
+LINE 1: CREATE TABLE public.evil (id int);
+                     ^
+[DDL-09] CREATE SCHEMA
+CREATE SCHEMA evil;
+psql:/tmp/r3_runtime_matrix.sql:91: ERROR:  permission denied for database ckam_r3_rs
+[DDL-10] CREATE TEMP TABLE
+CREATE TEMP TABLE t (id int);
+psql:/tmp/r3_runtime_matrix.sql:93: ERROR:  permission denied to create temporary tables in database "ckam_r3_rs"
+LINE 1: CREATE TEMP TABLE t (id int);
+                          ^
+[DDL-11] SET session_replication_role = replica
+SET session_replication_role = replica;
+[DDL-12] run the purge function
+SELECT ckam_purge_audit_log(now()-interval '6 years');
+psql:/tmp/r3_runtime_matrix.sql:95: ERROR:  permission denied to set parameter "session_replication_role"
+psql:/tmp/r3_runtime_matrix.sql:97: ERROR:  permission denied for function ckam_purge_audit_log
+[DDL-13] SET ROLE owner
+SET ROLE r3_owner;
+[DDL-14] SET ROLE migrator
+SET ROLE r3_migrator;
+psql:/tmp/r3_runtime_matrix.sql:99: ERROR:  permission denied to set role "r3_owner"
+psql:/tmp/r3_runtime_matrix.sql:101: ERROR:  permission denied to set role "r3_migrator"
+[DDL-15] take ownership of audit_log
+ALTER TABLE audit_log OWNER TO r3_app;
+psql:/tmp/r3_runtime_matrix.sql:103: ERROR:  must be owner of table audit_log
+[DDL-16] UPDATE alembic_version
+UPDATE alembic_version SET version_num='ffffffffffff';
+psql:/tmp/r3_runtime_matrix.sql:105: ERROR:  permission denied for table alembic_version
+[DDL-17] COPY TO PROGRAM (shell exec)
+COPY (SELECT 1) TO PROGRAM 'id';
+[DDL-18] OBS-STATUS: change asset status directly (trigger must refuse)
+UPDATE asset SET status='LOST' WHERE id=(SELECT min(id) FROM asset);
+psql:/tmp/r3_runtime_matrix.sql:107: ERROR:  permission denied to COPY to or from an external program
+DETAIL:  Only roles with privileges of the "pg_execute_server_program" role may COPY to or from an external program.
+HINT:  Anyone can COPY to stdout or from stdin. psql's \copy command also works for anyone.
+UPDATE 0
+============ CL2-IF-02 / HIDE DAMAGE: stored session defaults (allowed to set, must be DETECTED) ============
+[SET-01] ALTER ROLE self SET default_transaction_read_only = on (every later write fails)
+ALTER ROLE r3_app SET default_transaction_read_only = on;
+ALTER ROLE
+[SET-02] ALTER ROLE self SET search_path = evil (hide tables)
+ALTER ROLE r3_app SET search_path = evil, public;
+ALTER ROLE
+[SET-03] ALTER ROLE self IN DATABASE SET statement_timeout = 1ms
+ALTER ROLE r3_app IN DATABASE ckam_r3_rs SET statement_timeout = '1ms';
+ALTER ROLE
+[SET-04] ALTER ROLE self SET role = owner (try to store a privilege escalation)
+ALTER ROLE r3_app SET role = r3_owner;
+psql:/tmp/r3_runtime_matrix.sql:119: NOTICE:  permission will be denied to set role "r3_owner"
+ALTER ROLE
+[SET-05] ALTER ROLE self SET session_replication_role = replica (superuser-only param)
+ALTER ROLE r3_app SET session_replication_role = replica;
+psql:/tmp/r3_runtime_matrix.sql:121: ERROR:  permission denied to set parameter "session_replication_role"
+============ AFTER: nothing changed in the ledgers / head / statuses ============
+SELECT (SELECT count(*) FROM audit_log) audit_rows, (SELECT count(*) FROM asset_event) events,
+       (SELECT version_num FROM alembic_version) head,
+       (SELECT coalesce(string_agg(DISTINCT status,','),'(none)') FROM asset) asset_statuses;
+ audit_rows | events |     head     | asset_statuses 
+------------+--------+--------------+----------------
+          1 |      0 | c6e8a0b2d4f6 | (none)
+(1 row)
+

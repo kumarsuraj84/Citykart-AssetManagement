@@ -1,0 +1,198 @@
+=== probe output ===
+meth stat leak shell label                 expect       cache-control   ctype                 path
+GET  200  -    SHELL route-numeric-id      shell        no-cache        text/html; charset=utf-8 /assets/123
+       body[:40]=b'<html>shell</html>'
+GET  200  -    SHELL route-new             shell        no-cache        text/html; charset=utf-8 /assets/new
+       body[:40]=b'<html>shell</html>'
+GET  200  -    SHELL route-settings        shell        no-cache        text/html; charset=utf-8 /assets/settings
+       body[:40]=b'<html>shell</html>'
+GET  200  -    SHELL route-2seg            shell        no-cache        text/html; charset=utf-8 /assets/42/edit
+       body[:40]=b'<html>shell</html>'
+GET  200  -    SHELL route-3seg            shell        no-cache        text/html; charset=utf-8 /assets/a/b/c
+       body[:40]=b'<html>shell</html>'
+GET  200  -    SHELL route-mixedchars      shell        no-cache        text/html; charset=utf-8 /assets/ABC-123_x
+       body[:40]=b'<html>shell</html>'
+GET  200  -    -     legit-js              asset        None            text/javascript; charset=utf-8 /assets/a.js
+       body[:40]=b'ok-legit-js'
+GET  200  -    -     legit-hashed          asset        None            text/javascript; charset=utf-8 /assets/index-A1b2C3d4.js
+       body[:40]=b'ok-hashed-js'
+GET  200  -    -     legit-css             asset        None            text/css; charset=utf-8 /assets/app-Z9y8X7w6.css
+       body[:40]=b'ok-hashed-css'
+GET  404  -    -     missing-js            404          None            application/json      /assets/missing-00000000.js
+       body[:40]=b'{"detail":"Not Found","request_id":"4963'
+GET  404  -    -     missing-css           404          None            application/json      /assets/missing-00000000.css
+       body[:40]=b'{"detail":"Not Found","request_id":"ea36'
+GET  404  -    -     missing-map           404          None            application/json      /assets/index-DEADBEEF.js.map
+       body[:40]=b'{"detail":"Not Found","request_id":"9bca'
+GET  404  -    -     missing-map2          404          None            application/json      /assets/vendor-123.map
+       body[:40]=b'{"detail":"Not Found","request_id":"40eb'
+GET  200  -    SHELL canary-file-new       shell        no-cache        text/html; charset=utf-8 /assets/new
+       body[:40]=b'<html>shell</html>'
+GET  200  -    SHELL canary-file-123       shell        no-cache        text/html; charset=utf-8 /assets/123
+       body[:40]=b'<html>shell</html>'
+GET  200  -    SHELL canary-file-settings  shell        no-cache        text/html; charset=utf-8 /assets/settings
+       body[:40]=b'<html>shell</html>'
+GET  404  -    -     device-con            404          None            application/json      /assets/CON
+       body[:40]=b'{"detail":"Not Found","request_id":"1fee'
+GET  404  -    -     device-nul            404          None            application/json      /assets/nul
+       body[:40]=b'{"detail":"Not Found","request_id":"138e'
+GET  404  -    -     device-aux            404          None            application/json      /assets/AUX
+       body[:40]=b'{"detail":"Not Found","request_id":"b145'
+GET  404  -    -     device-com1           404          None            application/json      /assets/COM1
+       body[:40]=b'{"detail":"Not Found","request_id":"126c'
+GET  404  -    -     device-con-js         404          None            application/json      /assets/CON.js
+       body[:40]=b'{"detail":"Not Found","request_id":"c4b5'
+GET  404  -    -     device-seg            404          None            application/json      /assets/foo/CON
+       body[:40]=b'{"detail":"Not Found","request_id":"fb07'
+GET  404  -    -     device-seg2           404          None            application/json      /assets/CON/foo
+       body[:40]=b'{"detail":"Not Found","request_id":"ca1a'
+GET  404  -    -     dotdot-raw            404          None            application/json      /assets/../../secret_outside.txt
+       body[:40]=b'{"detail":"Not Found","request_id":"f703'
+GET  404  -    -     enc-slash             404          None            application/json      /assets/..%2f..%2fsecret_outside.txt
+       body[:40]=b'{"detail":"Not Found","request_id":"aaa1'
+GET  404  -    -     enc-dot               404          None            application/json      /assets/%2e%2e/%2e%2e/secret_outside.txt
+       body[:40]=b'{"detail":"Not Found","request_id":"c30d'
+GET  404  -    -     etcpasswd             404          None            application/json      /assets/..%2F..%2F..%2Fetc%2Fpasswd
+       body[:40]=b'{"detail":"Not Found","request_id":"f26b'
+GET  404  -    -     etcpasswd-allenc      404          None            application/json      /assets/%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd
+       body[:40]=b'{"detail":"Not Found","request_id":"3fc7'
+GET  404  -    -     quad-dot              404          None            application/json      /assets/....//....//secret_outside.txt
+       body[:40]=b'{"detail":"Not Found","request_id":"57ad'
+GET  404  -    -     double-slash-abs      404          None            application/json      /assets//etc/passwd
+       body[:40]=b'{"detail":"Not Found","request_id":"fa0e'
+GET  404  -    -     enc-abs               404          None            application/json      /assets/%2fetc%2fpasswd
+       body[:40]=b'{"detail":"Not Found","request_id":"067a'
+GET  404  -    -     prod-env-canary       404          None            application/json      /assets/..%2f..%2f..%2f..%2fshared%2f.env
+       body[:40]=b'{"detail":"Not Found","request_id":"50a5'
+GET  404  -    -     prod-naspw-canary     404          None            application/json      /assets/..%2f..%2f..%2f..%2fshared%2fnas.pw
+       body[:40]=b'{"detail":"Not Found","request_id":"98fc'
+GET  404  -    -     winsep-5c             404          None            application/json      /assets/..%5c..%5csecret_outside.txt
+       body[:40]=b'{"detail":"Not Found","request_id":"6e85'
+GET  404  -    -     winsep-dot5c          404          None            application/json      /assets/%2e%2e%5c%2e%2e%5csecret_outside.txt
+       body[:40]=b'{"detail":"Not Found","request_id":"7bc8'
+GET  404  -    -     win-drive-fslash      404          None            application/json      /assets/C:%2fWindows%2fwin.ini
+       body[:40]=b'{"detail":"Not Found","request_id":"7378'
+GET  404  -    -     win-drive-bslash      404          None            application/json      /assets/C:%5cWindows%5cwin.ini
+       body[:40]=b'{"detail":"Not Found","request_id":"3edb'
+GET  404  -    -     unc-share             404          None            application/json      /assets/%5c%5cserver%5cshare
+       body[:40]=b'{"detail":"Not Found","request_id":"132f'
+GET  404  -    -     mixed-slash           404          None            application/json      /assets/..%2f..%5c..%2fsecret_outside.txt
+       body[:40]=b'{"detail":"Not Found","request_id":"1dde'
+GET  404  -    -     ads-stream            404          None            application/json      /assets/index-A1b2C3d4.js::$DATA
+       body[:40]=b'{"detail":"Not Found","request_id":"0ade'
+GET  404  -    -     double-enc-dot        404          None            application/json      /assets/%252e%252e%252f%252e%252e%252fsecret_outside.txt
+       body[:40]=b'{"detail":"Not Found","request_id":"115c'
+GET  404  -    -     double-enc-slash      404          None            application/json      /assets/..%252f..%252fsecret_outside.txt
+       body[:40]=b'{"detail":"Not Found","request_id":"5dab'
+GET  404  -    -     overlong-c0ae         404          None            application/json      /assets/%c0%ae%c0%ae%2fsecret_outside.txt
+       body[:40]=b'{"detail":"Not Found","request_id":"5164'
+GET  404  -    -     iis-u-encode          404          None            application/json      /assets/%u002e%u002e%2fsecret_outside.txt
+       body[:40]=b'{"detail":"Not Found","request_id":"8459'
+GET  404  -    -     sibling-prefix        404          None            application/json      /assets/../assets_evil/canary.txt
+       body[:40]=b'{"detail":"Not Found","request_id":"8b0d'
+GET  404  -    -     sibling-prefix-enc    404          None            application/json      /assets/..%2fassets_evil%2fcanary.txt
+       body[:40]=b'{"detail":"Not Found","request_id":"2b1f'
+GET  404  -    -     symlink-out           404          None            application/json      /assets/link_out.txt
+       body[:40]=b'{"detail":"Not Found","request_id":"cb30'
+GET  404  -    -     nul-mid               404          None            application/json      /assets/a%00.js
+       body[:40]=b'{"detail":"Not Found","request_id":"8905'
+GET  404  -    -     nul-suffix            404          None            application/json      /assets/..%2f..%2fsecret_outside.txt%00.js
+       body[:40]=b'{"detail":"Not Found","request_id":"4192'
+GET  404  -    -     leading-space         404          None            application/json      /assets/%20new
+       body[:40]=b'{"detail":"Not Found","request_id":"ce98'
+GET  404  -    -     trailing-space        404          None            application/json      /assets/new%20
+       body[:40]=b'{"detail":"Not Found","request_id":"4bfa'
+GET  404  -    -     fullwidth-dotslash    404          None            application/json      /assets/%ef%bc%8e%ef%bc%8e%ef%bc%8fsecret_outside.txt
+       body[:40]=b'{"detail":"Not Found","request_id":"46f9'
+GET  404  -    -     unicode-divslash      404          None            application/json      /assets/%e2%88%95etc%e2%88%95passwd
+       body[:40]=b'{"detail":"Not Found","request_id":"b55d'
+GET  404  -    -     overlong-65           404          None            application/json      /assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+       body[:40]=b'{"detail":"Not Found","request_id":"0c65'
+GET  404  -    -     overlong-220          404          None            application/json      /assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+       body[:40]=b'{"detail":"Not Found","request_id":"e33e'
+GET  404  -    -     four-segments         404          None            application/json      /assets/a/b/c/d
+       body[:40]=b'{"detail":"Not Found","request_id":"d7da'
+GET  404  -    -     empty-seg             404          None            application/json      /assets//
+       body[:40]=b'{"detail":"Not Found","request_id":"30ea'
+GET  404  -    -     empty-mid-seg         404          None            application/json      /assets/a//b
+       body[:40]=b'{"detail":"Not Found","request_id":"03df'
+GET  200  -    SHELL catchall-traversal    shell_or_404 no-cache        text/html; charset=utf-8 /..%2f..%2fsecret_outside.txt
+       body[:40]=b'<html>shell</html>'
+GET  200  -    SHELL catchall-route        shell        no-cache        text/html; charset=utf-8 /some/client/route
+       body[:40]=b'<html>shell</html>'
+GET  200  -    -     health                json         no-store        application/json      /api/health
+       body[:40]=b'{"status":"ok"}'
+HEAD 405  -    -     head-route            any          None            application/json      /assets/123
+       body[:40]=b''
+OPTIONS 405  -    -     options-route         any          None            application/json      /assets/123
+       body[:40]=b'{"detail":"Method Not Allowed","request_'
+POST 405  -    -     post-route            any          None            application/json      /assets/123
+       body[:40]=b'{"detail":"Method Not Allowed","request_'
+HEAD 405  -    -     head-traversal        any          None            application/json      /assets/../../secret_outside.txt
+       body[:40]=b''
+
+# distinct 404 bodies: 46
+  b'{"detail":"Not Found","request_id":"49635672ce8b4762a3cad8e29efdb6ab"}'  <- 1: ['missing-js']
+  b'{"detail":"Not Found","request_id":"ea36978157644c6aa9dad4a918124163"}'  <- 1: ['missing-css']
+  b'{"detail":"Not Found","request_id":"9bcac11c213c4e09b3ed670734ed00bf"}'  <- 1: ['missing-map']
+  b'{"detail":"Not Found","request_id":"40ebad0fc56e498c9c3845dcb691f650"}'  <- 1: ['missing-map2']
+  b'{"detail":"Not Found","request_id":"1fee6e67c024423d8a86f058d8cafee3"}'  <- 1: ['device-con']
+  b'{"detail":"Not Found","request_id":"138e0c9d1c6f409cbc94b6b1437e35be"}'  <- 1: ['device-nul']
+  b'{"detail":"Not Found","request_id":"b1451a06ca5a49e28c282c80d678b89b"}'  <- 1: ['device-aux']
+  b'{"detail":"Not Found","request_id":"126c313334b44a37873de52d530091b3"}'  <- 1: ['device-com1']
+  b'{"detail":"Not Found","request_id":"c4b5c36b3ee24104a79141ab636129a5"}'  <- 1: ['device-con-js']
+  b'{"detail":"Not Found","request_id":"fb070017c900467287654b3567a0f2ce"}'  <- 1: ['device-seg']
+  b'{"detail":"Not Found","request_id":"ca1a629568434aa78ff9ae8a43813d64"}'  <- 1: ['device-seg2']
+  b'{"detail":"Not Found","request_id":"f70399dc8bbf495d94326c311319ff5e"}'  <- 1: ['dotdot-raw']
+  b'{"detail":"Not Found","request_id":"aaa1192a7ad748ceb19f1ae05ccf0a55"}'  <- 1: ['enc-slash']
+  b'{"detail":"Not Found","request_id":"c30dc9c0c37b4d33a2949edd816fdb41"}'  <- 1: ['enc-dot']
+  b'{"detail":"Not Found","request_id":"f26bdb64c60e46f19a916f223bc87be1"}'  <- 1: ['etcpasswd']
+  b'{"detail":"Not Found","request_id":"3fc725c6fb3b4ea2b6fb16d5b9a50783"}'  <- 1: ['etcpasswd-allenc']
+  b'{"detail":"Not Found","request_id":"57ad5fb7a5054105bfed385e5a249549"}'  <- 1: ['quad-dot']
+  b'{"detail":"Not Found","request_id":"fa0e8ba1e99948e4bc011219fef9803b"}'  <- 1: ['double-slash-abs']
+  b'{"detail":"Not Found","request_id":"067aa3102ac7431384f08e87fd6f74ad"}'  <- 1: ['enc-abs']
+  b'{"detail":"Not Found","request_id":"50a58122c1224214837daa1f96177652"}'  <- 1: ['prod-env-canary']
+  b'{"detail":"Not Found","request_id":"98fcaf31c6d84b138b39154f6c9c6726"}'  <- 1: ['prod-naspw-canary']
+  b'{"detail":"Not Found","request_id":"6e8592e6c4f0402c902763fdb05152b6"}'  <- 1: ['winsep-5c']
+  b'{"detail":"Not Found","request_id":"7bc8398e1e1d4bb5a9ea692890d2c421"}'  <- 1: ['winsep-dot5c']
+  b'{"detail":"Not Found","request_id":"7378b42b89094f6db8d8f975528c5d69"}'  <- 1: ['win-drive-fslash']
+  b'{"detail":"Not Found","request_id":"3edbe94ce2574a3a8faf82a1313771cd"}'  <- 1: ['win-drive-bslash']
+  b'{"detail":"Not Found","request_id":"132f0dc1976c4ba0a3bf80e211d992d9"}'  <- 1: ['unc-share']
+  b'{"detail":"Not Found","request_id":"1dde85e529974796ae5c66a4fe0a6f0a"}'  <- 1: ['mixed-slash']
+  b'{"detail":"Not Found","request_id":"0ade47ee809249a4a65fcace8c591c70"}'  <- 1: ['ads-stream']
+  b'{"detail":"Not Found","request_id":"115c46c451ed4957b55e37ee6b710c6c"}'  <- 1: ['double-enc-dot']
+  b'{"detail":"Not Found","request_id":"5dab7babd2384263b62de68e2648f10e"}'  <- 1: ['double-enc-slash']
+  b'{"detail":"Not Found","request_id":"51641c47fd04440485d0448be82da1fe"}'  <- 1: ['overlong-c0ae']
+  b'{"detail":"Not Found","request_id":"8459c996ec3a4888a896f045d2c4ac2b"}'  <- 1: ['iis-u-encode']
+  b'{"detail":"Not Found","request_id":"8b0deedc2bb241ee86adc9fb51fe0741"}'  <- 1: ['sibling-prefix']
+  b'{"detail":"Not Found","request_id":"2b1f4ea80deb4d149b285964fb762340"}'  <- 1: ['sibling-prefix-enc']
+  b'{"detail":"Not Found","request_id":"cb3010dc552b478996dd363bdcabf535"}'  <- 1: ['symlink-out']
+  b'{"detail":"Not Found","request_id":"890564f28ec1483fb61093323af6178d"}'  <- 1: ['nul-mid']
+  b'{"detail":"Not Found","request_id":"4192b6f017a64fd69c7c811b24e191b5"}'  <- 1: ['nul-suffix']
+  b'{"detail":"Not Found","request_id":"ce98c14775a4475498a13413de22f308"}'  <- 1: ['leading-space']
+  b'{"detail":"Not Found","request_id":"4bfa06e1b08144788a995ad44e22cc21"}'  <- 1: ['trailing-space']
+  b'{"detail":"Not Found","request_id":"46f982161967482d9cfdfc6f7d3fc86b"}'  <- 1: ['fullwidth-dotslash']
+  b'{"detail":"Not Found","request_id":"b55d9d9016564d1e8f6c258856db4419"}'  <- 1: ['unicode-divslash']
+  b'{"detail":"Not Found","request_id":"0c65630e1f47406990d7ffca98dbb119"}'  <- 1: ['overlong-65']
+  b'{"detail":"Not Found","request_id":"e33e028a53f6457cbe5e8b1b92a13a7b"}'  <- 1: ['overlong-220']
+  b'{"detail":"Not Found","request_id":"d7daa8eedc1a448dbc9e89ebe7db7bd3"}'  <- 1: ['four-segments']
+  b'{"detail":"Not Found","request_id":"30ead283fc1f42648eb52478fca6dd5d"}'  <- 1: ['empty-seg']
+  b'{"detail":"Not Found","request_id":"03dffc2274e94d53bbf516a90f2748c9"}'  <- 1: ['empty-mid-seg']
+
+LEAKS: 0 []
+canary file served instead of shell: 0 []
+expected-shell but not shell: 0 []
+expected-404 but not 404/400: 0 []
+=== startup/5xx check in uvicorn log ===
+500 responses: 0
+Tracebacks:    0
+Refused start: 0
+--- last 8 uvicorn log lines ---
+/app/app/main.py:11: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+  from app.core.errors import SPA_FALLBACK_PATH, is_api_path, register_exception_handlers, unknown_api_response
+INFO:     Started server process [11]
+INFO:     Waiting for application startup.
+CKAM logging: could not write system_event (ConnectionRefusedError: [Errno 111] Connection refused). Failure 1; while it continues it is reported again at most once a minute with a count.
+WARNING:     [ckam.system] The database is at migration None but this code expects c6e8a0b2d4f6. Run `alembic upgrade head` (after a backup).
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8400 (Press CTRL+C to quit)

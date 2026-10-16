@@ -1,0 +1,5 @@
+ id | level | component |    event     |                               msg                               | total |            request_id            
+----+-------+-----------+--------------+-----------------------------------------------------------------+-------+----------------------------------
+  2 | ERROR | logging   | write_failed | Could not write audit_log: 1 failure(s) so far in this process. | 1     | 2e81ee28e3b44069b2a59ed5123adc97
+(1 row)
+

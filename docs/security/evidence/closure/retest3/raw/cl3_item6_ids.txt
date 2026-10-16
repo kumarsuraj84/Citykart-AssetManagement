@@ -1,0 +1,17 @@
+ERROR:  column "has_serial" does not exist
+LINE 1: SELECT id, name, has_serial FROM item WHERE id IN (1,3) ORDE...
+                         ^
+ERROR:  column "kind" does not exist
+LINE 1: SELECT id, kind, name FROM asset_user WHERE kind='STOCK_ROOM...
+                   ^
+HINT:  Perhaps you meant to reference the column "asset_user.id".
+ id |          name          
+----+------------------------
+  1 | Cost Centre CKSPL Main
+(1 row)
+
+ id |         name          
+----+-----------------------
+  1 | SEC IT Supplies CKSPL
+(1 row)
+

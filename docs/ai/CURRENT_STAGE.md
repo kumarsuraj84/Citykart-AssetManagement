@@ -1,5 +1,40 @@
 # CKAM — Current Stage
 
+## Security assurance and closure (2026-10-15/16)
+
+| | |
+|---|---|
+| Written | 2026-10-16 (WP-M2b, documents only) |
+| Where | Worktree `ckam-build`, branch `worktree-ckam-build`, local HEAD `fd34520` |
+| State | **Done locally only. NOTHING is pushed, NOTHING is deployed, production was never touched.** 23 commits ahead of origin `c66378d` (`4ba4e94` + 22 security commits `3e134c1` … `fd34520`). Production 10.0.1.98 still runs release `3b5e842` (database at `e6f8a0b2c4d6`) |
+| Alembic | Code head `c6e8a0b2d4f6` (single head). Four migrations added by the programme, in order: `f9a1c3e5b7d2` (asset_user.token_version), `a3c5e7f9b1d4` (TRUNCATE guards on append-only tables + 5-year audit purge floor), `b5d7f9a1c3e5` (auth_session: refresh-token reuse detection), `c6e8a0b2d4f6` (DB guard on asset.status / current_asset_user_id / status_since). They must run **before** the new code starts. The dev DB, the UAT copy and the security test DB are at head; production is not |
+| Tests at `fd34520` | Backend 2541 passed, 1 skipped; frontend `tsc` clean, vitest 1257 passed in 92 files, `npm run build` + `npm run check:build` OK; Playwright 11 passed, 1 skipped; security journeys 14/14 |
+
+**What was done locally.** A full internal VAPT (about 636 cases; 1 Critical IF-01, 1 High IF-02, many
+Medium/Low), the code fixes, and a closure stage with two independent re-attacks (137 and 497 cases; 0
+escalations in 217 routes x 14 identities), a native Windows test of the file-read fix (fake secrets: old code
+leaked in 10 of 28 attempts, new code in 0 of 28), a performance before/after (no regression over threshold), a
+database least-privilege simulation (`ops/db/`), Windows reference scripts (`ops/windows/`), and the document
+set in `docs/security/` (findings and closure registers, ISO 27001 and SOC 2 readiness with matrices, threat
+model, baseline, external actions EXT-01 … EXT-50, evidence index, runbooks and plans, 15 **DRAFT** policies —
+MANAGEMENT APPROVAL REQUIRED, none approved). Verdicts: local code remediation complete with external actions;
+**production NOT remediated**; ISO technical readiness PARTIAL, ISO organisational readiness WEAK; SOC 2 Type I
+WEAK (as to production), Type II NOT READY. No certification or attestation exists or is claimed.
+
+**URGENT production exposure.** Live release `3b5e842` still has **IF-01** (unauthenticated arbitrary file read
+on the single-port server, since 2026-09-30: the `.env` with the JWT secret and DB password is readable) and the
+QR / Asset 360 deep-link bug (scanned labels most likely fail). Nothing changes until the owner (1) approves the
+push ("commit and push to git and main" = push only) and (2) separately requests the deploy. The exact procedure
+— preserve logs, precheck, push, backup, migrations, deploy, start with `--no-proxy-headers --no-server-header`,
+verify, rotate the JWT secret, DB, NAS and ERP passwords, compromise assessment — is in
+`docs/security/CKAM_URGENT_PRODUCTION_SECURITY_RUNBOOK.md`; the full picture is in
+`docs/security/CKAM_SECURITY_MASTER_HANDOVER.md`. Owner decisions waiting: `docs/security/CKAM_SECURITY_DECISIONS_REQUIRED.md`.
+
+**Untracked, deliberately not committed:** `docs/ai/CKAM_DEMO_WALKTHROUGH.md` and `docs/ai/demo-screens/` (a
+local demo walkthrough that contains a demo password).
+
+---
+
 ## Simplification programme (Level 3) — implemented locally
 
 | | |
@@ -9,7 +44,7 @@
 | State | **Pushed to origin (`claude/brave-euler-07879a` and `worktree-ckam-build` at `3b5e842`) and DEPLOYED to production on 2026-10-14 as release `3b5e842`** (10.0.1.98, database 10.0.0.205 at `e6f8a0b2c4d6`; details in `PRODUCTION_INFRASTRUCTURE.md`). The retired 10.0.1.12 was not touched |
 | Scope | The Level-3 programme of `CKAM_SIMPLIFICATION_IMPLEMENTATION_PLAN.md`: stages S0 to S6 built, **S7 full UAT done (first UAT, fix round, retest, fix round 2) and S8 (audit trail, logs, diagnostics) built**. Result and verdict: `CKAM_SIMPLIFICATION_FINAL_REPORT.md`, `CKAM_FINAL_UAT.md` |
 | As-built description | `CKAM_FINAL_OPERATING_MODEL.md`, `CKAM_FINAL_INFORMATION_ARCHITECTURE.md`, the eleven `DECISIONS.md` entries dated 2026-10-14, and the stage reports `CKAM_SIMPLIFICATION_S0 … S6BE`. The proposal documents (`CKAM_SIMPLIFIED_OPERATING_MODEL.md`, `CKAM_SIMPLIFIED_INFORMATION_ARCHITECTURE.md`) are superseded where they differ |
-| Alembic | single head `e6f8a0b2c4d6` (S8 logging tables), after `d2e4f6a8b0c2` (idempotency keys + one live PO number per company) and `c1d3e5f7a9b0` |
+| Alembic | single head `e6f8a0b2c4d6` (S8 logging tables), after `d2e4f6a8b0c2` (idempotency keys + one live PO number per company) and `c1d3e5f7a9b0`. *Update 2026-10-16: this is still the production head; the local code head is now `c6e8a0b2d4f6` after the four security migrations (see the security section above).* |
 
 ### What changed, in one paragraph
 

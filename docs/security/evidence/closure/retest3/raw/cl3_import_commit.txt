@@ -1,0 +1,2 @@
+{"imported":2,"errors":[{"row":3,"message":"A category with the name 'CL3 Import Dup 009757' already exists."},{"row":5,"message":"A category with the name 'CL3 Cat A 009757' already exists."}]}
+HTTP=200

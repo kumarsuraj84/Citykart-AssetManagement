@@ -1,0 +1,14 @@
+NOTICE:  database "ckam_r3_rs" does not exist, skipping
+DROP DATABASE
+DROP ROLE
+NOTICE:  role "r3_app" does not exist, skipping
+NOTICE:  role "r3_migrator" does not exist, skipping
+DROP ROLE
+DROP ROLE
+NOTICE:  role "r3_owner" does not exist, skipping
+CREATE ROLE
+CREATE ROLE
+CREATE ROLE
+GRANT ROLE
+CREATE DATABASE
+GRANT

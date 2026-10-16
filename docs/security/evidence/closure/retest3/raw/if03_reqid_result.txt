@@ -1,0 +1,26 @@
+===== nginx-served responses (expect exactly ONE server-generated X-Request-ID) =====
+static-index               GET    /index.html                        HTTP=200  x-request-id count=1  value=f442f3e5036c924b24d5085889dd5732
+spa-route                  GET    /assets/123                        HTTP=200  x-request-id count=1  value=df9e76912b4da8b0ef9acf57050483fe
+static-404-js              GET    /assets/nope-00000000.js           HTTP=404  x-request-id count=1  value=e34f502d97dcea1b90191837f848f2ee
+static-404-css             GET    /assets/nope-00000000.css          HTTP=404  x-request-id count=1  value=b9fa037335aba1cac00e2c53683dd5e3
+map-404                    GET    /assets/app-x.js.map               HTTP=404  x-request-id count=1  value=6aa32010333445a2ffcce8bd0715cb3e
+root-spa-fallbk            GET    /totally/unknown/route             HTTP=200  x-request-id count=1  value=ae729cbcd4cc6e010e99c63d51ada4a9
+
+===== 413 oversize upload (nginx @too_large JSON) =====
+oversize-413               POST   /api/auth/login                    HTTP=413  x-request-id count=1  value=d69f316ea1306b5f9bc6e698a7a7b5a2
+
+===== API responses via nginx /api/ (app id passed through, once) =====
+api-health                 GET    /api/health                        HTTP=200  x-request-id count=1  value=79e5bdd7382e4a1c886334b9bb807cdc
+api-404                    GET    /api/does-not-exist                HTTP=404  x-request-id count=1  value=03f8fe70bffc47dcaff97a4d3d982346
+
+===== client tries to CHOOSE the id (value returned must be server-generated/sanitised, never echoed) =====
+client-id-static           GET    /index.html                        HTTP=200  x-request-id count=1  value=72c593c9d8f4420d35bed5ec66a42fa2
+client-id-api              GET    /api/health                        HTTP=200  x-request-id count=1  value=attacker-1
+client-id-api404           GET    /api/does-not-exist                HTTP=404  x-request-id count=1  value=attacker-oops
+client-id-long             GET    /api/health                        HTTP=200  x-request-id count=1  value=572d5a31aea94eeaa02c5a49fb37f3e9
+client-id-odd              GET    /api/health                        HTTP=200  x-request-id count=1  value=0cc12fe532f443e7a6fdf1e0368b6ae2
+
+(full raw headers of the client-id-api case:)
+HTTP/1.1 200 OK
+x-request-id: attacker-1
+Cache-Control: no-store

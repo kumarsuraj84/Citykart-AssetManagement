@@ -3,10 +3,10 @@
 | | |
 |---|---|
 | System | CKAM (CityKart Asset Manager) |
-| Date | 2026-10-15 |
-| Code range | `4ba4e94` (start of the programme) .. `d04779a` (HEAD), worktree `ckam-build` |
-| Commits | `3e134c1`, `7e57844`, `ba04371`, `77431ba`, `4fa5c9b`, `ae706bb`, `da790d1`, `d04779a` (all local; **none pushed, none deployed**) |
-| Migrations added | `f9a1c3e5b7d2` (`asset_user.token_version`), `a3c5e7f9b1d4` (TRUNCATE guards, 5-year audit purge floor). Single Alembic head: `a3c5e7f9b1d4` |
+| Date | 2026-10-15 (Part 1); **Part 2 — closure stage added 2026-10-16** |
+| Code range | Part 1: `4ba4e94` (start of the programme) .. `d04779a`. **Part 2: .. `fd34520` (final HEAD)**, worktree `ckam-build` |
+| Commits | Part 1: `3e134c1`, `7e57844`, `ba04371`, `77431ba`, `4fa5c9b`, `ae706bb`, `da790d1`, `d04779a`. Part 2: `a3e8fce`, `7b039fb`, `79dbae7`, `69c3a51`, `b401e9f`, `734fd19`, `ca94574`, `fafa225`, `fd34520` (code/test) plus documentation commits `627ed73`, `3362c1b`, `f746e71`, `8664b77`. All local; **none pushed, none deployed** |
+| Migrations added | `f9a1c3e5b7d2` (`asset_user.token_version`), `a3c5e7f9b1d4` (TRUNCATE guards, 5-year audit purge floor); **Part 2:** `b5d7f9a1c3e5` (`auth_session`), `c6e8a0b2d4f6` (asset lifecycle field guard). Single Alembic head: **`c6e8a0b2d4f6`** (was `a3c5e7f9b1d4` at the end of Part 1) |
 | Related | `CKAM_SECURITY_FINDINGS_REGISTER.md` (every finding and its status), `CKAM_VAPT_REPORT.md`, `CKAM_EXTERNAL_SECURITY_ACTIONS.md` |
 
 ## In plain words
@@ -20,6 +20,11 @@ passwords are refused, and too many sign-in attempts in a minute get a "wait a m
 None of this is live yet. The most urgent step is to deploy it (it closes IF-01) and then change the
 production secrets. The order matters and is written in section 5.
 
+**Update 2026-10-16.** The closure stage (Part 2 at the end of this report) fixed everything that was still
+fixable in code, was attacked again by independent testers, and fixed the 7 new problems those testers found; a
+third independent retest then re-attacked those last fixes (52/52 checks passed, nothing new found). The deploy order is now in Part 2 §P2.4 (four migrations, not two). Section 7 below is **superseded** by
+the tested scripts in `ops/db/` and must not be run as written. Production is still not remediated.
+
 ---
 
 ## Contents
@@ -30,12 +35,19 @@ production secrets. The order matters and is written in section 5.
 4. Behaviour users will notice
 5. Migration notes and production deploy order
 6. Regression results
-7. Least-privilege database role design (DESIGN ONLY, NOT APPLIED)
-8. What was not changed, and why
+7. Least-privilege database role design (DESIGN ONLY, NOT APPLIED) — **SUPERSEDED 2026-10-16 by `ops/db/`**
+8. What was not changed, and why (with 2026-10-16 updates)
+9. **Part 2 — closure stage (2026-10-16)**: per-fix detail, user-visible changes, migrations and deploy order,
+   regression, what was not changed and why
 
 ---
 
 ## 1. Summary table
+
+> Dated note 2026-10-16: statuses below are as at 2026-10-15. Final statuses: `CKAM_SECURITY_FINDINGS_REGISTER.md`
+> ("FINAL 2026-10-16" notes) and `CKAM_SECURITY_CLOSURE_REGISTER.md` section 0. Changed since: IF-11 → MITIGATED
+> (external residual EXT-12); AU-04 → DECISION REQUIRED; AU-06 → FIXED (`69c3a51`); AU-12 now has permanent tests
+> (`79dbae7`); N1, N4, AU-08, AU-15, RACE-1 independently retested.
 
 | ID | Sev. | Status | Commit | Main code | Permanent test |
 |---|---|---|---|---|---|
@@ -89,7 +101,7 @@ Retest evidence paths are relative to `docs/security/evidence/retest/`. `RT-AU-�
 | Security test added | `backend/tests/test_static_frontend.py::test_assets_route_cannot_read_files_outside_the_assets_folder` (10 variants: `..`, `%2e%2e`, `%5c`, absolute, sibling folder, NUL) |
 | After | Every escape attempt is a plain 404 that does not reveal whether the file exists; real assets still load |
 | Retest evidence | `aii_raw/if01_run1.txt`, `aii_raw/if01_run2.txt`; RT-AU-T801…T836: 36 probes × 2 runs (encoded, double-encoded, `%5c`, mixed, `..;/`, `%00`, overlong UTF-8, `//`, `%2f`, sibling prefixes `assets-evil` / `frontend-dist-evil`, symlink out of `assets/`, `shared/.env`, `shared/nas.pw`): all 404, 0 leaks, no 5xx |
-| Regression | Pass. Limitation: tested on Linux. Windows backslash, drive-letter and UNC forms are covered by the same `resolve()` + `is_relative_to` logic by design but were not executed; probe them on production after deploy (EXT-01) |
+| Regression | Pass. Limitation: tested on Linux. Windows backslash, drive-letter and UNC forms are covered by the same `resolve()` + `is_relative_to` logic by design but were not executed; probe them on production after deploy (EXT-01). **Update 2026-10-16:** the Windows forms were hardened lexically (IF-01-WIN, `7b039fb`, Part 2) and executed on a real Windows file system on the dev PC: the old code leaked 10 of 28 payloads (fake `.env`, `nas.pw`, `C:\Windows\win.ini`, also via `\\localhost\C$`), the fixed code 0 of 28 (`evidence/closure/windows/`) |
 | Production | **Still vulnerable** until EXT-01 (deploy) and EXT-02 (rotate JWT secret, DB, NAS and ERP passwords) |
 
 ### IF-03 Another company's ERP PO draft readable (MEDIUM)
@@ -312,7 +324,7 @@ Retest evidence paths are relative to `docs/security/evidence/retest/`. `RT-AU-�
 | Before | Length 8-128 only (AU-T047) |
 | Risk | `Password1`, `Citykart2026` and similar accepted |
 | Root cause | No content rules |
-| Code changed | New `backend/app/auth/password_policy.py::password_problem`: `COMMON_PASSWORDS` (about 100), same character / runs, `^(ckam|citykart)[\W\d_]*$`, the person's code / e-mail local part / name words (≥ 4 characters); `d04779a` adds `COMMON_BASE_WORDS` with look-alike mapping (`@`→a, `0`→o, …) and stripping of surrounding digits/symbols. `auth/router.py::change_password` returns 422 with the sentence and writes a `PASSWORD_CHANGE_FAILED` security row |
+| Code changed | New `backend/app/auth/password_policy.py::password_problem`: `COMMON_PASSWORDS` (about 100), same character / runs, `^(ckam\|citykart)[\W\d_]*$`, the person's code / e-mail local part / name words (≥ 4 characters); `d04779a` adds `COMMON_BASE_WORDS` with look-alike mapping (`@`→a, `0`→o, …) and stripping of surrounding digits/symbols. `auth/router.py::change_password` returns 422 with the sentence and writes a `PASSWORD_CHANGE_FAILED` security row |
 | Security test added | `backend/tests/auth/test_vapt_password_policy.py` (10), incl. `test_a_common_word_with_digits_or_symbols_around_it_is_refused` (`Password@2026`, `Welcome@2026`, `Adm1n#123`, `P@ssw0rd99`, …) and `test_reasonable_passwords_and_every_password_the_test_suite_uses_are_fine` |
 | After | Weak choices refused in plain words. Resets and issued passwords stay random |
 | Retest evidence | RT-AU-T201…T221, T135/T136 (`aii_raw/policy_out.txt`); T217/T218 FAIL closed later in `d04779a` (permanent test only, **not re-run by the retest agent**) |
@@ -325,7 +337,7 @@ Retest evidence paths are relative to `docs/security/evidence/retest/`. `RT-AU-�
 | Before | `/assets/index-*.js.map` answered 200 (AU-T065) |
 | Risk | Would expose original source if maps existed |
 | Root cause | The maps were never built; nginx's SPA fallback returned `index.html` with 200 for any unknown path, including `.map` |
-| Code changed | `frontend/nginx.conf`: `location ~* \.map$ { return 404; }` and `location ~* \.(?:js|mjs|css)$ { try_files $uri =404; }`; `frontend/vite.config.ts`: `build.sourcemap: false` |
+| Code changed | `frontend/nginx.conf`: `location ~* \.map$ { return 404; }` and `location ~* \.(?:js\|mjs\|css)$ { try_files $uri =404; }`; `frontend/vite.config.ts`: `build.sourcemap: false` |
 | Security test added | No automated test; verified by the production build (0 `.map` files) and the retest (0 `sourceMappingURL` comments). A permanent check would be a small addition |
 | After | Real 404 for maps and missing scripts/styles |
 | Retest evidence | RT-AU-T411…T414 |
@@ -494,6 +506,10 @@ Programme test files that were changed again within the programme (by `d04779a`)
 
 ## 5. Migration notes and production deploy order
 
+> **Superseded 2026-10-16:** the closure stage added two more migrations (`b5d7f9a1c3e5`, `c6e8a0b2d4f6`), the
+> head is now `c6e8a0b2d4f6`, and the start command needs `--no-proxy-headers --no-server-header`. Use the deploy
+> order in Part 2 §P2.4 and `CKAM_URGENT_PRODUCTION_SECURITY_RUNBOOK.md`. The text below is kept as history.
+
 ### 5.1 Migrations
 
 | Revision | What it does | Notes |
@@ -528,6 +544,9 @@ the same way. Deploy first, then rotate.
 
 ## 6. Regression results (final lead runs)
 
+> Dated note 2026-10-16: these are the Part 1 numbers. The final numbers on `fd34520` are in Part 2 §P2.5
+> (backend 2541 passed, 1 skipped; vitest 1257 in 92 files).
+
 | Suite | Result |
 |---|---|
 | Backend pytest (`ckam_test` database) | **1783 passed**¹ |
@@ -550,6 +569,19 @@ journeys (10 test declarations in `frontend/e2e/security.spec.ts`, one of which 
 
 ## 7. Least-privilege database role design — DESIGN ONLY, NOT APPLIED
 
+> **SUPERSEDED 2026-10-16 — DO NOT RUN THE SQL IN THIS SECTION.** The tested version is `ops/db/role_split.sql`
+> with `ops/db/role_split_verify.sql`, `ops/db/check_least_privilege.sql` and `ops/db/ROLE_SPLIT_RUNBOOK.md`
+> (WP-B `734fd19`, corrected in WP-F `ca94574`), proven on a disposable database
+> (`evidence/closure/db/WPB_RESULTS.md`). This section is what EXT-07 earlier called "to be supplied"; it is now
+> supplied by those files. Two defects of the design below, found in the closure retest, are fixed only in
+> `ops/db/`: (1) step 4 and step 8 grant `UPDATE` on sequences, which lets the runtime role `setval` the ledger id
+> sequences and silently stop the database audit trail (**CL2-IF-01, MEDIUM**) — the tested script grants
+> `USAGE, SELECT` only; (2) nothing clears role defaults the runtime role may set on itself (**CL2-IF-02**) — the
+> tested script runs `ALTER ROLE … RESET ALL` and the checks FAIL on any stored setting. The proposed production
+> names are also different (runbook: `ckasset_owner`, `ckasset_migrator`, runtime stays `ckassetapp`; never reuse
+> `ckam_app`), and Alembic runs as the migrator with `ALEMBIC_SET_ROLE=<owner>` (`backend/app/alembic/env.py`).
+> The text below is kept as history.
+>
 > **Status: DESIGN ONLY. NOT APPLIED anywhere.** Nothing below has been run on 10.0.0.205, the dev stack or any
 > other database. It closes the residual of IF-05 / IF-06 (EXT-07). The owner runs it himself as superuser on
 > 10.0.0.205, after a backup, in a maintenance window, typing every password himself. It touches only CKAM's
@@ -644,24 +676,431 @@ permission denied; a normal sign-in, asset create and move work. Then a superuse
 
 ## 8. What was not changed, and why
 
+> Dated note 2026-10-16: several rows below were stale or have since changed. The corrections are written into
+> the rows as "**Update 2026-10-16**"; the closure-stage list is Part 2 §P2.7.
+
 | Item | Why not in this programme | Where it goes |
 |---|---|---|
 | HTTPS, `Secure` cookie (IF-02, AU-13) | Needs a certificate and a reverse proxy on the production server | EXT-04, EXT-05 |
-| Database owner/runtime role split (IF-05/IF-06 residual) | Database-administration change on the shared production database; superuser password typed by the owner | Section 7, EXT-07 |
+| Database owner/runtime role split (IF-05/IF-06 residual) | Database-administration change on the shared production database; superuser password typed by the owner. **Update 2026-10-16:** the scripts now exist and are tested locally (`ops/db/role_split.sql` etc., `734fd19`, corrected `ca94574`); only the production run remains | Section 7 (superseded by `ops/db/`), EXT-07 |
 | Service account instead of SYSTEM (IF-07) | Windows server change | EXT-06 |
 | Off-server backups and restore test (IF-08) | Infrastructure | EXT-08 |
 | Dev PC file permissions (IF-09) | Local administrator action | EXT-10 |
-| uvicorn `--no-proxy-headers` (N2) | The production launcher is on the server only, not in git. `backend/Dockerfile` CMD was also left with uvicorn's defaults (dev/UAT; nginx connects from another container address, so only a client inside the API container could use it) | EXT-13 (and a small Dockerfile change later) |
-| nginx `X-Forwarded-For` / `TRUSTED_PROXIES` for Docker (N3) | Dev/UAT only; accepted | — |
-| Refresh-token reuse detection (AU-06 residual) | Needs server-side storage of the current token id per session; a design change, not a quick fix | Backlog |
-| Lock-out abuse (AU-04 residual) | A hard lock is the chosen design; real options are MFA, network restriction or progressive delays | EXT-05, EXT-19 |
-| MFA | Management decision | EXT-19 |
-| Full Admin company scope (D6) | Owner decision open | EXT-26 |
-| Self-hosted fonts (FONTS) | Small frontend change, not security-blocking; CSP currently allows the two Google hosts | EXT-11 |
-| Dev image as root (IF-13) | Dev/UAT only; production has no Docker | Backlog |
-| ERP TLS and SELECT-only role (IF-16) | Needs the ERP warehouse owner first | EXT-25 |
-| Runbook and launcher in git (IF-15) | Needs a copy of the server scripts with secrets removed | EXT-13 |
-| `python-jose` / `ecdsa` (IF-12) | Not reachable (HS256 pinned); replacing the JWT library is a larger change | Accepted |
-| `token_version` raised in Python, not one SQL increment (OBS-TV) | Suspected, low impact, not tested | Backlog |
-| No database guard on `Asset.status` (OBS-STATUS) | Protected by the code rule (`apply_event` is the only writer) | Backlog |
-| Stale comment in `auth/router.py::login` (OBS-COMMENT) | Documentation-only issue found while writing this report; no code edits were made in this reporting step | Next code change |
+| uvicorn `--no-proxy-headers` (N2) | The production launcher is on the server only, not in git. ~~`backend/Dockerfile` CMD was also left with uvicorn's defaults~~ **Update 2026-10-16 — this was stale:** `a3e8fce` (committed right after this report was written) added `--no-proxy-headers` to the Dockerfile CMD; since `79dbae7` / `ca94574` both Dockerfile targets run `uvicorn … --no-proxy-headers --no-server-header`, the reference launcher `ops/windows/run_ckam_web.ps1.template` carries both flags, and `backend/tests/core/test_n2_forwarded_for.py` pins them. Only the **live** production launcher remains | EXT-38 / EXT-13 |
+| nginx `X-Forwarded-For` / `TRUSTED_PROXIES` for Docker (N3) | Dev/UAT only; accepted. **Update 2026-10-16:** acceptance withdrawn and fixed in `79dbae7` (Part 2) | Done |
+| Refresh-token reuse detection (AU-06 residual) | Needs server-side storage of the current token id per session; a design change, not a quick fix. **Update 2026-10-16:** built in `69c3a51` (Part 2) | Done |
+| Lock-out abuse (AU-04 residual) | A hard lock is the chosen design; real options are MFA, network restriction or progressive delays. **Update 2026-10-16:** reclassified DECISION REQUIRED; options paper `evidence/closure/backend/AU-04_OPTIONS.md` | SD-06 |
+| MFA | Management decision | EXT-19, SD-03 |
+| Full Admin company scope (D6) | Owner decision open | EXT-26, SD-02 |
+| Self-hosted fonts (FONTS) | Small frontend change, not security-blocking; CSP currently allows the two Google hosts. **Update 2026-10-16:** done in `79dbae7` / `b401e9f` | Done |
+| Dev image as root (IF-13) | Dev/UAT only; production has no Docker. **Update 2026-10-16:** done in `79dbae7` | Done |
+| ERP TLS and SELECT-only role (IF-16) | Needs the ERP warehouse owner first. **Update 2026-10-16:** code settings added in `7b039fb` (default unchanged) | EXT-25 |
+| Runbook and launcher in git (IF-15) | Needs a copy of the server scripts with secrets removed. **Update 2026-10-16:** secret-free reference scripts in `ops/windows/` (`79dbae7`); reconciliation with the live launcher remains | EXT-13 |
+| `python-jose` / `ecdsa` (IF-12) | Not reachable (HS256 pinned); replacing the JWT library is a larger change | Accepted (re-confirmed 2026-10-16) |
+| `token_version` raised in Python, not one SQL increment (OBS-TV) | Suspected, low impact, not tested. **Update 2026-10-16:** atomic increment in `69c3a51` | Done |
+| No database guard on `Asset.status` (OBS-STATUS) | Protected by the code rule (`apply_event` is the only writer). **Update 2026-10-16:** database trigger in `734fd19` | Done |
+| Stale comment in `auth/router.py::login` (OBS-COMMENT) | Documentation-only issue found while writing this report; no code edits were made in this reporting step. **Update 2026-10-16:** corrected in `a3e8fce` | Done |
+
+---
+
+# Part 2 — closure stage (2026-10-16)
+
+| | |
+|---|---|
+| Code range | `627ed73` → `fd34520` (code/test commits `a3e8fce`¹, `7b039fb`, `79dbae7`, `69c3a51`, `b401e9f`, `734fd19`, `ca94574`, `fafa225`, `fd34520`) |
+| Inputs | `CKAM_SECURITY_CLOSURE_REGISTER.md` (baseline), `evidence/closure/**` (work-package results, retests, performance, native Windows run), `git show --stat` of each commit and the current source |
+| Production | **Not touched. PRODUCTION REMAINS NOT REMEDIATED** (`3b5e842` still has IF-01 and CL2-IF-04) |
+
+¹ `a3e8fce` (N2 Docker flag, OBS-COMMENT) predates `627ed73` but was not in Part 1; it is listed here for completeness.
+
+## P2.1 Per-fix detail
+
+Columns as in Part 1. "Retest evidence" paths are relative to `docs/security/`. "Regression" = the full backend
+run at the end of the package (counts in §P2.5) — every one passed with no failure.
+
+### IF-01-WIN — Windows path forms on `/assets/{file_path:path}` (observation, LOW suspected) — `7b039fb`
+
+| | |
+|---|---|
+| Before | The IF-01 fix called `resolve()` before the containment check, so on Windows a UNC or drive value (`%5c%5chost%5cshare`, `C:%2fWindows%2fwin.ini`) reached the filesystem first (possible outbound SMB lookup). On a real Windows file system the **old** release `4ba4e94` returned the fake `.env`, `nas.pw` and `C:\Windows\win.ini` for 10 of 28 payloads |
+| Risk | Windows-only bypass or SMB credential leak on the production server type |
+| Root cause | Containment proven only after an OS path operation; Windows path semantics (drive, UNC, ADS, device names, trailing dot/space, 8.3 names) never handled lexically |
+| Code changed | New `backend/app/core/static_safety.py`: `is_safe_relative_name()` (pure text check, no filesystem: refuses backslash, NUL, colon, leading `/`, empty / dot segments, trailing dot or space, device names, `~digit` short names, characters outside `[A-Za-z0-9._~-]`, > 200 characters, anything `PureWindowsPath` reads as drive/root/`..`) and `safe_asset_path()` (then join, `resolve()`, containment, symlink/junction refusal, `is_file()`). Used by `backend/app/main.py::_serve_frontend_asset` and the root-file branch of `_serve_frontend_shell` |
+| Test added | `backend/tests/test_static_frontend_windows.py` (~80 payloads; e.g. `test_the_lexical_check_refuses_every_dangerous_form`, `test_a_refused_name_never_reaches_the_filesystem`, `test_every_refused_name_is_the_same_plain_404_through_the_route`, `test_a_symlink_inside_assets_that_points_outside_is_404_through_the_route`, `test_legitimate_hashed_assets_are_served_with_their_content_type`) |
+| After | Every refused name is the same plain 404 with zero filesystem calls built from the URL; hashed `.js`/`.css`/`.woff2` still served |
+| Retest evidence | Closure retest 1 Windows-style payloads PASS (`evidence/closure/retest1/RETEST1.md`); retest 2 access, 23 payloads in a production-mode container, 0 leaks (`evidence/closure/retest2/access/raw/prod_file_probe.json`); **native Windows on the dev PC:** `7b039fb` and final `fafa225` 0 of 28, 0 5xx (`evidence/closure/windows/native_windows_fixed_release_7b039fb.txt`, `…_final_release_fafa225.txt`) |
+| Regression | Pass (2437 passed, 1 skipped). Limits: junctions, real 8.3 aliases and SMB lookups not exercised natively; run on the dev PC, not on the production server |
+
+### N6 — unknown `/api/...` answered with the SPA shell — `7b039fb`
+
+| | |
+|---|---|
+| Before | Single-port mode: `GET /api/nope` → 200 `text/html`; `POST /api/nope` → 405 |
+| Risk | Misleading answers; clients and monitors could not tell a wrong address from success |
+| Root cause | The SPA catch-all did not exclude `/api` |
+| Code changed | `backend/app/core/errors.py::is_api_path`, `unknown_api_response`; `backend/app/main.py::_serve_frontend_shell` answers `/api` first. Follow-up `b401e9f`: where the API docs are off, `/docs`, `/redoc`, `/openapi.json` are the same JSON 404 (not the shell) |
+| Test added | `backend/tests/test_static_frontend_windows.py::test_an_unknown_api_address_is_a_json_404_never_the_shell`, `…_without_the_frontend_too`, `test_other_methods_on_an_unknown_api_address_are_404_too`, `test_where_the_docs_are_off_they_are_a_json_404_not_the_shell`, `test_real_api_routes_are_unchanged` |
+| After | JSON 404 "This API address does not exist…" with request id, any method |
+| Retest evidence | Retest 2 access and infra (unknown `/api` and docs paths JSON 404) |
+| Regression | Pass |
+
+### N2 (repository side) — forged `X-Forwarded-For` through uvicorn — `a3e8fce`, `7b039fb`, `79dbae7`, `ca94574`
+
+| | |
+|---|---|
+| Before | uvicorn's default `--proxy-headers` trusted `X-Forwarded-For` from 127.0.0.1 (RT-AU-T1009 FAIL) |
+| Risk | A local client escapes the per-address sign-in limit and forges audit IPs |
+| Root cause | Launcher used uvicorn defaults |
+| Code changed | `backend/Dockerfile` CMDs (both targets) `--no-proxy-headers --no-server-header`; `ops/windows/run_ckam_web.ps1.template` likewise; `backend/app/observability/middleware.py::client_ip` unchanged (already correct) |
+| Test added | `backend/tests/core/test_n2_forwarded_for.py` (`test_the_docker_image_starts_uvicorn_without_proxy_headers`, `test_the_windows_reference_launcher_keeps_both_uvicorn_flags`, `test_every_launch_script_in_the_repository_keeps_proxy_headers_off`, `test_the_running_api_process_in_docker_has_proxy_headers_off`, `test_a_forged_header_from_loopback_or_outside_cannot_buy_fresh_sign_in_attempts`, …) |
+| After | Forged headers never change the address or the rate-limit key in any repository launch path |
+| Retest evidence | Retest 2 infra item 4 (T047–T052) |
+| Regression | Pass. **Production launcher unchanged (EXT-38 / EXT-13)** |
+
+### IF-16 (code side) — ERP connection TLS options — `7b039fb`
+
+| | |
+|---|---|
+| Before | No TLS setting; asyncpg default; `repr(Settings)` showed the ERP password |
+| Risk | ERP password and data in clear on the LAN; password in debug output |
+| Root cause | No configuration surface |
+| Code changed | `backend/app/core/config.py`: `po_source_sslmode` (default `prefer` = today's behaviour; invalid value stops the start), `po_source_sslrootcert`, `repr=False` on secrets; `backend/app/erp/source.py::erp_ssl_argument`, `PgReadOnly.connect_arguments` (shared by the live source and the warehouse reader); `backend/app/observability/system.py::safe_config` shows the mode, not secrets |
+| Test added | `backend/tests/erp/test_erp_tls_settings.py` (e.g. `test_the_default_passes_no_ssl_argument_so_behaviour_is_unchanged`, `test_a_tls_mode_refuses_a_server_without_tls_before_sending_the_password`, `test_the_password_never_reaches_logs_or_the_diagnostics_bundle`) |
+| After | TLS can be required or verified by setting; default unchanged; TLS **not** mandatory |
+| Retest evidence | Permanent tests only (no real ERP; stand-ins used) |
+| Regression | Pass. External: ERP owner must confirm TLS and grants (EXT-25) |
+
+### CL1-N4-01 + OBS-GUARD-MSG — unset `ENVIRONMENT_NAME` fell open — `7b039fb`
+
+| | |
+|---|---|
+| Before | No `ENVIRONMENT_NAME` → default `development` → placeholder JWT secret accepted, `/docs` published (`CL1-T019`); refusal text did not name the 8-different-characters rule |
+| Risk | Forgeable tokens and exposed API map after one missing `.env` line |
+| Root cause | Fail-open default in `Settings` |
+| Code changed | `backend/app/core/config.py`: `environment_name: str = "production"`; `backend/app/main.py::refuse_to_start_with_insecure_secret` message names all three rules, never the value; `docker-compose.yml` keeps dev/UAT names explicit |
+| Test added | `backend/tests/core/test_production_secret_guard.py`: `test_an_unset_environment_name_counts_as_production`, `test_the_real_start_up_refuses_a_weak_secret_in_production`, `test_the_real_start_up_with_an_unset_environment_name_refuses_the_placeholder`, `test_the_real_start_up_runs_in_development_names_even_with_the_placeholder`, `test_the_real_start_up_runs_in_production_with_a_real_secret` (real FastAPI lifespan) |
+| After | Unset = production; 11 weak secrets × 15 production-like names refused |
+| Retest evidence | Retest 2 infra item 5: 72 weak combinations refused, 49 start, unset refuses, message names three rules (`evidence/closure/retest2/infra/RETEST2_INFRA.md`) |
+| Regression | Pass |
+
+### AU-08 revalidation — `7b039fb`
+
+| | |
+|---|---|
+| Before | Look-alike spellings of the person's name (`R@vi#2026xyz`) and simple-run-plus-number passwords (`abcdefgh1`) accepted |
+| Risk | Guessable passwords |
+| Root cause | Name check on the literal text only; run check required the whole password |
+| Code changed | `backend/app/auth/password_policy.py` (look-alike undo for name parts; run-plus-short-number rule; still no composition rule) |
+| Test added | `backend/tests/auth/test_vapt_password_policy.py`: `test_the_owners_list_of_weak_passwords_is_refused` (40 entries), `test_strong_passphrases_are_accepted_without_any_symbol_rule`, `test_there_is_no_composition_rule`, `test_a_name_part_found_only_after_look_alikes_are_undone_is_refused_but_not_short_parts` |
+| After | Weak list refused with a sentence that never repeats the password; passphrases accepted |
+| Retest evidence | Closure retest 1 `CL1-T047`…`T067`; retest 2 sessions A5 |
+| Regression | Pass |
+
+### RACE-1 residual / OBS-NAME-IMPORT — duplicate names through the Excel import — `7b039fb`
+
+| | |
+|---|---|
+| Before | Brand/vendor Excel import checked codes only; two parallel imports of one new name created two vendors (3 of 5 new tests failed on the old code, `evidence/closure/backend/raw/import_names_before.txt`) |
+| Risk | Duplicate master records bypassing the screen's rule |
+| Root cause | Name rule and lock lived only in the single-create route |
+| Code changed | `backend/app/masters/router.py::_active_name_exists` (shared, same advisory lock), `_import_name_checks`, `MasterPolicy.unique_name_noun`; `backend/app/masters/bulk_import_export.py` `row_check` (preview) and `before_create` (commit, inside the row savepoint) |
+| Test added | `backend/tests/masters/test_import_duplicate_names.py` (`test_a_vendor_file_with_two_rows_of_one_name_and_one_existing_name`, `test_two_imports_of_the_same_name_at_the_same_moment_create_only_one`, …) |
+| After | Duplicate rows refused with a plain row message; other rows still import |
+| Retest evidence | Permanent tests; retest 2 burst (f) covered the screen path |
+| Regression | Pass |
+
+### IF-12 recheck — JWT algorithm pinned — `7b039fb`
+
+| | |
+|---|---|
+| Before / Risk / Root cause | `python-jose` / `ecdsa` advisories without fixed versions (IF-12, accepted) |
+| Code changed | None |
+| Test added | `backend/tests/auth/test_jwt_algorithm_pinned.py` (HS384 / HS512 / none / RS256 / ES256 refused) |
+| After / Retest evidence | Still not reachable; retest 2 infra T109–T113; `evidence/closure/backend/dependency_recheck.md` |
+| Regression | Pass |
+
+### FONTS, AU-14 — self-hosted fonts, CSP without Google hosts — `79dbae7`, `b401e9f`
+
+| | |
+|---|---|
+| Before | 55 requests to Google per tour; both CSPs allowed `fonts.googleapis.com` and `fonts.gstatic.com` |
+| Risk | User IPs sent to a third party; weaker CSP |
+| Root cause | Fonts loaded from Google Fonts in `frontend/index.html` |
+| Code changed | `frontend/index.html` (links removed), new `frontend/src/fonts.css` imported first in `frontend/src/main.tsx`, `@fontsource-variable/inter` 5.3.0 and `@fontsource/ibm-plex-mono` 5.3.0; CSP in `frontend/nginx.conf` and `backend/app/main.py::CONTENT_SECURITY_POLICY` = `'self'` only |
+| Test added | `frontend/src/security/nginx-config.test.ts` ("has a strict Content-Security-Policy without any Google host", "index.html loads nothing from another site"); `backend/tests/test_vapt_headers_and_docs.py` CSP string updated |
+| After | 0 Google requests, 0 CSP violations, pixel-identical screens (except live data) |
+| Retest evidence | `evidence/closure/infra/WP-C_closure_evidence.md` CL-WPC-01…08; retest 2 infra item 2 (3 personas, 41 steps, 144 same-origin font responses) |
+| Regression | Pass (vitest 1256 in 92 files) |
+
+### IF-13 — non-root containers — `79dbae7`, `ca94574`
+
+| | |
+|---|---|
+| Before | Image ran as root with dev dependencies and tests |
+| Risk | Container breakout impact; test tooling in the image |
+| Root cause | Single-stage Dockerfile, no `USER` |
+| Code changed | `backend/Dockerfile` (`base` / `dev` / `runtime`, uid 10001, `-c constraints.txt`), `backend/.dockerignore`, `docker-compose.yml` (`volume-init`, `target: dev`, `cap_drop: [ALL]`, `no-new-privileges`; tmpfs `/tmp` and `/var/tmp` `noexec` in `ca94574`) |
+| Test added | Proofs CL-WPC-10…19 (no unit test; container behaviour) |
+| After | uid 10001, no capabilities, runtime image without tests, old root-owned volumes handed over |
+| Retest evidence | Retest 2 infra item 1, T001–T018 |
+| Regression | Pass; `dev` target still runs pytest (CL-WPC-17) |
+
+### N3 + N5 — real client address behind nginx; each header once — `79dbae7`
+
+| | |
+|---|---|
+| Before | All browser users shared nginx's address (one sign-in bucket, useless audit IPs); four headers sent twice |
+| Risk | Dev/UAT lock-out of everyone; poor audit trail |
+| Root cause | nginx sent no `X-Forwarded-For`; api had no trusted proxy; nginx did not hide the API's copies |
+| Code changed | `frontend/nginx.conf` (`proxy_set_header X-Forwarded-For $remote_addr`, `proxy_hide_header` × 6); `docker-compose.yml` (fixed `edge` subnet, `TRUSTED_PROXIES` = nginx's single address) |
+| Test added | `frontend/src/security/nginx-config.test.ts` ("proxies /api/ with the real client address, overwritten and never appended (N3)", "drops the API's own copies of the headers nginx adds, so each appears once (N5)") |
+| After | Each client its own bucket; forged values overwritten; each header exactly once |
+| Retest evidence | CL-WPC-20…27; retest 2 infra items 3–4, sessions A3 |
+| Regression | Pass |
+
+### AU-12 / OBS-AU12-TEST — permanent build and nginx checks — `79dbae7`
+
+| | |
+|---|---|
+| Before | No automated guard for source maps, `server_tokens`, JSON 413 |
+| Code changed | `frontend/scripts/check-build-security.mjs` (`npm run check:build`), `frontend/scripts/check-nginx-live.mjs` (`npm run check:nginx-live`) |
+| Test added | `frontend/src/security/nginx-config.test.ts` (12, later 13), `frontend/scripts/check-build-security.test.mjs` (5) |
+| After / Retest evidence | Build check OK (0 `.map`, no `sourceMappingURL`, no Google host); mutation check with the old `nginx.conf` → 4 failures; retest 2 infra T032–T038 |
+| Regression | Pass |
+
+### IF-15 + IF-11 (code/reference side) — Windows scripts — `79dbae7`, `ca94574`
+
+| | |
+|---|---|
+| Before | Production launcher and release script only on the server; runbook described Docker |
+| Code changed | `ops/windows/run_ckam_web.ps1.template`, `deploy_ckam.ps1.template` (refuses without backup, `ENVIRONMENT_NAME=development`, weak secrets; `pip install -c constraints.txt`; `alembic upgrade head` before start), `verify_release.ps1` (incl. `/assets/1`, `/assets/new` shell checks since `ca94574`), `rollback_release.ps1.template`, `README.md`; `docs/ai/CKAM_RELEASE_RUNBOOK.md` Windows section |
+| Test added | PowerShell parser 0 errors; `-WhatIf` dry runs (`evidence/closure/infra/raw/windows/dryrun.out.txt`); fake secrets in 0 log lines |
+| After | Reviewed, secret-free reference in git |
+| Regression | n/a. **IT must reconcile the live launcher (EXT-13); production still installs unpinned (EXT-12)** |
+
+### AU-06 — refresh-token reuse detection — `69c3a51` (migration `b5d7f9a1c3e5`)
+
+| | |
+|---|---|
+| Before | An already-rotated refresh token stayed valid until sign-out or expiry (RT-AU-T103 FAIL) |
+| Risk | A copied refresh cookie usable for up to 8 h |
+| Root cause | No server-side session record |
+| Code changed | New `auth_session` table (`backend/app/auth/models.py`), `backend/app/auth/sessions.py::renew` (one atomic `UPDATE … WHERE current_jti_hash = :presented … RETURNING`; DUPLICATE within the grace window → access token, no cookie; otherwise REUSE → 401, all the person's sessions ended, `REFRESH_REUSE` audit row); wired into `backend/app/auth/router.py` (login, refresh, logout, change-password); `REFRESH_REUSE_GRACE_SECONDS` (default 10, 0 = strict) in `backend/app/core/config.py`; clean-up 30 days after expiry in `backend/app/observability/retention.py::purge_old_logs`; legacy tokens upgraded once |
+| Test added | `backend/tests/auth/test_wpa2_refresh_reuse.py` (e.g. `test_an_old_token_ends_every_session_of_that_person_and_nobody_elses`, `test_a_duplicate_inside_the_grace_window_gets_an_access_token_and_no_cookie`, `test_parallel_refreshes_with_one_token_rotate_exactly_once`, `test_renewals_reuse_and_sign_out_at_the_same_moment_never_fail_with_an_error`, `test_no_token_or_token_id_is_stored_logged_or_in_the_diagnostics_bundle`) |
+| After | Only SHA-256 hashes stored; one rotation per token; reuse ends everything |
+| Retest evidence | Retest 2 sessions A1 (15/15) and burst (h) (`evidence/closure/retest2/sessions/`) |
+| Regression | Pass (2464 passed, 2 skipped). Residuals: 10 s grace; thief-wins race detected after the fact; legacy path to remove next release (`evidence/closure/backend/WPA2_RESULTS.md`) |
+
+### OBS-TV — atomic session-version increment — `69c3a51`
+
+| | |
+|---|---|
+| Before | `token_version` read + 1 in Python: the probe lost 18–19 of 20 concurrent bumps (`evidence/closure/backend/wpa2_probe_output.txt`) |
+| Code changed | `backend/app/core/security.py::end_all_sessions` (async; one `UPDATE … SET token_version = token_version + 1 … RETURNING`; also revokes `auth_session` rows); all callers in `auth/router.py`, `asset_users/service.py`, `asset_users/router.py` |
+| Test added | `backend/tests/auth/test_wpa2_token_version_atomic.py` (`test_twenty_concurrent_bumps_end_at_start_plus_twenty`, `test_a_bump_leaves_no_pending_write_of_the_old_value`, `test_sessions_ended_at_the_same_moment_all_stay_ended`) |
+| After / Retest evidence | 0 lost bumps; retest 2 burst (g) version consistent |
+| Regression | Pass |
+
+### OBS-STATUS — database guard on asset status / holder / date — `734fd19` (migration `c6e8a0b2d4f6`)
+
+| | |
+|---|---|
+| Before | Only the code rule protected `asset.status`, `current_asset_user_id`, `status_since` |
+| Risk | A stray write bypasses the append-only ledger |
+| Root cause | No database-level guard |
+| Code changed | Trigger `trg_asset_lifecycle_fields_guard` → `forbid_asset_lifecycle_write()` refuses changes unless the transaction marker `ckam.lifecycle_writer` is on; `backend/app/lifecycle/service.py::apply_events` sets it (`LIFECYCLE_WRITER_SETTING`, `_set_lifecycle_writer`) around its write |
+| Test added | `backend/tests/lifecycle/test_obs_status_guard.py` (13 cases: `test_an_orm_write_of_a_lifecycle_field_is_refused`, `test_a_raw_sql_update_of_a_lifecycle_field_is_refused`, `test_the_edit_screen_cannot_mass_assign_the_lifecycle_fields`, …) |
+| After | Stray writes refused; ledger path unchanged. **Honest limit:** the app role can set the marker itself; the barrier against a database user is the role split |
+| Retest evidence | Retest 2 access (DB guard + mass assignment) and infra 6a. Retest 3: guard verified present and enabled by `role_split_verify.sql`; its direct-UPDATE probe as the runtime role was inconclusive on a fresh database with no asset rows (0 rows matched) — coverage note, not a failure |
+| Regression | Pass (2484 passed, 2 skipped); one fixture now uses `allow_lifecycle_fixture_write`, one statement-count limit 6 → 7 (explained in `WPB_RESULTS.md` §2) |
+
+### IF-05 / IF-06 / OBS-DOCKER-SU — local role split and least-privilege checks — `734fd19`
+
+| | |
+|---|---|
+| Before | Production app role owns every table; it can disable or drop the append-only triggers |
+| Code changed | `ops/db/role_split.sql`, `role_split_verify.sql`, `check_least_privilege.sql`, `ROLE_SPLIT_RUNBOOK.md`; `backend/app/alembic/env.py` `ALEMBIC_SET_ROLE` (`_set_migration_role`) |
+| Test added | `backend/tests/security/test_least_privilege_role_split.py` (full split on a throw-away database, negative control) |
+| After | Runtime role: 7/7 needed actions, 40/40 forbidden actions refused; app works end to end as that role (11/11) |
+| Retest evidence | `evidence/closure/db/rs_01`…`rs_08`; retest 2 infra 6b (~70 refused) — which found CL2-IF-01/02 (below) |
+| Regression | Pass. **Production DBA step remains (EXT-07)**; dev/UAT role still superuser (owner decision) |
+
+### CL2-IF-01 — runtime role could `setval` the ledger sequences; silent audit-write failures — `ca94574`
+
+| | |
+|---|---|
+| Before | `role_split.sql` granted `UPDATE` on sequences: `setval('audit_log_id_seq', max)` succeeded, survived ROLLBACK, every later audit insert failed with only one stderr line; checks silent (`evidence/closure/wpf/wpf_01_if01_if02_repro_BEFORE_head734fd19.out.txt`) |
+| Risk | MEDIUM: someone with the runtime password blinds the database audit trail and blocks movements |
+| Root cause | Over-broad sequence grant; once-per-process failure report in `backend/app/observability/writer.py::report_failure` |
+| Code changed | `ops/db/role_split.sql` (sequences `USAGE, SELECT`; default privileges likewise), `check_least_privilege.sql` checks 19–20, `role_split_verify.sql` check 11, runbook §9; `backend/app/observability/writer.py` (`report_failure` counts and reports at most once a minute with totals; `failure_counts()`, `reset_failure_reports()`; `insert_rows` records a `system_event`), `backend/app/observability/filelog.py` (no double console line) |
+| Test added | `backend/tests/security/test_least_privilege_role_split.py` (4 new CANNOT cases, negative control 3b, damage detection 3c); `backend/tests/observability/test_log_write_failure_reporting.py` (`test_a_repeating_audit_write_failure_is_reported_first_then_once_a_minute_with_a_count`, `test_the_failing_audit_write_never_breaks_the_request`, `test_when_the_database_refuses_everything_nothing_raises_and_nothing_loops`, `test_report_failure_itself_never_raises`) |
+| After | `setval` refused, inserts OK (`wpf_02_if01_if02_AFTER_wpf.out.txt`); failures visible with counts |
+| Retest evidence | Before/after reproduction + permanent tests; the retester's own candidate fix (T100). **Retest 3 (independent):** every `setval` / `ALTER SEQUENCE` on all 32 sequences denied for the runtime role, `nextval` OK, verify 49/49; a provoked audit-write failure answered 401 without SQL, re-reported "6 failures so far, 5 since the last report", one `system_event` row, resumed after repair (`evidence/closure/retest3/RETEST3.md`, `raw/r3_06_runtime_matrix.txt`, `raw/if01b_01_break.txt` … `if01b_04_repair.txt`) |
+| Regression | Pass (2521 passed, 1 skipped). Production: DBA runs the updated scripts; before that, check 20 read-only to see whether a sequence was already damaged |
+
+### CL2-IF-02 — runtime role could store its own defaults — `ca94574`
+
+| | |
+|---|---|
+| Before | `ALTER ROLE self SET default_transaction_read_only = on` accepted, undetected, survived a re-run of the split |
+| Root cause | PostgreSQL allows it; scripts did not reset or inspect `pg_db_role_setting` for the runtime role |
+| Code changed | `ops/db/role_split.sql` step 7 `RESET ALL` (and per database); check 21 / verify 12 |
+| Test added | Role-split pytest case 4b; negative control without `RESET ALL` fails on check 21 |
+| After / Retest evidence | Detected and reset (`wpf_02`). **Retest 3:** 4 stored defaults all reported by check 21, a stored `role=<owner>` rejected at login (no escalation), superuser reset clears them (`evidence/closure/retest3/raw/r3_06_runtime_matrix.txt`, `r3_07_reset.txt`). DBA note from retest 3: a migrator that **already exists** with `INHERIT` membership is not repaired by the script's idempotent guard — drop/recreate it or `GRANT <owner> TO <migrator> WITH INHERIT FALSE` (to be noted in `ops/db/ROLE_SPLIT_RUNBOOK.md` in a later change) |
+| Regression | Pass |
+
+### CL2-IF-03 — `X-Request-ID` on nginx's own answers — `ca94574`
+
+| | |
+|---|---|
+| Before | No request id on static files, shell, 404s, 413 served by nginx |
+| Code changed | `frontend/nginx.conf`: `add_header X-Request-ID $request_id always` (server, shell, `@too_large`); `/api/` uses a `map` so the application's id passes through and nginx's only when the API did not answer |
+| Test added | `frontend/src/security/nginx-config.test.ts` ("sends exactly one X-Request-ID …") |
+| After / Retest evidence | 11/11 live (`evidence/closure/wpf/wpf_03_xrequestid_live.out.txt`); `npm run check:nginx-live` OK (`wpf_04`). **Retest 3:** exactly one id on static, SPA, 404, map-404, 413 and API answers; 500-character and CR/LF client ids replaced by a server id (`evidence/closure/retest3/raw/if03_reqid_result.txt`) |
+| Regression | Pass (vitest 1257 in 92 files) |
+
+### CL2-IF-04 — QR / Asset 360 deep links on the single-port server — `ca94574`
+
+| | |
+|---|---|
+| Before | `/assets/1`, `/assets/new`, `/assets/1?from=qr` → `404 application/json` in single-port mode (T046); **same in production `3b5e842`** |
+| Risk | Functional: printed labels and Asset 360 links fail on the live server |
+| Root cause | The `/assets/{file_path:path}` route (needed for built files) shadows the frontend routes `/assets/$id`, `/assets/new` |
+| Code changed | `backend/app/main.py::_serve_frontend_asset`: after `is_safe_relative_name`, a name matching `_ASSETS_APP_ROUTE` (1–3 segments of `[A-Za-z0-9_-]`, no dot) returns `_spa_shell()`; everything else as before |
+| Test added | `backend/tests/test_static_frontend_spa_assets.py` (11 functions, 31 cases: `test_an_application_address_under_assets_is_the_spa_shell`, `test_a_scanned_label_with_a_query_string_opens_the_shell`, `test_device_names_that_look_like_routes_are_still_refused_before_the_shell`, `test_the_shell_branch_reads_only_index_html`, `test_every_route_of_the_real_frontend_router_opens_the_shell`, …) |
+| After | Labels open Asset 360; refused names still the identical plain 404 |
+| Retest evidence | Permanent tests; `ops/windows/verify_release.ps1` checks it after deploy. **Retest 3** (single-port production-mode container of the final image, Linux): app routes → shell with `no-cache`, route-looking canary files never served, ≈ 45 traversal payloads identical 404, 0 leaks, 0 5xx (`evidence/closure/retest3/raw/if04_result.txt`). The native Windows evidence file still has no `/assets/<id>` probe |
+| Regression | Pass. Pre-existing and unchanged: `HEAD` on SPA pages answers 405 in single-port mode |
+
+### WP-F observations — `ca94574`
+
+`--no-server-header` in both Dockerfile CMDs and the reference launcher (CL2-IF-OBS-05; test
+`test_the_docker_image_starts_uvicorn_without_proxy_headers` now requires it); tmpfs `noexec` `/tmp` and
+`/var/tmp` for the dev api container (CL2-IF-OBS-01, effective at the next rebuild); stale Google Fonts comment
+fixed (CL2-IF-OBS-04); "NEVER RUN AGAINST PRODUCTION" warning in `backend/scripts/seed_uat_personas.py`
+(CL2-IF-OBS-06).
+
+### CL2-SE-N01 — duplicate Category / Sub-category names under parallel creates — `fafa225`
+
+| | |
+|---|---|
+| Before | 20 parallel creates of one category name → 3 active categories |
+| Root cause | No name guard on Category / Sub-category (vendors and brands had one) |
+| Code changed | `backend/app/masters/router.py`: `_active_name_exists` / `_refuse_duplicate_name` with `scope` and `exclude_id`; create, edit (rename / work-area move), sub-category create / rename; `MasterPolicy.unique_name_scope` for the Excel import; advisory lock per work area + name; 403 still first |
+| Test added | `backend/tests/masters/test_wpf2_category_names.py` (11, incl. `test_twenty_parallel_category_adds_of_one_name_make_one_category`, `test_twenty_parallel_sub_category_adds_of_one_name_make_one`, `test_existing_twins_are_left_alone_and_can_still_be_saved`) |
+| After | "A category with this name already exists." (422); existing twins untouched |
+| Retest evidence | Permanent tests. **Retest 3:** 20 parallel creates (two personas) 201 × 1 / 422 × 19; sub-categories likewise; other work area allowed; out-of-area 403; rename and Excel-import duplicates refused (`evidence/closure/retest3/raw/cl3_masters_race.txt`, `cl3_masters_verify_sql.txt`, `cl3_import_commit.txt`) |
+| Regression | Pass (2541 passed, 1 skipped) |
+
+### CL2-SE-N03 — friendly message for the loser of a same-serial race — `fafa225`
+
+| | |
+|---|---|
+| Before | 201 × 1, **409 × 13** "This record already exists.", 422 × 6 |
+| Root cause | `backend/app/core/errors.py::integrity_message` could not parse the expression index `ux_asset_serial_number_ci` |
+| Code changed | `CONSTRAINT_REFUSALS` map (consulted first): that index → 422 "This serial number is already used by another asset. Check the serial number and try again." |
+| Test added | `backend/tests/core/test_wpf2_serial_race_message.py` (9, incl. three 20-way bursts and `test_the_reserved_no_serial_values_still_repeat_freely`) |
+| After | 1 success, 19 × 422, no 409, no 500 |
+| Retest evidence | Permanent tests. **Retest 3:** 20 parallel adds 201 × 1 / 422 × 19, no 409 / 5xx; case/space variants one asset (`evidence/closure/retest3/raw/cl3_serial_race.txt`, `cl3_serial_verify_sql.txt`) |
+| Regression | Pass |
+
+## P2.2 User-visible behaviour changes (closure stage)
+
+| Change | What the user (or operator) sees | Who | Finding |
+|---|---|---|---|
+| QR labels and Asset 360 links work on the single-port server | Scanning a label opens the asset page instead of a JSON error | Everyone scanning labels; store and office staff | CL2-IF-04 |
+| Refresh-token reuse | Normally nothing; if a copied, already-used session cookie comes back, that person is signed out everywhere: "Your session has ended. Please sign in again." Several tabs renewing together keep working | All users (rare) | AU-06 |
+| Duplicate category / sub-category names refused | "A category with this name already exists." (also in the Excel import, per row) | Admins maintaining categories | CL2-SE-N01 |
+| Duplicate brand / vendor names refused in the Excel import | Row error in the preview and commit; other rows still import | Head-office admin | RACE-1 residual |
+| Same-serial race message | "This serial number is already used by another asset…" (422) instead of "This record already exists." (409) | Receiving / asset entry | CL2-SE-N03 |
+| More password refusals | Look-alike spellings of one's own name and simple runs plus a short number are refused | Anyone changing a password | AU-08 |
+| Unknown `/api` address | JSON 404 "This API address does not exist…" | Integrations, monitors | N6 |
+| Fonts | Served by CKAM itself; looks identical | Everyone (no outside request) | FONTS |
+| Server start | Without `ENVIRONMENT_NAME` the server counts as production and refuses a weak JWT secret; longer refusal text naming all rules; invalid `PO_SOURCE_SSLMODE` stops the start | IT / operator | CL1-N4-01, IF-16 |
+| Dev/UAT | Containers run as non-root; each browser user has their own sign-in limit; request id on every answer | Developers, UAT testers | IF-13, N3, CL2-IF-03 |
+
+Part 1's changes (sessions end on access changes, sign-out everywhere, 429 after bursts, 413 for oversized
+requests, renamed uploads refused, staff-only setup lists, other company's ERP drafts 404) still apply (§4).
+
+## P2.3 Migrations of the whole programme (4)
+
+| Order | Revision | What it does | Notes |
+|---|---|---|---|
+| 1 | `f9a1c3e5b7d2` | `asset_user.token_version` | Additive; existing sessions stay valid |
+| 2 | `a3c5e7f9b1d4` | TRUNCATE guards on the four append-only tables; 5-year audit purge floor | Must run as the table owner |
+| 3 | `b5d7f9a1c3e5` | `auth_session` table (refresh-token reuse detection) | Additive; login writes to it, so the new code needs it |
+| 4 | `c6e8a0b2d4f6` | Trigger guarding `asset.status` / `current_asset_user_id` / `status_since` | Touches no row; **old code cannot record movements once it exists**, so start the new code right after the upgrade |
+
+Single head `c6e8a0b2d4f6`. Verified: fresh empty database → head; dev, UAT and security-test databases upgraded;
+downgrade −1 / upgrade cycles (`evidence/closure/backend/WPA2_RESULTS.md`, `evidence/closure/db/rs_06_downgrade_upgrade_cycle.out.txt`).
+
+## P2.4 Production deploy order (PREPARED, NOT EXECUTED; needs the owner's explicit deploy request)
+
+Full procedure: `CKAM_URGENT_PRODUCTION_SECURITY_RUNBOOK.md`.
+
+1. **Precheck:** `ENVIRONMENT_NAME=production`; `JWT_SECRET` ≥ 32 characters and ≥ 8 different characters, not a
+   placeholder (otherwise the app refuses to start); backup working; window agreed.
+2. **Approved git push** (separate approval; push only — "commit and push to git and main").
+3. **Backup** of `ckassetmanagement`.
+4. **`alembic upgrade head`** (the four revisions above) **before** starting the new code.
+5. Deploy the release folder; switch `FRONTEND_DIST_DIR`; install with `-c constraints.txt` (EXT-12).
+6. Start uvicorn with **`--no-proxy-headers --no-server-header`** (EXT-38 / EXT-13).
+7. **Verify:** IF-01 closed including `..%5c`, `%2e%2e%5c`, `C:%2fWindows%2fwin.ini`, `%5c%5cserver%5cshare`;
+   unknown `/api` JSON 404; `/docs` closed; headers once; `/assets/<id>` opens (QR); sign-in; receive/move smoke
+   (`ops/windows/verify_release.ps1`).
+8. **Rotate** the JWT secret (everyone signs in again) → `ckassetapp` DB password → NAS password → ERP password →
+   restart and verify. Never rotate before the fixed release is running.
+9. **Compromise assessment** (logs for `/assets/` requests with `..`, `%2e`, `%5c`) (EXT-03, EXT-41).
+10. HTTPS plan (EXT-04); later the role split with the **updated** `ops/db/` scripts (EXT-07).
+
+## P2.5 Regression results (final, HEAD `fd34520`)
+
+| Suite | Result |
+|---|---|
+| Backend pytest (dev api container, `ckam_test`) | **2541 passed, 1 skipped** (programme baseline 1577; Part 1 end 1783). The skip is the environment-only "not run from a repository checkout" launcher scan |
+| Frontend `npx tsc -b` | Clean |
+| Frontend `npx vitest run` | **1257 passed in 92 files** (baseline 1223 / 89) |
+| `npm run build` / `npm run check:build` | OK (0 `.map` files, no `sourceMappingURL`, no Google host, no external resource) |
+| Playwright permanent journeys (UAT stack, sign-in limit off for that stack only) | 11 passed, 1 skipped (ERP-unmatched-vendor journey skips itself: ERP link off on the test stack). The asset-lifecycle journey had an intermittent timing race in the test; stabilised with a bounded wait (`fd34520`), then passed in the full run |
+| Security Playwright journeys (`frontend/e2e/security.spec.ts`) | **14/14** |
+| Performance (old `4ba4e94` vs new, identical data) | 31 operations, none over threshold; refused sign-in +33 ms (by design); bulk Move of 50 +23…34 ms (`evidence/closure/perf/PERF_REPORT.md`) |
+
+New permanent test files since `4ba4e94` (counted with `git diff --diff-filter=A`): 27 backend test modules (plus
+2 helpers), 4 frontend test files (`auth-session.test.ts`, `nginx-config.test.ts`, `check-build-security.test.mjs`,
+`e2e/security.spec.ts`). Backend test cases grew by 964 (1577 → 2541), most of them parametrised.
+
+## P2.6 Existing tests changed in the closure stage (and why)
+
+| File | Change | Why | Weakened? |
+|---|---|---|---|
+| `backend/tests/auth/test_vapt_sessions.py::test_every_refresh_hands_out_a_new_unique_token` | Second renewal uses the cookie the first returned | AU-06: the same cookie twice is now duplicate or reuse | No (intended) |
+| `backend/tests/core/test_s3a1_master_audit_migration.py`, `observability/test_admin_api.py`, `observability/test_system_events.py` | Head literal → `b5d7f9a1c3e5` → `c6e8a0b2d4f6` (+ chain asserts) | New migrations | No |
+| `backend/tests/reports/test_dashboard.py` | Calls `allow_lifecycle_fixture_write` before backdating `status_since` | OBS-STATUS: the database now refuses direct writes | No (fixture only) |
+| `backend/tests/lifecycle/test_s4_batch_events.py` | Statement limit ≤ 6 → ≤ 7 | +2 marker statements per batch, never per asset | No (assertion of constant cost kept) |
+| `backend/tests/observability/test_error_logging.py` | Uses `writer.reset_failure_reports()` | `_reported` set replaced by counters | No |
+| `backend/tests/security/test_least_privilege_role_split.py` | Row counts 11 → 12, ≥ 30 → ≥ 33; new cases | New checks | No (stricter) |
+| `backend/tests/core/test_n2_forwarded_for.py` | Dockerfile test requires both CMDs and `--no-server-header` | OBS-05 | No (stricter) |
+| `backend/tests/core/test_production_secret_guard.py`, `backend/tests/auth/test_vapt_password_policy.py` | Extended only | Revalidation | No |
+| `backend/tests/test_vapt_headers_and_docs.py` | CSP string without Google hosts | FONTS | No |
+| `frontend/e2e/asset-lifecycle.spec.ts` | Bounded wait for an in-flight session renewal before clearing cookies | Test timing race, not product behaviour | No |
+
+## P2.7 What was not changed, and why (closure stage)
+
+| Item | Why not | Where it goes |
+|---|---|---|
+| Production deploy, secret rotation, compromise assessment (IF-01, CL2-IF-04 in production) | Needs the owner's explicit deploy request; secrets typed by the owner on the servers | EXT-01/02/03/38/39/41/42, SD-01 |
+| HTTPS, `Secure` cookie (IF-02, AU-13) | Server certificate and proxy; owner deferred HTTPS on 2026-10-08 | EXT-04/05, SD-04/05 |
+| Production database role split (IF-05/06, CL2-IF-01/02 in production) | DBA work on a shared server in a window | EXT-07, SD-11 (use `ops/db/`, not §7) |
+| Service account, backups, dev-PC ACLs (IF-07/08/09) | Server / infrastructure / local administrator | EXT-06/08/10; plans written; **nothing changed on the dev PC** |
+| ERP TLS mandatory (IF-16) | ERP owner must confirm TLS support first; default kept | EXT-25 |
+| Live launcher flags (N2, `server` banner) | Launcher not in git | EXT-38 / EXT-13 |
+| Lock-out model (AU-04) | Owner decision; no code change | SD-06 |
+| Full Admin company scope (D6), MFA, store logins, per-office sign-in limit, audit retention, session absolute lifetime | Owner decisions | SD-02, SD-03, SD-07, SD-08, SD-09, SD-14 |
+| PyJWT instead of python-jose (IF-12) | Not reachable today; larger auth change | Next auth rework |
+| OBS-STATUS strong form (column privileges + definer function) | Changes the core ledger path; every future column would need a grant | Revisit after the role split is live (`WPB_RESULTS.md` §6) |
+| Bulk-move marker optimisation | Within threshold (+23…34 ms per 50 assets locally; ≈ +50 ms at 0.5 ms LAN RTT) | Optional |
+| Diagnostics screen showing the audit-failure count | `failure_counts()` exists; `system_event` rows visible in Logs | Backlog |
+| AU-06 legacy-token path | Needed for tokens issued before the deploy (8 h) | Remove in the release after the deploy |
+| Dev/UAT database role still superuser (OBS-DOCKER-SU) | `conftest.py` clean-up needs it; switching needs the owner | Owner decision |
+| N9, OBS-CSP-STYLE, OBS-HEAD405, CL2-IF-OBS-02, polyglot | Low value or no exploit path | Deferred / accepted |
+| Cross-company allotment (owner decision 2026-10-13) | Product feature, not security | Not built |
