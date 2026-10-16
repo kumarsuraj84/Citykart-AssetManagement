@@ -1,0 +1,68 @@
+[
+ {
+  "id": "CL2-MA-create",
+  "desc": "create asset with injected status/holder/domain/company/id/token_version",
+  "status": 201,
+  "detail": ""
+ },
+ {
+  "id": "CL2-MA-create-verify",
+  "desc": "created asset actual state",
+  "status": 200,
+  "detail": "{\"id\":18,\"status\":\"IN_STOCK\",\"holder\":3,\"company_id\":1,\"domain\":\"IT\",\"status_since\":\"2026-10-16\"}"
+ },
+ {
+  "id": "CL2-MA-put-body",
+  "desc": "PUT asset with injected status/holder/date/company/domain/is_active in body",
+  "status": 200,
+  "detail": ""
+ },
+ {
+  "id": "CL2-MA-put-verify",
+  "desc": "protected fields unchanged after PUT (status/holder/company/domain/is_active)",
+  "status": "IGNORED(ok)",
+  "detail": "{\"status\":\"IN_STOCK\",\"holder\":3,\"company_id\":1,\"domain\":\"IT\"}"
+ },
+ {
+  "id": "CL2-MA-put-query",
+  "desc": "PUT asset with protected fields in QUERY STRING",
+  "status": 200,
+  "detail": ""
+ },
+ {
+  "id": "CL2-MA-put-query-verify",
+  "desc": "protected fields unchanged after query-string injection",
+  "status": "IGNORED(ok)",
+  "detail": "{\"status\":\"IN_STOCK\",\"holder\":3,\"company_id\":1}"
+ },
+ {
+  "id": "CL2-MA-correction",
+  "desc": "corrections with injected status/holder/date (no category/date change)",
+  "status": 422,
+  "detail": "{\"detail\":\"at least one of category_id, subcategory_id, purchase_date, or asset_domain must be provided\",\"request_id\":\"4cbae4afc5a640bbadcea"
+ },
+ {
+  "id": "CL2-MA-correction-verify",
+  "desc": "status/holder unchanged after correction injection",
+  "status": "IGNORED(ok)",
+  "detail": "{\"status\":\"IN_STOCK\",\"holder\":3}"
+ },
+ {
+  "id": "CL2-MA-bulk-action",
+  "desc": "bulk-action with injected status/holder (invalid target) -> protected via schema",
+  "status": 200,
+  "detail": ""
+ },
+ {
+  "id": "CL2-MA-user-create",
+  "desc": "asset-user create with is_primary_owner/token_version/password_hash/id injected",
+  "status": 422,
+  "detail": "{\"detail\":\"A person or place with the code CL2MAUSER already exists in this company.\",\"request_id\":\"b092a1273f324180835175e24634c120\"}"
+ },
+ {
+  "id": "CL2-MA-cleanup",
+  "desc": "soft-delete CL2 target asset",
+  "status": 204,
+  "detail": ""
+ }
+]

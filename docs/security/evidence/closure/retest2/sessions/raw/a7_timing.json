@@ -1,0 +1,48 @@
+{
+  "right_password": {
+    "n": 35,
+    "median_ms": 44.9,
+    "p25_ms": 43.2,
+    "p75_ms": 49.6,
+    "min_ms": 39.7,
+    "max_ms": 162.1,
+    "rate_limited_skipped": 0
+  },
+  "wrong_password": {
+    "n": 35,
+    "median_ms": 41.1,
+    "p25_ms": 38.6,
+    "p75_ms": 43.6,
+    "min_ms": 36.6,
+    "max_ms": 59.8,
+    "rate_limited_skipped": 0
+  },
+  "unknown_user": {
+    "n": 35,
+    "median_ms": 41.7,
+    "p25_ms": 38.3,
+    "p75_ms": 44,
+    "min_ms": 34.6,
+    "max_ms": 122.4,
+    "rate_limited_skipped": 0
+  },
+  "disabled_user": {
+    "n": 35,
+    "median_ms": 41.1,
+    "p25_ms": 39.7,
+    "p75_ms": 43,
+    "min_ms": 37.8,
+    "max_ms": 48.9,
+    "rate_limited_skipped": 0
+  },
+  "locked_user": {
+    "n": 35,
+    "median_ms": 41.7,
+    "p25_ms": 39.8,
+    "p75_ms": 45.3,
+    "min_ms": 37.2,
+    "max_ms": 159,
+    "rate_limited_skipped": 0
+  },
+  "_spread_ms": 3.8
+}

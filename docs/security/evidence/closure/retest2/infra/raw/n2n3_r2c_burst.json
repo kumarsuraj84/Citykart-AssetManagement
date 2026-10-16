@@ -1,0 +1,81 @@
+{
+ "label": "ckam-r2c",
+ "nginx": "http://localhost:3711",
+ "api": "http://127.0.0.1:8700",
+ "partA": [
+  {
+   "where": "via-nginx",
+   "case": "XFF single",
+   "login_id": "r2c-xff-y1g0rx-via-nginx-0",
+   "sent": {
+    "X-Forwarded-For": "1.2.3.4"
+   },
+   "status": 401,
+   "request_id": "67408a12704f4f13beceb5829e19969a",
+   "retry_after": null
+  },
+  {
+   "where": "via-nginx",
+   "case": "XFF list + X-Real-IP",
+   "login_id": "r2c-xff-y1g0rx-via-nginx-1",
+   "sent": {
+    "X-Forwarded-For": "1.2.3.4, 5.6.7.8",
+    "X-Real-IP": "9.9.9.9"
+   },
+   "status": 401,
+   "request_id": "4e35c6bea1634883b7a1fb4d8c785718",
+   "retry_after": null
+  },
+  {
+   "where": "via-nginx",
+   "case": "Forwarded + XFF = trusted proxy address",
+   "login_id": "r2c-xff-y1g0rx-via-nginx-2",
+   "sent": {
+    "Forwarded": "for=1.2.3.4",
+    "X-Forwarded-For": "172.31.212.10"
+   },
+   "status": 401,
+   "request_id": "07e72665f8e5403ebe568e447f7aadd0",
+   "retry_after": null
+  },
+  {
+   "where": "direct-api",
+   "case": "XFF single",
+   "login_id": "r2c-xff-y1g0rx-direct-api-3",
+   "sent": {
+    "X-Forwarded-For": "1.2.3.4"
+   },
+   "status": 401,
+   "request_id": "57e4be38176f450e965f66b6116068fd",
+   "retry_after": null
+  },
+  {
+   "where": "direct-api",
+   "case": "XFF list + X-Real-IP",
+   "login_id": "r2c-xff-y1g0rx-direct-api-4",
+   "sent": {
+    "X-Forwarded-For": "1.2.3.4, 5.6.7.8",
+    "X-Real-IP": "9.9.9.9"
+   },
+   "status": 401,
+   "request_id": "98d53be4a4554cd4ac569b5f134abf12",
+   "retry_after": null
+  },
+  {
+   "where": "direct-api",
+   "case": "Forwarded + XFF = trusted proxy address",
+   "login_id": "r2c-xff-y1g0rx-direct-api-5",
+   "sent": {
+    "Forwarded": "for=1.2.3.4",
+    "X-Forwarded-For": "172.31.212.10"
+   },
+   "status": 401,
+   "request_id": "db26ff27308b48a8bc44dae470c67673",
+   "retry_after": null
+  }
+ ],
+ "partB": {
+  "via-nginx": "1:401 2:401 3:401 4:401 5:401 6:401 7:401 8:401 9:401 10:401 11:401 12:401 13:401 14:401 15:401 16:401 17:401 18:429 19:429 20:429 21:429",
+  "direct-api": "1:401 2:401 3:401 4:401 5:401 6:401 7:401 8:401 9:401 10:401 11:401 12:401 13:401 14:401 15:401 16:401 17:401 18:401 19:401 20:401 21:429"
+ }
+}

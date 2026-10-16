@@ -1,0 +1,85 @@
+# container: ckam-sec-api-1  script: if13_incontainer.sh  at 2026-10-16T06:10:49Z
+== identity
+uid=10001(ckam) gid=10001(ckam) groups=10001(ckam)
+whoami: ckam
+== /proc/1/status (uid, gid, caps, NoNewPrivs, Seccomp)
+Name:	uvicorn
+Uid:	10001	10001	10001	10001
+Gid:	10001	10001	10001	10001
+Groups:	10001 
+CapInh:	0000000000000000
+CapPrm:	0000000000000000
+CapEff:	0000000000000000
+CapBnd:	0000000000000000
+CapAmb:	0000000000000000
+NoNewPrivs:	1
+Seccomp:	2
+== /proc/self/status of this exec shell
+Uid:	10001	10001	10001	10001
+CapEff:	0000000000000000
+CapBnd:	0000000000000000
+NoNewPrivs:	1
+== PID 1 command line
+/usr/local/bin/python3.13 /usr/local/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-proxy-headers 
+== write probes (expected: only /data/uploads, /data/logs, /tmp writable)
+denied    /
+denied    /app
+denied    /app/app
+denied    /app/scripts
+denied    /usr
+denied    /usr/local/lib
+denied    /usr/local/bin
+denied    /etc
+denied    /root
+denied    /var
+WRITABLE  /var/tmp
+denied    /opt
+denied    /home
+denied    /srv
+denied    /data
+WRITABLE  /data/uploads
+WRITABLE  /data/logs
+WRITABLE  /tmp
+WRITABLE  /dev/shm
+== modify existing files (expected: denied)
+denied    /app/app/main.py
+denied    /etc/passwd
+denied    /usr/local/bin/uvicorn
+denied    /app/alembic.ini
+== world-writable directories outside /tmp, /proc, /sys, /dev
+/var/tmp
+/run/lock
+== setuid/setgid binaries (no-new-privileges makes them harmless; listed for the record)
+/usr/bin/gpasswd
+/usr/bin/chsh
+/usr/bin/umount
+/usr/bin/chage
+/usr/bin/mount
+/usr/bin/su
+/usr/bin/newgrp
+/usr/bin/expiry
+/usr/bin/passwd
+/usr/bin/chfn
+/usr/sbin/unix_chkpwd
+== ownership of data dirs
+drwxr-xr-x 1     0     0 4096 Oct 16 06:05 /app
+drwxr-xr-x 2 10001 10001 4096 Oct 16 06:10 /data/logs
+drwxr-xr-x 6 10001 10001 4096 Oct 16 06:10 /data/uploads
+drwxrwxrwt 1     0     0 4096 Oct 16 06:10 /tmp
+== test tooling present?
+tests dir: PRESENT (22 entries)
+module pytest: PRESENT
+module _pytest: PRESENT
+module coverage: PRESENT
+module pytest_asyncio: PRESENT
+module pytest_cov: PRESENT
+pytest command: PRESENT
+== privilege escalation attempts
+Password: su: Authentication failure
+sudo: not installed
+setuid(0): refused PermissionError
+chown to root: refused PermissionError
+raw socket: refused PermissionError
+bind port 80: SUCCEEDED
+== done
+# exit: 0

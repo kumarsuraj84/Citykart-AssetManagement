@@ -1,0 +1,110 @@
+{
+  "cases": [
+    {
+      "id": "CL2-SE-T01",
+      "desc": "first refresh rotates (new Set-Cookie)",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "gotCookie": true
+      }
+    },
+    {
+      "id": "CL2-SE-T02",
+      "desc": "replay of old cookie past grace -> 401",
+      "pass": true,
+      "detail": {
+        "status": 401,
+        "detail": "Your session has ended. Please sign in again."
+      }
+    },
+    {
+      "id": "CL2-SE-T03",
+      "desc": "newer cookie R2 also dead after reuse",
+      "pass": true,
+      "detail": {
+        "status": 401
+      }
+    },
+    {
+      "id": "CL2-SE-T04",
+      "desc": "access token A2 dead after reuse (401, not 200/403)",
+      "pass": true,
+      "detail": {
+        "status": 401
+      }
+    },
+    {
+      "id": "CL2-SE-T05",
+      "desc": "original access token A1 dead after reuse",
+      "pass": true,
+      "detail": {
+        "status": 401
+      }
+    },
+    {
+      "id": "CL2-SE-T06",
+      "desc": "different user session unaffected by the reuse",
+      "pass": true,
+      "detail": {
+        "status": 200
+      }
+    },
+    {
+      "id": "CL2-SE-T07",
+      "desc": "grace replay -> access token only, NO Set-Cookie",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "setCookies": 0
+      }
+    },
+    {
+      "id": "CL2-SE-T08",
+      "desc": "winner cookie Rg2 still valid after a grace duplicate",
+      "pass": true,
+      "detail": {
+        "status": 200
+      }
+    },
+    {
+      "id": "CL2-SE-T09",
+      "desc": "two sign-ins = two independent live sessions (both refresh 200)",
+      "pass": true,
+      "detail": {
+        "s1": 200,
+        "s2": 200
+      }
+    },
+    {
+      "id": "CL2-SE-T10",
+      "desc": "legacy cookie (no sid) first use accepted + rotated",
+      "pass": false,
+      "detail": {
+        "status": 401,
+        "gotCookie": false
+      }
+    },
+    {
+      "id": "CL2-SE-T11",
+      "desc": "legacy cookie replay past grace -> 401 reuse",
+      "pass": true,
+      "detail": {
+        "status": 401,
+        "detail": "Invalid or expired refresh token"
+      }
+    },
+    {
+      "id": "CL2-SE-T12",
+      "desc": "expired refresh JWT -> 401",
+      "pass": true,
+      "detail": {
+        "status": 401,
+        "detail": "Invalid or expired refresh token"
+      }
+    }
+  ],
+  "artifacts": {
+    "R1_fragment": "dNYJlKiVWzuQc9WC-4R_Uxic"
+  }
+}

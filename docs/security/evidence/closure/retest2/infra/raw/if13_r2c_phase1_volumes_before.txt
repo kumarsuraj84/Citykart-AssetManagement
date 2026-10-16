@@ -1,0 +1,39 @@
+# pre-existing volumes populated as root (alpine:latest, already local) to imitate the old root-run image
+/data:
+total 16
+drwxr-xr-x    4 0        0             4096 Oct 16 06:09 .
+drwxr-xr-x    1 0        0             4096 Oct 16 06:09 ..
+drwxr-xr-x    2 0        0             4096 Oct 16 06:09 logs
+drwxr-xr-x    4 0        0             4096 Oct 16 06:09 uploads
+
+/data/logs:
+total 16
+drwxr-xr-x    2 0        0             4096 Oct 16 06:09 .
+drwxr-xr-x    4 0        0             4096 Oct 16 06:09 ..
+-rw-r--r--    1 0        0               10 Oct 16 06:09 app.jsonl
+-rw-r--r--    1 0        0                3 Oct 16 06:09 error.jsonl
+
+/data/uploads:
+total 16
+drwxr-xr-x    4 0        0             4096 Oct 16 06:09 .
+drwxr-xr-x    4 0        0             4096 Oct 16 06:09 ..
+drwxr-xr-x    2 0        0             4096 Oct 16 06:09 1
+drwxr-xr-x    3 0        0             4096 Oct 16 06:09 7
+
+/data/uploads/1:
+total 12
+drwxr-xr-x    2 0        0             4096 Oct 16 06:09 .
+drwxr-xr-x    4 0        0             4096 Oct 16 06:09 ..
+-rw-r--r--    1 0        0                8 Oct 16 06:09 old-root-doc.pdf
+
+/data/uploads/7:
+total 12
+drwxr-xr-x    3 0        0             4096 Oct 16 06:09 .
+drwxr-xr-x    4 0        0             4096 Oct 16 06:09 ..
+drwxr-xr-x    2 0        0             4096 Oct 16 06:09 sub
+
+/data/uploads/7/sub:
+total 12
+drwxr-xr-x    2 0        0             4096 Oct 16 06:09 .
+drwxr-xr-x    3 0        0             4096 Oct 16 06:09 ..
+-rw-r--r--    1 0        0                7 Oct 16 06:09 n.txt

@@ -1,0 +1,122 @@
+env_label	env_value	secret_label	outcome	exit	secret_in_output	msg_32	msg_8distinct	msg_placeholder	docs
+unset	[__UNSET__]	UNSET	REFUSED	3	n/a	1	1	1	-
+unset	[__UNSET__]	placeholder	REFUSED	3	no	1	1	1	-
+unset	[__UNSET__]	change_me_too	REFUSED	3	no	1	1	1	-
+unset	[__UNSET__]	short	REFUSED	3	no	1	1	1	-
+unset	[__UNSET__]	spaces40	REFUSED	3	n/a	1	1	1	-
+unset	[__UNSET__]	a40	REFUSED	3	no	1	1	1	-
+unset	[__UNSET__]	len31	REFUSED	3	no	1	1	1	-
+unset	[__UNSET__]	len32_4distinct	REFUSED	3	no	1	1	1	-
+unset	[__UNSET__]	good40	STARTED	-	no	0	0	0	404/404/404
+blank	[]	UNSET	REFUSED	3	n/a	1	1	1	-
+blank	[]	placeholder	REFUSED	3	no	1	1	1	-
+blank	[]	change_me_too	REFUSED	3	no	1	1	1	-
+blank	[]	short	REFUSED	3	no	1	1	1	-
+blank	[]	spaces40	REFUSED	3	n/a	1	1	1	-
+blank	[]	a40	REFUSED	3	no	1	1	1	-
+blank	[]	len31	REFUSED	3	no	1	1	1	-
+blank	[]	len32_4distinct	REFUSED	3	no	1	1	1	-
+blank	[]	good40	STARTED	-	no	0	0	0	404/404/404
+prd	[prd]	UNSET	REFUSED	3	n/a	1	1	1	-
+prd	[prd]	placeholder	REFUSED	3	no	1	1	1	-
+prd	[prd]	change_me_too	REFUSED	3	no	1	1	1	-
+prd	[prd]	short	REFUSED	3	no	1	1	1	-
+prd	[prd]	spaces40	REFUSED	3	n/a	1	1	1	-
+prd	[prd]	a40	REFUSED	3	no	1	1	1	-
+prd	[prd]	len31	REFUSED	3	no	1	1	1	-
+prd	[prd]	len32_4distinct	REFUSED	3	no	1	1	1	-
+prd	[prd]	good40	STARTED	-	no	0	0	0	404/404/404
+live	[live]	UNSET	REFUSED	3	n/a	1	1	1	-
+live	[live]	placeholder	REFUSED	3	no	1	1	1	-
+live	[live]	change_me_too	REFUSED	3	no	1	1	1	-
+live	[live]	short	REFUSED	3	no	1	1	1	-
+live	[live]	spaces40	REFUSED	3	n/a	1	1	1	-
+live	[live]	a40	REFUSED	3	no	1	1	1	-
+live	[live]	len31	REFUSED	3	no	1	1	1	-
+live	[live]	len32_4distinct	REFUSED	3	no	1	1	1	-
+live	[live]	good40	STARTED	-	no	0	0	0	404/404/404
+prod-1	[prod-1]	UNSET	REFUSED	3	n/a	1	1	1	-
+prod-1	[prod-1]	placeholder	REFUSED	3	no	1	1	1	-
+prod-1	[prod-1]	change_me_too	REFUSED	3	no	1	1	1	-
+prod-1	[prod-1]	short	REFUSED	3	no	1	1	1	-
+prod-1	[prod-1]	spaces40	REFUSED	3	n/a	1	1	1	-
+prod-1	[prod-1]	a40	REFUSED	3	no	1	1	1	-
+prod-1	[prod-1]	len31	REFUSED	3	no	1	1	1	-
+prod-1	[prod-1]	len32_4distinct	REFUSED	3	no	1	1	1	-
+prod-1	[prod-1]	good40	STARTED	-	no	0	0	0	404/404/404
+Production	[Production]	UNSET	REFUSED	3	n/a	1	1	1	-
+Production	[Production]	placeholder	REFUSED	3	no	1	1	1	-
+Production	[Production]	change_me_too	REFUSED	3	no	1	1	1	-
+Production	[Production]	short	REFUSED	3	no	1	1	1	-
+Production	[Production]	spaces40	REFUSED	3	n/a	1	1	1	-
+Production	[Production]	a40	REFUSED	3	no	1	1	1	-
+Production	[Production]	len31	REFUSED	3	no	1	1	1	-
+Production	[Production]	len32_4distinct	REFUSED	3	no	1	1	1	-
+Production	[Production]	good40	STARTED	-	no	0	0	0	404/404/404
+staging	[staging]	UNSET	REFUSED	3	n/a	1	1	1	-
+staging	[staging]	placeholder	REFUSED	3	no	1	1	1	-
+staging	[staging]	change_me_too	REFUSED	3	no	1	1	1	-
+staging	[staging]	short	REFUSED	3	no	1	1	1	-
+staging	[staging]	spaces40	REFUSED	3	n/a	1	1	1	-
+staging	[staging]	a40	REFUSED	3	no	1	1	1	-
+staging	[staging]	len31	REFUSED	3	no	1	1	1	-
+staging	[staging]	len32_4distinct	REFUSED	3	no	1	1	1	-
+staging	[staging]	good40	STARTED	-	no	0	0	0	404/404/404
+junk	[xq-7-junk]	UNSET	REFUSED	3	n/a	1	1	1	-
+junk	[xq-7-junk]	placeholder	REFUSED	3	no	1	1	1	-
+junk	[xq-7-junk]	change_me_too	REFUSED	3	no	1	1	1	-
+junk	[xq-7-junk]	short	REFUSED	3	no	1	1	1	-
+junk	[xq-7-junk]	spaces40	REFUSED	3	n/a	1	1	1	-
+junk	[xq-7-junk]	a40	REFUSED	3	no	1	1	1	-
+junk	[xq-7-junk]	len31	REFUSED	3	no	1	1	1	-
+junk	[xq-7-junk]	len32_4distinct	REFUSED	3	no	1	1	1	-
+junk	[xq-7-junk]	good40	STARTED	-	no	0	0	0	404/404/404
+sp_PROD_sp	[ PROD ]	UNSET	REFUSED	3	n/a	1	1	1	-
+sp_PROD_sp	[ PROD ]	placeholder	REFUSED	3	no	1	1	1	-
+sp_PROD_sp	[ PROD ]	change_me_too	REFUSED	3	no	1	1	1	-
+sp_PROD_sp	[ PROD ]	short	REFUSED	3	no	1	1	1	-
+sp_PROD_sp	[ PROD ]	spaces40	REFUSED	3	n/a	1	1	1	-
+sp_PROD_sp	[ PROD ]	a40	REFUSED	3	no	1	1	1	-
+sp_PROD_sp	[ PROD ]	len31	REFUSED	3	no	1	1	1	-
+sp_PROD_sp	[ PROD ]	len32_4distinct	REFUSED	3	no	1	1	1	-
+sp_PROD_sp	[ PROD ]	good40	STARTED	-	no	0	0	0	404/404/404
+development	[development]	UNSET	STARTED	-	n/a	0	0	0	200/200/200
+development	[development]	placeholder	STARTED	-	n/a(public placeholder, dev warning)	0	0	0	200/200/200
+development	[development]	short	STARTED	-	no	0	0	0	200/200/200
+development	[development]	good40	STARTED	-	no	0	0	0	200/200/200
+dev	[dev]	UNSET	STARTED	-	n/a	0	0	0	200/200/200
+dev	[dev]	placeholder	STARTED	-	n/a(public placeholder, dev warning)	0	0	0	200/200/200
+dev	[dev]	short	STARTED	-	no	0	0	0	200/200/200
+dev	[dev]	good40	STARTED	-	no	0	0	0	200/200/200
+test	[test]	UNSET	STARTED	-	n/a	0	0	0	200/200/200
+test	[test]	placeholder	STARTED	-	n/a(public placeholder, dev warning)	0	0	0	200/200/200
+test	[test]	short	STARTED	-	no	0	0	0	200/200/200
+test	[test]	good40	STARTED	-	no	0	0	0	200/200/200
+testing	[testing]	UNSET	STARTED	-	n/a	0	0	0	200/200/200
+testing	[testing]	placeholder	STARTED	-	n/a(public placeholder, dev warning)	0	0	0	200/200/200
+testing	[testing]	short	STARTED	-	no	0	0	0	200/200/200
+testing	[testing]	good40	STARTED	-	no	0	0	0	200/200/200
+uat	[uat]	UNSET	STARTED	-	n/a	0	0	0	200/200/200
+uat	[uat]	placeholder	STARTED	-	n/a(public placeholder, dev warning)	0	0	0	200/200/200
+uat	[uat]	short	STARTED	-	no	0	0	0	200/200/200
+uat	[uat]	good40	STARTED	-	no	0	0	0	200/200/200
+security-test	[security-test]	UNSET	STARTED	-	n/a	0	0	0	200/200/200
+security-test	[security-test]	placeholder	STARTED	-	n/a(public placeholder, dev warning)	0	0	0	200/200/200
+security-test	[security-test]	short	STARTED	-	no	0	0	0	200/200/200
+security-test	[security-test]	good40	STARTED	-	no	0	0	0	200/200/200
+local	[local]	UNSET	STARTED	-	n/a	0	0	0	200/200/200
+local	[local]	placeholder	STARTED	-	n/a(public placeholder, dev warning)	0	0	0	200/200/200
+local	[local]	short	STARTED	-	no	0	0	0	200/200/200
+local	[local]	good40	STARTED	-	no	0	0	0	200/200/200
+ci	[ci]	UNSET	STARTED	-	n/a	0	0	0	200/200/200
+ci	[ci]	placeholder	STARTED	-	n/a(public placeholder, dev warning)	0	0	0	200/200/200
+ci	[ci]	short	STARTED	-	no	0	0	0	200/200/200
+ci	[ci]	good40	STARTED	-	no	0	0	0	200/200/200
+sp_UAT_sp	[ UAT ]	UNSET	STARTED	-	n/a	0	0	0	200/200/200
+sp_UAT_sp	[ UAT ]	placeholder	STARTED	-	n/a(public placeholder, dev warning)	0	0	0	200/200/200
+sp_UAT_sp	[ UAT ]	short	STARTED	-	no	0	0	0	200/200/200
+sp_UAT_sp	[ UAT ]	good40	STARTED	-	no	0	0	0	200/200/200
+Development	[Development]	UNSET	STARTED	-	n/a	0	0	0	200/200/200
+Development	[Development]	placeholder	STARTED	-	n/a(public placeholder, dev warning)	0	0	0	200/200/200
+Development	[Development]	short	STARTED	-	no	0	0	0	200/200/200
+Development	[Development]	good40	STARTED	-	no	0	0	0	200/200/200

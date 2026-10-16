@@ -1,0 +1,13 @@
+{
+ "label": "seq-damaged",
+ "login_ok": 200,
+ "login_failed": 401,
+ "login_failed_request_id": "97716a796b8641939aa206f1362cfb75",
+ "ledger_write": 409,
+ "ledger_write_request_id": "3027ba6d4b3c4a00b2e2d02455de29d4",
+ "ledger_write_body": {
+  "detail": "A record with this id already exists.",
+  "request_id": "3027ba6d4b3c4a00b2e2d02455de29d4"
+ },
+ "read_assets": 200
+}

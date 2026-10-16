@@ -1,0 +1,100 @@
+{
+  "cases": [
+    {
+      "id": "CL2-SE-T30",
+      "desc": "per-login-id limit via nginx -> 429 with Retry-After + plain message",
+      "pass": true,
+      "detail": {
+        "firstAt": 11,
+        "retryAfter": "60",
+        "detail": "Too many sign-in attempts. Wait a minute and try again.",
+        "seq": [
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          429,
+          429,
+          429
+        ]
+      }
+    },
+    {
+      "id": "CL2-SE-T31",
+      "desc": "per-IP limit via nginx despite distinct forged XFF -> 429 ~21 (spoof ignored, one bucket)",
+      "pass": true,
+      "detail": {
+        "firstAt": 21,
+        "retryAfter": "60",
+        "seq": [
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          429,
+          429,
+          429,
+          429
+        ]
+      }
+    },
+    {
+      "id": "CL2-SE-T32",
+      "desc": "per-IP limit direct :8200 despite forged XFF -> 429 ~21",
+      "pass": true,
+      "detail": {
+        "firstAt": 21,
+        "retryAfter": "60",
+        "seq": [
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          401,
+          429,
+          429,
+          429,
+          429
+        ]
+      }
+    }
+  ],
+  "directSaturatedAt": 1792132515880
+}

@@ -1,0 +1,32 @@
+ok    404  backslash x4
+ok    404  encoded dotdot + backslash
+ok    404  forward slash x4 (encoded)
+ok    404  mixed slash/backslash
+ok    404  double encoded backslash
+ok    404  double encoded slash
+ok    404  sibling file in dist (one up)
+ok    404  nas.pw
+ok    404  absolute with drive (backslash)
+ok    404  absolute with drive (forward)
+ok    404  drive in url, win.ini
+ok    404  drive backslash, win.ini
+ok    404  win.ini via leading slash
+ok    404  UNC-like backslashes
+ok    404  UNC-like forward
+ok    404  UNC with localhost admin share
+ok    404  drive-relative
+ok    404  alternate data stream
+ok    404  alternate data stream (named)
+ok    404  trailing dot
+ok    404  trailing space
+ok    404  reserved CON
+ok    404  reserved nul.txt
+ok    404  reserved aux.js
+ok    404  8.3 short name
+ok    404  NUL byte
+ok    404  long name
+ok    404  sibling prefix
+legit asset: 200 "console.log('ok')"
+spa route: 200 "index shell"
+unknown /api: 404 {"detail":"This API address does not exist. Check the address and try 
+SUMMARY new: payloads=28 leaks=0 5xx=0 distinct_refusal_bodies=28

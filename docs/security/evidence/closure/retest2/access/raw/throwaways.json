@@ -1,0 +1,20 @@
+{
+ "deactivated": {
+  "build": "ok",
+  "id": 46,
+  "before": 200,
+  "deactivate": 204,
+  "replay": 401,
+  "replay_detail": "Account not found or inactive",
+  "replay_write": 401
+ },
+ "login_disabled": {
+  "build": "ok",
+  "id": 47,
+  "before": 200,
+  "disable": 200,
+  "replay": 401,
+  "replay_detail": "Your session has ended. Please sign in again.",
+  "cleanup_deactivate": 204
+ }
+}

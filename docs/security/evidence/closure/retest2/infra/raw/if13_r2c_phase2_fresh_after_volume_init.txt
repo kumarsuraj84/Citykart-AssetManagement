@@ -1,0 +1,34 @@
+# phase: phase2-fresh-volumes  (2026-10-16T06:13:07Z)
+# docker logs ckam-r2c-volume-init-1
+volume-init: /data/uploads and /data/logs belong to uid 10001
+# volume-init exit code: 0
+# volume-init HostConfig
+User=0:0 CapDrop=[ALL] CapAdd=[CAP_CHOWN CAP_DAC_READ_SEARCH] SecurityOpt=[no-new-privileges:true] NetworkMode=none
+# volume labels
+ckam-r2c_uploads created=2026-10-16T06:12:55Z labels=map[com.docker.compose.config-hash:cff6c4d82bc876b3466867587c26cc83db8722d85dba1376e976f21a848b279e com.docker.compose.project:ckam-r2c com.docker.compose.version:5.5.1 com.docker.compose.volume:uploads]
+ckam-r2c_logs created=2026-10-16T06:12:55Z labels=map[com.docker.compose.config-hash:ff70c2150f44a131567e4a059806012e8dcc0ff94f38148c8b18b900fc045368 com.docker.compose.project:ckam-r2c com.docker.compose.version:5.5.1 com.docker.compose.volume:logs]
+# volumes now (numeric owners, alpine:latest listing as root, read-only mounts)
+/data:
+total 16
+drwxr-xr-x    4 0        0             4096 Oct 16 06:13 .
+drwxr-xr-x    1 0        0             4096 Oct 16 06:13 ..
+drwxr-xr-x    2 10001    10001         4096 Oct 16 06:13 logs
+drwxr-xr-x    2 10001    10001         4096 Oct 16 04:47 uploads
+
+/data/logs:
+total 12
+drwxr-xr-x    2 10001    10001         4096 Oct 16 06:13 .
+drwxr-xr-x    4 0        0             4096 Oct 16 06:13 ..
+-rw-r--r--    1 10001    10001         1368 Oct 16 06:13 app.jsonl
+
+/data/uploads:
+total 8
+drwxr-xr-x    2 10001    10001         4096 Oct 16 04:47 .
+drwxr-xr-x    4 0        0             4096 Oct 16 06:13 ..
+# api container state
+State=running Restarts=0 User=10001:10001 CapDrop=[ALL] CapAdd=[] SecurityOpt=[no-new-privileges:true] ReadonlyRootfs=false Privileged=false
+# api log tail
+INFO:     Started server process [1]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)

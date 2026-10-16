@@ -1,0 +1,42 @@
+{
+ "bulk_move_50_old": {
+  "status": 200,
+  "ms": 171.2,
+  "statements_total": 408,
+  "toplevel": 408,
+  "nested": 0,
+  "rows": 403,
+  "db_exec_ms": 8.7,
+  "detail": "50 x INSERT INTO asset_event (asset_id, event_type, event_date, from_asset_user_id, to_asset_user_id, from_asset_us\n50 x RELEASE SAVEPOINT $1\n50 x SAVEPOINT $1\n50 x SELECT asset.id, asset.deleted_at, asset.asset_code, asset.legacy_asset_code, asset.company_id, asset.cost_cen\n50 x SELECT asset.id, asset.deleted_at, asset.asset_code, asset.legacy_asset_code, asset.company_id, asset.cost_cen\n50 x SELECT asset_user.id, asset_user.company_id, asset_user.code, asset_user.name, asset_user.asset_user_type, ass\n50 x SELECT DISTINCT ON (asset_event.asset_id) asset_event.id, asset_event.asset_id, asset_event.event_type, asset_\n50 x UPDATE asset SET status=$1::VARCHAR, current_asset_user_id=$2::BIGINT, status_since=$3::DATE, updated_at=now()\n2 x BEGIN\n2 x SELECT asset_user.id, asset_user.company_id, asset_user.code, asset_user.name, asset_user.asset_user_type, ass\n1 x COMMIT\n1 x INSERT INTO audit_log (request_id, source, actor_id, actor_code, actor_name, actor_role, is_head_office_admin,\n1 x ROLLBACK\n1 x SELECT asset.id FROM asset WHERE asset.id IN ($1::BIGINT, $2::BIGINT, $3::BIGINT, $4::BIGINT, $5::BIGINT, $6::"
+ },
+ "bulk_move_50_new": {
+  "status": 200,
+  "ms": 206.6,
+  "statements_total": 508,
+  "toplevel": 508,
+  "nested": 0,
+  "rows": 503,
+  "db_exec_ms": 10.09,
+  "detail": "100 x SELECT set_config($1, $2, true)\n50 x INSERT INTO asset_event (asset_id, event_type, event_date, from_asset_user_id, to_asset_user_id, from_asset_us\n50 x RELEASE SAVEPOINT $1\n50 x SAVEPOINT $1\n50 x SELECT asset.id, asset.deleted_at, asset.asset_code, asset.legacy_asset_code, asset.company_id, asset.cost_cen\n50 x SELECT asset.id, asset.deleted_at, asset.asset_code, asset.legacy_asset_code, asset.company_id, asset.cost_cen\n50 x SELECT asset_user.id, asset_user.company_id, asset_user.code, asset_user.name, asset_user.asset_user_type, ass\n50 x SELECT DISTINCT ON (asset_event.asset_id) asset_event.id, asset_event.asset_id, asset_event.event_type, asset_\n50 x UPDATE asset SET status=$1::VARCHAR, current_asset_user_id=$2::BIGINT, status_since=$3::DATE, updated_at=now()\n2 x BEGIN\n2 x SELECT asset_user.id, asset_user.company_id, asset_user.code, asset_user.name, asset_user.asset_user_type, ass\n1 x COMMIT\n1 x INSERT INTO audit_log (request_id, source, actor_id, actor_code, actor_name, actor_role, is_head_office_admin,\n1 x ROLLBACK\n1 x SELECT asset.id FROM asset WHERE asset.id IN ($1::BIGINT, $2::BIGINT, $3::BIGINT, $4::BIGINT, $5::BIGINT, $6::"
+ },
+ "move_1_old": {
+  "status": 201,
+  "ms": 12.7,
+  "statements_total": 19,
+  "toplevel": 19,
+  "nested": 0,
+  "rows": 13,
+  "db_exec_ms": 0.54,
+  "detail": "4 x BEGIN\n3 x ROLLBACK\n2 x SELECT asset_user.id, asset_user.company_id, asset_user.code, asset_user.name, asset_user.asset_user_type, ass\n2 x SELECT asset_user.id, asset_user.company_id, asset_user.code, asset_user.name, asset_user.asset_user_type, ass\n1 x COMMIT\n1 x INSERT INTO asset_event (asset_id, event_type, event_date, from_asset_user_id, to_asset_user_id, from_asset_us\n1 x INSERT INTO audit_log (request_id, source, actor_id, actor_code, actor_name, actor_role, is_head_office_admin,\n1 x SELECT asset_event.id, asset_event.asset_id, asset_event.event_type, asset_event.event_date, asset_event.from_\n1 x SELECT asset.id, asset.deleted_at, asset.asset_code, asset.legacy_asset_code, asset.company_id, asset.cost_cen\n1 x SELECT asset.id, asset.deleted_at, asset.asset_code, asset.legacy_asset_code, asset.company_id, asset.cost_cen\n1 x SELECT DISTINCT ON (asset_event.asset_id) asset_event.id, asset_event.asset_id, asset_event.event_type, asset_\n1 x UPDATE asset SET status=$1::VARCHAR, current_asset_user_id=$2::BIGINT, status_since=$3::DATE, updated_at=now()"
+ },
+ "move_1_new": {
+  "status": 201,
+  "ms": 12.3,
+  "statements_total": 21,
+  "toplevel": 21,
+  "nested": 0,
+  "rows": 15,
+  "db_exec_ms": 0.42,
+  "detail": "4 x BEGIN\n3 x ROLLBACK\n2 x SELECT asset_user.id, asset_user.company_id, asset_user.code, asset_user.name, asset_user.asset_user_type, ass\n2 x SELECT asset_user.id, asset_user.company_id, asset_user.code, asset_user.name, asset_user.asset_user_type, ass\n2 x SELECT set_config($1, $2, true)\n1 x COMMIT\n1 x INSERT INTO asset_event (asset_id, event_type, event_date, from_asset_user_id, to_asset_user_id, from_asset_us\n1 x INSERT INTO audit_log (request_id, source, actor_id, actor_code, actor_name, actor_role, is_head_office_admin,\n1 x SELECT asset_event.id, asset_event.asset_id, asset_event.event_type, asset_event.event_date, asset_event.from_\n1 x SELECT asset.id, asset.deleted_at, asset.asset_code, asset.legacy_asset_code, asset.company_id, asset.cost_cen\n1 x SELECT asset.id, asset.deleted_at, asset.asset_code, asset.legacy_asset_code, asset.company_id, asset.cost_cen\n1 x SELECT DISTINCT ON (asset_event.asset_id) asset_event.id, asset_event.asset_id, asset_event.event_type, asset_\n1 x UPDATE asset SET status=$1::VARCHAR, current_asset_user_id=$2::BIGINT, status_since=$3::DATE, updated_at=now()"
+ }
+}

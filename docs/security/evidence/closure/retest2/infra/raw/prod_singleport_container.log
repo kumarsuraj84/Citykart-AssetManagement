@@ -1,0 +1,7 @@
+INFO:     Started server process [1]
+INFO:     Waiting for application startup.
+CKAM logging: could not write system_event (ConnectionRefusedError: [Errno 111] Connection refused). Further failures of this kind are not repeated.
+WARNING:     [ckam.system] The database is at migration None but this code expects c6e8a0b2d4f6. Run `alembic upgrade head` (after a backup).
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+CKAM logging: could not write audit_log (ConnectionRefusedError: [Errno 111] Connection refused). Further failures of this kind are not repeated.

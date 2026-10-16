@@ -1,0 +1,59 @@
+# phase: phase1-preexisting-root-owned  (2026-10-16T06:10:11Z)
+# docker logs ckam-r2c-volume-init-1
+volume-init: /data/uploads and /data/logs belong to uid 10001
+# volume-init exit code: 0
+# volume-init HostConfig
+User=0:0 CapDrop=[ALL] CapAdd=[CAP_CHOWN CAP_DAC_READ_SEARCH] SecurityOpt=[no-new-privileges:true] NetworkMode=none
+# volume labels
+ckam-r2c_uploads created=2026-10-16T06:09:12Z labels=map[com.docker.compose.project:ckam-r2c com.docker.compose.version:5.5.1 com.docker.compose.volume:uploads]
+ckam-r2c_logs created=2026-10-16T06:09:12Z labels=map[com.docker.compose.project:ckam-r2c com.docker.compose.version:5.5.1 com.docker.compose.volume:logs]
+# volumes now (numeric owners, alpine:latest listing as root, read-only mounts)
+/data:
+total 16
+drwxr-xr-x    4 0        0             4096 Oct 16 06:10 .
+drwxr-xr-x    1 0        0             4096 Oct 16 06:10 ..
+drwxr-xr-x    2 10001    10001         4096 Oct 16 06:09 logs
+drwxr-xr-x    4 10001    10001         4096 Oct 16 06:09 uploads
+
+/data/logs:
+total 16
+drwxr-xr-x    2 10001    10001         4096 Oct 16 06:09 .
+drwxr-xr-x    4 0        0             4096 Oct 16 06:10 ..
+-rw-r--r--    1 10001    10001         1726 Oct 16 06:09 app.jsonl
+-rw-r--r--    1 10001    10001          360 Oct 16 06:09 error.jsonl
+
+/data/uploads:
+total 16
+drwxr-xr-x    4 10001    10001         4096 Oct 16 06:09 .
+drwxr-xr-x    4 0        0             4096 Oct 16 06:10 ..
+drwxr-xr-x    2 10001    10001         4096 Oct 16 06:09 1
+drwxr-xr-x    3 10001    10001         4096 Oct 16 06:09 7
+
+/data/uploads/1:
+total 12
+drwxr-xr-x    2 10001    10001         4096 Oct 16 06:09 .
+drwxr-xr-x    4 10001    10001         4096 Oct 16 06:09 ..
+-rw-r--r--    1 10001    10001            8 Oct 16 06:09 old-root-doc.pdf
+
+/data/uploads/7:
+total 12
+drwxr-xr-x    3 10001    10001         4096 Oct 16 06:09 .
+drwxr-xr-x    4 10001    10001         4096 Oct 16 06:09 ..
+drwxr-xr-x    2 10001    10001         4096 Oct 16 06:09 sub
+
+/data/uploads/7/sub:
+total 12
+drwxr-xr-x    2 10001    10001         4096 Oct 16 06:09 .
+drwxr-xr-x    3 10001    10001         4096 Oct 16 06:09 ..
+-rw-r--r--    1 10001    10001            7 Oct 16 06:09 n.txt
+# api container state
+State=running Restarts=0 User=10001:10001 CapDrop=[ALL] CapAdd=[] SecurityOpt=[no-new-privileges:true] ReadonlyRootfs=false Privileged=false
+# api log tail
+INFO:     Started server process [1]
+INFO:     Waiting for application startup.
+CKAM logging: could not write system_event (ProgrammingError: (sqlalchemy.dialects.postgresql.asyncpg.ProgrammingError) relation "system_event" does not exist
+[SQL: INSERT INTO system_event (level, component, event, message, details) VALUES ($1::VARCHAR, $2::VARCHAR, $3::VARCHAR, $4::VARCHAR, $5::JSONB) RETURNING system_event.id]
+[parameters: ('INFO', 'startup... (cut, 457 more characters)). Further failures of this kind are not repeated.
+WARNING:     [ckam.system] The database is at migration None but this code expects c6e8a0b2d4f6. Run `alembic upgrade head` (after a backup).
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)

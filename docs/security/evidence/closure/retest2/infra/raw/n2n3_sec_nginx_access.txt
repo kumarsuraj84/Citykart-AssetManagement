@@ -1,0 +1,6 @@
+172.31.212.1 - - [16/Oct/2026:06:17:39 +0000] "POST /api/auth/login HTTP/1.1" 401 80 "-" "node" "1.2.3.4"
+172.31.212.1 - - [16/Oct/2026:06:17:43 +0000] "POST /api/auth/login HTTP/1.1" 401 80 "-" "node" "1.2.3.4, 5.6.7.8"
+172.31.212.1 - - [16/Oct/2026:06:17:46 +0000] "POST /api/auth/login HTTP/1.1" 401 80 "-" "node" "172.31.212.10"
+nginx web container: ckam-sec_edge=172.31.212.10 gateway=172.31.212.1 
+TRUSTED_PROXIES=172.31.212.10
+/usr/local/bin/python3.13 /usr/local/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-proxy-headers 

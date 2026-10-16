@@ -1,0 +1,10 @@
+import { login, req, API, sleep } from './lib.mjs';
+import { readFileSync } from 'node:fs';
+const creds = JSON.parse(readFileSync(new URL('./creds.json', import.meta.url)));
+const sec = await login('SECHO');
+const rp = await req(API, 'POST', `/api/asset-users/${creds.BRUTE31.id}/reset-password`, { token: sec.access });
+const newTemp = rp.json && rp.json.temp_password;
+console.log('reset status', rp.status, 'got new temp', !!newTemp);
+await sleep(3500);
+const li = await login('BRUTE31', newTemp);
+console.log('login after reset:', li.status, li.json && (li.json.access_token ? 'ACCESS_OK' : li.json.detail));

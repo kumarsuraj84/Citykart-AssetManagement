@@ -1,0 +1,377 @@
+{
+ "uvicorn_started": true,
+ "server_errors_500": 0,
+ "tracebacks": 0,
+ "results": [
+  {
+   "label": "legit-asset",
+   "path": "/assets/a.js",
+   "status": 200,
+   "expect": 200,
+   "ctype": "",
+   "len": 16,
+   "leak": false,
+   "snippet": "ok-legit-js-BODY"
+  },
+  {
+   "label": "legit-hashed",
+   "path": "/assets/index-A1b2C3d4.js",
+   "status": 200,
+   "expect": 200,
+   "ctype": "",
+   "len": 14,
+   "leak": false,
+   "snippet": "ok-hashed-BODY"
+  },
+  {
+   "label": "legit-root-file",
+   "path": "/favicon.svg",
+   "status": 200,
+   "expect": 200,
+   "ctype": "",
+   "len": 15,
+   "leak": false,
+   "snippet": "<svg>icon</svg>"
+  },
+  {
+   "label": "spa-fallback",
+   "path": "/some/client/route",
+   "status": 200,
+   "expect": 200,
+   "ctype": "",
+   "len": 24,
+   "leak": false,
+   "snippet": "<html>SHELL-INDEX</html>"
+  },
+  {
+   "label": "traversal",
+   "path": "/assets/../shared/.env",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 70,
+   "leak": false,
+   "snippet": "{\"detail\":\"Not Found\",\"request_id\":\"bac8"
+  },
+  {
+   "label": "traversal",
+   "path": "/assets/..%2f..%2fshared%2f.env",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 70,
+   "leak": false,
+   "snippet": "{\"detail\":\"Not Found\",\"request_id\":\"c7e9"
+  },
+  {
+   "label": "traversal",
+   "path": "/assets/%2e%2e%2f%2e%2e%2fshared/.env",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 70,
+   "leak": false,
+   "snippet": "{\"detail\":\"Not Found\",\"request_id\":\"04a7"
+  },
+  {
+   "label": "traversal",
+   "path": "/assets/..%5c..%5cshared%5c.env",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 70,
+   "leak": false,
+   "snippet": "{\"detail\":\"Not Found\",\"request_id\":\"7366"
+  },
+  {
+   "label": "traversal",
+   "path": "/assets/%2e%2e%5cshared%5c.env",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 70,
+   "leak": false,
+   "snippet": "{\"detail\":\"Not Found\",\"request_id\":\"179b"
+  },
+  {
+   "label": "traversal",
+   "path": "/assets/....//....//shared/.env",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 70,
+   "leak": false,
+   "snippet": "{\"detail\":\"Not Found\",\"request_id\":\"f21e"
+  },
+  {
+   "label": "traversal",
+   "path": "/assets/..%252f..%252fshared%252f.env",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 70,
+   "leak": false,
+   "snippet": "{\"detail\":\"Not Found\",\"request_id\":\"85dc"
+  },
+  {
+   "label": "traversal",
+   "path": "/assets/C:%2fWindows%2fwin.ini",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 70,
+   "leak": false,
+   "snippet": "{\"detail\":\"Not Found\",\"request_id\":\"2aab"
+  },
+  {
+   "label": "traversal",
+   "path": "/assets/C:%5cWindows%5cwin.ini",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 70,
+   "leak": false,
+   "snippet": "{\"detail\":\"Not Found\",\"request_id\":\"92a4"
+  },
+  {
+   "label": "traversal",
+   "path": "/assets/%5c%5cserver%5cshare%5cx",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 70,
+   "leak": false,
+   "snippet": "{\"detail\":\"Not Found\",\"request_id\":\"4e71"
+  },
+  {
+   "label": "traversal",
+   "path": "/assets/a.js::$DATA",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 70,
+   "leak": false,
+   "snippet": "{\"detail\":\"Not Found\",\"request_id\":\"0ad2"
+  },
+  {
+   "label": "traversal",
+   "path": "/assets/CON",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 70,
+   "leak": false,
+   "snippet": "{\"detail\":\"Not Found\",\"request_id\":\"04c3"
+  },
+  {
+   "label": "traversal",
+   "path": "/assets/nul.txt",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 70,
+   "leak": false,
+   "snippet": "{\"detail\":\"Not Found\",\"request_id\":\"0033"
+  },
+  {
+   "label": "traversal",
+   "path": "/assets/COM1",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 70,
+   "leak": false,
+   "snippet": "{\"detail\":\"Not Found\",\"request_id\":\"861b"
+  },
+  {
+   "label": "traversal",
+   "path": "/assets/index-A1b2C3d4.js.",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 70,
+   "leak": false,
+   "snippet": "{\"detail\":\"Not Found\",\"request_id\":\"73e0"
+  },
+  {
+   "label": "traversal",
+   "path": "/assets/index-A1b2C3d4.js%20",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 70,
+   "leak": false,
+   "snippet": "{\"detail\":\"Not Found\",\"request_id\":\"29fc"
+  },
+  {
+   "label": "traversal",
+   "path": "/assets/PROGRA~1",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 70,
+   "leak": false,
+   "snippet": "{\"detail\":\"Not Found\",\"request_id\":\"49ea"
+  },
+  {
+   "label": "traversal",
+   "path": "/assets/a.js%00.png",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 70,
+   "leak": false,
+   "snippet": "{\"detail\":\"Not Found\",\"request_id\":\"96f0"
+  },
+  {
+   "label": "traversal",
+   "path": "/assets/link_out.txt",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 70,
+   "leak": false,
+   "snippet": "{\"detail\":\"Not Found\",\"request_id\":\"e820"
+  },
+  {
+   "label": "traversal",
+   "path": "/assets/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.js",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 70,
+   "leak": false,
+   "snippet": "{\"detail\":\"Not Found\",\"request_id\":\"54f4"
+  },
+  {
+   "label": "traversal",
+   "path": "/assets/assets_evil/canary.txt",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 70,
+   "leak": false,
+   "snippet": "{\"detail\":\"Not Found\",\"request_id\":\"0589"
+  },
+  {
+   "label": "traversal",
+   "path": "/assets/./assets_evil/canary.txt",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 70,
+   "leak": false,
+   "snippet": "{\"detail\":\"Not Found\",\"request_id\":\"788d"
+  },
+  {
+   "label": "traversal",
+   "path": "/assets//shared/.env",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 70,
+   "leak": false,
+   "snippet": "{\"detail\":\"Not Found\",\"request_id\":\"dc77"
+  },
+  {
+   "label": "traversal-root",
+   "path": "/../shared/.env",
+   "status": 200,
+   "expect": "404-or-shell",
+   "ctype": "",
+   "len": 24,
+   "leak": false,
+   "snippet": "<html>SHELL-INDEX</html>"
+  },
+  {
+   "label": "traversal-root",
+   "path": "/..%2f..%2fshared%2f.env",
+   "status": 200,
+   "expect": "404-or-shell",
+   "ctype": "",
+   "len": 24,
+   "leak": false,
+   "snippet": "<html>SHELL-INDEX</html>"
+  },
+  {
+   "label": "traversal-root",
+   "path": "/%2e%2e%5cshared%5c.env",
+   "status": 200,
+   "expect": "404-or-shell",
+   "ctype": "",
+   "len": 24,
+   "leak": false,
+   "snippet": "<html>SHELL-INDEX</html>"
+  },
+  {
+   "label": "traversal-root",
+   "path": "/C:%5cWindows%5cwin.ini",
+   "status": 200,
+   "expect": "404-or-shell",
+   "ctype": "",
+   "len": 24,
+   "leak": false,
+   "snippet": "<html>SHELL-INDEX</html>"
+  },
+  {
+   "label": "docs-off",
+   "path": "/docs",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 205,
+   "leak": false,
+   "snippet": "{\"detail\":\"This API address does not exi"
+  },
+  {
+   "label": "docs-off",
+   "path": "/redoc",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 205,
+   "leak": false,
+   "snippet": "{\"detail\":\"This API address does not exi"
+  },
+  {
+   "label": "docs-off",
+   "path": "/openapi.json",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 205,
+   "leak": false,
+   "snippet": "{\"detail\":\"This API address does not exi"
+  },
+  {
+   "label": "docs-off",
+   "path": "/docs/oauth2-redirect",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 205,
+   "leak": false,
+   "snippet": "{\"detail\":\"This API address does not exi"
+  },
+  {
+   "label": "unknown-api",
+   "path": "/api/does/not/exist",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 205,
+   "leak": false,
+   "snippet": "{\"detail\":\"This API address does not exi"
+  },
+  {
+   "label": "unknown-api2",
+   "path": "/api/assets/999999/nope",
+   "status": 404,
+   "expect": 404,
+   "ctype": "",
+   "len": 205,
+   "leak": false,
+   "snippet": "{\"detail\":\"This API address does not exi"
+  }
+ ]
+}

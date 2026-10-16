@@ -1,0 +1,62 @@
+{
+ "results": [
+  {
+   "label": "vendors",
+   "path": "/settings/vendors",
+   "xss_fired": null,
+   "marker_text_visible": true,
+   "liveEl": {
+    "badImg": false,
+    "badSvg": false
+   }
+  },
+  {
+   "label": "items",
+   "path": "/settings/catalogue/items",
+   "xss_fired": null,
+   "marker_text_visible": true,
+   "liveEl": {
+    "badImg": false,
+    "badSvg": false
+   }
+  },
+  {
+   "label": "employees",
+   "path": "/people/employees",
+   "xss_fired": null,
+   "marker_text_visible": true,
+   "liveEl": {
+    "badImg": false,
+    "badSvg": false
+   }
+  },
+  {
+   "label": "assets",
+   "path": "/assets?q=CL2XSS",
+   "xss_fired": null,
+   "marker_text_visible": true,
+   "liveEl": {
+    "badImg": false,
+    "badSvg": false
+   }
+  },
+  {
+   "label": "asset-detail",
+   "path": "/assets/21",
+   "xss_fired": null,
+   "marker_text_visible": true,
+   "liveEl": {
+    "badImg": false,
+    "badSvg": false
+   }
+  }
+ ],
+ "anyXss": null,
+ "created": {
+  "vendor": 17,
+  "item": 9,
+  "emp": 63,
+  "asset": 21
+ },
+ "pageErrors": []
+}

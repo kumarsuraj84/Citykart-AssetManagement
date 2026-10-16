@@ -1,0 +1,353 @@
+=== [sec-api-8200] root /  GET /
+status: HTTP/1.1 404 Not Found
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x1: 17208f4e9b8748279803c7c288fb57b9
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"Not Found","request_id":"17208f4e9b8748279803c7c288fb57b9"}
+=== [sec-api-8200] real JS asset  GET /assets/index-DflwEmrO.js
+status: HTTP/1.1 404 Not Found
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x1: 70aabc09e4d44c0c876525a4bd4fe743
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"Not Found","request_id":"70aabc09e4d44c0c876525a4bd4fe743"}
+=== [sec-api-8200] real CSS asset  GET /assets/index-Bj21ou3B.css
+status: HTTP/1.1 404 Not Found
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x1: 07b5624c99284e95b82d7d68f826414e
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"Not Found","request_id":"07b5624c99284e95b82d7d68f826414e"}
+=== [sec-api-8200] missing JS asset  GET /assets/does-not-exist-r2c.js
+status: HTTP/1.1 404 Not Found
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x1: 0e64edbc8a3a4e04b93110c1ff542344
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"Not Found","request_id":"0e64edbc8a3a4e04b93110c1ff542344"}
+=== [sec-api-8200] missing CSS asset  GET /assets/does-not-exist-r2c.css
+status: HTTP/1.1 404 Not Found
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x1: 3cf31e531afd4bb480881331637a392a
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"Not Found","request_id":"3cf31e531afd4bb480881331637a392a"}
+=== [sec-api-8200] source map of real asset  GET /assets/index-DflwEmrO.js.map
+status: HTTP/1.1 404 Not Found
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x1: 324ba4c1f37e4d17af437807645edf2e
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"Not Found","request_id":"324ba4c1f37e4d17af437807645edf2e"}
+=== [sec-api-8200] any .map  GET /assets/x.js.map
+status: HTTP/1.1 404 Not Found
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x1: 41f4ce4ed83d48e787faa560fddee227
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"Not Found","request_id":"41f4ce4ed83d48e787faa560fddee227"}
+=== [sec-api-8200] missing font  GET /assets/fonts/nope-r2c.woff2
+status: HTTP/1.1 404 Not Found
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x1: d4f26ff3b8404684a044a4e8e3df4818
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"Not Found","request_id":"d4f26ff3b8404684a044a4e8e3df4818"}
+=== [sec-api-8200] SPA route /assets/42  GET /assets/42
+status: HTTP/1.1 404 Not Found
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x1: be442dd35dea460d93c560d0eae90bfb
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"Not Found","request_id":"be442dd35dea460d93c560d0eae90bfb"}
+=== [sec-api-8200] SPA route /purchase-orders  GET /purchase-orders
+status: HTTP/1.1 404 Not Found
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x1: 669680ad4bcb42fc9b9444057f3f653f
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"Not Found","request_id":"669680ad4bcb42fc9b9444057f3f653f"}
+=== [sec-api-8200] SPA route /settings/users  GET /settings/users
+status: HTTP/1.1 404 Not Found
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x1: acd6d552b3524bc3a9c87b7a6ca839c0
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"Not Found","request_id":"acd6d552b3524bc3a9c87b7a6ca839c0"}
+=== [sec-api-8200] health  GET /api/health
+status: HTTP/1.1 200 OK
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-store
+  X-Request-ID x1: 1eacdd8b98424fef89ef0da67308d3b2
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"status":"ok"}
+=== [sec-api-8200] 401 no token  GET /api/auth/capabilities
+status: HTTP/1.1 401 Unauthorized
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-store
+  X-Request-ID x1: 5b44cd3a8c614029ad8ba3b083c8759d
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"Not authenticated","request_id":"5b44cd3a8c614029ad8ba3b083c8759d"}
+=== [sec-api-8200] 401 bad token  GET /api/assets
+status: HTTP/1.1 401 Unauthorized
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-store
+  X-Request-ID x1: 7b7a477084294594af3dc095dfeba65b
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"Invalid or expired token","request_id":"7b7a477084294594af3dc095dfeba65b"}
+=== [sec-api-8200] unknown /api path  GET /api/does-not-exist-r2c
+status: HTTP/1.1 404 Not Found
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-store
+  X-Request-ID x1: a341ceac0cbf4e0ab71dcc56d2153575
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"This API address does not exist. Check the address and try again.","errors":["This API address does not exist. Check the address and try again."],"re
+=== [sec-api-8200] unknown /api deep  GET /api/x/y/z.css
+status: HTTP/1.1 404 Not Found
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-store
+  X-Request-ID x1: 989afcbea58b44e2ad43a8c58d3e6368
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"This API address does not exist. Check the address and try again.","errors":["This API address does not exist. Check the address and try again."],"re
+=== [sec-api-8200] 405 wrong method  DELETE /api/health
+status: HTTP/1.1 405 Method Not Allowed
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-store
+  X-Request-ID x1: e35ac9c61c8647c7b7dbd58545be84c3
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"Method Not Allowed","request_id":"e35ac9c61c8647c7b7dbd58545be84c3"}
+=== [sec-api-8200] 413 12MB sign-in body  POST /api/auth/login
+status: HTTP/1.1 413 Content Too Large
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-store
+  X-Request-ID x1: 22803b2095f447a7a98fe343f9c54e05
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail": "This request is larger than the 64 KB allowed here. Send a smaller one.", "errors": [{"message": "This request is larger than the 64 KB allowed here
+=== [sec-api-8200] /docs  GET /docs
+status: HTTP/1.1 200 OK
+content-type: text/html; charset=utf-8
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x0: 
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x1: 9d1a65a3861c41c8a6a90321755dd15e
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  Permissions-Policy exact: YES
+  body[0..160]:     <!DOCTYPE html>    <html>    <head>    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <link type="text/css" rel="stylesheet"
+=== [sec-api-8200] /redoc  GET /redoc
+status: HTTP/1.1 200 OK
+content-type: text/html; charset=utf-8
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x0: 
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x1: 5c60574aee9d4dca9b6905cc66256d05
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  Permissions-Policy exact: YES
+  body[0..160]:     <!DOCTYPE html>    <html>    <head>    <title>CityKart Asset Manager API - ReDoc</title>    <!-- needed for adaptive design -->    <meta charset="utf-
+=== [sec-api-8200] /openapi.json  GET /openapi.json
+status: HTTP/1.1 200 OK
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x1: ea71118f005f45f2b68df5ddec6b3cfc
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"openapi":"3.1.0","info":{"title":"CityKart Asset Manager API","version":"0.1.0"},"paths":{"/api/auth/companies":{"get":{"tags":["auth"],"summary":"List Login 

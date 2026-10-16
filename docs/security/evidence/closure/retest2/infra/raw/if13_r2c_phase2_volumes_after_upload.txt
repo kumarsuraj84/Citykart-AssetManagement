@@ -1,0 +1,30 @@
+# 2026-10-16T06:13:19Z uploads=ckam-r2c_uploads logs=ckam-r2c_logs
+/data:
+total 16
+drwxr-xr-x    4 0        0             4096 Oct 16 06:13 .
+drwxr-xr-x    1 0        0             4096 Oct 16 06:13 ..
+drwxr-xr-x    2 10001    10001         4096 Oct 16 06:13 logs
+drwxr-xr-x    3 10001    10001         4096 Oct 16 06:13 uploads
+
+/data/logs:
+total 16
+drwxr-xr-x    2 10001    10001         4096 Oct 16 06:13 .
+drwxr-xr-x    4 0        0             4096 Oct 16 06:13 ..
+-rw-r--r--    1 10001    10001         3015 Oct 16 06:13 app.jsonl
+-rw-r--r--    1 10001    10001         2394 Oct 16 06:13 audit.jsonl
+
+/data/uploads:
+total 12
+drwxr-xr-x    3 10001    10001         4096 Oct 16 06:13 .
+drwxr-xr-x    4 0        0             4096 Oct 16 06:13 ..
+drwxr-xr-x    2 10001    10001         4096 Oct 16 06:13 1
+
+/data/uploads/1:
+total 12
+drwxr-xr-x    2 10001    10001         4096 Oct 16 06:13 .
+drwxr-xr-x    3 10001    10001         4096 Oct 16 06:13 ..
+-rw-r--r--    1 10001    10001          105 Oct 16 06:13 2bc6ecf6-f0aa-4ff9-983e-389452c22d36.pdf
+# log line counts
+        5 /data/logs/app.jsonl
+        4 /data/logs/audit.jsonl
+        9 total

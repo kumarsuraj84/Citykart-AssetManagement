@@ -1,0 +1,39 @@
+######## sessions still on ckam_r2c_rs
+ count 
+-------
+     0
+(1 row)
+
+######## drop database and roles
+DROP DATABASE
+DROP ROLE
+DROP ROLE
+DROP ROLE
+######## after: \du and \l (no r2c_* role, no ckam_r2c_rs database may remain)
+                             List of roles
+ Role name |                         Attributes                         
+-----------+------------------------------------------------------------
+ ckam      | Superuser, Create role, Create DB, Replication, Bypass RLS
+
+                                                 List of databases
+   Name    | Owner | Encoding | Locale Provider |  Collate   |   Ctype    | Locale | ICU Rules | Access privileges 
+-----------+-------+----------+-----------------+------------+------------+--------+-----------+-------------------
+ ckam      | ckam  | UTF8     | libc            | en_US.utf8 | en_US.utf8 |        |           | 
+ ckam_test | ckam  | UTF8     | libc            | en_US.utf8 | en_US.utf8 |        |           | 
+ postgres  | ckam  | UTF8     | libc            | en_US.utf8 | en_US.utf8 |        |           | 
+ template0 | ckam  | UTF8     | libc            | en_US.utf8 | en_US.utf8 |        |           | =c/ckam          +
+           |       |          |                 |            |            |        |           | ckam=CTc/ckam
+ template1 | ckam  | UTF8     | libc            | en_US.utf8 | en_US.utf8 |        |           | =c/ckam          +
+           |       |          |                 |            |            |        |           | ckam=CTc/ckam
+(5 rows)
+
+r2c roles left: 0
+r2c databases left: 0
+total 328
+drwxrwxrwt 1 root root   4096 Oct 16 06:26 .
+drwxr-xr-x 1 root root   4096 Oct 16 06:20 ..
+-rwxr-xr-x 1 root root    748 Oct 15 11:14 audit_check.sql
+-rwxr-xr-x 1 root root   2020 Oct 15 11:06 checks.sql
+-rw-r--r-- 1 root root 134448 Oct 15 10:55 ckam_empty_snapshot.sql
+-rwxr-xr-x 1 root root    902 Oct 15 11:14 err_check.sql
+-rwxr-xr-x 1 root root 178525 Oct 15 10:57 seeded.dump

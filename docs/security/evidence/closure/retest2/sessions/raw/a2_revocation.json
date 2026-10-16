@@ -1,0 +1,94 @@
+{
+  "cases": [
+    {
+      "id": "CL2-SE-T20",
+      "desc": "CL2RLOGOUT: logout -> old access AND refresh dead",
+      "pass": true,
+      "detail": {
+        "baseAliveStatus": 403,
+        "accessAfter": 401,
+        "refreshAfter": 401
+      }
+    },
+    {
+      "id": "CL2-SE-T21",
+      "desc": "CL2RPWD: password change (204=204, new cookie=true) -> old access AND refresh dead",
+      "pass": true,
+      "detail": {
+        "baseAliveStatus": 403,
+        "accessAfter": 401,
+        "refreshAfter": 401
+      }
+    },
+    {
+      "id": "CL2-SE-T22",
+      "desc": "CL2RRESET: admin Reset Password -> old access AND refresh dead",
+      "pass": true,
+      "detail": {
+        "baseAliveStatus": 403,
+        "accessAfter": 401,
+        "refreshAfter": 401
+      }
+    },
+    {
+      "id": "CL2-SE-T23",
+      "desc": "CL2RISSUE: issue-passwords -> old access AND refresh dead",
+      "pass": true,
+      "detail": {
+        "baseAliveStatus": 403,
+        "accessAfter": 401,
+        "refreshAfter": 401
+      }
+    },
+    {
+      "id": "CL2-SE-T24",
+      "desc": "CL2RROLE: role change (put=200) -> old access AND refresh dead",
+      "pass": true,
+      "detail": {
+        "baseAliveStatus": 403,
+        "accessAfter": 401,
+        "refreshAfter": 401
+      }
+    },
+    {
+      "id": "CL2-SE-T25",
+      "desc": "CL2RROLE: work-area change -> old access AND refresh dead",
+      "pass": false,
+      "detail": {
+        "baseAlive": 403,
+        "put": 200,
+        "accessAfter": 403,
+        "refreshAfter": 200
+      }
+    },
+    {
+      "id": "CL2-SE-T26",
+      "desc": "CL2RDEACT: deactivation (del=204) -> old access AND refresh dead",
+      "pass": true,
+      "detail": {
+        "baseAliveStatus": 403,
+        "accessAfter": 401,
+        "refreshAfter": 401
+      }
+    },
+    {
+      "id": "CL2-SE-T27",
+      "desc": "CL2RLOFF: login disabled (put=200) -> old access AND refresh dead",
+      "pass": true,
+      "detail": {
+        "baseAliveStatus": 403,
+        "accessAfter": 401,
+        "refreshAfter": 401
+      }
+    },
+    {
+      "id": "CL2-SE-T28",
+      "desc": "control user (CL2OTHER) session unaffected by all triggers",
+      "pass": true,
+      "detail": {
+        "before": 403,
+        "after": 403
+      }
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+401  alg none, no signature  {"detail":"Invalid or expired token","request_id":"f9fc53aaa
+401  alg None (case)  {"detail":"Invalid or expired token","request_id":"5eefa030e
+401  HS256 keyed with an attacker DER public key (PYSEC-2026-4298 pattern)  {"detail":"Invalid or expired token","request_id":"e41af11fc
+401  HS512 keyed with an attacker DER public key  {"detail":"Invalid or expired token","request_id":"0af76e6fa
+401  ES256 signed with an attacker key  {"detail":"Invalid or expired token","request_id":"1641ad759
+401  HS256 with an empty key  {"detail":"Invalid or expired token","request_id":"3392bd757
+jose backends in the running ckam-sec api: HMAC jose.backends.cryptography_backend | EC jose.backends.cryptography_backend | ecdsa imported by app at runtime: False

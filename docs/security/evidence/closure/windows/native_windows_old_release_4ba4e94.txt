@@ -1,0 +1,33 @@
+LEAK  200  backslash x4  <<< JWT_SECRET=FAKE-CANARY-SECRET-DO-NOT-USE 
+LEAK  200  encoded dotdot + backslash  <<< JWT_SECRET=FAKE-CANARY-SECRET-DO-NOT-USE 
+LEAK  200  forward slash x4 (encoded)  <<< JWT_SECRET=FAKE-CANARY-SECRET-DO-NOT-USE 
+LEAK  200  mixed slash/backslash  <<< JWT_SECRET=FAKE-CANARY-SECRET-DO-NOT-USE 
+ok    404  double encoded backslash
+ok    404  double encoded slash
+ok    200  sibling file in dist (one up)
+LEAK  200  nas.pw  <<< FAKE-CANARY-NAS-PASSWORD 
+LEAK  200  absolute with drive (backslash)  <<< JWT_SECRET=FAKE-CANARY-SECRET-DO-NOT-USE 
+LEAK  200  absolute with drive (forward)  <<< JWT_SECRET=FAKE-CANARY-SECRET-DO-NOT-USE 
+LEAK  200  drive in url, win.ini  <<< ; for 16-bit app support [fonts] [extensions] [mci extens
+LEAK  200  drive backslash, win.ini  <<< ; for 16-bit app support [fonts] [extensions] [mci extens
+ok    404  win.ini via leading slash
+ok    404  UNC-like backslashes
+ok    404  UNC-like forward
+LEAK  200  UNC with localhost admin share  <<< ; for 16-bit app support [fonts] [extensions] [mci extens
+ok    404  drive-relative
+ok    200  alternate data stream
+ok    404  alternate data stream (named)
+ok    200  trailing dot
+ok    200  trailing space
+ok    404  reserved CON
+ok    404  reserved nul.txt
+ok    404  reserved aux.js
+ok    404  8.3 short name
+ok    404  NUL byte
+ok    404  long name
+ok    404  sibling prefix
+legit asset: 200 "console.log('ok')"
+spa route: 200 "index shell"
+unknown /api: 200 index shell
+
+SUMMARY old: payloads=28 leaks=10 5xx=0 distinct_refusal_bodies=19

@@ -1,0 +1,357 @@
+=== [prod-singleport-8703] root /  GET /
+status: HTTP/1.1 200 OK
+content-type: text/html; charset=utf-8
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-cache
+  X-Request-ID x1: 08db0a35a28847fcb69cac4815007ad2
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: <!doctype html><html lang="en">  <head>    <meta charset="UTF-8" />    <link rel="icon" type="image/webp" href="/favicon.webp" />    <meta name="viewport" 
+=== [prod-singleport-8703] real JS asset  GET /assets/index-DflwEmrO.js
+status: HTTP/1.1 200 OK
+content-type: text/javascript; charset=utf-8
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x1: d04520841a61450fadd3e21d18a4687d
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: var e=Object.create,t=Object.defineProperty,n=Object.getOwnPropertyDescriptor,r=Object.getOwnPropertyNames,i=Object.getPrototypeOf,a=Object.prototype.hasOwnProp
+=== [prod-singleport-8703] real CSS asset  GET /assets/index-Bj21ou3B.css
+status: HTTP/1.1 200 OK
+content-type: text/css; charset=utf-8
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x1: 480c701527e84a28a1f7d6c45e0f0c5b
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: @font-face{font-family:Inter;font-style:normal;font-display:swap;font-weight:100 900;src:url(/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2)format("woff2");
+=== [prod-singleport-8703] missing JS asset  GET /assets/does-not-exist-r2c.js
+status: HTTP/1.1 404 Not Found
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x1: 69c00b058e704bc3a97445bb1117c356
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"Not Found","request_id":"69c00b058e704bc3a97445bb1117c356"}
+=== [prod-singleport-8703] missing CSS asset  GET /assets/does-not-exist-r2c.css
+status: HTTP/1.1 404 Not Found
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x1: 195ab7e34bd14128a0c0c5c2c9befcec
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"Not Found","request_id":"195ab7e34bd14128a0c0c5c2c9befcec"}
+=== [prod-singleport-8703] source map of real asset  GET /assets/index-DflwEmrO.js.map
+status: HTTP/1.1 404 Not Found
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x1: f14cb2e91d344e96b99f8835ce2e553a
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"Not Found","request_id":"f14cb2e91d344e96b99f8835ce2e553a"}
+=== [prod-singleport-8703] any .map  GET /assets/x.js.map
+status: HTTP/1.1 404 Not Found
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x1: 19c3de9d37114e579aaab3d0cb66d179
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"Not Found","request_id":"19c3de9d37114e579aaab3d0cb66d179"}
+=== [prod-singleport-8703] missing font  GET /assets/fonts/nope-r2c.woff2
+status: HTTP/1.1 404 Not Found
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x1: e81b51c0f66d43939d706988c4d93f95
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"Not Found","request_id":"e81b51c0f66d43939d706988c4d93f95"}
+=== [prod-singleport-8703] SPA route /assets/42  GET /assets/42
+status: HTTP/1.1 404 Not Found
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x1: 4f9745b16e9d4d62aba60d21c7537174
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"Not Found","request_id":"4f9745b16e9d4d62aba60d21c7537174"}
+=== [prod-singleport-8703] SPA route /purchase-orders  GET /purchase-orders
+status: HTTP/1.1 200 OK
+content-type: text/html; charset=utf-8
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-cache
+  X-Request-ID x1: dc0065acf1fb41e59c6d6184424fae44
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: <!doctype html><html lang="en">  <head>    <meta charset="UTF-8" />    <link rel="icon" type="image/webp" href="/favicon.webp" />    <meta name="viewport" 
+=== [prod-singleport-8703] SPA route /settings/users  GET /settings/users
+status: HTTP/1.1 200 OK
+content-type: text/html; charset=utf-8
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-cache
+  X-Request-ID x1: 9109a5e0089e4455bbc3522fb61a3b46
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: <!doctype html><html lang="en">  <head>    <meta charset="UTF-8" />    <link rel="icon" type="image/webp" href="/favicon.webp" />    <meta name="viewport" 
+=== [prod-singleport-8703] health  GET /api/health
+status: HTTP/1.1 200 OK
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-store
+  X-Request-ID x1: c5098c35a8bb4b7987d1c0178916619c
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"status":"ok"}
+=== [prod-singleport-8703] 401 no token  GET /api/auth/capabilities
+status: HTTP/1.1 401 Unauthorized
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-store
+  X-Request-ID x1: e9e7d7582fd84d8b8abaac6f5aaa7215
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"Not authenticated","request_id":"e9e7d7582fd84d8b8abaac6f5aaa7215"}
+=== [prod-singleport-8703] 401 bad token  GET /api/assets
+status: HTTP/1.1 401 Unauthorized
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-store
+  X-Request-ID x1: a6c23d0c51444ba1ba5831e2e1911bed
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"Invalid or expired token","request_id":"a6c23d0c51444ba1ba5831e2e1911bed"}
+=== [prod-singleport-8703] unknown /api path  GET /api/does-not-exist-r2c
+status: HTTP/1.1 404 Not Found
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-store
+  X-Request-ID x1: 759050c4a18d49b08bcd55ea2a2636de
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"This API address does not exist. Check the address and try again.","errors":["This API address does not exist. Check the address and try again."],"re
+=== [prod-singleport-8703] unknown /api deep  GET /api/x/y/z.css
+status: HTTP/1.1 404 Not Found
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-store
+  X-Request-ID x1: 1bc22a2b7c794d9b823cf987ae2fc008
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"This API address does not exist. Check the address and try again.","errors":["This API address does not exist. Check the address and try again."],"re
+=== [prod-singleport-8703] 405 wrong method  DELETE /api/health
+status: HTTP/1.1 405 Method Not Allowed
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-store
+  X-Request-ID x1: 41d2507cf2c145b3acb2d002adee9498
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"Method Not Allowed","request_id":"41d2507cf2c145b3acb2d002adee9498"}
+=== [prod-singleport-8703] 413 12MB sign-in body  POST /api/auth/login
+status: HTTP/1.1 413 Content Too Large
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-store
+  X-Request-ID x1: 4ca2aecd50e74d409f00ea7609786f7f
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail": "This request is larger than the 64 KB allowed here. Send a smaller one.", "errors": [{"message": "This request is larger than the 64 KB allowed here
+=== [prod-singleport-8703] /docs  GET /docs
+status: HTTP/1.1 404 Not Found
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x1: 64c0ca3b88174747965677555d3c8dee
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"This API address does not exist. Check the address and try again.","errors":["This API address does not exist. Check the address and try again."],"re
+=== [prod-singleport-8703] /redoc  GET /redoc
+status: HTTP/1.1 404 Not Found
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x1: 702701cf88b948e99942fecdf3966d87
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"This API address does not exist. Check the address and try again.","errors":["This API address does not exist. Check the address and try again."],"re
+=== [prod-singleport-8703] /openapi.json  GET /openapi.json
+status: HTTP/1.1 404 Not Found
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x1: 3eb4d06e5acc48eeaabf8526bc7323c2
+  Server x1: uvicorn
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"This API address does not exist. Check the address and try again.","errors":["This API address does not exist. Check the address and try again."],"re

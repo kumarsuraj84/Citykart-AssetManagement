@@ -1,0 +1,11 @@
+{
+ "label": "r2c-nginx-dev-target-phase1",
+ "base": "http://localhost:3711",
+ "login_status": 200,
+ "upload_status": 201,
+ "document_id": 3,
+ "stored_size": 99,
+ "download_status": 200,
+ "download_bytes_equal": true,
+ "health": "200 {\"status\":\"ok\"}"
+}

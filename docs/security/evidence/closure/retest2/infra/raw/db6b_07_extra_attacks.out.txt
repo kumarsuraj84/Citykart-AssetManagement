@@ -1,0 +1,71 @@
+
+######## X1a runtime role sets a persistent default for the lifecycle marker on itself
+ERROR:  permission denied to set parameter "ckam.lifecycle_writer"
+ERROR:  permission denied to set parameter "ckam.lifecycle_writer"
+     db      |   rolname    |    setconfig     
+-------------+--------------+------------------
+ ckam_r2c_rs | r2c_migrator | {role=r2c_owner}
+(1 row)
+
+
+######## X1b a NEW session of the runtime role: marker already on; direct status change WITHOUT set_config (rolled back)
+ERROR:  unrecognized configuration parameter "ckam.lifecycle_writer"
+BEGIN
+ERROR:  asset status, holder and status date can only change through a recorded asset movement (asset_event)
+CONTEXT:  PL/pgSQL function forbid_asset_lifecycle_write() line 5 at RAISE
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ROLLBACK
+
+######## X1c does role_split_verify.sql / check_least_privilege.sql notice? (FAIL/INFO rows, and the PASS count)
+verify: no FAIL/INFO row
+verify PASS rows: 45
+ops/db/role_split_verify.sql:70:           CASE WHEN EXISTS (SELECT 1 FROM pg_db_role_setting rs
+ops/db/role_split_verify.sql:73:                               AND ('role=' || s.own) = ANY (rs.setconfig)) THEN 'PASS' ELSE 'FAIL' END,
+ops/db/role_split_verify.sql:74:           coalesce((SELECT string_agg(array_to_string(rs.setconfig, ' '), '; ') FROM pg_db_role_setting rs
+
+######## X1d does role_split.sql (re-run, as the runbook says after every deploy) clear it?
+role_split.sql: done. Now run ops/db/role_split_verify.sql with the same -v names (every row must be PASS).
+ rolname | setconfig 
+---------+-----------
+(0 rows)
+
+
+######## X2 other role defaults the runtime role may try on itself
+ERROR:  permission denied to set parameter "session_replication_role"
+ERROR:  permission denied to set parameter "ckam.allow_audit_purge"
+ERROR:  unrecognized configuration parameter "ckam.allow_audit_purge"
+BEGIN
+ERROR:  permission denied for table audit_log
+ROLLBACK
+ALTER ROLE
+
+######## X2 clean-up: the runtime role resets its own defaults
+ERROR:  cannot execute ALTER ROLE in a read-only transaction
+ERROR:  cannot execute ALTER ROLE in a read-only transaction
+ r2c_app_role_defaults_left 
+----------------------------
+                          1
+(1 row)
+
+
+######## X3a before the fix: sequence privileges of the runtime role
+          relname          | usage | sel | upd 
+---------------------------+-------+-----+-----
+ asset_event_id_seq        | t     | t   | t
+ asset_field_change_id_seq | t     | t   | t
+ audit_log_id_seq          | t     | t   | t
+ master_audit_id_seq       | t     | t   | t
+(4 rows)
+
+
+######## X3b candidate fix on THIS throw-away database: REVOKE UPDATE ON ALL SEQUENCES (and the default for future ones)
+REVOKE
+ALTER DEFAULT PRIVILEGES
+
+######## X3c after the fix: setval refused, nextval works (rolled back where possible)
+ERROR:  permission denied for sequence audit_log_id_seq
+ERROR:  permission denied for sequence asset_event_id_seq
+BEGIN
+ERROR:  cannot execute nextval() in a read-only transaction
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ROLLBACK

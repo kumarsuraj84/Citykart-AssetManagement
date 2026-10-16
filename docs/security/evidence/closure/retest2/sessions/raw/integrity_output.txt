@@ -1,0 +1,87 @@
+== (g) CL2RU1 token_version (single consistent integer, no lost update) ==
+ id |  code  | token_version 
+----+--------+---------------
+ 48 | CL2RU1 |             7
+(1 row)
+
+== INV1: duplicate asset codes (expect 0) ==
+ asset_code | count 
+------------+-------
+(0 rows)
+
+== INV2: duplicate live serials excl N/A (expect 0) ==
+ s | count 
+---+-------
+(0 rows)
+
+== (c) assets with the duplicate serial CL2-SER-DUP-1 (expect exactly 1) ==
+ count 
+-------
+     1
+(1 row)
+
+== INV3: duplicate LIVE po_number per company (expect 0) ==
+ company_id | n | count 
+------------+---+-------
+(0 rows)
+
+== (a) active POs named CL2-PO-DUP-1 (expect 1) ==
+ count 
+-------
+     1
+(1 row)
+
+== (b) PO CL2-PO-RCV-2: delivered vs pending units (expect 6 delivered, 0 pending, none negative) ==
+    po_number     |  status   | count 
+------------------+-----------+-------
+ CL2-PO-MIX-2     | CANCELLED |     4
+ CL2-PO-RCV-2     | DELIVERED |     6
+ CL2-PO-RCV-IDEM2 | DELIVERED |     1
+ CL2-PO-RCV-IDEM2 | PENDING   |     5
+(4 rows)
+
+== INV4: pending_asset negative remaining check -- any PO line with delivered>ordered (expect 0 rows) ==
+ purchase_order_id | line_no | delivered | total 
+-------------------+---------+-----------+-------
+(0 rows)
+
+== INV5: double lifecycle events -- (e) sold asset terminal event count (expect exactly 1 SOLD) ==
+ id |  status  | sold_events | total_events 
+----+----------+-------------+--------------
+ 72 | SOLD     |           1 |            2
+ 73 | IN_STOCK |           0 |           21
+(2 rows)
+
+== (e) moved asset: status consistent with last event, single holder ==
+ id |  status  | current_asset_user_id | last_event | last_to 
+----+----------+-----------------------+------------+---------
+ 73 | IN_STOCK |                     3 | MOVED      |       3
+(1 row)
+
+== INV6: asset status == last lifecycle event target across all CL2 assets created now (ids >= 61) ==
+ mismatches 
+------------
+          0
+(1 row)
+
+== (f) duplicate-name master rows (active): vendor/brand/item/category named CL2 Dup ... ==
+    t     | count 
+----------+-------
+ vendor   |     1
+ brand    |     1
+ item     |     1
+ category |     3
+(4 rows)
+
+== INV7: orphan pending_asset rows pointing to no PO (expect 0) ==
+ count 
+-------
+     0
+(1 row)
+
+== error_log rows in the last 20 min (expect no 500 / SQL errors) ==
+  level  | status_code | exception_type |             msg             | count 
+---------+-------------+----------------+-----------------------------+-------
+ WARNING |         409 | IntegrityError | This record already exists. |    13
+(1 row)
+

@@ -1,0 +1,57 @@
+test_id,area,title,method,expected,result,verdict
+CL2-SE-T01,A1 refresh,first refresh of a live cookie rotates (new Set-Cookie),POST /api/auth/refresh,200 + new refresh cookie != old,200 new cookie issued,PASS
+CL2-SE-T02,A1 refresh,replay of the OLD cookie after >15s (past 10s grace) -> reuse,POST /api/auth/refresh,401 "Your session has ended",401 session-ended,PASS
+CL2-SE-T03,A1 refresh,the newer (winner) cookie is also dead after reuse detected,POST /api/auth/refresh,401,401,PASS
+CL2-SE-T04,A1 refresh,access token minted at the rotation is dead after reuse,GET /api/auth/capabilities,401 (not 200/403),401,PASS
+CL2-SE-T05,A1 refresh,original access token dead after reuse,GET /api/auth/capabilities,401,401,PASS
+CL2-SE-T06,A1 refresh,a different user's session is unaffected by the reuse,POST /api/auth/refresh,200,200,PASS
+CL2-SE-T07,A1 refresh,grace replay of just-replaced cookie within 10s -> access only NO Set-Cookie,POST /api/auth/refresh,200 and 0 Set-Cookie,200 0 cookies,PASS
+CL2-SE-T08,A1 refresh,the grace winner's newer cookie stays valid,POST /api/auth/refresh,200 + rotates,200,PASS
+CL2-SE-T09,A1 refresh,two sign-ins = two independent live sessions,POST /api/auth/login x2 then refresh,both refresh 200 distinct cookies,both 200,PASS
+CL2-SE-T10,A1 refresh,legacy cookie (no sid crafted with test secret) first use accepted + rotated,POST /api/auth/refresh,200 + new cookie,200,PASS
+CL2-SE-T11,A1 refresh,legacy cookie replay past grace -> reuse ends sessions,POST /api/auth/refresh,401 session-ended,401,PASS
+CL2-SE-T11b,A1 refresh,rotated cookie derived from legacy session dead after reuse,POST /api/auth/refresh,401,401,PASS
+CL2-SE-T12,A1 refresh,expired refresh JWT (past exp) refused,POST /api/auth/refresh,401,401,PASS
+CL2-SE-T13,A1 refresh,REFRESH_REUSE (HIGH) + REFRESH_DUPLICATE (LOW) security audit rows written,audit_log,rows present with severity,rows present,PASS
+CL2-SE-T14,A1 refresh,no raw token / jti / JWT material in audit_log auth_session error_log or /data/logs,grep DB + log files,zero matches,0 matches everywhere,PASS
+CL2-SE-T20,A2 revoke,logout ends old access AND refresh (others fine),POST /api/auth/logout,access 401 + refresh 401,401/401,PASS
+CL2-SE-T21,A2 revoke,password change ends old tokens new cookie issued,POST /api/auth/change-password,204 + old access/refresh 401,204 then 401/401,PASS
+CL2-SE-T22,A2 revoke,admin Reset Password ends the user's tokens,POST /api/asset-users/{id}/reset-password,old access/refresh 401,401/401,PASS
+CL2-SE-T23,A2 revoke,issue-passwords ends the user's tokens,POST /api/asset-users/issue-passwords,old access/refresh 401,401/401,PASS
+CL2-SE-T24,A2 revoke,role change ends the user's tokens,PUT /api/asset-users/{id},old access/refresh 401,401/401,PASS
+CL2-SE-T25,A2 revoke,work-area change (allowed_asset_domains) ends tokens,PUT /api/asset-users/{id},old access/refresh 401,401/401,PASS
+CL2-SE-T26,A2 revoke,deactivation ends the user's tokens,DELETE /api/asset-users/{id},old access/refresh 401,401/401,PASS
+CL2-SE-T27,A2 revoke,login switched off ends the user's tokens,PUT /api/asset-users/{id} login_enabled=false,old access/refresh 401,401/401,PASS
+CL2-SE-T28,A2 revoke,control user session unaffected by every trigger,GET /api/auth/capabilities,still alive (403 under must_change),alive before+after,PASS
+CL2-SE-T30,A3 ratelimit,per-login-id limit via nginx -> 429 + Retry-After + plain message,POST /api/auth/login x13 same id,429 at 11th Retry-After:60,429 at 11 RA=60,PASS
+CL2-SE-T31,A3 ratelimit,per-IP limit via nginx holds despite distinct forged X-Forwarded-For,POST /api/auth/login x24 distinct ids+XFF,429 at ~21 (one bucket),429 at 21,PASS
+CL2-SE-T32,A3 ratelimit,per-IP limit direct :8200 holds despite forged XFF (untrusted peer),POST :8200/api/auth/login x24,429 at ~21,429 at 21,PASS
+CL2-SE-T33,A3 ratelimit,RATE_LIMITED audit rows log the real IP not the forged XFF,audit_log,real ip (172.25.0.1 / 172.31.212.1) 0 forged,0 forged rows,PASS
+CL2-SE-T34,A3 ratelimit,two source addresses (alpine container vs host) do not share a bucket,login from 2nd docker source,alpine 401 while host 429,alpine 401 host 429,PASS
+CL2-SE-T35,A4 lockout,5 wrong guesses lock the user 6th (even correct) -> 423,POST /api/auth/login,5x401 then 423,5x401 then 423,PASS
+CL2-SE-T36,A4 lockout,a stranger cannot extend the lock (locked_until unchanged),POST /api/auth/login x3 while locked,423 + locked_until constant,423 epoch unchanged,PASS
+CL2-SE-T37,A4 lockout,admin Reset Password clears the lock,POST reset-password then login,login 200,200,PASS
+CL2-SE-T38,A4 lockout,20 parallel wrong guesses -> exactly 5 counted (atomic),Promise.all x20,failed_login_count=5 locked,count=5 locked,PASS
+CL2-SE-T40,A6 size,login body >64KB (declared) -> 413 plain message,POST /api/auth/login,413,413,PASS
+CL2-SE-T41,A6 size,login body ~60KB -> NOT 413 (reaches login logic),POST /api/auth/login,not 413,422,PASS
+CL2-SE-T42,A6 size,JSON declared >5MB (no token) -> 413 before read/auth,POST /api/purchase-orders,413,413,PASS
+CL2-SE-T43,A6 size,multipart declared >16MB -> 413 before read,POST /api/documents,413,413,PASS
+CL2-SE-T44,A6 size,malformed (non-numeric) Content-Length refused safely,raw POST /api/auth/login,controlled refusal no 500,400 (uvicorn h11 pre-ASGI),PASS
+CL2-SE-T45,A6 size,chunked login body >64KB (no CL) counted and stopped -> 413,raw chunked POST,413,413,PASS
+CL2-SE-T46,A6 size,API RSS stays flat while refusing 6MB/17MB/96KB bodies,docker stats,RSS ~unchanged,155.6->155.7 MiB,PASS
+CL2-SE-T50,A5 policy,13 weak passwords refused 422 with plain messages (common/brand/run/personal),POST /api/auth/change-password,all 422,13/13 422,PASS
+CL2-SE-T51,A5 policy,a long passphrase is accepted,POST /api/auth/change-password,204,204,PASS
+CL2-SE-T60,A7 timing,sign-in medians right/wrong/unknown/disabled/locked within a few ms (AU-01),35 samples each,median spread small,see a7_timing.json,PASS
+CL2-SE-T70,B concurrency,same PO number x20 -> exactly 1 created,POST /api/purchase-orders x20,1x201 19x422; 1 live PO,1 PO,PASS
+CL2-SE-T71,B concurrency,PO line of 6 received 1-at-a-time x20 -> exactly 6 no over-receipt,POST receive x20,6x200 14x422; 6 DELIVERED,6 delivered,PASS
+CL2-SE-T72,B concurrency,receive with ONE Idempotency-Key x20 -> exactly 1 unit,POST receive x20 same key,1x200 19x409; 1 DELIVERED 5 PENDING,1 unit,PASS
+CL2-SE-T73,B concurrency,same serial on 20 parallel asset creates -> exactly 1 asset,POST /api/assets x20,1x201 rest 409/422; 1 asset,1 asset,PASS
+CL2-SE-T74,B concurrency,batch create x20 same Idempotency-Key -> one batch,POST /api/assets/batch x20,1x201 19x409,1 batch,PASS
+CL2-SE-T75,B concurrency,batch create x10 without key -> 10 distinct batches no dup codes,POST /api/assets/batch x10,10x201 no dup codes,10 batches 0 dup,PASS
+CL2-SE-T76,B concurrency,asset sold/scrapped twice x20 -> exactly one terminal event,POST events x20,1x201 19x422; 1 SOLD status SOLD,1 terminal,PASS
+CL2-SE-T77,B concurrency,asset moved to two holders x20 -> one holder ledger consistent,POST events x20,all serialized; status==last event one holder,consistent 0 mismatch,PASS
+CL2-SE-T78,B concurrency,same Vendor/Brand/Item/Category name x20 -> active-row behaviour,POST masters x20,vendor/brand/item 1 active; category per-code,V1 B1 I1 Cat3,PASS
+CL2-SE-T79,B concurrency,parallel refresh of ONE cookie x20 -> exactly 1 rotation never two valid,POST /api/auth/refresh x20,1 Set-Cookie 19 duplicate no 500,1 rotation 20x200,PASS
+CL2-SE-T80,B concurrency,parallel sign-ins/logouts/resets/issues -> token_version consistent,Promise.all storm,single int no lost update earlier session dead,tv=7 earlier 401/401,PASS
+CL2-SE-T81,B concurrency,parallel PO create+deactivate+receive -> controlled no 500,Promise.all mix,only 4xx no 500 no corruption,6x200 6x422 no 500,PASS
+CL2-SE-T82,B integrity,no dup asset codes / dup serials / dup live PO# / negative remaining / orphans / status!=last-event / 500s,read-only SQL + logs,all invariants hold,all clean,PASS

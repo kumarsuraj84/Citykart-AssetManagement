@@ -1,0 +1,78 @@
+{
+ "label": "ckam-sec",
+ "nginx": "http://localhost:3411",
+ "api": "http://127.0.0.1:8200",
+ "partA": [
+  {
+   "where": "via-nginx",
+   "case": "XFF single",
+   "login_id": "r2c-xff-dw6e6y-via-nginx-0",
+   "sent": {
+    "X-Forwarded-For": "1.2.3.4"
+   },
+   "status": 401,
+   "request_id": "d15e3ab4edfd4b09b71cd0b4cc01466b",
+   "retry_after": null
+  },
+  {
+   "where": "via-nginx",
+   "case": "XFF list + X-Real-IP",
+   "login_id": "r2c-xff-dw6e6y-via-nginx-1",
+   "sent": {
+    "X-Forwarded-For": "1.2.3.4, 5.6.7.8",
+    "X-Real-IP": "9.9.9.9"
+   },
+   "status": 401,
+   "request_id": "8554f1060b4b4c8cbdcfd7dbf3ea7eee",
+   "retry_after": null
+  },
+  {
+   "where": "via-nginx",
+   "case": "Forwarded + XFF = trusted proxy address",
+   "login_id": "r2c-xff-dw6e6y-via-nginx-2",
+   "sent": {
+    "Forwarded": "for=1.2.3.4",
+    "X-Forwarded-For": "172.31.212.10"
+   },
+   "status": 401,
+   "request_id": "0cf27d4383654ce09a7b6eedd4923b35",
+   "retry_after": null
+  },
+  {
+   "where": "direct-api",
+   "case": "XFF single",
+   "login_id": "r2c-xff-dw6e6y-direct-api-3",
+   "sent": {
+    "X-Forwarded-For": "1.2.3.4"
+   },
+   "status": 401,
+   "request_id": "4068d6ee35a54a5e9b0cc2f93c074e3c",
+   "retry_after": null
+  },
+  {
+   "where": "direct-api",
+   "case": "XFF list + X-Real-IP",
+   "login_id": "r2c-xff-dw6e6y-direct-api-4",
+   "sent": {
+    "X-Forwarded-For": "1.2.3.4, 5.6.7.8",
+    "X-Real-IP": "9.9.9.9"
+   },
+   "status": 401,
+   "request_id": "bdb5f6b60c51489b986d4f5017281e2c",
+   "retry_after": null
+  },
+  {
+   "where": "direct-api",
+   "case": "Forwarded + XFF = trusted proxy address",
+   "login_id": "r2c-xff-dw6e6y-direct-api-5",
+   "sent": {
+    "Forwarded": "for=1.2.3.4",
+    "X-Forwarded-For": "172.31.212.10"
+   },
+   "status": 401,
+   "request_id": "d93838030d8342d5abc5d770d04847c3",
+   "retry_after": null
+  }
+ ],
+ "partB": {}
+}

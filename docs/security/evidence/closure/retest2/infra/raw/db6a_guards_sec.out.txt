@@ -1,0 +1,327 @@
+# 2026-10-16T06:20:16Z psql as ckam on ckam (ckam-sec-db-1) : db6a_guards_sec.sql
+Pager usage is off.
+== context
+SELECT current_user, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS is_superuser,
+       (SELECT version_num FROM alembic_version) AS alembic_head;
+ current_user | is_superuser | alembic_head 
+--------------+--------------+--------------
+ ckam         | t            | c6e8a0b2d4f6
+(1 row)
+
+SELECT id, status, current_asset_user_id, status_since FROM asset WHERE id IN (1, 3) ORDER BY id;
+ id |  status  | current_asset_user_id | status_since 
+----+----------+-----------------------+--------------
+  1 | ALLOTTED |                    21 | 2026-10-15
+  3 | IN_STOCK |                     3 | 2026-10-05
+(2 rows)
+
+== T1 UPDATE asset.status without the marker (expect: refused)
+BEGIN;
+BEGIN
+UPDATE asset SET status = 'LOST' WHERE id = 3;
+ERROR:  asset status, holder and status date can only change through a recorded asset movement (asset_event)
+CONTEXT:  PL/pgSQL function forbid_asset_lifecycle_write() line 5 at RAISE
+ROLLBACK;
+ROLLBACK
+== T2 UPDATE asset.current_asset_user_id without the marker (expect: refused)
+BEGIN;
+BEGIN
+UPDATE asset SET current_asset_user_id = 21 WHERE id = 3;
+ERROR:  asset status, holder and status date can only change through a recorded asset movement (asset_event)
+CONTEXT:  PL/pgSQL function forbid_asset_lifecycle_write() line 5 at RAISE
+ROLLBACK;
+ROLLBACK
+== T3 UPDATE asset.status_since without the marker (expect: refused)
+BEGIN;
+BEGIN
+UPDATE asset SET status_since = DATE '2000-01-01' WHERE id = 3;
+ERROR:  asset status, holder and status date can only change through a recorded asset movement (asset_event)
+CONTEXT:  PL/pgSQL function forbid_asset_lifecycle_write() line 5 at RAISE
+ROLLBACK;
+ROLLBACK
+== T4 bulk UPDATE of status on every asset (expect: refused, 0 rows changed)
+BEGIN;
+BEGIN
+UPDATE asset SET status = 'DISPOSED';
+ERROR:  asset status, holder and status date can only change through a recorded asset movement (asset_event)
+CONTEXT:  PL/pgSQL function forbid_asset_lifecycle_write() line 5 at RAISE
+ROLLBACK;
+ROLLBACK
+== T5 upsert path: INSERT .. ON CONFLICT DO UPDATE SET status (expect: refused)
+BEGIN;
+BEGIN
+INSERT INTO asset SELECT * FROM asset WHERE id = 3 ON CONFLICT (id) DO UPDATE SET status = 'LOST';
+ERROR:  asset status, holder and status date can only change through a recorded asset movement (asset_event)
+CONTEXT:  PL/pgSQL function forbid_asset_lifecycle_write() line 5 at RAISE
+ROLLBACK;
+ROLLBACK
+== T6 marker set to a wrong value (expect: refused)
+BEGIN;
+BEGIN
+SELECT set_config('ckam.lifecycle_writer', 'ON ', true);
+ set_config 
+------------
+ ON 
+(1 row)
+
+UPDATE asset SET status = 'LOST' WHERE id = 3;
+ERROR:  asset status, holder and status date can only change through a recorded asset movement (asset_event)
+CONTEXT:  PL/pgSQL function forbid_asset_lifecycle_write() line 5 at RAISE
+ROLLBACK;
+ROLLBACK
+== T7 same value written back / ordinary column (expect: allowed, 1 row each)
+BEGIN;
+BEGIN
+UPDATE asset SET status = status WHERE id = 3;
+UPDATE 1
+UPDATE asset SET description = description || ' (r2c)' WHERE id = 3;
+UPDATE 1
+ROLLBACK;
+ROLLBACK
+== T8 identity guard: asset_code / company change (expect: refused)
+BEGIN;
+BEGIN
+UPDATE asset SET asset_code = asset_code || '-X' WHERE id = 3;
+ERROR:  asset_code is immutable once set
+CONTEXT:  PL/pgSQL function forbid_asset_identity_change() line 4 at RAISE
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+UPDATE asset SET company_id = 2 WHERE id = 3;
+ERROR:  company_id is immutable once set
+CONTEXT:  PL/pgSQL function forbid_asset_identity_change() line 7 at RAISE
+ROLLBACK;
+ROLLBACK
+== T9 hard delete of an asset with ledger rows (expect: refused by FK or guard)
+BEGIN;
+BEGIN
+DELETE FROM asset WHERE id = 3;
+ERROR:  update or delete on table "asset" violates foreign key constraint "asset_document_asset_id_fkey" on table "asset_document"
+DETAIL:  Key (id)=(3) is still referenced from table "asset_document".
+ROLLBACK;
+ROLLBACK
+== T10 TRUNCATE each ledger (expect: refused x4, also for a superuser)
+BEGIN;
+BEGIN
+TRUNCATE audit_log;
+ERROR:  audit_log rows are append-only; TRUNCATE is not allowed
+CONTEXT:  PL/pgSQL function forbid_append_only_truncate() line 3 at RAISE
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+TRUNCATE asset_event CASCADE;
+ERROR:  asset_event rows are append-only; TRUNCATE is not allowed
+CONTEXT:  PL/pgSQL function forbid_append_only_truncate() line 3 at RAISE
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+TRUNCATE master_audit;
+ERROR:  master_audit rows are append-only; TRUNCATE is not allowed
+CONTEXT:  PL/pgSQL function forbid_append_only_truncate() line 3 at RAISE
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+TRUNCATE asset_field_change;
+ERROR:  asset_field_change rows are append-only; TRUNCATE is not allowed
+CONTEXT:  PL/pgSQL function forbid_append_only_truncate() line 3 at RAISE
+ROLLBACK;
+ROLLBACK
+== T11 UPDATE each ledger (expect: refused x4)
+BEGIN;
+BEGIN
+UPDATE audit_log SET outcome = 'X' WHERE id = (SELECT max(id) FROM audit_log);
+ERROR:  audit_log rows are append-only
+CONTEXT:  PL/pgSQL function forbid_audit_log_write() line 8 at RAISE
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+UPDATE asset_event SET remarks = 'x' WHERE id = (SELECT max(id) FROM asset_event);
+ERROR:  asset_event rows are append-only; insert a CORRECTION event instead
+CONTEXT:  PL/pgSQL function forbid_asset_event_write() line 3 at RAISE
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+INSERT INTO master_audit (entity, entity_id, field, old_value, new_value, actor_id) VALUES ('r2c_probe', 1, 'name', 'a', 'b', 2);
+INSERT 0 1
+UPDATE master_audit SET new_value = 'forged' WHERE entity = 'r2c_probe';
+ERROR:  master_audit rows are append-only
+CONTEXT:  PL/pgSQL function forbid_master_audit_write() line 3 at RAISE
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+UPDATE asset_field_change SET field_name = field_name WHERE id = (SELECT max(id) FROM asset_field_change);
+ERROR:  asset_field_change rows are append-only
+CONTEXT:  PL/pgSQL function forbid_asset_field_change_write() line 3 at RAISE
+ROLLBACK;
+ROLLBACK
+== T12 DELETE from each ledger (expect: refused x4)
+BEGIN;
+BEGIN
+DELETE FROM audit_log WHERE id = (SELECT max(id) FROM audit_log);
+ERROR:  audit_log rows are append-only
+CONTEXT:  PL/pgSQL function forbid_audit_log_write() line 8 at RAISE
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+DELETE FROM asset_event WHERE id = (SELECT max(id) FROM asset_event);
+ERROR:  asset_event rows are append-only; insert a CORRECTION event instead
+CONTEXT:  PL/pgSQL function forbid_asset_event_write() line 3 at RAISE
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+INSERT INTO master_audit (entity, entity_id, field, old_value, new_value, actor_id) VALUES ('r2c_probe', 1, 'name', 'a', 'b', 2);
+INSERT 0 1
+DELETE FROM master_audit WHERE entity = 'r2c_probe';
+ERROR:  master_audit rows are append-only
+CONTEXT:  PL/pgSQL function forbid_master_audit_write() line 3 at RAISE
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+DELETE FROM asset_field_change WHERE id = (SELECT max(id) FROM asset_field_change);
+ERROR:  asset_field_change rows are append-only
+CONTEXT:  PL/pgSQL function forbid_asset_field_change_write() line 3 at RAISE
+ROLLBACK;
+ROLLBACK
+== T13 purge flag on, fresh audit row (expect: refused, no deletion)
+BEGIN;
+BEGIN
+SET LOCAL ckam.allow_audit_purge = on;
+SET
+DELETE FROM audit_log WHERE id = (SELECT max(id) FROM audit_log);
+ERROR:  audit_log rows are append-only
+CONTEXT:  PL/pgSQL function forbid_audit_log_write() line 8 at RAISE
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+SET LOCAL ckam.allow_audit_purge = on;
+SET
+DELETE FROM audit_log WHERE at > now() - interval '1 day';
+ERROR:  audit_log rows are append-only
+CONTEXT:  PL/pgSQL function forbid_audit_log_write() line 8 at RAISE
+ROLLBACK;
+ROLLBACK
+== T14 purge function with a recent cut-off (expect: refused)
+BEGIN;
+BEGIN
+SET LOCAL ckam.allow_audit_purge = on;
+SET
+SELECT ckam_purge_audit_log(now());
+ERROR:  audit_log purge needs a cut-off date at least 5 years in the past
+CONTEXT:  PL/pgSQL function ckam_purge_audit_log(timestamp with time zone) line 9 at RAISE
+ROLLBACK;
+ROLLBACK
+== T15 purge function with a legal cut-off (expect: allowed but 0 rows: no row is 5 years old)
+BEGIN;
+BEGIN
+SET LOCAL ckam.allow_audit_purge = on;
+SET
+SELECT ckam_purge_audit_log(now() - interval '6 years') AS removed;
+ removed 
+---------
+       0
+(1 row)
+
+ROLLBACK;
+ROLLBACK
+== T16 purge function without the flag (expect: refused)
+BEGIN;
+BEGIN
+SELECT ckam_purge_audit_log(now() - interval '6 years');
+ERROR:  audit_log purge is not allowed: export the rows first, then SET LOCAL ckam.allow_audit_purge = on in the same transaction
+CONTEXT:  PL/pgSQL function ckam_purge_audit_log(timestamp with time zone) line 6 at RAISE
+ROLLBACK;
+ROLLBACK
+== T17 N9 residual: backdated insert then purge it (expect, documented: only the forged row goes)
+BEGIN;
+BEGIN
+INSERT INTO audit_log (at, category, action, outcome, summary) VALUES (now() - interval '6 years', 'SECURITY', 'R2C_PROBE', 'OK', 'cl2-if backdated probe');
+INSERT 0 1
+SET LOCAL ckam.allow_audit_purge = on;
+SET
+SELECT ckam_purge_audit_log(now() - interval '5 years 1 day') AS removed_only_forged_row;
+ removed_only_forged_row 
+-------------------------
+                       1
+(1 row)
+
+ROLLBACK;
+ROLLBACK
+== LIMITS a superuser (or the table owner) still has -- expected to SUCCEED here, shown for honesty
+== L1 marker set by hand, then status change (documented limit of OBS-STATUS)
+BEGIN;
+BEGIN
+SELECT set_config('ckam.lifecycle_writer', 'on', true);
+ set_config 
+------------
+ on
+(1 row)
+
+UPDATE asset SET status = 'LOST' WHERE id = 3;
+UPDATE 1
+ROLLBACK;
+ROLLBACK
+== L2 superuser: session_replication_role = replica, then UPDATE a ledger row
+BEGIN;
+BEGIN
+SET LOCAL session_replication_role = replica;
+SET
+UPDATE audit_log SET outcome = outcome WHERE id = (SELECT max(id) FROM audit_log);
+UPDATE 1
+ROLLBACK;
+ROLLBACK
+== L3 owner/superuser: DISABLE TRIGGER then DELETE
+BEGIN;
+BEGIN
+INSERT INTO master_audit (entity, entity_id, field, old_value, new_value, actor_id) VALUES ('r2c_probe', 1, 'name', 'a', 'b', 2);
+INSERT 0 1
+ALTER TABLE master_audit DISABLE TRIGGER trg_master_audit_no_delete;
+ALTER TABLE
+DELETE FROM master_audit WHERE entity = 'r2c_probe';
+DELETE 1
+ROLLBACK;
+ROLLBACK
+== after: nothing changed
+SELECT id, status, current_asset_user_id, status_since, asset_code, company_id FROM asset WHERE id IN (1, 3) ORDER BY id;
+ id |  status  | current_asset_user_id | status_since |     asset_code      | company_id 
+----+----------+-----------------------+--------------+---------------------+------------
+  1 | ALLOTTED |                    21 | 2026-10-15   | CKSPL/ITFA-SPL/0001 |          1
+  3 | IN_STOCK |                     3 | 2026-10-05   | CKSPL/ITFA-SPL/0003 |          1
+(2 rows)
+
+SELECT (SELECT count(*) FROM audit_log) AS audit_rows, (SELECT count(*) FROM asset_event) AS events,
+       (SELECT count(*) FROM master_audit) AS master_audit_rows, (SELECT count(*) FROM asset_field_change) AS field_changes;
+ audit_rows | events | master_audit_rows | field_changes 
+------------+--------+-------------------+---------------
+       3806 |     25 |                 0 |             9
+(1 row)
+
+SELECT c.relname, t.tgname, t.tgenabled FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid WHERE NOT t.tgisinternal ORDER BY 1, 2;
+      relname       |               tgname               | tgenabled 
+--------------------+------------------------------------+-----------
+ asset              | trg_asset_lifecycle_fields_guard   | O
+ asset              | trg_asset_no_identity_change       | O
+ asset_event        | trg_asset_event_no_delete          | O
+ asset_event        | trg_asset_event_no_truncate        | O
+ asset_event        | trg_asset_event_no_update          | O
+ asset_field_change | trg_asset_field_change_no_delete   | O
+ asset_field_change | trg_asset_field_change_no_truncate | O
+ asset_field_change | trg_asset_field_change_no_update   | O
+ audit_log          | trg_audit_log_no_delete            | O
+ audit_log          | trg_audit_log_no_truncate          | O
+ audit_log          | trg_audit_log_no_update            | O
+ master_audit       | trg_master_audit_no_delete         | O
+ master_audit       | trg_master_audit_no_truncate       | O
+ master_audit       | trg_master_audit_no_update         | O
+(14 rows)
+

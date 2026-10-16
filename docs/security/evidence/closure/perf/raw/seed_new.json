@@ -1,0 +1,883 @@
+{
+ "admin_id": 2,
+ "company_id": 1,
+ "location_id": 1,
+ "cost_center_id": 1,
+ "stock_room_id": 3,
+ "store_id": 4,
+ "install_point_id": 6,
+ "laptop_id": 1,
+ "chair_id": 2,
+ "categories": {
+  "IT": [
+   1,
+   1
+  ],
+  "NON_IT": [
+   2,
+   2
+  ]
+ },
+ "brand_id": 1,
+ "department_id": 1,
+ "vendor_ids": [
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9,
+  10,
+  11,
+  12,
+  13,
+  14,
+  15,
+  16,
+  17,
+  18,
+  19,
+  20
+ ],
+ "employee_ids": [
+  7,
+  8,
+  9,
+  10,
+  11,
+  12,
+  13,
+  14,
+  15,
+  16,
+  17,
+  18,
+  19,
+  20,
+  21,
+  22,
+  23,
+  24,
+  25,
+  26,
+  27,
+  28,
+  29,
+  30,
+  31,
+  32,
+  33,
+  34,
+  35,
+  36,
+  37,
+  38,
+  39,
+  40,
+  41,
+  42,
+  43,
+  44,
+  45,
+  46,
+  47,
+  48,
+  49,
+  50,
+  51,
+  52,
+  53,
+  54,
+  55,
+  56,
+  57,
+  58,
+  59,
+  60,
+  61,
+  62,
+  63,
+  64,
+  65,
+  66
+ ],
+ "bulk_pos": [
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9,
+  10,
+  11,
+  12,
+  13,
+  14,
+  15,
+  16,
+  17,
+  18,
+  19,
+  20,
+  21,
+  22,
+  23,
+  24,
+  25,
+  26,
+  27,
+  28,
+  29,
+  30,
+  31,
+  32,
+  33,
+  34,
+  35,
+  36,
+  37,
+  38,
+  39,
+  40,
+  41,
+  42,
+  43,
+  44,
+  45,
+  46,
+  47,
+  48,
+  49,
+  50,
+  51,
+  52,
+  53,
+  54,
+  55,
+  56,
+  57,
+  58,
+  59,
+  60,
+  61,
+  62,
+  63,
+  64,
+  65,
+  66,
+  67,
+  68,
+  69,
+  70,
+  71,
+  72,
+  73,
+  74,
+  75,
+  76,
+  77,
+  78,
+  79,
+  80,
+  81,
+  82,
+  83,
+  84,
+  85,
+  86,
+  87,
+  88,
+  89,
+  90,
+  91,
+  92,
+  93,
+  94,
+  95,
+  96,
+  97,
+  98,
+  99,
+  100,
+  101,
+  102,
+  103,
+  104,
+  105,
+  106,
+  107,
+  108,
+  109,
+  110,
+  111,
+  112,
+  113,
+  114,
+  115,
+  116,
+  117,
+  118,
+  119,
+  120,
+  121,
+  122,
+  123,
+  124,
+  125,
+  126,
+  127,
+  128,
+  129,
+  130,
+  131,
+  132,
+  133,
+  134,
+  135,
+  136,
+  137,
+  138,
+  139,
+  140,
+  141,
+  142,
+  143,
+  144,
+  145,
+  146,
+  147,
+  148,
+  149,
+  150
+ ],
+ "receive_pos": {
+  "r1": [
+   {
+    "id": 151,
+    "line_no": 1,
+    "qty": 1,
+    "serial": false,
+    "n": 1
+   },
+   {
+    "id": 152,
+    "line_no": 1,
+    "qty": 1,
+    "serial": false,
+    "n": 2
+   },
+   {
+    "id": 153,
+    "line_no": 1,
+    "qty": 1,
+    "serial": false,
+    "n": 3
+   },
+   {
+    "id": 154,
+    "line_no": 1,
+    "qty": 1,
+    "serial": false,
+    "n": 4
+   },
+   {
+    "id": 155,
+    "line_no": 1,
+    "qty": 1,
+    "serial": false,
+    "n": 5
+   },
+   {
+    "id": 156,
+    "line_no": 1,
+    "qty": 1,
+    "serial": false,
+    "n": 6
+   },
+   {
+    "id": 157,
+    "line_no": 1,
+    "qty": 1,
+    "serial": false,
+    "n": 7
+   },
+   {
+    "id": 158,
+    "line_no": 1,
+    "qty": 1,
+    "serial": false,
+    "n": 8
+   },
+   {
+    "id": 159,
+    "line_no": 1,
+    "qty": 1,
+    "serial": false,
+    "n": 9
+   },
+   {
+    "id": 160,
+    "line_no": 1,
+    "qty": 1,
+    "serial": false,
+    "n": 10
+   },
+   {
+    "id": 161,
+    "line_no": 1,
+    "qty": 1,
+    "serial": false,
+    "n": 11
+   },
+   {
+    "id": 162,
+    "line_no": 1,
+    "qty": 1,
+    "serial": false,
+    "n": 12
+   },
+   {
+    "id": 163,
+    "line_no": 1,
+    "qty": 1,
+    "serial": false,
+    "n": 13
+   },
+   {
+    "id": 164,
+    "line_no": 1,
+    "qty": 1,
+    "serial": false,
+    "n": 14
+   },
+   {
+    "id": 165,
+    "line_no": 1,
+    "qty": 1,
+    "serial": false,
+    "n": 15
+   },
+   {
+    "id": 166,
+    "line_no": 1,
+    "qty": 1,
+    "serial": false,
+    "n": 16
+   },
+   {
+    "id": 167,
+    "line_no": 1,
+    "qty": 1,
+    "serial": false,
+    "n": 17
+   },
+   {
+    "id": 168,
+    "line_no": 1,
+    "qty": 1,
+    "serial": false,
+    "n": 18
+   },
+   {
+    "id": 169,
+    "line_no": 1,
+    "qty": 1,
+    "serial": false,
+    "n": 19
+   },
+   {
+    "id": 170,
+    "line_no": 1,
+    "qty": 1,
+    "serial": false,
+    "n": 20
+   },
+   {
+    "id": 171,
+    "line_no": 1,
+    "qty": 1,
+    "serial": false,
+    "n": 21
+   },
+   {
+    "id": 172,
+    "line_no": 1,
+    "qty": 1,
+    "serial": false,
+    "n": 22
+   }
+  ],
+  "r10": [
+   {
+    "id": 173,
+    "line_no": 1,
+    "qty": 10,
+    "serial": false,
+    "n": 1
+   },
+   {
+    "id": 174,
+    "line_no": 1,
+    "qty": 10,
+    "serial": false,
+    "n": 2
+   },
+   {
+    "id": 175,
+    "line_no": 1,
+    "qty": 10,
+    "serial": false,
+    "n": 3
+   },
+   {
+    "id": 176,
+    "line_no": 1,
+    "qty": 10,
+    "serial": false,
+    "n": 4
+   },
+   {
+    "id": 177,
+    "line_no": 1,
+    "qty": 10,
+    "serial": false,
+    "n": 5
+   },
+   {
+    "id": 178,
+    "line_no": 1,
+    "qty": 10,
+    "serial": false,
+    "n": 6
+   },
+   {
+    "id": 179,
+    "line_no": 1,
+    "qty": 10,
+    "serial": false,
+    "n": 7
+   },
+   {
+    "id": 180,
+    "line_no": 1,
+    "qty": 10,
+    "serial": false,
+    "n": 8
+   },
+   {
+    "id": 181,
+    "line_no": 1,
+    "qty": 10,
+    "serial": false,
+    "n": 9
+   },
+   {
+    "id": 182,
+    "line_no": 1,
+    "qty": 10,
+    "serial": false,
+    "n": 10
+   },
+   {
+    "id": 183,
+    "line_no": 1,
+    "qty": 10,
+    "serial": false,
+    "n": 11
+   },
+   {
+    "id": 184,
+    "line_no": 1,
+    "qty": 10,
+    "serial": false,
+    "n": 12
+   },
+   {
+    "id": 185,
+    "line_no": 1,
+    "qty": 10,
+    "serial": false,
+    "n": 13
+   },
+   {
+    "id": 186,
+    "line_no": 1,
+    "qty": 10,
+    "serial": false,
+    "n": 14
+   },
+   {
+    "id": 187,
+    "line_no": 1,
+    "qty": 10,
+    "serial": false,
+    "n": 15
+   },
+   {
+    "id": 188,
+    "line_no": 1,
+    "qty": 10,
+    "serial": false,
+    "n": 16
+   },
+   {
+    "id": 189,
+    "line_no": 1,
+    "qty": 10,
+    "serial": false,
+    "n": 17
+   },
+   {
+    "id": 190,
+    "line_no": 1,
+    "qty": 10,
+    "serial": false,
+    "n": 18
+   },
+   {
+    "id": 191,
+    "line_no": 1,
+    "qty": 10,
+    "serial": false,
+    "n": 19
+   },
+   {
+    "id": 192,
+    "line_no": 1,
+    "qty": 10,
+    "serial": false,
+    "n": 20
+   },
+   {
+    "id": 193,
+    "line_no": 1,
+    "qty": 10,
+    "serial": false,
+    "n": 21
+   },
+   {
+    "id": 194,
+    "line_no": 1,
+    "qty": 10,
+    "serial": false,
+    "n": 22
+   }
+  ],
+  "r50": [
+   {
+    "id": 195,
+    "line_no": 1,
+    "qty": 50,
+    "serial": false,
+    "n": 1
+   },
+   {
+    "id": 196,
+    "line_no": 1,
+    "qty": 50,
+    "serial": false,
+    "n": 2
+   },
+   {
+    "id": 197,
+    "line_no": 1,
+    "qty": 50,
+    "serial": false,
+    "n": 3
+   },
+   {
+    "id": 198,
+    "line_no": 1,
+    "qty": 50,
+    "serial": false,
+    "n": 4
+   },
+   {
+    "id": 199,
+    "line_no": 1,
+    "qty": 50,
+    "serial": false,
+    "n": 5
+   },
+   {
+    "id": 200,
+    "line_no": 1,
+    "qty": 50,
+    "serial": false,
+    "n": 6
+   },
+   {
+    "id": 201,
+    "line_no": 1,
+    "qty": 50,
+    "serial": false,
+    "n": 7
+   },
+   {
+    "id": 202,
+    "line_no": 1,
+    "qty": 50,
+    "serial": false,
+    "n": 8
+   },
+   {
+    "id": 203,
+    "line_no": 1,
+    "qty": 50,
+    "serial": false,
+    "n": 9
+   },
+   {
+    "id": 204,
+    "line_no": 1,
+    "qty": 50,
+    "serial": false,
+    "n": 10
+   }
+  ],
+  "r100": [
+   {
+    "id": 205,
+    "line_no": 1,
+    "qty": 100,
+    "serial": false,
+    "n": 1
+   },
+   {
+    "id": 206,
+    "line_no": 1,
+    "qty": 100,
+    "serial": false,
+    "n": 2
+   },
+   {
+    "id": 207,
+    "line_no": 1,
+    "qty": 100,
+    "serial": false,
+    "n": 3
+   },
+   {
+    "id": 208,
+    "line_no": 1,
+    "qty": 100,
+    "serial": false,
+    "n": 4
+   },
+   {
+    "id": 209,
+    "line_no": 1,
+    "qty": 100,
+    "serial": false,
+    "n": 5
+   },
+   {
+    "id": 210,
+    "line_no": 1,
+    "qty": 100,
+    "serial": false,
+    "n": 6
+   },
+   {
+    "id": 211,
+    "line_no": 1,
+    "qty": 100,
+    "serial": false,
+    "n": 7
+   },
+   {
+    "id": 212,
+    "line_no": 1,
+    "qty": 100,
+    "serial": false,
+    "n": 8
+   },
+   {
+    "id": 213,
+    "line_no": 1,
+    "qty": 100,
+    "serial": false,
+    "n": 9
+   },
+   {
+    "id": 214,
+    "line_no": 1,
+    "qty": 100,
+    "serial": false,
+    "n": 10
+   }
+  ],
+  "rs10": [
+   {
+    "id": 215,
+    "line_no": 1,
+    "qty": 10,
+    "serial": true,
+    "n": 1
+   },
+   {
+    "id": 216,
+    "line_no": 1,
+    "qty": 10,
+    "serial": true,
+    "n": 2
+   },
+   {
+    "id": 217,
+    "line_no": 1,
+    "qty": 10,
+    "serial": true,
+    "n": 3
+   },
+   {
+    "id": 218,
+    "line_no": 1,
+    "qty": 10,
+    "serial": true,
+    "n": 4
+   },
+   {
+    "id": 219,
+    "line_no": 1,
+    "qty": 10,
+    "serial": true,
+    "n": 5
+   },
+   {
+    "id": 220,
+    "line_no": 1,
+    "qty": 10,
+    "serial": true,
+    "n": 6
+   },
+   {
+    "id": 221,
+    "line_no": 1,
+    "qty": 10,
+    "serial": true,
+    "n": 7
+   },
+   {
+    "id": 222,
+    "line_no": 1,
+    "qty": 10,
+    "serial": true,
+    "n": 8
+   },
+   {
+    "id": 223,
+    "line_no": 1,
+    "qty": 10,
+    "serial": true,
+    "n": 9
+   },
+   {
+    "id": 224,
+    "line_no": 1,
+    "qty": 10,
+    "serial": true,
+    "n": 10
+   },
+   {
+    "id": 225,
+    "line_no": 1,
+    "qty": 10,
+    "serial": true,
+    "n": 11
+   },
+   {
+    "id": 226,
+    "line_no": 1,
+    "qty": 10,
+    "serial": true,
+    "n": 12
+   },
+   {
+    "id": 227,
+    "line_no": 1,
+    "qty": 10,
+    "serial": true,
+    "n": 13
+   },
+   {
+    "id": 228,
+    "line_no": 1,
+    "qty": 10,
+    "serial": true,
+    "n": 14
+   },
+   {
+    "id": 229,
+    "line_no": 1,
+    "qty": 10,
+    "serial": true,
+    "n": 15
+   },
+   {
+    "id": 230,
+    "line_no": 1,
+    "qty": 10,
+    "serial": true,
+    "n": 16
+   },
+   {
+    "id": 231,
+    "line_no": 1,
+    "qty": 10,
+    "serial": true,
+    "n": 17
+   },
+   {
+    "id": 232,
+    "line_no": 1,
+    "qty": 10,
+    "serial": true,
+    "n": 18
+   },
+   {
+    "id": 233,
+    "line_no": 1,
+    "qty": 10,
+    "serial": true,
+    "n": 19
+   },
+   {
+    "id": 234,
+    "line_no": 1,
+    "qty": 10,
+    "serial": true,
+    "n": 20
+   },
+   {
+    "id": 235,
+    "line_no": 1,
+    "qty": 10,
+    "serial": true,
+    "n": 21
+   },
+   {
+    "id": 236,
+    "line_no": 1,
+    "qty": 10,
+    "serial": true,
+    "n": 22
+   }
+  ]
+ },
+ "counts": {
+  "asset": 1960,
+  "asset_event": 2260,
+  "purchase_order": 236,
+  "vendor": 20,
+  "asset_user": 66,
+  "audit_log": 718,
+  "erp_po_line": 80
+ },
+ "seconds": 13.4
+}

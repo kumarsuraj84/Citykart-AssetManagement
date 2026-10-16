@@ -1,0 +1,11 @@
+{
+ "is_safe_relative_name_us": 2.45,
+ "safe_asset_path_us": 44.65,
+ "old_style_is_file_us": 4.26,
+ "burn_password_check_ms_median": 28.8,
+ "verify_password_ms_median": 28.59,
+ "body_4mb_64x64KB_us": {
+  "without_middleware": 7.7,
+  "with_middleware": 15.2
+ }
+}

@@ -1,0 +1,10 @@
+# 2026-10-16T06:35:41Z post-cleanup check (filters on r2c)
+containers: []
+volumes: []
+networks: []
+images: []
+ckam-sec-db-1: r2c roles=0 r2c databases=0
+removed: compose project ckam-r2c (down -v: containers, networks ckam-r2c_default/_edge, volumes db_data/uploads/logs);
+         volumes ckam-r2c_rtprobe_uploads/_logs; images ckam-r2c-api/-web/-volume-init/-rt;
+         throw-away containers ckam-r2c-rt-probe, ckam-r2c-rs-api, ckam-r2c-prod, ckam-r2c-n4-* (all --rm or rm -f);
+         database ckam_r2c_rs + roles r2c_owner/r2c_migrator/r2c_app in ckam-sec Postgres (db6b_12_cleanup.out.txt)

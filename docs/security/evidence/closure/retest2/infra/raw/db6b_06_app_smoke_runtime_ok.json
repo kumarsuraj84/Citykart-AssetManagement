@@ -1,0 +1,13 @@
+{
+ "label": "seq-repaired",
+ "login_ok": 200,
+ "login_failed": 401,
+ "login_failed_request_id": "effb88610f914c9b9e1aa7d5b17edc0f",
+ "ledger_write": 201,
+ "ledger_write_request_id": "3533fa5628574cb1b4100457de6edf52",
+ "ledger_write_body": {
+  "id": 27,
+  "event_type": "CORRECTION"
+ },
+ "read_assets": 200
+}

@@ -1,0 +1,156 @@
+[
+ {
+  "id": "CL2-AC-SQLI-assets",
+  "desc": "assets list q/status/sort_by/sort_dir x 7 payloads",
+  "status": "28 calls",
+  "verdict": "PASS",
+  "note": "500s=0 unexpected=0"
+ },
+ {
+  "id": "CL2-AC-SQLI-limit",
+  "desc": "assets limit=-1",
+  "status": 422,
+  "verdict": "PASS",
+  "note": ""
+ },
+ {
+  "id": "CL2-AC-SQLI-limit",
+  "desc": "assets limit=999999999",
+  "status": 422,
+  "verdict": "PASS",
+  "note": ""
+ },
+ {
+  "id": "CL2-AC-SQLI-limit",
+  "desc": "assets offset=-5",
+  "status": 422,
+  "verdict": "PASS",
+  "note": ""
+ },
+ {
+  "id": "CL2-AC-SQLI-limit",
+  "desc": "assets limit=1;--",
+  "status": 422,
+  "verdict": "PASS",
+  "note": ""
+ },
+ {
+  "id": "CL2-AC-SQLI-limit",
+  "desc": "assets sort_dir=nonsense",
+  "status": 200,
+  "verdict": "PASS",
+  "note": ""
+ },
+ {
+  "id": "CL2-AC-SQLI-list",
+  "desc": "SQLi on /api/masters/vendors",
+  "status": 200,
+  "verdict": "PASS",
+  "note": ""
+ },
+ {
+  "id": "CL2-AC-SQLI-list",
+  "desc": "SQLi on /api/items",
+  "status": 200,
+  "verdict": "PASS",
+  "note": ""
+ },
+ {
+  "id": "CL2-AC-SQLI-list",
+  "desc": "SQLi on /api/purchase-orders",
+  "status": 422,
+  "verdict": "PASS",
+  "note": ""
+ },
+ {
+  "id": "CL2-AC-SQLI-list",
+  "desc": "SQLi on /api/erp/pos",
+  "status": 200,
+  "verdict": "PASS",
+  "note": ""
+ },
+ {
+  "id": "CL2-AC-SQLI-list",
+  "desc": "SQLi on /api/admin/logs/audit",
+  "status": 422,
+  "verdict": "PASS",
+  "note": ""
+ },
+ {
+  "id": "CL2-AC-FORMULA-store",
+  "desc": "create vendor with =formula name",
+  "status": 201,
+  "verdict": "PASS",
+  "note": ""
+ },
+ {
+  "id": "CL2-AC-FORMULA-export",
+  "desc": "vendor export neutralises leading = (no raw =cmd cell)",
+  "status": 200,
+  "verdict": "PASS",
+  "note": "formula not raw-active; sample: "
+ },
+ {
+  "id": "CL2-AC-LOGIC-make",
+  "desc": "create CL2 lifecycle asset",
+  "status": 201,
+  "verdict": "PASS",
+  "note": "id 19"
+ },
+ {
+  "id": "CL2-AC-LOGIC-scrap",
+  "desc": "SCRAP in_stock asset",
+  "status": 201,
+  "verdict": "PASS",
+  "note": ""
+ },
+ {
+  "id": "CL2-AC-LOGIC-double-scrap",
+  "desc": "SCRAP again (terminal) must be refused",
+  "status": 422,
+  "verdict": "PASS",
+  "note": "{\"detail\":\"This asset has been scrapped, so nothing more can be recorded for it.\",\"request"
+ },
+ {
+  "id": "CL2-AC-LOGIC-move-terminal",
+  "desc": "MOVE a terminal (scrapped) asset must be refused",
+  "status": 422,
+  "verdict": "PASS",
+  "note": "{\"detail\":\"This asset has been scrapped, so nothing more can be recorded for it.\",\"request"
+ },
+ {
+  "id": "CL2-AC-LOGIC-xco-move",
+  "desc": "MOVE CKSPL asset to CKVPL holder (stock room 8) must be refused",
+  "status": 422,
+  "verdict": "PASS",
+  "note": "{\"detail\":\"Assets can only move within their own company.\",\"request_id\":\"81b23ff6a5134a968a17b0aa87b"
+ },
+ {
+  "id": "CL2-AC-LOGIC-dup-po",
+  "desc": "duplicate PO number SEC-SPL-PO-001 must be refused",
+  "status": 422,
+  "verdict": "PASS",
+  "note": "{\"detail\":\"Add at least one line or set.\",\"errors\":[\"Add at least one line or set.\"],\"request_id\":\"2"
+ },
+ {
+  "id": "CL2-AC-LOGIC-receive-cancelled",
+  "desc": "receive CANCELLED po 3 must be refused",
+  "status": 422,
+  "verdict": "PASS",
+  "note": "{\"detail\":\"Line 1: Line no is required.\",\"errors\":[\"Line 1: Line no is required.\"],\"request_id\":\"75c"
+ },
+ {
+  "id": "CL2-AC-LOGIC-over-receive",
+  "desc": "over-receive (qty 999999) must be refused",
+  "status": 422,
+  "verdict": "PASS",
+  "note": "{\"detail\":\"Line 1: Line no is required. Line 1: Quantity must be at most 1,000.\",\"errors\":[\"Line 1: "
+ },
+ {
+  "id": "CL2-AC-LOGIC-neg-receive",
+  "desc": "negative qty receive must be refused",
+  "status": 422,
+  "verdict": "PASS",
+  "note": "{\"detail\":\"Line 1: Line no is required. Line 1: Quantity must be at least 1.\",\"errors\":[\"Line 1: Lin"
+ }
+]

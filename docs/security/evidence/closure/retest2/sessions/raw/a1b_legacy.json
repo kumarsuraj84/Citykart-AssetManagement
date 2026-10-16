@@ -1,0 +1,30 @@
+{
+  "cases": [
+    {
+      "id": "CL2-SE-T10",
+      "desc": "legacy cookie (no sid, correct tv) first use accepted + rotated",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "gotCookie": true
+      }
+    },
+    {
+      "id": "CL2-SE-T11",
+      "desc": "legacy cookie replay past grace -> 401 reuse (sessions ended)",
+      "pass": true,
+      "detail": {
+        "status": 401,
+        "detail": "Your session has ended. Please sign in again."
+      }
+    },
+    {
+      "id": "CL2-SE-T11b",
+      "desc": "rotated cookie from legacy session dead after reuse",
+      "pass": true,
+      "detail": {
+        "status": 401
+      }
+    }
+  ]
+}

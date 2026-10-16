@@ -1,0 +1,658 @@
+# 2026-10-16T06:23:27Z psql as r2c_app on ckam_r2c_rs (ckam-sec-db-1, TCP) : db6b_runtime_attacks.sql
+Pager usage is off.
+== who am I
+SELECT current_user, session_user, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS super,
+       current_setting('ckam.lifecycle_writer', true) AS marker_default;
+ current_user | session_user | super | marker_default 
+--------------+--------------+-------+----------------
+ r2c_app      | r2c_app      | f     | 
+(1 row)
+
+== A01 TRUNCATE the four ledgers and an ordinary table
+BEGIN;
+BEGIN
+TRUNCATE audit_log;
+ERROR:  permission denied for table audit_log
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+TRUNCATE asset_event CASCADE;
+ERROR:  permission denied for table asset_event
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+TRUNCATE master_audit;
+ERROR:  permission denied for table master_audit
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+TRUNCATE asset_field_change;
+ERROR:  permission denied for table asset_field_change
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+TRUNCATE vendor CASCADE;
+ERROR:  permission denied for table vendor
+ROLLBACK;
+ROLLBACK
+== A02 ALTER TABLE (add column, owner, disable triggers)
+BEGIN;
+BEGIN
+ALTER TABLE asset ADD COLUMN r2c int;
+ERROR:  must be owner of table asset
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+ALTER TABLE audit_log OWNER TO r2c_app;
+ERROR:  must be owner of table audit_log
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+ALTER TABLE audit_log DISABLE TRIGGER ALL;
+ERROR:  must be owner of table audit_log
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+ALTER TABLE asset DISABLE TRIGGER trg_asset_lifecycle_fields_guard;
+ERROR:  must be owner of table asset
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+ALTER TABLE asset_event ENABLE REPLICA TRIGGER trg_asset_event_no_update;
+ERROR:  must be owner of table asset_event
+ROLLBACK;
+ROLLBACK
+== A03 DROP trigger / function / table
+BEGIN;
+BEGIN
+DROP TRIGGER trg_audit_log_no_delete ON audit_log;
+ERROR:  must be owner of relation audit_log
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+DROP FUNCTION forbid_audit_log_write() CASCADE;
+ERROR:  must be owner of function forbid_audit_log_write
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+DROP TABLE audit_log;
+ERROR:  must be owner of table audit_log
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+DROP TABLE vendor CASCADE;
+ERROR:  must be owner of table vendor
+ROLLBACK;
+ROLLBACK
+== A04 replace a guard function / create objects
+BEGIN;
+BEGIN
+CREATE OR REPLACE FUNCTION forbid_audit_log_write() RETURNS trigger LANGUAGE plpgsql AS $f$ BEGIN RETURN OLD; END $f$;
+ERROR:  permission denied for schema public
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+CREATE TABLE r2c_evil (x int);
+ERROR:  permission denied for schema public
+LINE 1: CREATE TABLE r2c_evil (x int);
+                     ^
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+CREATE TEMP TABLE r2c_evil_tmp (x int);
+ERROR:  permission denied to create temporary tables in database "ckam_r2c_rs"
+LINE 1: CREATE TEMP TABLE r2c_evil_tmp (x int);
+                          ^
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+CREATE SCHEMA r2c_evil;
+ERROR:  permission denied for database ckam_r2c_rs
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+CREATE FUNCTION public.r2c_evil() RETURNS int LANGUAGE sql AS 'SELECT 1';
+ERROR:  permission denied for schema public
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+CREATE TRIGGER r2c_evil BEFORE UPDATE ON asset FOR EACH ROW EXECUTE FUNCTION forbid_asset_lifecycle_write();
+ERROR:  permission denied for table asset
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+CREATE VIEW r2c_v AS SELECT 1;
+ERROR:  permission denied for schema public
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+COMMENT ON TABLE audit_log IS 'x';
+ERROR:  must be owner of table audit_log
+ROLLBACK;
+ROLLBACK
+== A05 session_replication_role (would skip every guard trigger)
+BEGIN;
+BEGIN
+SET LOCAL session_replication_role = replica;
+ERROR:  permission denied to set parameter "session_replication_role"
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+SET session_replication_role = replica;
+ERROR:  permission denied to set parameter "session_replication_role"
+ROLLBACK;
+ROLLBACK
+== A06 become the owner or the migrator
+BEGIN;
+BEGIN
+SET ROLE r2c_owner;
+ERROR:  permission denied to set role "r2c_owner"
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+SET ROLE r2c_migrator;
+ERROR:  permission denied to set role "r2c_migrator"
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+SET SESSION AUTHORIZATION r2c_owner;
+ERROR:  permission denied to set session authorization "r2c_owner"
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+GRANT r2c_owner TO r2c_app;
+ERROR:  permission denied to grant role "r2c_owner"
+DETAIL:  Only roles with the ADMIN option on role "r2c_owner" may grant this role.
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+ALTER ROLE r2c_app SUPERUSER;
+ERROR:  permission denied to alter role
+DETAIL:  Only roles with the SUPERUSER attribute may change the SUPERUSER attribute.
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+ALTER ROLE r2c_app CREATEROLE;
+ERROR:  permission denied to alter role
+DETAIL:  Only roles with the CREATEROLE attribute and the ADMIN option on role "r2c_app" may alter this role.
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+ALTER ROLE r2c_app BYPASSRLS;
+ERROR:  permission denied to alter role
+DETAIL:  Only roles with the CREATEROLE attribute and the ADMIN option on role "r2c_app" may alter this role.
+ROLLBACK;
+ROLLBACK
+== A07 purge function (with and without the flag)
+BEGIN;
+BEGIN
+SELECT ckam_purge_audit_log(now() - interval '6 years');
+ERROR:  permission denied for function ckam_purge_audit_log
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+SET LOCAL ckam.allow_audit_purge = on;
+SET
+SELECT ckam_purge_audit_log(now() - interval '6 years');
+ERROR:  permission denied for function ckam_purge_audit_log
+ROLLBACK;
+ROLLBACK
+== A08 UPDATE / DELETE ledger rows (also with the purge flag)
+BEGIN;
+BEGIN
+UPDATE audit_log SET summary = 'forged' WHERE id = (SELECT max(id) FROM audit_log);
+ERROR:  permission denied for table audit_log
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+DELETE FROM audit_log WHERE id = (SELECT max(id) FROM audit_log);
+ERROR:  permission denied for table audit_log
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+SET LOCAL ckam.allow_audit_purge = on;
+SET
+DELETE FROM audit_log WHERE id = (SELECT max(id) FROM audit_log);
+ERROR:  permission denied for table audit_log
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+UPDATE asset_event SET status_after = 'LOST' WHERE id = (SELECT max(id) FROM asset_event);
+ERROR:  permission denied for table asset_event
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+DELETE FROM asset_event WHERE id = (SELECT max(id) FROM asset_event);
+ERROR:  permission denied for table asset_event
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+INSERT INTO master_audit (entity, entity_id, field, old_value, new_value, actor_id) VALUES ('r2c_probe', 1, 'name', 'a', 'b', 2);
+INSERT 0 1
+UPDATE master_audit SET new_value = 'forged' WHERE entity = 'r2c_probe';
+ERROR:  permission denied for table master_audit
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+INSERT INTO master_audit (entity, entity_id, field, old_value, new_value, actor_id) VALUES ('r2c_probe', 1, 'name', 'a', 'b', 2);
+INSERT 0 1
+DELETE FROM master_audit WHERE entity = 'r2c_probe';
+ERROR:  permission denied for table master_audit
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+UPDATE asset_field_change SET new_value = 'forged' WHERE id = (SELECT max(id) FROM asset_field_change);
+ERROR:  permission denied for table asset_field_change
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+DELETE FROM asset_field_change WHERE id = (SELECT max(id) FROM asset_field_change);
+ERROR:  permission denied for table asset_field_change
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+MERGE INTO audit_log a USING (SELECT max(id) AS id FROM audit_log) s ON a.id = s.id WHEN MATCHED THEN DELETE;
+ERROR:  permission denied for table audit_log
+ROLLBACK;
+ROLLBACK
+== A09 change asset status / holder / date directly (no marker)
+BEGIN;
+BEGIN
+UPDATE asset SET status = 'LOST' WHERE id = 3;
+ERROR:  asset status, holder and status date can only change through a recorded asset movement (asset_event)
+CONTEXT:  PL/pgSQL function forbid_asset_lifecycle_write() line 5 at RAISE
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+UPDATE asset SET current_asset_user_id = 21, status_since = DATE '2001-01-01' WHERE id = 3;
+ERROR:  asset status, holder and status date can only change through a recorded asset movement (asset_event)
+CONTEXT:  PL/pgSQL function forbid_asset_lifecycle_write() line 5 at RAISE
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+UPDATE asset SET asset_code = 'R2C-X' WHERE id = 3;
+ERROR:  asset_code is immutable once set
+CONTEXT:  PL/pgSQL function forbid_asset_identity_change() line 4 at RAISE
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+DELETE FROM asset WHERE id = 3;
+ERROR:  update or delete on table "asset" violates foreign key constraint "asset_event_asset_id_fkey" on table "asset_event"
+DETAIL:  Key (id)=(3) is still referenced from table "asset_event".
+ROLLBACK;
+ROLLBACK
+== A10 write alembic_version
+BEGIN;
+BEGIN
+UPDATE alembic_version SET version_num = 'r2c';
+ERROR:  permission denied for table alembic_version
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+INSERT INTO alembic_version VALUES ('r2c');
+ERROR:  permission denied for table alembic_version
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+DELETE FROM alembic_version;
+ERROR:  permission denied for table alembic_version
+ROLLBACK;
+ROLLBACK
+== A11 server files and programs
+BEGIN;
+BEGIN
+COPY (SELECT 1) TO PROGRAM 'id';
+ERROR:  permission denied to COPY to or from an external program
+DETAIL:  Only roles with privileges of the "pg_execute_server_program" role may COPY to or from an external program.
+HINT:  Anyone can COPY to stdout or from stdin. psql's \copy command also works for anyone.
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+COPY audit_log FROM PROGRAM 'true';
+ERROR:  permission denied to COPY to or from an external program
+DETAIL:  Only roles with privileges of the "pg_execute_server_program" role may COPY to or from an external program.
+HINT:  Anyone can COPY to stdout or from stdin. psql's \copy command also works for anyone.
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+COPY (SELECT 1) TO '/tmp/r2c_x.txt';
+ERROR:  permission denied to COPY to a file
+DETAIL:  Only roles with privileges of the "pg_write_server_files" role may COPY to a file.
+HINT:  Anyone can COPY to stdout or from stdin. psql's \copy command also works for anyone.
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+COPY audit_log FROM '/etc/passwd';
+ERROR:  permission denied to COPY from a file
+DETAIL:  Only roles with privileges of the "pg_read_server_files" role may COPY from a file.
+HINT:  Anyone can COPY to stdout or from stdin. psql's \copy command also works for anyone.
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+SELECT pg_read_file('/etc/passwd');
+ERROR:  permission denied for function pg_read_file
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+SELECT pg_ls_dir('.');
+ERROR:  permission denied for function pg_ls_dir
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+SELECT lo_import('/etc/passwd');
+ERROR:  permission denied for function lo_import
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+SELECT pg_read_binary_file('/var/lib/postgresql/data/pg_hba.conf');
+ERROR:  permission denied for function pg_read_binary_file
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+LOAD 'plpgsql';
+ERROR:  access to library "plpgsql" is not allowed
+ROLLBACK;
+ROLLBACK
+== A12 roles, databases, extensions, replication
+BEGIN;
+BEGIN
+CREATE ROLE r2c_evil LOGIN SUPERUSER;
+ERROR:  permission denied to create role
+DETAIL:  Only roles with the CREATEROLE attribute may create roles.
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+CREATE ROLE r2c_evil2;
+ERROR:  permission denied to create role
+DETAIL:  Only roles with the CREATEROLE attribute may create roles.
+ROLLBACK;
+ROLLBACK
+CREATE DATABASE r2c_evil;
+ERROR:  permission denied to create database
+BEGIN;
+BEGIN
+CREATE EXTENSION dblink;
+ERROR:  permission denied to create extension "dblink"
+HINT:  Must be superuser to create this extension.
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+CREATE EXTENSION plpython3u;
+ERROR:  extension "plpython3u" is not available
+DETAIL:  Could not open extension control file "/usr/share/postgresql/17/extension/plpython3u.control": No such file or directory.
+HINT:  The extension must first be installed on the system where PostgreSQL is running.
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+CREATE EXTENSION pgcrypto;
+ERROR:  permission denied to create extension "pgcrypto"
+HINT:  Must have CREATE privilege on current database to create this extension.
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+CREATE PUBLICATION r2c_pub FOR TABLE audit_log;
+ERROR:  permission denied for database ckam_r2c_rs
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+ALTER DATABASE ckam_r2c_rs SET session_replication_role = replica;
+ERROR:  must be owner of database ckam_r2c_rs
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+ALTER DATABASE ckam_r2c_rs OWNER TO r2c_app;
+ERROR:  must be owner of database ckam_r2c_rs
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+ALTER SCHEMA public OWNER TO r2c_app;
+ERROR:  must be owner of schema public
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+GRANT CREATE ON SCHEMA public TO r2c_app;
+WARNING:  no privileges were granted for "public"
+GRANT
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+GRANT UPDATE ON audit_log TO r2c_app;
+WARNING:  no privileges were granted for "audit_log"
+GRANT
+ROLLBACK;
+ROLLBACK
+== A13 catalogs with secrets
+BEGIN;
+BEGIN
+SELECT rolname, rolpassword FROM pg_authid LIMIT 1;
+ERROR:  permission denied for table pg_authid
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+SELECT count(*) FROM pg_shadow;
+ERROR:  permission denied for view pg_shadow
+ROLLBACK;
+ROLLBACK
+== A14 owner-only maintenance on a ledger
+BEGIN;
+BEGIN
+LOCK TABLE audit_log IN ACCESS EXCLUSIVE MODE;
+ERROR:  permission denied for table audit_log
+ROLLBACK;
+ROLLBACK
+VACUUM FULL audit_log;
+WARNING:  permission denied to vacuum "audit_log", skipping it
+VACUUM
+BEGIN;
+BEGIN
+REINDEX TABLE audit_log;
+ERROR:  permission denied for table audit_log
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+CLUSTER audit_log USING audit_log_pkey;
+ERROR:  permission denied for table audit_log
+ROLLBACK;
+ROLLBACK
+== A15 sequences: runtime may use them; can it rewind / exhaust a LEDGER sequence? (setval needs UPDATE)
+BEGIN;
+BEGIN
+SELECT pg_get_serial_sequence('audit_log', 'id') AS seq, has_sequence_privilege('r2c_app', pg_get_serial_sequence('audit_log', 'id'), 'UPDATE') AS can_setval;
+           seq           | can_setval 
+-------------------------+------------
+ public.audit_log_id_seq | t
+(1 row)
+
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+SELECT setval(pg_get_serial_sequence('audit_log', 'id'), 9223372036854775807);
+       setval        
+---------------------
+ 9223372036854775807
+(1 row)
+
+INSERT INTO audit_log (category, action, outcome, summary) VALUES ('SECURITY', 'R2C_PROBE', 'OK', 'after exhausting the sequence');
+ERROR:  nextval: reached maximum value of sequence "audit_log_id_seq" (9223372036854775807)
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+SELECT setval(pg_get_serial_sequence('asset_event', 'id'), 1);
+ setval 
+--------
+      1
+(1 row)
+
+INSERT INTO asset_event (asset_id, event_type, event_date, status_after, recorded_by) VALUES (3, 'CORRECTION', now(), 'IN_STOCK', 2);
+ERROR:  duplicate key value violates unique constraint "asset_event_pkey"
+DETAIL:  Key (id)=(2) already exists.
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+ALTER SEQUENCE audit_log_id_seq MAXVALUE 10;
+ERROR:  must be owner of sequence audit_log_id_seq
+ROLLBACK;
+ROLLBACK
+== N01 normal: insert an audit row
+BEGIN;
+BEGIN
+INSERT INTO audit_log (category, action, outcome, summary, ip) VALUES ('SECURITY', 'R2C_PROBE', 'OK', 'cl2-if runtime insert', '127.0.0.1') RETURNING id > 0 AS inserted;
+ERROR:  nextval: reached maximum value of sequence "audit_log_id_seq" (9223372036854775807)
+ROLLBACK;
+ROLLBACK
+== N02 normal: update an ordinary asset column
+BEGIN;
+BEGIN
+UPDATE asset SET description = coalesce(description, '') || ' (r2c)' WHERE id = 3;
+UPDATE 1
+ROLLBACK;
+ROLLBACK
+== N03 normal: sequences (nextval / currval)
+BEGIN;
+BEGIN
+SELECT nextval(pg_get_serial_sequence('asset_event', 'id')) > 0 AS nextval_ok, currval(pg_get_serial_sequence('asset_event', 'id')) > 0 AS currval_ok;
+ nextval_ok | currval_ok 
+------------+------------
+ t          | t
+(1 row)
+
+ROLLBACK;
+ROLLBACK
+== N04 normal: the apply_events path (marker + event + state change in one transaction)
+BEGIN;
+BEGIN
+SELECT set_config('ckam.lifecycle_writer', 'on', true);
+ set_config 
+------------
+ on
+(1 row)
+
+INSERT INTO asset_event (asset_id, event_type, event_date, status_after, recorded_by, remarks) VALUES (3, 'MOVED', now(), 'LOST', 2, 'cl2-if probe');
+ERROR:  duplicate key value violates unique constraint "asset_event_pkey"
+DETAIL:  Key (id)=(4) already exists.
+UPDATE asset SET status = 'LOST', status_since = current_date WHERE id = 3;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+SELECT set_config('ckam.lifecycle_writer', 'off', true);
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+UPDATE asset SET status = 'IN_STOCK' WHERE id = 3;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ROLLBACK;
+ROLLBACK
+== N05 normal: other inserts / updates / deletes the app does
+BEGIN;
+BEGIN
+INSERT INTO asset_field_change (asset_id, field_name, old_value, new_value, actor_id, request_id) VALUES (3, 'description', 'a', 'b', 2, 'r2c');
+INSERT 0 1
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+INSERT INTO master_audit (entity, entity_id, field, old_value, new_value, actor_id) VALUES ('vendor', 1, 'name', 'a', 'b', 2);
+INSERT 0 1
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+UPDATE asset_user SET failed_login_count = failed_login_count WHERE id = 16;
+UPDATE 1
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+DELETE FROM error_log WHERE at < now() - interval '400 days';
+DELETE 0
+DELETE FROM idempotency_key WHERE false;
+DELETE 0
+ROLLBACK;
+ROLLBACK
+BEGIN;
+BEGIN
+SELECT version_num FROM alembic_version;
+ version_num  
+--------------
+ c6e8a0b2d4f6
+(1 row)
+
+SELECT count(*) AS audit_rows FROM audit_log;
+ audit_rows 
+------------
+       3830
+(1 row)
+
+ROLLBACK;
+ROLLBACK
+== after: nothing changed
+SELECT id, status, current_asset_user_id, status_since, asset_code FROM asset WHERE id = 3;
+ id |  status  | current_asset_user_id | status_since |     asset_code      
+----+----------+-----------------------+--------------+---------------------
+  3 | IN_STOCK |                     3 | 2026-10-05   | CKSPL/ITFA-SPL/0003
+(1 row)
+
+SELECT (SELECT count(*) FROM audit_log) AS audit_rows, (SELECT count(*) FROM asset_event) AS events, (SELECT last_value FROM audit_log_id_seq) AS audit_seq;
+ audit_rows | events |      audit_seq      
+------------+--------+---------------------
+       3830 |     26 | 9223372036854775807
+(1 row)
+

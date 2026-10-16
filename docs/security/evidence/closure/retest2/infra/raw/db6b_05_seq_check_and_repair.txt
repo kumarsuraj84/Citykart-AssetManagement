@@ -1,0 +1,10 @@
+ audit_rows_for_failed_login 
+-----------------------------
+                           0
+(1 row)
+
+ audit_seq_repaired | event_seq_repaired 
+--------------------+--------------------
+               3833 |                 26
+(1 row)
+

@@ -1,0 +1,132 @@
+# 2026-10-16T06:26:53Z ckam-sec-db-1 psql -U ckam -d ckam -X -v ON_ERROR_STOP=0 < docs/security/evidence/infra/sql/db_03_append_only_privilege_tests.sql (unchanged historical file)
+BEGIN
+ audit_rows_before 
+-------------------
+              3857
+(1 row)
+
+ event_rows_before 
+-------------------
+                26
+(1 row)
+
+### A. as the stack's app role `ckam` (SUPERUSER + owner, exactly what the Docker stacks run as)
+A1 UPDATE audit_log (expect trigger error)
+ERROR:  audit_log rows are append-only
+CONTEXT:  PL/pgSQL function forbid_audit_log_write() line 8 at RAISE
+A2 DELETE audit_log (expect trigger error)
+ERROR:  audit_log rows are append-only
+CONTEXT:  PL/pgSQL function forbid_audit_log_write() line 8 at RAISE
+A3 UPDATE asset_event (expect trigger error)
+ERROR:  asset_event rows are append-only; insert a CORRECTION event instead
+CONTEXT:  PL/pgSQL function forbid_asset_event_write() line 3 at RAISE
+A4 DELETE master_audit / asset_field_change (expect trigger error)
+DELETE 0
+ERROR:  asset_field_change rows are append-only
+CONTEXT:  PL/pgSQL function forbid_asset_field_change_write() line 3 at RAISE
+A5 UPDATE asset.asset_code (expect immutability trigger error)
+ERROR:  asset_code is immutable once set
+CONTEXT:  PL/pgSQL function forbid_asset_identity_change() line 4 at RAISE
+A6 session flag bypass: SET LOCAL ckam.allow_audit_purge=on then DELETE the NEWEST audit row (no date limit)
+SET
+ERROR:  audit_log rows are append-only
+CONTEXT:  PL/pgSQL function forbid_audit_log_write() line 8 at RAISE
+RESET
+A7 TRUNCATE audit_log / master_audit / asset_field_change (row triggers do not fire on TRUNCATE)
+ERROR:  audit_log rows are append-only; TRUNCATE is not allowed
+CONTEXT:  PL/pgSQL function forbid_append_only_truncate() line 3 at RAISE
+ a7_audit_rows_after_truncate 
+------------------------------
+                         3857
+(1 row)
+
+ERROR:  master_audit rows are append-only; TRUNCATE is not allowed
+CONTEXT:  PL/pgSQL function forbid_append_only_truncate() line 3 at RAISE
+ERROR:  asset_field_change rows are append-only; TRUNCATE is not allowed
+CONTEXT:  PL/pgSQL function forbid_append_only_truncate() line 3 at RAISE
+A8 owner disables the append-only trigger, then rewrites history
+ALTER TABLE
+ a8_events_rewritten 
+---------------------
+                   1
+(1 row)
+
+ALTER TABLE
+A9 direct write of Asset.status outside apply_event (no DB-level guard)
+ a9_status_writable 
+--------------------
+                  1
+(1 row)
+
+### B. least-privilege runtime role simulation (role created INSIDE this transaction, rolled back)
+CREATE ROLE
+GRANT
+GRANT
+GRANT
+SET
+    b_role     
+---------------
+ ifsec_runtime
+(1 row)
+
+B1 TRUNCATE audit_log (expect permission denied)
+ERROR:  permission denied for table audit_log
+B2 ALTER TABLE ... DISABLE TRIGGER (expect must be owner)
+ERROR:  must be owner of table asset_event
+B3 DROP TABLE audit_log (expect must be owner)
+ERROR:  must be owner of table audit_log
+B4 CREATE TABLE in public (PG15+ default: denied for non-owner)
+ERROR:  permission denied for schema public
+LINE 1: CREATE TABLE ifsec_probe(x int);
+                     ^
+B5 execute ckam_purge_audit_log (expect permission denied: EXECUTE revoked from PUBLIC)
+ERROR:  permission denied for function ckam_purge_audit_log
+B6 session flag bypass still works for a role holding plain DELETE on audit_log
+SET
+ERROR:  audit_log rows are append-only
+CONTEXT:  PL/pgSQL function forbid_audit_log_write() line 8 at RAISE
+RESET
+B7 UPDATE audit_log (expect trigger error)
+ERROR:  audit_log rows are append-only
+CONTEXT:  PL/pgSQL function forbid_audit_log_write() line 8 at RAISE
+RESET
+### C. non-superuser OWNER simulation (production runs alembic AND the app as ckassetapp = owner)
+CREATE ROLE
+ALTER TABLE
+ALTER TABLE
+SET
+C1 owner TRUNCATE audit_log (expect success)
+ERROR:  audit_log rows are append-only; TRUNCATE is not allowed
+CONTEXT:  PL/pgSQL function forbid_append_only_truncate() line 3 at RAISE
+C2 owner disables the asset_event append-only trigger (expect success)
+ALTER TABLE
+C3 owner DROPs the trigger (expect success)
+DROP TRIGGER
+RESET
+ audit_rows_end_of_txn 
+-----------------------
+                  3857
+(1 row)
+
+ROLLBACK
+ audit_rows_after_rollback 
+---------------------------
+                      3857
+(1 row)
+
+ event_rows_after_rollback 
+---------------------------
+                        26
+(1 row)
+
+           tgname            | tgenabled 
+-----------------------------+-----------
+ trg_asset_event_no_delete   | O
+ trg_asset_event_no_update   | O
+ trg_asset_event_no_truncate | O
+(3 rows)
+
+ rolname 
+---------
+(0 rows)
+

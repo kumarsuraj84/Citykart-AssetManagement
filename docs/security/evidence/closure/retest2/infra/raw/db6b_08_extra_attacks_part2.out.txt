@@ -1,0 +1,40 @@
+
+######## X2' role default left by the runtime role, and whether role_split.sql / the verify script notice it
+   rolname    |     db      |             setconfig              
+--------------+-------------+------------------------------------
+ r2c_app      | (all)       | {default_transaction_read_only=on}
+ r2c_migrator | ckam_r2c_rs | {role=r2c_owner}
+(2 rows)
+
+verify with default_transaction_read_only=on on the runtime role: no FAIL/INFO row
+
+######## X2' superuser clean-up
+ALTER ROLE
+ r2c_app_role_defaults_left 
+----------------------------
+                          0
+(1 row)
+
+
+######## X3c' after the sequence fix: setval refused, nextval + ledger insert work (rolled back)
+ERROR:  permission denied for sequence audit_log_id_seq
+ERROR:  permission denied for sequence asset_event_id_seq
+BEGIN
+ nextval_ok 
+------------
+ t
+(1 row)
+
+ insert_ok 
+-----------
+ t
+(1 row)
+
+INSERT 0 1
+ROLLBACK
+      relname       | usage | upd 
+--------------------+-------+-----
+ asset_event_id_seq | t     | f
+ audit_log_id_seq   | t     | f
+(2 rows)
+

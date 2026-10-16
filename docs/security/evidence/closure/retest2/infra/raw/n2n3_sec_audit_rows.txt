@@ -1,0 +1,10 @@
+            request_id            |      ip      | category |    action    | outcome |              at               
+----------------------------------+--------------+----------+--------------+---------+-------------------------------
+ d15e3ab4edfd4b09b71cd0b4cc01466b | 172.31.212.1 | SECURITY | LOGIN_FAILED | FAILED  | 2026-10-16 06:17:39.647111+00
+ 8554f1060b4b4c8cbdcfd7dbf3ea7eee | 172.31.212.1 | SECURITY | LOGIN_FAILED | FAILED  | 2026-10-16 06:17:43.204354+00
+ 0cf27d4383654ce09a7b6eedd4923b35 | 172.31.212.1 | SECURITY | LOGIN_FAILED | FAILED  | 2026-10-16 06:17:46.757472+00
+ 4068d6ee35a54a5e9b0cc2f93c074e3c | 172.25.0.1   | SECURITY | LOGIN_FAILED | FAILED  | 2026-10-16 06:17:50.305653+00
+ bdb5f6b60c51489b986d4f5017281e2c | 172.25.0.1   | SECURITY | LOGIN_FAILED | FAILED  | 2026-10-16 06:17:53.846979+00
+ d93838030d8342d5abc5d770d04847c3 | 172.25.0.1   | SECURITY | LOGIN_FAILED | FAILED  | 2026-10-16 06:17:57.391167+00
+(6 rows)
+

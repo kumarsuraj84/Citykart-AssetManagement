@@ -1,0 +1,55 @@
+/data/logs:
+total 16
+drwxr-xr-x    2 10001    10001         4096 Oct 16 06:13 .
+drwxr-xr-x    4 0        0             4096 Oct 16 06:13 ..
+-rw-r--r--    1 10001    10001         3015 Oct 16 06:13 app.jsonl
+-rw-r--r--    1 10001    10001         2394 Oct 16 06:13 audit.jsonl
+lrwxrwxrwx    1 10001    10001            4 Oct 16 06:13 evil_dir_etc -> /etc
+lrwxrwxrwx    1 0        0               16 Oct 16 06:13 root_link_main -> /app/app/main.py
+
+/data/uploads:
+total 16
+drwxr-xr-x    3 10001    10001         4096 Oct 16 06:13 .
+drwxr-xr-x    4 0        0             4096 Oct 16 06:13 ..
+drwxr-xr-x    2 10001    10001         4096 Oct 16 06:13 1
+lrwxrwxrwx    1 10001    10001           11 Oct 16 06:13 evil_link_shadow -> /etc/shadow
+-rw-r--r--    1 0        0                2 Oct 16 06:13 root_file
+lrwxrwxrwx    1 0        0               11 Oct 16 06:13 root_link_passwd -> /etc/passwd
+# re-run volume-init (image ckam-r2c-volume-init, user 0:0, cap-drop ALL + CHOWN, DAC_READ_SEARCH, no-new-privileges, no network)
+volume-init: done
+# targets after chown (must still be root-owned):
+-rwxr-xr-x 1 0  0 15229 Oct 16 05:31 /app/app/main.py
+-rw-r--r-- 1 0  0   882 Oct 16 04:47 /etc/passwd
+-rw-r----- 1 0 42   493 Oct 16 04:47 /etc/shadow
+drwxr-xr-x 1 0 0 4096 Oct 16 06:13 /etc
+# links/files in the volumes:
+/data/logs:
+total 16
+drwxr-xr-x 2 10001 10001 4096 Oct 16 06:13 .
+drwxr-xr-x 4     0     0 4096 Oct 16 04:47 ..
+-rw-r--r-- 1 10001 10001 3015 Oct 16 06:13 app.jsonl
+-rw-r--r-- 1 10001 10001 2394 Oct 16 06:13 audit.jsonl
+lrwxrwxrwx 1 10001 10001    4 Oct 16 06:13 evil_dir_etc -> /etc
+lrwxrwxrwx 1 10001 10001   16 Oct 16 06:13 root_link_main -> /app/app/main.py
+
+/data/uploads:
+total 16
+drwxr-xr-x 3 10001 10001 4096 Oct 16 06:13 .
+drwxr-xr-x 4     0     0 4096 Oct 16 04:47 ..
+drwxr-xr-x 2 10001 10001 4096 Oct 16 06:13 1
+lrwxrwxrwx 1 10001 10001   11 Oct 16 06:13 evil_link_shadow -> /etc/shadow
+-rw-r--r-- 1 10001 10001    2 Oct 16 06:13 root_file
+lrwxrwxrwx 1 10001 10001   11 Oct 16 06:13 root_link_passwd -> /etc/passwd
+# cleanup of the planted links/files
+/data/logs:
+total 16
+drwxr-xr-x    2 10001    10001         4096 Oct 16 06:13 .
+drwxr-xr-x    4 0        0             4096 Oct 16 06:13 ..
+-rw-r--r--    1 10001    10001         3015 Oct 16 06:13 app.jsonl
+-rw-r--r--    1 10001    10001         2394 Oct 16 06:13 audit.jsonl
+
+/data/uploads:
+total 12
+drwxr-xr-x    3 10001    10001         4096 Oct 16 06:13 .
+drwxr-xr-x    4 0        0             4096 Oct 16 06:13 ..
+drwxr-xr-x    2 10001    10001         4096 Oct 16 06:13 1

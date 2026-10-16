@@ -1,0 +1,307 @@
+[
+ {
+  "id": "CL2-AC-IDOR-po-own",
+  "who": "SECOPIT",
+  "route": "GET po 1",
+  "status": 200,
+  "expect": 200,
+  "verdict": "PASS",
+  "note": "own company PO"
+ },
+ {
+  "id": "CL2-AC-IDOR-po-cross",
+  "who": "SECOPIT",
+  "route": "GET po 5",
+  "status": 404,
+  "expect": 404,
+  "verdict": "PASS",
+  "note": "other company PO must be 404"
+ },
+ {
+  "id": "CL2-AC-IDOR-po-sub-cross",
+  "who": "SECOPIT",
+  "route": "GET po 5/lines",
+  "status": 404,
+  "expect": [
+   403,
+   404
+  ],
+  "verdict": "PASS",
+  "note": "other company PO sub-route"
+ },
+ {
+  "id": "CL2-AC-IDOR-po-sub-cross",
+  "who": "SECOPIT",
+  "route": "GET po 5/receive-info",
+  "status": 404,
+  "expect": [
+   403,
+   404
+  ],
+  "verdict": "PASS",
+  "note": "other company PO sub-route"
+ },
+ {
+  "id": "CL2-AC-IDOR-po-sub-cross",
+  "who": "SECOPIT",
+  "route": "GET po 5/invoices",
+  "status": 404,
+  "expect": [
+   403,
+   404
+  ],
+  "verdict": "PASS",
+  "note": "other company PO sub-route"
+ },
+ {
+  "id": "CL2-AC-IDOR-po-sub-cross",
+  "who": "SECOPIT",
+  "route": "GET po 5/line-groups",
+  "status": 404,
+  "expect": [
+   403,
+   404
+  ],
+  "verdict": "PASS",
+  "note": "other company PO sub-route"
+ },
+ {
+  "id": "CL2-AC-IDOR-po-own",
+  "who": "SECOTHER",
+  "route": "GET po 5",
+  "status": 200,
+  "expect": 200,
+  "verdict": "PASS",
+  "note": "own company PO"
+ },
+ {
+  "id": "CL2-AC-IDOR-po-cross",
+  "who": "SECOTHER",
+  "route": "GET po 1",
+  "status": 404,
+  "expect": 404,
+  "verdict": "PASS",
+  "note": "other company PO must be 404"
+ },
+ {
+  "id": "CL2-AC-IDOR-po-sub-cross",
+  "who": "SECOTHER",
+  "route": "GET po 1/lines",
+  "status": 404,
+  "expect": [
+   403,
+   404
+  ],
+  "verdict": "PASS",
+  "note": "other company PO sub-route"
+ },
+ {
+  "id": "CL2-AC-IDOR-po-sub-cross",
+  "who": "SECOTHER",
+  "route": "GET po 1/receive-info",
+  "status": 404,
+  "expect": [
+   403,
+   404
+  ],
+  "verdict": "PASS",
+  "note": "other company PO sub-route"
+ },
+ {
+  "id": "CL2-AC-IDOR-po-sub-cross",
+  "who": "SECOTHER",
+  "route": "GET po 1/invoices",
+  "status": 404,
+  "expect": [
+   403,
+   404
+  ],
+  "verdict": "PASS",
+  "note": "other company PO sub-route"
+ },
+ {
+  "id": "CL2-AC-IDOR-po-sub-cross",
+  "who": "SECOTHER",
+  "route": "GET po 1/line-groups",
+  "status": 404,
+  "expect": [
+   403,
+   404
+  ],
+  "verdict": "PASS",
+  "note": "other company PO sub-route"
+ },
+ {
+  "id": "CL2-AC-IDOR-erp-cross",
+  "who": "SECOPIT",
+  "route": "GET erp draft 9002001 (CKVPL)",
+  "status": 404,
+  "expect": 404,
+  "verdict": "PASS",
+  "note": "IF-03 cross-company ERP"
+ },
+ {
+  "id": "CL2-AC-IDOR-erp-own",
+  "who": "SECOPIT",
+  "route": "GET erp draft 9001001 (CKSPL)",
+  "status": 200,
+  "expect": 200,
+  "verdict": "PASS",
+  "note": "own"
+ },
+ {
+  "id": "CL2-AC-IDOR-erp-cross2",
+  "who": "SECOTHER",
+  "route": "GET erp draft 9001001 (CKSPL)",
+  "status": 404,
+  "expect": 404,
+  "verdict": "PASS",
+  "note": "IF-03 cross-company"
+ },
+ {
+  "id": "CL2-AC-IDOR-erp-grant",
+  "who": "SECOPX",
+  "route": "GET erp draft 9002001 (CKVPL, granted)",
+  "status": 200,
+  "expect": 200,
+  "verdict": "PASS",
+  "note": "cross-company grant works"
+ },
+ {
+  "id": "CL2-AC-IDOR-cf-filter",
+  "who": "SECOPIT",
+  "route": "GET custom-fields company_ids",
+  "status": 200,
+  "expect": 200,
+  "verdict": "PASS",
+  "note": "[{\"id\":1}]"
+ },
+ {
+  "id": "CL2-AC-IDOR-cf-filter2",
+  "who": "SECOTHER",
+  "route": "GET custom-fields company_ids",
+  "status": 200,
+  "expect": 200,
+  "verdict": "PASS",
+  "note": "[{\"id\":2}]"
+ },
+ {
+  "id": "CL2-AC-IDOR-cf-widen",
+  "who": "SECOPIT",
+  "route": "GET custom-fields?company_id=2",
+  "status": 200,
+  "expect": 200,
+  "verdict": "PASS",
+  "note": "[null]"
+ },
+ {
+  "id": "CL2-AC-IDOR-cf-write",
+  "who": "SECOPIT",
+  "route": "PUT custom-field 2 (CKVPL)",
+  "status": 403,
+  "expect": [
+   403,
+   404,
+   422
+  ],
+  "verdict": "PASS",
+  "note": "operator cross-company custom-field write"
+ },
+ {
+  "id": "CL2-AC-IDOR-map-del-fake",
+  "who": "SECOPIT",
+  "route": "DELETE items/maps/999 (fake)",
+  "status": 403,
+  "expect": [
+   403,
+   404
+  ],
+  "verdict": "PASS",
+  "note": "mapping delete guard"
+ },
+ {
+  "id": "CL2-AC-IDOR-maps-list",
+  "who": "SECOPIT",
+  "route": "GET items/maps",
+  "status": 403,
+  "expect": 200,
+  "verdict": "CHECK",
+  "note": "[]"
+ },
+ {
+  "id": "CL2-AC-IDOR-maps-list2",
+  "who": "SECOTHER",
+  "route": "GET items/maps",
+  "status": 403,
+  "expect": 200,
+  "verdict": "CHECK",
+  "note": "[]"
+ },
+ {
+  "id": "CL2-AC-BOLA-self-own",
+  "who": "SECSELF",
+  "route": "GET asset 1 (owns)",
+  "status": 200,
+  "expect": 200,
+  "verdict": "PASS",
+  "note": "custody"
+ },
+ {
+  "id": "CL2-AC-BOLA-self-notown",
+  "who": "SECSELF",
+  "route": "GET asset 2 (same co/domain, not held)",
+  "status": 404,
+  "expect": 404,
+  "verdict": "PASS",
+  "note": "self-service only own"
+ },
+ {
+  "id": "CL2-AC-BOLA-self-cross",
+  "who": "SECSELF",
+  "route": "GET asset 9 (CKVPL)",
+  "status": 404,
+  "expect": 404,
+  "verdict": "PASS",
+  "note": "cross-company"
+ },
+ {
+  "id": "CL2-AC-BOLA-store-own",
+  "who": "SPA",
+  "route": "GET asset 6 (store holds)",
+  "status": 200,
+  "expect": 200,
+  "verdict": "PASS",
+  "note": "store custody"
+ },
+ {
+  "id": "CL2-AC-BOLA-store-notown",
+  "who": "SPA",
+  "route": "GET asset 1 (not held)",
+  "status": 404,
+  "expect": 404,
+  "verdict": "PASS",
+  "note": "store only own"
+ },
+ {
+  "id": "CL2-AC-IDOR-idem-xactor",
+  "who": "SECOPIT",
+  "route": "POST with-lines reusing SECHO seed idem key",
+  "status": 422,
+  "expect": [
+   422,
+   403,
+   201
+  ],
+  "verdict": "PASS",
+  "note": "Idempotency-Replay=absent (must be absent: per-actor keys)"
+ },
+ {
+  "id": "CL2-AC-IDOR-au-ca-op",
+  "who": "SECOPIT",
+  "route": "GET asset-user 26 company-access",
+  "status": 403,
+  "expect": 403,
+  "verdict": "PASS",
+  "note": "operator denied"
+ }
+]

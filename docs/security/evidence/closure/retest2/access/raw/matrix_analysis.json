@@ -1,0 +1,302 @@
+{
+ "routes": 217,
+ "escalations": [
+  {
+   "kind": "ESCALATION",
+   "method": "GET",
+   "path": "/api/assets/{asset_id}",
+   "lo": "SECSELF",
+   "loStatus": "200",
+   "hi": "SECOPNIT",
+   "hiStatus": "404"
+  },
+  {
+   "kind": "ESCALATION",
+   "method": "GET",
+   "path": "/api/assets/{asset_id}",
+   "lo": "SECVIEW",
+   "loStatus": "200",
+   "hi": "SECOPNIT",
+   "hiStatus": "404"
+  },
+  {
+   "kind": "ESCALATION",
+   "method": "GET",
+   "path": "/api/assets/{asset_id}/changes",
+   "lo": "SECSELF",
+   "loStatus": "200",
+   "hi": "SECOPNIT",
+   "hiStatus": "404"
+  },
+  {
+   "kind": "ESCALATION",
+   "method": "GET",
+   "path": "/api/assets/{asset_id}/changes",
+   "lo": "SECVIEW",
+   "loStatus": "200",
+   "hi": "SECOPNIT",
+   "hiStatus": "404"
+  },
+  {
+   "kind": "ESCALATION",
+   "method": "GET",
+   "path": "/api/assets/{asset_id}/qr.png",
+   "lo": "SECSELF",
+   "loStatus": "200",
+   "hi": "SECOPNIT",
+   "hiStatus": "404"
+  },
+  {
+   "kind": "ESCALATION",
+   "method": "GET",
+   "path": "/api/assets/{asset_id}/qr.png",
+   "lo": "SECVIEW",
+   "loStatus": "200",
+   "hi": "SECOPNIT",
+   "hiStatus": "404"
+  },
+  {
+   "kind": "ESCALATION",
+   "method": "GET",
+   "path": "/api/assets/{asset_id}/label.png",
+   "lo": "SECSELF",
+   "loStatus": "200",
+   "hi": "SECOPNIT",
+   "hiStatus": "404"
+  },
+  {
+   "kind": "ESCALATION",
+   "method": "GET",
+   "path": "/api/assets/{asset_id}/label.png",
+   "lo": "SECVIEW",
+   "loStatus": "200",
+   "hi": "SECOPNIT",
+   "hiStatus": "404"
+  },
+  {
+   "kind": "ESCALATION",
+   "method": "GET",
+   "path": "/api/assets/{asset_id}/events",
+   "lo": "SECSELF",
+   "loStatus": "200",
+   "hi": "SECOPNIT",
+   "hiStatus": "404"
+  },
+  {
+   "kind": "ESCALATION",
+   "method": "GET",
+   "path": "/api/assets/{asset_id}/events",
+   "lo": "SECVIEW",
+   "loStatus": "200",
+   "hi": "SECOPNIT",
+   "hiStatus": "404"
+  },
+  {
+   "kind": "ESCALATION",
+   "method": "GET",
+   "path": "/api/assets/{asset_id}/documents",
+   "lo": "SECSELF",
+   "loStatus": "200",
+   "hi": "SECOPNIT",
+   "hiStatus": "404"
+  },
+  {
+   "kind": "ESCALATION",
+   "method": "GET",
+   "path": "/api/assets/{asset_id}/documents",
+   "lo": "SECVIEW",
+   "loStatus": "200",
+   "hi": "SECOPNIT",
+   "hiStatus": "404"
+  },
+  {
+   "kind": "ESCALATION",
+   "method": "GET",
+   "path": "/api/documents/{doc_id}/download",
+   "lo": "SECSELF",
+   "loStatus": "200",
+   "hi": "SECOPNIT",
+   "hiStatus": "404"
+  },
+  {
+   "kind": "ESCALATION",
+   "method": "GET",
+   "path": "/api/documents/{doc_id}/download",
+   "lo": "SECVIEW",
+   "loStatus": "200",
+   "hi": "SECOPNIT",
+   "hiStatus": "404"
+  }
+ ],
+ "mustChangeViolations": [
+  {
+   "method": "POST",
+   "path": "/api/auth/change-password",
+   "status": "422",
+   "note": "non-403 deny"
+  },
+  {
+   "method": "GET",
+   "path": "/api/health",
+   "status": "200"
+  },
+  {
+   "method": "GET",
+   "path": "/assets/{file_path}",
+   "status": "404",
+   "note": "non-403 deny"
+  },
+  {
+   "method": "GET",
+   "path": "/{full_path}",
+   "status": "404",
+   "note": "non-403 deny"
+  }
+ ],
+ "selfServiceListLeaks": [
+  {
+   "who": "SECSELF",
+   "path": "/api/asset-users/me/companies",
+   "status": "200"
+  },
+  {
+   "who": "SPA",
+   "path": "/api/asset-users/me/companies",
+   "status": "200"
+  }
+ ],
+ "diffVsPrevious": [
+  {
+   "key": "GET /api/assets/{asset_id}",
+   "persona": "SECSELF",
+   "old": "404",
+   "new": "200"
+  },
+  {
+   "key": "GET /api/assets/{asset_id}/changes",
+   "persona": "SECSELF",
+   "old": "404",
+   "new": "200"
+  },
+  {
+   "key": "GET /api/assets/{asset_id}/qr.png",
+   "persona": "SECSELF",
+   "old": "404",
+   "new": "200"
+  },
+  {
+   "key": "GET /api/assets/{asset_id}/label.png",
+   "persona": "SECSELF",
+   "old": "404",
+   "new": "200"
+  },
+  {
+   "key": "GET /api/assets/{asset_id}/events",
+   "persona": "SECSELF",
+   "old": "404",
+   "new": "200"
+  },
+  {
+   "key": "GET /api/reports/movements/preview",
+   "persona": "SECVIEW",
+   "old": "422",
+   "new": "200"
+  },
+  {
+   "key": "GET /api/reports/movements/preview",
+   "persona": "SECOPIT",
+   "old": "422",
+   "new": "200"
+  },
+  {
+   "key": "GET /api/reports/movements/preview",
+   "persona": "SECOPNIT",
+   "old": "422",
+   "new": "200"
+  },
+  {
+   "key": "GET /api/reports/movements/preview",
+   "persona": "SECFAIT",
+   "old": "422",
+   "new": "200"
+  },
+  {
+   "key": "GET /api/reports/movements/preview",
+   "persona": "SECFANIT",
+   "old": "422",
+   "new": "200"
+  },
+  {
+   "key": "GET /api/reports/movements/preview",
+   "persona": "SECFABOTH",
+   "old": "422",
+   "new": "200"
+  },
+  {
+   "key": "GET /api/reports/movements/preview",
+   "persona": "SECOTHER",
+   "old": "422",
+   "new": "200"
+  },
+  {
+   "key": "GET /api/reports/movements/preview",
+   "persona": "SECHO",
+   "old": "422",
+   "new": "200"
+  },
+  {
+   "key": "GET /api/reports/export/movements",
+   "persona": "SECVIEW",
+   "old": "422",
+   "new": "200"
+  },
+  {
+   "key": "GET /api/reports/export/movements",
+   "persona": "SECOPIT",
+   "old": "422",
+   "new": "200"
+  },
+  {
+   "key": "GET /api/reports/export/movements",
+   "persona": "SECOPNIT",
+   "old": "422",
+   "new": "200"
+  },
+  {
+   "key": "GET /api/reports/export/movements",
+   "persona": "SECFAIT",
+   "old": "422",
+   "new": "200"
+  },
+  {
+   "key": "GET /api/reports/export/movements",
+   "persona": "SECFANIT",
+   "old": "422",
+   "new": "200"
+  },
+  {
+   "key": "GET /api/reports/export/movements",
+   "persona": "SECFABOTH",
+   "old": "422",
+   "new": "200"
+  },
+  {
+   "key": "GET /api/reports/export/movements",
+   "persona": "SECOTHER",
+   "old": "422",
+   "new": "200"
+  },
+  {
+   "key": "GET /api/reports/export/movements",
+   "persona": "SECHO",
+   "old": "422",
+   "new": "200"
+  },
+  {
+   "key": "GET /api/assets/{asset_id}/documents",
+   "persona": "SECSELF",
+   "old": "404",
+   "new": "200"
+  }
+ ]
+}

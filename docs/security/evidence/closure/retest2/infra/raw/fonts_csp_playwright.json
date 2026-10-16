@@ -1,0 +1,1704 @@
+{
+ "base": "http://localhost:3411",
+ "personas": {
+  "SECHO": {
+   "requests": {
+    "http://localhost:3411": 259,
+    "blob:": 5
+   },
+   "foreign": [],
+   "google": 0,
+   "violations": [],
+   "cspConsole": [],
+   "consoleErrors": [],
+   "pageErrors": [],
+   "fontResponses": [
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    }
+   ],
+   "pages": [
+    {
+     "label": "login",
+     "ok": true,
+     "path": "/dashboard"
+    },
+    {
+     "label": "/dashboard",
+     "ok": true,
+     "path": "/dashboard"
+    },
+    {
+     "label": "/assets",
+     "ok": true,
+     "path": "/assets"
+    },
+    {
+     "label": "/assets/1",
+     "ok": true,
+     "path": "/assets/1"
+    },
+    {
+     "label": "/purchase-orders",
+     "ok": true,
+     "path": "/purchase-orders"
+    },
+    {
+     "label": "/purchase-orders/1",
+     "ok": true,
+     "path": "/purchase-orders/1"
+    },
+    {
+     "label": "/receive",
+     "ok": true,
+     "path": "/receive"
+    },
+    {
+     "label": "/receive/2",
+     "ok": true,
+     "path": "/receive/2"
+    },
+    {
+     "label": "/asset-movement",
+     "ok": true,
+     "path": "/asset-movement"
+    },
+    {
+     "label": "/reports",
+     "ok": true,
+     "path": "/reports"
+    },
+    {
+     "label": "reports export (Download Excel)",
+     "ok": true,
+     "path": "/reports"
+    },
+    {
+     "label": "/settings",
+     "ok": true,
+     "path": "/settings"
+    },
+    {
+     "label": "/settings/organisation",
+     "ok": true,
+     "path": "/settings/organisation"
+    },
+    {
+     "label": "/settings/catalogue/items",
+     "ok": true,
+     "path": "/settings/catalogue/items"
+    },
+    {
+     "label": "/settings/vendors",
+     "ok": true,
+     "path": "/settings/vendors"
+    },
+    {
+     "label": "/settings/users-access",
+     "ok": true,
+     "path": "/settings/users-access"
+    },
+    {
+     "label": "/settings/advanced/code-format",
+     "ok": true,
+     "path": "/settings/advanced/code-format"
+    },
+    {
+     "label": "/settings/erp/inbox",
+     "ok": true,
+     "path": "/settings/erp/inbox"
+    },
+    {
+     "label": "/settings/system/logs",
+     "ok": true,
+     "path": "/settings/system/logs"
+    },
+    {
+     "label": "/settings/system/diagnostics",
+     "ok": true,
+     "path": "/settings/system/diagnostics"
+    },
+    {
+     "label": "/print-labels?assets=1,3",
+     "ok": true,
+     "path": "/print-labels"
+    },
+    {
+     "label": "report-a-problem dialog",
+     "ok": true,
+     "path": "/print-labels"
+    }
+   ],
+   "downloads": [
+    {
+     "name": "asset_register.xlsx",
+     "url": "blob:http://localhost:3411/738b1339-f547-4e9a-92ce-a3f68d8c11b7"
+    },
+    {
+     "name": "asset_register.xlsx",
+     "ok": true
+    }
+   ],
+   "fontProbe": {
+    "login": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/dashboard": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/assets": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/assets/1": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/purchase-orders": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/purchase-orders/1": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/receive": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/receive/2": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/asset-movement": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/reports": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/settings": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/settings/organisation": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/settings/catalogue/items": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/settings/vendors": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/settings/users-access": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/settings/advanced/code-format": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/settings/erp/inbox": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/settings/system/logs": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/settings/system/diagnostics": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/print-labels?assets=1,3": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "report-dialog": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    }
+   }
+  },
+  "SECOPIT": {
+   "requests": {
+    "http://localhost:3411": 149,
+    "blob:": 3
+   },
+   "foreign": [],
+   "google": 0,
+   "violations": [],
+   "cspConsole": [],
+   "consoleErrors": [],
+   "pageErrors": [],
+   "fontResponses": [
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    }
+   ],
+   "pages": [
+    {
+     "label": "login",
+     "ok": true,
+     "path": "/dashboard"
+    },
+    {
+     "label": "/dashboard",
+     "ok": true,
+     "path": "/dashboard"
+    },
+    {
+     "label": "/assets",
+     "ok": true,
+     "path": "/assets"
+    },
+    {
+     "label": "/assets/3",
+     "ok": true,
+     "path": "/assets/3"
+    },
+    {
+     "label": "/purchase-orders",
+     "ok": true,
+     "path": "/purchase-orders"
+    },
+    {
+     "label": "/purchase-orders/1",
+     "ok": true,
+     "path": "/purchase-orders/1"
+    },
+    {
+     "label": "/receive",
+     "ok": true,
+     "path": "/receive"
+    },
+    {
+     "label": "/asset-movement",
+     "ok": true,
+     "path": "/asset-movement"
+    },
+    {
+     "label": "/reports",
+     "ok": true,
+     "path": "/reports"
+    },
+    {
+     "label": "reports export (Download Excel)",
+     "ok": true,
+     "path": "/reports"
+    },
+    {
+     "label": "/settings",
+     "ok": true,
+     "path": "/settings"
+    },
+    {
+     "label": "/print-labels?assets=3",
+     "ok": true,
+     "path": "/print-labels"
+    },
+    {
+     "label": "report-a-problem dialog",
+     "ok": true,
+     "path": "/print-labels"
+    }
+   ],
+   "downloads": [
+    {
+     "name": "asset_register.xlsx",
+     "url": "blob:http://localhost:3411/48229301-976d-4e4e-b6c7-da9779ed0dc8"
+    },
+    {
+     "name": "asset_register.xlsx",
+     "ok": true
+    }
+   ],
+   "fontProbe": {
+    "login": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/dashboard": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/assets": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/assets/3": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/purchase-orders": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/purchase-orders/1": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/receive": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/asset-movement": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/reports": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/settings": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/print-labels?assets=3": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "report-dialog": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    }
+   }
+  },
+  "SECSELF": {
+   "requests": {
+    "http://localhost:3411": 56,
+    "blob:": 1
+   },
+   "foreign": [],
+   "google": 0,
+   "violations": [],
+   "cspConsole": [],
+   "consoleErrors": [
+    {
+     "at": "/assets/1",
+     "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    },
+    {
+     "at": "/assets/1",
+     "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    }
+   ],
+   "pageErrors": [],
+   "fontResponses": [
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    },
+    {
+     "url": "/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+     "sameOrigin": true,
+     "status": 200,
+     "type": "font/woff2"
+    }
+   ],
+   "pages": [
+    {
+     "label": "login",
+     "ok": true,
+     "path": "/my-assets"
+    },
+    {
+     "label": "/my-assets",
+     "ok": true,
+     "path": "/my-assets"
+    },
+    {
+     "label": "/dashboard",
+     "ok": true,
+     "path": "/my-assets"
+    },
+    {
+     "label": "/assets/1",
+     "ok": true,
+     "path": "/assets/1"
+    },
+    {
+     "label": "/settings",
+     "ok": true,
+     "path": "/settings"
+    },
+    {
+     "label": "report-a-problem dialog",
+     "ok": true,
+     "path": "/settings"
+    }
+   ],
+   "downloads": [],
+   "fontProbe": {
+    "login": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/my-assets": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/dashboard": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/assets/1": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "/settings": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    },
+    "report-dialog": {
+     "bodyFont": "Inter, system-ui, sans-serif",
+     "loadedFaces": [
+      "Inter|100 900",
+      "IBM Plex Mono|600"
+     ],
+     "interHasRupee": true,
+     "plexHasRupee": true,
+     "rupeeOnPage": false,
+     "fontsCheck": {
+      "inter": true,
+      "plex": true
+     }
+    }
+   }
+  }
+ }
+}

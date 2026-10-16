@@ -1,0 +1,7 @@
+INFO:     Started server process [1]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+CKAM logging: could not write audit_log (DBAPIError: (sqlalchemy.dialects.postgresql.asyncpg.Error) nextval: reached maximum value of sequence "audit_log_id_seq" (9223372036854775807)
+[SQL: INSERT INTO audit_log (request_id, source, actor_id, actor_code, actor_name, actor_role, is_head_office_admin, ip, category, action, entity, entity_id, summary, ch... (cut, 539 more characters)). Further failures of this kind are not repeated.
+WARNING:     [ckam.errors] A record with this id already exists.

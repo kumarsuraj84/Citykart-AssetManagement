@@ -1,0 +1,13 @@
+{
+ "label": "seq-update-revoked",
+ "login_ok": 200,
+ "login_failed": 401,
+ "login_failed_request_id": "0741f38f49494b6f98ef364bfcb5b11a",
+ "ledger_write": 201,
+ "ledger_write_request_id": "0a17b37201044f298d8a0400b02b4517",
+ "ledger_write_body": {
+  "id": 29,
+  "event_type": "CORRECTION"
+ },
+ "read_assets": 200
+}

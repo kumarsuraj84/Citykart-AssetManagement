@@ -1,0 +1,357 @@
+=== [sec-web-3411] root /  GET /
+status: HTTP/1.1 200 OK
+content-type: text/html
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-cache
+  X-Request-ID x0: 
+  Server x1: nginx
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: <!doctype html><html lang="en">  <head>    <meta charset="UTF-8" />    <link rel="icon" type="image/webp" href="/favicon.webp" />    <meta name="viewport" 
+=== [sec-web-3411] real JS asset  GET /assets/index-DflwEmrO.js
+status: HTTP/1.1 200 OK
+content-type: application/javascript
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x0: 
+  Server x1: nginx
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: var e=Object.create,t=Object.defineProperty,n=Object.getOwnPropertyDescriptor,r=Object.getOwnPropertyNames,i=Object.getPrototypeOf,a=Object.prototype.hasOwnProp
+=== [sec-web-3411] real CSS asset  GET /assets/index-Bj21ou3B.css
+status: HTTP/1.1 200 OK
+content-type: text/css
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x0: 
+  Server x1: nginx
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: @font-face{font-family:Inter;font-style:normal;font-display:swap;font-weight:100 900;src:url(/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2)format("woff2");
+=== [sec-web-3411] missing JS asset  GET /assets/does-not-exist-r2c.js
+status: HTTP/1.1 404 Not Found
+content-type: text/html
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x0: 
+  Server x1: nginx
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: <html><head><title>404 Not Found</title></head><body><center><h1>404 Not Found</h1></center><hr><center>nginx</center></body></html>
+=== [sec-web-3411] missing CSS asset  GET /assets/does-not-exist-r2c.css
+status: HTTP/1.1 404 Not Found
+content-type: text/html
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x0: 
+  Server x1: nginx
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: <html><head><title>404 Not Found</title></head><body><center><h1>404 Not Found</h1></center><hr><center>nginx</center></body></html>
+=== [sec-web-3411] source map of real asset  GET /assets/index-DflwEmrO.js.map
+status: HTTP/1.1 404 Not Found
+content-type: text/html
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x0: 
+  Server x1: nginx
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: <html><head><title>404 Not Found</title></head><body><center><h1>404 Not Found</h1></center><hr><center>nginx</center></body></html>
+=== [sec-web-3411] any .map  GET /assets/x.js.map
+status: HTTP/1.1 404 Not Found
+content-type: text/html
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x0: 
+  Server x1: nginx
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: <html><head><title>404 Not Found</title></head><body><center><h1>404 Not Found</h1></center><hr><center>nginx</center></body></html>
+=== [sec-web-3411] missing font  GET /assets/fonts/nope-r2c.woff2
+status: HTTP/1.1 404 Not Found
+content-type: text/html
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x0: 
+  X-Request-ID x0: 
+  Server x1: nginx
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: <html><head><title>404 Not Found</title></head><body><center><h1>404 Not Found</h1></center><hr><center>nginx</center></body></html>
+=== [sec-web-3411] SPA route /assets/42  GET /assets/42
+status: HTTP/1.1 200 OK
+content-type: text/html
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-cache
+  X-Request-ID x0: 
+  Server x1: nginx
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: <!doctype html><html lang="en">  <head>    <meta charset="UTF-8" />    <link rel="icon" type="image/webp" href="/favicon.webp" />    <meta name="viewport" 
+=== [sec-web-3411] SPA route /purchase-orders  GET /purchase-orders
+status: HTTP/1.1 200 OK
+content-type: text/html
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-cache
+  X-Request-ID x0: 
+  Server x1: nginx
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: <!doctype html><html lang="en">  <head>    <meta charset="UTF-8" />    <link rel="icon" type="image/webp" href="/favicon.webp" />    <meta name="viewport" 
+=== [sec-web-3411] SPA route /settings/users  GET /settings/users
+status: HTTP/1.1 200 OK
+content-type: text/html
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-cache
+  X-Request-ID x0: 
+  Server x1: nginx
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: <!doctype html><html lang="en">  <head>    <meta charset="UTF-8" />    <link rel="icon" type="image/webp" href="/favicon.webp" />    <meta name="viewport" 
+=== [sec-web-3411] health  GET /api/health
+status: HTTP/1.1 200 OK
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-store
+  X-Request-ID x1: bec9df857c2c4876b9c20e244c14f5a2
+  Server x1: nginx
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"status":"ok"}
+=== [sec-web-3411] 401 no token  GET /api/auth/capabilities
+status: HTTP/1.1 401 Unauthorized
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-store
+  X-Request-ID x1: 568849a8d4b84bcbb3b91424c8ee0d4b
+  Server x1: nginx
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"Not authenticated","request_id":"568849a8d4b84bcbb3b91424c8ee0d4b"}
+=== [sec-web-3411] 401 bad token  GET /api/assets
+status: HTTP/1.1 401 Unauthorized
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-store
+  X-Request-ID x1: 9277f5dd52364d1dbe361260e189f063
+  Server x1: nginx
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"Invalid or expired token","request_id":"9277f5dd52364d1dbe361260e189f063"}
+=== [sec-web-3411] unknown /api path  GET /api/does-not-exist-r2c
+status: HTTP/1.1 404 Not Found
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-store
+  X-Request-ID x1: 570299b2ae55461baa1bb0284593b1aa
+  Server x1: nginx
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"This API address does not exist. Check the address and try again.","errors":["This API address does not exist. Check the address and try again."],"re
+=== [sec-web-3411] unknown /api deep  GET /api/x/y/z.css
+status: HTTP/1.1 404 Not Found
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-store
+  X-Request-ID x1: f7a0cc8e37e04abca06c444185ca4749
+  Server x1: nginx
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"This API address does not exist. Check the address and try again.","errors":["This API address does not exist. Check the address and try again."],"re
+=== [sec-web-3411] 405 wrong method  DELETE /api/health
+status: HTTP/1.1 405 Method Not Allowed
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-store
+  X-Request-ID x1: a40286e0790f4618bd7f6b77c2e5f0a7
+  Server x1: nginx
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"Method Not Allowed","request_id":"a40286e0790f4618bd7f6b77c2e5f0a7"}
+=== [sec-web-3411] 413 12MB sign-in body  POST /api/auth/login
+status: HTTP/1.1 413 Request Entity Too Large
+content-type: application/json
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-store
+  X-Request-ID x0: 
+  Server x1: nginx
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: {"detail":"The file is too large to upload. Choose a smaller file and try again."}
+=== [sec-web-3411] /docs  GET /docs
+status: HTTP/1.1 200 OK
+content-type: text/html
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-cache
+  X-Request-ID x0: 
+  Server x1: nginx
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: <!doctype html><html lang="en">  <head>    <meta charset="UTF-8" />    <link rel="icon" type="image/webp" href="/favicon.webp" />    <meta name="viewport" 
+=== [sec-web-3411] /redoc  GET /redoc
+status: HTTP/1.1 200 OK
+content-type: text/html
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-cache
+  X-Request-ID x0: 
+  Server x1: nginx
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: <!doctype html><html lang="en">  <head>    <meta charset="UTF-8" />    <link rel="icon" type="image/webp" href="/favicon.webp" />    <meta name="viewport" 
+=== [sec-web-3411] /openapi.json  GET /openapi.json
+status: HTTP/1.1 200 OK
+content-type: text/html
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-cache
+  X-Request-ID x0: 
+  Server x1: nginx
+  Strict-Transport-Security x0: 
+  X-Powered-By x0: 
+  CSP exact: YES
+  CSP google host: none
+  Permissions-Policy exact: YES
+  body[0..160]: <!doctype html><html lang="en">  <head>    <meta charset="UTF-8" />    <link rel="icon" type="image/webp" href="/favicon.webp" />    <meta name="viewport" 

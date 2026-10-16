@@ -1,0 +1,4 @@
+# sample refusal output:     )
+# sample refusal output: RuntimeError: Refusing to start: this server counts as production (ENVIRONMENT_NAME is not a development or test name) and its JWT_SECRET is not strong enough. The JWT_SECRET must not be a placeholder value from the source code, must be at least 32 characters long AND must contain at least 8 different characters. Set a long random JWT_SECRET (e.g. `openssl rand -hex 32`) and start again.
+# sample refusal output: 
+# sample refusal output: ERROR:    Application startup failed. Exiting.

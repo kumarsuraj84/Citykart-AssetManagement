@@ -1,0 +1,18 @@
+== http://127.0.0.1:8703
+  /assets -> 200 text/html; charset=utf-8
+  /assets/1 -> 404 application/json
+  /assets/42 -> 404 application/json
+  /assets/new -> 404 application/json
+  /assets/1?from=qr -> 404 application/json
+  /assets/1/ -> 404 application/json
+  /purchase-orders -> 200 text/html; charset=utf-8
+  /people -> 200 text/html; charset=utf-8
+== http://localhost:3411
+  /assets -> 200 text/html
+  /assets/1 -> 200 text/html
+  /assets/42 -> 200 text/html
+  /assets/new -> 200 text/html
+  /assets/1?from=qr -> 200 text/html
+  /assets/1/ -> 200 text/html
+  /purchase-orders -> 200 text/html
+  /people -> 200 text/html

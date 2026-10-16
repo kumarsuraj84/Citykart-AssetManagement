@@ -1,0 +1,10 @@
+masters done in 1s
+  bulk PO 25 (3s)
+  bulk PO 50 (4s)
+  bulk PO 75 (5s)
+  bulk PO 100 (7s)
+  bulk PO 125 (8s)
+  bulk PO 150 (9s)
+moves done (10s)
+receive POs done (13s)
+done in 12.8s: {'asset': 1960, 'asset_event': 2260, 'purchase_order': 236, 'vendor': 20, 'asset_user': 66, 'audit_log': 718, 'erp_po_line': 80}

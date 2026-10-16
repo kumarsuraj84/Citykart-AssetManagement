@@ -1,0 +1,81 @@
+{
+ "logins": {
+  "SECSELF": {
+   "ok": true,
+   "len": 268,
+   "cap": 200
+  },
+  "SPA": {
+   "ok": true,
+   "len": 267,
+   "cap": 200
+  },
+  "SECVIEW": {
+   "ok": true,
+   "len": 260,
+   "cap": 200
+  },
+  "SECOPIT": {
+   "ok": true,
+   "len": 263,
+   "cap": 200
+  },
+  "SECOPNIT": {
+   "ok": true,
+   "len": 263,
+   "cap": 200
+  },
+  "SECOPX": {
+   "ok": true,
+   "len": 263,
+   "cap": 200
+  },
+  "SECFAIT": {
+   "ok": true,
+   "len": 263,
+   "cap": 200
+  },
+  "SECFANIT": {
+   "ok": true,
+   "len": 263,
+   "cap": 200
+  },
+  "SECFABOTH": {
+   "ok": true,
+   "len": 263,
+   "cap": 200
+  },
+  "SECOTHER": {
+   "ok": true,
+   "len": 263,
+   "cap": 200
+  },
+  "SECHO": {
+   "ok": true,
+   "len": 261,
+   "cap": 200
+  },
+  "SECMUST": {
+   "ok": true,
+   "len": 263,
+   "cap": 403
+  }
+ },
+ "negative": {
+  "SECLOCK": {
+   "status": 423,
+   "expect": 423,
+   "detail": "Account locked, try again later"
+  },
+  "SECDIS": {
+   "status": 401,
+   "expect": 401,
+   "detail": "Invalid credentials"
+  },
+  "SECNOLOGIN": {
+   "status": 401,
+   "expect": 401,
+   "detail": "Invalid credentials"
+  }
+ }
+}

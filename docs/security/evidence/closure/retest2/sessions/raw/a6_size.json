@@ -1,0 +1,54 @@
+{
+  "cases": [
+    {
+      "id": "CL2-SE-T40",
+      "desc": "login body >64KB -> 413",
+      "pass": true,
+      "detail": {
+        "status": 413,
+        "detail": "This request is larger than the 64 KB allowed here. Send a smaller one."
+      }
+    },
+    {
+      "id": "CL2-SE-T41",
+      "desc": "login body ~60KB -> NOT 413 (reaches login logic)",
+      "pass": true,
+      "detail": {
+        "status": 422
+      }
+    },
+    {
+      "id": "CL2-SE-T42",
+      "desc": "JSON declared >5MB (no token) -> 413 before read",
+      "pass": true,
+      "detail": {
+        "status": 413
+      }
+    },
+    {
+      "id": "CL2-SE-T43",
+      "desc": "multipart declared >16MB -> 413 before read",
+      "pass": true,
+      "detail": {
+        "status": 413
+      }
+    },
+    {
+      "id": "CL2-SE-T44",
+      "desc": "bad Content-Length -> 413",
+      "pass": false,
+      "detail": {
+        "status": 400
+      }
+    },
+    {
+      "id": "CL2-SE-T45",
+      "desc": "chunked login body >64KB -> 413",
+      "pass": true,
+      "detail": {
+        "status": 413,
+        "line": "HTTP/1.1 413 Content Too Large"
+      }
+    }
+  ]
+}

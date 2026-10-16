@@ -1,0 +1,10 @@
+HTTP/1.1 413 Content Too Large
+  X-Content-Type-Options x1: nosniff
+  X-Frame-Options x1: SAMEORIGIN
+  Referrer-Policy x1: strict-origin-when-cross-origin
+  Content-Security-Policy x1: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-sr
+  Permissions-Policy x1: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cache-Control x1: no-store
+  X-Request-ID x1: 46f7610793ff45c6a52a13bbf0bacdb6
+  Server x1: nginx
+  body: {"detail": "This request is larger than the 64 KB allowed here. Send a smaller one.", "errors": [{"message": "This request is larger than th

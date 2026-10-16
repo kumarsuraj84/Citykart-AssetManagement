@@ -1,0 +1,775 @@
+{
+ "started": "2026-10-16T06:20:40.719Z",
+ "finished": "2026-10-16T06:21:04.618Z",
+ "summary": [
+  {
+   "key": "login",
+   "label": "Sign-in (correct password)",
+   "n": 20,
+   "old": {
+    "n": 20,
+    "median": 43.64760000000024,
+    "p95": 56.55549999999994,
+    "mean": 46.07863000000001,
+    "min": 39.50410000000011,
+    "max": 79.7177999999999
+   },
+   "new": {
+    "n": 20,
+    "median": 45.9377999999997,
+    "p95": 51.49850000000015,
+    "mean": 46.59880499999999,
+    "min": 42.4064000000003,
+    "max": 51.77850000000012
+   },
+   "ratio_median": 1.052470238913467,
+   "ratio_p95": 0.9105834092174979,
+   "delta_median_ms": 2.2901999999994587,
+   "verdict": "OK",
+   "verdict_p95": "OK",
+   "errors": []
+  },
+  {
+   "key": "login_unknown",
+   "label": "Refused sign-in, unknown login id (AU-01 dummy hash)",
+   "n": 20,
+   "old": {
+    "n": 20,
+    "median": 5.882200000000012,
+    "p95": 7.1340000000000146,
+    "mean": 5.990124999999966,
+    "min": 4.734499999999571,
+    "max": 7.968699999999899
+   },
+   "new": {
+    "n": 20,
+    "median": 40.63059999999996,
+    "p95": 43.55520000000024,
+    "mean": 41.39614000000006,
+    "min": 38.01279999999997,
+    "max": 51.24210000000039
+   },
+   "ratio_median": 6.907381591921369,
+   "ratio_p95": 6.105298570227103,
+   "delta_median_ms": 34.74839999999995,
+   "verdict": "OK",
+   "verdict_p95": "OK",
+   "errors": []
+  },
+  {
+   "key": "refresh",
+   "label": "Token refresh (rotating cookie)",
+   "n": 20,
+   "old": {
+    "n": 20,
+    "median": 2.8319000000001324,
+    "p95": 3.3932000000004336,
+    "mean": 2.7968499999999947,
+    "min": 2.076799999999821,
+    "max": 3.846599999999853
+   },
+   "new": {
+    "n": 20,
+    "median": 4.182099999999991,
+    "p95": 5.938299999999799,
+    "mean": 4.544935000000123,
+    "min": 3.5583999999998923,
+    "max": 6.82169999999951
+   },
+   "ratio_median": 1.4767823722588354,
+   "ratio_p95": 1.7500589414119534,
+   "delta_median_ms": 1.3501999999998588,
+   "verdict": "OK",
+   "verdict_p95": "OK",
+   "errors": []
+  },
+  {
+   "key": "search_q",
+   "label": "Asset search, universal term 'laptop' (page 1)",
+   "n": 20,
+   "old": {
+    "n": 20,
+    "median": 36.649500000000444,
+    "p95": 37.87010000000009,
+    "mean": 36.636614999999985,
+    "min": 33.78160000000025,
+    "max": 42.44590000000062
+   },
+   "new": {
+    "n": 20,
+    "median": 35.695299999999406,
+    "p95": 38.45979999999963,
+    "mean": 35.74507500000004,
+    "min": 32.59150000000045,
+    "max": 38.8117000000002
+   },
+   "ratio_median": 0.9739641741360449,
+   "ratio_p95": 1.015571651513979,
+   "delta_median_ms": -0.9542000000010376,
+   "verdict": "OK",
+   "verdict_p95": "OK",
+   "errors": []
+  },
+  {
+   "key": "search_serial",
+   "label": "Asset search, partial serial 'PFL0077'",
+   "n": 20,
+   "old": {
+    "n": 20,
+    "median": 34.643699999999626,
+    "p95": 36.47140000000036,
+    "mean": 34.81735499999991,
+    "min": 32.580799999999726,
+    "max": 36.73580000000038
+   },
+   "new": {
+    "n": 20,
+    "median": 33.78890000000047,
+    "p95": 37.34619999999995,
+    "mean": 34.009635000000074,
+    "min": 31.368600000000697,
+    "max": 38.150800000000345
+   },
+   "ratio_median": 0.975325961141588,
+   "ratio_p95": 1.0239859177327875,
+   "delta_median_ms": -0.8547999999991589,
+   "verdict": "OK",
+   "verdict_p95": "OK",
+   "errors": []
+  },
+  {
+   "key": "list_filtered_p1",
+   "label": "Asset list filtered IN_STOCK + NON_IT, page 1",
+   "n": 20,
+   "old": {
+    "n": 20,
+    "median": 8.590000000000146,
+    "p95": 9.44799999999941,
+    "mean": 8.457569999999942,
+    "min": 7.328199999999924,
+    "max": 9.462499999999636
+   },
+   "new": {
+    "n": 20,
+    "median": 8.408499999999549,
+    "p95": 9.061499999999796,
+    "mean": 8.354334999999855,
+    "min": 7.4421000000002095,
+    "max": 9.211500000000342
+   },
+   "ratio_median": 0.9788707799766481,
+   "ratio_p95": 0.9590918712955505,
+   "delta_median_ms": -0.18150000000059663,
+   "verdict": "OK",
+   "verdict_p95": "OK",
+   "errors": []
+  },
+  {
+   "key": "list_deep",
+   "label": "Asset list IN_STOCK, deep page (offset 1500)",
+   "n": 20,
+   "old": {
+    "n": 20,
+    "median": 8.640799999999217,
+    "p95": 9.063900000001013,
+    "mean": 8.465774999999894,
+    "min": 7.318699999999808,
+    "max": 9.124099999999089
+   },
+   "new": {
+    "n": 20,
+    "median": 8.182299999998577,
+    "p95": 9.015999999999622,
+    "mean": 8.159265000000142,
+    "min": 7.092599999999948,
+    "max": 9.070599999999104
+   },
+   "ratio_median": 0.9469377835384823,
+   "ratio_p95": 0.994715299153633,
+   "delta_median_ms": -0.4585000000006403,
+   "verdict": "OK",
+   "verdict_p95": "OK",
+   "errors": []
+  },
+  {
+   "key": "asset360",
+   "label": "Asset 360 (detail + events + documents + changes, parallel)",
+   "n": 20,
+   "old": {
+    "n": 20,
+    "median": 9.990999999999985,
+    "p95": 12.5632999999998,
+    "mean": 10.318734999999833,
+    "min": 8.855599999998958,
+    "max": 13.0695999999989
+   },
+   "new": {
+    "n": 20,
+    "median": 10.475599999999758,
+    "p95": 13.153800000000047,
+    "mean": 10.93367500000004,
+    "min": 8.14100000000144,
+    "max": 14.342099999999846
+   },
+   "ratio_median": 1.0485036532879366,
+   "ratio_p95": 1.047001981963358,
+   "delta_median_ms": 0.484599999999773,
+   "verdict": "OK",
+   "verdict_p95": "OK",
+   "errors": []
+  },
+  {
+   "key": "po_list",
+   "label": "PO list (first 200)",
+   "n": 20,
+   "old": {
+    "n": 20,
+    "median": 14.912200000000666,
+    "p95": 20.55069999999978,
+    "mean": 19.695995000000313,
+    "min": 13.860700000001088,
+    "max": 100.5609000000004
+   },
+   "new": {
+    "n": 20,
+    "median": 15.000100000001112,
+    "p95": 18.090000000000146,
+    "mean": 18.395489999999974,
+    "min": 13.214500000000044,
+    "max": 78.01740000000063
+   },
+   "ratio_median": 1.0058945024879253,
+   "ratio_p95": 0.8802619862097321,
+   "delta_median_ms": 0.08790000000044529,
+   "verdict": "OK",
+   "verdict_p95": "OK",
+   "errors": []
+  },
+  {
+   "key": "po_detail",
+   "label": "PO detail (header + line groups + units, parallel)",
+   "n": 20,
+   "old": {
+    "n": 20,
+    "median": 12.114199999999983,
+    "p95": 14.702900000000227,
+    "mean": 12.228130000000238,
+    "min": 9.934500000001208,
+    "max": 14.955700000000434
+   },
+   "new": {
+    "n": 20,
+    "median": 12.27719999999863,
+    "p95": 14.03439999999864,
+    "mean": 12.488794999999845,
+    "min": 10.292999999999665,
+    "max": 14.704400000000533
+   },
+   "ratio_median": 1.013455283881614,
+   "ratio_p95": 0.9545327792475242,
+   "delta_median_ms": 0.16299999999864667,
+   "verdict": "OK",
+   "verdict_p95": "OK",
+   "errors": []
+  },
+  {
+   "key": "erp_pos",
+   "label": "ERP copy PO list /api/erp/pos?envelope=true (local copy, 40 POs, no ERP link)",
+   "n": 20,
+   "old": {
+    "n": 20,
+    "median": 17.691999999999098,
+    "p95": 21.170799999999872,
+    "mean": 18.038150000000133,
+    "min": 15.452400000000125,
+    "max": 22.605400000000373
+   },
+   "new": {
+    "n": 20,
+    "median": 17.868599999999788,
+    "p95": 22.035099999999147,
+    "mean": 18.43166000000001,
+    "min": 15.565500000000611,
+    "max": 24.221599999998944
+   },
+   "ratio_median": 1.0099819127289564,
+   "ratio_p95": 1.0408250987208456,
+   "delta_median_ms": 0.17660000000068976,
+   "verdict": "OK",
+   "verdict_p95": "OK",
+   "errors": []
+  },
+  {
+   "key": "reports_preview",
+   "label": "Reports: asset preview (50 rows)",
+   "n": 20,
+   "old": {
+    "n": 20,
+    "median": 17.03939999999966,
+    "p95": 19.13510000000133,
+    "mean": 17.237314999999853,
+    "min": 15.816100000000006,
+    "max": 19.200600000000122
+   },
+   "new": {
+    "n": 20,
+    "median": 17.574800000000323,
+    "p95": 20.016900000000533,
+    "mean": 17.974834999999985,
+    "min": 15.417699999999968,
+    "max": 21.40269999999873
+   },
+   "ratio_median": 1.0314212941770646,
+   "ratio_p95": 1.046082852976945,
+   "delta_median_ms": 0.5354000000006636,
+   "verdict": "OK",
+   "verdict_p95": "OK",
+   "errors": []
+  },
+  {
+   "key": "audit_logs",
+   "label": "Logs: audit trail query (50 rows)",
+   "n": 20,
+   "old": {
+    "n": 20,
+    "median": 9.116900000000896,
+    "p95": 17.13169999999991,
+    "mean": 10.307100000000082,
+    "min": 7.476599999999962,
+    "max": 18.930500000000393
+   },
+   "new": {
+    "n": 20,
+    "median": 9.296500000000378,
+    "p95": 11.6270999999997,
+    "mean": 9.74425999999985,
+    "min": 7.8267999999989115,
+    "max": 12.202400000000125
+   },
+   "ratio_median": 1.01969967861877,
+   "ratio_p95": 0.6786892135631468,
+   "delta_median_ms": 0.17959999999948195,
+   "verdict": "OK",
+   "verdict_p95": "OK",
+   "errors": []
+  },
+  {
+   "key": "vendor_create",
+   "label": "Vendor create",
+   "n": 20,
+   "old": {
+    "n": 20,
+    "median": 5.4385999999994965,
+    "p95": 6.1270999999997,
+    "mean": 5.36643499999982,
+    "min": 4.222200000000157,
+    "max": 6.372300000000905
+   },
+   "new": {
+    "n": 20,
+    "median": 5.88839999999982,
+    "p95": 7.296299999999974,
+    "mean": 6.075704999999561,
+    "min": 4.551400000000285,
+    "max": 8.185599999998885
+   },
+   "ratio_median": 1.0827051079322554,
+   "ratio_p95": 1.1908243704199917,
+   "delta_median_ms": 0.44980000000032305,
+   "verdict": "OK",
+   "verdict_p95": "OK",
+   "errors": [
+    "old warm 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"e1d39b17c7194c7091dff76717ef1999\"}",
+    "new warm 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"292db0650922405ab7d63c188af9fea4\"}",
+    "old warm 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"57256e3906cc4727a5272c3946334bda\"}",
+    "new warm 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"588b486ca5934592bc205aa2d5e26fae\"}",
+    "old warm 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"000c23f9ce7849fe8dba4d9feaa1b4a0\"}",
+    "new warm 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"f654e9df616044859c84d76dd7a25d68\"}",
+    "old #0 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"f2816aa9492141939f04a2c6c61236a6\"}",
+    "new #0 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"966fe5f06b7c4dd7beb6fb08875d776f\"}",
+    "new #1 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"a77030c66e1b4db88958297cb3622c05\"}",
+    "old #1 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"c52a5a8c4550417b98437b6581ddc2a7\"}",
+    "old #2 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"6cb6e57bd72a4e8ea7c60a0f14cb9b15\"}",
+    "new #2 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"5a2f5013aee64d98a5d4aa10a0cbc573\"}",
+    "new #3 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"ce2f9e434b8842c88cf641ab534605ef\"}",
+    "old #3 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"971828bb518b4be39223392a24d17045\"}",
+    "old #4 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"fe823145b06e49828a2d8c66a5f7363e\"}",
+    "new #4 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"0daf810e33bf43d7af13bacbf980ce27\"}",
+    "new #5 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"1feffc59367141b29ddb8f9f066bded8\"}",
+    "old #5 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"47a86b46ca6e4c60a0ec6de3b66ac3d9\"}",
+    "old #6 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"5609f772a92c4d1b934385f84799607d\"}",
+    "new #6 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"a9a126bb3bf4419ab8051c4fc4200d6f\"}",
+    "new #7 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"5d4d7ff2538149328cb461c493215e11\"}",
+    "old #7 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"9cb10779b5044948b8d07286cbe65c71\"}",
+    "old #8 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"570aadb24ac441458488c9b7abea8f60\"}",
+    "new #8 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"e5341566141f429cbc8d01197f4f9eab\"}",
+    "new #9 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"7be00a1ecff043979b1ba86974a0c05e\"}",
+    "old #9 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"1710760a3ba6445a98c4a294640a0672\"}",
+    "old #10 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"638e4875876f40d0a3204b006413e973\"}",
+    "new #10 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"6998e7bd5388496ba76f63297c7d2d26\"}",
+    "new #11 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"f82ce87fd524446eba4ed752c4acb2a5\"}",
+    "old #11 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"01af27d1df584d00a6a358ac85c975f3\"}",
+    "old #12 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"4e8bb0714a554bdd8eb2727156b56608\"}",
+    "new #12 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"0e2364309e7d443a8e19e5ed8104f721\"}",
+    "new #13 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"d296640c712948eeb5daac80db5ff185\"}",
+    "old #13 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"b2492a98ed004eb2a2dbff929345a2da\"}",
+    "old #14 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"ede9ca7859ba4d4fb419054e396ee0e8\"}",
+    "new #14 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"f14df274cbff451fbeed2c58d94ca2fc\"}",
+    "new #15 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"442cd3d4db0c43458c67dd43a5b64036\"}",
+    "old #15 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"ef00d1cbc615453b9b329333f717e7f4\"}",
+    "old #16 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"58090ec4495942fcbd3dc19a3cba76f6\"}",
+    "new #16 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"480ceab46d0546c5acd3ba96fee5ba5e\"}",
+    "new #17 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"0bca369e0cb645c7879e3713968bde87\"}",
+    "old #17 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"9cbaf89bd43a4a4b87a41d1ccf58695a\"}",
+    "old #18 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"b3192fe1258d4975b812f92d737d4f63\"}",
+    "new #18 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"018128a3215e45ea9780f2bb1eb70b7c\"}",
+    "new #19 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"ac2d6bbc9f0c4e97bfea4621d376e32d\"}",
+    "old #19 422 {\"detail\":\"A vendor with this name already exists.\",\"request_id\":\"8292a32e067048eaa20a8a8bfcc009bb\"}"
+   ]
+  },
+  {
+   "key": "item_create",
+   "label": "Item create",
+   "n": 20,
+   "old": {
+    "n": 20,
+    "median": 6.4812999999994645,
+    "p95": 8.569700000000012,
+    "mean": 7.012655000000177,
+    "min": 5.569700000000012,
+    "max": 11.755800000000818
+   },
+   "new": {
+    "n": 20,
+    "median": 6.779300000000148,
+    "p95": 7.703600000000733,
+    "mean": 6.684975000000213,
+    "min": 5.490600000000995,
+    "max": 8.04700000000048
+   },
+   "ratio_median": 1.0459784302532993,
+   "ratio_p95": 0.8989346184814782,
+   "delta_median_ms": 0.29800000000068394,
+   "verdict": "OK",
+   "verdict_p95": "OK",
+   "errors": [
+    "old warm 422 {\"detail\":\"an Item named 'PERF Bench Item w-0' already exists\",\"request_id\":\"f97ee2894e8341a880b691d627677243\"}",
+    "new warm 422 {\"detail\":\"an Item named 'PERF Bench Item w-0' already exists\",\"request_id\":\"2d7af5febc8345d4a912dfe7d527ca3a\"}",
+    "old warm 422 {\"detail\":\"an Item named 'PERF Bench Item w-1' already exists\",\"request_id\":\"0ff512fb131e4820b34cf4716e8a47b4\"}",
+    "new warm 422 {\"detail\":\"an Item named 'PERF Bench Item w-1' already exists\",\"request_id\":\"d448fc7022704b209ddf3d991d169815\"}",
+    "old warm 422 {\"detail\":\"an Item named 'PERF Bench Item w-2' already exists\",\"request_id\":\"f7df35fe6d4043238e3eaeb29caf476d\"}",
+    "new warm 422 {\"detail\":\"an Item named 'PERF Bench Item w-2' already exists\",\"request_id\":\"80e39f1532f44d40bac4e117dc863d38\"}",
+    "old #0 422 {\"detail\":\"an Item named 'PERF Bench Item s-0' already exists\",\"request_id\":\"26ff7f1c8a1c4a09a40d8b3b14bb2c2c\"}",
+    "new #0 422 {\"detail\":\"an Item named 'PERF Bench Item s-0' already exists\",\"request_id\":\"b960591e69254d33b6fd7e163873d17e\"}",
+    "new #1 422 {\"detail\":\"an Item named 'PERF Bench Item s-1' already exists\",\"request_id\":\"cec8f0abce2443bcb2bd98267c07c57c\"}",
+    "old #1 422 {\"detail\":\"an Item named 'PERF Bench Item s-1' already exists\",\"request_id\":\"bcfa66efd8954e3c892625b03866e1b8\"}",
+    "old #2 422 {\"detail\":\"an Item named 'PERF Bench Item s-2' already exists\",\"request_id\":\"5f09e24e6ebe4be397ff8bb25507c66c\"}",
+    "new #2 422 {\"detail\":\"an Item named 'PERF Bench Item s-2' already exists\",\"request_id\":\"def81459d205474aa8df553154f3cbca\"}",
+    "new #3 422 {\"detail\":\"an Item named 'PERF Bench Item s-3' already exists\",\"request_id\":\"830a7471b23d42809a3f814337c2d4e1\"}",
+    "old #3 422 {\"detail\":\"an Item named 'PERF Bench Item s-3' already exists\",\"request_id\":\"6c722f6a7ef942bbaa0da22cb44f4c38\"}",
+    "old #4 422 {\"detail\":\"an Item named 'PERF Bench Item s-4' already exists\",\"request_id\":\"681d36b3f696447fb3b614816c8e7f45\"}",
+    "new #4 422 {\"detail\":\"an Item named 'PERF Bench Item s-4' already exists\",\"request_id\":\"3ca6ae8fbbc549fba8fedbfdfe6c41c8\"}",
+    "new #5 422 {\"detail\":\"an Item named 'PERF Bench Item s-5' already exists\",\"request_id\":\"1fdfd8c28a2d4e5db1a7fbe6c5a410ae\"}",
+    "old #5 422 {\"detail\":\"an Item named 'PERF Bench Item s-5' already exists\",\"request_id\":\"aefbf9b0900548369c0063aefffa590f\"}",
+    "old #6 422 {\"detail\":\"an Item named 'PERF Bench Item s-6' already exists\",\"request_id\":\"65e3fbb9f3e7437ea8df38bb1f862d8b\"}",
+    "new #6 422 {\"detail\":\"an Item named 'PERF Bench Item s-6' already exists\",\"request_id\":\"5b23204bff244c52b5ac5db7c389d1d6\"}",
+    "new #7 422 {\"detail\":\"an Item named 'PERF Bench Item s-7' already exists\",\"request_id\":\"e6f7d92326e94f93a2fd0ea1e86a06d2\"}",
+    "old #7 422 {\"detail\":\"an Item named 'PERF Bench Item s-7' already exists\",\"request_id\":\"7ac26d8703cf41be8f3000204afaa4c8\"}",
+    "old #8 422 {\"detail\":\"an Item named 'PERF Bench Item s-8' already exists\",\"request_id\":\"2eb8f468252b4aceafe894f92397d1e4\"}",
+    "new #8 422 {\"detail\":\"an Item named 'PERF Bench Item s-8' already exists\",\"request_id\":\"fe206864b9cc40f896ad14af5243ee8a\"}",
+    "new #9 422 {\"detail\":\"an Item named 'PERF Bench Item s-9' already exists\",\"request_id\":\"d75b6e2268f84f4c8f044e1e56dc995f\"}",
+    "old #9 422 {\"detail\":\"an Item named 'PERF Bench Item s-9' already exists\",\"request_id\":\"cecfa478b86c4fb48bf34f1366e2873e\"}",
+    "old #10 422 {\"detail\":\"an Item named 'PERF Bench Item s-10' already exists\",\"request_id\":\"f538ec3781ab405e9d9caf0181653399\"}",
+    "new #10 422 {\"detail\":\"an Item named 'PERF Bench Item s-10' already exists\",\"request_id\":\"b272f48c5f394bc78e4fc9d9f5e5faef\"}",
+    "new #11 422 {\"detail\":\"an Item named 'PERF Bench Item s-11' already exists\",\"request_id\":\"de6f7addf0a44a73b695a38ee58f0828\"}",
+    "old #11 422 {\"detail\":\"an Item named 'PERF Bench Item s-11' already exists\",\"request_id\":\"9fce7403b4e44330b029d3dd85c26fb3\"}",
+    "old #12 422 {\"detail\":\"an Item named 'PERF Bench Item s-12' already exists\",\"request_id\":\"4c511611efac44a394abbe1a3b035378\"}",
+    "new #12 422 {\"detail\":\"an Item named 'PERF Bench Item s-12' already exists\",\"request_id\":\"66260e6a70674219b5db81b4580396bc\"}",
+    "new #13 422 {\"detail\":\"an Item named 'PERF Bench Item s-13' already exists\",\"request_id\":\"b34f22cc672f4af1a1e38c0161275aa9\"}",
+    "old #13 422 {\"detail\":\"an Item named 'PERF Bench Item s-13' already exists\",\"request_id\":\"739be6f9adf24ef682b3e4fc8d8bfebf\"}",
+    "old #14 422 {\"detail\":\"an Item named 'PERF Bench Item s-14' already exists\",\"request_id\":\"13182290e8e44342aaebccc524cb3338\"}",
+    "new #14 422 {\"detail\":\"an Item named 'PERF Bench Item s-14' already exists\",\"request_id\":\"b2e35106a00b47498721bf444e76c0d5\"}",
+    "new #15 422 {\"detail\":\"an Item named 'PERF Bench Item s-15' already exists\",\"request_id\":\"936de3fc70b24cda8c8a608465a399d5\"}",
+    "old #15 422 {\"detail\":\"an Item named 'PERF Bench Item s-15' already exists\",\"request_id\":\"3c41731fa3c4413db801b57453263ff7\"}",
+    "old #16 422 {\"detail\":\"an Item named 'PERF Bench Item s-16' already exists\",\"request_id\":\"2b5d1ffe37824a06a13faee54cd5ff8d\"}",
+    "new #16 422 {\"detail\":\"an Item named 'PERF Bench Item s-16' already exists\",\"request_id\":\"83a29d4609c94da0a4052502f4bcad30\"}",
+    "new #17 422 {\"detail\":\"an Item named 'PERF Bench Item s-17' already exists\",\"request_id\":\"c16a334143e64a6baededd821b506bfe\"}",
+    "old #17 422 {\"detail\":\"an Item named 'PERF Bench Item s-17' already exists\",\"request_id\":\"c84ed48805ef48128925e5983cad3691\"}",
+    "old #18 422 {\"detail\":\"an Item named 'PERF Bench Item s-18' already exists\",\"request_id\":\"b4ae2ef61134490e85ba0a572526ca51\"}",
+    "new #18 422 {\"detail\":\"an Item named 'PERF Bench Item s-18' already exists\",\"request_id\":\"ec0878914993428c909f20fa94b5169d\"}",
+    "new #19 422 {\"detail\":\"an Item named 'PERF Bench Item s-19' already exists\",\"request_id\":\"7f2a7a8ddd3e4b418b388d127266d60c\"}",
+    "old #19 422 {\"detail\":\"an Item named 'PERF Bench Item s-19' already exists\",\"request_id\":\"e62484b6c50e40c5949911098e09d032\"}"
+   ]
+  },
+  {
+   "key": "move_1",
+   "label": "Move 1 asset (stock room -> employee)",
+   "n": 15,
+   "old": {
+    "n": 15,
+    "median": 12.322899999999208,
+    "p95": 16.727099999998245,
+    "mean": 12.449639999999878,
+    "min": 9.064400000001115,
+    "max": 16.727099999998245
+   },
+   "new": {
+    "n": 15,
+    "median": 14.388100000000122,
+    "p95": 19.849599999999555,
+    "mean": 14.16000000000034,
+    "min": 10.612900000000081,
+    "max": 19.849599999999555
+   },
+   "ratio_median": 1.1675904210860306,
+   "ratio_p95": 1.186673123255175,
+   "delta_median_ms": 2.065200000000914,
+   "verdict": "OK",
+   "verdict_p95": "OK",
+   "errors": []
+  },
+  {
+   "key": "bulk_move_50",
+   "label": "Bulk Move of 50 assets",
+   "n": 15,
+   "old": {
+    "n": 15,
+    "median": 159.08879999999772,
+    "p95": 199.91799999999967,
+    "mean": 161.67867999999967,
+    "min": 142.8811999999998,
+    "max": 199.91799999999967
+   },
+   "new": {
+    "n": 15,
+    "median": 182.4715000000033,
+    "p95": 227.32480000000032,
+    "mean": 188.79042000000044,
+    "min": 159.72079999999914,
+    "max": 227.32480000000032
+   },
+   "ratio_median": 1.1469789199491474,
+   "ratio_p95": 1.1370902069848674,
+   "delta_median_ms": 23.38270000000557,
+   "verdict": "OK",
+   "verdict_p95": "OK",
+   "errors": []
+  },
+  {
+   "key": "batch_20",
+   "label": "Batch Add Assets x20",
+   "n": 15,
+   "old": {
+    "n": 15,
+    "median": 20.201600000000326,
+    "p95": 32.51000000000204,
+    "mean": 21.203020000001075,
+    "min": 17.708800000000338,
+    "max": 32.51000000000204
+   },
+   "new": {
+    "n": 15,
+    "median": 21.241100000002916,
+    "p95": 31.77440000000206,
+    "mean": 22.345773333333636,
+    "min": 19.02089999999953,
+    "max": 31.77440000000206
+   },
+   "ratio_median": 1.0514563202915894,
+   "ratio_p95": 0.9773731159643209,
+   "delta_median_ms": 1.0395000000025902,
+   "verdict": "OK",
+   "verdict_p95": "OK",
+   "errors": []
+  },
+  {
+   "key": "batch_200",
+   "label": "Batch Add Assets x200",
+   "n": 15,
+   "old": {
+    "n": 15,
+    "median": 53.498100000000704,
+    "p95": 76.22419999999693,
+    "mean": 56.00407333333327,
+    "min": 47.5586000000003,
+    "max": 76.22419999999693
+   },
+   "new": {
+    "n": 15,
+    "median": 56.031699999999546,
+    "p95": 67.61679999999978,
+    "mean": 56.80937999999951,
+    "min": 50.8041000000012,
+    "max": 67.61679999999978
+   },
+   "ratio_median": 1.0473586912432182,
+   "ratio_p95": 0.887077857163506,
+   "delta_median_ms": 2.5335999999988417,
+   "verdict": "OK",
+   "verdict_p95": "OK",
+   "errors": []
+  },
+  {
+   "key": "static_index",
+   "label": "Static index.html through nginx",
+   "n": 30,
+   "old": {
+    "n": 30,
+    "median": 0.6057000000000698,
+    "p95": 0.9459999999999127,
+    "mean": 0.63900666666644,
+    "min": 0.5027999999983876,
+    "max": 1.017199999998411
+   },
+   "new": {
+    "n": 30,
+    "median": 0.6164000000026135,
+    "p95": 0.9943999999995867,
+    "mean": 0.6690566666668019,
+    "min": 0.5116999999991094,
+    "max": 1.1630999999979394
+   },
+   "ratio_median": 1.01766551098323,
+   "ratio_p95": 1.0511627906973346,
+   "delta_median_ms": 0.010700000002543675,
+   "verdict": "OK",
+   "verdict_p95": "OK",
+   "errors": []
+  },
+  {
+   "key": "static_js",
+   "label": "Static main JS bundle through nginx (each stack's own build)",
+   "n": 30,
+   "old": {
+    "n": 30,
+    "median": 7.37840000000142,
+    "p95": 9.90400000000227,
+    "mean": 7.569950000000123,
+    "min": 5.703499999999622,
+    "max": 10.950099999998201
+   },
+   "new": {
+    "n": 30,
+    "median": 7.293399999998655,
+    "p95": 12.212900000002264,
+    "mean": 8.211946666666579,
+    "min": 6.009399999999005,
+    "max": 19.002599999999802
+   },
+   "ratio_median": 0.9884798872380531,
+   "ratio_p95": 1.233128029079106,
+   "delta_median_ms": -0.08500000000276486,
+   "verdict": "OK",
+   "verdict_p95": "OK",
+   "errors": []
+  },
+  {
+   "key": "uv_static_js",
+   "label": "uvicorn /assets/<same JS file> (IF-01 lexical + resolve check; same dist in both)",
+   "n": 30,
+   "old": {
+    "n": 30,
+    "median": 8.338500000001659,
+    "p95": 14.328700000001845,
+    "mean": 9.185840000000098,
+    "min": 7.348999999998341,
+    "max": 20.740100000002712
+   },
+   "new": {
+    "n": 30,
+    "median": 8.391999999999825,
+    "p95": 15.373900000002322,
+    "mean": 9.857430000000143,
+    "min": 7.398699999997916,
+    "max": 29.782400000000052
+   },
+   "ratio_median": 1.0064160220660978,
+   "ratio_p95": 1.0729445099695256,
+   "delta_median_ms": 0.05349999999816646,
+   "verdict": "OK",
+   "verdict_p95": "OK",
+   "errors": []
+  },
+  {
+   "key": "uv_static_404",
+   "label": "uvicorn /assets/<missing file> (404 path)",
+   "n": 30,
+   "old": {
+    "n": 30,
+    "median": 1.5102999999980966,
+    "p95": 1.8431000000018685,
+    "mean": 1.5483066666665157,
+    "min": 1.177400000000489,
+    "max": 2.084500000000844
+   },
+   "new": {
+    "n": 30,
+    "median": 1.7110999999968044,
+    "p95": 2.4948999999978696,
+    "mean": 1.7915366666665553,
+    "min": 1.3783000000003085,
+    "max": 2.84059999999954
+   },
+   "ratio_median": 1.1329537178037217,
+   "ratio_p95": 1.3536433183198635,
+   "delta_median_ms": 0.2007999999987078,
+   "verdict": "OK",
+   "verdict_p95": "OK",
+   "errors": []
+  },
+  {
+   "key": "body_4mb",
+   "label": "4 MB JSON body to the API directly (Vendor create, name too long -> 422)",
+   "n": 15,
+   "old": {
+    "n": 15,
+    "median": 28.17359999999826,
+    "p95": 54.89719999999943,
+    "mean": 33.00745999999902,
+    "min": 25.614699999998265,
+    "max": 54.89719999999943
+   },
+   "new": {
+    "n": 15,
+    "median": 31.364299999997456,
+    "p95": 55.77549999999974,
+    "mean": 36.826446666666016,
+    "min": 26.286299999999756,
+    "max": 55.77549999999974
+   },
+   "ratio_median": 1.1132514126699957,
+   "ratio_p95": 1.0159989944842418,
+   "delta_median_ms": 3.1906999999991967,
+   "verdict": "OK",
+   "verdict_p95": "OK",
+   "errors": []
+  },
+  {
+   "key": "body_small",
+   "label": "Small JSON body to the API directly (same 422 route, 1 KB name)",
+   "n": 15,
+   "old": {
+    "n": 15,
+    "median": 3.717899999999645,
+    "p95": 6.078199999999924,
+    "mean": 3.781726666666024,
+    "min": 2.9395999999978812,
+    "max": 6.078199999999924
+   },
+   "new": {
+    "n": 15,
+    "median": 3.7644000000000233,
+    "p95": 4.6062999999994645,
+    "mean": 3.7491933333330962,
+    "min": 2.8100000000013097,
+    "max": 4.6062999999994645
+   },
+   "ratio_median": 1.0125070604374466,
+   "ratio_p95": 0.7578394919547764,
+   "delta_median_ms": 0.04650000000037835,
+   "verdict": "OK",
+   "verdict_p95": "OK",
+   "errors": []
+  }
+ ]
+}

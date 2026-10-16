@@ -1,0 +1,90 @@
+{
+  "a_same_po_number": {
+    "histogram": {
+      "201": 1,
+      "422": 19
+    }
+  },
+  "b_receive_race": {
+    "poId": 15,
+    "expected_success": 6,
+    "histogram": {
+      "200": 6,
+      "422": 14
+    }
+  },
+  "b2_receive_one_idem_key": {
+    "poId": 16,
+    "histogram": {
+      "200": 1,
+      "409": 19
+    },
+    "idempotency_replays": 0
+  },
+  "c_same_serial": {
+    "histogram": {
+      "201": 1,
+      "409": 13,
+      "422": 6
+    }
+  },
+  "d_batch_one_idem_key": {
+    "histogram": {
+      "201": 1,
+      "409": 19
+    }
+  },
+  "d2_batch_no_key": {
+    "histogram": {
+      "201": 10
+    }
+  },
+  "e_sold_twice": {
+    "soldAsset": 72,
+    "expected_success": 1,
+    "histogram": {
+      "201": 1,
+      "422": 19
+    }
+  },
+  "e_moved_two_holders": {
+    "moveAsset": 73,
+    "histogram": {
+      "201": 20
+    }
+  },
+  "f_dup_names": {
+    "vendor": {
+      "201": 1,
+      "422": 19
+    },
+    "brand": {
+      "201": 1,
+      "422": 19
+    },
+    "item": {
+      "201": 1,
+      "422": 19
+    },
+    "category": {
+      "201": 3,
+      "422": 17
+    }
+  },
+  "h_parallel_refresh": {
+    "histogram": {
+      "200": 20
+    },
+    "rotations_with_set_cookie": 1
+  },
+  "i_po_mix": {
+    "error": "TypeError: Cannot read properties of undefined (reading '0')"
+  },
+  "i_po_create_deactivate_receive": {
+    "poId": 17,
+    "histogram": {
+      "200": 6,
+      "422": 6
+    }
+  }
+}

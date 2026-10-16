@@ -1,0 +1,107 @@
+[
+ {
+  "id": "CL2-AC-UP-make",
+  "desc": "create upload target asset",
+  "status": 201,
+  "verdict": "PASS",
+  "note": "id 22"
+ },
+ {
+  "id": "CL2-AC-UP-html-as-pdf",
+  "desc": "HTML body with .pdf name",
+  "status": 422,
+  "verdict": "PASS",
+  "note": "{\"detail\":\"This file is not a real PDF file. Upload the original document.\",\"request_id\":\"73b7e4964a2242699a2c6fc0da7446"
+ },
+ {
+  "id": "CL2-AC-UP-html-ext",
+  "desc": ".html extension",
+  "status": 422,
+  "verdict": "PASS",
+  "note": "{\"detail\":\"file type '.html' is not allowed\",\"request_id\":\"cabb464053754f7a99b368ef1167fea7\"}"
+ },
+ {
+  "id": "CL2-AC-UP-svg",
+  "desc": ".svg extension",
+  "status": 422,
+  "verdict": "PASS",
+  "note": "{\"detail\":\"file type '.svg' is not allowed\",\"request_id\":\"4a9bcc73266a41e1a4560ad1afea5365\"}"
+ },
+ {
+  "id": "CL2-AC-UP-double-ext",
+  "desc": "double ext .pdf.html",
+  "status": 422,
+  "verdict": "PASS",
+  "note": "{\"detail\":\"file type '.html' is not allowed\",\"request_id\":\"85e384945f7f4fda9fd7a96e517fe39a\"}"
+ },
+ {
+  "id": "CL2-AC-UP-empty",
+  "desc": "empty file",
+  "status": 422,
+  "verdict": "PASS",
+  "note": "{\"detail\":\"The file is empty.\",\"request_id\":\"0ec3fdcb2b814b53b8ae4be2f57bc7da\"}"
+ },
+ {
+  "id": "CL2-AC-UP-oversize-doc",
+  "desc": "11 MB doc",
+  "status": 422,
+  "verdict": "PASS",
+  "note": "{\"detail\":\"file exceeds the 10 MB limit\",\"request_id\":\"bb51cac3916248578436d6047ea611ad\"}"
+ },
+ {
+  "id": "CL2-AC-UP-real-pdf",
+  "desc": "valid PDF",
+  "status": 201,
+  "verdict": "PASS",
+  "note": ""
+ },
+ {
+  "id": "CL2-AC-UP-real-png",
+  "desc": "valid PNG",
+  "status": 201,
+  "verdict": "PASS",
+  "note": ""
+ },
+ {
+  "id": "CL2-AC-UP-traversal-name",
+  "desc": "traversal in filename (valid PDF)",
+  "status": 201,
+  "verdict": "PASS",
+  "note": "stored_path="
+ },
+ {
+  "id": "CL2-AC-UP-reserved-name",
+  "desc": "reserved device name CON.pdf (valid PDF)",
+  "status": 201,
+  "verdict": "PASS",
+  "note": ""
+ },
+ {
+  "id": "CL2-AC-UP-polyglot",
+  "desc": "PDF-prefixed HTML polyglot (stored, served safe)",
+  "status": 201,
+  "verdict": "OBS",
+  "note": "signature-prefix check accepts; served attachment+nosniff"
+ },
+ {
+  "id": "CL2-AC-UP-download-headers",
+  "desc": "download: attachment + application/pdf + nosniff",
+  "status": 200,
+  "verdict": "PASS",
+  "note": "cd=attachment; filename=\"good.pdf\"; ct=application/pdf; nosniff=nosniff"
+ },
+ {
+  "id": "CL2-AC-UP-oversize-import",
+  "desc": "16 MB import",
+  "status": 413,
+  "verdict": "PASS",
+  "note": "{\"detail\": \"This request is larger than the 16 MB allowed here. Send a smaller one.\", \"errors\": [{\"m"
+ },
+ {
+  "id": "CL2-AC-UP-cleanup",
+  "desc": "soft-delete target",
+  "status": 204,
+  "verdict": "",
+  "note": ""
+ }
+]

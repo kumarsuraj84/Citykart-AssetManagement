@@ -1,0 +1,37 @@
+# WP-B database guard (trg_asset_lifecycle_fields_guard) — SQL-level re-attack on ckam-sec
+# (independent of the app; every statement ROLLED BACK so no data changed). 2026-10-16.
+
+## Trigger present + enabled (tgenabled=O), alembic head, guard function present
+ trg_asset_lifecycle_fields_guard   | O
+ trg_asset_event_no_delete          | O
+ trg_asset_event_no_update          | O
+ trg_asset_field_change_no_delete   | O
+ trg_asset_field_change_no_update   | O
+ trg_asset_no_identity_change       | O
+ alembic_version = c6e8a0b2d4f6
+ pg_proc: forbid_asset_lifecycle_write
+
+## T1  BEGIN; UPDATE asset SET status='IN_STOCK' WHERE id=1; ROLLBACK;   -> EXPECT EXCEPTION
+BEGIN
+ERROR:  asset status, holder and status date can only change through a recorded asset movement (asset_event)
+CONTEXT:  PL/pgSQL function forbid_asset_lifecycle_write() line 5 at RAISE
+
+## T2  BEGIN; UPDATE asset SET current_asset_user_id=99 WHERE id=1; ROLLBACK;  -> EXPECT EXCEPTION
+ERROR:  asset status, holder and status date can only change through a recorded asset movement (asset_event)
+
+## T3  BEGIN; UPDATE asset SET status_since=now() WHERE id=1; ROLLBACK;  -> EXPECT EXCEPTION
+ERROR:  asset status, holder and status date can only change through a recorded asset movement (asset_event)
+
+## T4  BEGIN; SELECT set_config('ckam.lifecycle_writer','on',true); UPDATE asset SET status=status WHERE id=1; ROLLBACK;  -> EXPECT OK
+ set_config = on
+(the UPDATE is permitted when the transaction-local marker is on — the apply_events path)
+
+## T5  BEGIN; UPDATE asset SET model=model WHERE id=1; ROLLBACK;  -> EXPECT OK (non-lifecycle column)
+UPDATE 1
+ROLLBACK
+
+## Verdict: the three lifecycle columns (status, current_asset_user_id, status_since) cannot be changed by
+## any UPDATE that does not set the ckam.lifecycle_writer marker; non-lifecycle columns are unaffected.
+## Honest limit (per the migration's own docstring): the application role can set the marker itself, so this
+## is defence-in-depth against stray/ad-hoc writes, not a malicious DBA — that barrier is the owner/runtime
+## role split (EXT-07), which is outside the ACCESS area and not exercised here.

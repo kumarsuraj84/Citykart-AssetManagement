@@ -1,0 +1,15 @@
+{
+  "cases": [
+    {
+      "id": "CL2-SE-T25",
+      "desc": "CL2RROLE: work-area change (allowed_asset_domains IT->NON_IT) -> old access AND refresh dead",
+      "pass": true,
+      "detail": {
+        "baseAlive": 403,
+        "put": 200,
+        "accessAfter": 401,
+        "refreshAfter": 401
+      }
+    }
+  ]
+}

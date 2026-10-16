@@ -1,0 +1,35 @@
+
+######## 4c' drop the table part 1 created as the owner
+DROP TABLE
+
+######## 4d migrator acting as ITSELF (SET ROLE r2c_migrator) cannot create, alter or read anything
+SET
+ current_user 
+--------------
+ r2c_migrator
+(1 row)
+
+ERROR:  permission denied for schema public
+LINE 1: CREATE TABLE r2c_mig_self (x int)
+                     ^
+ERROR:  must be owner of table audit_log
+ERROR:  permission denied for table asset
+ERROR:  permission denied for database ckam_r2c_rs
+
+######## 6' clear the migration-seeded row and load the ckam-sec fixture rows (data only, as superuser)
+SET
+DELETE 1
+ setval 
+--------
+     13
+(1 row)
+
+assets=18
+audit_log=3830
+asset_event=26
+asset_user=61
+triggers disabled after load=0
+
+######## 7' role_split_verify.sql again after the load
+PASS rows: 45
+FAIL/INFO rows: none
