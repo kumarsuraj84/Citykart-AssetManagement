@@ -94,6 +94,8 @@ def safe_config() -> dict:
         "jwt_signing_key_long_enough": len(settings.jwt_secret or "") >= 32,
         "erp_configured": bool(settings.po_source_host and settings.po_source_db and settings.po_source_user),
         "erp_login_complete": bool(settings.po_source_password),
+        "erp_tls_mode": settings.po_source_sslmode,                       # security IF-16
+        "erp_tls_root_certificate_set": bool(settings.po_source_sslrootcert),
         "erp_sync_enabled": settings.erp_sync_enabled,
         "erp_sync_check_minutes": settings.erp_sync_check_minutes,
         "database_host": core_db.engine.url.host,

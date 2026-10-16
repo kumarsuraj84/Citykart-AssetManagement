@@ -5,6 +5,7 @@ connection is opened with default_transaction_read_only so a mistake here
 cannot write to the ERP. The rest of CKAM talks to the small `ErpSource`
 interface below, never to asyncpg, so tests swap in a stand-in
 (`app.erp.deps.get_erp_source` is a FastAPI dependency)."""
+import ssl
 import time
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -233,6 +234,30 @@ def _f(value) -> float | None:
 
 ERP_TOO_SLOW = "The ERP database took too long to answer. Try again in a few minutes."
 APPLICATION_NAME = "ckam"
+ERP_CERTIFICATE_UNREADABLE = "The ERP certificate file (PO_SOURCE_SSLROOTCERT) could not be read on this server."
+
+
+def erp_ssl_argument() -> str | ssl.SSLContext | None:
+    """Security IF-16: what `asyncpg.connect(ssl=...)` gets for PO_SOURCE_SSLMODE (None = leave the argument out).
+
+    * prefer (default): None, so asyncpg's own default applies -- exactly what CKAM always did.
+    * disable / allow / require: the libpq name; asyncpg handles it (require: TLS, no certificate check).
+    * verify-ca / verify-full: a TLS context that checks the server's certificate against PO_SOURCE_SSLROOTCERT
+      (or, when that is empty, the system's trusted certificates); verify-full also checks the host name.
+      A context means TLS is mandatory: a server that cannot do TLS is refused before any password is sent."""
+    mode = settings.po_source_sslmode
+    if mode == "prefer":
+        return None
+    if mode in ("verify-ca", "verify-full"):
+        cafile = settings.po_source_sslrootcert
+        try:
+            context = ssl.create_default_context(cafile=cafile) if cafile else ssl.create_default_context()
+        except (OSError, ssl.SSLError) as exc:
+            raise ErpUnavailable(ERP_CERTIFICATE_UNREADABLE) from exc
+        context.check_hostname = mode == "verify-full"
+        context.verify_mode = ssl.CERT_REQUIRED
+        return context
+    return mode
 
 
 class PgReadOnly:
@@ -254,17 +279,28 @@ class PgReadOnly:
             server_settings["statement_timeout"] = str(int(seconds) * 1000)
         return server_settings
 
+    def connect_arguments(self) -> dict:
+        """The keyword arguments of `asyncpg.connect` (security IF-16: plus `ssl` when PO_SOURCE_SSLMODE is not
+        the default). Holds the password: never log or show this dict."""
+        kwargs = dict(
+            host=settings.po_source_host, port=settings.po_source_port, database=settings.po_source_db,
+            user=settings.po_source_user, password=settings.po_source_password,
+            timeout=settings.erp_connect_timeout_seconds or CONNECT_TIMEOUT_SECONDS,
+            server_settings=self._server_settings(),
+        )
+        ssl_argument = erp_ssl_argument()
+        if ssl_argument is not None:
+            kwargs["ssl"] = ssl_argument
+        return kwargs
+
     async def _connect(self) -> asyncpg.Connection:
         if not is_configured():
             raise ErpUnavailable("The ERP connection is not set up on this server.")
+        kwargs = self.connect_arguments()
         try:
-            return await asyncpg.connect(
-                host=settings.po_source_host, port=settings.po_source_port, database=settings.po_source_db,
-                user=settings.po_source_user, password=settings.po_source_password,
-                timeout=settings.erp_connect_timeout_seconds or CONNECT_TIMEOUT_SECONDS,
-                server_settings=self._server_settings(),
-            )
-        except (OSError, TimeoutError, asyncpg.PostgresError) as exc:
+            return await asyncpg.connect(**kwargs)
+        # (only the error's type is shown: its text could name the server; never the password)
+        except (OSError, TimeoutError, asyncpg.PostgresError, asyncpg.InterfaceError) as exc:
             raise ErpUnavailable(f"The ERP database could not be reached ({type(exc).__name__}).") from exc
 
     async def _fetch(self, sql: str, *args) -> list[asyncpg.Record]:

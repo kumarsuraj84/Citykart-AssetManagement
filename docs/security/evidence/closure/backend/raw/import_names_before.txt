@@ -1,0 +1,15 @@
+RACE-1 residual: backend/tests/masters/test_import_duplicate_names.py run against the HEAD 3362c1b app code
+(dev API container, ckam_test database), 2026-10-16:
+
+E       AssertionError: assert ['NEW-1', 'NE...W-3', 'NEW-4'] == ['NEW-1', 'NEW-4']      (preview listed every duplicate as valid)
+E       assert 4 == 2                                                                    (commit imported all 4 rows)
+E       assert [1, 1] == [0, 1]                                                          (two parallel imports created two vendors)
+FAILED tests/masters/test_import_duplicate_names.py::test_a_vendor_file_with_two_rows_of_one_name_and_one_existing_name
+FAILED tests/masters/test_import_duplicate_names.py::test_a_brand_file_with_duplicates_is_refused_per_row
+FAILED tests/masters/test_import_duplicate_names.py::test_two_imports_of_the_same_name_at_the_same_moment_create_only_one
+3 failed, 2 passed, 1 warning in 0.96s
+
+After the WP-A1 change: 5 passed (focused run and the full suite).
+
+Full backend suite after all WP-A1 changes (python -m pytest -q, dev API container, ckam_test):
+2437 passed, 1 skipped, 1288 warnings in 531.65s (0:08:51)

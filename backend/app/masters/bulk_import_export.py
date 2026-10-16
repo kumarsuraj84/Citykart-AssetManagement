@@ -270,9 +270,21 @@ async def _validate_rows(
 
 async def preview_import(
     session: AsyncSession, fields: list[FieldSpec], content: bytes,
-    allowed_company_ids: list[int] | None, company_field: str | None,
+    allowed_company_ids: list[int] | None, company_field: str | None, row_check=None,
 ) -> dict:
+    """`row_check` (optional): `async (data) -> str | None`, a plain sentence when the row would be refused at
+    commit (e.g. a brand / vendor name that already exists); that row is then shown as an error."""
     valid_rows, errors, _ = await _validate_rows(session, fields, content, allowed_company_ids, company_field)
+    if row_check is not None:
+        kept = []
+        for r in valid_rows:
+            problem = await row_check(r["data"])
+            if problem:
+                errors.append({"row": r["row"], "field": "Name", "message": problem})
+            else:
+                kept.append(r)
+        valid_rows = kept
+        errors.sort(key=lambda e: e.get("row", 0))
     return {
         "valid_rows": [{"row": r["row"], "values": {f.header: r["data"].get(f.field) for f in fields}} for r in valid_rows],
         "errors": errors,
@@ -281,11 +293,14 @@ async def preview_import(
 
 async def commit_import(
     session: AsyncSession, model, fields: list[FieldSpec], content: bytes, actor,
-    allowed_company_ids: list[int] | None, company_field: str | None, after_create=None,
+    allowed_company_ids: list[int] | None, company_field: str | None, after_create=None, before_create=None,
 ) -> dict:
     """`after_create` (S7, optional): `async (obj) -> None`, run for each new record inside its own row's
     savepoint (e.g. a new STORE gets its Stock Room and Install Point); a ValueError it raises undoes that
-    row and is reported as the row's error, the other rows still go in."""
+    row and is reported as the row's error, the other rows still go in.
+
+    `before_create` (security RACE-1 residual, optional): `async (data) -> str | None`, run inside the row's
+    savepoint BEFORE the insert; a sentence refuses that row (reported as its error), the other rows still go in."""
     valid_rows, errors, scope_violations = await _validate_rows(session, fields, content, allowed_company_ids, company_field)
     if scope_violations:
         raise ImportScopeError(f"{len(scope_violations)} row(s) target a company outside your scope")
@@ -294,6 +309,10 @@ async def commit_import(
     for r in valid_rows:
         try:
             async with session.begin_nested():
+                if before_create is not None:
+                    problem = await before_create(r["data"])
+                    if problem:
+                        raise ValueError(problem)
                 obj = model(**r["data"], created_by=actor.id, updated_by=actor.id)
                 session.add(obj)
                 await session.flush()

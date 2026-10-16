@@ -334,6 +334,34 @@ async def _statement_handler(request: Request, exc: StatementError):
     return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=_body({"detail": message}))
 
 
+# Security N6: the single-port server's catch-all route that serves the SPA shell (app.main).
+SPA_FALLBACK_PATH = "/{full_path:path}"
+NO_SUCH_API = "This API address does not exist. Check the address and try again."
+
+
+def is_api_path(path: str) -> bool:
+    """`/api` itself or anything under `/api/` (the frontend has no route of its own there)."""
+    return path == "/api" or path.startswith("/api/")
+
+
+def unknown_api_response() -> JSONResponse:
+    """Security N6: an /api address no route serves is a JSON 404 in the usual envelope, never the SPA shell."""
+    return JSONResponse(status_code=status.HTTP_404_NOT_FOUND,
+                        content=_body({"detail": NO_SUCH_API, "errors": [NO_SUCH_API]}))
+
+
+def _no_api_route_matches(request: Request) -> bool:
+    """True when no route except the SPA catch-all matches this path with any method."""
+    from starlette.routing import Match
+    for route in request.app.router.routes:
+        if getattr(route, "path", None) == SPA_FALLBACK_PATH:
+            continue
+        match, _ = route.matches(request.scope)
+        if match != Match.NONE:
+            return False
+    return True
+
+
 # Login, refresh, logout and change-password write their own SECURITY rows (app.auth.router).
 _AUTH_PATHS_WITH_OWN_EVENTS = ("/api/auth/login", "/api/auth/refresh", "/api/auth/logout", "/api/auth/change-password")
 
@@ -344,6 +372,10 @@ async def _http_handler(request: Request, exc: StarletteHTTPException):
     token, one per person and route and minute for a refusal)."""
     headers = getattr(exc, "headers", None)
     code = exc.status_code
+    # Security N6: POST / HEAD / OPTIONS ... to an /api address that does not exist only "matched" the SPA
+    # catch-all (GET), which made it a 405; it is a 404 like the GET. A real route's wrong method stays 405.
+    if code == 405 and is_api_path(request.url.path) and _no_api_route_matches(request):
+        return unknown_api_response()
     if code in (401, 403) and request.url.path.rstrip("/") not in _AUTH_PATHS_WITH_OWN_EVENTS:
         ctx = obs_context.current()
         route = _route(request)

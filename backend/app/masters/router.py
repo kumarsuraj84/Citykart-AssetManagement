@@ -80,6 +80,9 @@ class MasterPolicy:
     before_delete: Callable[..., Awaitable[None]] | None = None    # (session, user, existing)
     # S6: adds read-only figures to the rows of GET (e.g. item_count) -- (session, rows) -> rows
     annotate_list: Callable[..., Awaitable[list]] | None = None
+    # Security RACE-1 residual: "brand" / "vendor" -- the Excel import refuses a row whose name an active record
+    # (or an earlier row of the same file) already has, like adding one on the screen does.
+    unique_name_noun: str | None = None
 
 
 def build_master_router(
@@ -274,8 +277,11 @@ def build_master_router(
         ):
             content = await read_upload_bounded(file)
             allowed = await scoped_company_ids(session, asset_user)
+            name_check = (_import_name_checks(session, model, policy.unique_name_noun)[0]
+                          if policy.unique_name_noun else None)
             try:
-                result = await preview_import(session, import_fields, content, allowed, company_field)
+                result = await preview_import(session, import_fields, content, allowed, company_field,
+                                              row_check=name_check)
             except ImportTemplateError as exc:
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
             await obs_events.import_previewed(f"the {prefix.strip('/')} list", len(result["valid_rows"]),
@@ -289,8 +295,11 @@ def build_master_router(
         ):
             content = await read_upload_bounded(file)
             allowed = await scoped_company_ids(session, asset_user)
+            name_check = (_import_name_checks(session, model, policy.unique_name_noun)[1]
+                          if policy.unique_name_noun else None)
             try:
-                result = await commit_import(session, model, import_fields, content, asset_user, allowed, company_field)
+                result = await commit_import(session, model, import_fields, content, asset_user, allowed, company_field,
+                                             before_create=name_check)
             except ImportScopeError as exc:
                 await obs_events.import_refused(f"the {prefix.strip('/')} list", str(exc))
                 raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc))
@@ -311,19 +320,50 @@ def build_master_router(
 
 # ---------------------------------------------------------------- S3a-1 policies
 
+async def _active_name_exists(session: AsyncSession, model, name: str | None, lock: bool = True) -> bool:
+    """Whether an ACTIVE record of `model` already has this name (ignoring case and surrounding spaces).
+
+    Security (concurrency, RACE-1): two requests with one name used to pass this check at the same moment and
+    both insert. With `lock`, a transaction-level advisory lock on (table, name) makes the second wait until the
+    first has committed, so it then sees the row. (`lock=False` only for the import preview, which writes nothing.)"""
+    value = (name or "").strip()
+    if lock:
+        await session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": f"{model.__tablename__}:{value.lower()}"})
+    stmt = select(model.id).where(func.lower(func.trim(model.name)) == value.lower(), model.is_active.is_(True))
+    return (await session.execute(stmt.limit(1))).first() is not None
+
+
 async def _refuse_duplicate_name(session: AsyncSession, model, name: str, noun: str) -> None:
     """New vendor / brand: no second ACTIVE record with the same name (ignoring
     case and surrounding spaces). Existing rows are never touched or checked
     against each other; a deactivated twin does not block (it cannot be chosen
     any more, and there is no way to reactivate it)."""
-    value = (name or "").strip()
-    # Security (concurrency): two requests with one name used to pass this check at the same moment and both
-    # insert. A transaction-level advisory lock on (table, name) makes the second wait until the first has
-    # committed, so it then sees the row and is refused.
-    await session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": f"{model.__tablename__}:{value.lower()}"})
-    stmt = select(model.id).where(func.lower(func.trim(model.name)) == value.lower(), model.is_active.is_(True))
-    if (await session.execute(stmt.limit(1))).first() is not None:
+    if await _active_name_exists(session, model, name):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"A {noun} with this name already exists.")
+
+
+def _import_name_checks(session: AsyncSession, model, noun: str):
+    """Security RACE-1 residual (OBS-NAME-IMPORT): the head-office admin's Excel import of brands / vendors follows
+    the same one-active-name rule as adding one on the screen. Returns (preview check, commit check), each
+    `async (data) -> sentence | None`. The commit check takes the same advisory lock per row; a second row of the
+    same name in one file is refused because the first one is already inserted (same transaction)."""
+    seen: set[str] = set()
+
+    async def preview(data: dict) -> str | None:
+        key = (data.get("name") or "").strip().lower()
+        if key in seen:
+            return f"Another row in this file already has the {noun} name '{(data.get('name') or '').strip()}'."
+        seen.add(key)
+        if await _active_name_exists(session, model, data.get("name"), lock=False):
+            return f"A {noun} with the name '{(data.get('name') or '').strip()}' already exists."
+        return None
+
+    async def commit(data: dict) -> str | None:
+        if await _active_name_exists(session, model, data.get("name"), lock=True):
+            return f"A {noun} with the name '{(data.get('name') or '').strip()}' already exists."
+        return None
+
+    return preview, commit
 
 
 def _small_master_policy(model, noun: str, plural: str, code_length: int, fallback: str,
@@ -348,6 +388,7 @@ def _small_master_policy(model, noun: str, plural: str, code_length: int, fallba
         edit=require_head_office(f"change {plural}"),
         delete=require_head_office(f"remove {plural}"),
         before_create=before_create,
+        unique_name_noun=noun.removeprefix("a ").removeprefix("an ") if unique_name else None,
     )
 
 

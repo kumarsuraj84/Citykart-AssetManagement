@@ -1,0 +1,54 @@
+﻿pip-audit 2.10.1
+---- columns (pinned set, no dependency resolution)
+dependencies
+ 
+WARNING:pip_audit._cli:Consider using a tool like `pip-compile`: 
+https://pip-tools.readthedocs.io/en/latest/#using-hashes
+Found 3 known vulnerabilities in 2 packages
+Name        Version ID              Fix Versions Description
+----------- ------- --------------- ------------ ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ecdsa       0.19.2  PYSEC-2026-1325              python-ecdsa has been found to be subject to a Minerva timing attack on the P-256 curve. Using the `ecdsa.SigningKey.sign_digest()` API function and timing signatures an attacker can leak the internal nonce which may allow for private key discovery. Both ECDSA signatures, key generation, and ECDH operations are affected. ECDSA signature verification is unaffected. The python-ecdsa project considers side channel attacks out of scope for the project and there is no planned fix.
+ecdsa       0.19.2  PYSEC-2026-1325              python-ecdsa has been found to be subject to a Minerva timing attack on the P-256 curve. Using the `ecdsa.SigningKey.sign_digest()` API function and timing signatures an attacker can leak the internal nonce which may allow for private key discovery. Both ECDSA signatures, key generation, and ECDH operations are affected. ECDSA signature verification is unaffected. The python-ecdsa project considers side channel attacks out of scope for the project and there is no planned fix.
+python-jose 3.5.0   PYSEC-2026-4298              python-jose through 3.5.0 fails to properly validate asymmetric keys in HMAC initialization, accepting DER-encoded public keys that lack PEM armor or SSH prefixes. Attackers holding the service's public key can forge HS256 tokens that pass verification when algorithms are not explicitly restricted. This is an incomplete fix for CVE-2024-33663.
+EXIT=1
+---- json
+WARNING:pip_audit._cli:--no-deps is supported, but users are encouraged to fully hash their pinned dependencies
+WARNING:pip_audit._cli:Consider using a tool like `pip-compile`: 
+https://pip-tools.readthedocs.io/en/latest/#using-hashes
+Found 3 known vulnerabilities in 2 packages
+{"dependencies": [{"name": "alembic", "version": "1.20.0", "vulns": []}, {"name": "annotated-doc", "version": "0.0.5", "vulns": []}, {"name": "annotated-types", "version": "0.8.0", "vulns": []}, {"name": "anyio", "version": "4.15.1", "vulns": []}, {"name": "argon2-cffi", "version": "25.1.0", "vulns": []}, {"name": "argon2-cffi-bindings", "version": "26.1.0", "vulns": []}, {"name": "asyncpg", "version": "0.31.0", "vulns": []}, {"name": "cffi", "version": "2.1.1", "vulns": []}, {"name": "click", "version": "8.5.0", "vulns": []}, {"name": "cryptography", "version": "50.0.1", "vulns": []}, {"name": "ecdsa", "version": "0.19.2", "vulns": [{"id": "PYSEC-2026-1325", "fix_versions": [], "aliases": ["GHSA-wj6h-64fc-37mp", "CVE-2024-23342"], "description": "python-ecdsa has been found to be subject to a Minerva timing attack on the P-256 curve. Using the `ecdsa.SigningKey.sign_digest()` API function and timing signatures an attacker can leak the internal nonce which may allow for private key discovery. Both ECDSA signatures, key generation, and ECDH operations are affected. ECDSA signature verification is unaffected. The python-ecdsa project considers side channel attacks out of scope for the project and there is no planned fix."}, {"id": "PYSEC-2026-1325", "fix_versions": [], "aliases": ["GHSA-wj6h-64fc-37mp", "CVE-2024-23342"], "description": "python-ecdsa has been found to be subject to a Minerva timing attack on the P-256 curve. Using the `ecdsa.SigningKey.sign_digest()` API function and timing signatures an attacker can leak the internal nonce which may allow for private key discovery. Both ECDSA signatures, key generation, and ECDH operations are affected. ECDSA signature verification is unaffected. The python-ecdsa project considers side channel attacks out of scope for the project and there is no planned fix."}]}, {"name": "et-xmlfile", "version": "2.0.0", "vulns": []}, {"name": "fastapi", "version": "0.141.1", "vulns": []}, {"name": "greenlet", "version": "3.5.6", "vulns": []}, {"name": "h11", "version": "0.16.0", "vulns": []}, {"name": "httptools", "version": "0.8.0", "vulns": []}, {"name": "idna", "version": "3.20", "vulns": []}, {"name": "mako", "version": "1.4.3", "vulns": []}, {"name": "markupsafe", "version": "3.0.3", "vulns": []}, {"name": "openpyxl", "version": "3.1.5", "vulns": []}, {"name": "pillow", "version": "12.3.0", "vulns": []}, {"name": "psycopg2-binary", "version": "2.9.13", "vulns": []}, {"name": "pyasn1", "version": "0.6.4", "vulns": []}, {"name": "pycparser", "version": "3.0", "vulns": []}, {"name": "pydantic", "version": "2.13.5", "vulns": []}, {"name": "pydantic-settings", "version": "2.15.0", "vulns": []}, {"name": "pydantic-core", "version": "2.46.5", "vulns": []}, {"name": "python-barcode", "version": "0.16.1", "vulns": []}, {"name": "python-dotenv", "version": "1.2.3", "vulns": []}, {"name": "python-jose", "version": "3.5.0", "vulns": [{"id": "PYSEC-2026-4298", "fix_versions": [], "aliases": ["GHSA-3qf3-8w2g-rqmx", "CVE-2026-85394"], "description": "python-jose through 3.5.0 fails to properly validate asymmetric keys in HMAC initialization, accepting DER-encoded public keys that lack PEM armor or SSH prefixes. Attackers holding the service's public key can forge HS256 tokens that pass verification when algorithms are not explicitly restricted. This is an incomplete fix for CVE-2024-33663."}]}, {"name": "rsa", "version": "4.9.1", "vulns": []}, {"name": "python-multipart", "version": "0.0.32", "vulns": []}, {"name": "pyyaml", "version": "6.0.3", "vulns": []}, {"name": "qrcode", "version": "8.2", "vulns": []}, {"name": "six", "version": "1.17.0", "vulns": []}, {"name": "sqlalchemy", "version": "2.1.1", "vulns": []}, {"name": "starlette", "version": "1.7.0", "vulns": []}, {"name": "typing-inspection", "version": "0.4.4", "vulns": []}, {"name": "typing-extensions", "version": "4.16.0", "vulns": []}, {"name": "uvicorn", "version": "0.54.0", "vulns": []}, {"name": "uvloop", "version": "0.22.1", "vulns": []}, {"name": "watchfiles", "version": "1.3.0", "vulns": []}, {"name": "websockets", "version": "17.1", "vulns": []}], "fixes": []}
+
+---- the installed image environment (what actually runs)
+Found 3 known vulnerabilities in 2 packages
+Name        Version ID              Fix Versions
+----------- ------- --------------- ------------
+ecdsa       0.19.2  PYSEC-2026-1325
+ecdsa       0.19.2  PYSEC-2026-1325
+python-jose 3.5.0   PYSEC-2026-4298
+
+Name         Skip Reason
+------------ ---------------------------------------------------------------------------
+ckam-backend Dependency not found on PyPI and could not be audited: ckam-backend (0.1.0)
+EXIT=1
+---- python-jose / ecdsa metadata
+Name: python-jose
+Version: 3.5.0
+Requires: ecdsa, pyasn1, rsa
+Required-by: ckam-backend
+Name: ecdsa
+Version: 0.19.2
+Requires: six
+Required-by: python-jose
+Name: rsa
+Version: 4.9.1
+Requires: pyasn1
+Required-by: python-jose
+Name: pyasn1
+Version: 0.6.4
+Requires: 
+Required-by: python-jose, rsa
+Name: cryptography
+Version: 50.0.1
+Requires: cffi
+Required-by: 
+jose backends RSAKey: jose.backends.cryptography_backend ECKey: jose.backends.cryptography_backend

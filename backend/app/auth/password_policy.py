@@ -7,8 +7,10 @@ sentence, when it is:
 * one of the most common passwords (the list below, compared ignoring case);
 * the same character over and over (aaaaaaaa), or a simple run (12345678, abcdefgh, qwertyui, 87654321);
 * "ckam" or "citykart" followed only by digits / symbols (Citykart2026, ckam@123);
+* nothing but a simple run of letters and a short or simple number (abcdefgh1, xyz@2026);
 * containing the person's own login code, the part of their email before the @, their name, or a word of
-  their name (each only when at least 4 characters long, ignoring case).
+  their name (each only when at least 4 characters long, ignoring case, also written with look-alikes: R@vi).
+There is deliberately no "must contain a symbol / capital" rule: a long passphrase is stronger.
 """
 from __future__ import annotations
 
@@ -75,7 +77,21 @@ def password_problem(new_password: str, *, code: str | None = None, email: str |
         return "A common word with a few numbers or symbols added is easy to guess. Choose a different password."
     if _BRAND.match(new_password or ""):
         return "A password made of the company or app name and numbers is easy to guess. Choose a different one."
+    if _only_simple_sequences(lowered):
+        return "This password is too simple (the same character or a simple sequence). Choose a different one."
+    # AU-08 (closure WP-A1): also with look-alike characters undone (R@vi#2026 -> ravi, KUM4R -> kumar).
+    variants = (lowered, lowered.translate(_LOOKALIKES))
     for part in _personal_parts(code, email, name):
-        if part in lowered:
+        if any(part in variant for variant in variants):
             return "The password must not contain your name, login code or email. Choose a different one."
     return None
+
+
+def _only_simple_sequences(lowered: str) -> bool:
+    """AU-08 (closure WP-A1): a simple run of letters plus at most a short or simple number (abcdefgh1, xyz@2026,
+    Zz#123456) -- symbols in between do not make it stronger. A real word anywhere makes this False."""
+    letters = re.sub(r"[^a-z]", "", lowered)
+    digits = re.sub(r"[^0-9]", "", lowered)
+    letters_simple = letters == "" or len(set(letters)) == 1 or (len(letters) >= 3 and _is_run(letters))
+    digits_simple = digits == "" or len(set(digits)) == 1 or _is_run(digits) or len(digits) <= 4
+    return letters_simple and digits_simple and (len(letters) >= 3 or len(digits) >= 4)

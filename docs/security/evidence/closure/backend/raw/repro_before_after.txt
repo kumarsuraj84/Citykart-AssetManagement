@@ -1,0 +1,55 @@
+WP-A1 before/after reproduction (2026-10-16). Script: scratchpad wpa1/repro.py, run in the dev API container
+(ckam-build-api-1), once with the HEAD 3362c1b app code (/tmp/before, removed afterwards) and once with the WP-A1
+working tree (/app). No network beyond the container itself; fake values only.
+Note: before, PO_SOURCE_SSLMODE did not exist; the "ValidationError" in the BEFORE run is pydantic refusing an
+unknown keyword, not a mode check.
+
+=== BEFORE (HEAD 3362c1b app code) ===
+N6 GET /api/nope (single-port) -> 200 text/html; charset=utf-8 shell=True
+N6 POST /api/nope -> 405
+IF-01-WIN /assets/%5c%5cserver%5cshare%5cx -> 404; filesystem calls on the URL text before refusal: 2
+IF-01-WIN /assets/C:%5cWindows%5cwin.ini -> 404; filesystem calls on the URL text before refusal: 2
+IF-01-WIN /assets/ok.js::$DATA -> 404; filesystem calls on the URL text before refusal: 2
+IF-01-WIN /assets/CON -> 404; filesystem calls on the URL text before refusal: 2
+IF-01-WIN /assets/nul.txt -> 404; filesystem calls on the URL text before refusal: 2
+OBS-GUARD-MSG refusal names the 8-different-characters rule: False
+N4 ENVIRONMENT_NAME unset -> default 'development', counts as production: False
+IF-16 PO_SOURCE_SSLMODE=bogus refused at start-up: ValidationError
+IF-16 ERP password visible in repr(Settings): True
+AU-08 'R@vi#2026xyz': accepted
+AU-08 'KUM4R-rocks-9': accepted
+AU-08 'abcdefgh1': accepted
+AU-08 'xyz@2026': accepted
+AU-08 'Zz#123456': accepted
+AU-08 'zzzzzzzz9': accepted
+AU-08 'Admin@2026': refused
+AU-08 'Qwerty@123': refused
+AU-08 'India@2026': refused
+AU-08 'Blue-Sky-Over-Hills-42': accepted
+AU-08 'purple tractor eats 7 mangoes': accepted
+AU-08 'Walker#2026x': accepted
+
+=== AFTER (WP-A1 working tree) ===
+N6 GET /api/nope (single-port) -> 404 application/json shell=False
+N6 POST /api/nope -> 404
+IF-01-WIN /assets/%5c%5cserver%5cshare%5cx -> 404; filesystem calls on the URL text before refusal: 0
+IF-01-WIN /assets/C:%5cWindows%5cwin.ini -> 404; filesystem calls on the URL text before refusal: 0
+IF-01-WIN /assets/ok.js::$DATA -> 404; filesystem calls on the URL text before refusal: 0
+IF-01-WIN /assets/CON -> 404; filesystem calls on the URL text before refusal: 0
+IF-01-WIN /assets/nul.txt -> 404; filesystem calls on the URL text before refusal: 0
+OBS-GUARD-MSG refusal names the 8-different-characters rule: True
+N4 ENVIRONMENT_NAME unset -> default 'production', counts as production: True
+IF-16 PO_SOURCE_SSLMODE=bogus refused at start-up: ValidationError
+IF-16 ERP password visible in repr(Settings): False
+AU-08 'R@vi#2026xyz': refused
+AU-08 'KUM4R-rocks-9': refused
+AU-08 'abcdefgh1': refused
+AU-08 'xyz@2026': refused
+AU-08 'Zz#123456': refused
+AU-08 'zzzzzzzz9': refused
+AU-08 'Admin@2026': refused
+AU-08 'Qwerty@123': refused
+AU-08 'India@2026': refused
+AU-08 'Blue-Sky-Over-Hills-42': accepted
+AU-08 'purple tractor eats 7 mangoes': accepted
+AU-08 'Walker#2026x': accepted

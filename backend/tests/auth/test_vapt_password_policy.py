@@ -47,6 +47,48 @@ def test_reasonable_passwords_and_every_password_the_test_suite_uses_are_fine(pa
     assert password_problem(password, **ME) is None
 
 
+# ---------------------------------------------------------------- closure WP-A1: the owner's revalidation list
+
+OWNER_REFUSED = [
+    "password", "password1", "Password@2026", "Welcome@2026", "Admin@2026", "Qwerty@123", "India@2026", "Citykart2026",
+    "CKAM2026",
+    # the person's own code / name / e-mail local part, with case, digits, symbols and look-alikes
+    "EMP4521", "emp4521", "Emp4521#2026", "xx-EMP4521-yy", "ravikumar", "RaviKumar2026", "Ravi Kumar 2026!",
+    "ravi.kumar", "ravi.kumar@2026", "Kumar@12345", "R@vi#2026xyz", "KUM4R-rocks-9", "sunny-ravi-day",
+    # simple sequences and repeated characters
+    "12345678", "123456789", "87654321", "abcdefgh", "abcdefgh1", "Abcdefg@1", "zyxwvuts", "qwertyui", "qwertyuiop1",
+    "asdfghjkl", "1qaz2wsx", "aaaaaaaa", "AAAAaaaa", "11111111", "zzzzzzzz9", "Zz#123456", "xyz@2026", "!!!!!!!!",
+]
+
+OWNER_ACCEPTED = ["Blue-Sky-Over-Hills-42", "purple tractor eats 7 mangoes", "Walker#2026x", "Granite#Meadow-4418",
+                  "correct horse battery staple", "mangoes ripen slowly", "k3m9q2z7v1", "Sec#Test2026ok",
+                  "Green#Ladder2026"]
+
+
+@pytest.mark.parametrize("password", OWNER_REFUSED)
+def test_the_owners_list_of_weak_passwords_is_refused(password):
+    problem = password_problem(password, **ME)
+    assert problem is not None, password
+    if password.lower() != "password":                               # (the sentences use the word itself)
+        assert password not in problem                               # the sentence never repeats the password
+
+
+@pytest.mark.parametrize("password", OWNER_ACCEPTED)
+def test_strong_passphrases_are_accepted_without_any_symbol_rule(password):
+    assert password_problem(password, **ME) is None, password
+
+
+@pytest.mark.parametrize("password", ["bluesky mountain river", "lowercase only passphrase", "ALLCAPSBUTLONGENOUGH"])
+def test_there_is_no_composition_rule(password):
+    """No "must contain a capital / digit / symbol": a long passphrase of plain words is fine."""
+    assert password_problem(password, **ME) is None
+
+
+def test_a_name_part_found_only_after_look_alikes_are_undone_is_refused_but_not_short_parts():
+    assert "name, login code or email" in password_problem("R@vi-and-friends-9", **ME)
+    assert password_problem("Blue-Sky-0ver-Hills", code="SM1", email="sm.lam@citykartstores.com", name="Al Om") is None
+
+
 def test_short_name_parts_do_not_block_ordinary_words():
     assert password_problem("Blue-Sky-Over-Hills", code="SM1", email="sm.lam@citykartstores.com", name="Al Om") is None
 

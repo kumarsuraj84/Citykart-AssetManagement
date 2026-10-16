@@ -7,7 +7,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from app.core.config import DEFAULT_DEV_JWT_SECRET, settings
 from app.core.body_limit import BodyLimitMiddleware
-from app.core.errors import register_exception_handlers
+from app.core.errors import SPA_FALLBACK_PATH, is_api_path, register_exception_handlers, unknown_api_response
+from app.core.static_safety import safe_asset_path
 from app.core.idempotency import IdempotencyMiddleware
 from app.core.db import SessionLocal
 from app.erp.source import is_configured as erp_is_configured
@@ -60,6 +61,7 @@ logger = logging.getLogger("ckam.security")
 # these, so any of them in a real deployment is as forgeable as the others.
 _KNOWN_INSECURE_JWT_SECRETS = {DEFAULT_DEV_JWT_SECRET, "change_me_too"}
 _MIN_SECURE_JWT_SECRET_LENGTH = 32
+_MIN_DISTINCT_JWT_SECRET_CHARACTERS = 8
 
 
 def warn_if_default_jwt_secret(secret: str) -> bool:
@@ -116,10 +118,15 @@ def refuse_to_start_with_insecure_secret(environment_name: str, secret: str) -> 
     if not is_production(environment_name):
         return
     value = (secret or "").strip()
-    if value in _KNOWN_INSECURE_JWT_SECRETS or len(value) < _MIN_SECURE_JWT_SECRET_LENGTH or len(set(value)) < 8:
+    if (value in _KNOWN_INSECURE_JWT_SECRETS or len(value) < _MIN_SECURE_JWT_SECRET_LENGTH
+            or len(set(value)) < _MIN_DISTINCT_JWT_SECRET_CHARACTERS):
+        # OBS-GUARD-MSG: name every rule (the operator must not chase the wrong one), never the value itself.
         raise RuntimeError(
-            "Refusing to start: ENVIRONMENT_NAME is production but JWT_SECRET is a committed placeholder or shorter than "
-            f"{_MIN_SECURE_JWT_SECRET_LENGTH} characters. Set a long random JWT_SECRET (e.g. `openssl rand -hex 32`) first."
+            "Refusing to start: this server counts as production (ENVIRONMENT_NAME is not a development or test "
+            "name) and its JWT_SECRET is not strong enough. The JWT_SECRET must not be a placeholder value from "
+            f"the source code, must be at least {_MIN_SECURE_JWT_SECRET_LENGTH} characters long AND must contain at "
+            f"least {_MIN_DISTINCT_JWT_SECRET_CHARACTERS} different characters. Set a long random JWT_SECRET "
+            "(e.g. `openssl rand -hex 32`) and start again."
         )
 
 
@@ -257,26 +264,26 @@ async def _serve_frontend_asset(file_path: str):
     dist_dir = _frontend_dist_dir()
     if dist_dir is None:
         raise HTTPException(status_code=404)
-    # Security (IF-01): `file_path` comes from the URL and may hold `..` segments (percent-encoded) or an absolute
-    # path, which `Path /` would happily follow out of the folder. Resolve first, then require the result to sit
-    # inside <dist>/assets; anything else is a plain 404 (never reveal that the file exists).
-    assets_root = (dist_dir / "assets").resolve()
-    try:
-        candidate = (assets_root / file_path).resolve()
-    except (OSError, ValueError):
-        raise HTTPException(status_code=404)
-    if not candidate.is_relative_to(assets_root) or not candidate.is_file():
+    # Security (IF-01 / IF-01-WIN): `file_path` comes from the URL and may hold `..` segments (percent-encoded), an
+    # absolute path, or a Windows UNC / drive / device / stream name. app.core.static_safety refuses all of those
+    # by looking at the text alone, BEFORE any filesystem call (on Windows even a stat of a UNC path contacts that
+    # host), then requires the resolved file to sit inside <dist>/assets. Every refusal is the same plain 404.
+    candidate = safe_asset_path(dist_dir / "assets", file_path)
+    if candidate is None:
         raise HTTPException(status_code=404)
     return FileResponse(candidate)
 
 
-@app.get("/{full_path:path}")
+@app.get(SPA_FALLBACK_PATH)
 async def _serve_frontend_shell(full_path: str):
+    # Security N6: an /api address no API route serves is a JSON 404, never the SPA shell with 200.
+    if is_api_path("/" + full_path.lstrip("/")):
+        return unknown_api_response()
     dist_dir = _frontend_dist_dir()
     if dist_dir is None:
         raise HTTPException(status_code=404)
     if full_path in _FRONTEND_ROOT_FILES:
-        candidate = dist_dir / full_path
-        if candidate.is_file():
+        candidate = safe_asset_path(dist_dir, full_path)        # IF-01-WIN: same lexical check first
+        if candidate is not None:
             return FileResponse(candidate)
     return FileResponse(dist_dir / "index.html", headers={"Cache-Control": "no-cache"})
