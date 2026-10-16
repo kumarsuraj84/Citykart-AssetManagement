@@ -7,8 +7,8 @@ from httpx import ASGITransport, AsyncClient
 from app.core.config import settings
 from app.main import docs_urls
 
-CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-       "font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; "
+CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+       "font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; "
        "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'")
 PERMISSIONS = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
 

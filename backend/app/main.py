@@ -224,14 +224,15 @@ def _frontend_dist_dir() -> Path | None:
 # IBM Plex stylesheet and font files. No in-browser camera use exists (labels are scanned with the phone's own
 # camera app, which opens the asset link), so the camera is off like the rest.
 CONTENT_SECURITY_POLICY = (
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-    "font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; "
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+    "font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; "
     "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
 )
 PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
 # FastAPI's own /docs and /redoc pages load Swagger / ReDoc from a CDN with an inline script; they exist only
 # outside production (docs_urls), so they are left without the CSP instead of being broken in development.
 _DOCS_PATHS = frozenset({"/docs", "/docs/oauth2-redirect", "/redoc"})
+_DOCS_OFF_PATHS = _DOCS_PATHS | {"/openapi.json"}
 
 
 @app.middleware("http")
@@ -278,6 +279,10 @@ async def _serve_frontend_asset(file_path: str):
 async def _serve_frontend_shell(full_path: str):
     # Security N6: an /api address no API route serves is a JSON 404, never the SPA shell with 200.
     if is_api_path("/" + full_path.lstrip("/")):
+        return unknown_api_response()
+    # Security (AU-11, closure): where the API documentation is switched off (production) /docs, /redoc and
+    # /openapi.json are a plain JSON 404 too -- not the SPA shell with 200, which looked like "still there".
+    if app.docs_url is None and "/" + full_path.strip("/") in _DOCS_OFF_PATHS:
         return unknown_api_response()
     dist_dir = _frontend_dist_dir()
     if dist_dir is None:

@@ -265,6 +265,21 @@ async def test_other_methods_on_an_unknown_api_address_are_404_too(client, dist,
         _assert_api_404(resp.status_code, resp.headers, resp.json())
 
 
+@pytest.mark.parametrize("path", ["/docs", "/redoc", "/openapi.json", "/docs/", "/docs/oauth2-redirect"])
+async def test_where_the_docs_are_off_they_are_a_json_404_not_the_shell(client, dist, monkeypatch, path):
+    """Closure (AU-11): in single-port production the documentation paths answer the same JSON 404 as any unknown
+    API address -- before this they returned the SPA shell with 200 (no documentation, but it looked present)."""
+    # In a production process the documentation routes are never registered (docs_urls), so these paths reach the
+    # catch-all; here the dev-built app has them registered, so the catch-all handler is called directly.
+    from app.main import _serve_frontend_shell
+    monkeypatch.setattr(app, "docs_url", None)
+    resp = await _serve_frontend_shell(path.lstrip("/"))
+    assert resp.status_code == 404 and resp.headers["content-type"].startswith("application/json")
+    assert NO_SUCH_API in resp.body.decode()
+    monkeypatch.setattr(app, "docs_url", "/docs")                       # docs on (development): the shell is unchanged
+    assert (await _serve_frontend_shell(path.lstrip("/"))).status_code == 200
+
+
 async def test_real_api_routes_are_unchanged(client, dist):
     assert (await client.get("/api/health")).json() == {"status": "ok"}
     wrong_method = await client.delete("/api/health")              # a real route with the wrong method stays 405
