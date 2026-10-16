@@ -40,8 +40,32 @@ services:
       timeout: 5s
       retries: 10
 
+  # Security IF-13: named volumes made by the older root-run image are owned by root, which the API (now uid
+  # 10001, see backend/Dockerfile) could not write. This one-shot step hands only the two data volumes to uid
+  # 10001 (files not already owned by it; data is never touched or deleted), then exits; the API starts only
+  # after it succeeded. It is the ONLY part that runs as root, has no network, and keeps just the chown-related
+  # capabilities, so the long-running API never needs root or any capability at all.
+  volume-init:
+    build:
+      context: ./backend
+      target: dev
+    user: "0:0"
+    entrypoint: ["sh", "-c", "find /data/uploads /data/logs \\( ! -user 10001 -o ! -group 10001 \\) -exec chown -h 10001:10001 {} + && echo 'volume-init: /data/uploads and /data/logs belong to uid 10001'"]
+    network_mode: none
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_READ_SEARCH]
+    security_opt: ["no-new-privileges:true"]
+    restart: "no"
+    volumes:
+      - uploads:/data/uploads
+      - logs:/data/logs
+
   api:
-    build: ./backend
+    # IF-13: the `dev` target (non-root, plus the test tooling CLAUDE.md's pytest command needs). The `runtime`
+    # target has no pytest and no tests/ and is what a non-test deployment of this image should use.
+    build:
+      context: ./backend
+      target: dev
     environment:
       DATABASE_URL: postgresql+asyncpg://ckam:${POSTGRES_PASSWORD:-ckam_dev_pw}@db:5432/ckam
       JWT_SECRET: ${JWT_SECRET:-dev_secret_change_me}
@@ -61,9 +85,24 @@ services:
       # S8: JSON-lines logs (app.jsonl / error.jsonl / audit.jsonl, 20 MB x 10 each) in the `logs` volume.
       LOG_DIR: /data/logs
       ENVIRONMENT_NAME: ${ENVIRONMENT_NAME:-development}
+      # Security N3: believe X-Forwarded-For ONLY from the nginx `web` container's fixed address (nginx overwrites
+      # that header with the address it saw). Never a whole Docker range: a request from this PC to the
+      # published API port arrives from a Docker gateway address and could then pick its own address.
+      TRUSTED_PROXIES: ${CKAM_WEB_IP:-172.31.211.10}
+    # IF-13: no Linux capabilities, no privilege gain (setuid binaries), non-root user from the image. The
+    # process can write only /data/uploads, /data/logs and /tmp. The root filesystem is NOT mounted read-only
+    # here on purpose: `docker compose cp backend/app/. api:/app/app/` (the code-sync step used before running
+    # pytest) needs it; the runtime target does run with read_only (see docs/security/evidence/closure/infra/).
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks:
+      - default
+      - edge
     depends_on:
       db:
         condition: service_healthy
+      volume-init:
+        condition: service_completed_successfully
     # Loopback only, like `db`: LAN users go through nginx on the web port, which
     # is the one entry point with the upload-size limit etc. Direct API access
     # from the host (curl, /docs) still works on 127.0.0.1.
@@ -79,6 +118,11 @@ services:
       - api
     ports:
       - "${WEB_PORT:-3211}:80"
+    # Security N3: nginx sits ONLY on the small `edge` network, at a fixed address the API trusts
+    # (TRUSTED_PROXIES above), so every request it forwards comes from exactly that address.
+    networks:
+      edge:
+        ipv4_address: ${CKAM_WEB_IP:-172.31.211.10}
 
   # NOTE on base image: the `db` service above uses `postgres:17`, which is
   # Debian-based and ships neither `apk` nor a cron daemon — an
@@ -105,6 +149,16 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+networks:
+  # Security N3: web <-> api only, on a fixed subnet so nginx can have a fixed address. Every compose project
+  # that runs AT THE SAME TIME as another one from this file (e.g. -p ckam-uat, -p ckam-sec next to the dev
+  # stack) must set its own CKAM_EDGE_SUBNET and CKAM_WEB_IP in its env file (e.g. 172.31.212.0/28 and
+  # 172.31.212.10); otherwise Docker refuses to start it ("Pool overlaps with other one on this address space").
+  edge:
+    ipam:
+      config:
+        - subnet: ${CKAM_EDGE_SUBNET:-172.31.211.0/28}
 
 volumes:
   db_data:

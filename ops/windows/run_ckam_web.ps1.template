@@ -1,0 +1,148 @@
+<#
+.SYNOPSIS
+  CKAM production launcher (REFERENCE TEMPLATE, security IF-15 / N2). Started by the Scheduled Task `CKAM-Web`.
+
+.DESCRIPTION
+  Secret-free reference copy of the launcher that runs CKAM as ONE uvicorn process (API + built frontend) on the
+  Windows app server. It is NOT yet the file the server runs: the live `shared\run_ckam_web.ps1` was written on the
+  server and has never been compared with this template (external action EXT-13). Review it, copy it to
+  `<AppRoot>\shared\run_ckam_web.ps1` (drop the `.template` suffix) only as part of a planned change.
+
+  What it does, in order:
+    1. Loads every KEY=VALUE line of the shared settings file (`shared\.env`) into THIS process only. Values are
+       never written to the log; only the key names are.
+    2. Maps the NAS share for uploads with the password read at run time from `shared\nas.pw` (retries for up to
+       NasAttempts x NasRetrySeconds, because the network may not be ready at boot). Skipped with -SkipNas.
+    3. Works out the release from FRONTEND_DIST_DIR (`<AppRoot>\releases\<sha>\frontend-dist`): the backend runs
+       from the `backend` folder next to it, so that ONE setting switches the whole release.
+    4. "Activates" the venv (VIRTUAL_ENV + PATH for this process) and starts
+       python -m uvicorn app.main:app --host <BindHost> --port <Port> --no-proxy-headers
+       Security N2: `--no-proxy-headers` is fixed here and must never be changed to `--proxy-headers`: CKAM is
+       reached directly (no reverse proxy), so X-Forwarded-For must never be believed by uvicorn. The app keeps
+       its own TRUSTED_PROXIES check, which must stay EMPTY in production.
+    5. Waits for uvicorn and exits with its exit code (the task restarts it on failure).
+
+  Nothing secret is set, printed or stored by this script. The settings file and nas.pw must be readable only by
+  Administrators, SYSTEM and the account the task runs as (IF-07 / EXT-06).
+
+.PARAMETER AppRoot
+  CKAM's own folder on the server. Default: D:\Citykart_Applications\Citykart_AssetManagement_App
+.PARAMETER EnvFile
+  The shared settings file. Default: <AppRoot>\shared\.env
+.PARAMETER VenvDir
+  The Python virtual environment. Default: <AppRoot>\shared\venv
+.PARAMETER LogDir
+  Where the launcher, stdout and stderr logs go. Default: <AppRoot>\logs  (the app's own JSON logs go to LOG_DIR
+  from the settings file, normally <AppRoot>\logs\app).
+.PARAMETER BindHost
+  Listen address. Default 0.0.0.0.
+.PARAMETER Port
+  Listen port. Default 3211 (firewall rule CKAM-Web allows 3211).
+.PARAMETER NasShare
+  NAS share holding the uploads folder. Default \\10.0.0.25\ckapplications_data
+.PARAMETER NasUser
+  NAS account. Default ckappuser
+.PARAMETER NasPasswordFile
+  File holding the NAS password (read at run time, never logged). Default <AppRoot>\shared\nas.pw
+.PARAMETER NasCheckFolder
+  Folder on the share whose presence proves the mapping works. Default CKASSETMANAGEMENT_DATA
+.PARAMETER NasAttempts
+  How many times to try the mapping at boot. Default 12.
+.PARAMETER NasRetrySeconds
+  Seconds between attempts. Default 15.
+.PARAMETER SkipNas
+  Do not map the NAS (e.g. a test server whose UPLOAD_DIR is a local folder).
+
+.EXAMPLE
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File D:\Citykart_Applications\Citykart_AssetManagement_App\shared\run_ckam_web.ps1
+.EXAMPLE
+  .\run_ckam_web.ps1 -WhatIf      # shows what would run; maps nothing, starts nothing
+#>
+[CmdletBinding(SupportsShouldProcess = $true)]
+param(
+    [string]$AppRoot = 'D:\Citykart_Applications\Citykart_AssetManagement_App',
+    [string]$EnvFile = '',
+    [string]$VenvDir = '',
+    [string]$LogDir = '',
+    [string]$BindHost = '0.0.0.0',
+    [ValidateRange(1, 65535)][int]$Port = 3211,
+    [string]$NasShare = '\\10.0.0.25\ckapplications_data',
+    [string]$NasUser = 'ckappuser',
+    [string]$NasPasswordFile = '',
+    [string]$NasCheckFolder = 'CKASSETMANAGEMENT_DATA',
+    [ValidateRange(1, 100)][int]$NasAttempts = 12,
+    [ValidateRange(1, 300)][int]$NasRetrySeconds = 15,
+    [switch]$SkipNas
+)
+
+# Windows PowerShell 5.1 turns native-command stderr into errors under "Stop"; keep "Continue" and check exit codes.
+$ErrorActionPreference = 'Continue'
+if (-not $EnvFile) { $EnvFile = Join-Path $AppRoot 'shared\.env' }
+if (-not $VenvDir) { $VenvDir = Join-Path $AppRoot 'shared\venv' }
+if (-not $LogDir) { $LogDir = Join-Path $AppRoot 'logs' }
+if (-not $NasPasswordFile) { $NasPasswordFile = Join-Path $AppRoot 'shared\nas.pw' }
+
+New-Item -ItemType Directory -Force -Path $LogDir -WhatIf:$false | Out-Null
+$stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+$launcherLog = Join-Path $LogDir "ckam-web_$stamp.launcher.log"
+
+function Write-Launcher([string]$Message) {
+    $line = '{0}  {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message
+    Write-Host $line
+    Add-Content -Path $launcherLog -Value $line -WhatIf:$false
+}
+
+# 1. Settings -> this process only. Key names are logged, values never.
+if (-not (Test-Path -LiteralPath $EnvFile)) { Write-Launcher "settings file not found: $EnvFile"; exit 2 }
+$loaded = New-Object System.Collections.Generic.List[string]
+foreach ($raw in Get-Content -LiteralPath $EnvFile) {
+    $line = $raw.Trim()
+    if (-not $line -or $line.StartsWith('#')) { continue }
+    if ($raw -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$') {
+        [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process')
+        $loaded.Add($Matches[1])
+    }
+}
+Write-Launcher ("settings loaded from {0}: {1} keys ({2})" -f $EnvFile, $loaded.Count, ($loaded -join ', '))
+if ($env:TRUSTED_PROXIES) {
+    Write-Launcher 'WARNING: TRUSTED_PROXIES is set. CKAM runs without a reverse proxy here; leave it empty (security N2/N3).'
+}
+
+# 2. NAS share for uploads.
+if ($SkipNas) {
+    Write-Launcher 'NAS mapping skipped (-SkipNas)'
+} elseif ($PSCmdlet.ShouldProcess($NasShare, "map NAS share as $NasUser")) {
+    if (-not (Test-Path -LiteralPath $NasPasswordFile)) { Write-Launcher "NAS password file not found: $NasPasswordFile"; exit 2 }
+    $nasPassword = (Get-Content -LiteralPath $NasPasswordFile -Raw).Trim()
+    for ($i = 1; $i -le $NasAttempts; $i++) {
+        $result = & net.exe use $NasShare "/user:$NasUser" $nasPassword /persistent:no 2>&1 | ForEach-Object { "$_" }
+        $ok = ($LASTEXITCODE -eq 0) -or (Test-Path -LiteralPath (Join-Path $NasShare $NasCheckFolder))
+        Write-Launcher ("NAS mapping attempt {0}: {1}" -f $i, ($result -join ' '))
+        if ($ok) { break }
+        Start-Sleep -Seconds $NasRetrySeconds
+    }
+    $nasPassword = $null
+}
+
+# 3. The release = the folder FRONTEND_DIST_DIR points into.
+if (-not $env:FRONTEND_DIST_DIR) { Write-Launcher 'FRONTEND_DIST_DIR is not set in the settings file'; exit 2 }
+$release = Split-Path -Parent $env:FRONTEND_DIST_DIR
+$backendDir = Join-Path $release 'backend'
+if (-not (Test-Path -LiteralPath (Join-Path $backendDir 'app\main.py'))) { Write-Launcher "backend not found at $backendDir"; exit 2 }
+Write-Launcher "serving release: $release"
+Write-Launcher ("environment: {0}; release id: {1}" -f $env:ENVIRONMENT_NAME, $env:APP_VERSION)
+
+# 4. venv for this process, then uvicorn. The argument line is fixed on purpose (N2): no --proxy-headers, ever.
+$python = Join-Path $VenvDir 'Scripts\python.exe'
+if (-not (Test-Path -LiteralPath $python)) { Write-Launcher "venv python not found: $python"; exit 2 }
+$env:VIRTUAL_ENV = $VenvDir
+$env:PATH = (Join-Path $VenvDir 'Scripts') + ';' + $env:PATH
+$uvicornArgs = "-m uvicorn app.main:app --host $BindHost --port $Port --no-proxy-headers"
+Write-Launcher "starting: $python $uvicornArgs (working folder $backendDir)"
+if (-not $PSCmdlet.ShouldProcess("$python $uvicornArgs", 'start CKAM')) { exit 0 }
+$process = Start-Process -FilePath $python -ArgumentList $uvicornArgs -WorkingDirectory $backendDir `
+    -RedirectStandardOutput (Join-Path $LogDir "ckam-web_$stamp.out.log") `
+    -RedirectStandardError (Join-Path $LogDir "ckam-web_$stamp.err.log") `
+    -NoNewWindow -Wait -PassThru
+Write-Launcher "uvicorn exited with code $($process.ExitCode)"
+exit $process.ExitCode

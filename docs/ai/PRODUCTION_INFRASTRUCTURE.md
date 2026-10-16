@@ -32,6 +32,12 @@ Old server `10.0.1.12` (`E:\CK Projects\Citykart_Asset_Management`, database `ck
 
 ## Deploying a new version
 
+Reference scripts (IF-15, 2026-10-16): `ops/windows/` holds secret-free reference versions of the launcher, the
+release script, a read-only `verify_release.ps1` and a rollback script, matching the steps below; the runbook is
+`docs/ai/CKAM_RELEASE_RUNBOOK.md` section 0. **CODE/REFERENCE SIDE FIXED — LIVE LAUNCHER STILL REQUIRES EXT-13**
+(the server's own `shared\run_ckam_web.ps1` and task have not been compared with them; until then the live launcher
+also still lacks `--no-proxy-headers`, N2 / EXT-38).
+
 1. Develop and test on the dev PC only. Get the user's explicit OK before any `git push` and before any deploy.
 2. Build `frontend` (`npm run build`), package `backend/{app,alembic.ini,pyproject.toml,scripts/create_owner.py}` and `frontend/dist` into `releases\<sha>\`.
 3. On 10.0.1.98: back up first (run `CK_Backup_CKASSETMANAGEMENT` on the DB server and confirm `backup.log` says OK), stop `CKAM-Web`, `pip install -e` the new backend into `shared\venv`, set `FRONTEND_DIST_DIR` in `.env` to `<new release>\frontend-dist`, run `alembic upgrade head` (it needs the `.env` values in the process environment), then start `CKAM-Web`.

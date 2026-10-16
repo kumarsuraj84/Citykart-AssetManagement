@@ -1,0 +1,8 @@
+      ip      | category |    action     | outcome | count 
+--------------+----------+---------------+---------+-------
+ 172.31.219.1 | SECURITY | LOGIN_FAILED  | FAILED  |    20
+ 172.31.219.1 | SECURITY | RATE_LIMITED  | DENIED  |     1
+ 172.31.219.1 | SECURITY | INVALID_TOKEN | DENIED  |     1
+ 172.31.219.3 | SECURITY | LOGIN_FAILED  | FAILED  |     1
+(4 rows)
+

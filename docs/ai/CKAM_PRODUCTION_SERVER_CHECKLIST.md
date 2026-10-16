@@ -1,5 +1,17 @@
 # CKAM — Production Server Readiness Checklist
 
+> **Status (security IF-15, 2026-10-16): CODE/REFERENCE SIDE FIXED — LIVE LAUNCHER STILL REQUIRES EXT-13.**
+> This AM-10 checklist was written for a Docker deployment that never happened. Production runs since 2026-10-07 as
+> ONE uvicorn process on Windows (10.0.1.98, task `CKAM-Web`, port 3211, database on 10.0.0.205, uploads on the NAS):
+> see `docs/ai/PRODUCTION_INFRASTRUCTURE.md` for the real layout and `ops/windows/` for the reviewed reference
+> launcher, release, verify and rollback scripts. Server readiness items that still apply there: Python 3.13 venv
+> in `shared\venv`; `shared\.env` and `shared\nas.pw` readable only by Administrators, SYSTEM and the task account
+> (IF-07 / EXT-06 service account instead of SYSTEM); firewall rule `CKAM-Web` for 3211 only; the launcher starts
+> uvicorn with `--no-proxy-headers` and `TRUSTED_PROXIES` empty (N2); the nightly database backup task on
+> 10.0.0.205 and an off-server copy (IF-08 / EXT-08). The live launcher and task definition are still only on the
+> server and must be compared with `ops/windows/run_ckam_web.ps1.template` (EXT-13). The Docker rows below apply to
+> the dev/UAT stack only.
+
 Prepared during AM-10. This lists what the actual production server needs
 before cutover — it does **not** claim the current dev/UAT machine already
 satisfies every row; several rows are explicitly marked as needing

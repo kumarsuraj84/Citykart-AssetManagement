@@ -1,0 +1,151 @@
+{
+  "headerCounts": [
+    {
+      "label": "shell",
+      "method": "GET",
+      "path": "/",
+      "status": 200,
+      "content-security-policy": 1,
+      "permissions-policy": 1,
+      "x-content-type-options": 1,
+      "x-frame-options": 1,
+      "referrer-policy": 1,
+      "cache-control": 1,
+      "x-request-id": 0,
+      "server": 1
+    },
+    {
+      "label": "SPA route /assets/x",
+      "method": "GET",
+      "path": "/assets/x",
+      "status": 200,
+      "content-security-policy": 1,
+      "permissions-policy": 1,
+      "x-content-type-options": 1,
+      "x-frame-options": 1,
+      "referrer-policy": 1,
+      "cache-control": 1,
+      "x-request-id": 0,
+      "server": 1
+    },
+    {
+      "label": "missing static file",
+      "method": "GET",
+      "path": "/assets/nothing.js",
+      "status": 404,
+      "content-security-policy": 1,
+      "permissions-policy": 1,
+      "x-content-type-options": 1,
+      "x-frame-options": 1,
+      "referrer-policy": 1,
+      "cache-control": 0,
+      "x-request-id": 0,
+      "server": 1
+    },
+    {
+      "label": "source map",
+      "method": "GET",
+      "path": "/assets/nothing.js.map",
+      "status": 404,
+      "content-security-policy": 1,
+      "permissions-policy": 1,
+      "x-content-type-options": 1,
+      "x-frame-options": 1,
+      "referrer-policy": 1,
+      "cache-control": 0,
+      "x-request-id": 0,
+      "server": 1
+    },
+    {
+      "label": "api health",
+      "method": "GET",
+      "path": "/api/health",
+      "status": 200,
+      "content-security-policy": 1,
+      "permissions-policy": 1,
+      "x-content-type-options": 1,
+      "x-frame-options": 1,
+      "referrer-policy": 1,
+      "cache-control": 1,
+      "x-request-id": 1,
+      "server": 1
+    },
+    {
+      "label": "401 (no token)",
+      "method": "GET",
+      "path": "/api/auth/capabilities",
+      "status": 401,
+      "content-security-policy": 1,
+      "permissions-policy": 1,
+      "x-content-type-options": 1,
+      "x-frame-options": 1,
+      "referrer-policy": 1,
+      "cache-control": 1,
+      "x-request-id": 1,
+      "server": 1
+    },
+    {
+      "label": "404 api",
+      "method": "GET",
+      "path": "/api/does-not-exist",
+      "status": 404,
+      "content-security-policy": 1,
+      "permissions-policy": 1,
+      "x-content-type-options": 1,
+      "x-frame-options": 1,
+      "referrer-policy": 1,
+      "cache-control": 1,
+      "x-request-id": 1,
+      "server": 1
+    },
+    {
+      "label": "413 oversized",
+      "method": "POST",
+      "path": "/api/documents",
+      "status": 413,
+      "content-security-policy": 1,
+      "permissions-policy": 1,
+      "x-content-type-options": 1,
+      "x-frame-options": 1,
+      "referrer-policy": 1,
+      "cache-control": 1,
+      "x-request-id": 0,
+      "server": 1
+    }
+  ],
+  "addresses": {
+    "containerCall": "200",
+    "requestIds": {
+      "hostViaNginxForged": "wpc-n3-host-nginx-forged-1792126184724",
+      "containerViaNginx": "wpc-n3-container-nginx-1792126184724",
+      "hostDirectForged": "wpc-n3-host-direct-forged-1792126184724"
+    }
+  },
+  "rateLimit": {
+    "host21": [
+      401,
+      401,
+      401,
+      401,
+      401,
+      401,
+      401,
+      401,
+      401,
+      401,
+      401,
+      401,
+      401,
+      401,
+      401,
+      401,
+      401,
+      401,
+      401,
+      401,
+      429
+    ],
+    "hostForgedXffAfterLimit": 429,
+    "secondContainerAfterHostBlocked": "401"
+  }
+}

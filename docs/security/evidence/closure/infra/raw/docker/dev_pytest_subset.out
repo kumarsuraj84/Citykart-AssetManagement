@@ -1,0 +1,9 @@
+10001
+    return await dependant.call(**values)
+
+tests/core/test_body_limit.py::test_an_ordinary_sign_in_and_a_normal_json_post_are_unaffected
+  /usr/local/lib/python3.13/site-packages/starlette/_exception_handler.py:59: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    response = await handler(conn, exc)  # type: ignore[arg-type]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+30 passed, 11 warnings in 3.67s

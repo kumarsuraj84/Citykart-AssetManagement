@@ -2,6 +2,8 @@
 import "./lib/zod-config";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+// FONTS: self-hosted Inter / IBM Plex Mono (no Google Fonts request, see the file).
+import "./fonts.css";
 import "./styles.css";
 import App from "./App.tsx";
 import { router } from "./router";

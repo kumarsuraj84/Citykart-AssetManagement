@@ -1,0 +1,15 @@
+# IF-13: keep caches, local virtualenvs and secrets out of the image build context (the Dockerfile copies only
+# app/, scripts/, alembic.ini, pyproject.toml, constraints.txt and, for the dev target, tests/).
+**/__pycache__
+**/*.pyc
+**/*.pyo
+.pytest_cache
+.coverage
+.coverage.*
+htmlcov
+.venv
+venv
+.env
+.env.*
+*.dump
+*.sql.gz

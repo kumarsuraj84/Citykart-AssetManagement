@@ -1,5 +1,45 @@
 # CKAM — Release Runbook
 
+> **Status (security IF-15, 2026-10-16): CODE/REFERENCE SIDE FIXED — LIVE LAUNCHER STILL REQUIRES EXT-13.**
+> Production is **not** Docker. It is one uvicorn process on Windows (app server 10.0.1.98, task `CKAM-Web`,
+> port 3211), described in `docs/ai/PRODUCTION_INFRASTRUCTURE.md`. The reviewed, secret-free reference scripts for
+> it are in `ops/windows/` (launcher, release, verify, rollback; see its README). The live launcher and task on the
+> server have not yet been compared with them (EXT-13). Sections 1–15 below describe the **Docker dev/UAT stack**
+> only; for production follow section 0.
+
+## 0. Windows production release (single port, no Docker)
+
+Deploying is a separate step that needs the owner's explicit request. The owner types any superuser database or
+NAS password on the servers himself; nothing secret goes into a script, a log, a report or chat.
+
+1. **Dev PC.** All tests green (CLAUDE.md rule 4). Build the frontend with `VITE_APP_VERSION=<sha> npm run build`
+   and run `npm run check:build` (no source maps, no external hosts). Rehearse the migrations on a scratch copy of
+   the database. Package `backend\{app, alembic.ini, pyproject.toml, constraints.txt, scripts\create_owner.py,
+   VERSION}` and `frontend\dist` (as `frontend-dist`) into `ckam-release-<sha>.zip`.
+2. **Backup.** On 10.0.0.205 run task `CK_Backup_CKASSETMANAGEMENT` and confirm `backup.log` says OK.
+3. **Deploy.** On 10.0.1.98, elevated Windows PowerShell 5.1, with the reviewed copy of
+   `ops/windows/deploy_ckam.ps1.template`: first `-WhatIf`, then for real:
+   `.\deploy_ckam.ps1 -Sha <sha> -PackagePath <zip> -BackupConfirmed`. It refuses to continue unless
+   `ENVIRONMENT_NAME=production` and `JWT_SECRET` meets the production rules (checked without printing it), saves
+   `shared\.env` as `.env.pre-<sha>`, stops `CKAM-Web`, installs the pinned packages (`pip install -c
+   constraints.txt`), switches `FRONTEND_DIST_DIR` (the single release switch) and `APP_VERSION`, runs
+   **`alembic upgrade head` before the start**, starts the task and runs the smoke test. On a failure it switches
+   the settings back and restarts the previous release; the database is never rolled back automatically.
+4. **Verify.** `ops/windows/verify_release.ps1 -BaseUrl http://127.0.0.1:3211 -ExpectedRelease <sha> -ReleaseDir
+   <AppRoot>\releases\<sha> -LauncherLogDir <AppRoot>\logs` (read-only), then once more from a LAN PC against
+   `http://10.0.1.98:3211`. Expected: no FAIL; every security header exactly once; `/api/does-not-exist` a JSON
+   404; every traversal probe 404. Then the functional smoke test (sign in, Home, Asset Register, one asset).
+5. **Rollback (code only).** `rollback_release.ps1 -ToSha <previous>` (first `-WhatIf`). If the release you leave
+   added migrations, the old code may not work on the new schema: roll forward with a fix, or (owner's decision)
+   restore the dump from step 2, which loses everything written since. Never `alembic downgrade` live data without
+   a fresh backup. Release folders are never deleted by these scripts.
+
+The launcher (`run_ckam_web.ps1.template`) starts `python -m uvicorn app.main:app --host 0.0.0.0 --port 3211 --no-proxy-headers`
+(N2: never `--proxy-headers`; `TRUSTED_PROXIES` stays empty in production). Settings keys added since 2026-10-14:
+`LOG_DIR` (`<AppRoot>\logs\app`), `ENVIRONMENT_NAME=production`, `APP_VERSION=<sha>`.
+
+---
+
 This is the operational companion to `docs/deployment.md` (which remains the
 full reference for first-time setup, backups, and restore — read it in
 full before a real deployment). This runbook is the condensed,

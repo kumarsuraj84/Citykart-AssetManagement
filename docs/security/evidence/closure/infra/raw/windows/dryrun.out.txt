@@ -1,0 +1,108 @@
+﻿
+===== deploy -WhatIf (package not yet unpacked) =====
+2026-10-16 10:29:54  === CKAM deploy bbbbbbb (WhatIf: nothing is changed) ===
+2026-10-16 10:29:54  JWT_SECRET meets the production rules (value not shown)
+2026-10-16 10:29:54  pre-checks passed; current release: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-
+Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\wpc\ps\fakeroot\releases\aaaaaaa
+2026-10-16 10:29:54  backup confirmed by the operator (-BackupConfirmed)
+2026-10-16 10:29:54  WhatIf: would wait for http://127.0.0.1:3211/api/health and run C:\Users\User2\AppData\Local\Temp\
+claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\wpc\ps\parsed\verify_relea
+se.ps1 -BaseUrl http://127.0.0.1:3211 -ExpectedRelease bbbbbbb -ReleaseDir C:\Users\User2\AppData\Local\Temp\claude\D--
+ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\wpc\ps\fakeroot\releases\bbbbbbb 
+-LauncherLogDir C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-
+472d20016684\scratchpad\wpc\ps\fakeroot\logs
+2026-10-16 10:29:54  === WhatIf finished: nothing in CKAM was changed (only this log file was written) ===
+exit code: 0; shared\.env unchanged: True; release bbbbbbb exists: False
+
+===== deploy without a backup step (must stop) =====
+2026-10-16 10:29:54  === CKAM deploy bbbbbbb (WhatIf: nothing is changed) ===
+2026-10-16 10:29:54  JWT_SECRET meets the production rules (value not shown)
+2026-10-16 10:29:54  pre-checks passed; current release: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-
+Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\wpc\ps\fakeroot\releases\aaaaaaa
+2026-10-16 10:29:54  STOPPED: take the database backup first (task CK_Backup_CKASSETMANAGEMENT on the database server, 
+check backup.log says OK), then rerun with -BackupConfirmed, or pass -BackupHook
+exit code: 2; shared\.env unchanged: True; release bbbbbbb exists: False
+
+===== deploy with ENVIRONMENT_NAME=development (must stop) =====
+2026-10-16 10:29:54  === CKAM deploy bbbbbbb (WhatIf: nothing is changed) ===
+2026-10-16 10:29:54  STOPPED: ENVIRONMENT_NAME in shared\.env is not "production"
+exit code: 2; shared\.env unchanged: True; release bbbbbbb exists: False
+
+===== deploy with a 40 x "a" JWT_SECRET (must stop) =====
+2026-10-16 10:29:54  === CKAM deploy bbbbbbb (WhatIf: nothing is changed) ===
+2026-10-16 10:29:54  STOPPED: JWT_SECRET fails the production rules: fewer than 8 different characters (the app would 
+refuse to start)
+exit code: 2; shared\.env unchanged: True; release bbbbbbb exists: False
+
+===== deploy with a short JWT_SECRET (must stop) =====
+2026-10-16 10:29:54  === CKAM deploy bbbbbbb (WhatIf: nothing is changed) ===
+2026-10-16 10:29:54  STOPPED: JWT_SECRET fails the production rules: shorter than 32 characters (the app would refuse 
+to start)
+exit code: 2; shared\.env unchanged: True; release bbbbbbb exists: False
+
+===== deploy of an incomplete release folder (must stop) =====
+2026-10-16 10:29:54  === CKAM deploy ccccccc (WhatIf: nothing is changed) ===
+2026-10-16 10:29:54  STOPPED: release incomplete, missing backend\constraints.txt
+exit code: 2; shared\.env unchanged: True; release bbbbbbb exists: False
+
+===== deploy -WhatIf (release folder already there) =====
+2026-10-16 10:29:54  === CKAM deploy bbbbbbb (WhatIf: nothing is changed) ===
+2026-10-16 10:29:54  release folder complete: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Manag
+ement\33a6302e-4441-4084-94a5-472d20016684\scratchpad\wpc\ps\fakeroot\releases\bbbbbbb
+2026-10-16 10:29:54  JWT_SECRET meets the production rules (value not shown)
+2026-10-16 10:29:54  pre-checks passed; current release: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-
+Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\wpc\ps\fakeroot\releases\aaaaaaa
+2026-10-16 10:29:54  backup confirmed by the operator (-BackupConfirmed)
+2026-10-16 10:29:54  WhatIf: would wait for http://127.0.0.1:3211/api/health and run C:\Users\User2\AppData\Local\Temp\
+claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\wpc\ps\parsed\verify_relea
+se.ps1 -BaseUrl http://127.0.0.1:3211 -ExpectedRelease bbbbbbb -ReleaseDir C:\Users\User2\AppData\Local\Temp\claude\D--
+ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\wpc\ps\fakeroot\releases\bbbbbbb 
+-LauncherLogDir C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-
+472d20016684\scratchpad\wpc\ps\fakeroot\logs
+2026-10-16 10:29:54  === WhatIf finished: nothing in CKAM was changed (only this log file was written) ===
+exit code: 0; shared\.env unchanged: True; release bbbbbbb exists: True
+
+===== rollback -WhatIf to aaaaaaa (already selected: must stop) =====
+2026-10-16 10:29:54  === CKAM rollback to aaaaaaa (WhatIf: nothing is changed) ===
+2026-10-16 10:29:54  current release: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33
+a6302e-4441-4084-94a5-472d20016684\scratchpad\wpc\ps\fakeroot\releases\aaaaaaa; going back to: C:\Users\User2\AppData\L
+ocal\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\wpc\ps\fakeroot\
+releases\aaaaaaa
+2026-10-16 10:29:54  STOPPED: aaaaaaa is already the selected release
+exit code: 2; shared\.env unchanged: True; release bbbbbbb exists: True
+
+===== rollback -WhatIf to bbbbbbb =====
+2026-10-16 10:29:54  === CKAM rollback to bbbbbbb (WhatIf: nothing is changed) ===
+2026-10-16 10:29:54  current release: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33
+a6302e-4441-4084-94a5-472d20016684\scratchpad\wpc\ps\fakeroot\releases\aaaaaaa; going back to: C:\Users\User2\AppData\L
+ocal\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\wpc\ps\fakeroot\
+releases\bbbbbbb
+2026-10-16 10:29:54  WhatIf: would wait for http://127.0.0.1:3211/api/health and run C:\Users\User2\AppData\Local\Temp\
+claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\wpc\ps\parsed\verify_relea
+se.ps1 -ExpectedRelease bbbbbbb -ReleaseDir C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Managem
+ent\33a6302e-4441-4084-94a5-472d20016684\scratchpad\wpc\ps\fakeroot\releases\bbbbbbb
+2026-10-16 10:29:54  === WhatIf finished: nothing in CKAM was changed (only this log file was written) ===
+exit code: 0; shared\.env unchanged: True; release bbbbbbb exists: True
+
+===== launcher -WhatIf =====
+2026-10-16 10:29:54  settings loaded from C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Managemen
+t\33a6302e-4441-4084-94a5-472d20016684\scratchpad\wpc\ps\fakeroot\shared\.env: 7 keys (DATABASE_URL, JWT_SECRET, 
+ENVIRONMENT_NAME, FRONTEND_DIST_DIR, LOG_DIR, APP_VERSION, UPLOAD_DIR)
+2026-10-16 10:29:54  serving release: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33
+a6302e-4441-4084-94a5-472d20016684\scratchpad\wpc\ps\fakeroot\releases\aaaaaaa
+2026-10-16 10:29:54  environment: production; release id: aaaaaaa
+2026-10-16 10:29:54  starting: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-
+4441-4084-94a5-472d20016684\scratchpad\wpc\ps\fakeroot\shared\venv\Scripts\python.exe -m uvicorn app.main:app --host 
+0.0.0.0 --port 3211 --no-proxy-headers (working folder C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-As
+set-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\wpc\ps\fakeroot\releases\aaaaaaa\backend)
+exit code: 0; shared\.env unchanged: True; release bbbbbbb exists: True
+
+===== logs written in the fake root =====
+ckam-web_20261016_102954.launcher.log
+deploy_bbbbbbb_20261016_102954.log
+deploy_ccccccc_20261016_102954.log
+rollback_to_aaaaaaa_20261016_102954.log
+rollback_to_bbbbbbb_20261016_102954.log
+
+===== secret leak check: does any log or output contain the fake JWT secret or the fake NAS password? =====
+hits: 0

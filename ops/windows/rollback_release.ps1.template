@@ -1,0 +1,133 @@
+<#
+.SYNOPSIS
+  Switch CKAM back to a previous release folder (REFERENCE TEMPLATE, security IF-15). Supports -WhatIf.
+
+.DESCRIPTION
+  Secret-free reference version of the rollback in docs/ai/PRODUCTION_INFRASTRUCTURE.md ("Rollback"). Not yet run
+  on the server (EXT-13). Use it only when the owner asked for the rollback.
+
+  What it does:
+    1. Checks that <AppRoot>\releases\<ToSha> is complete (backend + frontend-dist).
+    2. Saves the current shared\.env as shared\.env.pre-rollback-<time>.
+    3. Stops task CKAM-Web and only CKAM's own python listener.
+    4. Optionally (-ReinstallBackend) runs pip install -c constraints.txt -e <previous release>\backend.
+    5. Sets FRONTEND_DIST_DIR=<previous release>\frontend-dist and APP_VERSION=<ToSha> - the single switch: the
+       launcher runs the backend from the same release folder.
+    6. Starts the task, waits for /api/health and runs verify_release.ps1 against it.
+
+  What it NEVER does: delete or change any release folder, upload, log, backup or database row; run
+  `alembic downgrade`. Release folders are kept as they are (the one you leave stays for a roll-forward).
+
+  DATABASE: code is rolled back, the schema is not. If the release you leave added migrations, the older code may
+  fail on the newer schema (for example every save failing). Then the choice is (a) roll FORWARD again with a fix,
+  or (b) restore the database dump taken just before the deploy, which loses everything written since: that is a
+  separate, deliberate step done by the owner on the database server (docs/ai/CKAM_RELEASE_RUNBOOK.md, Windows
+  production section). Never run `alembic downgrade` on live data without a fresh backup.
+
+.PARAMETER ToSha
+  The release to go back to (folder name under releases\). Required.
+.PARAMETER AppRoot
+  Default D:\Citykart_Applications\Citykart_AssetManagement_App
+.PARAMETER TaskName
+  Default CKAM-Web
+.PARAMETER Port
+  Default 3211
+.PARAMETER ReinstallBackend
+  Also reinstall the previous release's backend packages into shared\venv.
+.PARAMETER HealthTimeoutSeconds
+  Default 120.
+
+.EXAMPLE
+  .\rollback_release.ps1 -ToSha 3b5e842 -WhatIf
+#>
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
+param(
+    [Parameter(Mandatory = $true)][ValidatePattern('^[0-9a-f]{7,40}$')][string]$ToSha,
+    [string]$AppRoot = 'D:\Citykart_Applications\Citykart_AssetManagement_App',
+    [string]$TaskName = 'CKAM-Web',
+    [ValidateRange(1, 65535)][int]$Port = 3211,
+    [switch]$ReinstallBackend,
+    [ValidateRange(10, 900)][int]$HealthTimeoutSeconds = 120
+)
+
+$ErrorActionPreference = 'Continue'
+$target = Join-Path $AppRoot "releases\$ToSha"
+$envFile = Join-Path $AppRoot 'shared\.env'
+$python = Join-Path $AppRoot 'shared\venv\Scripts\python.exe'
+$logDir = Join-Path $AppRoot 'logs'
+$verifyScript = Join-Path $PSScriptRoot 'verify_release.ps1'
+$dryRun = [bool]$WhatIfPreference
+$stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+New-Item -ItemType Directory -Force -Path $logDir -WhatIf:$false | Out-Null
+$logFile = Join-Path $logDir "rollback_to_${ToSha}_$stamp.log"
+
+function Write-Log([string]$Message) {
+    $line = '{0}  {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message
+    Write-Host $line
+    Add-Content -Path $logFile -Value $line -WhatIf:$false
+}
+function Stop-Here([string]$Why) { Write-Log "STOPPED: $Why"; exit 2 }
+function Set-EnvKey([string[]]$Lines, [string]$Key, [string]$Value) {
+    $found = $false
+    $out = foreach ($l in $Lines) { if ($l -match "^\s*$Key\s*=") { $found = $true; "$Key=$Value" } else { $l } }
+    if (-not $found) { $out = @($out) + "$Key=$Value" }
+    return , @($out)
+}
+
+Write-Log "=== CKAM rollback to $ToSha $(if ($dryRun) { '(WhatIf: nothing is changed)' }) ==="
+foreach ($f in 'backend\app\main.py', 'backend\alembic.ini', 'frontend-dist\index.html') {
+    if (-not (Test-Path -LiteralPath (Join-Path $target $f))) { Stop-Here "release $target is incomplete or missing ($f)" }
+}
+if (-not (Test-Path -LiteralPath $envFile)) { Stop-Here "settings file not found: $envFile" }
+$current = ''
+foreach ($raw in Get-Content -LiteralPath $envFile) { if ($raw -match '^\s*FRONTEND_DIST_DIR\s*=(.*)$') { $current = $Matches[1] } }
+Write-Log "current release: $(Split-Path -Parent $current); going back to: $target"
+if ($current -eq (Join-Path $target 'frontend-dist')) { Stop-Here "$ToSha is already the selected release" }
+
+$saved = "$envFile.pre-rollback-$stamp"
+if ($PSCmdlet.ShouldProcess($envFile, "copy to $saved")) { Copy-Item -LiteralPath $envFile -Destination $saved -Force; Write-Log "saved $saved" }
+
+if ($PSCmdlet.ShouldProcess($TaskName, 'stop CKAM (task + its own python listener only)')) {
+    Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 3
+    foreach ($c in @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)) {
+        $p = Get-CimInstance Win32_Process -Filter "ProcessId = $($c.OwningProcess)"
+        if ($p -and $p.ExecutablePath -like (Join-Path $AppRoot 'shared\venv\*')) { Write-Log "stopping CKAM process $($p.ProcessId)"; Stop-Process -Id $p.ProcessId -Force }
+        else { Write-Log "WARNING: another program listens on $Port (pid $($c.OwningProcess)); not touching it" }
+    }
+}
+
+if ($ReinstallBackend -and $PSCmdlet.ShouldProcess("$target\backend", 'pip install -e (previous release)')) {
+    $constraints = Join-Path $target 'backend\constraints.txt'
+    $pipArgs = @('-m', 'pip', 'install', '--disable-pip-version-check')
+    if (Test-Path -LiteralPath $constraints) { $pipArgs += @('-c', $constraints) }
+    $pipArgs += @('-e', (Join-Path $target 'backend'))
+    & $python @pipArgs 2>&1 | ForEach-Object { "$_" } | Select-Object -Last 5 | ForEach-Object { Write-Log "pip: $_" }
+    if ($LASTEXITCODE -ne 0) { Write-Log "WARNING: pip exited with $LASTEXITCODE; continuing with the switch (the code runs from the release folder)" }
+}
+
+if ($PSCmdlet.ShouldProcess($envFile, "set FRONTEND_DIST_DIR=$target\frontend-dist, APP_VERSION=$ToSha")) {
+    $lines = Get-Content -LiteralPath $envFile
+    $lines = Set-EnvKey $lines 'FRONTEND_DIST_DIR' (Join-Path $target 'frontend-dist')
+    $lines = Set-EnvKey $lines 'APP_VERSION' $ToSha
+    [System.IO.File]::WriteAllText($envFile, (($lines -join "`r`n") + "`r`n"), (New-Object System.Text.UTF8Encoding($false)))
+    Write-Log 'settings switched back'
+}
+
+if ($PSCmdlet.ShouldProcess($TaskName, 'start CKAM')) { Start-ScheduledTask -TaskName $TaskName; Start-Sleep -Seconds 8 }
+if ($dryRun) {
+    Write-Log "WhatIf: would wait for http://127.0.0.1:$Port/api/health and run $verifyScript -ExpectedRelease $ToSha -ReleaseDir $target"
+    Write-Log '=== WhatIf finished: nothing in CKAM was changed (only this log file was written) ==='
+    exit 0
+}
+$deadline = (Get-Date).AddSeconds($HealthTimeoutSeconds)
+$ok = $false
+while (-not $ok -and (Get-Date) -lt $deadline) {
+    try { $ok = (Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$Port/api/health" -TimeoutSec 5).StatusCode -eq 200 } catch { $ok = $false }
+    if (-not $ok) { Start-Sleep -Seconds 3 }
+}
+if (-not $ok) { Write-Log "the previous release did not answer /api/health. The saved settings are in $saved. Check the launcher log in $logDir."; exit 1 }
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $verifyScript -BaseUrl "http://127.0.0.1:$Port" -ExpectedRelease $ToSha -ReleaseDir $target -LauncherLogDir $logDir | ForEach-Object { Write-Log "verify: $_" }
+if ($LASTEXITCODE -ne 0) { Write-Log 'verify_release.ps1 reported a failure: read the rows above. If saves fail, the schema is newer than this code (see DATABASE above).'; exit 1 }
+Write-Log "=== rolled back to $ToSha. Nothing was deleted; the release you left is still in releases\. ==="
+exit 0

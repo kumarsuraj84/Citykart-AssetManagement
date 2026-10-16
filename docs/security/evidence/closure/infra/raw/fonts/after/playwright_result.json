@@ -1,0 +1,645 @@
+{
+  "base": "http://127.0.0.1:3522",
+  "visited": [
+    {
+      "label": "login",
+      "ok": true,
+      "url": "http://127.0.0.1:3522/dashboard"
+    },
+    {
+      "label": "/dashboard",
+      "ok": true,
+      "url": "http://127.0.0.1:3522/dashboard"
+    },
+    {
+      "label": "/assets",
+      "ok": true,
+      "url": "http://127.0.0.1:3522/assets"
+    },
+    {
+      "label": "/assets/1",
+      "ok": true,
+      "url": "http://127.0.0.1:3522/assets/1"
+    },
+    {
+      "label": "/purchase-orders",
+      "ok": true,
+      "url": "http://127.0.0.1:3522/purchase-orders"
+    },
+    {
+      "label": "/purchase-orders/1",
+      "ok": true,
+      "url": "http://127.0.0.1:3522/purchase-orders/1"
+    },
+    {
+      "label": "/receive",
+      "ok": true,
+      "url": "http://127.0.0.1:3522/receive"
+    },
+    {
+      "label": "/asset-movement",
+      "ok": true,
+      "url": "http://127.0.0.1:3522/asset-movement"
+    },
+    {
+      "label": "/reports",
+      "ok": true,
+      "url": "http://127.0.0.1:3522/reports"
+    },
+    {
+      "label": "/settings",
+      "ok": true,
+      "url": "http://127.0.0.1:3522/settings"
+    },
+    {
+      "label": "/settings/system/logs",
+      "ok": true,
+      "url": "http://127.0.0.1:3522/settings/system/logs"
+    },
+    {
+      "label": "report-a-problem dialog",
+      "ok": true,
+      "url": "http://127.0.0.1:3522/settings/system/logs"
+    }
+  ],
+  "hosts": {
+    "127.0.0.1:3522": 155,
+    "": 1
+  },
+  "googleRequests": 0,
+  "violations": [],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "fontResponses": [
+    {
+      "url": "http://127.0.0.1:3522/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/ibm-plex-mono-latin-ext-600-normal-D38SheWl.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    },
+    {
+      "url": "http://127.0.0.1:3522/assets/ibm-plex-mono-latin-600-normal-BgSNZQsw.woff2",
+      "status": 200,
+      "type": "font/woff2"
+    }
+  ],
+  "fontInfo": {
+    "login": {
+      "htmlFontFamily": "Inter, system-ui, sans-serif",
+      "bodyFontFamily": "Inter, system-ui, sans-serif",
+      "numericSample": null,
+      "sansVar": "\"Inter\", system-ui, sans-serif",
+      "numericVar": "\"IBM Plex Mono\", ui-monospace, monospace",
+      "check": {
+        "sans400": true,
+        "sans650": true,
+        "sans700": true,
+        "mono600": true
+      },
+      "rupee": {
+        "sans": [
+          17.328125,
+          17.328125
+        ],
+        "mono": [
+          19.199996948242188,
+          19.199996948242188
+        ]
+      },
+      "loadedFaces": [
+        "Inter|100 900|normal|U+100-2BA, U+2BD-2C5, U+",
+        "Inter|100 900|normal|U+0-FF, U+131, U+152-153",
+        "IBM Plex Mono|600|normal|U+100-2BA, U+2BD-2C5, U+",
+        "IBM Plex Mono|600|normal|U+0-FF, U+131, U+152-153"
+      ]
+    },
+    "01-home": {
+      "htmlFontFamily": "Inter, system-ui, sans-serif",
+      "bodyFontFamily": "Inter, system-ui, sans-serif",
+      "numericSample": null,
+      "sansVar": "\"Inter\", system-ui, sans-serif",
+      "numericVar": "\"IBM Plex Mono\", ui-monospace, monospace",
+      "check": {
+        "sans400": true,
+        "sans650": true,
+        "sans700": true,
+        "mono600": true
+      },
+      "rupee": {
+        "sans": [
+          17.328125,
+          17.328125
+        ],
+        "mono": [
+          19.199996948242188,
+          19.199996948242188
+        ]
+      },
+      "loadedFaces": [
+        "Inter|100 900|normal|U+100-2BA, U+2BD-2C5, U+",
+        "Inter|100 900|normal|U+0-FF, U+131, U+152-153",
+        "IBM Plex Mono|600|normal|U+100-2BA, U+2BD-2C5, U+",
+        "IBM Plex Mono|600|normal|U+0-FF, U+131, U+152-153"
+      ]
+    },
+    "02-assets": {
+      "htmlFontFamily": "Inter, system-ui, sans-serif",
+      "bodyFontFamily": "Inter, system-ui, sans-serif",
+      "numericSample": null,
+      "sansVar": "\"Inter\", system-ui, sans-serif",
+      "numericVar": "\"IBM Plex Mono\", ui-monospace, monospace",
+      "check": {
+        "sans400": true,
+        "sans650": true,
+        "sans700": true,
+        "mono600": true
+      },
+      "rupee": {
+        "sans": [
+          17.328125,
+          17.328125
+        ],
+        "mono": [
+          19.199996948242188,
+          19.199996948242188
+        ]
+      },
+      "loadedFaces": [
+        "Inter|100 900|normal|U+100-2BA, U+2BD-2C5, U+",
+        "Inter|100 900|normal|U+0-FF, U+131, U+152-153",
+        "IBM Plex Mono|600|normal|U+100-2BA, U+2BD-2C5, U+",
+        "IBM Plex Mono|600|normal|U+0-FF, U+131, U+152-153"
+      ]
+    },
+    "03-asset360": {
+      "htmlFontFamily": "Inter, system-ui, sans-serif",
+      "bodyFontFamily": "Inter, system-ui, sans-serif",
+      "numericSample": null,
+      "sansVar": "\"Inter\", system-ui, sans-serif",
+      "numericVar": "\"IBM Plex Mono\", ui-monospace, monospace",
+      "check": {
+        "sans400": true,
+        "sans650": true,
+        "sans700": true,
+        "mono600": true
+      },
+      "rupee": {
+        "sans": [
+          17.328125,
+          17.328125
+        ],
+        "mono": [
+          19.199996948242188,
+          19.199996948242188
+        ]
+      },
+      "loadedFaces": [
+        "Inter|100 900|normal|U+100-2BA, U+2BD-2C5, U+",
+        "Inter|100 900|normal|U+0-FF, U+131, U+152-153",
+        "IBM Plex Mono|600|normal|U+100-2BA, U+2BD-2C5, U+",
+        "IBM Plex Mono|600|normal|U+0-FF, U+131, U+152-153"
+      ]
+    },
+    "04-po-list": {
+      "htmlFontFamily": "Inter, system-ui, sans-serif",
+      "bodyFontFamily": "Inter, system-ui, sans-serif",
+      "numericSample": null,
+      "sansVar": "\"Inter\", system-ui, sans-serif",
+      "numericVar": "\"IBM Plex Mono\", ui-monospace, monospace",
+      "check": {
+        "sans400": true,
+        "sans650": true,
+        "sans700": true,
+        "mono600": true
+      },
+      "rupee": {
+        "sans": [
+          17.328125,
+          17.328125
+        ],
+        "mono": [
+          19.199996948242188,
+          19.199996948242188
+        ]
+      },
+      "loadedFaces": [
+        "Inter|100 900|normal|U+100-2BA, U+2BD-2C5, U+",
+        "Inter|100 900|normal|U+0-FF, U+131, U+152-153",
+        "IBM Plex Mono|600|normal|U+100-2BA, U+2BD-2C5, U+",
+        "IBM Plex Mono|600|normal|U+0-FF, U+131, U+152-153"
+      ]
+    },
+    "05-po-page": {
+      "htmlFontFamily": "Inter, system-ui, sans-serif",
+      "bodyFontFamily": "Inter, system-ui, sans-serif",
+      "numericSample": null,
+      "sansVar": "\"Inter\", system-ui, sans-serif",
+      "numericVar": "\"IBM Plex Mono\", ui-monospace, monospace",
+      "check": {
+        "sans400": true,
+        "sans650": true,
+        "sans700": true,
+        "mono600": true
+      },
+      "rupee": {
+        "sans": [
+          17.328125,
+          17.328125
+        ],
+        "mono": [
+          19.199996948242188,
+          19.199996948242188
+        ]
+      },
+      "loadedFaces": [
+        "Inter|100 900|normal|U+100-2BA, U+2BD-2C5, U+",
+        "Inter|100 900|normal|U+0-FF, U+131, U+152-153",
+        "IBM Plex Mono|600|normal|U+100-2BA, U+2BD-2C5, U+",
+        "IBM Plex Mono|600|normal|U+0-FF, U+131, U+152-153"
+      ]
+    },
+    "06-receive": {
+      "htmlFontFamily": "Inter, system-ui, sans-serif",
+      "bodyFontFamily": "Inter, system-ui, sans-serif",
+      "numericSample": null,
+      "sansVar": "\"Inter\", system-ui, sans-serif",
+      "numericVar": "\"IBM Plex Mono\", ui-monospace, monospace",
+      "check": {
+        "sans400": true,
+        "sans650": true,
+        "sans700": true,
+        "mono600": true
+      },
+      "rupee": {
+        "sans": [
+          17.328125,
+          17.328125
+        ],
+        "mono": [
+          19.199996948242188,
+          19.199996948242188
+        ]
+      },
+      "loadedFaces": [
+        "Inter|100 900|normal|U+100-2BA, U+2BD-2C5, U+",
+        "Inter|100 900|normal|U+0-FF, U+131, U+152-153",
+        "IBM Plex Mono|600|normal|U+100-2BA, U+2BD-2C5, U+",
+        "IBM Plex Mono|600|normal|U+0-FF, U+131, U+152-153"
+      ]
+    },
+    "07-move": {
+      "htmlFontFamily": "Inter, system-ui, sans-serif",
+      "bodyFontFamily": "Inter, system-ui, sans-serif",
+      "numericSample": null,
+      "sansVar": "\"Inter\", system-ui, sans-serif",
+      "numericVar": "\"IBM Plex Mono\", ui-monospace, monospace",
+      "check": {
+        "sans400": true,
+        "sans650": true,
+        "sans700": true,
+        "mono600": true
+      },
+      "rupee": {
+        "sans": [
+          17.328125,
+          17.328125
+        ],
+        "mono": [
+          19.199996948242188,
+          19.199996948242188
+        ]
+      },
+      "loadedFaces": [
+        "Inter|100 900|normal|U+100-2BA, U+2BD-2C5, U+",
+        "Inter|100 900|normal|U+0-FF, U+131, U+152-153",
+        "IBM Plex Mono|600|normal|U+100-2BA, U+2BD-2C5, U+",
+        "IBM Plex Mono|600|normal|U+0-FF, U+131, U+152-153"
+      ]
+    },
+    "08-reports": {
+      "htmlFontFamily": "Inter, system-ui, sans-serif",
+      "bodyFontFamily": "Inter, system-ui, sans-serif",
+      "numericSample": null,
+      "sansVar": "\"Inter\", system-ui, sans-serif",
+      "numericVar": "\"IBM Plex Mono\", ui-monospace, monospace",
+      "check": {
+        "sans400": true,
+        "sans650": true,
+        "sans700": true,
+        "mono600": true
+      },
+      "rupee": {
+        "sans": [
+          17.328125,
+          17.328125
+        ],
+        "mono": [
+          19.199996948242188,
+          19.199996948242188
+        ]
+      },
+      "loadedFaces": [
+        "Inter|100 900|normal|U+100-2BA, U+2BD-2C5, U+",
+        "Inter|100 900|normal|U+0-FF, U+131, U+152-153",
+        "IBM Plex Mono|600|normal|U+100-2BA, U+2BD-2C5, U+",
+        "IBM Plex Mono|600|normal|U+0-FF, U+131, U+152-153"
+      ]
+    },
+    "09-settings": {
+      "htmlFontFamily": "Inter, system-ui, sans-serif",
+      "bodyFontFamily": "Inter, system-ui, sans-serif",
+      "numericSample": null,
+      "sansVar": "\"Inter\", system-ui, sans-serif",
+      "numericVar": "\"IBM Plex Mono\", ui-monospace, monospace",
+      "check": {
+        "sans400": true,
+        "sans650": true,
+        "sans700": true,
+        "mono600": true
+      },
+      "rupee": {
+        "sans": [
+          17.328125,
+          17.328125
+        ],
+        "mono": [
+          19.199996948242188,
+          19.199996948242188
+        ]
+      },
+      "loadedFaces": [
+        "Inter|100 900|normal|U+100-2BA, U+2BD-2C5, U+",
+        "Inter|100 900|normal|U+0-FF, U+131, U+152-153",
+        "IBM Plex Mono|600|normal|U+100-2BA, U+2BD-2C5, U+",
+        "IBM Plex Mono|600|normal|U+0-FF, U+131, U+152-153"
+      ]
+    },
+    "10-logs": {
+      "htmlFontFamily": "Inter, system-ui, sans-serif",
+      "bodyFontFamily": "Inter, system-ui, sans-serif",
+      "numericSample": null,
+      "sansVar": "\"Inter\", system-ui, sans-serif",
+      "numericVar": "\"IBM Plex Mono\", ui-monospace, monospace",
+      "check": {
+        "sans400": true,
+        "sans650": true,
+        "sans700": true,
+        "mono600": true
+      },
+      "rupee": {
+        "sans": [
+          17.328125,
+          17.328125
+        ],
+        "mono": [
+          19.199996948242188,
+          19.199996948242188
+        ]
+      },
+      "loadedFaces": [
+        "Inter|100 900|normal|U+100-2BA, U+2BD-2C5, U+",
+        "Inter|100 900|normal|U+0-FF, U+131, U+152-153",
+        "IBM Plex Mono|600|normal|U+100-2BA, U+2BD-2C5, U+",
+        "IBM Plex Mono|600|normal|U+0-FF, U+131, U+152-153"
+      ]
+    },
+    "11-report-problem": {
+      "htmlFontFamily": "Inter, system-ui, sans-serif",
+      "bodyFontFamily": "Inter, system-ui, sans-serif",
+      "numericSample": null,
+      "sansVar": "\"Inter\", system-ui, sans-serif",
+      "numericVar": "\"IBM Plex Mono\", ui-monospace, monospace",
+      "check": {
+        "sans400": true,
+        "sans650": true,
+        "sans700": true,
+        "mono600": true
+      },
+      "rupee": {
+        "sans": [
+          17.328125,
+          17.328125
+        ],
+        "mono": [
+          19.199996948242188,
+          19.199996948242188
+        ]
+      },
+      "loadedFaces": [
+        "Inter|100 900|normal|U+100-2BA, U+2BD-2C5, U+",
+        "Inter|100 900|normal|U+0-FF, U+131, U+152-153",
+        "IBM Plex Mono|600|normal|U+100-2BA, U+2BD-2C5, U+",
+        "IBM Plex Mono|600|normal|U+0-FF, U+131, U+152-153"
+      ]
+    }
+  }
+}

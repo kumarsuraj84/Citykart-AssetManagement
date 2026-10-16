@@ -1,0 +1,86 @@
+[
+  {
+    "file": "00-login.png",
+    "size": "1366x768 vs 1366x768",
+    "diffPixels": 0,
+    "diffPct": 0,
+    "box": ""
+  },
+  {
+    "file": "01-home.png",
+    "size": "1366x768 vs 1366x768",
+    "diffPixels": 2050,
+    "diffPct": 0.195,
+    "box": "293,356-567,369"
+  },
+  {
+    "file": "02-assets.png",
+    "size": "1366x768 vs 1366x768",
+    "diffPixels": 0,
+    "diffPct": 0,
+    "box": ""
+  },
+  {
+    "file": "03-asset360.png",
+    "size": "1366x768 vs 1366x768",
+    "diffPixels": 0,
+    "diffPct": 0,
+    "box": ""
+  },
+  {
+    "file": "04-po-list.png",
+    "size": "1366x768 vs 1366x768",
+    "diffPixels": 0,
+    "diffPct": 0,
+    "box": ""
+  },
+  {
+    "file": "05-po-page.png",
+    "size": "1366x768 vs 1366x768",
+    "diffPixels": 0,
+    "diffPct": 0,
+    "box": ""
+  },
+  {
+    "file": "06-receive.png",
+    "size": "1366x768 vs 1366x768",
+    "diffPixels": 0,
+    "diffPct": 0,
+    "box": ""
+  },
+  {
+    "file": "07-move.png",
+    "size": "1366x768 vs 1366x768",
+    "diffPixels": 0,
+    "diffPct": 0,
+    "box": ""
+  },
+  {
+    "file": "08-reports.png",
+    "size": "1366x768 vs 1366x768",
+    "diffPixels": 0,
+    "diffPct": 0,
+    "box": ""
+  },
+  {
+    "file": "09-settings.png",
+    "size": "1366x768 vs 1366x768",
+    "diffPixels": 0,
+    "diffPct": 0,
+    "box": ""
+  },
+  {
+    "file": "10-logs.png",
+    "size": "1366x768 vs 1366x768",
+    "diffPixels": 1948,
+    "diffPct": 0.186,
+    "box": "394,489-817,763"
+  },
+  {
+    "file": "11-report-problem.png",
+    "size": "1366x768 vs 1366x768",
+    "diffPixels": 1332,
+    "diffPct": 0.127,
+    "box": "395,489-817,762"
+  }
+]

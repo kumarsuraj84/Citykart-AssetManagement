@@ -1,0 +1,251 @@
+<#
+.SYNOPSIS
+  CKAM production release script (REFERENCE TEMPLATE, security IF-15 / IF-11 / IF-04). Supports -WhatIf.
+
+.DESCRIPTION
+  Secret-free, parameterised reference version of the release steps used on the app server since 2026-10-14
+  (docs/ai/PRODUCTION_INFRASTRUCTURE.md, "Deploying a new version"). It has NOT been run on the server yet; the
+  scripts actually used there live only on the server (EXT-13). Deploying is a separate, explicitly requested step:
+  run this only when the owner has asked for a deploy, on the app server, in an elevated Windows PowerShell 5.1.
+
+  Order (each step that changes something is guarded by -WhatIf / -Confirm):
+    1. Release folder  <AppRoot>\releases\<Sha>\{backend, frontend-dist}: unpacked from -PackagePath (a .zip built
+       on the dev PC) unless it already exists. Completeness is checked.
+    2. Read-only pre-checks of shared\.env WITHOUT printing any value: ENVIRONMENT_NAME is "production";
+       JWT_SECRET is at least 32 characters with at least 8 different characters and is not a known placeholder;
+       DATABASE_URL and FRONTEND_DIST_DIR are present; the file is not readable by Users / Everyone /
+       Authenticated Users (warning only). Any failed rule stops the deploy before anything is touched.
+    3. Backup: runs -BackupHook (your script that takes the database backup and exits 0), or requires
+       -BackupConfirmed after you ran task CK_Backup_CKASSETMANAGEMENT on the database server and saw "OK" in its
+       backup.log. Without one of them the script stops.
+    4. Saves shared\.env as shared\.env.pre-<Sha>.
+    5. Stops task CKAM-Web and ONLY the python process under shared\venv that listens on the port.
+    6. pip install -c constraints.txt -e <release>\backend into shared\venv (IF-11: the tested versions).
+    7. Sets FRONTEND_DIST_DIR=<release>\frontend-dist (the single release switch), APP_VERSION=<Sha>, and LOG_DIR /
+       ENVIRONMENT_NAME if they are missing. The file is rewritten as UTF-8 without BOM.
+    8. alembic upgrade head BEFORE the new code starts (audit rows are written inside business transactions, so new
+       code on an old schema fails every save), then checks that the database is at the code's head.
+    9. Starts CKAM-Web, waits for /api/health, then runs verify_release.ps1 (smoke test) against it.
+   10. On any failure in 6-9: restores shared\.env.pre-<Sha>, restarts the previous release, and says so.
+       The DATABASE IS NEVER ROLLED BACK automatically (see rollback_release.ps1.template and the runbook).
+
+  Nothing secret is passed on the command line, printed or logged. alembic output lines that mention a password
+  (the one-time first-owner password on an EMPTY database) are hidden in the log; on a brand-new database run
+  `alembic upgrade head` by hand instead and keep that line in an admin-only place.
+
+.PARAMETER Sha
+  Short git sha of the release (folder name under releases\). Required.
+.PARAMETER PackagePath
+  Zip with backend\ and frontend-dist\ at its top level. Not needed when releases\<Sha> already exists.
+.PARAMETER AppRoot
+  Default D:\Citykart_Applications\Citykart_AssetManagement_App
+.PARAMETER TaskName
+  Scheduled task that runs the launcher. Default CKAM-Web
+.PARAMETER Port
+  Default 3211
+.PARAMETER BackupHook
+  Path of a script that takes the pre-deploy database backup and exits 0 when it succeeded.
+.PARAMETER BackupConfirmed
+  Use instead of -BackupHook when the backup was taken and checked by hand just before.
+.PARAMETER SkipPipInstall
+  Do not run pip (only when the venv already holds exactly this release's packages).
+.PARAMETER HealthTimeoutSeconds
+  How long to wait for /api/health after the start. Default 120.
+
+.EXAMPLE
+  .\deploy_ckam.ps1 -Sha 1a2b3c4 -PackagePath C:\Windows\Temp\ckam-release-1a2b3c4.zip -BackupConfirmed -WhatIf
+.EXAMPLE
+  .\deploy_ckam.ps1 -Sha 1a2b3c4 -PackagePath C:\Windows\Temp\ckam-release-1a2b3c4.zip -BackupHook D:\ops\take_ckam_backup.ps1
+#>
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
+param(
+    [Parameter(Mandatory = $true)][ValidatePattern('^[0-9a-f]{7,40}$')][string]$Sha,
+    [string]$PackagePath = '',
+    [string]$AppRoot = 'D:\Citykart_Applications\Citykart_AssetManagement_App',
+    [string]$TaskName = 'CKAM-Web',
+    [ValidateRange(1, 65535)][int]$Port = 3211,
+    [string]$BackupHook = '',
+    [switch]$BackupConfirmed,
+    [switch]$SkipPipInstall,
+    [ValidateRange(10, 900)][int]$HealthTimeoutSeconds = 120
+)
+
+$ErrorActionPreference = 'Continue'   # PS 5.1: native stderr (pip/alembic INFO lines) must not abort; exit codes are checked
+$release = Join-Path $AppRoot "releases\$Sha"
+$envFile = Join-Path $AppRoot 'shared\.env'
+$envBackup = "$envFile.pre-$Sha"
+$python = Join-Path $AppRoot 'shared\venv\Scripts\python.exe'
+$logDir = Join-Path $AppRoot 'logs'
+$verifyScript = Join-Path $PSScriptRoot 'verify_release.ps1'
+$dryRun = [bool]$WhatIfPreference
+New-Item -ItemType Directory -Force -Path $logDir -WhatIf:$false | Out-Null
+$logFile = Join-Path $logDir ("deploy_{0}_{1}.log" -f $Sha, (Get-Date -Format 'yyyyMMdd_HHmmss'))
+
+function Write-Log([string]$Message) {
+    $line = '{0}  {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message
+    Write-Host $line
+    Add-Content -Path $logFile -Value $line -WhatIf:$false
+}
+function Stop-Here([string]$Why) { Write-Log "STOPPED: $Why"; exit 2 }
+
+function Read-EnvFile([string]$Path) {
+    $map = [ordered]@{}
+    foreach ($raw in Get-Content -LiteralPath $Path) {
+        if ($raw -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$') { $map[$Matches[1]] = $Matches[2] }
+    }
+    return $map
+}
+function Set-EnvKey([string[]]$Lines, [string]$Key, [string]$Value) {
+    $found = $false
+    $out = foreach ($l in $Lines) { if ($l -match "^\s*$Key\s*=") { $found = $true; "$Key=$Value" } else { $l } }
+    if (-not $found) { $out = @($out) + "$Key=$Value" }
+    return , @($out)
+}
+function Write-EnvFile([string[]]$Lines) {
+    [System.IO.File]::WriteAllText($envFile, (($Lines -join "`r`n") + "`r`n"), (New-Object System.Text.UTF8Encoding($false)))
+}
+function Import-EnvToProcess {
+    foreach ($kv in (Read-EnvFile $envFile).GetEnumerator()) { [Environment]::SetEnvironmentVariable($kv.Key, $kv.Value, 'Process') }
+}
+function Stop-Ckam {
+    if (-not $PSCmdlet.ShouldProcess($TaskName, 'stop CKAM (task + its own python listener only)')) { return }
+    Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 3
+    foreach ($c in @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)) {
+        $p = Get-CimInstance Win32_Process -Filter "ProcessId = $($c.OwningProcess)"
+        if ($p -and $p.ExecutablePath -like (Join-Path $AppRoot 'shared\venv\*')) { Write-Log "stopping CKAM process $($p.ProcessId)"; Stop-Process -Id $p.ProcessId -Force }
+        else { Write-Log "WARNING: another program listens on $Port (pid $($c.OwningProcess)); not touching it" }
+    }
+    Start-Sleep -Seconds 2
+}
+function Start-Ckam {
+    if ($PSCmdlet.ShouldProcess($TaskName, 'start CKAM')) { Start-ScheduledTask -TaskName $TaskName; Start-Sleep -Seconds 8 }
+}
+function Wait-Health([int]$Seconds) {
+    $deadline = (Get-Date).AddSeconds($Seconds)
+    while ((Get-Date) -lt $deadline) {
+        try { if ((Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$Port/api/health" -TimeoutSec 5).StatusCode -eq 200) { return $true } } catch { }
+        Start-Sleep -Seconds 3
+    }
+    return $false
+}
+function Invoke-Rollback([string]$Why) {
+    Write-Log "ROLLBACK: $Why"
+    Stop-Ckam
+    if ((Test-Path -LiteralPath $envBackup) -and $PSCmdlet.ShouldProcess($envFile, "restore from $envBackup")) {
+        Copy-Item -LiteralPath $envBackup -Destination $envFile -Force
+        Write-Log "restored .env from $envBackup (the previous release is selected again)"
+    }
+    Start-Ckam
+    if (Wait-Health 90) { Write-Log 'the previous release answers again. The DATABASE stays at its new version: check the runbook before using the old code for long.' }
+    else { Write-Log 'ROLLBACK DID NOT BRING THE SITE BACK - manual action needed (see rollback_release.ps1.template / the runbook)' }
+    exit 1
+}
+
+Write-Log "=== CKAM deploy $Sha $(if ($dryRun) { '(WhatIf: nothing is changed)' }) ==="
+
+# 1. release folder
+if (-not (Test-Path -LiteralPath (Join-Path $release 'backend\app\main.py'))) {
+    if (-not $PackagePath) { Stop-Here "release folder $release does not exist and no -PackagePath was given" }
+    if (-not (Test-Path -LiteralPath $PackagePath)) { Stop-Here "package not found: $PackagePath" }
+    if ($PSCmdlet.ShouldProcess($release, "unpack $PackagePath")) {
+        New-Item -ItemType Directory -Force -Path $release | Out-Null
+        Expand-Archive -LiteralPath $PackagePath -DestinationPath $release -Force
+    }
+}
+if (-not $dryRun -or (Test-Path -LiteralPath $release)) {
+    foreach ($f in 'backend\app\main.py', 'backend\alembic.ini', 'backend\pyproject.toml', 'backend\constraints.txt', 'frontend-dist\index.html') {
+        if (-not (Test-Path -LiteralPath (Join-Path $release $f))) { Stop-Here "release incomplete, missing $f" }
+    }
+    Write-Log "release folder complete: $release"
+}
+
+# 2. pre-checks (read-only; values are never printed)
+if (-not (Test-Path -LiteralPath $envFile)) { Stop-Here "settings file not found: $envFile" }
+if (-not (Test-Path -LiteralPath $python)) { Stop-Here "venv python not found: $python" }
+$settings = Read-EnvFile $envFile
+$envName = ([string]$settings['ENVIRONMENT_NAME']).Trim().ToLowerInvariant()
+if ($envName -ne 'production') { Stop-Here 'ENVIRONMENT_NAME in shared\.env is not "production"' }
+$secret = [string]$settings['JWT_SECRET']
+$placeholders = 'change_me', 'change_me_too', 'dev_secret_change_me', 'changeme', 'secret'
+$problems = @()
+if ($secret.Length -lt 32) { $problems += 'shorter than 32 characters' }
+if ((New-Object 'System.Collections.Generic.HashSet[char]' (, $secret.ToCharArray())).Count -lt 8) { $problems += 'fewer than 8 different characters' }
+if ($placeholders -contains $secret.Trim().ToLowerInvariant()) { $problems += 'a known placeholder' }
+$secret = $null
+if ($problems.Count -gt 0) { Stop-Here ('JWT_SECRET fails the production rules: ' + ($problems -join '; ') + ' (the app would refuse to start)') }
+Write-Log 'JWT_SECRET meets the production rules (value not shown)'
+foreach ($k in 'DATABASE_URL', 'FRONTEND_DIST_DIR') { if (-not $settings[$k]) { Stop-Here "$k is missing in shared\.env" } }
+if ($settings['TRUSTED_PROXIES']) { Write-Log 'WARNING: TRUSTED_PROXIES is set; CKAM runs without a proxy here, it should be empty (N2/N3)' }
+$wide = @((Get-Acl -LiteralPath $envFile).Access | Where-Object { $_.IdentityReference -match '\\(Users|Everyone|Authenticated Users)$|^Everyone$' })
+if ($wide.Count -gt 0) { Write-Log ('WARNING: shared\.env is readable by ' + (($wide | ForEach-Object { $_.IdentityReference }) -join ', ') + ' - restrict it to Administrators, SYSTEM and the task account') }
+$previousDist = [string]$settings['FRONTEND_DIST_DIR']
+Write-Log "pre-checks passed; current release: $(Split-Path -Parent $previousDist)"
+
+# 3. backup
+if ($BackupHook) {
+    if (-not (Test-Path -LiteralPath $BackupHook)) { Stop-Here "backup hook not found: $BackupHook" }
+    if ($PSCmdlet.ShouldProcess($BackupHook, 'run the pre-deploy database backup')) {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $BackupHook
+        if ($LASTEXITCODE -ne 0) { Stop-Here "backup hook failed with exit code $LASTEXITCODE - nothing was changed" }
+        Write-Log 'backup hook finished OK'
+    }
+} elseif ($BackupConfirmed) {
+    Write-Log 'backup confirmed by the operator (-BackupConfirmed)'
+} else {
+    Stop-Here 'take the database backup first (task CK_Backup_CKASSETMANAGEMENT on the database server, check backup.log says OK), then rerun with -BackupConfirmed, or pass -BackupHook'
+}
+
+# 4. keep the current settings for the rollback
+if ($PSCmdlet.ShouldProcess($envFile, "copy to $envBackup")) { Copy-Item -LiteralPath $envFile -Destination $envBackup -Force; Write-Log "saved $envBackup" }
+
+# 5. stop
+Stop-Ckam
+
+# 6. packages (IF-11: exactly the tested versions)
+if ($SkipPipInstall) { Write-Log 'pip install skipped (-SkipPipInstall)' }
+elseif ($PSCmdlet.ShouldProcess("$release\backend", 'pip install -c constraints.txt -e')) {
+    $pip = & $python -m pip install --disable-pip-version-check -c (Join-Path $release 'backend\constraints.txt') -e (Join-Path $release 'backend') 2>&1 | ForEach-Object { "$_" }
+    $code = $LASTEXITCODE
+    $pip | Select-Object -Last 5 | ForEach-Object { Write-Log "pip: $_" }
+    if ($code -ne 0) { Invoke-Rollback "pip install failed with exit code $code" }
+}
+
+# 7. switch the release (one setting) + release id
+if ($PSCmdlet.ShouldProcess($envFile, "set FRONTEND_DIST_DIR=$release\frontend-dist, APP_VERSION=$Sha")) {
+    $lines = Get-Content -LiteralPath $envFile
+    $lines = Set-EnvKey $lines 'FRONTEND_DIST_DIR' (Join-Path $release 'frontend-dist')
+    $lines = Set-EnvKey $lines 'APP_VERSION' $Sha
+    if (-not $settings['LOG_DIR']) { $lines = Set-EnvKey $lines 'LOG_DIR' (Join-Path $AppRoot 'logs\app') }
+    Write-EnvFile $lines
+    Write-Log 'settings switched to the new release (FRONTEND_DIST_DIR, APP_VERSION)'
+}
+
+# 8. migrations BEFORE the start
+if ($PSCmdlet.ShouldProcess("$release\backend", 'alembic upgrade head')) {
+    Import-EnvToProcess
+    Push-Location (Join-Path $release 'backend')
+    $up = & $python -m alembic upgrade head 2>&1 | ForEach-Object { "$_" }
+    $code = $LASTEXITCODE
+    $heads = (& $python -m alembic heads 2>&1 | ForEach-Object { "$_" } | Where-Object { $_ -match '^[0-9a-f]{12}' } | ForEach-Object { ($_ -split ' ')[0] }) -join ','
+    $current = (& $python -m alembic current 2>&1 | ForEach-Object { "$_" } | Where-Object { $_ -match '^[0-9a-f]{12}' } | ForEach-Object { ($_ -split ' ')[0] }) -join ','
+    Pop-Location
+    foreach ($l in $up) { if ($l -match '(?i)password') { Write-Log 'alembic: (a line mentioning a password was hidden)' } else { Write-Log "alembic: $l" } }
+    if ($code -ne 0) { Invoke-Rollback "alembic upgrade failed with exit code $code" }
+    if (-not $heads -or $current -ne $heads) { Invoke-Rollback "database is at '$current' but the code's head is '$heads'" }
+    Write-Log "database at head $current"
+}
+
+# 9. start + smoke test
+Start-Ckam
+if ($dryRun) {
+    Write-Log "WhatIf: would wait for http://127.0.0.1:$Port/api/health and run $verifyScript -BaseUrl http://127.0.0.1:$Port -ExpectedRelease $Sha -ReleaseDir $release -LauncherLogDir $logDir"
+    Write-Log '=== WhatIf finished: nothing in CKAM was changed (only this log file was written) ==='
+    exit 0
+}
+if (-not (Wait-Health $HealthTimeoutSeconds)) { Invoke-Rollback 'the new release did not answer /api/health' }
+Write-Log 'health ok'
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $verifyScript -BaseUrl "http://127.0.0.1:$Port" -ExpectedRelease $Sha -ReleaseDir $release -LauncherLogDir $logDir -OutCsv (Join-Path $logDir "verify_$Sha.csv") | ForEach-Object { Write-Log "verify: $_" }
+if ($LASTEXITCODE -ne 0) { Invoke-Rollback "verify_release.ps1 reported a failure (exit $LASTEXITCODE), see verify_$Sha.csv" }
+Write-Log "=== deploy $Sha finished OK. Keep the previous release folder ($(Split-Path -Parent $previousDist)) for rollback. ==="
+exit 0
