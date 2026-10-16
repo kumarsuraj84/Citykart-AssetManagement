@@ -193,6 +193,21 @@ $ctype = (Get-HeaderValues $u 'Content-Type') -join ', '
 if ($u.Status -eq 404 -and $ctype -match 'application/json' -and $u.Body -match '"detail"') { Add-Result 'unknown /api is JSON 404' 'PASS' "404 $ctype" }
 else { Add-Result 'unknown /api is JSON 404' 'FAIL' "status $($u.Status), Content-Type '$ctype' (the app shell here means the N6 fix is not in this release)" }
 
+# --- the address printed QR labels encode opens the app (CL2-IF-04): /assets/<id> and /assets/new are app pages
+foreach ($p in '/assets/1', '/assets/new', '/assets/1?from=qr') {
+    $r = Invoke-RawHttp $p
+    $cc = (Get-HeaderValues $r 'Cache-Control') -join ', '
+    if ($r.Status -eq 200 -and $r.Body -match '<div id="root">' -and $cc -eq 'no-cache') { Add-Result "app page $p" 'PASS' '200 app shell, Cache-Control no-cache' }
+    else { Add-Result "app page $p" 'FAIL' "status $($r.Status) (a JSON 404 here means the CL2-IF-04 fix is not in this release: scanned labels cannot open Asset 360)" }
+}
+$miss = Invoke-RawHttp '/assets/ckam-verify-release-nothing.js.map'
+if ($miss.Status -eq 404) { Add-Result 'missing .map stays 404' 'PASS' '404' } else { Add-Result 'missing .map stays 404' 'FAIL' "status $($miss.Status)" }
+
+# --- no product name in the Server header (CL2-IF-OBS-05: launcher with --no-server-header)
+$server = (Get-HeaderValues $shell 'Server') -join ', '
+if ($server -match 'uvicorn') { Add-Result 'Server header' 'WARN' "Server: '$server' (add --no-server-header to the launcher's uvicorn line)" }
+else { Add-Result 'Server header' 'PASS' $(if ($server) { "Server: '$server'" } else { 'no Server header' }) }
+
 # --- path traversal (IF-01 / IF-01-WIN). Status codes only; bodies are discarded.
 $probes = @(
     '/assets/..%2f..%2f..%2f..%2fshared%2f.env',
@@ -222,7 +237,8 @@ foreach ($p in $probes) {
     elseif ($r.Status -eq 400) { Add-Result "traversal $p" 'WARN' 'refused with 400 (not 404)' }
     elseif ($r.Status -eq 200 -and $isShell) {
         # The Docker dev stack's nginx answers any extension-less path with the app shell; the single-port production
-        # server never does under /assets/, so there this row must read 404.
+        # server answers the shell under /assets/ only for plain app addresses (letters, digits, _ and -, CL2-IF-04),
+        # never for one of these probes, so there this row must read 404.
         Add-Result "traversal $p" 'WARN' '200 with the app shell (no file served; expected only behind the Docker nginx, production must answer 404)'
     }
     else { Add-Result "traversal $p" 'FAIL' "status $($r.Status)"; $traversalFailures++ }

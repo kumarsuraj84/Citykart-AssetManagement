@@ -8,8 +8,10 @@
 --                  so objects created by Alembic belong to owner_role. Used ONLY for `alembic upgrade head`.
 --   runtime_role   LOGIN. Owns nothing. The running application (DATABASE_URL). SELECT/INSERT/UPDATE/DELETE on
 --                  ordinary tables; SELECT/INSERT only on the four append-only ledgers; SELECT only on
---                  alembic_version; no TRUNCATE / TRIGGER / CREATE anywhere; cannot run ckam_purge_audit_log;
---                  cannot ALTER, DROP or DISABLE anything (only the owner can).
+--                  alembic_version; USAGE/SELECT only on sequences (no UPDATE, so no setval: CL2-IF-01);
+--                  no TRUNCATE / TRIGGER / CREATE anywhere; cannot run ckam_purge_audit_log;
+--                  cannot ALTER, DROP or DISABLE anything (only the owner can); no stored session defaults
+--                  (ALTER ROLE ... RESET ALL at the end: CL2-IF-02).
 --
 -- Run as a SUPERUSER, connected to the CKAM database, with psql (version 10 or newer):
 --
@@ -242,7 +244,10 @@ BEGIN
     EXECUTE format('REVOKE ALL ON ALL TABLES IN SCHEMA %I FROM %I', sch, m);
     EXECUTE format('REVOKE ALL ON ALL SEQUENCES IN SCHEMA %I FROM %I', sch, m);
     EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA %I TO %I', sch, r);
-    EXECUTE format('GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA %I TO %I', sch, r);
+    -- CL2-IF-01: USAGE (nextval, i.e. the id column defaults) and SELECT (currval / reading) only. NEVER UPDATE:
+    -- UPDATE allows setval, which can exhaust audit_log's id sequence (every audit write fails) or rewind
+    -- asset_event's (every movement fails with a duplicate id), and setval survives a ROLLBACK.
+    EXECUTE format('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA %I TO %I', sch, r);
     FOREACH t IN ARRAY append_only LOOP
         IF to_regclass(format('%I.%I', sch, t)) IS NOT NULL THEN
             EXECUTE format('REVOKE UPDATE, DELETE, TRUNCATE ON %I.%I FROM %I', sch, t, r);
@@ -269,8 +274,33 @@ DECLARE
 BEGIN
     EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA %I GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %I',
                    o, sch, r);
-    EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA %I GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO %I',
+    -- CL2-IF-01: no UPDATE (setval) on future sequences either; the REVOKE removes it where an earlier version of
+    -- this script granted it, so a re-run repairs such a database.
+    EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA %I REVOKE UPDATE ON SEQUENCES FROM %I',
                    o, sch, r);
+    EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA %I GRANT USAGE, SELECT ON SEQUENCES TO %I',
+                   o, sch, r);
+END
+$split$;
+
+-- 7. CL2-IF-02: no stored session defaults for the runtime role. A role may `ALTER ROLE <itself> SET ...` for
+--    user-settable parameters (default_transaction_read_only = on, a 1 ms statement_timeout, search_path ...),
+--    which PostgreSQL cannot forbid and which survives restarts. CKAM needs none, so every stored default of the
+--    runtime role (all databases and "all databases") is cleared here; the check scripts FAIL if one reappears.
+DO $split$
+DECLARE
+    r  text := current_setting('ckam_split.runtime_role');
+    db text := current_setting('ckam_split.db_name');
+    d  record;
+BEGIN
+    EXECUTE format('ALTER ROLE %I RESET ALL', r);
+    EXECUTE format('ALTER ROLE %I IN DATABASE %I RESET ALL', r, db);
+    FOR d IN
+        SELECT db2.datname FROM pg_db_role_setting rs JOIN pg_database db2 ON db2.oid = rs.setdatabase
+        WHERE rs.setrole = (SELECT oid FROM pg_roles WHERE rolname = r)
+    LOOP
+        EXECUTE format('ALTER ROLE %I IN DATABASE %I RESET ALL', r, d.datname);
+    END LOOP;
 END
 $split$;
 

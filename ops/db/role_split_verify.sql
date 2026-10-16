@@ -105,12 +105,24 @@ WITH s AS (
                      WHERE defaclobjtype = 'r' AND grantee = s2.rt), 'none')
     FROM s
     UNION ALL
-    SELECT 11, 'future sequences: runtime role gets USAGE by default',
+    -- CL2-IF-01: USAGE (nextval) by default, never UPDATE (setval).
+    SELECT 11, 'future sequences: runtime role gets USAGE (and SELECT) by default, never UPDATE',
            CASE WHEN EXISTS (SELECT 1 FROM defacl, s s2 WHERE defaclobjtype = 'S' AND grantee = s2.rt AND privilege_type = 'USAGE')
+                 AND NOT EXISTS (SELECT 1 FROM defacl, s s2 WHERE defaclobjtype = 'S' AND grantee = s2.rt AND privilege_type = 'UPDATE')
                 THEN 'PASS' ELSE 'FAIL' END,
            coalesce((SELECT string_agg(privilege_type, ',' ORDER BY privilege_type) FROM defacl, s s2
                      WHERE defaclobjtype = 'S' AND grantee = s2.rt), 'none')
     FROM s
+    UNION ALL
+    -- CL2-IF-02: no stored session defaults for the runtime role (role_split.sql clears them; the role could set
+    -- default_transaction_read_only = on for itself and stop every write until a superuser resets it).
+    SELECT 12, 'runtime role has no stored session defaults in this database or for all databases',
+           CASE WHEN count(rs.setrole) = 0 THEN 'PASS' ELSE 'FAIL' END,
+           coalesce(string_agg(coalesce(d.datname, 'all databases') || ': ' || array_to_string(rs.setconfig, ' '), '; '), 'none')
+    FROM s JOIN pg_roles ro ON ro.rolname = s.rt
+         LEFT JOIN pg_db_role_setting rs ON rs.setrole = ro.oid
+              AND rs.setdatabase IN (0, (SELECT oid FROM pg_database WHERE datname = s.db))
+         LEFT JOIN pg_database d ON d.oid = rs.setdatabase
 )
 SELECT check_name AS "check", result, detail FROM checks ORDER BY n;
 -- <<< VERIFY BODY

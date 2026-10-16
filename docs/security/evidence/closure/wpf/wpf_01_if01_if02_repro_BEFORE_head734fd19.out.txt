@@ -1,0 +1,11 @@
+ops/db used: /tmp/ops_old/db
+alembic upgrade head as runtime role: rc 0
+role split applied
+RUNTIME CAN   : SELECT setval('audit_log_id_seq', 9223372036854775807)  (then ROLLBACK)
+RUNTIME CAN   : SELECT setval('asset_event_id_seq', 1)  (then ROLLBACK)
+audit_log_id_seq last_value after the ROLLBACK: 9223372036854775807
+audit_log INSERT as runtime: FAILED -> SequenceGeneratorLimitExceededError: nextval: reached maximum value of sequence "audit_log_id_seq" (9223372036854775807)
+RUNTIME CAN   : ALTER ROLE <self> SET default_transaction_read_only = on
+check_least_privilege: 34 rows, FAIL rows:
+role_split_verify: 11 rows, FAIL rows:
+left behind: []

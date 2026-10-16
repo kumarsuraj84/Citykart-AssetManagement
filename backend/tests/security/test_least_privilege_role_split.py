@@ -126,6 +126,11 @@ CANNOT = [
     "ALTER TABLE audit_log OWNER TO CURRENT_USER",
     "ALTER FUNCTION ckam_purge_audit_log(timestamptz) SECURITY DEFINER",
     "COPY (SELECT 1) TO PROGRAM 'id'",
+    # CL2-IF-01: no setval / ALTER SEQUENCE on the ledger id sequences (exhaust audit_log's, rewind asset_event's).
+    "SELECT setval('audit_log_id_seq', 9223372036854775807)",
+    "SELECT setval('asset_event_id_seq', 1)",
+    "SELECT setval('master_audit_id_seq', 1, false)",
+    "ALTER SEQUENCE audit_log_id_seq RESTART WITH 1",
 ]
 
 # ... and must be allowed everything the application needs.
@@ -138,7 +143,24 @@ CAN = [
     "UPDATE asset_user SET name = name",
     "DELETE FROM auth_session WHERE id = -1",
     "SELECT nextval(pg_get_serial_sequence('vendor', 'id'))",
+    "SELECT nextval('audit_log_id_seq'), currval('audit_log_id_seq')",
 ]
+
+
+def _split_settings_sql() -> str:
+    return ("SELECT set_config('ckam_split.db_name', $1, true), set_config('ckam_split.schema_name', 'public', true),"
+            " set_config('ckam_split.owner_role', $2, true), set_config('ckam_split.migrator_role', $3, true),"
+            " set_config('ckam_split.runtime_role', $4, true), set_config('ckam_split.current_owner', $4, true)")
+
+
+async def _run_split(su: asyncpg.Connection, body: str, db: str, owner: str, migrator: str, app: str) -> None:
+    async with su.transaction():
+        await su.execute(_split_settings_sql(), db, owner, migrator, app)
+        await su.execute(body)
+
+
+def _failed_names(rows) -> set[str]:
+    return {r["check"] for r in rows if r["result"] == "FAIL"}
 
 
 def test_the_ops_db_scripts_keep_passwords_out_and_their_bodies_plain_sql():
@@ -184,22 +206,46 @@ async def test_the_role_split_on_a_throwaway_database():
                 r["check"] for r in before if r["result"] == "FAIL"}
 
             # 2. The split, exactly the body of ops/db/role_split.sql (one transaction), then once more (idempotent).
+            split_body = _body("role_split.sql", "ROLE SPLIT BODY")
             for _ in range(2):
-                async with su.transaction():
-                    await su.execute(
-                        "SELECT set_config('ckam_split.db_name', $1, true), set_config('ckam_split.schema_name', 'public', true),"
-                        " set_config('ckam_split.owner_role', $2, true), set_config('ckam_split.migrator_role', $3, true),"
-                        " set_config('ckam_split.runtime_role', $4, true), set_config('ckam_split.current_owner', $4, true)",
-                        db, owner, migrator, app)
-                    await su.execute(_body("role_split.sql", "ROLE SPLIT BODY"))
+                await _run_split(su, split_body, db, owner, migrator, app)
             await admin.execute(f"ALTER ROLE \"{migrator}\" PASSWORD '{migrator_pw}'")
 
             # 3. Every least-privilege and role-split check passes.
-            general = await _checks(su, _body("check_least_privilege.sql", "CHECK BODY"),
-                                    runtime_role=app, owner_role=owner, schema_name="public")
-            assert _failed(general) == [] and len(general) >= 30
-            split = await _checks(su, _body("role_split_verify.sql", "VERIFY BODY"), db_name=db, migrator_role=migrator)
-            assert _failed(split) == [] and len(split) == 11
+            check_body, verify_body = _body("check_least_privilege.sql", "CHECK BODY"), _body("role_split_verify.sql", "VERIFY BODY")
+            general = await _checks(su, check_body, runtime_role=app, owner_role=owner, schema_name="public")
+            assert _failed(general) == [] and len(general) >= 33
+            split = await _checks(su, verify_body, db_name=db, migrator_role=migrator)
+            assert _failed(split) == [] and len(split) == 12
+
+            # 3b. CL2-IF-01 negative control: the previous grant (UPDATE on sequences, i.e. setval) makes both check
+            #     scripts FAIL; re-running the real split repairs it (tables AND default privileges).
+            old_grant = split_body.replace("GRANT USAGE, SELECT ON ALL SEQUENCES", "GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES")
+            old_grant = old_grant.replace("REVOKE UPDATE ON SEQUENCES FROM %I',", "GRANT UPDATE ON SEQUENCES TO %I',")
+            assert old_grant != split_body
+            await _run_split(su, old_grant, db, owner, migrator, app)
+            seq_check = "runtime role has no UPDATE on any sequence (setval could rewind or exhaust an id sequence)"
+            assert seq_check in _failed_names(await _checks(su, check_body, runtime_role=app, owner_role=owner,
+                                                            schema_name="public"))
+            assert "future sequences: runtime role gets USAGE (and SELECT) by default, never UPDATE" in _failed_names(
+                await _checks(su, verify_body, db_name=db, migrator_role=migrator))
+            await _run_split(su, split_body, db, owner, migrator, app)
+            assert _failed(await _checks(su, check_body, runtime_role=app, owner_role=owner, schema_name="public")) == []
+            assert _failed(await _checks(su, verify_body, db_name=db, migrator_role=migrator)) == []
+
+            # 3c. CL2-IF-01 detection of earlier damage: an exhausted or a rewound id sequence is a FAIL.
+            pos_check = "id sequences: next id above the highest id, far from the maximum, no absurd jump"
+            await su.execute("INSERT INTO audit_log (source, category, action, summary, outcome, is_head_office_admin) "
+                             "VALUES ('api', 'DATA', 'UPDATE', 'sequence check', 'OK', false)")
+            for damage in ("SELECT setval('audit_log_id_seq', 9223372036854775000)",       # nearly exhausted
+                           "SELECT setval('audit_log_id_seq', 1, false)",                  # rewound
+                           "SELECT setval('audit_log_id_seq', (SELECT max(id) FROM audit_log) + 5000000)"):  # jump
+                await su.execute(damage)
+                rows = await _checks(su, check_body, runtime_role=app, owner_role=owner, schema_name="public")
+                assert pos_check in _failed_names(rows), damage
+                assert "audit_log_id_seq" in next(r["detail"] for r in rows if r["check"] == pos_check), damage
+            await su.execute("SELECT setval('audit_log_id_seq', (SELECT max(id) FROM audit_log))")
+            assert _failed(await _checks(su, check_body, runtime_role=app, owner_role=owner, schema_name="public")) == []
         finally:
             await su.close()
 
@@ -227,6 +273,47 @@ async def test_the_role_split_on_a_throwaway_database():
             for target in (owner, migrator):
                 with pytest.raises(asyncpg.PostgresError, match=DENIED):
                     await rt.execute(f'SET ROLE "{target}"')
+            # CL2-IF-01: the refused setval changed nothing (setval is not undone by a rollback, so check it).
+            assert await rt.fetchval("SELECT last_value < 1000000000 FROM audit_log_id_seq")
+        finally:
+            await rt.close()
+
+        # 4b. CL2-IF-02: PostgreSQL lets the runtime role store its own session defaults (it cannot be forbidden),
+        #     so detection is the control: both check scripts FAIL, the split's RESET ALL repairs it.
+        rt = await asyncpg.connect(database=db, user=app, password=app_pw, host=server["host"], port=server["port"])
+        try:
+            await rt.execute(f'ALTER ROLE "{app}" SET default_transaction_read_only = on')
+            await rt.execute(f'ALTER ROLE "{app}" IN DATABASE "{db}" SET statement_timeout = 5000')
+        finally:
+            await rt.close()
+        rt = await asyncpg.connect(database=db, user=app, password=app_pw, host=server["host"], port=server["port"])
+        try:
+            with pytest.raises(asyncpg.PostgresError, match="read-only transaction"):
+                await rt.execute("INSERT INTO company (code, name) VALUES ('LPT2', 'read-only probe')")
+        finally:
+            await rt.close()
+        su = await asyncpg.connect(database=db, **server)
+        try:
+            settings_check = "runtime role has no stored session defaults (pg_db_role_setting), in any database"
+            rows = await _checks(su, check_body, runtime_role=app, owner_role=owner, schema_name="public")
+            assert settings_check in _failed_names(rows)
+            assert "default_transaction_read_only=on" in next(r["detail"] for r in rows if r["check"] == settings_check)
+            assert "runtime role has no stored session defaults in this database or for all databases" in _failed_names(
+                await _checks(su, verify_body, db_name=db, migrator_role=migrator))
+            await _run_split(su, split_body, db, owner, migrator, app)          # incident response: RESET ALL
+            assert _failed(await _checks(su, check_body, runtime_role=app, owner_role=owner, schema_name="public")) == []
+            assert _failed(await _checks(su, verify_body, db_name=db, migrator_role=migrator)) == []
+        finally:
+            await su.close()
+        rt = await asyncpg.connect(database=db, user=app, password=app_pw, host=server["host"], port=server["port"])
+        try:
+            assert await rt.fetchval("SHOW default_transaction_read_only") == "off"
+            tx = rt.transaction()
+            await tx.start()
+            try:
+                await rt.execute("INSERT INTO company (code, name) VALUES ('LPT2', 'writable again')")
+            finally:
+                await tx.rollback()
         finally:
             await rt.close()
 

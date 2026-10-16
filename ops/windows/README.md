@@ -27,9 +27,9 @@ D:\Citykart_Applications\Citykart_AssetManagement_App\      <- AppRoot
 
 | File | What it is | Changes anything? |
 |---|---|---|
-| `run_ckam_web.ps1.template` | The launcher the `CKAM-Web` task starts: loads `shared\.env` into its own process, maps the NAS, picks the release from `FRONTEND_DIST_DIR`, starts `python -m uvicorn app.main:app --host 0.0.0.0 --port 3211 --no-proxy-headers` from the venv, logs to `logs\` | Starts the app (supports `-WhatIf`) |
+| `run_ckam_web.ps1.template` | The launcher the `CKAM-Web` task starts: loads `shared\.env` into its own process, maps the NAS, picks the release from `FRONTEND_DIST_DIR`, starts `python -m uvicorn app.main:app --host 0.0.0.0 --port 3211 --no-proxy-headers --no-server-header` from the venv, logs to `logs\` | Starts the app (supports `-WhatIf`) |
 | `deploy_ckam.ps1.template` | A release: unpack `releases\<sha>`, pre-checks, backup step, stop, `pip install -c constraints.txt`, switch `FRONTEND_DIST_DIR`, `alembic upgrade head` **before** start, start, smoke test, automatic switch-back on failure | Yes (supports `-WhatIf`) |
-| `verify_release.ps1` | Smoke / security check of a running release: health, release id, security headers exactly once, CSP, API docs closed, unknown `/api` is a JSON 404, path-traversal probes all 404 | **No** (GET requests only, no sign-in) |
+| `verify_release.ps1` | Smoke / security check of a running release: health, release id, security headers exactly once, CSP, API docs closed, unknown `/api` is a JSON 404, the QR-label address `/assets/<id>` and `/assets/new` open the app shell (CL2-IF-04), no `server: uvicorn` header (WARN), path-traversal probes all 404 | **No** (GET requests only, no sign-in) |
 | `rollback_release.ps1.template` | Switch back to a previous release folder; never deletes anything, never touches the database | Yes (supports `-WhatIf`) |
 
 To use a template: review it, copy it without the `.template` suffix (the launcher goes to `shared\`), and run
@@ -52,7 +52,8 @@ it in an elevated **Windows PowerShell 5.1** (`powershell.exe`, the version on t
 
 The uvicorn argument line is fixed on purpose: `--no-proxy-headers` (security N2) must never become
 `--proxy-headers`, and `TRUSTED_PROXIES` must stay empty in production (CKAM is reached directly, no proxy; the
-launcher logs a warning if it is set).
+launcher logs a warning if it is set). `--no-server-header` (CL2-IF-OBS-05) stops uvicorn from announcing itself
+in a `server: uvicorn` header; the live launcher on the server (EXT-13 comparison) needs the same flag.
 
 ### deploy_ckam.ps1(.template)
 

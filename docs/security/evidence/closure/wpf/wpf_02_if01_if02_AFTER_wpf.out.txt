@@ -1,0 +1,13 @@
+ops/db used: /app/ops/db
+alembic upgrade head as runtime role: rc 0
+role split applied
+RUNTIME CANNOT: SELECT setval('audit_log_id_seq', 9223372036854775807)  -> InsufficientPrivilegeError: permission denied for sequence audit_log_id_seq
+RUNTIME CANNOT: SELECT setval('asset_event_id_seq', 1)  -> InsufficientPrivilegeError: permission denied for sequence asset_event_id_seq
+audit_log_id_seq last_value after the ROLLBACK: 1
+audit_log INSERT as runtime: OK
+RUNTIME CAN   : ALTER ROLE <self> SET default_transaction_read_only = on
+check_least_privilege: 37 rows, FAIL rows:
+   FAIL  runtime role has no stored session defaults (pg_db_role_setting), in any database: all databases: default_transaction_read_only=on
+role_split_verify: 12 rows, FAIL rows:
+   FAIL  runtime role has no stored session defaults in this database or for all databases: all databases: default_transaction_read_only=on
+left behind: []

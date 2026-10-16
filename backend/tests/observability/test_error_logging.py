@@ -167,7 +167,7 @@ async def test_a_logging_failure_never_breaks_the_request(client, monkeypatch, c
 
     from types import SimpleNamespace
 
-    monkeypatch.setattr(writer, "_reported", set())
+    writer.reset_failure_reports()
     monkeypatch.setattr(writer, "core_db", SimpleNamespace(SessionLocal=Broken()))   # only the log writes break
     resp = await client.post("/api/auth/login", json={"login_id": "S0ADM", "password": "wrong"})
     assert resp.status_code == 401

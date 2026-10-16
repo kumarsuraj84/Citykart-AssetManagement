@@ -22,12 +22,20 @@ The scripts take every name as a psql variable; nothing is hard-coded.
 
 What the runtime role can and cannot do afterwards (proven locally, see `WPB_RESULTS.md`):
 
-- CAN: connect; SELECT/INSERT/UPDATE/DELETE on ordinary tables; use every sequence; SELECT+INSERT on
-  `asset_event`, `asset_field_change`, `master_audit`, `audit_log`; SELECT `alembic_version`.
+- CAN: connect; SELECT/INSERT/UPDATE/DELETE on ordinary tables; take the next id from every sequence (`USAGE`,
+  `SELECT`: `nextval`, `currval`); SELECT+INSERT on `asset_event`, `asset_field_change`, `master_audit`,
+  `audit_log`; SELECT `alembic_version`.
 - CANNOT: TRUNCATE anything; UPDATE/DELETE the four ledgers (also not with `ckam.allow_audit_purge = on`);
   ALTER/DROP any table; DISABLE/ENABLE/DROP a trigger; replace a trigger function; CREATE in the schema, create
   schemas, temporary tables, roles, databases or extensions; `SET session_replication_role`; run
-  `ckam_purge_audit_log`; write `alembic_version`; `SET ROLE` to the owner or the migrator.
+  `ckam_purge_audit_log`; write `alembic_version`; `SET ROLE` to the owner or the migrator; **`setval` or
+  `ALTER SEQUENCE`** on any sequence (CL2-IF-01: the runtime role has no `UPDATE` on sequences, so it cannot
+  exhaust `audit_log_id_seq` — which silently stopped every audit row — or rewind `asset_event_id_seq` — which
+  made every movement fail; `setval` is not undone by a rollback).
+- CAN, and PostgreSQL cannot forbid it (CL2-IF-02): store its own session defaults with
+  `ALTER ROLE ckassetapp [IN DATABASE ...] SET <parameter> = ...` (for example `default_transaction_read_only =
+  on`, which makes every later write fail, also after a restart). `role_split.sql` ends with `RESET ALL` for the
+  runtime role and both check scripts FAIL while any such default exists. Incident response: section 9.
 
 ## 2. Files
 
@@ -48,7 +56,13 @@ can reach the database server, as a **superuser**, typing the superuser password
    psql -X -h 10.0.0.205 -U postgres -d ckassetmanagement -v runtime_role=ckassetapp -f ops/db/check_least_privilege.sql
    ```
    Expected today: FAIL on "runtime role owns nothing", "table owners are not the runtime role", "does not own the
-   database", schema CREATE and the append-only rows (the owner has every privilege). Keep the output.
+   database", schema CREATE, the append-only rows and "no UPDATE on any sequence" (the owner has every
+   privilege). Keep the output. Two rows need a closer look before the window:
+   - "id sequences: next id above the highest id ..." must already be PASS. A FAIL means a sequence was rewound,
+     nearly exhausted or jumped (CL2-IF-01 damage): do **not** split until a DBA has repaired it
+     (`SELECT setval('<seq>', (SELECT max(id) FROM <table>));` as superuser, after checking why).
+   - "runtime role has no stored session defaults": a FAIL lists every `ALTER ROLE ckassetapp ... SET` value.
+     CKAM needs none; `role_split.sql` clears them all. If one was set on purpose, write it down and decide first.
 3. Check that `ckassetapp` owns nothing outside `ckassetmanagement` (the script never touches other databases, but
    you should know):
    ```
@@ -122,7 +136,8 @@ alembic upgrade head
 
 1. Never assume the migration runs as the app role; never `GRANT ... TO ckassetapp` by name inside a migration
    (names differ per environment). Default privileges give the runtime role SELECT/INSERT/UPDATE/DELETE on new
-   tables and USAGE/SELECT/UPDATE on new sequences.
+   tables and USAGE/SELECT (never UPDATE, CL2-IF-01) on new sequences. The app must never call `setval` or
+   `ALTER SEQUENCE`; a data migration that needs it runs as the owner (the migrator), which is allowed.
 2. A new append-only table: add it to the `append_only` list in `role_split.sql` step 5 and to the `ao` list in
    `check_least_privilege.sql`, add its guard triggers to `expected_triggers`, and give it the same
    UPDATE/DELETE/TRUNCATE triggers as the existing ledgers.
@@ -159,8 +174,9 @@ report a problem, master create and sign-out all worked as the runtime role.
    `ALTER TABLE asset_event DISABLE TRIGGER ALL` → must be owner; `SET session_replication_role = replica` →
    permission denied; `SELECT ckam_purge_audit_log(now() - interval '6 years')` → permission denied;
    `UPDATE asset SET status = 'LOST' WHERE id = (SELECT min(id) FROM asset)` → refused by
-   `trg_asset_lifecycle_fields_guard`. The full list the local
-   simulation ran is `docs/security/evidence/closure/db/rs_runtime_matrix.sql`.
+   `trg_asset_lifecycle_fields_guard`; `SELECT setval('audit_log_id_seq', 1)` → permission denied for sequence
+   (CL2-IF-01; setval is not undone by ROLLBACK, so run it only after the split, when it must be refused). The full
+   list the local simulation ran is `docs/security/evidence/closure/db/rs_runtime_matrix.sql`.
 3. In the app: sign in, open the asset register, record a movement, edit an asset, create a PO with lines and
    receive it, sign out. `system_event app_started` shows the expected migration head.
 4. Next deploy: Alembic as the migrator (section 5), then verify again.
@@ -176,3 +192,29 @@ report a problem, master create and sign-out all worked as the runtime role.
 - Backups (EXT-08): a `pg_dump` taken as the runtime role still works (it can read every table and sequence),
   but the dump then records `ckasset_owner` as the owner; a restore must run as a superuser (or with
   `--no-owner` followed by `role_split.sql`). Check the backup task and the restore drill after the split.
+- Stored session defaults of the runtime role (CL2-IF-02) cannot be prevented, only detected and reset
+  (section 9). Run `check_least_privilege.sql` after every deploy and whenever CKAM suddenly fails every write.
+
+## 9. Incident response: the runtime role's stored settings or a damaged id sequence
+
+Symptoms: every save fails ("cannot execute ... in a read-only transaction", "canceling statement due to statement
+timeout", tables "do not exist" after a `search_path` change), surviving restarts of `CKAM-Web`; or audit rows stop
+appearing in Logs while the app works (the error log and the launcher's stderr show "CKAM logging: could not write
+audit_log ... failures so far", repeated at most once a minute, plus a `system_event` `logging/write_failed` row
+when the database still accepts it); or every asset movement fails with "A record with this id already exists".
+
+1. Read-only diagnosis as superuser: `check_least_privilege.sql` with `-v runtime_role=ckassetapp`. Look at
+   "runtime role has no stored session defaults" (lists the values) and "id sequences: next id above the highest
+   id ..." (names the sequence and the problem). Keep the output for the incident record.
+2. Stored settings (CL2-IF-02), as superuser:
+   ```
+   ALTER ROLE ckassetapp RESET ALL;
+   ALTER ROLE ckassetapp IN DATABASE ckassetmanagement RESET ALL;
+   ```
+   (or simply re-run `role_split.sql`, which does both and checks every database). New connections are clean;
+   restart `CKAM-Web` so the pooled connections pick it up.
+3. A damaged sequence (CL2-IF-01), as superuser, for the sequence the check names:
+   `SELECT setval('<seq>', (SELECT max(id) FROM <table>));` then re-run the check.
+4. Either one means someone used the runtime credentials outside the app: treat it as a credential compromise
+   (rotate the `ckassetapp` password, EXT-02; review `pg_stat_activity` and the server log for its origin).
+5. `role_split_verify.sql` must be all PASS again before closing the incident.

@@ -1,5 +1,8 @@
 """Dev/UAT only: one login per kind of person who uses CKAM, so every screen can be walked through as each of them.
 
+!!! NEVER RUN AGAINST PRODUCTION (or any server real users can reach): every persona gets the SAME committed,
+!!! publicly known test password below (CL2-IF-OBS-06). Throw-away dev/UAT databases only.
+
 Run against a throw-away UAT copy of the dev database, never production. Idempotent. The shared password is a test value
 for this scratch environment only (same convention as seed_admin.py).
 """

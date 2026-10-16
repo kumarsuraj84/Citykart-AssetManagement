@@ -1,0 +1,13 @@
+PASS 200  /                        root (shell)                   X-Request-ID x1: 6c08498879ace1b045ede153d9c77ce3
+PASS 200  /settings/system/logs    SPA route                      X-Request-ID x1: 53d136d1a8217d5da659eab03ed74b37
+PASS 200  /assets/42               Asset 360 address              X-Request-ID x1: 1941305f16bfeb100c96ba7a718bfd1f
+PASS 404  /assets/nothing.js       missing script                 X-Request-ID x1: cfe9ca348039d1b7e704910dc66c5fee
+PASS 404  /assets/x.js.map         source map                     X-Request-ID x1: 64af906c0a194a6484d48122923805bf
+PASS 200  /favicon.svg             favicon                        X-Request-ID x1: e8b1d11d2baeee221d766babfdabe344
+PASS 200  /api/health              API answer (passed through)    X-Request-ID x1: app-request-id-0001
+PASS 404  /api/nope                API 404 (passed through)       X-Request-ID x1: app-request-id-0404
+PASS 200  /api/health              client-sent id is not adopted  X-Request-ID x1: app-request-id-0001
+PASS 413  /api/documents           oversized upload (413)         X-Request-ID x1: 09eae1c908358cc6ea3f274859b0153b
+PASS 502  /api/health              API down (nginx's own 5xx)     X-Request-ID x1: 994ba9c80f7b9cee2a8a525436d3f884
+cleanup: containers left [], networks left []
+X-Request-ID live check OK: exactly one id on every answer

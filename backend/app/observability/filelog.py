@@ -148,6 +148,9 @@ def setup(log_dir: str, level: str = "INFO") -> None:
         console = logging.StreamHandler(sys.stderr)
         console.setLevel(logging.WARNING)
         console.setFormatter(_PlainStderr())
+        # CL2-IF-01: writer.report_failure prints its line on stderr itself (also when logging is not set up);
+        # its error-log copy must not appear on stderr a second time.
+        console.addFilter(lambda record: not getattr(record, "ckam_stderr_done", False))
         root.addHandler(_mark(console))
 
     # One access line per request: ours (app.observability.middleware), not uvicorn's.

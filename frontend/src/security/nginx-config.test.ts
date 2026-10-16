@@ -179,6 +179,27 @@ describe("nginx.conf hardening", () => {
     expect(addHeaders(api!)).toContainEqual(["add_header", "Cache-Control", '"no-store"', "always"]);
   });
 
+  it("sends exactly one X-Request-ID: nginx's own on its answers, the application's under /api/ (CL2-IF-03)", () => {
+    const rid = (block: Block) => addHeaders(block).filter((d) => d[1] === "X-Request-ID");
+    // The server level covers static files, .map / missing-file 404s and the app shell's fallthrough; the shell
+    // and the 413 sentence set their own add_header lines, so they repeat it.
+    for (const block of [server!, location("location = /index.html")!, location("location @too_large")!]) {
+      expect(rid(block), block.head).toEqual([["add_header", "X-Request-ID", "$request_id", "always"]]);
+    }
+    // Locations without add_header lines of their own inherit the server's (nginx's rule) -- keep them that way.
+    for (const head of ["location ~* \\.map$", "location /"]) expect(addHeaders(location(head)!), head).toHaveLength(0);
+    const statics = locations.find((l) => /^location ~\*/.test(l.head) && /try_files/.test(l.body));
+    expect(addHeaders(statics!)).toHaveLength(0);
+    // /api/: never nginx's id on top of the application's -- only when there is no application answer (502/504).
+    const api = location("location ^~ /api/")!;
+    expect(rid(api)).toEqual([["add_header", "X-Request-ID", "$ckam_api_request_id", "always"]]);
+    const map = root.children.find((b) => b.head === "map $upstream_http_x_request_id $ckam_api_request_id");
+    expect(map).toBeDefined();
+    expect(directives(map!)).toEqual([['""', "$request_id"], ["default", '""']]);
+    // The API must never take an id from the client: nothing forwards one, nothing hides the application's.
+    expect(directives(api).filter((d) => /x-request-id/i.test(d[1] ?? "") && d[0] !== "add_header")).toEqual([]);
+  });
+
   it("drops the API's own copies of the headers nginx adds, so each appears once (N5)", () => {
     const hidden = directives(location("location ^~ /api/")!).filter((d) => d[0] === "proxy_hide_header").map((d) => d[1]);
     for (const h of [...SECURITY_HEADERS, "Cache-Control"]) expect(hidden, h).toContain(h);

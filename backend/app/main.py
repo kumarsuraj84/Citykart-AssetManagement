@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -8,7 +9,7 @@ from fastapi.responses import FileResponse
 from app.core.config import DEFAULT_DEV_JWT_SECRET, settings
 from app.core.body_limit import BodyLimitMiddleware
 from app.core.errors import SPA_FALLBACK_PATH, is_api_path, register_exception_handlers, unknown_api_response
-from app.core.static_safety import safe_asset_path
+from app.core.static_safety import is_safe_relative_name, safe_asset_path
 from app.core.idempotency import IdempotencyMiddleware
 from app.core.db import SessionLocal
 from app.erp.source import is_configured as erp_is_configured
@@ -220,9 +221,10 @@ def _frontend_dist_dir() -> Path | None:
     return candidate if candidate.is_dir() else None
 
 
-# Security AU-14/AU-15: the same values frontend/nginx.conf sends in the Docker stack. Google Fonts serves the Inter /
-# IBM Plex stylesheet and font files. No in-browser camera use exists (labels are scanned with the phone's own
-# camera app, which opens the asset link), so the camera is off like the rest.
+# Security AU-14/AU-15: the same values frontend/nginx.conf sends in the Docker stack. Every font is self-hosted
+# under /assets (no Google or other third-party host, CL2-IF-OBS-04), so fonts, styles and scripts come from 'self'
+# only. No in-browser camera use exists (labels are scanned with the phone's own camera app, which opens the asset
+# link), so the camera is off like the rest.
 CONTENT_SECURITY_POLICY = (
     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
     "font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; "
@@ -255,13 +257,20 @@ async def _security_headers(request: Request, call_next):
 app.add_middleware(RequestContextMiddleware)
 
 
+def _spa_shell(dist_dir: Path) -> FileResponse:
+    return FileResponse(dist_dir / "index.html", headers={"Cache-Control": "no-cache"})
+
+
+# CL2-IF-04: the frontend's own pages under /assets/ (Asset 360 `/assets/<id>` -- the address printed QR labels
+# encode -- `/assets/new`, ...). A name of 1-3 segments of letters, digits, `_` and `-` only: no dot (so never a
+# built file, which always has an extension), no backslash, colon, `%`, space or NUL.
+_ASSETS_APP_ROUTE = re.compile(r"[A-Za-z0-9_-]{1,64}(?:/[A-Za-z0-9_-]{1,64}){0,2}")
+
+
 @app.get("/assets/{file_path:path}")
 async def _serve_frontend_asset(file_path: str):
-    # Deliberately 404s instead of falling back to index.html like nginx's
-    # single `try_files $uri /index.html` catch-all technically would for an
-    # unmatched /assets/ path -- a missing hashed JS/CSS file should surface
-    # as a clear 404, not silently return HTML that breaks the importing
-    # module with a confusing "Unexpected token '<'".
+    # A missing hashed JS/CSS/font/.map file stays a clear 404, not HTML that breaks the importing module with a
+    # confusing "Unexpected token '<'".
     dist_dir = _frontend_dist_dir()
     if dist_dir is None:
         raise HTTPException(status_code=404)
@@ -269,6 +278,13 @@ async def _serve_frontend_asset(file_path: str):
     # absolute path, or a Windows UNC / drive / device / stream name. app.core.static_safety refuses all of those
     # by looking at the text alone, BEFORE any filesystem call (on Windows even a stat of a UNC path contacts that
     # host), then requires the resolved file to sit inside <dist>/assets. Every refusal is the same plain 404.
+    if not is_safe_relative_name(file_path):
+        raise HTTPException(status_code=404)
+    # CL2-IF-04: an application address (no extension) gets the SPA shell exactly like the catch-all route, so a
+    # scanned label or a pasted /assets/<id> link opens Asset 360 on the single-port server too. Nothing is looked
+    # up on disk for it except index.html itself.
+    if _ASSETS_APP_ROUTE.fullmatch(file_path):
+        return _spa_shell(dist_dir)
     candidate = safe_asset_path(dist_dir / "assets", file_path)
     if candidate is None:
         raise HTTPException(status_code=404)
@@ -291,4 +307,4 @@ async def _serve_frontend_shell(full_path: str):
         candidate = safe_asset_path(dist_dir, full_path)        # IF-01-WIN: same lexical check first
         if candidate is not None:
             return FileResponse(candidate)
-    return FileResponse(dist_dir / "index.html", headers={"Cache-Control": "no-cache"})
+    return _spa_shell(dist_dir)

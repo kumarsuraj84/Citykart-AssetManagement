@@ -54,9 +54,24 @@ def test_the_docker_image_starts_uvicorn_without_proxy_headers():
     if not dockerfile.is_file():
         pytest.skip("backend/Dockerfile is not inside this image; the running-process test below covers the image")
     lines = _uvicorn_lines(dockerfile.read_text(encoding="utf-8"))
-    assert lines, "no uvicorn CMD found in backend/Dockerfile"
+    assert len(lines) == 2, "expected the uvicorn CMD of both targets (dev and runtime) in backend/Dockerfile"
     for line in lines:
         assert "--no-proxy-headers" in line and "--proxy-headers" not in line.replace("--no-proxy-headers", ""), line
+        # CL2-IF-OBS-05: no "server: uvicorn" product header.
+        assert "--no-server-header" in line, line
+
+
+def test_the_windows_reference_launcher_keeps_both_uvicorn_flags():
+    """ops/windows/run_ckam_web.ps1.template (production's single-port launcher): N2 and CL2-IF-OBS-05."""
+    template = next((p / "ops" / "windows" / "run_ckam_web.ps1.template" for p in (BACKEND, *BACKEND.parents)
+                     if (p / "ops" / "windows" / "run_ckam_web.ps1.template").is_file()), None)
+    if template is None:
+        pytest.skip("ops/windows is not here (inside the api container: `docker compose cp ops api:/app/`)")
+    lines = _uvicorn_lines(template.read_text(encoding="utf-8"))
+    args = [line for line in lines if "$uvicornArgs =" in line]
+    assert len(args) == 1, lines
+    assert "--no-proxy-headers" in args[0] and "--no-server-header" in args[0], args[0]
+    assert "--proxy-headers" not in args[0].replace("--no-proxy-headers", ""), args[0]
 
 
 def test_every_launch_script_in_the_repository_keeps_proxy_headers_off():

@@ -95,6 +95,14 @@ services:
     # pytest) needs it; the runtime target does run with read_only (see docs/security/evidence/closure/infra/).
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
+    # CL2-IF-OBS-01: the two world-writable scratch folders are memory-only and nothing in them can be run
+    # (noexec, nosuid, nodev). Python's tempfile, upload spooling, the test-log folder and pytest's tmp_path use
+    # /tmp; nothing executes from it (checked with the WP-F suite subset on a throw-away container). /dev/shm is
+    # already noexec/nosuid/nodev by Docker's default. Note: `docker compose cp` INTO /tmp does not work on a tmpfs
+    # (the file lands hidden underneath) -- copy test inputs into /app, as the pytest code-sync already does.
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+      - /var/tmp:rw,noexec,nosuid,nodev
     networks:
       - default
       - edge

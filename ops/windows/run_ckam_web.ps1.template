@@ -16,10 +16,11 @@
     3. Works out the release from FRONTEND_DIST_DIR (`<AppRoot>\releases\<sha>\frontend-dist`): the backend runs
        from the `backend` folder next to it, so that ONE setting switches the whole release.
     4. "Activates" the venv (VIRTUAL_ENV + PATH for this process) and starts
-       python -m uvicorn app.main:app --host <BindHost> --port <Port> --no-proxy-headers
+       python -m uvicorn app.main:app --host <BindHost> --port <Port> --no-proxy-headers --no-server-header
        Security N2: `--no-proxy-headers` is fixed here and must never be changed to `--proxy-headers`: CKAM is
        reached directly (no reverse proxy), so X-Forwarded-For must never be believed by uvicorn. The app keeps
        its own TRUSTED_PROXIES check, which must stay EMPTY in production.
+       CL2-IF-OBS-05: `--no-server-header` drops uvicorn's `server: uvicorn` product header.
     5. Waits for uvicorn and exits with its exit code (the task restarts it on failure).
 
   Nothing secret is set, printed or stored by this script. The settings file and nas.pw must be readable only by
@@ -132,12 +133,13 @@ if (-not (Test-Path -LiteralPath (Join-Path $backendDir 'app\main.py'))) { Write
 Write-Launcher "serving release: $release"
 Write-Launcher ("environment: {0}; release id: {1}" -f $env:ENVIRONMENT_NAME, $env:APP_VERSION)
 
-# 4. venv for this process, then uvicorn. The argument line is fixed on purpose (N2): no --proxy-headers, ever.
+# 4. venv for this process, then uvicorn. The argument line is fixed on purpose (N2): no --proxy-headers, ever;
+#    --no-server-header (CL2-IF-OBS-05): no product name in the Server header.
 $python = Join-Path $VenvDir 'Scripts\python.exe'
 if (-not (Test-Path -LiteralPath $python)) { Write-Launcher "venv python not found: $python"; exit 2 }
 $env:VIRTUAL_ENV = $VenvDir
 $env:PATH = (Join-Path $VenvDir 'Scripts') + ';' + $env:PATH
-$uvicornArgs = "-m uvicorn app.main:app --host $BindHost --port $Port --no-proxy-headers"
+$uvicornArgs = "-m uvicorn app.main:app --host $BindHost --port $Port --no-proxy-headers --no-server-header"
 Write-Launcher "starting: $python $uvicornArgs (working folder $backendDir)"
 if (-not $PSCmdlet.ShouldProcess("$python $uvicornArgs", 'start CKAM')) { exit 0 }
 $process = Start-Process -FilePath $python -ArgumentList $uvicornArgs -WorkingDirectory $backendDir `

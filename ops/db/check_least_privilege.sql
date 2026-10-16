@@ -205,6 +205,66 @@ WITH s AS (
         FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace, s s2 WHERE n.nspname = s2.sch
     ) x ON true
     GROUP BY s.own
+    UNION ALL
+    -- CL2-IF-01: the UPDATE privilege on a sequence is what allows setval (rewind / exhaust an id sequence).
+    SELECT 19, 'runtime role has no UPDATE on any sequence (setval could rewind or exhaust an id sequence)',
+           CASE WHEN count(*) FILTER (WHERE has_sequence_privilege(s.rt, r.oid, 'UPDATE')) = 0 THEN 'PASS' ELSE 'FAIL' END,
+           coalesce('UPDATE on: ' || string_agg(r.relname, ', ') FILTER (WHERE has_sequence_privilege(s.rt, r.oid, 'UPDATE')),
+                    format('%s sequences, none updatable', count(*)))
+    FROM rel r, s WHERE r.relkind = 'S'
+    UNION ALL
+    -- CL2-IF-01: detection of earlier damage. For every id sequence of a table column: the next id must be above
+    -- the highest id in the table (else inserts collide), at least 1,000,000 below the sequence maximum (else it
+    -- is about to be exhausted) and not more than 1,000,000 above the highest id (an absurd jump). Read through
+    -- query_to_xml (a plain SELECT); a sequence or table the checking role cannot read is reported, not guessed.
+    SELECT 20, 'id sequences: next id above the highest id, far from the maximum, no absurd jump',
+           CASE WHEN count(*) FILTER (WHERE q.problem IS NOT NULL) > 0 THEN 'FAIL'
+                WHEN count(*) FILTER (WHERE q.unreadable) > 0 THEN 'INFO' ELSE 'PASS' END,
+           coalesce(string_agg(q.seq || ': ' || q.problem, '; ') FILTER (WHERE q.problem IS NOT NULL),
+                    'not readable by this role: ' || string_agg(q.seq, ', ') FILTER (WHERE q.unreadable),
+                    format('%s sequences checked', count(*)))
+    FROM (
+        SELECT z.seq, z.nextv IS NULL OR (z.maxid IS NULL AND NOT z.table_readable) AS unreadable,
+               CASE WHEN z.nextv IS NULL THEN NULL
+                    WHEN z.maxid IS NOT NULL AND z.nextv <= z.maxid
+                        THEN format('next id %s is not above the highest id %s (rewound: new rows would collide)', z.nextv, z.maxid)
+                    WHEN z.maxv - z.nextv < 1000000
+                        THEN format('next id %s is within 1,000,000 of the sequence maximum %s (nearly exhausted)', z.nextv, z.maxv)
+                    WHEN z.nextv - coalesce(z.maxid, 0) > 1000000
+                        THEN format('next id %s is more than 1,000,000 above the highest id %s (investigate)', z.nextv, coalesce(z.maxid, 0))
+               END AS problem
+        FROM (
+            SELECT sq.relname AS seq, ps.max_value::numeric AS maxv, has_table_privilege(t.oid, 'SELECT') AS table_readable,
+                   CASE WHEN (xpath('/row/is_called/text()', sx.x))[1]::text = 'true'
+                        THEN (xpath('/row/last_value/text()', sx.x))[1]::text::numeric + ps.increment_by
+                        ELSE (xpath('/row/last_value/text()', sx.x))[1]::text::numeric END AS nextv,
+                   (xpath('/row/m/text()', mx.x))[1]::text::numeric AS maxid
+            FROM rel sq CROSS JOIN s
+                 JOIN pg_sequences ps ON ps.schemaname = s.sch AND ps.sequencename = sq.relname
+                 JOIN pg_depend dep ON dep.classid = 'pg_class'::regclass AND dep.objid = sq.oid
+                      AND dep.refclassid = 'pg_class'::regclass AND dep.deptype IN ('a', 'i')
+                 JOIN pg_class t ON t.oid = dep.refobjid
+                 JOIN pg_attribute att ON att.attrelid = t.oid AND att.attnum = dep.refobjsubid
+                 LEFT JOIN LATERAL (
+                     SELECT query_to_xml(format('SELECT last_value, is_called FROM %I.%I', s.sch, sq.relname), false, true, '') AS x
+                     WHERE has_sequence_privilege(sq.oid, 'SELECT')
+                 ) sx ON true
+                 LEFT JOIN LATERAL (
+                     SELECT query_to_xml(format('SELECT max(%I) AS m FROM %I.%I', att.attname, s.sch, t.relname), false, true, '') AS x
+                     WHERE has_table_privilege(t.oid, 'SELECT')
+                 ) mx ON true
+            WHERE sq.relkind = 'S'
+        ) z
+    ) q
+    UNION ALL
+    -- CL2-IF-02: a role may store its own session defaults (default_transaction_read_only = on, a tiny
+    -- statement_timeout, search_path ...) that last across restarts; CKAM's runtime role needs none.
+    SELECT 21, 'runtime role has no stored session defaults (pg_db_role_setting), in any database',
+           CASE WHEN count(rs.setrole) = 0 THEN 'PASS' ELSE 'FAIL' END,
+           coalesce(string_agg(coalesce(d.datname, 'all databases') || ': ' || array_to_string(rs.setconfig, ' '), '; '), 'none')
+    FROM s JOIN pg_roles ro ON ro.rolname = s.rt
+         LEFT JOIN pg_db_role_setting rs ON rs.setrole = ro.oid
+         LEFT JOIN pg_database d ON d.oid = rs.setdatabase
 )
 SELECT check_name AS "check", result, detail FROM checks ORDER BY n, check_name;
 -- <<< CHECK BODY

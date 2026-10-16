@@ -38,7 +38,8 @@ ENV GIT_COMMIT=${GIT_COMMIT} \
 EXPOSE 8000
 USER 10001:10001
 # Security N2: uvicorn must not rewrite the client address from X-Forwarded-For (the app does its own trusted-proxy check).
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]
+# CL2-IF-OBS-05: no "server: uvicorn" product header.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers", "--no-server-header"]
 
 FROM base AS runtime
 RUN pip install -c constraints.txt -e .
@@ -50,4 +51,5 @@ ENV GIT_COMMIT=${GIT_COMMIT}
 EXPOSE 8000
 USER 10001:10001
 # Security N2: uvicorn must not rewrite the client address from X-Forwarded-For (the app does its own trusted-proxy check).
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]
+# CL2-IF-OBS-05: no "server: uvicorn" product header.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers", "--no-server-header"]

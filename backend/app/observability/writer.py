@@ -2,8 +2,9 @@
 
 These rows must survive a request whose own transaction is rolled back (a failed login, a refused
 request, an unexpected error), so they never use the request's session. Every function here swallows its
-own failures: logging can never break or fail a request. A failure is reported once per kind to stderr
-(and the row's line is still written to the log files)."""
+own failures: logging can never break or fail a request. A failure is reported to stderr and the error log on
+its first occurrence and then at most once a minute with a running count while it repeats (CL2-IF-01), plus a
+system_event row when the database still accepts one (and the row's line is still written to the log files)."""
 from __future__ import annotations
 
 import hashlib
@@ -50,20 +51,80 @@ def allow(key: str, seconds: float = 60.0) -> bool:
 
 def reset_throttles() -> None:
     _last_seen.clear()
+    _failures.clear()
 
 
 # ------------------------------------------------------------------ failure reporting
 
-_reported: set[str] = set()
+# CL2-IF-01 / CL2-IF-OBS-03: a failing log write used to be reported ONCE per process and then hidden, so an
+# exhausted audit_log id sequence silently stopped the database audit trail. Now a repeating failure is reported
+# again at most once per REPORT_EVERY_SECONDS with a running count (never silent, never a flood), to stderr AND the
+# error log, and -- when the database still accepts it -- as a system_event row. Nothing here ever raises.
+REPORT_EVERY_SECONDS = 60.0
+_clock = time.monotonic                       # tests replace it to move time forward
+_failures: dict[str, dict] = {}               # where -> {"total", "unreported", "last_report"}
 
 
-def report_failure(where: str, exc: BaseException) -> None:
-    if where in _reported:
-        return
-    _reported.add(where)
+def failure_counts() -> dict[str, int]:
+    """Log-write failures per kind in this process (for diagnostics and tests)."""
+    return {where: state["total"] for where, state in _failures.items()}
+
+
+def reset_failure_reports() -> None:
+    _failures.clear()
+
+
+def report_failure(where: str, exc: BaseException) -> bool:
+    """Counts a log-write failure; reports it on the first occurrence and then at most once per minute while it
+    repeats. True when this call reported (the caller may also record a system_event)."""
     try:
-        sys.stderr.write(f"CKAM logging: could not write {where} ({type(exc).__name__}: "
-                         f"{redact_text(str(exc), 300)}). Further failures of this kind are not repeated.\n")
+        now = _clock()
+        state = _failures.setdefault(where, {"total": 0, "unreported": 0, "last_report": None})
+        state["total"] += 1
+        state["unreported"] += 1
+        last = state["last_report"]
+        if last is not None and now - last < REPORT_EVERY_SECONDS:
+            return False
+        detail = f"{type(exc).__name__}: {redact_text(str(exc), 300)}"
+        if last is None:
+            message = (f"CKAM logging: could not write {where} ({detail}). Failure 1; while it continues it is "
+                       f"reported again at most once a minute with a count.")
+        else:
+            message = (f"CKAM logging: could not write {where} ({detail}). {state['total']} failures so far, "
+                       f"{state['unreported']} since the last report {int(now - last)} s ago.")
+        state["last_report"] = now
+        state["unreported"] = 0
+        try:
+            sys.stderr.write(message + "\n")
+        except Exception:
+            pass
+        if where != "error.jsonl":                   # the error log itself is what failed: stderr only
+            try:
+                # Marked so the console handler does not print the same line on stderr a second time.
+                errors_logger.error(message, extra={"fields": {"kind": "log_write_failed", "where": where,
+                                                               "failures_total": state["total"]},
+                                                    "ckam_stderr_done": True})
+            except Exception:
+                pass
+        return True
+    except Exception:
+        return False
+
+
+async def _record_failure_event(where: str) -> None:
+    """A system_event row for a reported log-write failure, written directly (no logger: the line is already in
+    stderr / the error log) and never for a failing system_event write itself (no loop)."""
+    if where.startswith("system_event"):
+        return
+    try:
+        total = _failures.get(where, {}).get("total", 0)
+        row = {"level": "ERROR", "component": "logging", "event": "write_failed",
+               "message": f"Could not write {where}: {total} failure(s) so far in this process.",
+               "details": {"where": where, "failures_total": total}, "request_id": None}
+        ctx = context.current()
+        if ctx is not None:
+            row["request_id"] = ctx.request_id
+        await insert_rows(SystemEvent, [row], "system_event (logging failure)")
     except Exception:
         pass
 
@@ -77,7 +138,8 @@ async def insert_rows(model, rows: list[dict], where: str) -> bool:
             await session.commit()
         return True
     except Exception as exc:
-        report_failure(where, exc)
+        if report_failure(where, exc):
+            await _record_failure_event(where)
         return False
 
 
