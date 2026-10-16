@@ -17,8 +17,10 @@ def test_the_master_audit_migration_is_the_only_head():
     # S7 (intended change): d2e4f6a8b0c2 (idempotency_key + PO number index) now sits on top of it.
     # S8 (intended change): e6f8a0b2c4d6 (audit_log / error_log / system_event / client_report) on top of that.
     # Security (intended change): f9a1c3e5b7d2 (asset_user.token_version) and a3c5e7f9b1d4 (append-only tables
-    # refuse TRUNCATE, audit purge floor) on top of that.
-    assert script.get_heads() == ["a3c5e7f9b1d4"]
+    # refuse TRUNCATE, audit purge floor) on top of that; closure WP-A2 (intended change): b5d7f9a1c3e5
+    # (auth_session, AU-06) on top of that.
+    assert script.get_heads() == ["b5d7f9a1c3e5"]
+    assert script.get_revision("b5d7f9a1c3e5").down_revision == "a3c5e7f9b1d4"
     assert script.get_revision("a3c5e7f9b1d4").down_revision == "f9a1c3e5b7d2"
     assert script.get_revision("f9a1c3e5b7d2").down_revision == "e6f8a0b2c4d6"
     assert script.get_revision("e6f8a0b2c4d6").down_revision == "d2e4f6a8b0c2"

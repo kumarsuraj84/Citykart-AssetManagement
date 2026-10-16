@@ -7,11 +7,13 @@ from app.core import rate_limit
 from app.core.capabilities import capabilities
 from app.core.config import settings
 from app.core.db import get_session
-from app.core.deps import get_current_asset_user
+from app.core.deps import SESSION_ENDED_DETAIL, get_current_asset_user
 from app.core.security import (
-    burn_password_check, create_access_token, create_refresh_token, decode_token, end_all_sessions, hash_password,
-    token_is_current, verify_password,
+    burn_password_check, create_access_token, decode_token, end_all_sessions, hash_password, token_is_current,
+    verify_password,
 )
+from app.auth import sessions as auth_sessions
+from app.auth.sessions import Outcome
 from app.asset_users.models import AssetUser
 from app.masters.models import Company
 from app.auth.password_policy import password_problem
@@ -35,11 +37,12 @@ REFRESH_COOKIE_NAME = "refresh_token"
 REFRESH_COOKIE_PATH = "/api/auth"
 
 
-def _set_refresh_cookie(response: Response, asset_user: AssetUser) -> None:
+def _set_refresh_cookie(response: Response, token: str) -> None:
     response.set_cookie(
         REFRESH_COOKIE_NAME,
-        # Security AU-05/AU-06: a new token every time (its own jti), for the account's current session version.
-        create_refresh_token(asset_user.id, asset_user.token_version or 0),
+        # Security AU-05/AU-06: a new token every time (its own jti and session id), for the account's current
+        # session version (app.auth.sessions issues it and keeps only its hash).
+        token,
         httponly=True,
         # See Settings.cookie_secure: off by default for this app's plain-HTTP LAN
         # deployment (a Secure cookie is never sent over HTTP, which would break
@@ -208,12 +211,16 @@ async def login(body: LoginRequest, request: Request, response: Response, sessio
     await session.commit()
     if reset is None:
         raise await refuse_locked()
+    # Security AU-06: one session record per sign-in (committed before the audit write, which uses its own
+    # connection).
+    refresh_token = await auth_sessions.open_session(session, asset_user)
+    await session.commit()
     asset_user.failed_login_count, asset_user.locked_until = 0, None
 
     obs_context.set_actor(asset_user)
     await obs_writer.security("LOGIN", f"{asset_user.name} signed in.", entity="asset_user", entity_id=asset_user.id,
                               changes={"login_id": attempted, "must_change_at_sign_in": asset_user.must_change_password})
-    _set_refresh_cookie(response, asset_user)
+    _set_refresh_cookie(response, refresh_token)
     return _session_response(asset_user)
 
 
@@ -268,9 +275,32 @@ async def refresh(
     if not token_is_current(payload, asset_user):
         raise await refused("the session was ended (signed out, password or access changed)", asset_user)
 
-    obs_context.set_actor(asset_user)
-    _set_refresh_cookie(response, asset_user)
-    return _session_response(asset_user)
+    # Security AU-06: the server-side session record decides whether this exact token may still be used.
+    renewal = await auth_sessions.renew(session, asset_user, payload, refresh_token)
+    if renewal.outcome is Outcome.ROTATED:
+        obs_context.set_actor(asset_user)
+        _set_refresh_cookie(response, renewal.refresh_token)
+        return _session_response(asset_user)
+    if renewal.outcome is Outcome.DUPLICATE:
+        # Another tab of the same browser renewed with this cookie a moment ago and holds the newer cookie: a new
+        # access token only -- no Set-Cookie, so the newer cookie is not overwritten with an older one.
+        obs_context.set_actor(asset_user)
+        await obs_writer.security(
+            "REFRESH_DUPLICATE", f"{asset_user.name}'s session was renewed twice at the same moment (several tabs); "
+            "the second renewal got a short access token only.", actor=asset_user, entity="asset_user",
+            entity_id=asset_user.id, changes={"session": renewal.session_id, "severity": "LOW"},
+            throttle=(f"refresh-duplicate:{renewal.session_id}", 60))
+        return _session_response(asset_user)
+    if renewal.outcome is Outcome.REUSE:
+        await obs_writer.security(
+            "REFRESH_REUSE", f"An already-used sign-in token of {asset_user.name} was presented again. Every session "
+            "of this person was ended; they must sign in again.", outcome="DENIED", actor=asset_user,
+            entity="asset_user", entity_id=asset_user.id,
+            changes={"session": renewal.session_id, "legacy": renewal.legacy, "severity": "HIGH"})
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, SESSION_ENDED_DETAIL)
+    if renewal.outcome is Outcome.EXPIRED:
+        raise await refused("the session has expired", asset_user)
+    raise await refused("the session was ended (signed out, password or access changed)", asset_user)
 
 
 @router.post("/logout", status_code=204)
@@ -291,7 +321,8 @@ async def logout(response: Response, session: AsyncSession = Depends(get_session
             if payload.get("type") == "refresh":
                 user = await session.get(AssetUser, int(payload["sub"]))
                 if user is not None and token_is_current(payload, user):
-                    end_all_sessions(user)
+                    # Security AU-06/OBS-TV: atomic bump; every session record of the person is marked revoked.
+                    await end_all_sessions(session, user, reason="signed out")
                     await session.commit()
         except (ValueError, KeyError, TypeError):
             user = None
@@ -344,8 +375,10 @@ async def change_password(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, problem)
     asset_user.password_hash = hash_password(body.new_password)
     asset_user.must_change_password = False
-    end_all_sessions(asset_user)
+    await end_all_sessions(session, asset_user, reason="password changed")
+    # Security AU-06: this device carries on in a new session record of the new session version.
+    refresh_token = await auth_sessions.open_session(session, asset_user)
     await session.commit()
-    _set_refresh_cookie(response, asset_user)
+    _set_refresh_cookie(response, refresh_token)
     await obs_writer.security("PASSWORD_CHANGED", f"{asset_user.name} changed their password.",
                               entity="asset_user", entity_id=asset_user.id)

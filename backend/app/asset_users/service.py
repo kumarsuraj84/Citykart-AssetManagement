@@ -96,7 +96,8 @@ class AssetUserService:
                 "Move them to someone else or back to a stock room first, then deactivate."
             )
         asset_user.is_active = False
-        end_all_sessions(asset_user)            # security AU-05: a deactivated account's tokens die with it
+        # security AU-05: a deactivated account's tokens die with it (OBS-TV: atomic)
+        await end_all_sessions(self.session, asset_user, reason="deactivated")
         asset_user.updated_by = actor_id
         await self.session.commit()
         return True
@@ -110,7 +111,8 @@ class AssetUserService:
         asset_user.must_change_password = True
         asset_user.failed_login_count = 0
         asset_user.locked_until = None
-        end_all_sessions(asset_user)            # security AU-05: whoever was signed in with the old password is out
+        # security AU-05: whoever was signed in with the old password is out (OBS-TV: atomic)
+        await end_all_sessions(self.session, asset_user, reason="password reset")
         asset_user.updated_by = actor_id
         await self.session.commit()
         return temp_password
@@ -133,7 +135,8 @@ class AssetUserService:
             user.must_change_password = True
             user.failed_login_count = 0
             user.locked_until = None
-            end_all_sessions(user)              # security AU-05
+            # security AU-05 (OBS-TV: atomic)
+            await end_all_sessions(self.session, user, reason="password reset")
             user.updated_by = actor_id
         await self.session.commit()
         return list(zip(users, temps))
@@ -153,7 +156,8 @@ class AssetUserService:
         if not value and asset_user.is_primary_owner and await self.count_active_primary_owners() <= 1:
             raise ValueError("The last remaining head-office admin cannot be removed.")
         if asset_user.is_primary_owner and not value:
-            end_all_sessions(asset_user)        # security AU-05: no live session keeps head-office rights
+            # security AU-05: no live session keeps head-office rights (OBS-TV: atomic)
+            await end_all_sessions(self.session, asset_user, reason="head-office rights removed")
         asset_user.is_primary_owner = value
         asset_user.updated_by = actor_id
         await self.session.commit()
@@ -171,7 +175,8 @@ class AssetUserService:
         for cid in company_ids:
             self.session.add(AssetUserCompanyAccess(asset_user_id=asset_user_id, company_id=cid))
         if before != set(company_ids):
-            end_all_sessions(asset_user)        # security AU-05: company access changed -> sign in again
+            # security AU-05: company access changed -> sign in again (OBS-TV: atomic)
+            await end_all_sessions(self.session, asset_user, reason="company access changed")
         await self.session.commit()
         return True
 

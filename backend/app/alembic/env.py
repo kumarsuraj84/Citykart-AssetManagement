@@ -30,6 +30,7 @@ import app.lifecycle.models  # noqa: F401
 import app.documents.models  # noqa: F401
 import app.core.idempotency  # noqa: F401  (S7: idempotency_key)
 import app.observability.models  # noqa: F401  (S8: audit_log, error_log, system_event, client_report)
+import app.auth.models  # noqa: F401  (security AU-06: auth_session)
 
 target_metadata = Base.metadata
 

@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     jwt_secret: str = Field(default=DEFAULT_DEV_JWT_SECRET, repr=False)
     jwt_access_minutes: int = 15
     jwt_refresh_hours: int = 8
+    # Security AU-06: how long (seconds) the refresh token that was JUST replaced is still taken as a harmless
+    # duplicate -- several browser tabs share one cookie and each renews by itself, so two renewals with the same
+    # cookie a moment apart are normal. Such a late twin gets a new 15-minute access token but no new cookie.
+    # Any other use of an old refresh token is treated as theft and ends every session of that person.
+    # 0 = strict (the late twin is treated as theft too).
+    refresh_reuse_grace_seconds: int = 10
     # Public address of the web app (the nginx `web` service, port 3211 by
     # default) -- NOT the API's internal :8000. Printed QR labels encode
     # f"{base_url}/assets/{id}", so in production this must be the real LAN
@@ -102,6 +108,12 @@ class Settings(BaseSettings):
         if text not in ERP_SSL_MODES:
             raise ValueError(f"PO_SOURCE_SSLMODE must be one of: {', '.join(ERP_SSL_MODES)} (the default is prefer).")
         return text
+
+    @field_validator("refresh_reuse_grace_seconds", mode="after")
+    @classmethod
+    def _grace_in_range(cls, value):
+        # A negative value means strict; more than 5 minutes would make the replaced token a second key.
+        return min(max(int(value), 0), 300)
 
     @field_validator("po_source_sslrootcert", mode="before")
     @classmethod

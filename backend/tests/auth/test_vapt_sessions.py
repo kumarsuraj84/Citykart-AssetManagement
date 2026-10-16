@@ -167,12 +167,15 @@ async def test_every_refresh_hands_out_a_new_unique_token(client):
     w = await build_world()
     _, cookie = await _sign_in(client, w, "op_it")
     first = await _refresh_with(client, cookie)
-    second = await _refresh_with(client, cookie)
+    # Closure WP-A2 / AU-06 (intended change): the second renewal uses the NEW cookie. The same cookie twice is
+    # now a duplicate (no new cookie) or, outside the grace window, reuse (test_wpa2_refresh_reuse.py).
+    second = await _refresh_with(client, first.cookies["refresh_token"])
     assert first.status_code == second.status_code == 200
     a, b = first.cookies["refresh_token"], second.cookies["refresh_token"]
     assert a != b != cookie
     claims = [jwt.get_unverified_claims(t) for t in (cookie, a, b)]
     assert len({c["jti"] for c in claims}) == 3 and {c["tv"] for c in claims} == {0}
+    assert len({c["sid"] for c in claims}) == 1                      # one sign-in = one session record
     access = jwt.get_unverified_claims(first.json()["access_token"])
     assert access["type"] == "access" and access["tv"] == 0 and access["jti"]
 

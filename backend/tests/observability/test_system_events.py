@@ -18,8 +18,8 @@ async def test_startup_and_shutdown_are_recorded_with_version_and_safe_config():
     assert [(e.component, e.event) for e in events] == [("startup", "app_started"), ("shutdown", "app_stopped")]
     details = events[0].details
     assert details["environment"] == settings.environment_name and details["version"]
-    # Security migrations (intended change): the head is now a3c5e7f9b1d4.
-    assert details["migration"]["code_head"] == "a3c5e7f9b1d4" and details["migration"]["matches"] is True
+    # Security migrations (intended change): the head is now b5d7f9a1c3e5 (AU-06 auth_session, closure WP-A2).
+    assert details["migration"]["code_head"] == "b5d7f9a1c3e5" and details["migration"]["matches"] is True
     assert "database_url" not in str(details) and settings.jwt_secret not in str(details)
     assert details["config"]["jwt_signing_key_is_placeholder"] in (True, False)
 
@@ -29,7 +29,7 @@ async def test_a_migration_mismatch_is_a_warning(monkeypatch):
     await system.on_startup()
     [mismatch] = await system_events(SystemEvent.component == "migration")
     assert mismatch.level == "WARNING" and mismatch.event == "head_mismatch"
-    assert "ffffffffffff" in mismatch.message and "a3c5e7f9b1d4" in mismatch.message
+    assert "ffffffffffff" in mismatch.message and "b5d7f9a1c3e5" in mismatch.message
 
 
 def test_the_version_comes_from_the_setting_the_environment_or_a_file(monkeypatch, tmp_path):

@@ -29,8 +29,9 @@ from app.observability.redact import MASK, is_sensitive_key, json_safe, truncate
 
 LOG_TABLES = frozenset({"audit_log", "error_log", "system_event", "client_report"})
 # Tables whose rows are not business changes at all (not counted as writes for the coverage check).
+# Security AU-06: auth_session (sign-in session records) -- renewals and sign-ins are covered by SECURITY rows.
 TECHNICAL_TABLES = frozenset({"code_counter", "idempotency_key", "erp_sync_run", "erp_po_line", "erp_vendor",
-                              "erp_site", "erp_item", "alembic_version"})
+                              "erp_site", "erp_item", "alembic_version", "auth_session"})
 ALWAYS_SKIPPED_FIELDS = frozenset({"created_at", "updated_at", "created_by", "updated_by"})
 MAX_VALUE_TEXT = 300
 

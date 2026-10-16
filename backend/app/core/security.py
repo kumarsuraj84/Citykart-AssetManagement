@@ -53,9 +53,18 @@ def create_access_token(asset_user_id: int, role: str, company_scope: int | None
     return jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
 
 
-def create_refresh_token(asset_user_id: int, token_version: int = 0) -> str:
+def new_token_id() -> str:
+    return secrets.token_urlsafe(16)
+
+
+def create_refresh_token(asset_user_id: int, token_version: int = 0, *, sid: int | None = None,
+                         jti: str | None = None) -> str:
+    """Security AU-06: `sid` names the server-side session record (app.auth.sessions) the token belongs to; only
+    the hash of `jti` is stored there. A token without `sid` is a pre-AU-06 ("legacy") token."""
     payload = {"sub": str(asset_user_id), "type": "refresh", "tv": int(token_version or 0),
-               "jti": secrets.token_urlsafe(16), **_jwt_times(timedelta(hours=settings.jwt_refresh_hours))}
+               "jti": jti or new_token_id(), **_jwt_times(timedelta(hours=settings.jwt_refresh_hours))}
+    if sid is not None:
+        payload["sid"] = int(sid)
     return jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
 
 
@@ -81,8 +90,37 @@ def token_is_current(payload: dict, asset_user) -> bool:
     return token_version_of(payload) == int(getattr(asset_user, "token_version", 0) or 0)
 
 
-def end_all_sessions(asset_user) -> None:
+async def end_all_sessions(session, asset_user, *, reason: str = "ended",
+                           only_if_version: int | None = None) -> int | None:
     """Security AU-05/AU-07: every access and refresh token issued to this account so far stops working (the
-    caller commits). Used on sign-out, password change / reset, deactivation, sign-in switched off and any
-    change of role, work area, company or company access."""
-    asset_user.token_version = int(getattr(asset_user, "token_version", 0) or 0) + 1
+    caller commits). Used on sign-out, password change / reset, deactivation, sign-in switched off, any change
+    of role, work area, company or company access, and refresh-token reuse (AU-06).
+
+    Security OBS-TV: ONE atomic statement (`token_version = token_version + 1 ... RETURNING`), not read / add 1 /
+    write in Python, so two bumps at the same moment can never collapse into one. The row stays locked until the
+    caller commits, so the returned value is exactly the one committed; the in-memory object gets it as its
+    committed value (not a pending change that a later flush would write back). The person's open session
+    records (auth_session) are marked revoked in the same transaction.
+
+    `only_if_version`: bump only while the version is still that one (None = someone else already ended the
+    sessions; nothing changed). Returns the new version."""
+    from sqlalchemy import update
+    from sqlalchemy.orm.attributes import set_committed_value
+
+    from app.asset_users.models import AssetUser
+    from app.auth.sessions import revoke_open_sessions
+
+    stmt = update(AssetUser).where(AssetUser.id == asset_user.id)
+    if only_if_version is not None:
+        stmt = stmt.where(AssetUser.token_version == only_if_version)
+    stmt = (stmt.values(token_version=AssetUser.token_version + 1).returning(AssetUser.token_version)
+            .execution_options(synchronize_session=False))
+    # no_autoflush: the caller's other pending changes keep being written exactly when they were before (an
+    # IntegrityError still surfaces where the caller expects it); they are in the same transaction either way.
+    with session.no_autoflush:
+        new_version = (await session.execute(stmt)).scalar_one_or_none()
+        if new_version is None:
+            return None
+        set_committed_value(asset_user, "token_version", new_version)
+        await revoke_open_sessions(session, asset_user.id, reason)
+    return new_version

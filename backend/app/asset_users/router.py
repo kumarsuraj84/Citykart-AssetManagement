@@ -545,7 +545,7 @@ async def update_asset_user(
     if obj is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
     if _access_reduced_or_changed(access_before, obj):
-        end_all_sessions(obj)
+        await end_all_sessions(session, obj, reason="access changed")
     rooms = await _store_rooms_or_422(session, asset_user, obj) if becomes_store else []
     await session.commit()
     await session.refresh(obj)
