@@ -154,6 +154,11 @@ test("full custody journey: procure, allot, return, allot again", async ({ page,
 
   // ---- Session really over (no refresh cookie, invalid access token): back to
   // /login, remembering the page ----
+  // After a password change the old access token is revoked, so the first calls on /my-assets are refused and the
+  // app renews its session once with the new cookie. Let that finish first: a renewal still in flight when the
+  // cookies are cleared would hand a fresh cookie back and the "session really over" check below would race it.
+  await page.waitForLoadState("networkidle", { timeout: 5_000 }).catch(() => {}); // (the page may poll: bounded)
+  await page.waitForTimeout(1_000);
   await page.context().clearCookies();
   await page.evaluate((broken) => {
     const stored = JSON.parse(sessionStorage.getItem("ckam-auth")!);
