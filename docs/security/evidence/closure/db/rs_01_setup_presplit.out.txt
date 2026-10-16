@@ -1,0 +1,160 @@
+## Baseline of the dev Postgres server before the simulation
+
+$ docker compose exec -T db psql -X -U ckam -d ckam -c \du -c \l
+                             List of roles
+ Role name |                         Attributes                         
+-----------+------------------------------------------------------------
+ ckam      | Superuser, Create role, Create DB, Replication, Bypass RLS
+
+                                                 List of databases
+   Name    | Owner | Encoding | Locale Provider |  Collate   |   Ctype    | Locale | ICU Rules | Access privileges 
+-----------+-------+----------+-----------------+------------+------------+--------+-----------+-------------------
+ ckam      | ckam  | UTF8     | libc            | en_US.utf8 | en_US.utf8 |        |           | 
+ ckam_test | ckam  | UTF8     | libc            | en_US.utf8 | en_US.utf8 |        |           | 
+ postgres  | ckam  | UTF8     | libc            | en_US.utf8 | en_US.utf8 |        |           | 
+ template0 | ckam  | UTF8     | libc            | en_US.utf8 | en_US.utf8 |        |           | =c/ckam          +
+           |       |          |                 |            |            |        |           | ckam=CTc/ckam
+ template1 | ckam  | UTF8     | libc            | en_US.utf8 | en_US.utf8 |        |           | =c/ckam          +
+           |       |          |                 |            |            |        |           | ckam=CTc/ckam
+(5 rows)
+
+[exit 0]
+
+## Production-like start: the runtime role owns the database and runs the migrations (as ckassetapp today)
+
+$ docker compose exec -T db psql -X -U ckam -d postgres -c CREATE ROLE ckam_rs_app LOGIN PASSWORD '***' -c CREATE DATABASE ckam_rs OWNER ckam_rs_app
+CREATE ROLE
+CREATE DATABASE
+[exit 0]
+
+$ docker compose exec -T -w /app -e DATABASE_URL=postgresql+asyncpg://ckam_rs_app:***@db:5432/ckam_rs api alembic upgrade b5d7f9a1c3e5
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 62108649b9c8, masters and holders
+INFO  [alembic.runtime.migration] Running upgrade 62108649b9c8 -> da18ab258def, numbering
+INFO  [alembic.runtime.migration] Running upgrade da18ab258def -> ff2d24d960b8, assets and events
+INFO  [alembic.runtime.migration] Running upgrade ff2d24d960b8 -> cf5fc76a3fb2, documents
+INFO  [alembic.runtime.migration] Running upgrade cf5fc76a3fb2 -> 83d063397a4a, holder email uniqueness per company
+INFO  [alembic.runtime.migration] Running upgrade 83d063397a4a -> d2bcc801fcc1, AM-01: hot-path indexes + historical event name snapshots
+INFO  [alembic.runtime.migration] Running upgrade d2bcc801fcc1 -> 3a44505b6b10, AM-02: CHECK constraints for holder_type, role, and custom_field.field_type
+INFO  [alembic.runtime.migration] Running upgrade 3a44505b6b10 -> a409768dc2cf, asset field change audit
+INFO  [alembic.runtime.migration] Running upgrade a409768dc2cf -> 370399c6380e, custom field company scope
+INFO  [alembic.runtime.migration] Running upgrade 370399c6380e -> f28b6a913dce, asset field change correction reason
+INFO  [alembic.runtime.migration] Running upgrade f28b6a913dce -> 9f973f6c81e9, purchase orders and pending assets
+INFO  [alembic.runtime.migration] Running upgrade 9f973f6c81e9 -> 8c5638e1b65e, purchase order cost centre
+INFO  [alembic.runtime.migration] Running upgrade 8c5638e1b65e -> 6c882ef3b225, asset and pending_asset barcode
+INFO  [alembic.runtime.migration] Running upgrade 6c882ef3b225 -> 278437eb710e, asset serial number global uniqueness
+INFO  [alembic.runtime.migration] Running upgrade 278437eb710e -> b7f4a1d92e6c, warranty years
+INFO  [alembic.runtime.migration] Running upgrade b7f4a1d92e6c -> c2a8f731d904, invoice amount
+INFO  [alembic.runtime.migration] Running upgrade c2a8f731d904 -> d4e9a2f8b1c3, brand master
+INFO  [alembic.runtime.migration] Running upgrade d4e9a2f8b1c3 -> a1c7e5f3d9b2, vendor code length
+INFO  [alembic.runtime.migration] Running upgrade a1c7e5f3d9b2 -> f3b6c8a1d7e4, location company scope
+INFO  [alembic.runtime.migration] Running upgrade f3b6c8a1d7e4 -> c7e2f9a4b6d1, holder to asset_user rename
+INFO  [alembic.runtime.migration] Running upgrade c7e2f9a4b6d1 -> d3f8a1c5b7e9, asset user / rbac / responsibility rebuild
+INFO  [alembic.runtime.migration] Running upgrade d3f8a1c5b7e9 -> e5b2c8a4d1f6, bundles: purchase-time kits (Desktop = CPU + TFT + Keyboard + Mouse)
+INFO  [alembic.runtime.migration] Running upgrade e5b2c8a4d1f6 -> f7a1d4c8b3e2, PO reader: a delivery location on purchase orders, and the item memory table
+INFO  [alembic.runtime.migration] Running upgrade f7a1d4c8b3e2 -> a9c3e5d7b1f4, ERP links: which ERP vendor / purchase order a CKAM row came from
+INFO  [alembic.runtime.migration] Running upgrade a9c3e5d7b1f4 -> b4d6f8a0c2e3, Serial-number rule on Categories and Sub-Categories
+INFO  [alembic.runtime.migration] Running upgrade b4d6f8a0c2e3 -> c5e7a9b1d3f5, Items: CityKart's own item master, and which ERP codes belong to each
+INFO  [alembic.runtime.migration] Running upgrade c5e7a9b1d3f5 -> d6f8b0c2e4a6, Item rules belong to a company's ERP master
+INFO  [alembic.runtime.migration] Running upgrade d6f8b0c2e4a6 -> e7a0c2d4f6b8, Company: the code the ERP uses for it
+INFO  [alembic.runtime.migration] Running upgrade e7a0c2d4f6b8 -> f8b1d3e5a7c9, Serial rule lives on the Item only; bundle parts point at Items
+INFO  [alembic.runtime.migration] Running upgrade f8b1d3e5a7c9 -> a1d3f5b7c9e2, Serial pending: items whose serial is read later, when the box is opened
+INFO  [alembic.runtime.migration] Running upgrade a1d3f5b7c9e2 -> b2c4e6a8d0f1, Purchase orders made from the ERP: what the ERP said, and what was done about later changes
+INFO  [alembic.runtime.migration] Running upgrade b2c4e6a8d0f1 -> c3e5a7b9d1f2, CKAM's own copy of the ERP purchase data (both companies)
+INFO  [alembic.runtime.migration] Running upgrade c3e5a7b9d1f2 -> d4f6b8c0e2a3, One vendor, one ERP supplier code per company
+INFO  [alembic.runtime.migration] Running upgrade d4f6b8c0e2a3 -> e5a7c9b1d3f4, The ERP's sites in CKAM's copy of the ERP data (stores, warehouses, head offices of both companies)
+INFO  [alembic.runtime.migration] Running upgrade e5a7c9b1d3f4 -> f6b8d0e2a4c5, ERP codes that CKAM does not track ("not tracked" rules, and Department / Section / Division levels)
+INFO  [alembic.runtime.migration] Running upgrade f6b8d0e2a4c5 -> b8d0f2a4c6e8, PO lines get a number: pending_asset.line_no
+INFO  [alembic.runtime.migration] Running upgrade b8d0f2a4c6e8 -> c1d3e5f7a9b0, Append-only audit of work-area-owned masters: master_audit
+INFO  [alembic.runtime.migration] Running upgrade c1d3e5f7a9b0 -> d2e4f6a8b0c2, S7 fix round (P1-2): idempotency_key table + one live PO number per company
+INFO  [alembic.runtime.migration] Running upgrade d2e4f6a8b0c2 -> e6f8a0b2c4d6, S8: audit trail, error log, system events and client reports
+INFO  [alembic.runtime.migration] Running upgrade e6f8a0b2c4d6 -> f9a1c3e5b7d2, Security AU-05/AU-07: asset_user.token_version (the session version)
+INFO  [alembic.runtime.migration] Running upgrade f9a1c3e5b7d2 -> a3c5e7f9b1d4, Security AU-10/IF-05/IF-06: append-only tables refuse TRUNCATE; the audit purge flag cannot remove recent rows
+INFO  [alembic.runtime.migration] Running upgrade a3c5e7f9b1d4 -> b5d7f9a1c3e5, Security AU-06: auth_session (server-side sign-in session records, refresh-token reuse detection)
+Primary Owner 'Admin' created. One-time temporary password (relay out-of-band, then discard): *** (redacted)
+must_change_password is set, so this password must be changed at first login.
+[exit 0]
+
+## Seed the S0/S4 test world as the runtime role
+
+$ docker compose exec -T -w /app -e PYTHONPATH=/app -e DATABASE_URL=postgresql+asyncpg://ckam_rs_app:***@db:5432/ckam_rs -e LOG_DIR=/tmp/rs_logs api python /tmp/wpb/rs_seed.py
+connected as ckam_rs_app to ckam_rs
+seeded: company 1 stock 10 employee 13 item_chair 4 owner login S0OWN
+[exit 0]
+
+## Least-privilege check BEFORE the split (expected: FAIL on ownership / schema CREATE / append-only rows)
+
+$ docker compose exec -T db psql -X -U ckam -d ckam_rs -v runtime_role=ckam_rs_app -f /tmp/ckam_ops_db/check_least_privilege.sql
+DO
+                                              check                                               | result |                                                                                                                                                                                                                                                                                  detail                                                                                                                                                                                                                                                                                  
+--------------------------------------------------------------------------------------------------+--------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ runtime role exists                                                                              | PASS   | ckam_rs_app
+ runtime role: not superuser / createrole / createdb / replication / bypassrls                    | PASS   | super=f createrole=f createdb=f replication=f bypassrls=f
+ runtime role is not a member of a superuser role or a powerful predefined role                   | PASS   | none
+ runtime role owns nothing in this database (tables, sequences, views, functions, types, schemas) | FAIL   | relations (tables, indexes, sequences)=221 functions=7
+ table owners are not the runtime role (nor a role it can become)                                 | FAIL   | ckam_rs_app (72 objects)
+ runtime role does not own the database                                                           | FAIL   | owner=ckam_rs_app
+ runtime role cannot CREATE in any schema                                                         | FAIL   | public
+ runtime role cannot create schemas or temporary tables in the database                           | FAIL   | create=t temp=t
+ runtime role can CONNECT and USE the schema                                                      | PASS   | public
+ runtime role has SELECT/INSERT/UPDATE/DELETE on every ordinary table                             | PASS   | 35 tables
+ append-only asset_event: SELECT+INSERT only (no UPDATE, DELETE, TRUNCATE)                        | FAIL   | select=t insert=t update=t delete=t truncate=t
+ append-only asset_field_change: SELECT+INSERT only (no UPDATE, DELETE, TRUNCATE)                 | FAIL   | select=t insert=t update=t delete=t truncate=t
+ append-only audit_log: SELECT+INSERT only (no UPDATE, DELETE, TRUNCATE)                          | FAIL   | select=t insert=t update=t delete=t truncate=t
+ append-only master_audit: SELECT+INSERT only (no UPDATE, DELETE, TRUNCATE)                       | FAIL   | select=t insert=t update=t delete=t truncate=t
+ runtime role has no TRUNCATE, TRIGGER or REFERENCES privilege on any table                       | FAIL   | alembic_version, cost_center, department, code_counter, code_rule, asset_event, asset_document, custom_field, asset_field_change, brand, location, asset_user_company_access, app_setting, bundle, vendor, asset_category, asset_subcategory, item, asset, company, bundle_part, purchase_order, purchase_order_erp_baseline, purchase_order_erp_change, erp_sync_run, erp_po_line, erp_vendor, erp_item, vendor_erp_link, erp_site, item_map, pending_asset, master_audit, idempotency_key, error_log, system_event, client_report, audit_log, asset_user, auth_session
+ alembic_version: runtime role may only read it                                                   | FAIL   | select=t insert=t update=t delete=t
+ runtime role can use every sequence (needed to add rows)                                         | PASS   | 32 sequences
+ ckam_purge_audit_log: no EXECUTE for the runtime role or PUBLIC                                  | FAIL   | runtime=t public=f
+ runtime role cannot SET session_replication_role (would skip every guard trigger)                | PASS   | has SET=false
+ trigger trg_asset_event_no_delete on asset_event present and enabled                             | PASS   | enabled=origin
+ trigger trg_asset_event_no_truncate on asset_event present and enabled                           | PASS   | enabled=origin
+ trigger trg_asset_event_no_update on asset_event present and enabled                             | PASS   | enabled=origin
+ trigger trg_asset_field_change_no_delete on asset_field_change present and enabled               | PASS   | enabled=origin
+ trigger trg_asset_field_change_no_truncate on asset_field_change present and enabled             | PASS   | enabled=origin
+ trigger trg_asset_field_change_no_update on asset_field_change present and enabled               | PASS   | enabled=origin
+ trigger trg_asset_lifecycle_fields_guard on asset present and enabled                            | FAIL   | missing
+ trigger trg_asset_no_identity_change on asset present and enabled                                | PASS   | enabled=origin
+ trigger trg_audit_log_no_delete on audit_log present and enabled                                 | PASS   | enabled=origin
+ trigger trg_audit_log_no_truncate on audit_log present and enabled                               | PASS   | enabled=origin
+ trigger trg_audit_log_no_update on audit_log present and enabled                                 | PASS   | enabled=origin
+ trigger trg_master_audit_no_delete on master_audit present and enabled                           | PASS   | enabled=origin
+ trigger trg_master_audit_no_truncate on master_audit present and enabled                         | PASS   | enabled=origin
+ trigger trg_master_audit_no_update on master_audit present and enabled                           | PASS   | enabled=origin
+ every CKAM table, sequence and function is owned by the owner role                               | INFO   | owners: ckam_rs_app (no -v owner_role given)
+(34 rows)
+
+[exit 0]
+
+## IF-05 residual before the split: the owning runtime role disables a guard and truncates (rolled back)
+
+$ docker compose exec -T db psql -X -e -U ckam_rs_app -d ckam_rs -f /tmp/ckam_ev/rs_presplit_residual.sql
+Pager usage is off.
+BEGIN;
+BEGIN
+[PRE-01] owner disables the TRUNCATE guard on audit_log (IF-05 residual, RT-AU-T9817)
+ALTER TABLE audit_log DISABLE TRIGGER trg_audit_log_no_truncate;
+ALTER TABLE
+[PRE-02] ... and empties the audit trail
+TRUNCATE audit_log;
+TRUNCATE TABLE
+SELECT count(*) AS audit_rows_inside_the_transaction FROM audit_log;
+ audit_rows_inside_the_transaction 
+-----------------------------------
+                                 0
+(1 row)
+
+[PRE-03] owner creates objects in schema public
+CREATE TABLE public.wpb_presplit_probe (id integer);
+CREATE TABLE
+ROLLBACK;
+ROLLBACK
+SELECT count(*) AS audit_rows_after_rollback FROM audit_log;
+ audit_rows_after_rollback 
+---------------------------
+                        37
+(1 row)
+
+[exit 0]
+

@@ -1,0 +1,369 @@
+## (3)+(5) What the runtime role can and cannot do (OBS-STATUS trigger present)
+
+$ docker compose exec -T db sh -c psql -X -e -U ckam_rs_app -d ckam_rs -f /tmp/ckam_ev/rs_runtime_matrix.sql 2>&1
+Pager usage is off.
+==================== CAN (what the application needs) ====================
+[CAN-01] who am I
+SELECT current_user, session_user, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS superuser;
+ current_user | session_user | superuser 
+--------------+--------------+-----------
+ ckam_rs_app  | ckam_rs_app  | f
+(1 row)
+
+[CAN-02] read ordinary tables, ledgers and alembic_version
+SELECT (SELECT count(*) FROM asset) AS assets, (SELECT count(*) FROM asset_event) AS events,
+       (SELECT count(*) FROM audit_log) AS audit_rows, (SELECT version_num FROM alembic_version) AS head;
+ assets | events | audit_rows |     head     
+--------+--------+------------+--------------
+      2 |      3 |         46 | c6e8a0b2d4f6
+(1 row)
+
+[CAN-03] add an audit row (append-only tables: INSERT allowed)
+INSERT INTO audit_log (source, category, action, summary, outcome, is_head_office_admin)
+VALUES ('api', 'DATA', 'UPDATE', 'WP-B matrix: runtime role adds an audit row', 'OK', false) RETURNING id;
+ id 
+----
+ 47
+(1 row)
+
+INSERT 0 1
+[CAN-04] edit an ordinary asset column
+UPDATE asset SET description = description || ' (matrix)' WHERE id = (SELECT min(id) FROM asset) RETURNING id, description;
+ id |          description           
+----+--------------------------------
+  1 | Office Chair (matrix) (matrix)
+(1 row)
+
+UPDATE 1
+[CAN-05] delete from an ordinary table (expired sign-in sessions)
+DELETE FROM auth_session WHERE revoked_at IS NOT NULL;
+DELETE 0
+[CAN-06] use a sequence
+SELECT nextval(pg_get_serial_sequence('vendor', 'id')) > 0 AS sequence_ok;
+ sequence_ok 
+-------------
+ t
+(1 row)
+
+[CAN-07] HONEST LIMIT: the runtime role can also set the OBS-STATUS marker (defence in depth, not a barrier)
+BEGIN;
+BEGIN
+SELECT set_config('ckam.lifecycle_writer', 'on', true);
+ set_config 
+------------
+ on
+(1 row)
+
+UPDATE asset SET status = 'LOST' WHERE id = (SELECT min(id) FROM asset) RETURNING id, status;
+ id | status 
+----+--------
+  1 | LOST
+(1 row)
+
+UPDATE 1
+ROLLBACK;
+ROLLBACK
+==================== CANNOT ====================
+[CANNOT-01] TRUNCATE audit_log
+TRUNCATE audit_log;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:31: ERROR:  permission denied for table audit_log
+[CANNOT-02] TRUNCATE asset_event
+TRUNCATE asset_event;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:33: ERROR:  permission denied for table asset_event
+[CANNOT-03] TRUNCATE master_audit
+TRUNCATE master_audit;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:35: ERROR:  permission denied for table master_audit
+[CANNOT-04] TRUNCATE asset_field_change
+TRUNCATE asset_field_change;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:37: ERROR:  permission denied for table asset_field_change
+[CANNOT-05] TRUNCATE an ordinary table
+TRUNCATE asset CASCADE;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:39: ERROR:  permission denied for table asset
+[CANNOT-06] ALTER TABLE (add a column)
+ALTER TABLE asset ADD COLUMN wpb_evil integer;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:41: ERROR:  must be owner of table asset
+[CANNOT-07] DISABLE TRIGGER ALL on asset_event
+ALTER TABLE asset_event DISABLE TRIGGER ALL;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:43: ERROR:  must be owner of table asset_event
+[CANNOT-08] DISABLE the audit_log delete guard
+ALTER TABLE audit_log DISABLE TRIGGER trg_audit_log_no_delete;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:45: ERROR:  must be owner of table audit_log
+[CANNOT-09] DISABLE the OBS-STATUS asset guard
+ALTER TABLE asset DISABLE TRIGGER trg_asset_lifecycle_fields_guard;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:47: ERROR:  must be owner of table asset
+[CANNOT-10] ENABLE REPLICA (= switch off in normal sessions) the OBS-STATUS asset guard
+ALTER TABLE asset ENABLE REPLICA TRIGGER trg_asset_lifecycle_fields_guard;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:49: ERROR:  must be owner of table asset
+[CANNOT-11] DROP the OBS-STATUS asset guard
+DROP TRIGGER trg_asset_lifecycle_fields_guard ON asset;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:51: ERROR:  must be owner of relation asset
+[CANNOT-12] DROP the audit_log TRUNCATE guard
+DROP TRIGGER trg_audit_log_no_truncate ON audit_log;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:53: ERROR:  must be owner of relation audit_log
+[CANNOT-13] DROP TABLE audit_log
+DROP TABLE audit_log;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:55: ERROR:  must be owner of table audit_log
+[CANNOT-14] replace a guard trigger function
+CREATE OR REPLACE FUNCTION forbid_audit_log_write() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN OLD; END $$;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:57: ERROR:  permission denied for schema public
+[CANNOT-15] add a trigger of its own
+CREATE TRIGGER wpb_evil BEFORE DELETE ON asset FOR EACH ROW EXECUTE FUNCTION forbid_asset_event_write();
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:59: ERROR:  permission denied for table asset
+[CANNOT-16] CREATE TABLE in schema public
+CREATE TABLE public.wpb_evil (id integer);
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:61: ERROR:  permission denied for schema public
+LINE 1: CREATE TABLE public.wpb_evil (id integer);
+                     ^
+[CANNOT-17] CREATE SCHEMA
+CREATE SCHEMA wpb_evil;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:63: ERROR:  permission denied for database ckam_rs
+[CANNOT-18] CREATE TEMP TABLE
+CREATE TEMP TABLE wpb_tmp (id integer);
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:65: ERROR:  permission denied to create temporary tables in database "ckam_rs"
+LINE 1: CREATE TEMP TABLE wpb_tmp (id integer);
+                          ^
+[CANNOT-19] SET session_replication_role = replica (would skip every guard trigger)
+SET session_replication_role = replica;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:67: ERROR:  permission denied to set parameter "session_replication_role"
+[CANNOT-20] run the audit purge function
+SELECT ckam_purge_audit_log(now() - interval '6 years');
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:69: ERROR:  permission denied for function ckam_purge_audit_log
+[CANNOT-21] UPDATE audit_log
+UPDATE audit_log SET summary = 'rewritten';
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:71: ERROR:  permission denied for table audit_log
+[CANNOT-22] DELETE FROM audit_log
+DELETE FROM audit_log;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:73: ERROR:  permission denied for table audit_log
+[CANNOT-23] purge flag on, then DELETE fresh audit rows
+BEGIN;
+BEGIN
+SET LOCAL ckam.allow_audit_purge = 'on';
+SET
+DELETE FROM audit_log WHERE at > now() - interval '1 day';
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:77: ERROR:  permission denied for table audit_log
+ROLLBACK;
+ROLLBACK
+[CANNOT-24] UPDATE asset_event
+UPDATE asset_event SET remarks = 'rewritten';
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:80: ERROR:  permission denied for table asset_event
+[CANNOT-25] DELETE FROM asset_event
+DELETE FROM asset_event;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:82: ERROR:  permission denied for table asset_event
+[CANNOT-26] DELETE FROM master_audit
+DELETE FROM master_audit;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:84: ERROR:  permission denied for table master_audit
+[CANNOT-27] UPDATE asset_field_change
+UPDATE asset_field_change SET new_value = 'rewritten';
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:86: ERROR:  permission denied for table asset_field_change
+[CANNOT-28] UPDATE alembic_version
+UPDATE alembic_version SET version_num = 'ffffffffffff';
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:88: ERROR:  permission denied for table alembic_version
+[CANNOT-29] DELETE FROM alembic_version
+DELETE FROM alembic_version;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:90: ERROR:  permission denied for table alembic_version
+[CANNOT-30] INSERT INTO alembic_version
+INSERT INTO alembic_version VALUES ('ffffffffffff');
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:92: ERROR:  permission denied for table alembic_version
+[CANNOT-31] CREATE ROLE
+CREATE ROLE wpb_evil;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:94: ERROR:  permission denied to create role
+DETAIL:  Only roles with the CREATEROLE attribute may create roles.
+[CANNOT-32] CREATE EXTENSION (pgcrypto is a "trusted" extension, still refused without CREATE on the database)
+CREATE EXTENSION pgcrypto;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:96: ERROR:  permission denied to create extension "pgcrypto"
+HINT:  Must have CREATE privilege on current database to create this extension.
+[CANNOT-33] CREATE DATABASE
+CREATE DATABASE wpb_evil;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:98: ERROR:  permission denied to create database
+[CANNOT-34] SET ROLE to the owner
+SET ROLE ckam_rs_owner;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:100: ERROR:  permission denied to set role "ckam_rs_owner"
+[CANNOT-35] SET ROLE to the migrator
+SET ROLE ckam_rs_migrator;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:102: ERROR:  permission denied to set role "ckam_rs_migrator"
+[CANNOT-36] take ownership of audit_log
+ALTER TABLE audit_log OWNER TO ckam_rs_app;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:104: ERROR:  must be owner of table audit_log
+[CANNOT-37] make the purge function SECURITY DEFINER
+ALTER FUNCTION ckam_purge_audit_log(timestamptz) SECURITY DEFINER;
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:106: ERROR:  must be owner of function ckam_purge_audit_log
+[CANNOT-38] COPY ... TO PROGRAM (run a shell command on the server)
+COPY (SELECT 1) TO PROGRAM 'id';
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:108: ERROR:  permission denied to COPY to or from an external program
+DETAIL:  Only roles with privileges of the "pg_execute_server_program" role may COPY to or from an external program.
+HINT:  Anyone can COPY to stdout or from stdin. psql's \copy command also works for anyone.
+[CANNOT-39] OBS-STATUS: change an asset status without the ledger writer
+UPDATE asset SET status = 'LOST' WHERE id = (SELECT min(id) FROM asset);
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:110: ERROR:  asset status, holder and status date can only change through a recorded asset movement (asset_event)
+CONTEXT:  PL/pgSQL function forbid_asset_lifecycle_write() line 5 at RAISE
+[CANNOT-40] OBS-STATUS: change the holder without the ledger writer
+UPDATE asset SET current_asset_user_id = NULL WHERE id = (SELECT min(id) FROM asset);
+psql:/tmp/ckam_ev/rs_runtime_matrix.sql:112: ERROR:  asset status, holder and status date can only change through a recorded asset movement (asset_event)
+CONTEXT:  PL/pgSQL function forbid_asset_lifecycle_write() line 5 at RAISE
+==================== after the attempts: nothing changed ====================
+SELECT (SELECT count(*) FROM audit_log) AS audit_rows, (SELECT count(*) FROM asset_event) AS events,
+       (SELECT count(*) FROM master_audit) AS master_audit_rows, (SELECT version_num FROM alembic_version) AS head,
+       (SELECT string_agg(DISTINCT status, ',') FROM asset) AS asset_statuses;
+ audit_rows | events | master_audit_rows |     head     |  asset_statuses   
+------------+--------+-------------------+--------------+-------------------
+         47 |      3 |                 0 | c6e8a0b2d4f6 | ALLOTTED,IN_STOCK
+(1 row)
+
+[exit 0]
+
+## (4) A new object made by the migrator belongs to the owner; the runtime role gets the default privileges
+
+$ docker compose exec -T db sh -c psql -X -e -U ckam_rs_migrator -d ckam_rs -f /tmp/ckam_ev/rs_migrator_new_object.sql 2>&1
+Pager usage is off.
+[MIG-01] the migrator session starts as the owner (role setting written by role_split.sql)
+SELECT current_user, session_user;
+ current_user  |   session_user   
+---------------+------------------
+ ckam_rs_owner | ckam_rs_migrator
+(1 row)
+
+[MIG-02] a "new migration" creates a table with a sequence
+CREATE TABLE wpb_probe (id bigserial PRIMARY KEY, note text NOT NULL);
+CREATE TABLE
+[MIG-03] owner of the new table and its sequence
+SELECT relname, pg_get_userbyid(relowner) AS owner FROM pg_class WHERE relname IN ('wpb_probe', 'wpb_probe_id_seq') ORDER BY 1;
+     relname      |     owner     
+------------------+---------------
+ wpb_probe        | ckam_rs_owner
+ wpb_probe_id_seq | ckam_rs_owner
+(2 rows)
+
+[MIG-04] the runtime role got SELECT/INSERT/UPDATE/DELETE + sequence USAGE by default, and no TRUNCATE
+SELECT has_table_privilege('ckam_rs_app', 'wpb_probe', 'SELECT,INSERT,UPDATE,DELETE') AS crud,
+       has_table_privilege('ckam_rs_app', 'wpb_probe', 'TRUNCATE') AS truncate,
+       has_table_privilege('ckam_rs_app', 'wpb_probe', 'TRIGGER') AS trigger,
+       has_sequence_privilege('ckam_rs_app', 'wpb_probe_id_seq', 'USAGE') AS sequence_usage;
+ crud | truncate | trigger | sequence_usage 
+------+----------+---------+----------------
+ t    | f        | f       | t
+(1 row)
+
+[MIG-05] belt and braces: without the owner role the migrator itself can create nothing
+         (SET ROLE NONE = act as the session user; RESET ROLE would go back to the owner role setting)
+SET ROLE NONE;
+SET
+SELECT current_user;
+   current_user   
+------------------
+ ckam_rs_migrator
+(1 row)
+
+CREATE TABLE wpb_probe_as_migrator (id integer);
+psql:/tmp/ckam_ev/rs_migrator_new_object.sql:22: ERROR:  permission denied for schema public
+LINE 1: CREATE TABLE wpb_probe_as_migrator (id integer);
+                     ^
+SET ROLE ckam_rs_owner;
+SET
+SELECT current_user;
+ current_user  
+---------------
+ ckam_rs_owner
+(1 row)
+
+[exit 0]
+
+$ docker compose exec -T db sh -c psql -X -e -U ckam_rs_app -d ckam_rs -f /tmp/ckam_ev/rs_runtime_new_object.sql 2>&1
+Pager usage is off.
+[NEW-01] runtime role inserts into the new table
+INSERT INTO wpb_probe (note) VALUES ('written by the runtime role') RETURNING id, note;
+ id |            note             
+----+-----------------------------
+  1 | written by the runtime role
+(1 row)
+
+INSERT 0 1
+[NEW-02] runtime role reads it
+SELECT count(*) FROM wpb_probe;
+ count 
+-------
+     1
+(1 row)
+
+[NEW-03] runtime role cannot TRUNCATE it
+TRUNCATE wpb_probe;
+psql:/tmp/ckam_ev/rs_runtime_new_object.sql:11: ERROR:  permission denied for table wpb_probe
+[NEW-04] runtime role cannot DROP it
+DROP TABLE wpb_probe;
+psql:/tmp/ckam_ev/rs_runtime_new_object.sql:13: ERROR:  must be owner of table wpb_probe
+[exit 0]
+
+$ docker compose exec -T db psql -X -e -U ckam_rs_migrator -d ckam_rs -c DROP TABLE wpb_probe -c DROP TABLE IF EXISTS wpb_probe_as_migrator -c SELECT current_user
+DROP TABLE wpb_probe
+DROP TABLE
+DROP TABLE IF EXISTS wpb_probe_as_migrator
+DROP TABLE
+SELECT current_user
+NOTICE:  table "wpb_probe_as_migrator" does not exist, skipping
+ current_user  
+---------------
+ ckam_rs_owner
+(1 row)
+
+[exit 0]
+
+## Guard triggers still present and enabled after every attempt
+
+$ docker compose exec -T db psql -X -U ckam -d ckam_rs -v db_name=ckam_rs -v owner_role=ckam_rs_owner -v migrator_role=ckam_rs_migrator -v runtime_role=ckam_rs_app -f /tmp/ckam_ops_db/role_split_verify.sql
+== General least-privilege checks ==
+DO
+                                              check                                               | result |                          detail                           
+--------------------------------------------------------------------------------------------------+--------+-----------------------------------------------------------
+ runtime role exists                                                                              | PASS   | ckam_rs_app
+ runtime role: not superuser / createrole / createdb / replication / bypassrls                    | PASS   | super=f createrole=f createdb=f replication=f bypassrls=f
+ runtime role is not a member of a superuser role or a powerful predefined role                   | PASS   | none
+ runtime role owns nothing in this database (tables, sequences, views, functions, types, schemas) | PASS   | relations (tables, indexes, sequences)=0 functions=0
+ table owners are not the runtime role (nor a role it can become)                                 | PASS   | none
+ runtime role does not own the database                                                           | PASS   | owner=ckam_rs_owner
+ runtime role cannot CREATE in any schema                                                         | PASS   | none
+ runtime role cannot create schemas or temporary tables in the database                           | PASS   | create=f temp=f
+ runtime role can CONNECT and USE the schema                                                      | PASS   | public
+ runtime role has SELECT/INSERT/UPDATE/DELETE on every ordinary table                             | PASS   | 35 tables
+ append-only asset_event: SELECT+INSERT only (no UPDATE, DELETE, TRUNCATE)                        | PASS   | select=t insert=t update=f delete=f truncate=f
+ append-only asset_field_change: SELECT+INSERT only (no UPDATE, DELETE, TRUNCATE)                 | PASS   | select=t insert=t update=f delete=f truncate=f
+ append-only audit_log: SELECT+INSERT only (no UPDATE, DELETE, TRUNCATE)                          | PASS   | select=t insert=t update=f delete=f truncate=f
+ append-only master_audit: SELECT+INSERT only (no UPDATE, DELETE, TRUNCATE)                       | PASS   | select=t insert=t update=f delete=f truncate=f
+ runtime role has no TRUNCATE, TRIGGER or REFERENCES privilege on any table                       | PASS   | none
+ alembic_version: runtime role may only read it                                                   | PASS   | select=t insert=f update=f delete=f
+ runtime role can use every sequence (needed to add rows)                                         | PASS   | 32 sequences
+ ckam_purge_audit_log: no EXECUTE for the runtime role or PUBLIC                                  | PASS   | runtime=f public=f
+ runtime role cannot SET session_replication_role (would skip every guard trigger)                | PASS   | has SET=false
+ trigger trg_asset_event_no_delete on asset_event present and enabled                             | PASS   | enabled=origin
+ trigger trg_asset_event_no_truncate on asset_event present and enabled                           | PASS   | enabled=origin
+ trigger trg_asset_event_no_update on asset_event present and enabled                             | PASS   | enabled=origin
+ trigger trg_asset_field_change_no_delete on asset_field_change present and enabled               | PASS   | enabled=origin
+ trigger trg_asset_field_change_no_truncate on asset_field_change present and enabled             | PASS   | enabled=origin
+ trigger trg_asset_field_change_no_update on asset_field_change present and enabled               | PASS   | enabled=origin
+ trigger trg_asset_lifecycle_fields_guard on asset present and enabled                            | PASS   | enabled=origin
+ trigger trg_asset_no_identity_change on asset present and enabled                                | PASS   | enabled=origin
+ trigger trg_audit_log_no_delete on audit_log present and enabled                                 | PASS   | enabled=origin
+ trigger trg_audit_log_no_truncate on audit_log present and enabled                               | PASS   | enabled=origin
+ trigger trg_audit_log_no_update on audit_log present and enabled                                 | PASS   | enabled=origin
+ trigger trg_master_audit_no_delete on master_audit present and enabled                           | PASS   | enabled=origin
+ trigger trg_master_audit_no_truncate on master_audit present and enabled                         | PASS   | enabled=origin
+ trigger trg_master_audit_no_update on master_audit present and enabled                           | PASS   | enabled=origin
+ every CKAM table, sequence and function is owned by the owner role                               | PASS   | 80 objects, all owned by ckam_rs_owner
+(34 rows)
+
+== Role split checks ==
+                                    check                                    | result |              detail               
+-----------------------------------------------------------------------------+--------+-----------------------------------
+ connected to the CKAM database                                              | PASS   | ckam_rs
+ owner role cannot sign in and has no special attributes                     | PASS   | login=f super=f
+ migrator role: can sign in, no special attributes, NOINHERIT                | PASS   | login=t inherit=f super=f
+ migrator may act as the owner (SET ROLE)                                    | PASS   | ckam_rs_migrator -> ckam_rs_owner
+ migrator sessions in this database start as the owner (role setting)        | PASS   | role=ckam_rs_owner
+ migrator owns nothing and cannot create anything without becoming the owner | PASS   | schema create=f
+ runtime role is not a member of the owner or the migrator                   | PASS   | ckam_rs_app
+ database owned by the owner role                                            | PASS   | owner=ckam_rs_owner
+ PUBLIC cannot connect to the database                                       | PASS   | ckam_rs
+ future tables: runtime role gets SELECT/INSERT/UPDATE/DELETE by default     | PASS   | DELETE,INSERT,SELECT,UPDATE
+ future sequences: runtime role gets USAGE by default                        | PASS   | SELECT,UPDATE,USAGE
+(11 rows)
+
+[exit 0]
+

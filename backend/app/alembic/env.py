@@ -69,6 +69,26 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+def _set_migration_role(connection) -> None:
+    """Security IF-05/EXT-07 (ops/db/ROLE_SPLIT_RUNBOOK.md): with the database role split, Alembic signs in as the
+    migrator role and must create every object as the OWNER role, so the runtime role never owns anything. When
+    ALEMBIC_SET_ROLE names that owner role, the session switches to it before any migration runs (and the switch
+    is checked). Unset = today's behaviour (objects belong to whoever signs in)."""
+    role = (os.environ.get("ALEMBIC_SET_ROLE") or "").strip()
+    if not role:
+        return
+    from sqlalchemy import text
+
+    quoted = connection.dialect.identifier_preparer.quote(role)
+    connection.execute(text(f"SET ROLE {quoted}"))
+    current = connection.execute(text("SELECT current_user")).scalar_one()
+    if current != role:
+        raise RuntimeError(f"ALEMBIC_SET_ROLE: expected to act as {role!r}, but the session is {current!r}")
+    # Session-level SET ROLE survives the commit; committing here leaves no open transaction, so Alembic's own
+    # begin_transaction() below really commits the migrations.
+    connection.commit()
+
+
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode.
 
@@ -83,6 +103,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        _set_migration_role(connection)
         context.configure(
             connection=connection, target_metadata=target_metadata
         )

@@ -1,0 +1,259 @@
+## (1) Alembic upgrade head as the MIGRATOR, switched to the owner (ALEMBIC_SET_ROLE)
+
+$ docker compose exec -T -w /app -e DATABASE_URL=postgresql+asyncpg://ckam_rs_migrator:***@db:5432/ckam_rs -e ALEMBIC_SET_ROLE=ckam_rs_owner api alembic upgrade head
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade b5d7f9a1c3e5 -> c6e8a0b2d4f6, Security OBS-STATUS: the database refuses a change of an asset's lifecycle fields outside the ledger writer
+[exit 0]
+
+$ docker compose exec -T -w /app -e DATABASE_URL=postgresql+asyncpg://ckam_rs_migrator:***@db:5432/ckam_rs -e ALEMBIC_SET_ROLE=ckam_rs_owner api alembic current
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+c6e8a0b2d4f6 (head)
+[exit 0]
+
+## Owners of the objects the migration created, and of everything else
+
+$ docker compose exec -T db psql -X -U ckam -d ckam_rs -c SELECT p.proname, pg_get_userbyid(p.proowner) AS owner FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' ORDER BY 1 -c SELECT tgname, tgenabled, tgrelid::regclass FROM pg_trigger WHERE tgname = 'trg_asset_lifecycle_fields_guard' -c SELECT pg_get_userbyid(relowner) AS owner, relkind, count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' GROUP BY 1, 2 ORDER BY 1, 2
+             proname             |     owner     
+---------------------------------+---------------
+ ckam_purge_audit_log            | ckam_rs_owner
+ forbid_append_only_truncate     | ckam_rs_owner
+ forbid_asset_event_write        | ckam_rs_owner
+ forbid_asset_field_change_write | ckam_rs_owner
+ forbid_asset_identity_change    | ckam_rs_owner
+ forbid_asset_lifecycle_write    | ckam_rs_owner
+ forbid_audit_log_write          | ckam_rs_owner
+ forbid_master_audit_write       | ckam_rs_owner
+(8 rows)
+
+              tgname              | tgenabled | tgrelid 
+----------------------------------+-----------+---------
+ trg_asset_lifecycle_fields_guard | O         | asset
+(1 row)
+
+     owner     | relkind | count 
+---------------+---------+-------
+ ckam_rs_owner | S       |    32
+ ckam_rs_owner | i       |   103
+ ckam_rs_owner | r       |    40
+(3 rows)
+
+[exit 0]
+
+## The runtime role cannot run migrations (downgrade would drop the trigger)
+
+$ docker compose exec -T -w /app -e DATABASE_URL=postgresql+asyncpg://ckam_rs_app:***@db:5432/ckam_rs api alembic downgrade -1
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running downgrade c6e8a0b2d4f6 -> b5d7f9a1c3e5, Security OBS-STATUS: the database refuses a change of an asset's lifecycle fields outside the ledger writer
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1943, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.13/site-packages/sqlalchemy/engine/default.py", line 1180, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.InsufficientPrivilege: must be owner of relation asset
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/bin/alembic", line 6, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/usr/local/lib/python3.13/site-packages/alembic/config.py", line 1039, in main
+    CommandLine(prog=prog).main(argv=argv)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/site-packages/alembic/config.py", line 1029, in main
+    self.run_cmd(cfg, options)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/site-packages/alembic/config.py", line 963, in run_cmd
+    fn(
+    ~~^
+        config,
+        ^^^^^^^
+        *[getattr(options, k, None) for k in positional],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        **{k: getattr(options, k, None) for k in kwarg},
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.13/site-packages/alembic/command.py", line 534, in downgrade
+    script.run_env()
+    ~~~~~~~~~~~~~~^^
+  File "/usr/local/lib/python3.13/site-packages/alembic/script/base.py", line 550, in run_env
+    util.load_python_file(self.dir, "env.py")
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/site-packages/alembic/util/pyfiles.py", line 114, in load_python_file
+    module = load_module_py(module_id, path)
+  File "/usr/local/lib/python3.13/site-packages/alembic/util/pyfiles.py", line 132, in load_module_py
+    spec.loader.exec_module(module)  # type: ignore
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^
+  File "<frozen importlib._bootstrap_external>", line 1023, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/app/app/alembic/env.py", line 118, in <module>
+    run_migrations_online()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "/app/app/alembic/env.py", line 112, in run_migrations_online
+    context.run_migrations()
+    ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "<string>", line 8, in run_migrations
+  File "/usr/local/lib/python3.13/site-packages/alembic/runtime/environment.py", line 970, in run_migrations
+    self.get_context().run_migrations(**kw)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/usr/local/lib/python3.13/site-packages/alembic/runtime/migration.py", line 616, in run_migrations
+    step.migration_fn(**kw)
+    ~~~~~~~~~~~~~~~~~^^^^^^
+  File "/app/app/alembic/versions/c6e8a0b2d4f6_asset_lifecycle_fields_guard.py", line 63, in downgrade
+    op.execute("DROP TRIGGER IF EXISTS trg_asset_lifecycle_fields_guard ON asset;")
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<string>", line 8, in execute
+  File "<string>", line 3, in execute
+  File "/usr/local/lib/python3.13/site-packages/alembic/operations/ops.py", line 2645, in execute
+    return operations.invoke(op)
+           ~~~~~~~~~~~~~~~~~^^^^
+  File "/usr/local/lib/python3.13/site-packages/alembic/operations/base.py", line 448, in invoke
+    return fn(self, operation)
+  File "/usr/local/lib/python3.13/site-packages/alembic/operations/toimpl.py", line 256, in execute_sql
+    operations.migration_context.impl.execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        operation.sqltext, execution_options=operation.execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.13/site-packages/alembic/ddl/impl.py", line 259, in execute
+    self._exec(sql, execution_options)
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/site-packages/alembic/ddl/impl.py", line 252, in _exec
+    return conn.execute(construct, params)
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1448, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "/usr/local/lib/python3.13/site-packages/sqlalchemy/sql/elements.py", line 533, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1668, in _execute_clauseelement
+    ret = self._execute_context(
+        dialect,
+    ...<9 lines>...
+        param_dict=param_dict,
+    )
+  File "/usr/local/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1822, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1962, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 2332, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.13/site-packages/sqlalchemy/engine/base.py", line 1943, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.13/site-packages/sqlalchemy/engine/default.py", line 1180, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlalchemy.exc.ProgrammingError: (psycopg2.errors.InsufficientPrivilege) must be owner of relation asset
+
+[SQL: DROP TRIGGER IF EXISTS trg_asset_lifecycle_fields_guard ON asset;]
+(Background on this error at: https://sqlalche.me/e/21/f405)
+[exit 1]
+
+## Post-deploy routine: re-run role_split.sql, then verify (expected: every row PASS)
+
+$ docker compose exec -T db psql -X -U ckam -d ckam_rs -v db_name=ckam_rs -v owner_role=ckam_rs_owner -v migrator_role=ckam_rs_migrator -v runtime_role=ckam_rs_app -f /tmp/ckam_ops_db/role_split.sql
+BEGIN
+DO
+DO
+DO
+DO
+DO
+DO
+COMMIT
+role_split.sql: done. Now run ops/db/role_split_verify.sql with the same -v names (every row must be PASS).
+[exit 0]
+
+$ docker compose exec -T db psql -X -U ckam -d ckam_rs -v db_name=ckam_rs -v owner_role=ckam_rs_owner -v migrator_role=ckam_rs_migrator -v runtime_role=ckam_rs_app -f /tmp/ckam_ops_db/role_split_verify.sql
+== General least-privilege checks ==
+DO
+                                              check                                               | result |                          detail                           
+--------------------------------------------------------------------------------------------------+--------+-----------------------------------------------------------
+ runtime role exists                                                                              | PASS   | ckam_rs_app
+ runtime role: not superuser / createrole / createdb / replication / bypassrls                    | PASS   | super=f createrole=f createdb=f replication=f bypassrls=f
+ runtime role is not a member of a superuser role or a powerful predefined role                   | PASS   | none
+ runtime role owns nothing in this database (tables, sequences, views, functions, types, schemas) | PASS   | relations (tables, indexes, sequences)=0 functions=0
+ table owners are not the runtime role (nor a role it can become)                                 | PASS   | none
+ runtime role does not own the database                                                           | PASS   | owner=ckam_rs_owner
+ runtime role cannot CREATE in any schema                                                         | PASS   | none
+ runtime role cannot create schemas or temporary tables in the database                           | PASS   | create=f temp=f
+ runtime role can CONNECT and USE the schema                                                      | PASS   | public
+ runtime role has SELECT/INSERT/UPDATE/DELETE on every ordinary table                             | PASS   | 35 tables
+ append-only asset_event: SELECT+INSERT only (no UPDATE, DELETE, TRUNCATE)                        | PASS   | select=t insert=t update=f delete=f truncate=f
+ append-only asset_field_change: SELECT+INSERT only (no UPDATE, DELETE, TRUNCATE)                 | PASS   | select=t insert=t update=f delete=f truncate=f
+ append-only audit_log: SELECT+INSERT only (no UPDATE, DELETE, TRUNCATE)                          | PASS   | select=t insert=t update=f delete=f truncate=f
+ append-only master_audit: SELECT+INSERT only (no UPDATE, DELETE, TRUNCATE)                       | PASS   | select=t insert=t update=f delete=f truncate=f
+ runtime role has no TRUNCATE, TRIGGER or REFERENCES privilege on any table                       | PASS   | none
+ alembic_version: runtime role may only read it                                                   | PASS   | select=t insert=f update=f delete=f
+ runtime role can use every sequence (needed to add rows)                                         | PASS   | 32 sequences
+ ckam_purge_audit_log: no EXECUTE for the runtime role or PUBLIC                                  | PASS   | runtime=f public=f
+ runtime role cannot SET session_replication_role (would skip every guard trigger)                | PASS   | has SET=false
+ trigger trg_asset_event_no_delete on asset_event present and enabled                             | PASS   | enabled=origin
+ trigger trg_asset_event_no_truncate on asset_event present and enabled                           | PASS   | enabled=origin
+ trigger trg_asset_event_no_update on asset_event present and enabled                             | PASS   | enabled=origin
+ trigger trg_asset_field_change_no_delete on asset_field_change present and enabled               | PASS   | enabled=origin
+ trigger trg_asset_field_change_no_truncate on asset_field_change present and enabled             | PASS   | enabled=origin
+ trigger trg_asset_field_change_no_update on asset_field_change present and enabled               | PASS   | enabled=origin
+ trigger trg_asset_lifecycle_fields_guard on asset present and enabled                            | PASS   | enabled=origin
+ trigger trg_asset_no_identity_change on asset present and enabled                                | PASS   | enabled=origin
+ trigger trg_audit_log_no_delete on audit_log present and enabled                                 | PASS   | enabled=origin
+ trigger trg_audit_log_no_truncate on audit_log present and enabled                               | PASS   | enabled=origin
+ trigger trg_audit_log_no_update on audit_log present and enabled                                 | PASS   | enabled=origin
+ trigger trg_master_audit_no_delete on master_audit present and enabled                           | PASS   | enabled=origin
+ trigger trg_master_audit_no_truncate on master_audit present and enabled                         | PASS   | enabled=origin
+ trigger trg_master_audit_no_update on master_audit present and enabled                           | PASS   | enabled=origin
+ every CKAM table, sequence and function is owned by the owner role                               | PASS   | 80 objects, all owned by ckam_rs_owner
+(34 rows)
+
+== Role split checks ==
+                                    check                                    | result |              detail               
+-----------------------------------------------------------------------------+--------+-----------------------------------
+ connected to the CKAM database                                              | PASS   | ckam_rs
+ owner role cannot sign in and has no special attributes                     | PASS   | login=f super=f
+ migrator role: can sign in, no special attributes, NOINHERIT                | PASS   | login=t inherit=f super=f
+ migrator may act as the owner (SET ROLE)                                    | PASS   | ckam_rs_migrator -> ckam_rs_owner
+ migrator sessions in this database start as the owner (role setting)        | PASS   | role=ckam_rs_owner
+ migrator owns nothing and cannot create anything without becoming the owner | PASS   | schema create=f
+ runtime role is not a member of the owner or the migrator                   | PASS   | ckam_rs_app
+ database owned by the owner role                                            | PASS   | owner=ckam_rs_owner
+ PUBLIC cannot connect to the database                                       | PASS   | ckam_rs
+ future tables: runtime role gets SELECT/INSERT/UPDATE/DELETE by default     | PASS   | DELETE,INSERT,SELECT,UPDATE
+ future sequences: runtime role gets USAGE by default                        | PASS   | SELECT,UPDATE,USAGE
+(11 rows)
+
+[exit 0]
+

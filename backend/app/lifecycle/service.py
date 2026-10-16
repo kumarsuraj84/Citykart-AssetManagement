@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.assets.models import Asset
 from app.asset_users.models import AssetUser
@@ -204,6 +204,11 @@ async def apply_events(
         planned.append((asset, to_asset_user_id, event, new_status, when))
 
     # Every asset passed: write the events and the assets' current state.
+    # OBS-STATUS: the database refuses a change of status / holder / status date unless this transaction-local
+    # marker is on (trigger trg_asset_lifecycle_fields_guard). It is on only for this one flush; nothing was
+    # pending before it (flushed above) and nothing else runs in between. No try/finally: if the flush fails the
+    # transaction (or the caller's savepoint) is rolled back, which also reverts the marker.
+    await _set_lifecycle_writer(session, True)
     session.add_all([event for _, _, event, _, _ in planned])
     for asset, to_asset_user_id, _event, new_status, when in planned:
         # S0.4: status_since only moves on a real change -- a new status or a new
@@ -222,4 +227,20 @@ async def apply_events(
             asset.status_since = when.date()
 
     await session.flush()
+    await _set_lifecycle_writer(session, False)
     return [event for _, _, event, _, _ in planned]
+
+
+# OBS-STATUS: the name of the transaction-local setting the asset trigger checks. Set ONLY by apply_events.
+LIFECYCLE_WRITER_SETTING = "ckam.lifecycle_writer"
+
+
+async def _set_lifecycle_writer(session: AsyncSession, on: bool) -> None:
+    """Switches the lifecycle-writer marker for the current transaction only (`set_config(..., true)` = SET LOCAL),
+    so it can never carry over to the next transaction on the same pooled connection. The statement autoflushes
+    pending ORM changes, which is why apply_events calls it before it assigns the new state (and after the flush
+    that wrote it)."""
+    await session.execute(
+        text("SELECT set_config(:name, :value, true)"),
+        {"name": LIFECYCLE_WRITER_SETTING, "value": "on" if on else "off"},
+    )

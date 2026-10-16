@@ -1,0 +1,29 @@
+## Drop the throw-away database and roles; show the server is back to its baseline
+
+$ docker compose exec -T db psql -X -U ckam -d postgres -c DROP DATABASE IF EXISTS ckam_rs WITH (FORCE) -c DROP ROLE IF EXISTS ckam_rs_migrator -c DROP ROLE IF EXISTS ckam_rs_app -c DROP ROLE IF EXISTS ckam_rs_owner
+DROP DATABASE
+DROP ROLE
+DROP ROLE
+DROP ROLE
+[exit 0]
+
+$ docker compose exec -T db psql -X -U ckam -d ckam -c \du -c \l
+                             List of roles
+ Role name |                         Attributes                         
+-----------+------------------------------------------------------------
+ ckam      | Superuser, Create role, Create DB, Replication, Bypass RLS
+
+                                                 List of databases
+   Name    | Owner | Encoding | Locale Provider |  Collate   |   Ctype    | Locale | ICU Rules | Access privileges 
+-----------+-------+----------+-----------------+------------+------------+--------+-----------+-------------------
+ ckam      | ckam  | UTF8     | libc            | en_US.utf8 | en_US.utf8 |        |           | 
+ ckam_test | ckam  | UTF8     | libc            | en_US.utf8 | en_US.utf8 |        |           | 
+ postgres  | ckam  | UTF8     | libc            | en_US.utf8 | en_US.utf8 |        |           | 
+ template0 | ckam  | UTF8     | libc            | en_US.utf8 | en_US.utf8 |        |           | =c/ckam          +
+           |       |          |                 |            |            |        |           | ckam=CTc/ckam
+ template1 | ckam  | UTF8     | libc            | en_US.utf8 | en_US.utf8 |        |           | =c/ckam          +
+           |       |          |                 |            |            |        |           | ckam=CTc/ckam
+(5 rows)
+
+[exit 0]
+

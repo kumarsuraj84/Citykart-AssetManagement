@@ -1,0 +1,44 @@
+## Read-only check of the dev stack's TEST database (OBS-DOCKER-SU): the dev/test app role ckam is a superuser and owns everything. Not switched (owner decision); shown so the gap stays visible
+
+$ docker compose exec -T db psql -X -U ckam -d ckam_test -v runtime_role=ckam -f /tmp/ckam_ops_db/check_least_privilege.sql
+DO
+                                              check                                               | result |                                                                                                                                                                                                                                                                                  detail                                                                                                                                                                                                                                                                                  
+--------------------------------------------------------------------------------------------------+--------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ runtime role exists                                                                              | PASS   | ckam
+ runtime role: not superuser / createrole / createdb / replication / bypassrls                    | FAIL   | super=t createrole=t createdb=t replication=t bypassrls=t
+ runtime role is not a member of a superuser role or a powerful predefined role                   | FAIL   | pg_read_all_data, pg_write_all_data, pg_read_server_files, pg_write_server_files, pg_execute_server_program, pg_signal_backend, pg_checkpoint, pg_maintain, pg_create_subscription
+ runtime role owns nothing in this database (tables, sequences, views, functions, types, schemas) | FAIL   | relations (tables, indexes, sequences)=636 functions=3338
+ table owners are not the runtime role (nor a role it can become)                                 | FAIL   | ckam (72 objects)
+ runtime role does not own the database                                                           | FAIL   | owner=ckam
+ runtime role cannot CREATE in any schema                                                         | FAIL   | public
+ runtime role cannot create schemas or temporary tables in the database                           | FAIL   | create=t temp=t
+ runtime role can CONNECT and USE the schema                                                      | PASS   | public
+ runtime role has SELECT/INSERT/UPDATE/DELETE on every ordinary table                             | PASS   | 35 tables
+ append-only asset_event: SELECT+INSERT only (no UPDATE, DELETE, TRUNCATE)                        | FAIL   | select=t insert=t update=t delete=t truncate=t
+ append-only asset_field_change: SELECT+INSERT only (no UPDATE, DELETE, TRUNCATE)                 | FAIL   | select=t insert=t update=t delete=t truncate=t
+ append-only audit_log: SELECT+INSERT only (no UPDATE, DELETE, TRUNCATE)                          | FAIL   | select=t insert=t update=t delete=t truncate=t
+ append-only master_audit: SELECT+INSERT only (no UPDATE, DELETE, TRUNCATE)                       | FAIL   | select=t insert=t update=t delete=t truncate=t
+ runtime role has no TRUNCATE, TRIGGER or REFERENCES privilege on any table                       | FAIL   | alembic_version, asset_category, asset_subcategory, vendor, purchase_order_erp_change, app_setting, company, client_report, erp_sync_run, erp_po_line, erp_item, brand, custom_field, asset, asset_field_change, code_rule, code_counter, asset_event, item, item_map, bundle, bundle_part, purchase_order, purchase_order_erp_baseline, pending_asset, asset_document, erp_site, auth_session, department, vendor_erp_link, audit_log, erp_vendor, error_log, system_event, master_audit, location, cost_center, idempotency_key, asset_user_company_access, asset_user
+ alembic_version: runtime role may only read it                                                   | FAIL   | select=t insert=t update=t delete=t
+ runtime role can use every sequence (needed to add rows)                                         | PASS   | 32 sequences
+ ckam_purge_audit_log: no EXECUTE for the runtime role or PUBLIC                                  | FAIL   | runtime=t public=f
+ runtime role cannot SET session_replication_role (would skip every guard trigger)                | FAIL   | has SET=true
+ trigger trg_asset_event_no_delete on asset_event present and enabled                             | PASS   | enabled=origin
+ trigger trg_asset_event_no_truncate on asset_event present and enabled                           | PASS   | enabled=origin
+ trigger trg_asset_event_no_update on asset_event present and enabled                             | PASS   | enabled=origin
+ trigger trg_asset_field_change_no_delete on asset_field_change present and enabled               | PASS   | enabled=origin
+ trigger trg_asset_field_change_no_truncate on asset_field_change present and enabled             | PASS   | enabled=origin
+ trigger trg_asset_field_change_no_update on asset_field_change present and enabled               | PASS   | enabled=origin
+ trigger trg_asset_lifecycle_fields_guard on asset present and enabled                            | PASS   | enabled=origin
+ trigger trg_asset_no_identity_change on asset present and enabled                                | PASS   | enabled=origin
+ trigger trg_audit_log_no_delete on audit_log present and enabled                                 | PASS   | enabled=origin
+ trigger trg_audit_log_no_truncate on audit_log present and enabled                               | PASS   | enabled=origin
+ trigger trg_audit_log_no_update on audit_log present and enabled                                 | PASS   | enabled=origin
+ trigger trg_master_audit_no_delete on master_audit present and enabled                           | PASS   | enabled=origin
+ trigger trg_master_audit_no_truncate on master_audit present and enabled                         | PASS   | enabled=origin
+ trigger trg_master_audit_no_update on master_audit present and enabled                           | PASS   | enabled=origin
+ every CKAM table, sequence and function is owned by the owner role                               | INFO   | owners: ckam (no -v owner_role given)
+(34 rows)
+
+[exit 0]
+

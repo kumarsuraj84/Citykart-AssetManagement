@@ -93,7 +93,8 @@ async def test_a_batch_takes_a_constant_number_of_queries():
             await apply_events(s, [(x, w["ravi"].id) for x in w["assets"][1:]], "MOVED", w["actor"])
         await s.commit()
     assert many.count <= few.count + 1          # 59 assets: still one read of last events, holders, one insert
-    assert many.count <= 6
+    # OBS-STATUS: +2 per batch (never per asset) for the lifecycle-writer marker switched on and off around the write.
+    assert many.count <= 7
 
 
 @pytest.mark.parametrize("case, message", [

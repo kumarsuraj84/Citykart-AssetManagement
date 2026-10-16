@@ -1,0 +1,90 @@
+## Role split as superuser (first run). Passwords given as run-time variables (throw-away; production uses \password)
+
+$ docker compose exec -T db psql -X -U ckam -d ckam_rs -v db_name=ckam_rs -v owner_role=ckam_rs_owner -v migrator_role=ckam_rs_migrator -v runtime_role=ckam_rs_app -v migrator_password=*** -f /tmp/ckam_ops_db/role_split.sql
+BEGIN
+DO
+DO
+DO
+DO
+DO
+DO
+COMMIT
+ALTER ROLE
+role_split.sql: done. Now run ops/db/role_split_verify.sql with the same -v names (every row must be PASS).
+[exit 0]
+
+## Verify (expected: everything PASS except the OBS-STATUS trigger, which the next migration adds)
+
+$ docker compose exec -T db psql -X -U ckam -d ckam_rs -v db_name=ckam_rs -v owner_role=ckam_rs_owner -v migrator_role=ckam_rs_migrator -v runtime_role=ckam_rs_app -f /tmp/ckam_ops_db/role_split_verify.sql
+== General least-privilege checks ==
+DO
+                                              check                                               | result |                          detail                           
+--------------------------------------------------------------------------------------------------+--------+-----------------------------------------------------------
+ runtime role exists                                                                              | PASS   | ckam_rs_app
+ runtime role: not superuser / createrole / createdb / replication / bypassrls                    | PASS   | super=f createrole=f createdb=f replication=f bypassrls=f
+ runtime role is not a member of a superuser role or a powerful predefined role                   | PASS   | none
+ runtime role owns nothing in this database (tables, sequences, views, functions, types, schemas) | PASS   | relations (tables, indexes, sequences)=0 functions=0
+ table owners are not the runtime role (nor a role it can become)                                 | PASS   | none
+ runtime role does not own the database                                                           | PASS   | owner=ckam_rs_owner
+ runtime role cannot CREATE in any schema                                                         | PASS   | none
+ runtime role cannot create schemas or temporary tables in the database                           | PASS   | create=f temp=f
+ runtime role can CONNECT and USE the schema                                                      | PASS   | public
+ runtime role has SELECT/INSERT/UPDATE/DELETE on every ordinary table                             | PASS   | 35 tables
+ append-only asset_event: SELECT+INSERT only (no UPDATE, DELETE, TRUNCATE)                        | PASS   | select=t insert=t update=f delete=f truncate=f
+ append-only asset_field_change: SELECT+INSERT only (no UPDATE, DELETE, TRUNCATE)                 | PASS   | select=t insert=t update=f delete=f truncate=f
+ append-only audit_log: SELECT+INSERT only (no UPDATE, DELETE, TRUNCATE)                          | PASS   | select=t insert=t update=f delete=f truncate=f
+ append-only master_audit: SELECT+INSERT only (no UPDATE, DELETE, TRUNCATE)                       | PASS   | select=t insert=t update=f delete=f truncate=f
+ runtime role has no TRUNCATE, TRIGGER or REFERENCES privilege on any table                       | PASS   | none
+ alembic_version: runtime role may only read it                                                   | PASS   | select=t insert=f update=f delete=f
+ runtime role can use every sequence (needed to add rows)                                         | PASS   | 32 sequences
+ ckam_purge_audit_log: no EXECUTE for the runtime role or PUBLIC                                  | PASS   | runtime=f public=f
+ runtime role cannot SET session_replication_role (would skip every guard trigger)                | PASS   | has SET=false
+ trigger trg_asset_event_no_delete on asset_event present and enabled                             | PASS   | enabled=origin
+ trigger trg_asset_event_no_truncate on asset_event present and enabled                           | PASS   | enabled=origin
+ trigger trg_asset_event_no_update on asset_event present and enabled                             | PASS   | enabled=origin
+ trigger trg_asset_field_change_no_delete on asset_field_change present and enabled               | PASS   | enabled=origin
+ trigger trg_asset_field_change_no_truncate on asset_field_change present and enabled             | PASS   | enabled=origin
+ trigger trg_asset_field_change_no_update on asset_field_change present and enabled               | PASS   | enabled=origin
+ trigger trg_asset_lifecycle_fields_guard on asset present and enabled                            | FAIL   | missing
+ trigger trg_asset_no_identity_change on asset present and enabled                                | PASS   | enabled=origin
+ trigger trg_audit_log_no_delete on audit_log present and enabled                                 | PASS   | enabled=origin
+ trigger trg_audit_log_no_truncate on audit_log present and enabled                               | PASS   | enabled=origin
+ trigger trg_audit_log_no_update on audit_log present and enabled                                 | PASS   | enabled=origin
+ trigger trg_master_audit_no_delete on master_audit present and enabled                           | PASS   | enabled=origin
+ trigger trg_master_audit_no_truncate on master_audit present and enabled                         | PASS   | enabled=origin
+ trigger trg_master_audit_no_update on master_audit present and enabled                           | PASS   | enabled=origin
+ every CKAM table, sequence and function is owned by the owner role                               | PASS   | 79 objects, all owned by ckam_rs_owner
+(34 rows)
+
+== Role split checks ==
+                                    check                                    | result |              detail               
+-----------------------------------------------------------------------------+--------+-----------------------------------
+ connected to the CKAM database                                              | PASS   | ckam_rs
+ owner role cannot sign in and has no special attributes                     | PASS   | login=f super=f
+ migrator role: can sign in, no special attributes, NOINHERIT                | PASS   | login=t inherit=f super=f
+ migrator may act as the owner (SET ROLE)                                    | PASS   | ckam_rs_migrator -> ckam_rs_owner
+ migrator sessions in this database start as the owner (role setting)        | PASS   | role=ckam_rs_owner
+ migrator owns nothing and cannot create anything without becoming the owner | PASS   | schema create=f
+ runtime role is not a member of the owner or the migrator                   | PASS   | ckam_rs_app
+ database owned by the owner role                                            | PASS   | owner=ckam_rs_owner
+ PUBLIC cannot connect to the database                                       | PASS   | ckam_rs
+ future tables: runtime role gets SELECT/INSERT/UPDATE/DELETE by default     | PASS   | DELETE,INSERT,SELECT,UPDATE
+ future sequences: runtime role gets USAGE by default                        | PASS   | SELECT,UPDATE,USAGE
+(11 rows)
+
+[exit 0]
+
+## Second run of role_split.sql (idempotent)
+
+$ docker compose exec -T db psql -X -U ckam -d ckam_rs -v db_name=ckam_rs -v owner_role=ckam_rs_owner -v migrator_role=ckam_rs_migrator -v runtime_role=ckam_rs_app -f /tmp/ckam_ops_db/role_split.sql
+BEGIN
+DO
+DO
+DO
+DO
+DO
+DO
+COMMIT
+role_split.sql: done. Now run ops/db/role_split_verify.sql with the same -v names (every row must be PASS).
+[exit 0]
+

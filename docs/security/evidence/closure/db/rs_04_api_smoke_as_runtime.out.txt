@@ -1,0 +1,50 @@
+## (2) Throw-away uvicorn (port 8790, inside the dev api container) as the RUNTIME role; ERP link off
+
+$ docker compose exec -T -d -w /app -e DATABASE_URL=postgresql+asyncpg://ckam_rs_app:***@db:5432/ckam_rs -e ERP_SYNC_ENABLED=false -e PO_SOURCE_HOST= -e PO_SOURCE_PASSWORD= -e LOG_DIR=/tmp/rs_logs api sh -c uvicorn app.main:app --host 127.0.0.1 --port 8790 > /tmp/rs_uvicorn.log 2>&1
+[exit 0]
+
+$ docker compose exec -T -w /app api python /tmp/wpb/rs_smoke.py http://127.0.0.1:8790
+PASS | GET /api/health | 200 {"status":"ok"}
+PASS | POST /api/auth/login (head-office admin) | 200
+PASS | POST /api/purchase-orders/with-lines | 201 po_id=1
+PASS | POST /api/purchase-orders/{id}/receive (2 chairs -> 2 assets + PROCURED events) | 200 {"po_id":1,"invoice_number":"INV-RS-1","assets_created":2,"serial_pending":0,"assets":[{"asset_id":1,"asset_code":"S0/S0NI/001","line_no":1,"serial_number":"N/A
+PASS | GET /api/assets | 200 2 assets
+PASS | POST /api/assets/{id}/events MOVED to an employee (apply_event + OBS-STATUS marker) | 201 {"id":3,"asset_id":2,"event_type":"MOVED","event_date":"2026-10-16T05:51:39.383583Z","from_asset_user_id":10,"to_asset_user_id":13,"status_after":"ALLOTTED","re
+PASS | PUT /api/assets/{id} edit (+ field-change audit rows); status/holder/date in the body ignored | 200 before=('ALLOTTED', 13, '2026-10-16') after=('ALLOTTED', 13, '2026-10-16')
+PASS | POST /api/auth/refresh (auth_session row rotated) | 200
+PASS | POST /api/client-reports (report a problem) | 201 {"id":1,"reference":"3a213b2a8ebb4541ac2cc6a87213515e","duplicate":false}
+PASS | POST /api/masters/vendors (master write + master_audit) | 201 {"id":3,"is_active":true,"code":"RSV2","name":"Role Split Vendor","gstin":null,"contact_name":null,"contact_phone":null,
+PASS | POST /api/auth/logout | 204
+SMOKE PASSED: 11/11 steps
+[exit 0]
+
+## Rows the smoke wrote (append-only ledgers: INSERT only)
+
+$ docker compose exec -T db psql -X -U ckam -d ckam_rs -c SELECT (SELECT count(*) FROM asset) AS assets, (SELECT count(*) FROM asset_event) AS asset_events, (SELECT count(*) FROM asset_field_change) AS field_changes, (SELECT count(*) FROM master_audit) AS master_audit, (SELECT count(*) FROM audit_log) AS audit_log, (SELECT count(*) FROM auth_session) AS auth_sessions, (SELECT count(*) FROM client_report) AS client_reports, (SELECT count(*) FROM system_event) AS system_events -c SELECT asset_code, status, current_asset_user_id, status_since FROM asset ORDER BY id
+ assets | asset_events | field_changes | master_audit | audit_log | auth_sessions | client_reports | system_events 
+--------+--------------+---------------+--------------+-----------+---------------+----------------+---------------
+      2 |            3 |             7 |            0 |        45 |             1 |              1 |             1
+(1 row)
+
+ asset_code  |  status  | current_asset_user_id | status_since 
+-------------+----------+-----------------------+--------------
+ S0/S0NI/001 | IN_STOCK |                    10 | 2026-02-01
+ S0/S0NI/002 | ALLOTTED |                    13 | 2026-10-16
+(2 rows)
+
+[exit 0]
+
+## Stop the throw-away uvicorn
+
+$ docker compose exec -T api python -c import os,signal; [os.kill(int(p), signal.SIGTERM) for p in os.listdir('/proc') if p.isdigit() and b'8790' in open(f'/proc/{p}/cmdline','rb').read() and b'uvicorn' in open(f'/proc/{p}/cmdline','rb').read()]; print('stopped')
+[exit 143]
+
+$ docker compose exec -T api sh -c grep -i -E 'error|denied|exception' /tmp/rs_uvicorn.log | head -20; echo '--- last lines:'; tail -5 /tmp/rs_uvicorn.log
+--- last lines:
+INFO:     Uvicorn running on http://127.0.0.1:8790 (Press CTRL+C to quit)
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [18799]
+[exit 0]
+

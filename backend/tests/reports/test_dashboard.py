@@ -5,6 +5,7 @@ from app.assets.service import procure_assets
 from app.masters.models import Company, CostCenter, AssetCategory, AssetSubcategory, Location, Department
 from app.asset_users.models import AssetUser
 from app.numbering.models import CodeRule
+from tests.lifecycle.fixture_marker import allow_lifecycle_fixture_write
 
 
 async def test_dashboard_counts_and_warranty_alert(client):
@@ -98,8 +99,11 @@ async def test_dashboard_scopes_by_company_and_long_allocation_alert():
         await apply_event(session, old_asset, "MOVED", to_asset_user_id=asset_user_a.id, actor=admin_a)
         # apply_event stamps status_since with "now" (and rejects a backdated event_date
         # here since it would precede the PROCURED event) -- backdate it directly to
-        # simulate an asset that has genuinely sat ALLOTTED for 200 days.
+        # simulate an asset that has genuinely sat ALLOTTED for 200 days. OBS-STATUS: the database refuses this
+        # outside the ledger writer, so the fixture switches the marker on and flushes this one write at once.
+        await allow_lifecycle_fixture_write(session)
         old_asset.status_since = date.today() - timedelta(days=200)
+        await session.flush()
 
         [recent_asset] = await procure_assets(session, {
             "company_id": co_a.id, "cost_center_id": cc_a.id, "category_id": cat.id, "subcategory_id": sub.id,
