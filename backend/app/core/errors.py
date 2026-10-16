@@ -7,7 +7,8 @@ validation array) for a problem with the request itself.
   as a list in the additive `errors` field. HTTP status stays 422.
 * LifecycleError (an illegal asset movement) -> 422 with its message.
 * IntegrityError -> 409 for "already exists", 422 for a reference to a record
-  that does not exist (naming the field in words), never the database text.
+  that does not exist (naming the field in words), never the database text. A serial number already
+  used (CL2-SE-N03) is a 422 with the same plain wording family as the application's own pre-check.
 * DataError (text too long for its column, a number too big, a NUL character)
   and any other SQLAlchemy statement error -> 422 with a plain sentence.
 
@@ -198,6 +199,15 @@ CONSTRAINT_MESSAGES = {
     "uq_purchase_order_company_number_active": "A purchase order with this PO number already exists for this company.",
 }
 
+# Security CL2-SE-N03: a unique index that backs a rule the application ALSO pre-checks answers with the
+# pre-check's own status (422) and a plain sentence, so a request that loses a race (it passed the pre-check
+# a moment before the winner committed) reads like one that simply came second -- not a bare 409 "This record
+# already exists.". The index stays the real guard; every other integrity error is answered as before.
+SERIAL_IN_USE = "This serial number is already used by another asset. Check the serial number and try again."
+CONSTRAINT_REFUSALS: dict[str, tuple[int, str]] = {
+    "ux_asset_serial_number_ci": (status.HTTP_422_UNPROCESSABLE_ENTITY, SERIAL_IN_USE),
+}
+
 _FK_DETAIL_RE = re.compile(r"Key \((?P<col>[a-z_]+)\)=\((?P<val>[^)]*)\) is not present in table")
 _UNIQUE_DETAIL_RE = re.compile(r"Key \((?P<cols>[^)]*)\)=")
 
@@ -220,6 +230,8 @@ def integrity_message(exc: IntegrityError) -> tuple[int, str]:
         return status.HTTP_422_UNPROCESSABLE_ENTITY, "One of the records you chose does not exist (or is still in use)."
     if sqlstate == "23505":                                   # unique
         constraint = getattr(pg, "constraint_name", None) or ""
+        if constraint in CONSTRAINT_REFUSALS:
+            return CONSTRAINT_REFUSALS[constraint]
         if constraint in CONSTRAINT_MESSAGES:
             return status.HTTP_409_CONFLICT, CONSTRAINT_MESSAGES[constraint]
         m = _UNIQUE_DETAIL_RE.search(detail or "")

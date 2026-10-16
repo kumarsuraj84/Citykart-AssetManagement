@@ -7,5 +7,5 @@
 [multipart ~15MB to /api/imports/assets/preview (under 16MB, no persist)] http=422 xrid=e979663b bodyrid="request_id":"e979663b17b94f94bd06bc44590bfac7" csp=1 nosniff=1 xfo=1 detail=1 errors=0 body={"detail":"That file is not a valid Excel file.","request_id":"e979663b17b94f94bd06bc44590bfac7"}
 [multipart ~17MB to /api/assets/1/documents (over 16MB)] http=413 xrid=b839608f bodyrid= csp=1 nosniff=1 xfo=1 detail=1 errors=1 body={"detail": "This request is larger than the 16 MB allowed here. Send a smaller one.", "errors": [{"message": "This request is larger than the 16 MB allowed here
 [multipart ~17MB to /api/imports/assets/preview (over 16MB)] http=413 xrid=2c51603c bodyrid= csp=1 nosniff=1 xfo=1 detail=1 errors=1 body={"detail": "This request is larger than the 16 MB allowed here. Send a smaller one.", "errors": [{"message": "This request is larger than the 16 MB allowed here
-[legit small sign-in (real creds)] http=200 xrid=2d14a24f bodyrid= csp=1 nosniff=1 xfo=1 detail=0 errors=0 body={"access_token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyIiwicm9sZSI6IkFETUlOIiwiY29tcGFueV9zY29wZSI6bnVsbCwidHlwZSI6ImFjY2VzcyIsInR2IjowLCJqdGkiOiJGcV
+[legit small sign-in (real creds)] http=200 xrid=2d14a24f bodyrid= csp=1 nosniff=1 xfo=1 detail=0 errors=0 body={"access_token":"eyJhbGciO...[redacted]
 === done ===

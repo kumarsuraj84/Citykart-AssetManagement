@@ -83,6 +83,9 @@ class MasterPolicy:
     # Security RACE-1 residual: "brand" / "vendor" -- the Excel import refuses a row whose name an active record
     # (or an earlier row of the same file) already has, like adding one on the screen does.
     unique_name_noun: str | None = None
+    # Security CL2-SE-N01: the columns the one-active-name rule is scoped by (a category's work area, a
+    # sub-category's category); empty = the whole master (vendor / brand).
+    unique_name_scope: tuple[str, ...] = ()
 
 
 def build_master_router(
@@ -277,7 +280,7 @@ def build_master_router(
         ):
             content = await read_upload_bounded(file)
             allowed = await scoped_company_ids(session, asset_user)
-            name_check = (_import_name_checks(session, model, policy.unique_name_noun)[0]
+            name_check = (_import_name_checks(session, model, policy.unique_name_noun, policy.unique_name_scope)[0]
                           if policy.unique_name_noun else None)
             try:
                 result = await preview_import(session, import_fields, content, allowed, company_field,
@@ -295,7 +298,7 @@ def build_master_router(
         ):
             content = await read_upload_bounded(file)
             allowed = await scoped_company_ids(session, asset_user)
-            name_check = (_import_name_checks(session, model, policy.unique_name_noun)[1]
+            name_check = (_import_name_checks(session, model, policy.unique_name_noun, policy.unique_name_scope)[1]
                           if policy.unique_name_noun else None)
             try:
                 result = await commit_import(session, model, import_fields, content, asset_user, allowed, company_field,
@@ -320,46 +323,62 @@ def build_master_router(
 
 # ---------------------------------------------------------------- S3a-1 policies
 
-async def _active_name_exists(session: AsyncSession, model, name: str | None, lock: bool = True) -> bool:
+async def _active_name_exists(session: AsyncSession, model, name: str | None, lock: bool = True,
+                              scope: dict | None = None, exclude_id: int | None = None) -> bool:
     """Whether an ACTIVE record of `model` already has this name (ignoring case and surrounding spaces).
 
     Security (concurrency, RACE-1): two requests with one name used to pass this check at the same moment and
     both insert. With `lock`, a transaction-level advisory lock on (table, name) makes the second wait until the
-    first has committed, so it then sees the row. (`lock=False` only for the import preview, which writes nothing.)"""
+    first has committed, so it then sees the row. (`lock=False` only for the import preview, which writes nothing.)
+
+    Security CL2-SE-N01: `scope` narrows the rule (and the lock) to the rows with these column values -- a
+    category's work area, a sub-category's category; `exclude_id` leaves out the record being renamed."""
     value = (name or "").strip()
+    scope = scope or {}
     if lock:
-        await session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": f"{model.__tablename__}:{value.lower()}"})
+        # No scope -> the same key as before ("vendor:acme"), so vendor / brand locking is unchanged.
+        key = ":".join([model.__tablename__, *(str(v) for v in scope.values()), value.lower()])
+        await session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": key})
     stmt = select(model.id).where(func.lower(func.trim(model.name)) == value.lower(), model.is_active.is_(True))
+    for column, wanted in scope.items():
+        stmt = stmt.where(getattr(model, column) == wanted)
+    if exclude_id is not None:
+        stmt = stmt.where(model.id != exclude_id)
     return (await session.execute(stmt.limit(1))).first() is not None
 
 
-async def _refuse_duplicate_name(session: AsyncSession, model, name: str, noun: str) -> None:
-    """New vendor / brand: no second ACTIVE record with the same name (ignoring
-    case and surrounding spaces). Existing rows are never touched or checked
-    against each other; a deactivated twin does not block (it cannot be chosen
-    any more, and there is no way to reactivate it)."""
-    if await _active_name_exists(session, model, name):
+async def _refuse_duplicate_name(session: AsyncSession, model, name: str, noun: str,
+                                 scope: dict | None = None, exclude_id: int | None = None) -> None:
+    """New vendor / brand (and, CL2-SE-N01, category / sub-category within its scope): no second ACTIVE record
+    with the same name (ignoring case and surrounding spaces). Existing rows are never touched or checked
+    against each other; a deactivated twin does not block (it cannot be chosen any more, and there is no way
+    to reactivate it)."""
+    if await _active_name_exists(session, model, name, scope=scope, exclude_id=exclude_id):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"A {noun} with this name already exists.")
 
 
-def _import_name_checks(session: AsyncSession, model, noun: str):
+def _import_name_checks(session: AsyncSession, model, noun: str, scope_fields: tuple[str, ...] = ()):
     """Security RACE-1 residual (OBS-NAME-IMPORT): the head-office admin's Excel import of brands / vendors follows
     the same one-active-name rule as adding one on the screen. Returns (preview check, commit check), each
     `async (data) -> sentence | None`. The commit check takes the same advisory lock per row; a second row of the
-    same name in one file is refused because the first one is already inserted (same transaction)."""
-    seen: set[str] = set()
+    same name in one file is refused because the first one is already inserted (same transaction).
+    `scope_fields` (CL2-SE-N01): categories per work area, sub-categories per category."""
+    seen: set[tuple] = set()
+
+    def scope_of(data: dict) -> dict:
+        return {f: data.get(f) for f in scope_fields}
 
     async def preview(data: dict) -> str | None:
-        key = (data.get("name") or "").strip().lower()
+        key = (*scope_of(data).values(), (data.get("name") or "").strip().lower())
         if key in seen:
             return f"Another row in this file already has the {noun} name '{(data.get('name') or '').strip()}'."
         seen.add(key)
-        if await _active_name_exists(session, model, data.get("name"), lock=False):
+        if await _active_name_exists(session, model, data.get("name"), lock=False, scope=scope_of(data)):
             return f"A {noun} with the name '{(data.get('name') or '').strip()}' already exists."
         return None
 
     async def commit(data: dict) -> str | None:
-        if await _active_name_exists(session, model, data.get("name"), lock=True):
+        if await _active_name_exists(session, model, data.get("name"), lock=True, scope=scope_of(data)):
             return f"A {noun} with the name '{(data.get('name') or '').strip()}' already exists."
         return None
 
@@ -411,6 +430,10 @@ async def _category_before_create(session: AsyncSession, user, data: dict) -> No
     if data.get("asset_domain") not in models.ASSET_DOMAINS:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose who handles this category: IT or Non-IT.")
     await ensure_domain_manage(session, user, data["asset_domain"])
+    # Security CL2-SE-N01: one ACTIVE category per name inside a work area (20 parallel adds made 3). The
+    # advisory lock is held until the insert commits, which also serialises the code made from the name.
+    await _refuse_duplicate_name(session, models.AssetCategory, data.get("name"), "category",
+                                 scope={"asset_domain": data["asset_domain"]})
     if data.get("code") is None:
         # S5: no code typed -> one made from the name (the asset code may use it, so it stays short).
         data["code"] = await unique_code(session, models.AssetCategory, data.get("name"), max_length=20, fallback="CAT")
@@ -427,6 +450,14 @@ async def _category_before_edit(session: AsyncSession, user, existing, data: dic
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose who handles this category: IT or Non-IT.")
     if new_domain != existing.asset_domain:
         await ensure_work_area_change(session, user, "a category")
+    # Security CL2-SE-N01: a rename (or a move to the other work area) may not make a second active category of
+    # one name in a work area. Only checked when the name or the work area really changes, so an existing
+    # (legacy) twin never blocks an unrelated save.
+    new_name = (data.get("name") or "").strip()
+    if (new_domain, new_name.lower()) != (existing.asset_domain, (existing.name or "").strip().lower()):
+        await _refuse_duplicate_name(session, models.AssetCategory, new_name, "category",
+                                     scope={"asset_domain": new_domain}, exclude_id=existing.id)
+    if new_domain != existing.asset_domain:
         if not confirmed:
             subs = (await session.execute(select(func.count()).select_from(models.AssetSubcategory).where(
                 models.AssetSubcategory.category_id == existing.id, models.AssetSubcategory.is_active.is_(True))
@@ -527,6 +558,9 @@ async def _subcategory_before_create(session: AsyncSession, user, data: dict) ->
     # A sub-category belongs to its category's work area: no sub-category under
     # a category of the other team. (A missing category is a 422 further on.)
     await ensure_domain_manage(session, user, await _parent_domain(session, data.get("category_id")))
+    # Security CL2-SE-N01: one ACTIVE sub-category per name inside its category (same race as categories).
+    await _refuse_duplicate_name(session, models.AssetSubcategory, data.get("name"), "sub-category",
+                                 scope={"category_id": data.get("category_id")})
     if data.get("code") is None:
         # S5: no code typed -> one made from the name, unique inside its category.
         data["code"] = await unique_code(session, models.AssetSubcategory, data.get("name"), max_length=20, fallback="SUB",
@@ -535,6 +569,10 @@ async def _subcategory_before_create(session: AsyncSession, user, data: dict) ->
 
 async def _subcategory_before_edit(session: AsyncSession, user, existing, data: dict) -> None:
     await ensure_domain_manage(session, user, await _parent_domain(session, existing.category_id))
+    new_name = (data.get("name") or "").strip()
+    if new_name.lower() != (existing.name or "").strip().lower():      # CL2-SE-N01: rename inside its category
+        await _refuse_duplicate_name(session, models.AssetSubcategory, new_name, "sub-category",
+                                     scope={"category_id": existing.category_id}, exclude_id=existing.id)
     audit.record(session, entity="subcategory", entity_id=existing.id, actor_id=user.id, changes={
         "name": (existing.name, (data.get("name") or "").strip() or existing.name),
     })
@@ -556,12 +594,14 @@ CATEGORY_POLICY = MasterPolicy(
     delete=require_domain_admin(DOMAIN_ADMIN_WHAT),
     before_create=_category_before_create, before_edit=_category_before_edit, before_delete=_category_before_delete,
     annotate_list=_category_list_counts,
+    unique_name_noun="category", unique_name_scope=("asset_domain",),          # CL2-SE-N01: the Excel import too
 )
 SUBCATEGORY_POLICY = MasterPolicy(
     create=require_domain_admin(DOMAIN_ADMIN_WHAT), edit=require_domain_admin(DOMAIN_ADMIN_WHAT),
     delete=require_domain_admin(DOMAIN_ADMIN_WHAT),
     before_create=_subcategory_before_create, before_edit=_subcategory_before_edit,
     before_delete=_subcategory_before_delete, annotate_list=_subcategory_list_counts,
+    unique_name_noun="sub-category", unique_name_scope=("category_id",),
 )
 
 
