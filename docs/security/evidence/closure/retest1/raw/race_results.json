@@ -1,0 +1,124 @@
+[
+  {
+    "label": "vendor-identical-A",
+    "kind": "vendors",
+    "name": "CL1 Race Vendor A",
+    "n": 15,
+    "dist": {
+      "201": 1,
+      "422": 14
+    },
+    "created201": 1,
+    "dup422": 14,
+    "err5xx": 0,
+    "sampleDup": "A vendor with this name already exists."
+  },
+  {
+    "label": "brand-identical-A",
+    "kind": "brands",
+    "name": "CL1 Race Brand A",
+    "n": 15,
+    "dist": {
+      "201": 1,
+      "422": 14
+    },
+    "created201": 1,
+    "dup422": 14,
+    "err5xx": 0,
+    "sampleDup": "A brand with this name already exists."
+  },
+  {
+    "label": "vendor-identical-B",
+    "kind": "vendors",
+    "name": "CL1 Race Vendor B",
+    "n": 18,
+    "dist": {
+      "201": 1,
+      "422": 17
+    },
+    "created201": 1,
+    "dup422": 17,
+    "err5xx": 0,
+    "sampleDup": "A vendor with this name already exists."
+  },
+  {
+    "label": "brand-identical-B",
+    "kind": "brands",
+    "name": "CL1 Race Brand B",
+    "n": 18,
+    "dist": {
+      "201": 1,
+      "422": 17
+    },
+    "created201": 1,
+    "dup422": 17,
+    "err5xx": 0,
+    "sampleDup": "A brand with this name already exists."
+  },
+  {
+    "label": "vendor-identical-C",
+    "kind": "vendors",
+    "name": "CL1 Race Vendor C",
+    "n": 20,
+    "dist": {
+      "201": 1,
+      "422": 19
+    },
+    "created201": 1,
+    "dup422": 19,
+    "err5xx": 0,
+    "sampleDup": "A vendor with this name already exists."
+  },
+  {
+    "label": "brand-identical-C",
+    "kind": "brands",
+    "name": "CL1 Race Brand C",
+    "n": 20,
+    "dist": {
+      "201": 1,
+      "422": 19
+    },
+    "created201": 1,
+    "dup422": 19,
+    "err5xx": 0,
+    "sampleDup": "A brand with this name already exists."
+  },
+  {
+    "label": "vendors-case-ws-variants",
+    "kind": "vendors",
+    "variants": [
+      "CL1 Acme",
+      "CL1 ACME",
+      "cl1 acme",
+      "CL1 Acme ",
+      " CL1 Acme",
+      "CL1  Acme"
+    ],
+    "dist": {
+      "201": 1,
+      "422": 5
+    },
+    "created201": 1,
+    "dup422": 5,
+    "err5xx": 0
+  },
+  {
+    "label": "brands-case-ws-variants",
+    "kind": "brands",
+    "variants": [
+      "CL1 Acme",
+      "CL1 ACME",
+      "cl1 acme",
+      "CL1 Acme ",
+      " CL1 Acme",
+      "CL1  Acme"
+    ],
+    "dist": {
+      "201": 1,
+      "422": 5
+    },
+    "created201": 1,
+    "dup422": 5,
+    "err5xx": 0
+  }
+]

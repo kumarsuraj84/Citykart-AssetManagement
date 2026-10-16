@@ -1,0 +1,58 @@
+status leak  label                 path                                              body[:40]
+200    -     legit                 /assets/a.js                                      b'ok-legit-js'
+200    -     legit-hashed          /assets/index-A1b2C3d4.js                         b'ok-hashed'
+404    -     dotdot-raw            /assets/../../secret_outside.txt                  b'{"detail":"Not Found","request_id":"d3e5'
+404    -     enc-slash             /assets/..%2f..%2fsecret_outside.txt              b'{"detail":"Not Found","request_id":"9a8f'
+404    -     enc-dot               /assets/%2e%2e/%2e%2e/secret_outside.txt          b'{"detail":"Not Found","request_id":"3b42'
+404    -     etcpasswd-ucslash     /assets/..%2F..%2F..%2Fetc%2Fpasswd               b'{"detail":"Not Found","request_id":"c953'
+404    -     etcpasswd-allenc      /assets/%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd   b'{"detail":"Not Found","request_id":"11e4'
+404    -     quad-dot              /assets/....//....//secret_outside.txt            b'{"detail":"Not Found","request_id":"b65e'
+404    -     double-slash-abs      /assets//etc/passwd                               b'{"detail":"Not Found","request_id":"bf5c'
+404    -     enc-abs               /assets/%2fetc%2fpasswd                           b'{"detail":"Not Found","request_id":"7acf'
+404    -     prod-env-canary       /assets/..%2f..%2f..%2f..%2fshared%2f.env         b'{"detail":"Not Found","request_id":"6fef'
+404    -     prod-naspw-canary     /assets/..%2f..%2f..%2f..%2fshared%2fnas.pw       b'{"detail":"Not Found","request_id":"4d76'
+404    -     winsep-5c             /assets/..%5c..%5csecret_outside.txt              b'{"detail":"Not Found","request_id":"8232'
+404    -     winsep-dot5c          /assets/%2e%2e%5c%2e%2e%5csecret_outside.txt      b'{"detail":"Not Found","request_id":"772c'
+404    -     win-drive-fslash      /assets/C:%2fWindows%2fwin.ini                    b'{"detail":"Not Found","request_id":"4921'
+404    -     win-drive-bslash      /assets/C:%5cWindows%5cwin.ini                    b'{"detail":"Not Found","request_id":"62b3'
+404    -     unc-share             /assets/%5c%5cserver%5cshare                      b'{"detail":"Not Found","request_id":"c1ce'
+404    -     mixed-slash           /assets/..%2f..%5c..%2fsecret_outside.txt         b'{"detail":"Not Found","request_id":"b8d9'
+404    -     double-enc-dot        /assets/%252e%252e%252f%252e%252e%252fsecret_outside.txt b'{"detail":"Not Found","request_id":"e26e'
+404    -     double-enc-slash      /assets/..%252f..%252fsecret_outside.txt          b'{"detail":"Not Found","request_id":"2726'
+404    -     sibling-prefix        /assets/../assets_evil/canary.txt                 b'{"detail":"Not Found","request_id":"86b3'
+404    -     sibling-prefix-enc    /assets/..%2fassets_evil%2fcanary.txt             b'{"detail":"Not Found","request_id":"8d73'
+404    -     symlink-out           /assets/link_out.txt                              b'{"detail":"Not Found","request_id":"b073'
+404    -     nul-mid               /assets/a%00.js                                   b'{"detail":"Not Found","request_id":"a9b3'
+404    -     nul-suffix            /assets/..%2f..%2fsecret_outside.txt%00.js        b'{"detail":"Not Found","request_id":"8586'
+200    -     catchall-shell        /..%2f..%2fsecret_outside.txt                     b'<html>shell</html>'
+200    -     health                /api/health                                       b'{"status":"ok"}'
+
+# distinct 404 bodies: 23
+  b'{"detail":"Not Found","request_id":"d3e5b86049ac4a0b861ebb73bf78a6ae"}'  <- 1 paths
+  b'{"detail":"Not Found","request_id":"9a8fb211ef2244a699dc5f935bbce8b9"}'  <- 1 paths
+  b'{"detail":"Not Found","request_id":"3b427137488c4ff2b64572eca18da4f4"}'  <- 1 paths
+  b'{"detail":"Not Found","request_id":"c953166add6b44abaa8cb431abbb8c4d"}'  <- 1 paths
+  b'{"detail":"Not Found","request_id":"11e4938ef76b4242be30b54a9acea452"}'  <- 1 paths
+  b'{"detail":"Not Found","request_id":"b65e24ea5340422db8f2ab2e73075736"}'  <- 1 paths
+  b'{"detail":"Not Found","request_id":"bf5ca99212534b72aeea65cf8a22a59f"}'  <- 1 paths
+  b'{"detail":"Not Found","request_id":"7acf591a21ab433ea8fa474219e6d7ec"}'  <- 1 paths
+  b'{"detail":"Not Found","request_id":"6fefda11766a419fb347b64ada437514"}'  <- 1 paths
+  b'{"detail":"Not Found","request_id":"4d76561370c3481a94e4bf718d8ae4de"}'  <- 1 paths
+  b'{"detail":"Not Found","request_id":"8232f31a68194f92a91e5c88d672181c"}'  <- 1 paths
+  b'{"detail":"Not Found","request_id":"772caad9cbd545079cd6efddb2ba735b"}'  <- 1 paths
+  b'{"detail":"Not Found","request_id":"4921fd0db3464b63a419818dba6650e9"}'  <- 1 paths
+  b'{"detail":"Not Found","request_id":"62b31c95ae4e4e59a91711ac019f34bd"}'  <- 1 paths
+  b'{"detail":"Not Found","request_id":"c1ce5acff8834de08686286fd571f715"}'  <- 1 paths
+  b'{"detail":"Not Found","request_id":"b8d98c264c474f25a1e8b0fe2ef6479f"}'  <- 1 paths
+  b'{"detail":"Not Found","request_id":"e26ef640866a43099a183319b6dffbc1"}'  <- 1 paths
+  b'{"detail":"Not Found","request_id":"2726ee4251814c83bd3af9c3938d352c"}'  <- 1 paths
+  b'{"detail":"Not Found","request_id":"86b38e0ff9914ad782a645b0c05e92c9"}'  <- 1 paths
+  b'{"detail":"Not Found","request_id":"8d73966b4a2e4033875ddad489df22c7"}'  <- 1 paths
+  b'{"detail":"Not Found","request_id":"b07310799d8d41359727802636984635"}'  <- 1 paths
+  b'{"detail":"Not Found","request_id":"a9b37610d7c3486d862367492ec4fd8f"}'  <- 1 paths
+  b'{"detail":"Not Found","request_id":"85863f6d4b48415aad077500e8934ada"}'  <- 1 paths
+
+LEAKS: 0 | traversal paths not 404/400: 0
+--- 5xx in uvicorn log? ---
+0
+0

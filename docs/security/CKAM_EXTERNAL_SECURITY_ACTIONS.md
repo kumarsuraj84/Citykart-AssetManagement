@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Date | 2026-10-15 (FINAL state after remediation and retest) |
+| Date | 2026-10-15 (remediation + retest), extended 2026-10-16 by the security closure programme (added EXT-41/42/43, per-item prerequisite/rollback/evidence matrix, runbook/HTTPS/service-account/backup plan pointers). No item marked complete; production still runs `3b5e842` |
 | Purpose | Every security action that **cannot be completed by changing CKAM code on the dev PC**: server, network, database administration, supplier, people and management actions |
 | Code state | All code findings are FIXED, MITIGATED or ACCEPTED in 8 **local** commits (`3e134c1`, `7e57844`, `ba04371`, `77431ba`, `4fa5c9b`, `ae706bb`, `da790d1`, `d04779a`; HEAD `d04779a`). **None is pushed or deployed**: production still runs `3b5e842` |
 | Related | `CKAM_ISO27001_READINESS.md` (finding summary section 6, risk register section 9), `CKAM_SOC2_READINESS.md`, `CKAM_THREAT_MODEL.md`; and from the separate writer `CKAM_VAPT_REPORT.md`, `CKAM_SECURITY_FINDINGS_REGISTER.md`, `CKAM_SECURITY_REMEDIATION_REPORT.md` |
@@ -62,11 +62,24 @@ How to read this list:
 | EXT-38 | Start production uvicorn with `--no-proxy-headers` (N2) | IT | **URGENT** (with EXT-01) |
 | EXT-39 | Pre-deploy checks for the new release: JWT secret strength, `ENVIRONMENT_NAME=production`, `alembic upgrade head` before start, constraints | IT + Dev | **URGENT** (with EXT-01) |
 | EXT-40 | Watch the sign-in rate limit for users behind one NAT address | IT + Dev | 30 days after deploy |
+| EXT-41 | Preserve and copy production logs off-server before the deploy, for the compromise assessment | IT + Security | **URGENT** (with EXT-01/EXT-03) |
+| EXT-42 | Keep a signed change record and emergency-change note for the IF-01 deploy | Dev + Management | **URGENT** (with EXT-01) |
+| EXT-43 | Give CKAM its own NAS account if `ckappuser` is shared, before rotating the NAS password | Infra + NAS admin | **URGENT** (decision) / 30 days |
 
-Order that matters: **EXT-39 → EXT-01 → EXT-38 → EXT-02** (check the settings, deploy with migrations first,
-start with the right flags, then rotate secrets; changing secrets while the hole is still open is wasted
-effort, because the new secrets could be read the same way). **EXT-05 decision as soon as possible** (closing
-or narrowing the internet forward reduces the danger while EXT-01 is prepared).
+> **Status of every item below: OPEN EXTERNAL.** Nothing in this list is complete. Each item's **Timing** column is
+> also its classification bucket (`URGENT` / `30 days` / `90 days` / `12 months`). Section "Prerequisite, rollback
+> and audit evidence per item" after EXT-43 gives those three fields for every EXT at a glance; the per-item
+> sections give the full action, why, risk and verification.
+
+Order that matters: **EXT-41 (preserve logs) → EXT-39 (prechecks) → EXT-01 (deploy with migrations) →
+EXT-38 (start with `--no-proxy-headers`) → verify IF-01 closed → EXT-02 (rotate secrets, EXT-43 settled first) →
+EXT-03 (compromise assessment)**, all recorded under EXT-42. Rationale: changing secrets while the hole is still
+open is wasted effort, because the new secrets could be read the same way, so rotate only after the fixed release
+is verified. The full numbered procedure is in `docs/security/CKAM_URGENT_PRODUCTION_SECURITY_RUNBOOK.md`.
+**EXT-05 decision as soon as possible** (closing or narrowing the internet forward reduces the danger while EXT-01
+is prepared). HTTPS (EXT-04), the service account (EXT-06), the DB role split (EXT-07) and backups (EXT-08) follow
+in their own windows — see `CKAM_HTTPS_IMPLEMENTATION_PLAN.md`, `CKAM_SERVICE_ACCOUNT_PLAN.md` and
+`CKAM_BACKUP_RESTORE_PLAN.md`.
 
 ---
 
@@ -480,3 +493,91 @@ or narrowing the internet forward reduces the danger while EXT-01 is prepared).
 | Owner | IT + Dev |
 | Timing | Review 30 days after deploy |
 | Done when | A note with the observed 429 counts and the decision (keep / change the value) |
+
+## EXT-41 Preserve and copy production logs off-server for the compromise assessment — URGENT
+
+| | |
+|---|---|
+| What | Before the IF-01 deploy restarts the process (`CKAM_URGENT_PRODUCTION_SECURITY_RUNBOOK.md` Phase 1 step 7): copy `<ROOT>\logs\` (and any older launcher logs) to an admin-only evidence folder, hash each file (SHA-256), and copy the hashed set **off** 10.0.1.98. The app log files rotate by size (20 MB x 10) and a restart plus normal traffic will eventually overwrite the window that matters for EXT-03. Keep audit/log exports from `GET /api/admin/logs/export` the same way |
+| Why (plain words) | The logs are the main evidence for whether IF-01 was used before the fix (EXT-03). A restart and ongoing traffic can push the relevant lines out of the rotation |
+| Risk if ignored | The one chance to see use of the hole is lost; a past intrusion can never be confirmed or ruled out |
+| Owner | IT + Security |
+| Timing | **URGENT**, immediately before EXT-01 and feeding EXT-03 |
+| Done when | A hashed copy of the pre-deploy logs exists off 10.0.1.98; its SHA-256 list is kept; EXT-03 cites it |
+
+## EXT-42 Signed change record and emergency-change note for the IF-01 deploy — URGENT
+
+| | |
+|---|---|
+| What | Complete the minimum change-record fields (`CKAM_SOC2_READINESS.md` section 8, EXT-35) for the IF-01 release: request id, approver, the Phase 1 pre-deploy answers, test/verification evidence (Phase 7 probe results), rollback plan, and the deployment result. Because IF-01 is treated as an emergency change, the owner may approve by message and the record is completed within one working day and reviewed afterwards |
+| Why (plain words) | A security deploy that changes production must be traceable: who approved it, what was checked, how to undo it |
+| Risk if ignored | An untraceable production change; a SOC 2 / ISO change-management gap on the most important release |
+| Owner | Dev + Management |
+| Timing | **URGENT**, part of EXT-01 |
+| Done when | A signed change record exists for the IF-01 deploy, with the Phase 7 evidence attached, kept off-server |
+
+## EXT-43 CKAM-only NAS account before rotating the NAS password — URGENT decision, 30 days to complete
+
+| | |
+|---|---|
+| What | Before rotating the NAS password (EXT-02 / runbook Phase 10): confirm with the NAS admin whether NAS user `ckappuser` is used **only** by CKAM. If it is shared with Spinwheel or Citykart Desk, do **not** change its password (that would break those apps). Instead create a **CKAM-only** NAS account with modify rights on `CKASSETMANAGEMENT_DATA` only, point `shared\nas.pw` (and the launcher mapping) at it, verify uploads/downloads, and only then retire CKAM's use of the shared account. The same check applies to the ERP role `ckpost` before EXT-02's ERP step |
+| Why (plain words) | Rotating a password that other apps also use would lock those apps out; and a shared file account means a CKAM compromise reaches the other apps' files |
+| Risk if ignored | Either a broken sibling app (if the shared password is changed) or a NAS credential that cannot be safely rotated (if it is not) |
+| Owner | Infra + NAS admin |
+| Timing | Decision **URGENT** (blocks runbook Phase 10); CKAM-only account within 30 days |
+| Done when | Written confirmation whether `ckappuser`/`ckpost` are CKAM-only; if shared, a CKAM-only NAS account exists and CKAM uploads/downloads work through it; `icacls`/NAS rights evidence kept |
+
+---
+
+## Prerequisite, rollback and audit evidence per item
+
+Every item above is **OPEN EXTERNAL** (nothing complete). This table adds, for each EXT, the three fields not
+already broken out in its section: **prerequisite** (what must be true first), **rollback** (how to undo it, or
+"n/a" where there is nothing to undo), and **audit evidence** (what proof to keep — this is also what each section's
+"Done when" check produces). The **classification** equals the item's Timing.
+
+| ID | Class | Prerequisite | Rollback | Audit evidence to keep |
+|---|---|---|---|---|
+| EXT-01 | URGENT | EXT-39 checks pass; EXT-42 record started; owner deploy request; backup (EXT-08 interim: the nightly dump) | Set `FRONTEND_DIST_DIR`/editable install back to the previous release; DB restore only if the schema was changed and truly needed | Phase 7 probe results (all 404), `alembic current`=head, `app_started` event, change record |
+| EXT-02 | URGENT | EXT-01 verified (rotating earlier is wasted); EXT-43 decision for NAS/ERP | Restore the prior secret from the sealed `.env` copy, then re-rotate (service first) | Dated rotation note (which secret, when, who — never values); old tokens 401; ERP sync OK; NAS mapping OK |
+| EXT-03 | URGENT | EXT-41 logs preserved | n/a (investigation) | Written incident record: period, sources, findings, decision; log exports with hashes |
+| EXT-04 | 30 days | Owner HTTPS decisions (`CKAM_HTTPS_IMPLEMENTATION_PLAN.md` §16); 443 free in `PORTS.md`; certificate | Revert `COOKIE_SECURE=false`, `BASE_URL` to http, re-bind/forward 3211, stop proxy, restart | TLS scan (valid cert, TLS 1.2+); redirect check; `Secure` cookie; real client IPs in audit |
+| EXT-05 | URGENT (decision) / 30 days | Owner decision on who needs CKAM from outside | Re-add the router forward from its saved export | Router config export (before/after); outside-network reachability test result |
+| EXT-06 | 30 days | After EXT-01/EXT-02; NAS credential handling settled (EXT-43); venv/log/secret rights planned (`CKAM_SERVICE_ACCOUNT_PLAN.md`) | Re-point `CKAM-Web` to SYSTEM from the saved principal; re-grant any over-removed read | Task principal = `svc_ckam`/gMSA; `icacls` of `shared\`; reboot test; uploads/NAS OK |
+| EXT-07 | 30 days | After EXT-02; maintenance window; backup; owner types superuser + role passwords; role SQL in remediation report §7 (and the WP-B tested version) | `ALTER ROLE ckassetapp LOGIN`; revert `DATABASE_URL`; the design is additive and reversible before `ckassetapp NOLOGIN` | `pg_roles`/owner query shows runtime role not owner, no TRUNCATE; `db_03`-style refusals; normal flows OK |
+| EXT-08 | 30 days | Off-server target + decryption key in password manager (EXT-23); non-production restore host | n/a (adds copies; a bad config is corrected, not rolled back) | Off-server copy log; immutable/offline copy exists; NAS backup log; quarterly restore-drill report (`CKAM_BACKUP_RESTORE_PLAN.md` §7) |
+| EXT-09 | 30 days then monthly | Patch window agreed; vendor advisories subscribed | Standard OS/patch rollback (restore point / uninstall update) | Monthly patch report per server (installed, pending, reboot date) |
+| EXT-10 | URGENT | Dev-PC local admin; do not lock out the Docker service | Re-grant removed ACLs if a needed account was cut; BitLocker stays on | `icacls .env`/`backups` show only developer + Administrators; BitLocker on; dump count reduced |
+| EXT-11 | 90 days | Internet fetch of the two font families explicitly allowed by the task (brief rule 1); normal release | Revert the frontend commit; CSP re-allows Google hosts | Playwright run shows no Google request; CSP test without Google hosts; 0 CSP violations |
+| EXT-12 | 30 days | `backend/constraints.txt` present (done, `ae706bb`); `pip-audit` clean on the pinned set | Deploy without `-c` if a pin has no Windows wheel (note it, keep EXT-12 open) | `pip freeze` per release equals the tested set; `pip-audit` result |
+| EXT-13 | 30 days | Reference scripts in `ops/windows/` (WP-C); IT confirms the live launcher | n/a (documents/scripts) | Scripts in git with no secrets and `--no-proxy-headers`; IT confirms server copy equals repo copy |
+| EXT-14 | 90 days | After EXT-01..08; written scope; owner's written approval for any production test | n/a | Signed independent report; findings tracked to closure |
+| EXT-15 | 12 months | ISMS operated (EXT-36): policies, risk treatment, one internal audit + one management review | n/a | Signed engagement with an accredited body; Stage 1 date |
+| EXT-16 | 12 months | Customer/partner demand; scope agreed | n/a | Engagement letter with scope and observation-period dates |
+| EXT-17 | 90 days | ISMS lead appointed (EXT-36) | n/a | Signed, dated policies; staff acknowledgements |
+| EXT-18 | 30 days then quarterly | Head-office admin access; user export (`GET /api/asset-users/export`) | n/a (review; fixes are normal access changes, themselves audited) | Signed review sheet per quarter; matching `ACCESS_CHANGED`/deactivation audit rows |
+| EXT-19 | 90 days (decision) | Owner decision; until then admin use on LAN/VPN (EXT-05) | If MFA is built and causes lockouts, a recovery/break-glass path must exist before enforcing | Written decision; if yes, MFA enforced for the chosen roles and tested |
+| EXT-20 | 30 days | — | n/a | Approved IR plan; IF-01 incident record (EXT-03); first table-top exercise record |
+| EXT-21 | 90 days | Off-server log store; retention decided (with EXT-31) | n/a | Retention in policy; off-server monthly log files with hashes |
+| EXT-22 | 30 days | Alert channel (email/chat); health endpoint reachable | n/a | Alert test messages received; weekly review notes |
+| EXT-23 | 30 days | Company password manager; two named custodians | n/a | Vault entries exist (names only, never values); two people can retrieve; break-glass sealed |
+| EXT-24 | 12 months | Per-app service accounts (EXT-06); review of shared-server admins | Standard infra rollback per change | Written separation design; per-app accounts; (optional) dedicated VM |
+| EXT-25 | 90 days | ERP warehouse owner on 10.0.1.69; CKAM code TLS settings (IF-16, WP-A1) | Revert `PO_SOURCE_SSLMODE` to today's default (fails safe to "ERP unavailable") | `\du`/grants show SELECT only; role read-only; `pg_stat_ssl` shows TLS for CKAM |
+| EXT-26 | 30 days | Owner decision recorded in `docs/ai/DECISIONS.md` | If "limit" built, revert the code change and redeploy | Decision in `DECISIONS.md`; if limited: cross-company tests pass, deployed |
+| EXT-27 | 90 days | DBA; superuser step typed by the owner on 10.0.0.205 | `ALTER SYSTEM RESET ...; SELECT pg_reload_conf();` (no restart) | `GET /api/admin/diagnostics/db` shows `slow_statement_logging_on` true |
+| EXT-28 | 90 days | CityKart-owned GitHub org; members have MFA | Branch protection can be relaxed; move is one-way in practice | Repo settings (owner, visibility, MFA, branch rules); CI run history |
+| EXT-29 | 90 days | RTO/RPO agreed; a window for the reboot test (shared server) | n/a (planning + a test) | Approved BCP/DR plan; reboot-test record; server-room checklist |
+| EXT-30 | 90 days | Owner/HR decision on store-login model | n/a | Written rule; store managers' acknowledgements |
+| EXT-31 | 90 days | Legal counsel engaged | n/a | Written legal register and retention decision |
+| EXT-32 | 90 days then yearly | Training material; HR records | n/a | Attendance list; HR screening/NDA confirmation |
+| EXT-33 | 30 days | HR-to-IT notification flow | n/a | Process note; sample of leavers matched to CKAM deactivation rows |
+| EXT-34 | 90 days then yearly | Supplier list | n/a | Supplier register with rating and review date |
+| EXT-35 | 30 days | Change-record template (`CKAM_SOC2_READINESS.md` §8) | n/a | A change record per release, including the IF-01 deploy (EXT-42) |
+| EXT-36 | 90 days / 12 months | Management commitment | n/a | Appointment letter; approved risk register; internal-audit report; review minutes |
+| EXT-37 | 30 days | EDR/AV licences; PostgreSQL data-folder exclusion guidance | Standard AV policy rollback | Console screenshot showing both servers protected and current |
+| EXT-38 | URGENT (with EXT-01) | Launcher editable on 10.0.1.98; reference launcher in `ops/windows/` | Restore the saved launcher copy; restart | Launcher command shows `--no-proxy-headers`; forged `X-Forwarded-For` logged as `127.0.0.1` |
+| EXT-39 | URGENT (with EXT-01) | Access to `shared\.env` (read only, non-secret keys); rehearsal DB | n/a (checks only) | Change record shows the five checks ticked; `alembic current`=head; normal `production` start |
+| EXT-40 | 30 days after deploy | Deploy done; `RATE_LIMITED` rows observable | Raise/lower `RATE_LIMIT_LOGIN_PER_IP` and restart | A note with observed 429 counts and the keep/change decision |
+| EXT-41 | URGENT | Access to `<ROOT>\logs\`; an off-server evidence target | n/a | Hashed off-server copy of pre-deploy logs; SHA-256 list |
+| EXT-42 | URGENT | Change-record template; owner approval (may be by message for the emergency) | n/a | Signed change record for the IF-01 deploy with Phase 7 evidence |
+| EXT-43 | URGENT (decision) / 30 days | NAS admin / ERP owner confirm whether `ckappuser`/`ckpost` are shared | If a CKAM-only account causes an upload failure, fix the mapping; the shared account is untouched | Written shared/not-shared confirmation; if new account: `icacls`/NAS rights, upload/download test |

@@ -1,0 +1,23 @@
+{"step":"logins","SECOPIT":true,"SECOPNIT":true,"SECSELF":true,"SECOTHER":true}
+{"case":"ext-spoof-html","status":422,"detail":"file type '.html' is not allowed"}
+{"case":"ext-spoof-exe","status":422,"detail":"file type '.exe' is not allowed"}
+{"case":"double-ext-pdf.exe","status":422,"detail":"file type '.exe' is not allowed"}
+{"case":"mime-spoof-pdf+html(accepted?)","status":201,"id":8,"detail":""}
+{"case":"mime-spoof-png+script(accepted?)","status":201,"id":9,"detail":""}
+{"case":"polyglot-gif-pdf-named.pdf","status":201,"id":10,"detail":""}
+{"case":"png-named-but-not-png","status":422,"detail":"This file is not a real PNG file. Upload the original document."}
+{"case":"double-ext-exe.pdf(real pdf)","status":201,"id":11,"detail":""}
+{"case":"reserved-win-CON.pdf","status":201,"id":12,"detail":""}
+{"case":"traversal-in-filename.pdf","status":201,"id":13,"detail":""}
+{"case":"empty-pdf","status":422,"detail":"The file is empty."}
+{"case":"legit-real-pdf","status":201,"id":14,"detail":""}
+{"case":"oversize-doc-11MB","status":422,"detail":"file exceeds the 10 MB limit"}
+{"case":"oversize-import-15.5MB","status":413,"detail":"This file is larger than 15 MB. Split it into smaller files and upload them one by one."}
+{"case":"dl SECSELF->doc1(own asset)","who":"SECSELF","status":200,"ct":"application/pdf","cd":"attachment; filename=\"inv-spl-001.pdf\"","nosniff":"nosniff"}
+{"case":"dl SECSELF->doc2(CKVPL)","who":"SECSELF","status":404,"ct":"application/json","cd":null,"nosniff":"nosniff"}
+{"case":"dl SECOTHER(CKVPL)->doc1(CKSPL)","who":"SECOTHER","status":404,"ct":"application/json","cd":null,"nosniff":"nosniff"}
+{"case":"dl SECOPNIT(NonIT)->doc1(IT asset)","who":"SECOPNIT","status":404,"ct":"application/json","cd":null,"nosniff":"nosniff"}
+{"case":"dl SECOPIT(IT)->doc1(IT asset)","who":"SECOPIT","status":200,"ct":"application/pdf","cd":"attachment; filename=\"inv-spl-001.pdf\"","nosniff":"nosniff"}
+{"case":"dl SECHO->doc1","who":"SECHO","status":200,"ct":"application/pdf","cd":"attachment; filename=\"inv-spl-001.pdf\"","nosniff":"nosniff"}
+{"case":"dl accepted-spoof (served as?)","docId":8,"status":200,"ct":"application/pdf","cd":"attachment; filename=\"CL1_spoof.pdf\"","nosniff":"nosniff"}
+CREATED DOC IDS: [8,9,10,11,12,13,14]

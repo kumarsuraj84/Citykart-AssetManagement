@@ -1,0 +1,32 @@
+===== A. production-treated ENV names + committed placeholder secret (expect REFUSE) =====
+env=UNSET + placeholder | exit=124 | health/docs/redoc/openapi=[200 200+swagger 200 200+openapi] | refused=0 startfail=0 started=1
+env=blank + placeholder | exit=3 | health/docs/redoc/openapi=[NOCONN NOCONN NOCONN NOCONN] | refused=1 startfail=1 started=0
+env=prd + placeholder | exit=3 | health/docs/redoc/openapi=[NOCONN NOCONN NOCONN NOCONN] | refused=1 startfail=1 started=0
+env=live + placeholder | exit=3 | health/docs/redoc/openapi=[NOCONN NOCONN NOCONN NOCONN] | refused=1 startfail=1 started=0
+env=prod-1 + placeholder | exit=3 | health/docs/redoc/openapi=[NOCONN NOCONN NOCONN NOCONN] | refused=1 startfail=1 started=0
+env=Production + placeholder | exit=3 | health/docs/redoc/openapi=[NOCONN NOCONN NOCONN NOCONN] | refused=1 startfail=1 started=0
+env=' PROD ' + placeholder | exit=3 | health/docs/redoc/openapi=[NOCONN NOCONN NOCONN NOCONN] | refused=1 startfail=1 started=0
+env=staging + placeholder | exit=3 | health/docs/redoc/openapi=[NOCONN NOCONN NOCONN NOCONN] | refused=1 startfail=1 started=0
+env=banana(arb) + placeholder | exit=3 | health/docs/redoc/openapi=[NOCONN NOCONN NOCONN NOCONN] | refused=1 startfail=1 started=0
+===== B. env=production + each weak secret (expect REFUSE) =====
+prod + change_me_too | exit=3 | health/docs/redoc/openapi=[NOCONN NOCONN NOCONN NOCONN] | refused=1 startfail=1 started=0
+prod + short('short') | exit=3 | health/docs/redoc/openapi=[NOCONN NOCONN NOCONN NOCONN] | refused=1 startfail=1 started=0
+prod + 40 spaces | exit=3 | health/docs/redoc/openapi=[NOCONN NOCONN NOCONN NOCONN] | refused=1 startfail=1 started=0
+prod + 40xa | exit=3 | health/docs/redoc/openapi=[NOCONN NOCONN NOCONN NOCONN] | refused=1 startfail=1 started=0
+prod + 31 chars | exit=3 | health/docs/redoc/openapi=[NOCONN NOCONN NOCONN NOCONN] | refused=1 startfail=1 started=0
+prod + 32 chars/4 distinct | exit=3 | health/docs/redoc/openapi=[NOCONN NOCONN NOCONN NOCONN] | refused=1 startfail=1 started=0
+===== C. production-treated + GOOD secret (expect START, docs OFF) =====
+prod + good | exit=124 | health/docs/redoc/openapi=[200 404 404 404] | refused=0 startfail=0 started=1
+prd + good | exit=124 | health/docs/redoc/openapi=[200 404 404 404] | refused=0 startfail=0 started=1
+live + good | exit=124 | health/docs/redoc/openapi=[200 404 404 404] | refused=0 startfail=0 started=1
+===== D. dev/non-production names + placeholder (expect START, docs ON) =====
+env=development + placeholder | exit=124 | health/docs/redoc/openapi=[200 200+swagger 200 200+openapi] | refused=0 startfail=0 started=1
+env=dev + placeholder | exit=124 | health/docs/redoc/openapi=[200 200+swagger 200 200+openapi] | refused=0 startfail=0 started=1
+env=test + placeholder | exit=124 | health/docs/redoc/openapi=[200 200+swagger 200 200+openapi] | refused=0 startfail=0 started=1
+env=testing + placeholder | exit=124 | health/docs/redoc/openapi=[200 200+swagger 200 200+openapi] | refused=0 startfail=0 started=1
+env=uat + placeholder | exit=124 | health/docs/redoc/openapi=[200 200+swagger 200 200+openapi] | refused=0 startfail=0 started=1
+env=security-test + placeholder | exit=124 | health/docs/redoc/openapi=[200 200+swagger 200 200+openapi] | refused=0 startfail=0 started=1
+env=local + placeholder | exit=124 | health/docs/redoc/openapi=[200 200+swagger 200 200+openapi] | refused=0 startfail=0 started=1
+env=ci + placeholder | exit=124 | health/docs/redoc/openapi=[200 200+swagger 200 200+openapi] | refused=0 startfail=0 started=1
+===== refusal message wording (prod+placeholder, prod+40xa) =====
+RuntimeError: Refusing to start: ENVIRONMENT_NAME is production but JWT_SECRET is a committed placeholder or shorter than 32 characters. Set a long random JWT_SECRET (e.g. `openssl rand -hex 32`) first.

@@ -1,0 +1,22 @@
+CL1 RACE-1 database verification (read-only SQL, ckam-sec-db-1, db ckam).
+
+After the parallel bursts (before cleanup):
+  SELECT 'vendor', lower(btrim(name)), count(*) FILTER (WHERE is_active) AS active, count(*) AS total
+  FROM vendor WHERE name ILIKE 'CL1%' GROUP BY 1,2;
+  vendor|cl1 acme|1|1
+  vendor|cl1 race vendor a|1|1
+  vendor|cl1 race vendor b|1|1
+  vendor|cl1 race vendor c|1|1
+  brand|cl1 acme|1|1
+  brand|cl1 race brand a|1|1
+  brand|cl1 race brand b|1|1
+  brand|cl1 race brand c|1|1
+
+=> exactly ONE active row (and one total row) per normalised name, vendors and brands. The 6 case/whitespace
+variants ("CL1 Acme","CL1 ACME","cl1 acme","CL1 Acme "," CL1 Acme","CL1  Acme") collapsed to a single
+"cl1 acme" row (the name validator also collapses internal whitespace). No duplicate rows, no 500s.
+
+After cleanup (API DELETE soft-deactivation of all 8 created rows):
+  SELECT count(*) FILTER (WHERE is_active) FROM vendor WHERE name ILIKE 'CL1%'; -> 0
+  SELECT count(*) FILTER (WHERE is_active) FROM brand  WHERE name ILIKE 'CL1%'; -> 0
+Fixture vendors/brands (ids 1-6) untouched.

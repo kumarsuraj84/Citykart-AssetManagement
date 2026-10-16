@@ -1,0 +1,14 @@
+== N1 raw cases ==
+baseline rss/hwm kB = (143664, 208100)
+[huge CL 256MB declared, 31B sent] -> HTTP/1.1 413 Content Too Large
+  rss/hwm after = (143664, 208100)
+[negative CL -1] -> HTTP/1.1 400 Bad Request
+[malformed CL 'abc'] -> HTTP/1.1 400 Bad Request
+[chunked ~200KB no CL to auth] -> HTTP/1.1 413 Content Too Large
+  body snip: b'options: SAMEORIGIN\r\nreferrer-policy: strict-origin-when-cross-origin\r\npermissions-policy: camera=(), microphone=(), geo'
+  rss/hwm after = (143664, 208100)
+[Expect: 100-continue + 10MB CL] -> HTTP/1.1 413 Content Too Large
+[health during stalled slow-body] -> HTTP/1.1 200 OK in 0.00s
+[256MB real send] response before pushing body -> HTTP/1.1 413 Content Too Large
+  pushed ~0 MB; rss/hwm before=(143664, 208100) after=(143664, 208100)
+== final rss/hwm kB == (143664, 208100)

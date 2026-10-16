@@ -1,0 +1,29 @@
+{"step":"create-employee","status":201,"id":45}
+{"step":"issue-password","status":200,"gotTemp":true}
+{"step":"login-temp","status":200,"mustChange":true}
+{"step":"set-strong1","status":204}
+{"step":"login-strong1","status":200}
+{"step":"reject-candidate","candidate":"Password@2026","status":422,"detail":"A common word with a few numbers or symbols added is easy to guess. Choose a different pas"}
+{"step":"reject-candidate","candidate":"Welcome@2026","status":422,"detail":"A common word with a few numbers or symbols added is easy to guess. Choose a different pas"}
+{"step":"reject-candidate","candidate":"Adm1n#123","status":422,"detail":"A common word with a few numbers or symbols added is easy to guess. Choose a different pas"}
+{"step":"reject-candidate","candidate":"P@ssw0rd99","status":422,"detail":"A common word with a few numbers or symbols added is easy to guess. Choose a different pas"}
+{"step":"reject-candidate","candidate":"Admin@2026","status":422,"detail":"A common word with a few numbers or symbols added is easy to guess. Choose a different pas"}
+{"step":"reject-candidate","candidate":"Qwerty@123","status":422,"detail":"A common word with a few numbers or symbols added is easy to guess. Choose a different pas"}
+{"step":"reject-candidate","candidate":"Citykart2026","status":422,"detail":"A password made of the company or app name and numbers is easy to guess. Choose a differen"}
+{"step":"reject-candidate","candidate":"CKAM2026","status":422,"detail":"A password made of the company or app name and numbers is easy to guess. Choose a differen"}
+{"step":"reject-candidate","candidate":"password","status":422,"detail":"This password is too common and easy to guess. Choose a different one."}
+{"step":"reject-candidate","candidate":"password1","status":422,"detail":"This password is too common and easy to guess. Choose a different one."}
+{"step":"reject-candidate","candidate":"12345678","status":422,"detail":"This password is too common and easy to guess. Choose a different one."}
+{"step":"reject-candidate","candidate":"aaaaaaaa","status":422,"detail":"This password is too simple (the same character or a simple sequence). Choose a different "}
+{"step":"reject-candidate","candidate":"abcdefgh","status":422,"detail":"This password is too simple (the same character or a simple sequence). Choose a different "}
+{"step":"reject-candidate","candidate":"qwertyui","status":422,"detail":"This password is too simple (the same character or a simple sequence). Choose a different "}
+{"step":"reject-candidate","candidate":"Brute21#99","status":422,"detail":"The password must not contain your name, login code or email. Choose a different one."}
+{"step":"reject-candidate","candidate":"bruteforce-7","status":422,"detail":"The password must not contain your name, login code or email. Choose a different one."}
+{"step":"reject-candidate","candidate":"Tester@2026","status":422,"detail":"The password must not contain your name, login code or email. Choose a different one."}
+{"step":"reject-candidate","candidate":"BRUTE21xy","status":422,"detail":"The password must not contain your name, login code or email. Choose a different one."}
+{"step":"reject-candidate","candidate":"brute21ABC","status":422,"detail":"The password must not contain your name, login code or email. Choose a different one."}
+{"step":"accept-candidate","candidate":"Blue-Sky-Over-Hills-42","status":204,"detail":""}
+{"step":"relogin-after-accept","status":200}
+{"step":"accept-candidate","candidate":"purple tractor eats 7 mangoes","status":204,"detail":""}
+{"step":"relogin-after-accept","status":200}
+{"step":"deactivate-brute21","status":204,"id":45}

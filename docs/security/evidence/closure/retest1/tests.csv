@@ -1,0 +1,138 @@
+id,item,case,expected,actual,result,evidence
+CL1-T001,N1,auth sign-in body 70KB (over 64KB),413 envelope+headers,413 detail+errors+X-Request-ID+CSP/nosniff/XFO,PASS,raw/n1_host_results.txt
+CL1-T002,N1,auth body ~60KB (under 64KB),not 413 reaches handler,422 "Password too long (max 128)",PASS,raw/n1_host_results.txt
+CL1-T003,N1,auth body 1MB,413,413 (64 KB),PASS,raw/n1_host_results.txt
+CL1-T004,N1,auth body 10MB,413,413 (64 KB),PASS,raw/n1_host_results.txt
+CL1-T005,N1,JSON POST ~4.8MB brand (under 5MB),not 413,422 "Name too long (max 200)",PASS,raw/n1_host_results.txt
+CL1-T006,N1,JSON POST ~5.4MB brand (over 5MB),413,413 (5 MB),PASS,raw/n1_host_results.txt
+CL1-T007,N1,multipart ~15MB import preview (under 16MB),not 413,422 "not a valid Excel file",PASS,raw/n1_host_results.txt
+CL1-T008,N1,multipart ~17MB document (over 16MB),413,413 (16 MB),PASS,raw/n1_host_results.txt
+CL1-T009,N1,multipart ~17MB import (over 16MB),413,413 (16 MB),PASS,raw/n1_host_results.txt
+CL1-T010,N1,legit small sign-in after oversize floods,200,200 token issued,PASS,raw/n1_host_results.txt
+CL1-T011,N1,413 carries security headers + X-Request-ID,present,CSP=1 nosniff=1 XFO=1 X-Request-ID present,PASS,raw/n1_host_results.txt
+CL1-T012,N1,huge Content-Length 256MB declared 31B sent,413 no body read,413 RSS flat 143664kB,PASS,raw/n1_raw_results.txt
+CL1-T013,N1,negative Content-Length -1,refused,400 Bad Request (h11 framing),PASS,raw/n1_raw_results.txt
+CL1-T014,N1,malformed Content-Length abc,refused,400 Bad Request,PASS,raw/n1_raw_results.txt
+CL1-T015,N1,chunked ~200KB no Content-Length to auth,413 counting path,413 + security headers,PASS,raw/n1_raw_results.txt
+CL1-T016,N1,Expect 100-continue + 10MB CL,413 without continue,413 Content Too Large,PASS,raw/n1_raw_results.txt
+CL1-T017,N1,slow-body stall + concurrent health,server not hung,health 200 in 0.00s,PASS,raw/n1_raw_results.txt
+CL1-T018,N1,256MB real body streamed,413 memory not balloon,413 pushed 0MB RSS 143664kB unchanged,PASS,raw/n1_raw_results.txt
+CL1-T019,N4,ENVIRONMENT_NAME unset + placeholder secret,refuse (fail-closed),STARTED health200 docs ON (default=development),FAIL,raw/n4_results.txt
+CL1-T020,N4,env blank + placeholder,refuse,exit3 refused startup failed,PASS,raw/n4_results.txt
+CL1-T021,N4,env prd + placeholder,refuse,exit3 refused,PASS,raw/n4_results.txt
+CL1-T022,N4,env live + placeholder,refuse,exit3 refused,PASS,raw/n4_results.txt
+CL1-T023,N4,env prod-1 + placeholder,refuse,exit3 refused,PASS,raw/n4_results.txt
+CL1-T024,N4,env Production + placeholder,refuse,exit3 refused,PASS,raw/n4_results.txt
+CL1-T025,N4,env ' PROD ' (spaces) + placeholder,refuse,exit3 refused,PASS,raw/n4_results.txt
+CL1-T026,N4,env staging + placeholder,refuse,exit3 refused,PASS,raw/n4_results.txt
+CL1-T027,N4,env arbitrary 'banana' + placeholder,refuse,exit3 refused,PASS,raw/n4_results.txt
+CL1-T028,N4,prod + change_me_too,refuse,exit3 refused,PASS,raw/n4_results.txt
+CL1-T029,N4,prod + short('short'),refuse,exit3 refused,PASS,raw/n4_results.txt
+CL1-T030,N4,prod + 40 spaces,refuse,exit3 refused,PASS,raw/n4_results.txt
+CL1-T031,N4,prod + 40x'a' (len40 1 distinct),refuse (diversity),exit3 refused,PASS,raw/n4_results.txt
+CL1-T032,N4,prod + 31 chars,refuse (length),exit3 refused,PASS,raw/n4_results.txt
+CL1-T033,N4,prod + 32 chars/4 distinct,refuse (diversity),exit3 refused,PASS,raw/n4_results.txt
+CL1-T034,N4,prod + good 40-char secret,start + docs OFF,started health200 docs/redoc/openapi 404,PASS,raw/n4_results.txt
+CL1-T035,N4,prd + good secret,start + docs OFF,started docs 404,PASS,raw/n4_results.txt
+CL1-T036,N4,live + good secret,start + docs OFF,started docs 404,PASS,raw/n4_results.txt
+CL1-T037,N4,env development + placeholder,start + docs ON,started docs 200 swagger,PASS,raw/n4_results.txt
+CL1-T038,N4,env dev + placeholder,start + docs ON,started docs 200,PASS,raw/n4_results.txt
+CL1-T039,N4,env test + placeholder,start + docs ON,started docs 200,PASS,raw/n4_results.txt
+CL1-T040,N4,env testing + placeholder,start + docs ON,started docs 200,PASS,raw/n4_results.txt
+CL1-T041,N4,env uat + placeholder,start + docs ON,started docs 200,PASS,raw/n4_results.txt
+CL1-T042,N4,env security-test + placeholder,start + docs ON,started docs 200,PASS,raw/n4_results.txt
+CL1-T043,N4,env local + placeholder,start + docs ON,started docs 200,PASS,raw/n4_results.txt
+CL1-T044,N4,env ci + placeholder,start + docs ON,started docs 200,PASS,raw/n4_results.txt
+CL1-T045,N4,refusal message contains no secret value,no secret,message has no secret value,PASS,raw/n4_results.txt
+CL1-T046,N4,refusal message explains length AND diversity,both rules explained,only "placeholder or shorter than 32" (no diversity),PARTIAL,raw/n4_results.txt
+CL1-T047,AU-08,reject Password@2026,422,422 common-word-with-symbols,PASS,raw/au08_results.txt
+CL1-T048,AU-08,reject Welcome@2026,422,422 common-word,PASS,raw/au08_results.txt
+CL1-T049,AU-08,reject Adm1n#123,422,422 common-word,PASS,raw/au08_results.txt
+CL1-T050,AU-08,reject P@ssw0rd99,422,422 common-word,PASS,raw/au08_results.txt
+CL1-T051,AU-08,reject Admin@2026,422,422 common-word,PASS,raw/au08_results.txt
+CL1-T052,AU-08,reject Qwerty@123,422,422 common-word,PASS,raw/au08_results.txt
+CL1-T053,AU-08,reject Citykart2026,422,422 brand+numbers,PASS,raw/au08_results.txt
+CL1-T054,AU-08,reject CKAM2026,422,422 brand+numbers,PASS,raw/au08_results.txt
+CL1-T055,AU-08,reject password,422,422 too common,PASS,raw/au08_results.txt
+CL1-T056,AU-08,reject password1,422,422 too common,PASS,raw/au08_results.txt
+CL1-T057,AU-08,reject 12345678,422,422 too common,PASS,raw/au08_results.txt
+CL1-T058,AU-08,reject aaaaaaaa,422,422 too simple,PASS,raw/au08_results.txt
+CL1-T059,AU-08,reject abcdefgh,422,422 too simple (run),PASS,raw/au08_results.txt
+CL1-T060,AU-08,reject qwertyui,422,422 too simple (run),PASS,raw/au08_results.txt
+CL1-T061,AU-08,reject Brute21#99 (own code),422,422 contains name/code/email,PASS,raw/au08_results.txt
+CL1-T062,AU-08,reject bruteforce-7 (name word),422,422 contains name/code/email,PASS,raw/au08_results.txt
+CL1-T063,AU-08,reject Tester@2026 (name word),422,422 contains name/code/email,PASS,raw/au08_results.txt
+CL1-T064,AU-08,reject BRUTE21xy (code case variant),422,422 contains name/code/email,PASS,raw/au08_results.txt
+CL1-T065,AU-08,reject brute21ABC (code digit variant),422,422 contains name/code/email,PASS,raw/au08_results.txt
+CL1-T066,AU-08,accept Blue-Sky-Over-Hills-42,204,204 changed,PASS,raw/au08_results.txt
+CL1-T067,AU-08,accept 'purple tractor eats 7 mangoes',204,204 changed,PASS,raw/au08_results.txt
+CL1-T068,AU-08,change-password rate limit respected + BRUTE21 deactivated,no 429 lockout + 204 deactivate,no 429 hit; BRUTE21 deactivated 204,PASS,raw/au08_results.txt
+CL1-T069,RACE-1,vendor identical name x15 parallel,one 201 rest 422 no 500,201:1 422:14 5xx:0,PASS,raw/race_results.json
+CL1-T070,RACE-1,brand identical name x15 parallel,one 201 rest 422 no 500,201:1 422:14 5xx:0,PASS,raw/race_results.json
+CL1-T071,RACE-1,vendor identical name x18 parallel,one 201 rest 422,201:1 422:17 5xx:0,PASS,raw/race_results.json
+CL1-T072,RACE-1,brand identical name x18 parallel,one 201 rest 422,201:1 422:17 5xx:0,PASS,raw/race_results.json
+CL1-T073,RACE-1,vendor identical name x20 parallel,one 201 rest 422,201:1 422:19 5xx:0,PASS,raw/race_results.json
+CL1-T074,RACE-1,brand identical name x20 parallel,one 201 rest 422,201:1 422:19 5xx:0,PASS,raw/race_results.json
+CL1-T075,RACE-1,vendor case/whitespace variants x6 parallel,one active row,201:1 422:5,PASS,raw/race_results.json
+CL1-T076,RACE-1,brand case/whitespace variants x6 parallel,one active row,201:1 422:5,PASS,raw/race_results.json
+CL1-T077,RACE-1,DB exactly one active row per name,1 active/1 total each,confirmed via psql,PASS,raw/race_db_verify.txt
+CL1-T078,RACE-1,losers get plain duplicate message,plain 422,"A vendor/brand with this name already exists.",PASS,raw/race_results.json
+CL1-T079,RACE-1,cleanup soft-deactivate created rows,deactivated,8x DELETE 204; 0 active remain,PASS,raw/race_db_verify.txt
+CL1-T080,IF-01,legit /assets/a.js,200,200 ok-legit-js,PASS,raw/if01_results.txt
+CL1-T081,IF-01,legit hashed asset index-A1b2C3d4.js,200,200 ok-hashed,PASS,raw/if01_results.txt
+CL1-T082,IF-01,/assets/../../secret_outside.txt,404 no leak,404 no leak,PASS,raw/if01_results.txt
+CL1-T083,IF-01,/assets/..%2f..%2fsecret_outside.txt,404 no leak,404 no leak,PASS,raw/if01_results.txt
+CL1-T084,IF-01,/assets/%2e%2e/%2e%2e/secret_outside.txt,404 no leak,404 no leak,PASS,raw/if01_results.txt
+CL1-T085,IF-01,/assets/..%2F..%2F..%2Fetc%2Fpasswd,404 no leak,404 no leak,PASS,raw/if01_results.txt
+CL1-T086,IF-01,/assets/%2e%2e%2f...%2fetc%2fpasswd,404 no leak,404 no leak,PASS,raw/if01_results.txt
+CL1-T087,IF-01,/assets/....//....//secret_outside.txt,404 no leak,404 no leak,PASS,raw/if01_results.txt
+CL1-T088,IF-01,/assets//etc/passwd (double slash abs),404 no leak,404 no leak,PASS,raw/if01_results.txt
+CL1-T089,IF-01,/assets/%2fetc%2fpasswd (enc abs),404 no leak,404 no leak,PASS,raw/if01_results.txt
+CL1-T090,IF-01,/assets/..%2f..%2f..%2f..%2fshared%2f.env (JWT canary),404 no leak,404 no leak,PASS,raw/if01_results.txt
+CL1-T091,IF-01,/assets/..%2f..%2f..%2f..%2fshared%2fnas.pw (NAS canary),404 no leak,404 no leak,PASS,raw/if01_results.txt
+CL1-T092,IF-01,Windows ..%5c..%5csecret_outside.txt,404 no leak,404 no leak,PASS,raw/if01_results.txt
+CL1-T093,IF-01,Windows %2e%2e%5c%2e%2e%5c...,404 no leak,404 no leak,PASS,raw/if01_results.txt
+CL1-T094,IF-01,Windows C:%2fWindows%2fwin.ini,404 no leak,404 no leak,PASS,raw/if01_results.txt
+CL1-T095,IF-01,Windows C:%5cWindows%5cwin.ini,404 no leak,404 no leak,PASS,raw/if01_results.txt
+CL1-T096,IF-01,UNC %5c%5cserver%5cshare,404 no leak,404 no leak,PASS,raw/if01_results.txt
+CL1-T097,IF-01,mixed slash ..%2f..%5c..%2f...,404 no leak,404 no leak,PASS,raw/if01_results.txt
+CL1-T098,IF-01,double-encoded %252e%252e%252f...,404 no leak,404 no leak,PASS,raw/if01_results.txt
+CL1-T099,IF-01,double-encoded ..%252f..%252f...,404 no leak,404 no leak,PASS,raw/if01_results.txt
+CL1-T100,IF-01,sibling-prefix dir ../assets_evil/canary.txt,404 no leak,404 no leak,PASS,raw/if01_results.txt
+CL1-T101,IF-01,sibling-prefix enc ..%2fassets_evil%2fcanary.txt,404 no leak,404 no leak,PASS,raw/if01_results.txt
+CL1-T102,IF-01,symlink inside assets pointing outside,404 no leak,404 no leak,PASS,raw/if01_results.txt
+CL1-T103,IF-01,NUL byte /assets/a%00.js,404,404,PASS,raw/if01_results.txt
+CL1-T104,IF-01,NUL suffix ...secret_outside.txt%00.js,404,404,PASS,raw/if01_results.txt
+CL1-T105,IF-01,catch-all shell /..%2f..%2fsecret_outside.txt,200 index.html never file,200 shell html,PASS,raw/if01_results.txt
+CL1-T106,IF-01,no 500 and uniform 404 body,no 500 same body,0 500 0 traceback; detail uniformly "Not Found",PASS,raw/if01_results.txt
+CL1-T107,IF-01,live stack API /assets traversal (DIST unset),404,404,PASS,raw/if01_results.txt
+CL1-T108,IF-01,live stack nginx /assets traversal,400/404,400,PASS,raw/if01_results.txt
+CL1-T109,FILES,extension spoof evil.html,422,422 "file type .html not allowed",PASS,raw/filesec_results.txt
+CL1-T110,FILES,extension spoof payload.exe,422,422 "file type .exe not allowed",PASS,raw/filesec_results.txt
+CL1-T111,FILES,double extension invoice.pdf.exe,422,422 .exe not allowed,PASS,raw/filesec_results.txt
+CL1-T112,FILES,png-named but not png content,422,422 "not a real PNG file",PASS,raw/filesec_results.txt
+CL1-T113,FILES,empty file,422,422 "file is empty",PASS,raw/filesec_results.txt
+CL1-T114,FILES,oversize document ~11MB,422 (10MB),422 "exceeds the 10 MB limit",PASS,raw/filesec_results.txt
+CL1-T115,FILES,oversize import ~15.5MB,refused >15MB,413 "larger than 15 MB",PASS,raw/filesec_results.txt
+CL1-T116,FILES,MIME spoof PDF-header+HTML body named .pdf,accepted but served safely,201 then served app/pdf attachment nosniff,PASS,raw/filesec_results.txt
+CL1-T117,FILES,MIME spoof PNG-header+script named .png,accepted but served safely,201 served image/png (attachment nosniff),PASS,raw/filesec_results.txt
+CL1-T118,FILES,polyglot GIF+PDF named .pdf,accepted (signature prefix only),201 (see observation),PARTIAL,raw/filesec_results.txt
+CL1-T119,FILES,double ext invoice.exe.pdf (real PDF),accepted stored uuid,201 stored_path uuid.pdf,PASS,raw/filesec_results.txt
+CL1-T120,FILES,reserved Windows name CON.pdf,stored as uuid (no reserved file),201 stored_path uuid.pdf,PASS,raw/filesec_results.txt
+CL1-T121,FILES,traversal in filename ../../../../etc/passwd.pdf,stored uuid no traversal,201 stored_path /data/uploads/1/<uuid>.pdf,PASS,raw/filesec_results.txt
+CL1-T122,FILES,stored mime is server-derived not browser-claimed,ext-derived type,mime_type application/pdf,image/png,PASS,raw/race_db_verify.txt
+CL1-T123,FILES,download SECSELF own asset doc1,200 attachment nosniff,200 app/pdf attachment nosniff,PASS,raw/filesec_results.txt
+CL1-T124,FILES,download SECSELF doc2 (CKVPL),404,404,PASS,raw/filesec_results.txt
+CL1-T125,FILES,download SECOTHER(CKVPL) doc1(CKSPL),404 cross-company,404,PASS,raw/filesec_results.txt
+CL1-T126,FILES,download SECOPNIT(Non-IT) doc1(IT asset),404 work-area,404,PASS,raw/filesec_results.txt
+CL1-T127,FILES,download SECOPIT(IT) doc1(IT asset),200,200 app/pdf attachment nosniff,PASS,raw/filesec_results.txt
+CL1-T128,FILES,download headers attachment+nosniff+ext type,present,Content-Disposition attachment; nosniff; app/pdf,PASS,raw/filesec_results.txt
+CL1-T129,FILES,accepted spoof served safely,pdf attachment nosniff,served app/pdf attachment nosniff,PASS,raw/filesec_results.txt
+CL1-T130,FILES,cleanup uploaded test docs,removed,7 files rm + 7 rows DELETE; 0 remain,PASS,raw/race_db_verify.txt
+CL1-T131,SECRETS,working-tree JWT scan,no real tokens,only fake redaction-test tokens,PASS,raw/secret_scan.txt
+CL1-T132,SECRETS,BEGIN PRIVATE KEY scan (tree+history),none,none,PASS,raw/secret_scan.txt
+CL1-T133,SECRETS,postgres URL password scan,placeholder/FAKE/test only,ckam_dev_pw / FAKE / test fixtures,PASS,raw/secret_scan.txt
+CL1-T134,SECRETS,JWT_SECRET assignment scan,placeholder/test,change_me_too / dev_secret_change_me / TOP-SECRET-ENV(test),PASS,raw/secret_scan.txt
+CL1-T135,SECRETS,API key / NAS / cookie scan,none real,only frontend redact-test fixture,PASS,raw/secret_scan.txt
+CL1-T136,SECRETS,git history (293 commits) JWT/key/pg,no real secrets,fake tokens + FAKE canary only; evidence already redacted,PASS,raw/secret_scan.txt
+CL1-T137,SECRETS,untracked demo walkthrough clear-text demo password,note,DemoSunita2026 demo-only local test copy,OBS,raw/secret_scan.txt
