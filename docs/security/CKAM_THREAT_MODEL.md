@@ -280,7 +280,7 @@ Legend for **Status**: `CONTROLLED` (control in place in production and evidence
 | STRIDE | Threat | Control | Evidence / finding | Status |
 |---|---|---|---|---|
 | T | Host-header poisoning puts a wrong URL in the QR | URL built from `BASE_URL` setting, never from request headers | `raw_sql_review.md` s.6 | CONTROLLED |
-| S | A fake sticker with a QR to a look-alike site | Labels from Print Labels carry only the asset code; users sign in only at the known address; HTTPS lets users check it | `PRODUCTION_INFRASTRUCTURE.md`; EXT-04 | PARTIAL |
+| S | A fake sticker with a QR to a look-alike site | Labels from Print Labels in the default "Barcode + QR" format carry the `BASE_URL` web link (only "QR Code"/"Barcode" carry just the asset code), so staff are used to scanning links: they must sign in only at the known address; HTTPS lets users check it *(updated 2026-10-17, security release, GT-F02; the earlier text said labels carry only the asset code)* | `PRODUCTION_INFRASTRUCTURE.md`; EXT-04 | PARTIAL |
 | I | QR reveals data | QR opens the asset page, which needs a login | `/api/assets/{id}/qr.png` is authenticated | CONTROLLED |
 | D | A scanned label opens an error page instead of the asset (single-port production) | SPA fallback serves `/assets/<id>` and `/assets/new` | CL2-IF-04 FIXED (`ca94574`); **broken in production `3b5e842` today**; EXT-44 | FIXED (not deployed) |
 

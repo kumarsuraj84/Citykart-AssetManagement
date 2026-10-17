@@ -1,0 +1,1 @@
+LOGIN SECHO: 422 {"detail":"Some of the values could not be saved. Check them and try again.","request_id":"67fce15f62ab4e57ad8aac83425ef24f"}

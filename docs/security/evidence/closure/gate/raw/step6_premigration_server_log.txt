@@ -1,0 +1,51 @@
+/srv/ckam/releases/eed3de1/backend/app/main.py:11: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+  from app.core.errors import SPA_FALLBACK_PATH, is_api_path, register_exception_handlers, unknown_api_response
+INFO:     Started server process [1]
+INFO:     Waiting for application startup.
+WARNING:     [ckam.system] The database is at migration e6f8a0b2c4d6 but this code expects c6e8a0b2d4f6. Run `alembic upgrade head` (after a backup).
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+WARNING:     [ckam.errors] statement error on POST /api/auth/login: (sqlalchemy.dialects.postgresql.asyncpg.ProgrammingError) column asset_user.token_version does not exist
+[SQL: SELECT asset_user.id, asset_user.company_id, asset_user.code, asset_user.name, asset_user.asset_user_type, asset_user.location_id, asset_user.department_id, asset_user.email, asset_user.phone, asset_user.password_hash, asset_user.role, asset_user.is_primary_owner, asset_user.login_enabled, asset_user.primary_asset_domain, asset_user.allowed_asset_domains, asset_user.must_change_password, asset_user.failed_login_count, asset_user.locked_until, asset_user.token_version, asset_user.created_at, asset_user.created_by, asset_user.updated_at, asset_user.updated_by, asset_user.is_active, asset_user.deleted_at 
+FROM asset_user JOIN company ON asset_user.company_id = company.id 
+WHERE company.is_active IS true AND asset_user.is_active IS true AND asset_user.login_enabled IS true AND asset_user.password_hash IS NOT NULL AND (asset_user.code = $1::VARCHAR OR lower(asset_user.email) = lower($2::VARCHAR))]
+[parameters: ('SECHO', 'SECHO')]
+(Background on this error at: https://sqlalche.me/e/21/f405)
+WARNING:     [ckam.errors] Some of the values could not be saved. Check them and try again.
+/usr/local/lib/python3.13/site-packages/starlette/_exception_handler.py:59: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+  response = await handler(conn, exc)  # type: ignore[arg-type]
+WARNING:     [ckam.errors] statement error on POST /api/auth/login: (sqlalchemy.dialects.postgresql.asyncpg.ProgrammingError) column asset_user.token_version does not exist
+[SQL: SELECT asset_user.id, asset_user.company_id, asset_user.code, asset_user.name, asset_user.asset_user_type, asset_user.location_id, asset_user.department_id, asset_user.email, asset_user.phone, asset_user.password_hash, asset_user.role, asset_user.is_primary_owner, asset_user.login_enabled, asset_user.primary_asset_domain, asset_user.allowed_asset_domains, asset_user.must_change_password, asset_user.failed_login_count, asset_user.locked_until, asset_user.token_version, asset_user.created_at, asset_user.created_by, asset_user.updated_at, asset_user.updated_by, asset_user.is_active, asset_user.deleted_at 
+FROM asset_user JOIN company ON asset_user.company_id = company.id 
+WHERE company.is_active IS true AND asset_user.is_active IS true AND asset_user.login_enabled IS true AND asset_user.password_hash IS NOT NULL AND (asset_user.code = $1::VARCHAR OR lower(asset_user.email) = lower($2::VARCHAR))]
+[parameters: ('SECOPIT', 'SECOPIT')]
+(Background on this error at: https://sqlalche.me/e/21/f405)
+WARNING:     [ckam.errors] Some of the values could not be saved. Check them and try again.
+WARNING:     [ckam.errors] statement error on POST /api/auth/login: (sqlalchemy.dialects.postgresql.asyncpg.ProgrammingError) column asset_user.token_version does not exist
+[SQL: SELECT asset_user.id, asset_user.company_id, asset_user.code, asset_user.name, asset_user.asset_user_type, asset_user.location_id, asset_user.department_id, asset_user.email, asset_user.phone, asset_user.password_hash, asset_user.role, asset_user.is_primary_owner, asset_user.login_enabled, asset_user.primary_asset_domain, asset_user.allowed_asset_domains, asset_user.must_change_password, asset_user.failed_login_count, asset_user.locked_until, asset_user.token_version, asset_user.created_at, asset_user.created_by, asset_user.updated_at, asset_user.updated_by, asset_user.is_active, asset_user.deleted_at 
+FROM asset_user JOIN company ON asset_user.company_id = company.id 
+WHERE company.is_active IS true AND asset_user.is_active IS true AND asset_user.login_enabled IS true AND asset_user.password_hash IS NOT NULL AND (asset_user.code = $1::VARCHAR OR lower(asset_user.email) = lower($2::VARCHAR))]
+[parameters: ('SECHO', 'SECHO')]
+(Background on this error at: https://sqlalche.me/e/21/f405)
+WARNING:     [ckam.errors] Some of the values could not be saved. Check them and try again.
+WARNING:     [ckam.errors] statement error on POST /api/auth/login: (sqlalchemy.dialects.postgresql.asyncpg.ProgrammingError) column asset_user.token_version does not exist
+[SQL: SELECT asset_user.id, asset_user.company_id, asset_user.code, asset_user.name, asset_user.asset_user_type, asset_user.location_id, asset_user.department_id, asset_user.email, asset_user.phone, asset_user.password_hash, asset_user.role, asset_user.is_primary_owner, asset_user.login_enabled, asset_user.primary_asset_domain, asset_user.allowed_asset_domains, asset_user.must_change_password, asset_user.failed_login_count, asset_user.locked_until, asset_user.token_version, asset_user.created_at, asset_user.created_by, asset_user.updated_at, asset_user.updated_by, asset_user.is_active, asset_user.deleted_at 
+FROM asset_user JOIN company ON asset_user.company_id = company.id 
+WHERE company.is_active IS true AND asset_user.is_active IS true AND asset_user.login_enabled IS true AND asset_user.password_hash IS NOT NULL AND (asset_user.code = $1::VARCHAR OR lower(asset_user.email) = lower($2::VARCHAR))]
+[parameters: ('SECHO', 'SECHO')]
+(Background on this error at: https://sqlalche.me/e/21/f405)
+WARNING:     [ckam.errors] Some of the values could not be saved. Check them and try again.
+WARNING:     [ckam.errors] statement error on POST /api/auth/login: (sqlalchemy.dialects.postgresql.asyncpg.ProgrammingError) column asset_user.token_version does not exist
+[SQL: SELECT asset_user.id, asset_user.company_id, asset_user.code, asset_user.name, asset_user.asset_user_type, asset_user.location_id, asset_user.department_id, asset_user.email, asset_user.phone, asset_user.password_hash, asset_user.role, asset_user.is_primary_owner, asset_user.login_enabled, asset_user.primary_asset_domain, asset_user.allowed_asset_domains, asset_user.must_change_password, asset_user.failed_login_count, asset_user.locked_until, asset_user.token_version, asset_user.created_at, asset_user.created_by, asset_user.updated_at, asset_user.updated_by, asset_user.is_active, asset_user.deleted_at 
+FROM asset_user JOIN company ON asset_user.company_id = company.id 
+WHERE company.is_active IS true AND asset_user.is_active IS true AND asset_user.login_enabled IS true AND asset_user.password_hash IS NOT NULL AND (asset_user.code = $1::VARCHAR OR lower(asset_user.email) = lower($2::VARCHAR))]
+[parameters: ('SECOPIT', 'SECOPIT')]
+(Background on this error at: https://sqlalche.me/e/21/f405)
+WARNING:     [ckam.errors] Some of the values could not be saved. Check them and try again.
+WARNING:     [ckam.errors] statement error on POST /api/auth/login: (sqlalchemy.dialects.postgresql.asyncpg.ProgrammingError) column asset_user.token_version does not exist
+[SQL: SELECT asset_user.id, asset_user.company_id, asset_user.code, asset_user.name, asset_user.asset_user_type, asset_user.location_id, asset_user.department_id, asset_user.email, asset_user.phone, asset_user.password_hash, asset_user.role, asset_user.is_primary_owner, asset_user.login_enabled, asset_user.primary_asset_domain, asset_user.allowed_asset_domains, asset_user.must_change_password, asset_user.failed_login_count, asset_user.locked_until, asset_user.token_version, asset_user.created_at, asset_user.created_by, asset_user.updated_at, asset_user.updated_by, asset_user.is_active, asset_user.deleted_at 
+FROM asset_user JOIN company ON asset_user.company_id = company.id 
+WHERE company.is_active IS true AND asset_user.is_active IS true AND asset_user.login_enabled IS true AND asset_user.password_hash IS NOT NULL AND (asset_user.code = $1::VARCHAR OR lower(asset_user.email) = lower($2::VARCHAR))]
+[parameters: ('SECHO', 'SECHO')]
+(Background on this error at: https://sqlalche.me/e/21/f405)
+WARNING:     [ckam.errors] Some of the values could not be saved. Check them and try again.

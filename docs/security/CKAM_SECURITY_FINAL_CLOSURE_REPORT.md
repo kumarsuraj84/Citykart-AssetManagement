@@ -36,8 +36,12 @@ important ones:
 - The planned database lock-down script still let the app's own login "rewind the numbering" of the audit
   history, which would silently stop new history rows from being saved (CL2-IF-01, Medium).
 - On the live-style single server, **opening an asset link directly (for example by scanning the QR code printed from
-  an asset's own page) shows an error instead of the asset page** (CL2-IF-04). Labels from the bulk "Print Labels"
-  screen carry only the asset code and are not affected. This bug is also on the live server today.
+  an asset's own page) shows an error instead of the asset page** (CL2-IF-04). This bug is also on the live server
+  today. **Labels from the bulk "Print Labels" screen are affected too in the default "Barcode + QR" format**: its
+  QR holds the same web link (the plain-HTTP `BASE_URL`). Only the "QR Code" and "Barcode" formats hold just the
+  asset code. Labels printed today also keep the old address if the web address changes later (for example for
+  HTTPS). *(updated 2026-10-17, security release: the earlier sentence "labels from Print Labels carry only the
+  asset code and are not affected" was wrong; gate rehearsal finding GT-F02.)*
 
 ## WHAT WE FIXED
 

@@ -1,0 +1,789 @@
+
+===== D01 : deploy -WhatIf, happy path (package not unpacked yet) =====
+args: -Kind deploy -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\deploy_ckam.ps1 -Sha bbbbbbb -Port 3999 -PackagePath C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\ckam-release-bbbbbbb.zip -DryRun
+2026-10-17 10:24:30  === CKAM deploy bbbbbbb (WhatIf: nothing is changed) ===
+What if: Performing the operation "unpack C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\ckam-release-bbbbbbb.zip" on target "C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D01\root\releases\bbbbbbb".
+2026-10-17 10:24:30  WhatIf: the package is not unpacked yet; RELEASE.json (release id, alembic_head) would be read from C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D01\root\releases\bbbbbbb\RELEASE.json
+2026-10-17 10:24:30  JWT_SECRET meets the production rules (value not shown)
+2026-10-17 10:24:30  DATABASE_URL present exactly once (value not shown; database host: db.invalid)
+2026-10-17 10:24:30  pre-checks passed; current release: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D01\root\releases\aaaaaaa
+2026-10-17 10:24:30  backup confirmed by the operator (-BackupConfirmed)
+2026-10-17 10:24:30  step 4: save shared\.env as C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D01\root\shared\.env.pre-bbbbbbb   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+What if: Performing the operation "copy to C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D01\root\shared\.env.pre-bbbbbbb" on target "C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D01\root\shared\.env".
+2026-10-17 10:24:30  step 5: stop CKAM-Web-FAKE-DRYRUN   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+What if: Performing the operation "stop CKAM (task + its own python listener only)" on target "CKAM-Web-FAKE-DRYRUN".
+2026-10-17 10:24:30  step 6: pip install -c constraints.txt -e <release>\backend   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+What if: Performing the operation "pip install -c constraints.txt -e" on target "C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D01\root\releases\bbbbbbb\backend".
+2026-10-17 10:24:30  step 7: set FRONTEND_DIST_DIR=C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D01\root\releases\bbbbbbb\frontend-dist, APP_VERSION=bbbbbbb   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+What if: Performing the operation "set FRONTEND_DIST_DIR=C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D01\root\releases\bbbbbbb\frontend-dist, APP_VERSION=bbbbbbb" on target "C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D01\root\shared\.env".
+2026-10-17 10:24:30  step 8a: alembic heads (code) and alembic current (database), read-only   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+What if: Performing the operation "alembic heads + alembic current (read-only)" on target "C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D01\root\releases\bbbbbbb\backend".
+2026-10-17 10:24:30  WhatIf: would read alembic heads (must be ONE head) and alembic current from C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D01\root\releases\bbbbbbb\backend
+2026-10-17 10:24:30  step 8b: alembic upgrade head   [from the moment it starts, a failure -> BRANCH B: CKAM-Web stays STOPPED, no switch-back, no downgrade, no restore]
+What if: Performing the operation "alembic upgrade head" on target "C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D01\root\releases\bbbbbbb\backend".
+2026-10-17 10:24:30  WhatIf: would run alembic upgrade head, then require alembic current = the code's head
+2026-10-17 10:24:30  step 9: start CKAM-Web-FAKE-DRYRUN, wait for /api/health, run verify_release.ps1   [a failure here -> BRANCH B: CKAM-Web stays STOPPED, no switch-back, no downgrade, no restore]
+What if: Performing the operation "start CKAM" on target "CKAM-Web-FAKE-DRYRUN".
+2026-10-17 10:24:30  WhatIf: would wait for http://127.0.0.1:3999/api/health and run C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\verify_release.ps1 -BaseUrl http://127.0.0.1:3999 -ExpectedRelease bbbbbbb -ReleaseDir C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D01\root\releases\bbbbbbb -LauncherLogDir C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D01\root\logs -LocalProcessCheck Require
+2026-10-17 10:24:30  WhatIf: failure handling plan (nothing failed in this dry run):
+2026-10-17 10:24:30    steps 1-3 (release folder, pre-checks, backup)           -> STOP, nothing changed, exit 2
+2026-10-17 10:24:30    steps 4-8a (save settings, stop, pip, switch, read heads) -> BRANCH A: restore C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D01\root\shared\.env.pre-bbbbbbb, restart the previous release aaaaaaa (schema untouched), exit 1
+2026-10-17 10:24:30    steps 8b-9 (alembic upgrade head, head check, start, health, verify) -> BRANCH B: CKAM-Web-FAKE-DRYRUN left STOPPED, aaaaaaa NOT restarted, no downgrade, no restore, banner + STATE line, exit 3
+2026-10-17 10:24:30    release folders releases\bbbbbbb and releases\aaaaaaa are kept in every case
+2026-10-17 10:24:30  === WhatIf finished: nothing in CKAM was changed (only this log file was written) ===
+-- facts: exit 0; 0.4s; shared\.env unchanged: True; .env selects: aaaaaaa; task calls: none; fake python calls: 0 (alembic upgrade: 0); simulated db revision now: e6f8a0b2c4d6; previous release folder kept: True
+   check PASS exit 0
+   check PASS .env unchanged
+   check PASS no task call
+   check PASS no python call
+   check PASS WhatIf prints the branch plan
+   check PASS says RELEASE.json would be read
+
+===== D02 : deploy -WhatIf, happy path (release folder already unpacked, RELEASE.json read) =====
+args: -Kind deploy -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\deploy_ckam.ps1 -Sha bbbbbbb -Port 3999 -DryRun
+2026-10-17 10:24:31  === CKAM deploy bbbbbbb (WhatIf: nothing is changed) ===
+2026-10-17 10:24:31  release folder already there, used as it is (not replaced, not deleted): C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D02\root\releases\bbbbbbb
+2026-10-17 10:24:31  release folder complete: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D02\root\releases\bbbbbbb (keep it: the editable install links the venv to its backend)
+2026-10-17 10:24:31  RELEASE.json: release bbbbbbb, the database must reach Alembic head c6e8a0b2d4f6
+2026-10-17 10:24:31  JWT_SECRET meets the production rules (value not shown)
+2026-10-17 10:24:31  DATABASE_URL present exactly once (value not shown; database host: db.invalid)
+2026-10-17 10:24:31  pre-checks passed; current release: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D02\root\releases\aaaaaaa
+2026-10-17 10:24:31  backup confirmed by the operator (-BackupConfirmed)
+2026-10-17 10:24:31  step 4: save shared\.env as C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D02\root\shared\.env.pre-bbbbbbb   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+What if: Performing the operation "copy to C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D02\root\shared\.env.pre-bbbbbbb" on target "C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D02\root\shared\.env".
+2026-10-17 10:24:31  step 5: stop CKAM-Web-FAKE-DRYRUN   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+What if: Performing the operation "stop CKAM (task + its own python listener only)" on target "CKAM-Web-FAKE-DRYRUN".
+2026-10-17 10:24:31  step 6: pip install -c constraints.txt -e <release>\backend   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+What if: Performing the operation "pip install -c constraints.txt -e" on target "C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D02\root\releases\bbbbbbb\backend".
+2026-10-17 10:24:31  step 7: set FRONTEND_DIST_DIR=C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D02\root\releases\bbbbbbb\frontend-dist, APP_VERSION=bbbbbbb   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+What if: Performing the operation "set FRONTEND_DIST_DIR=C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D02\root\releases\bbbbbbb\frontend-dist, APP_VERSION=bbbbbbb" on target "C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D02\root\shared\.env".
+2026-10-17 10:24:31  step 8a: alembic heads (code) and alembic current (database), read-only   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+What if: Performing the operation "alembic heads + alembic current (read-only)" on target "C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D02\root\releases\bbbbbbb\backend".
+2026-10-17 10:24:31  WhatIf: would read alembic heads (must be ONE head = RELEASE.json c6e8a0b2d4f6) and alembic current from C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D02\root\releases\bbbbbbb\backend
+2026-10-17 10:24:31  step 8b: alembic upgrade head   [from the moment it starts, a failure -> BRANCH B: CKAM-Web stays STOPPED, no switch-back, no downgrade, no restore]
+What if: Performing the operation "alembic upgrade head" on target "C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D02\root\releases\bbbbbbb\backend".
+2026-10-17 10:24:31  WhatIf: would run alembic upgrade head, then require alembic current = c6e8a0b2d4f6
+2026-10-17 10:24:31  step 9: start CKAM-Web-FAKE-DRYRUN, wait for /api/health, run verify_release.ps1   [a failure here -> BRANCH B: CKAM-Web stays STOPPED, no switch-back, no downgrade, no restore]
+What if: Performing the operation "start CKAM" on target "CKAM-Web-FAKE-DRYRUN".
+2026-10-17 10:24:31  WhatIf: would wait for http://127.0.0.1:3999/api/health and run C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\verify_release.ps1 -BaseUrl http://127.0.0.1:3999 -ExpectedRelease bbbbbbb -ReleaseDir C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D02\root\releases\bbbbbbb -LauncherLogDir C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D02\root\logs -LocalProcessCheck Require
+2026-10-17 10:24:31  WhatIf: failure handling plan (nothing failed in this dry run):
+2026-10-17 10:24:31    steps 1-3 (release folder, pre-checks, backup)           -> STOP, nothing changed, exit 2
+2026-10-17 10:24:31    steps 4-8a (save settings, stop, pip, switch, read heads) -> BRANCH A: restore C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D02\root\shared\.env.pre-bbbbbbb, restart the previous release aaaaaaa (schema untouched), exit 1
+2026-10-17 10:24:31    steps 8b-9 (alembic upgrade head, head check, start, health, verify) -> BRANCH B: CKAM-Web-FAKE-DRYRUN left STOPPED, aaaaaaa NOT restarted, no downgrade, no restore, banner + STATE line, exit 3
+2026-10-17 10:24:31    release folders releases\bbbbbbb and releases\aaaaaaa are kept in every case
+2026-10-17 10:24:31  === WhatIf finished: nothing in CKAM was changed (only this log file was written) ===
+-- facts: exit 0; 0.4s; shared\.env unchanged: True; .env selects: aaaaaaa; task calls: none; fake python calls: 0 (alembic upgrade: 0); simulated db revision now: e6f8a0b2c4d6; previous release folder kept: True
+   check PASS exit 0
+   check PASS .env unchanged
+   check PASS no task call
+   check PASS no python call
+   check PASS RELEASE.json head read
+   check PASS steps 6/8a -> branch A
+   check PASS steps 8b/9 -> branch B
+   check PASS post-migration check uses RELEASE.json head
+   check PASS DATABASE_URL pre-check passes, value hidden
+   check PASS verify gets -LocalProcessCheck Require
+
+===== D03 : deploy -WhatIf, DATABASE_URL missing (must stop) =====
+args: -Kind deploy -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\deploy_ckam.ps1 -Sha bbbbbbb -Port 3999 -DryRun
+2026-10-17 10:24:32  === CKAM deploy bbbbbbb (WhatIf: nothing is changed) ===
+2026-10-17 10:24:32  release folder already there, used as it is (not replaced, not deleted): C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D03\root\releases\bbbbbbb
+2026-10-17 10:24:32  release folder complete: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D03\root\releases\bbbbbbb (keep it: the editable install links the venv to its backend)
+2026-10-17 10:24:32  RELEASE.json: release bbbbbbb, the database must reach Alembic head c6e8a0b2d4f6
+2026-10-17 10:24:32  JWT_SECRET meets the production rules (value not shown)
+2026-10-17 10:24:32  STOPPED: DATABASE_URL is missing in shared\.env (the app would silently use the development database address)
+2026-10-17 10:24:32  nothing in CKAM was changed (exit 2)
+-- facts: exit 2; 0.3s; shared\.env unchanged: True; .env selects: aaaaaaa; task calls: none; fake python calls: 0 (alembic upgrade: 0); simulated db revision now: e6f8a0b2c4d6; previous release folder kept: True
+   check PASS exit 2
+   check PASS .env unchanged
+   check PASS no task call
+   check PASS no python call
+   check PASS message: STOPPED: DATABASE_URL is missing in shared\\.env
+
+===== D04 : deploy -WhatIf, DATABASE_URL empty (must stop) =====
+args: -Kind deploy -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\deploy_ckam.ps1 -Sha bbbbbbb -Port 3999 -DryRun
+2026-10-17 10:24:32  === CKAM deploy bbbbbbb (WhatIf: nothing is changed) ===
+2026-10-17 10:24:32  release folder already there, used as it is (not replaced, not deleted): C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D04\root\releases\bbbbbbb
+2026-10-17 10:24:32  release folder complete: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D04\root\releases\bbbbbbb (keep it: the editable install links the venv to its backend)
+2026-10-17 10:24:32  RELEASE.json: release bbbbbbb, the database must reach Alembic head c6e8a0b2d4f6
+2026-10-17 10:24:32  JWT_SECRET meets the production rules (value not shown)
+2026-10-17 10:24:32  STOPPED: DATABASE_URL in shared\.env is empty (the app would silently use the development database address)
+2026-10-17 10:24:32  nothing in CKAM was changed (exit 2)
+-- facts: exit 2; 0.4s; shared\.env unchanged: True; .env selects: aaaaaaa; task calls: none; fake python calls: 0 (alembic upgrade: 0); simulated db revision now: e6f8a0b2c4d6; previous release folder kept: True
+   check PASS exit 2
+   check PASS .env unchanged
+   check PASS no task call
+   check PASS no python call
+   check PASS message: STOPPED: DATABASE_URL in shared\\.env is empty
+
+===== D05 : deploy -WhatIf, DATABASE_URL twice (must stop) =====
+args: -Kind deploy -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\deploy_ckam.ps1 -Sha bbbbbbb -Port 3999 -DryRun
+2026-10-17 10:24:33  === CKAM deploy bbbbbbb (WhatIf: nothing is changed) ===
+2026-10-17 10:24:33  release folder already there, used as it is (not replaced, not deleted): C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D05\root\releases\bbbbbbb
+2026-10-17 10:24:33  release folder complete: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D05\root\releases\bbbbbbb (keep it: the editable install links the venv to its backend)
+2026-10-17 10:24:33  RELEASE.json: release bbbbbbb, the database must reach Alembic head c6e8a0b2d4f6
+2026-10-17 10:24:33  JWT_SECRET meets the production rules (value not shown)
+2026-10-17 10:24:33  STOPPED: DATABASE_URL appears 2 times in shared\.env (exactly one line is allowed)
+2026-10-17 10:24:33  nothing in CKAM was changed (exit 2)
+-- facts: exit 2; 0.3s; shared\.env unchanged: True; .env selects: aaaaaaa; task calls: none; fake python calls: 0 (alembic upgrade: 0); simulated db revision now: e6f8a0b2c4d6; previous release folder kept: True
+   check PASS exit 2
+   check PASS .env unchanged
+   check PASS no task call
+   check PASS no python call
+   check PASS message: STOPPED: DATABASE_URL appears 2 times
+
+===== D06 : deploy -WhatIf, DATABASE_URL = development default (must stop) =====
+args: -Kind deploy -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\deploy_ckam.ps1 -Sha bbbbbbb -Port 3999 -DryRun
+2026-10-17 10:24:33  === CKAM deploy bbbbbbb (WhatIf: nothing is changed) ===
+2026-10-17 10:24:33  release folder already there, used as it is (not replaced, not deleted): C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D06\root\releases\bbbbbbb
+2026-10-17 10:24:33  release folder complete: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D06\root\releases\bbbbbbb (keep it: the editable install links the venv to its backend)
+2026-10-17 10:24:33  RELEASE.json: release bbbbbbb, the database must reach Alembic head c6e8a0b2d4f6
+2026-10-17 10:24:33  JWT_SECRET meets the production rules (value not shown)
+2026-10-17 10:24:33  STOPPED: DATABASE_URL in shared\.env is the development default
+2026-10-17 10:24:33  nothing in CKAM was changed (exit 2)
+-- facts: exit 2; 0.3s; shared\.env unchanged: True; .env selects: aaaaaaa; task calls: none; fake python calls: 0 (alembic upgrade: 0); simulated db revision now: e6f8a0b2c4d6; previous release folder kept: True
+   check PASS exit 2
+   check PASS .env unchanged
+   check PASS no task call
+   check PASS no python call
+   check PASS message: STOPPED: DATABASE_URL in shared\\.env is the development default
+
+===== D07 : deploy -WhatIf, DATABASE_URL points at this machine (must stop) =====
+args: -Kind deploy -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\deploy_ckam.ps1 -Sha bbbbbbb -Port 3999 -DryRun
+2026-10-17 10:24:34  === CKAM deploy bbbbbbb (WhatIf: nothing is changed) ===
+2026-10-17 10:24:34  release folder already there, used as it is (not replaced, not deleted): C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D07\root\releases\bbbbbbb
+2026-10-17 10:24:34  release folder complete: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D07\root\releases\bbbbbbb (keep it: the editable install links the venv to its backend)
+2026-10-17 10:24:34  RELEASE.json: release bbbbbbb, the database must reach Alembic head c6e8a0b2d4f6
+2026-10-17 10:24:34  JWT_SECRET meets the production rules (value not shown)
+2026-10-17 10:24:34  STOPPED: DATABASE_URL in shared\.env points at this machine (127.0.0.1); the production database is on the database server
+2026-10-17 10:24:34  nothing in CKAM was changed (exit 2)
+-- facts: exit 2; 0.3s; shared\.env unchanged: True; .env selects: aaaaaaa; task calls: none; fake python calls: 0 (alembic upgrade: 0); simulated db revision now: e6f8a0b2c4d6; previous release folder kept: True
+   check PASS exit 2
+   check PASS .env unchanged
+   check PASS no task call
+   check PASS no python call
+   check PASS message: STOPPED: DATABASE_URL in shared\\.env points at this machine \(127.0.0.1\)
+
+===== D08 : deploy -WhatIf, JWT_SECRET 40 x "a" (must stop) =====
+args: -Kind deploy -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\deploy_ckam.ps1 -Sha bbbbbbb -Port 3999 -DryRun
+2026-10-17 10:24:34  === CKAM deploy bbbbbbb (WhatIf: nothing is changed) ===
+2026-10-17 10:24:34  release folder already there, used as it is (not replaced, not deleted): C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D08\root\releases\bbbbbbb
+2026-10-17 10:24:34  release folder complete: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D08\root\releases\bbbbbbb (keep it: the editable install links the venv to its backend)
+2026-10-17 10:24:34  RELEASE.json: release bbbbbbb, the database must reach Alembic head c6e8a0b2d4f6
+2026-10-17 10:24:34  STOPPED: JWT_SECRET fails the production rules: fewer than 8 different characters (the app would refuse to start)
+2026-10-17 10:24:34  nothing in CKAM was changed (exit 2)
+-- facts: exit 2; 0.3s; shared\.env unchanged: True; .env selects: aaaaaaa; task calls: none; fake python calls: 0 (alembic upgrade: 0); simulated db revision now: e6f8a0b2c4d6; previous release folder kept: True
+   check PASS exit 2
+   check PASS .env unchanged
+   check PASS no task call
+   check PASS no python call
+   check PASS message: STOPPED: JWT_SECRET fails the production rules: fewer than 8 different characters
+
+===== D09 : deploy -WhatIf, JWT_SECRET short (must stop) =====
+args: -Kind deploy -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\deploy_ckam.ps1 -Sha bbbbbbb -Port 3999 -DryRun
+2026-10-17 10:24:35  === CKAM deploy bbbbbbb (WhatIf: nothing is changed) ===
+2026-10-17 10:24:35  release folder already there, used as it is (not replaced, not deleted): C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D09\root\releases\bbbbbbb
+2026-10-17 10:24:35  release folder complete: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D09\root\releases\bbbbbbb (keep it: the editable install links the venv to its backend)
+2026-10-17 10:24:35  RELEASE.json: release bbbbbbb, the database must reach Alembic head c6e8a0b2d4f6
+2026-10-17 10:24:35  STOPPED: JWT_SECRET fails the production rules: shorter than 32 characters (the app would refuse to start)
+2026-10-17 10:24:35  nothing in CKAM was changed (exit 2)
+-- facts: exit 2; 0.3s; shared\.env unchanged: True; .env selects: aaaaaaa; task calls: none; fake python calls: 0 (alembic upgrade: 0); simulated db revision now: e6f8a0b2c4d6; previous release folder kept: True
+   check PASS exit 2
+   check PASS .env unchanged
+   check PASS no task call
+   check PASS no python call
+   check PASS message: STOPPED: JWT_SECRET fails the production rules: shorter than 32 characters
+
+===== D10 : deploy -WhatIf, ENVIRONMENT_NAME=development (must stop) =====
+args: -Kind deploy -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\deploy_ckam.ps1 -Sha bbbbbbb -Port 3999 -DryRun
+2026-10-17 10:24:35  === CKAM deploy bbbbbbb (WhatIf: nothing is changed) ===
+2026-10-17 10:24:35  release folder already there, used as it is (not replaced, not deleted): C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D10\root\releases\bbbbbbb
+2026-10-17 10:24:35  release folder complete: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D10\root\releases\bbbbbbb (keep it: the editable install links the venv to its backend)
+2026-10-17 10:24:35  RELEASE.json: release bbbbbbb, the database must reach Alembic head c6e8a0b2d4f6
+2026-10-17 10:24:35  STOPPED: ENVIRONMENT_NAME in shared\.env is not "production"
+2026-10-17 10:24:35  nothing in CKAM was changed (exit 2)
+-- facts: exit 2; 0.3s; shared\.env unchanged: True; .env selects: aaaaaaa; task calls: none; fake python calls: 0 (alembic upgrade: 0); simulated db revision now: e6f8a0b2c4d6; previous release folder kept: True
+   check PASS exit 2
+   check PASS .env unchanged
+   check PASS no task call
+   check PASS no python call
+   check PASS message: STOPPED: ENVIRONMENT_NAME in shared\\.env is not "production"
+
+===== D11 : deploy -WhatIf, no backup step (must stop) =====
+args: -Kind deploy -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\deploy_ckam.ps1 -Sha bbbbbbb -Port 3999 -DryRun -NoBackup
+2026-10-17 10:24:36  === CKAM deploy bbbbbbb (WhatIf: nothing is changed) ===
+2026-10-17 10:24:36  release folder already there, used as it is (not replaced, not deleted): C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D11\root\releases\bbbbbbb
+2026-10-17 10:24:36  release folder complete: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D11\root\releases\bbbbbbb (keep it: the editable install links the venv to its backend)
+2026-10-17 10:24:36  RELEASE.json: release bbbbbbb, the database must reach Alembic head c6e8a0b2d4f6
+2026-10-17 10:24:36  JWT_SECRET meets the production rules (value not shown)
+2026-10-17 10:24:36  DATABASE_URL present exactly once (value not shown; database host: db.invalid)
+2026-10-17 10:24:36  pre-checks passed; current release: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\D11\root\releases\aaaaaaa
+2026-10-17 10:24:36  STOPPED: take the database backup first (task CK_Backup_CKASSETMANAGEMENT on the database server, check backup.log says OK), then rerun with -BackupConfirmed, or pass -BackupHook
+2026-10-17 10:24:36  nothing in CKAM was changed (exit 2)
+-- facts: exit 2; 0.4s; shared\.env unchanged: True; .env selects: aaaaaaa; task calls: none; fake python calls: 0 (alembic upgrade: 0); simulated db revision now: e6f8a0b2c4d6; previous release folder kept: True
+   check PASS exit 2
+   check PASS .env unchanged
+   check PASS no task call
+   check PASS no python call
+   check PASS message: STOPPED: take the database backup first
+
+===== S12 : REAL run: the unpacked RELEASE.json names another release (must stop before anything) =====
+args: -Kind deploy -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\deploy_ckam.ps1 -Sha bbbbbbb -Port 3999 -PackagePath C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\ckam-release-bbbbbbb-wrongjson.zip
+2026-10-17 10:24:36  === CKAM deploy bbbbbbb  ===
+2026-10-17 10:24:36  release folder complete: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S12\root\releases\bbbbbbb (keep it: the editable install links the venv to its backend)
+2026-10-17 10:24:36  STOPPED: RELEASE.json says release dddddd1, not bbbbbbb
+2026-10-17 10:24:36  nothing in CKAM was changed (exit 2)
+-- facts: exit 2; 0.6s; shared\.env unchanged: True; .env selects: aaaaaaa; task calls: none; fake python calls: 0 (alembic upgrade: 0); simulated db revision now: e6f8a0b2c4d6; previous release folder kept: True
+   check PASS exit 2
+   check PASS .env unchanged
+   check PASS no task call
+   check PASS no python call
+   check PASS RELEASE.json sha mismatch stops
+
+===== S01 : REAL run in the fake world: pip install fails (BEFORE the migration) =====
+args: -Kind deploy -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\deploy_ckam.ps1 -Sha bbbbbbb -Port 3999 -PackagePath C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\ckam-release-bbbbbbb.zip
+2026-10-17 10:24:37  === CKAM deploy bbbbbbb  ===
+2026-10-17 10:24:37  release folder complete: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S01\root\releases\bbbbbbb (keep it: the editable install links the venv to its backend)
+2026-10-17 10:24:37  RELEASE.json: release bbbbbbb, the database must reach Alembic head c6e8a0b2d4f6
+2026-10-17 10:24:37  JWT_SECRET meets the production rules (value not shown)
+2026-10-17 10:24:37  DATABASE_URL present exactly once (value not shown; database host: db.invalid)
+2026-10-17 10:24:37  pre-checks passed; current release: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S01\root\releases\aaaaaaa
+2026-10-17 10:24:37  backup confirmed by the operator (-BackupConfirmed)
+2026-10-17 10:24:37  step 4: save shared\.env as C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S01\root\shared\.env.pre-bbbbbbb   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:37  saved C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S01\root\shared\.env.pre-bbbbbbb
+2026-10-17 10:24:37  step 5: stop CKAM-Web-FAKE-DRYRUN   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:37  CKAM-Web stopped: nothing listens on port 3999
+2026-10-17 10:24:37  step 6: pip install -c constraints.txt -e <release>\backend   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:37  pip: ERROR: FAKE pip failure (simulated, e.g. the package index cannot be reached)
+2026-10-17 10:24:37  FAILED (branch A, before the migration step started): pip install failed with exit code 1
+2026-10-17 10:24:37  database revision (read-only check): e6f8a0b2c4d6
+2026-10-17 10:24:37  CKAM-Web stopped: nothing listens on port 3999
+2026-10-17 10:24:37  restored shared\.env from C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S01\root\shared\.env.pre-bbbbbbb (the previous release aaaaaaa is selected again)
+2026-10-17 10:24:37  the previous release aaaaaaa answers again (strategy case 1-A). The schema was not changed by this run.
+2026-10-17 10:24:37  IF-01 is still open on the previous release: re-plan the deploy at once. If pip ran, the venv now holds this release's pinned packages: smoke-test sign-in and one read.
+2026-10-17 10:24:37  Keep releases\bbbbbbb and releases\aaaaaaa (delete no release folder).
+2026-10-17 10:24:37  STATE: branch=A; release_selected=aaaaaaa; db_changed_by_this_run=no; exit=1
+-- facts: exit 1; 1.1s; shared\.env unchanged: True; .env selects: aaaaaaa; task calls: STOP  -TaskName CKAM-Web-FAKE-DRYRUN -ErrorAction SilentlyContinue / STOP  -TaskName CKAM-Web-FAKE-DRYRUN -ErrorAction SilentlyContinue / START -TaskName CKAM-Web-FAKE-DRYRUN; fake python calls: 2 (alembic upgrade: 0); simulated db revision now: e6f8a0b2c4d6; previous release folder kept: True
+   python: -m pip install --disable-pip-version-check -c C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S01\root\releases\bbbbbbb\backend\constraints.txt -e C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S01\root\releases\bbbbbbb\backend | DATABASE_URL set: no | cwd: D:\ANKUR AI PROJECTS\Asset Management\.claude\worktrees\ckam-build
+   python: -m alembic current | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S01\root\releases\bbbbbbb\backend
+   check PASS exit 1
+   check PASS .env restored (identical to before)
+   check PASS .env selects the previous release aaaaaaa
+   check PASS previous release restarted (1 START, last call START)
+   check PASS alembic upgrade never called
+   check PASS branch-A message + STATE line
+   check PASS previous release folder kept
+
+===== S02 : REAL run: the code's alembic head differs from RELEASE.json (BEFORE the migration, step 8a) =====
+args: -Kind deploy -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\deploy_ckam.ps1 -Sha bbbbbbb -Port 3999 -PackagePath C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\ckam-release-bbbbbbb.zip
+2026-10-17 10:24:38  === CKAM deploy bbbbbbb  ===
+2026-10-17 10:24:38  release folder complete: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S02\root\releases\bbbbbbb (keep it: the editable install links the venv to its backend)
+2026-10-17 10:24:38  RELEASE.json: release bbbbbbb, the database must reach Alembic head c6e8a0b2d4f6
+2026-10-17 10:24:38  JWT_SECRET meets the production rules (value not shown)
+2026-10-17 10:24:38  DATABASE_URL present exactly once (value not shown; database host: db.invalid)
+2026-10-17 10:24:38  pre-checks passed; current release: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S02\root\releases\aaaaaaa
+2026-10-17 10:24:38  backup confirmed by the operator (-BackupConfirmed)
+2026-10-17 10:24:38  step 4: save shared\.env as C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S02\root\shared\.env.pre-bbbbbbb   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:38  saved C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S02\root\shared\.env.pre-bbbbbbb
+2026-10-17 10:24:38  step 5: stop CKAM-Web-FAKE-DRYRUN   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:38  CKAM-Web stopped: nothing listens on port 3999
+2026-10-17 10:24:38  step 6: pip install -c constraints.txt -e <release>\backend   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:38  pip: Successfully installed ckam-backend-0.1.0 (FAKE pip: nothing was installed)
+2026-10-17 10:24:38  step 7: set FRONTEND_DIST_DIR=C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S02\root\releases\bbbbbbb\frontend-dist, APP_VERSION=bbbbbbb   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:38  settings switched to the new release (FRONTEND_DIST_DIR, APP_VERSION)
+2026-10-17 10:24:38  switched settings re-checked: ENVIRONMENT_NAME, DATABASE_URL (value not shown), FRONTEND_DIST_DIR
+2026-10-17 10:24:38  step 8a: alembic heads (code) and alembic current (database), read-only   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:38  FAILED (branch A, before the migration step started): the code's head ffffffffffff is not RELEASE.json's alembic_head c6e8a0b2d4f6
+2026-10-17 10:24:38  database revision (read-only check): e6f8a0b2c4d6
+2026-10-17 10:24:38  CKAM-Web stopped: nothing listens on port 3999
+2026-10-17 10:24:38  restored shared\.env from C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S02\root\shared\.env.pre-bbbbbbb (the previous release aaaaaaa is selected again)
+2026-10-17 10:24:38  the previous release aaaaaaa answers again (strategy case 1-A). The schema was not changed by this run.
+2026-10-17 10:24:38  IF-01 is still open on the previous release: re-plan the deploy at once. If pip ran, the venv now holds this release's pinned packages: smoke-test sign-in and one read.
+2026-10-17 10:24:38  Keep releases\bbbbbbb and releases\aaaaaaa (delete no release folder).
+2026-10-17 10:24:38  STATE: branch=A; release_selected=aaaaaaa; db_changed_by_this_run=no; exit=1
+-- facts: exit 1; 0.8s; shared\.env unchanged: True; .env selects: aaaaaaa; task calls: STOP  -TaskName CKAM-Web-FAKE-DRYRUN -ErrorAction SilentlyContinue / STOP  -TaskName CKAM-Web-FAKE-DRYRUN -ErrorAction SilentlyContinue / START -TaskName CKAM-Web-FAKE-DRYRUN; fake python calls: 3 (alembic upgrade: 0); simulated db revision now: e6f8a0b2c4d6; previous release folder kept: True
+   python: -m pip install --disable-pip-version-check -c C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S02\root\releases\bbbbbbb\backend\constraints.txt -e C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S02\root\releases\bbbbbbb\backend | DATABASE_URL set: no | cwd: D:\ANKUR AI PROJECTS\Asset Management\.claude\worktrees\ckam-build
+   python: -m alembic heads | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S02\root\releases\bbbbbbb\backend
+   python: -m alembic current | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S02\root\releases\bbbbbbb\backend
+   check PASS exit 1
+   check PASS .env restored (identical to before)
+   check PASS .env selects the previous release aaaaaaa
+   check PASS previous release restarted (1 START, last call START)
+   check PASS alembic upgrade never called
+   check PASS branch-A message + STATE line
+   check PASS previous release folder kept
+   check PASS reason names both heads
+
+===== S03 : REAL run: alembic current cannot reach the database (BEFORE the migration, step 8a) =====
+args: -Kind deploy -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\deploy_ckam.ps1 -Sha bbbbbbb -Port 3999 -PackagePath C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\ckam-release-bbbbbbb.zip
+2026-10-17 10:24:39  === CKAM deploy bbbbbbb  ===
+2026-10-17 10:24:39  release folder complete: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S03\root\releases\bbbbbbb (keep it: the editable install links the venv to its backend)
+2026-10-17 10:24:39  RELEASE.json: release bbbbbbb, the database must reach Alembic head c6e8a0b2d4f6
+2026-10-17 10:24:39  JWT_SECRET meets the production rules (value not shown)
+2026-10-17 10:24:39  DATABASE_URL present exactly once (value not shown; database host: db.invalid)
+2026-10-17 10:24:39  pre-checks passed; current release: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S03\root\releases\aaaaaaa
+2026-10-17 10:24:39  backup confirmed by the operator (-BackupConfirmed)
+2026-10-17 10:24:39  step 4: save shared\.env as C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S03\root\shared\.env.pre-bbbbbbb   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:39  saved C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S03\root\shared\.env.pre-bbbbbbb
+2026-10-17 10:24:39  step 5: stop CKAM-Web-FAKE-DRYRUN   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:39  CKAM-Web stopped: nothing listens on port 3999
+2026-10-17 10:24:39  step 6: pip install -c constraints.txt -e <release>\backend   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:39  pip: Successfully installed ckam-backend-0.1.0 (FAKE pip: nothing was installed)
+2026-10-17 10:24:39  step 7: set FRONTEND_DIST_DIR=C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S03\root\releases\bbbbbbb\frontend-dist, APP_VERSION=bbbbbbb   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:39  settings switched to the new release (FRONTEND_DIST_DIR, APP_VERSION)
+2026-10-17 10:24:39  switched settings re-checked: ENVIRONMENT_NAME, DATABASE_URL (value not shown), FRONTEND_DIST_DIR
+2026-10-17 10:24:39  step 8a: alembic heads (code) and alembic current (database), read-only   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:39  alembic: INFO  [alembic.runtime.migration] Context impl PostgresqlImpl. (FAKE)
+2026-10-17 10:24:39  alembic: ERROR: FAKE could not connect to the database
+2026-10-17 10:24:39  FAILED (branch A, before the migration step started): alembic current failed with exit code 1 (database not reachable?)
+2026-10-17 10:24:39  database revision (read-only check): could not be read (alembic current exit 1)
+2026-10-17 10:24:39  CKAM-Web stopped: nothing listens on port 3999
+2026-10-17 10:24:39  restored shared\.env from C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S03\root\shared\.env.pre-bbbbbbb (the previous release aaaaaaa is selected again)
+2026-10-17 10:24:39  the previous release aaaaaaa answers again (strategy case 1-A). The schema was not changed by this run.
+2026-10-17 10:24:39  IF-01 is still open on the previous release: re-plan the deploy at once. If pip ran, the venv now holds this release's pinned packages: smoke-test sign-in and one read.
+2026-10-17 10:24:39  Keep releases\bbbbbbb and releases\aaaaaaa (delete no release folder).
+2026-10-17 10:24:39  STATE: branch=A; release_selected=aaaaaaa; db_changed_by_this_run=no; exit=1
+-- facts: exit 1; 0.9s; shared\.env unchanged: True; .env selects: aaaaaaa; task calls: STOP  -TaskName CKAM-Web-FAKE-DRYRUN -ErrorAction SilentlyContinue / STOP  -TaskName CKAM-Web-FAKE-DRYRUN -ErrorAction SilentlyContinue / START -TaskName CKAM-Web-FAKE-DRYRUN; fake python calls: 4 (alembic upgrade: 0); simulated db revision now: e6f8a0b2c4d6; previous release folder kept: True
+   python: -m pip install --disable-pip-version-check -c C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S03\root\releases\bbbbbbb\backend\constraints.txt -e C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S03\root\releases\bbbbbbb\backend | DATABASE_URL set: no | cwd: D:\ANKUR AI PROJECTS\Asset Management\.claude\worktrees\ckam-build
+   python: -m alembic heads | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S03\root\releases\bbbbbbb\backend
+   python: -m alembic current | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S03\root\releases\bbbbbbb\backend
+   python: -m alembic current | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S03\root\releases\bbbbbbb\backend
+   check PASS exit 1
+   check PASS .env restored (identical to before)
+   check PASS .env selects the previous release aaaaaaa
+   check PASS previous release restarted (1 START, last call START)
+   check PASS alembic upgrade never called
+   check PASS branch-A message + STATE line
+   check PASS previous release folder kept
+   check PASS reason: alembic current failed
+
+===== S04 : REAL run: alembic upgrade head FAILS (migration started; revision unchanged) =====
+args: -Kind deploy -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\deploy_ckam.ps1 -Sha bbbbbbb -Port 3999 -PackagePath C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\ckam-release-bbbbbbb.zip
+2026-10-17 10:24:39  === CKAM deploy bbbbbbb  ===
+2026-10-17 10:24:40  release folder complete: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S04\root\releases\bbbbbbb (keep it: the editable install links the venv to its backend)
+2026-10-17 10:24:40  RELEASE.json: release bbbbbbb, the database must reach Alembic head c6e8a0b2d4f6
+2026-10-17 10:24:40  JWT_SECRET meets the production rules (value not shown)
+2026-10-17 10:24:40  DATABASE_URL present exactly once (value not shown; database host: db.invalid)
+2026-10-17 10:24:40  pre-checks passed; current release: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S04\root\releases\aaaaaaa
+2026-10-17 10:24:40  backup confirmed by the operator (-BackupConfirmed)
+2026-10-17 10:24:40  step 4: save shared\.env as C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S04\root\shared\.env.pre-bbbbbbb   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:40  saved C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S04\root\shared\.env.pre-bbbbbbb
+2026-10-17 10:24:40  step 5: stop CKAM-Web-FAKE-DRYRUN   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:40  CKAM-Web stopped: nothing listens on port 3999
+2026-10-17 10:24:40  step 6: pip install -c constraints.txt -e <release>\backend   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:40  pip: Successfully installed ckam-backend-0.1.0 (FAKE pip: nothing was installed)
+2026-10-17 10:24:40  step 7: set FRONTEND_DIST_DIR=C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S04\root\releases\bbbbbbb\frontend-dist, APP_VERSION=bbbbbbb   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:40  settings switched to the new release (FRONTEND_DIST_DIR, APP_VERSION)
+2026-10-17 10:24:40  switched settings re-checked: ENVIRONMENT_NAME, DATABASE_URL (value not shown), FRONTEND_DIST_DIR
+2026-10-17 10:24:40  step 8a: alembic heads (code) and alembic current (database), read-only   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:40  database before the migration: 'e6f8a0b2c4d6'; code head: c6e8a0b2d4f6
+2026-10-17 10:24:40  step 8b: alembic upgrade head   [from the moment it starts, a failure -> BRANCH B: CKAM-Web stays STOPPED, no switch-back, no downgrade, no restore]
+2026-10-17 10:24:40  migration step started: from now on a failure leaves CKAM-Web stopped (branch B)
+2026-10-17 10:24:40  alembic: INFO  [alembic.runtime.migration] Running upgrade (FAKE) from e6f8a0b2c4d6
+2026-10-17 10:24:40  alembic: (a line mentioning a password was hidden)
+2026-10-17 10:24:40  alembic: ERROR: FAKE migration failure, the transaction was rolled back
+2026-10-17 10:24:40  FAILED (branch B, after the migration step started): alembic upgrade failed with exit code 1
+2026-10-17 10:24:40  CKAM-Web stopped: nothing listens on port 3999
+2026-10-17 10:24:40  ==============================================================================================================
+2026-10-17 10:24:40  CKAM DEPLOY bbbbbbb FAILED AFTER THE DATABASE MIGRATION STEP STARTED - CKAM-Web IS LEFT STOPPED
+2026-10-17 10:24:40  Reason: alembic upgrade failed with exit code 1
+2026-10-17 10:24:40  Database now (alembic current): e6f8a0b2c4d6   | before this deploy: e6f8a0b2c4d6 | this release's head: c6e8a0b2d4f6
+2026-10-17 10:24:40  Nothing was switched back, downgraded or restored by this script.
+2026-10-17 10:24:40  shared\.env still selects bbbbbbb (the copy taken before the switch: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S04\root\shared\.env.pre-bbbbbbb).
+2026-10-17 10:24:40  The database revision is unchanged (all pending migrations run in ONE transaction, a failure rolls back all of them, GT-F04).
+2026-10-17 10:24:40  This is strategy case 1. Do NOT start bbbbbbb on the old schema (every sign-in would fail). The OWNER chooses:
+2026-10-17 10:24:40    1-A switch back: rollback_release.ps1 -ToSha aaaaaaa -ReinstallBackend (IF-01 stays open on it; re-plan at once), or
+2026-10-17 10:24:40    1-B stay down until the cause is fixed and the deploy is repeated.
+2026-10-17 10:24:40    No alembic downgrade and no restore: there is nothing to undo.
+2026-10-17 10:24:40  See docs/security/CKAM_PRODUCTION_ROLLBACK_STRATEGY.md (cases 2-4 and section 5) and the err/launcher logs in C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S04\root\logs.
+2026-10-17 10:24:40  Keep releases\bbbbbbb (the venv's editable install links to its backend) and releases\aaaaaaa. Delete no release folder.
+2026-10-17 10:24:40  The task keeps its at-startup trigger: after a server restart it would start bbbbbbb again. Disable-ScheduledTask only on the owner's decision.
+2026-10-17 10:24:40  ==============================================================================================================
+2026-10-17 10:24:40  STATE: branch=B; ckam_web=stopped; release_selected=bbbbbbb; previous_release=aaaaaaa; db_before=e6f8a0b2c4d6; db_now=e6f8a0b2c4d6; code_head=c6e8a0b2d4f6; switched_back=no; downgraded=no; restored=no; exit=3
+-- facts: exit 3; 0.9s; shared\.env unchanged: False; .env selects: bbbbbbb; task calls: STOP  -TaskName CKAM-Web-FAKE-DRYRUN -ErrorAction SilentlyContinue / STOP  -TaskName CKAM-Web-FAKE-DRYRUN -ErrorAction SilentlyContinue; fake python calls: 5 (alembic upgrade: 1); simulated db revision now: e6f8a0b2c4d6; previous release folder kept: True
+   python: -m pip install --disable-pip-version-check -c C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S04\root\releases\bbbbbbb\backend\constraints.txt -e C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S04\root\releases\bbbbbbb\backend | DATABASE_URL set: no | cwd: D:\ANKUR AI PROJECTS\Asset Management\.claude\worktrees\ckam-build
+   python: -m alembic heads | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S04\root\releases\bbbbbbb\backend
+   python: -m alembic current | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S04\root\releases\bbbbbbb\backend
+   python: -m alembic upgrade head | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S04\root\releases\bbbbbbb\backend
+   python: -m alembic current | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S04\root\releases\bbbbbbb\backend
+   check PASS exit 3 (non-zero)
+   check PASS .env still selects the new release (no switch-back)
+   check PASS CKAM-Web left stopped (last task call STOP)
+   check PASS no .env restore
+   check PASS banner
+   check PASS banner: nothing done, the owner decides
+   check PASS banner points at the rollback strategy
+   check PASS STATE line
+   check PASS previous release folder kept
+   check PASS one-time password line hidden
+   check PASS never started (0 START)
+   check PASS upgrade attempted once
+   check PASS banner: revision unchanged = case 1
+   check PASS banner: only 1-A / 1-B offered, no downgrade/restore
+
+===== S05 : REAL run: upgrade exits 0 but alembic current is not RELEASE.json's head =====
+args: -Kind deploy -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\deploy_ckam.ps1 -Sha bbbbbbb -Port 3999 -PackagePath C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\ckam-release-bbbbbbb.zip
+2026-10-17 10:24:40  === CKAM deploy bbbbbbb  ===
+2026-10-17 10:24:41  release folder complete: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S05\root\releases\bbbbbbb (keep it: the editable install links the venv to its backend)
+2026-10-17 10:24:41  RELEASE.json: release bbbbbbb, the database must reach Alembic head c6e8a0b2d4f6
+2026-10-17 10:24:41  JWT_SECRET meets the production rules (value not shown)
+2026-10-17 10:24:41  DATABASE_URL present exactly once (value not shown; database host: db.invalid)
+2026-10-17 10:24:41  pre-checks passed; current release: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S05\root\releases\aaaaaaa
+2026-10-17 10:24:41  backup confirmed by the operator (-BackupConfirmed)
+2026-10-17 10:24:41  step 4: save shared\.env as C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S05\root\shared\.env.pre-bbbbbbb   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:41  saved C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S05\root\shared\.env.pre-bbbbbbb
+2026-10-17 10:24:41  step 5: stop CKAM-Web-FAKE-DRYRUN   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:41  CKAM-Web stopped: nothing listens on port 3999
+2026-10-17 10:24:41  step 6: pip install -c constraints.txt -e <release>\backend   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:41  pip: Successfully installed ckam-backend-0.1.0 (FAKE pip: nothing was installed)
+2026-10-17 10:24:41  step 7: set FRONTEND_DIST_DIR=C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S05\root\releases\bbbbbbb\frontend-dist, APP_VERSION=bbbbbbb   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:41  settings switched to the new release (FRONTEND_DIST_DIR, APP_VERSION)
+2026-10-17 10:24:41  switched settings re-checked: ENVIRONMENT_NAME, DATABASE_URL (value not shown), FRONTEND_DIST_DIR
+2026-10-17 10:24:41  step 8a: alembic heads (code) and alembic current (database), read-only   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:41  database before the migration: 'e6f8a0b2c4d6'; code head: c6e8a0b2d4f6
+2026-10-17 10:24:41  step 8b: alembic upgrade head   [from the moment it starts, a failure -> BRANCH B: CKAM-Web stays STOPPED, no switch-back, no downgrade, no restore]
+2026-10-17 10:24:41  migration step started: from now on a failure leaves CKAM-Web stopped (branch B)
+2026-10-17 10:24:41  alembic: INFO  [alembic.runtime.migration] Running upgrade (FAKE) from e6f8a0b2c4d6
+2026-10-17 10:24:41  alembic: (a line mentioning a password was hidden)
+2026-10-17 10:24:41  FAILED (branch B, after the migration step started): after the upgrade the database is at 'b5d7f9a1c3e5' but the release's head is 'c6e8a0b2d4f6'
+2026-10-17 10:24:41  CKAM-Web stopped: nothing listens on port 3999
+2026-10-17 10:24:41  ==============================================================================================================
+2026-10-17 10:24:41  CKAM DEPLOY bbbbbbb FAILED AFTER THE DATABASE MIGRATION STEP STARTED - CKAM-Web IS LEFT STOPPED
+2026-10-17 10:24:41  Reason: after the upgrade the database is at 'b5d7f9a1c3e5' but the release's head is 'c6e8a0b2d4f6'
+2026-10-17 10:24:41  Database now (alembic current): b5d7f9a1c3e5   | before this deploy: e6f8a0b2c4d6 | this release's head: c6e8a0b2d4f6
+2026-10-17 10:24:41  Nothing was switched back, downgraded or restored by this script.
+2026-10-17 10:24:41  shared\.env still selects bbbbbbb (the copy taken before the switch: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S05\root\shared\.env.pre-bbbbbbb).
+2026-10-17 10:24:41  The previous release aaaaaaa is INCOMPATIBLE with this schema: it cannot record moves, repairs, losses, disposals, sales
+2026-10-17 10:24:41  or scrapping (lifecycle trigger c6e8a0b2d4f6 refuses them; receives still work), and it RE-OPENS the file-read hole IF-01.
+2026-10-17 10:24:41  Do NOT start aaaaaaa. Do NOT run rollback_release.ps1 without the owner's recorded decision.
+2026-10-17 10:24:41  The OWNER decides between: (1) roll forward - fix the cause and start this release again (preferred);
+2026-10-17 10:24:41    (2) 'alembic downgrade -1' run from releases\bbbbbbb\backend (only the lifecycle guard; fresh backup first);
+2026-10-17 10:24:41    (3) restore the pre-deploy dump (loses everything written since the backup).
+2026-10-17 10:24:41  See docs/security/CKAM_PRODUCTION_ROLLBACK_STRATEGY.md (cases 2-4 and section 5) and the err/launcher logs in C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S05\root\logs.
+2026-10-17 10:24:41  Keep releases\bbbbbbb (the venv's editable install links to its backend) and releases\aaaaaaa. Delete no release folder.
+2026-10-17 10:24:41  The task keeps its at-startup trigger: after a server restart it would start bbbbbbb again. Disable-ScheduledTask only on the owner's decision.
+2026-10-17 10:24:41  ==============================================================================================================
+2026-10-17 10:24:41  STATE: branch=B; ckam_web=stopped; release_selected=bbbbbbb; previous_release=aaaaaaa; db_before=e6f8a0b2c4d6; db_now=b5d7f9a1c3e5; code_head=c6e8a0b2d4f6; switched_back=no; downgraded=no; restored=no; exit=3
+-- facts: exit 3; 0.9s; shared\.env unchanged: False; .env selects: bbbbbbb; task calls: STOP  -TaskName CKAM-Web-FAKE-DRYRUN -ErrorAction SilentlyContinue / STOP  -TaskName CKAM-Web-FAKE-DRYRUN -ErrorAction SilentlyContinue; fake python calls: 6 (alembic upgrade: 1); simulated db revision now: b5d7f9a1c3e5; previous release folder kept: True
+   python: -m pip install --disable-pip-version-check -c C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S05\root\releases\bbbbbbb\backend\constraints.txt -e C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S05\root\releases\bbbbbbb\backend | DATABASE_URL set: no | cwd: D:\ANKUR AI PROJECTS\Asset Management\.claude\worktrees\ckam-build
+   python: -m alembic heads | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S05\root\releases\bbbbbbb\backend
+   python: -m alembic current | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S05\root\releases\bbbbbbb\backend
+   python: -m alembic upgrade head | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S05\root\releases\bbbbbbb\backend
+   python: -m alembic current | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S05\root\releases\bbbbbbb\backend
+   python: -m alembic current | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S05\root\releases\bbbbbbb\backend
+   check PASS exit 3 (non-zero)
+   check PASS .env still selects the new release (no switch-back)
+   check PASS CKAM-Web left stopped (last task call STOP)
+   check PASS no .env restore
+   check PASS banner
+   check PASS banner: nothing done, the owner decides
+   check PASS banner points at the rollback strategy
+   check PASS STATE line
+   check PASS previous release folder kept
+   check PASS one-time password line hidden
+   check PASS never started
+   check PASS head-check reason
+   check PASS banner: old release incompatible + IF-01
+   check PASS banner: the 3 owner options
+
+===== S06 : REAL run: migration OK, the new release does not answer /api/health =====
+args: -Kind deploy -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\deploy_ckam.ps1 -Sha bbbbbbb -Port 3999 -PackagePath C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\ckam-release-bbbbbbb.zip -Health fail -HealthTimeoutSeconds 10
+2026-10-17 10:24:41  === CKAM deploy bbbbbbb  ===
+2026-10-17 10:24:42  release folder complete: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S06\root\releases\bbbbbbb (keep it: the editable install links the venv to its backend)
+2026-10-17 10:24:42  RELEASE.json: release bbbbbbb, the database must reach Alembic head c6e8a0b2d4f6
+2026-10-17 10:24:42  JWT_SECRET meets the production rules (value not shown)
+2026-10-17 10:24:42  DATABASE_URL present exactly once (value not shown; database host: db.invalid)
+2026-10-17 10:24:42  pre-checks passed; current release: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S06\root\releases\aaaaaaa
+2026-10-17 10:24:42  backup confirmed by the operator (-BackupConfirmed)
+2026-10-17 10:24:42  step 4: save shared\.env as C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S06\root\shared\.env.pre-bbbbbbb   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:42  saved C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S06\root\shared\.env.pre-bbbbbbb
+2026-10-17 10:24:42  step 5: stop CKAM-Web-FAKE-DRYRUN   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:42  CKAM-Web stopped: nothing listens on port 3999
+2026-10-17 10:24:42  step 6: pip install -c constraints.txt -e <release>\backend   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:42  pip: Successfully installed ckam-backend-0.1.0 (FAKE pip: nothing was installed)
+2026-10-17 10:24:42  step 7: set FRONTEND_DIST_DIR=C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S06\root\releases\bbbbbbb\frontend-dist, APP_VERSION=bbbbbbb   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:42  settings switched to the new release (FRONTEND_DIST_DIR, APP_VERSION)
+2026-10-17 10:24:42  switched settings re-checked: ENVIRONMENT_NAME, DATABASE_URL (value not shown), FRONTEND_DIST_DIR
+2026-10-17 10:24:42  step 8a: alembic heads (code) and alembic current (database), read-only   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:42  database before the migration: 'e6f8a0b2c4d6'; code head: c6e8a0b2d4f6
+2026-10-17 10:24:42  step 8b: alembic upgrade head   [from the moment it starts, a failure -> BRANCH B: CKAM-Web stays STOPPED, no switch-back, no downgrade, no restore]
+2026-10-17 10:24:42  migration step started: from now on a failure leaves CKAM-Web stopped (branch B)
+2026-10-17 10:24:42  alembic: INFO  [alembic.runtime.migration] Running upgrade (FAKE) from e6f8a0b2c4d6
+2026-10-17 10:24:42  alembic: (a line mentioning a password was hidden)
+2026-10-17 10:24:42  database at head c6e8a0b2d4f6
+2026-10-17 10:24:42  step 9: start CKAM-Web-FAKE-DRYRUN, wait for /api/health, run verify_release.ps1   [a failure here -> BRANCH B: CKAM-Web stays STOPPED, no switch-back, no downgrade, no restore]
+2026-10-17 10:24:52  FAILED (branch B, after the migration step started): the new release did not answer /api/health
+2026-10-17 10:24:52  CKAM-Web stopped: nothing listens on port 3999
+2026-10-17 10:24:52  ==============================================================================================================
+2026-10-17 10:24:52  CKAM DEPLOY bbbbbbb FAILED AFTER THE DATABASE MIGRATION STEP STARTED - CKAM-Web IS LEFT STOPPED
+2026-10-17 10:24:52  Reason: the new release did not answer /api/health
+2026-10-17 10:24:52  Database now (alembic current): c6e8a0b2d4f6   | before this deploy: e6f8a0b2c4d6 | this release's head: c6e8a0b2d4f6
+2026-10-17 10:24:52  Nothing was switched back, downgraded or restored by this script.
+2026-10-17 10:24:52  shared\.env still selects bbbbbbb (the copy taken before the switch: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S06\root\shared\.env.pre-bbbbbbb).
+2026-10-17 10:24:52  The previous release aaaaaaa is INCOMPATIBLE with this schema: it cannot record moves, repairs, losses, disposals, sales
+2026-10-17 10:24:52  or scrapping (lifecycle trigger c6e8a0b2d4f6 refuses them; receives still work), and it RE-OPENS the file-read hole IF-01.
+2026-10-17 10:24:52  Do NOT start aaaaaaa. Do NOT run rollback_release.ps1 without the owner's recorded decision.
+2026-10-17 10:24:52  The OWNER decides between: (1) roll forward - fix the cause and start this release again (preferred);
+2026-10-17 10:24:52    (2) 'alembic downgrade -1' run from releases\bbbbbbb\backend (only the lifecycle guard; fresh backup first);
+2026-10-17 10:24:52    (3) restore the pre-deploy dump (loses everything written since the backup).
+2026-10-17 10:24:52  See docs/security/CKAM_PRODUCTION_ROLLBACK_STRATEGY.md (cases 2-4 and section 5) and the err/launcher logs in C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S06\root\logs.
+2026-10-17 10:24:52  Keep releases\bbbbbbb (the venv's editable install links to its backend) and releases\aaaaaaa. Delete no release folder.
+2026-10-17 10:24:52  The task keeps its at-startup trigger: after a server restart it would start bbbbbbb again. Disable-ScheduledTask only on the owner's decision.
+2026-10-17 10:24:52  ==============================================================================================================
+2026-10-17 10:24:52  STATE: branch=B; ckam_web=stopped; release_selected=bbbbbbb; previous_release=aaaaaaa; db_before=e6f8a0b2c4d6; db_now=c6e8a0b2d4f6; code_head=c6e8a0b2d4f6; switched_back=no; downgraded=no; restored=no; exit=3
+-- facts: exit 3; 10.9s; shared\.env unchanged: False; .env selects: bbbbbbb; task calls: STOP  -TaskName CKAM-Web-FAKE-DRYRUN -ErrorAction SilentlyContinue / START -TaskName CKAM-Web-FAKE-DRYRUN / STOP  -TaskName CKAM-Web-FAKE-DRYRUN -ErrorAction SilentlyContinue; fake python calls: 6 (alembic upgrade: 1); simulated db revision now: c6e8a0b2d4f6; previous release folder kept: True
+   python: -m pip install --disable-pip-version-check -c C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S06\root\releases\bbbbbbb\backend\constraints.txt -e C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S06\root\releases\bbbbbbb\backend | DATABASE_URL set: no | cwd: D:\ANKUR AI PROJECTS\Asset Management\.claude\worktrees\ckam-build
+   python: -m alembic heads | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S06\root\releases\bbbbbbb\backend
+   python: -m alembic current | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S06\root\releases\bbbbbbb\backend
+   python: -m alembic upgrade head | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S06\root\releases\bbbbbbb\backend
+   python: -m alembic current | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S06\root\releases\bbbbbbb\backend
+   python: -m alembic current | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S06\root\releases\bbbbbbb\backend
+   check PASS exit 3 (non-zero)
+   check PASS .env still selects the new release (no switch-back)
+   check PASS CKAM-Web left stopped (last task call STOP)
+   check PASS no .env restore
+   check PASS banner
+   check PASS banner: nothing done, the owner decides
+   check PASS banner points at the rollback strategy
+   check PASS STATE line
+   check PASS previous release folder kept
+   check PASS one-time password line hidden
+   check PASS only the NEW release was started (1 START), never the old one
+   check PASS db at the new head
+   check PASS banner: db_now + do not start the old release
+   check PASS banner: the 3 owner options
+
+===== S07 : REAL run: migration OK, health OK, verify_release.ps1 fails (nothing on port 3999 -> exit 2) =====
+args: -Kind deploy -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\deploy_ckam.ps1 -Sha bbbbbbb -Port 3999 -PackagePath C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\ckam-release-bbbbbbb.zip
+2026-10-17 10:24:52  === CKAM deploy bbbbbbb  ===
+2026-10-17 10:24:52  release folder complete: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S07\root\releases\bbbbbbb (keep it: the editable install links the venv to its backend)
+2026-10-17 10:24:52  RELEASE.json: release bbbbbbb, the database must reach Alembic head c6e8a0b2d4f6
+2026-10-17 10:24:52  JWT_SECRET meets the production rules (value not shown)
+2026-10-17 10:24:52  DATABASE_URL present exactly once (value not shown; database host: db.invalid)
+2026-10-17 10:24:52  pre-checks passed; current release: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S07\root\releases\aaaaaaa
+2026-10-17 10:24:52  backup confirmed by the operator (-BackupConfirmed)
+2026-10-17 10:24:52  step 4: save shared\.env as C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S07\root\shared\.env.pre-bbbbbbb   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:52  saved C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S07\root\shared\.env.pre-bbbbbbb
+2026-10-17 10:24:52  step 5: stop CKAM-Web-FAKE-DRYRUN   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:52  CKAM-Web stopped: nothing listens on port 3999
+2026-10-17 10:24:52  step 6: pip install -c constraints.txt -e <release>\backend   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:53  pip: Successfully installed ckam-backend-0.1.0 (FAKE pip: nothing was installed)
+2026-10-17 10:24:53  step 7: set FRONTEND_DIST_DIR=C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S07\root\releases\bbbbbbb\frontend-dist, APP_VERSION=bbbbbbb   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:53  settings switched to the new release (FRONTEND_DIST_DIR, APP_VERSION)
+2026-10-17 10:24:53  switched settings re-checked: ENVIRONMENT_NAME, DATABASE_URL (value not shown), FRONTEND_DIST_DIR
+2026-10-17 10:24:53  step 8a: alembic heads (code) and alembic current (database), read-only   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:53  database before the migration: 'e6f8a0b2c4d6'; code head: c6e8a0b2d4f6
+2026-10-17 10:24:53  step 8b: alembic upgrade head   [from the moment it starts, a failure -> BRANCH B: CKAM-Web stays STOPPED, no switch-back, no downgrade, no restore]
+2026-10-17 10:24:53  migration step started: from now on a failure leaves CKAM-Web stopped (branch B)
+2026-10-17 10:24:53  alembic: INFO  [alembic.runtime.migration] Running upgrade (FAKE) from e6f8a0b2c4d6
+2026-10-17 10:24:53  alembic: (a line mentioning a password was hidden)
+2026-10-17 10:24:53  database at head c6e8a0b2d4f6
+2026-10-17 10:24:53  step 9: start CKAM-Web-FAKE-DRYRUN, wait for /api/health, run verify_release.ps1   [a failure here -> BRANCH B: CKAM-Web stays STOPPED, no switch-back, no downgrade, no restore]
+2026-10-17 10:24:53  health ok
+2026-10-17 10:24:55  verify: Cannot reach http://127.0.0.1:3999 : Exception calling "EndConnect" with "1" argument(s): "No connection could be made because the target machine actively refused it 127.0.0.1:3999"
+2026-10-17 10:24:55  FAILED (branch B, after the migration step started): verify_release.ps1 reported a failure (exit 2), see verify_bbbbbbb.csv
+2026-10-17 10:24:55  CKAM-Web stopped: nothing listens on port 3999
+2026-10-17 10:24:55  ==============================================================================================================
+2026-10-17 10:24:55  CKAM DEPLOY bbbbbbb FAILED AFTER THE DATABASE MIGRATION STEP STARTED - CKAM-Web IS LEFT STOPPED
+2026-10-17 10:24:55  Reason: verify_release.ps1 reported a failure (exit 2), see verify_bbbbbbb.csv
+2026-10-17 10:24:55  Database now (alembic current): c6e8a0b2d4f6   | before this deploy: e6f8a0b2c4d6 | this release's head: c6e8a0b2d4f6
+2026-10-17 10:24:55  Nothing was switched back, downgraded or restored by this script.
+2026-10-17 10:24:55  shared\.env still selects bbbbbbb (the copy taken before the switch: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S07\root\shared\.env.pre-bbbbbbb).
+2026-10-17 10:24:55  The previous release aaaaaaa is INCOMPATIBLE with this schema: it cannot record moves, repairs, losses, disposals, sales
+2026-10-17 10:24:55  or scrapping (lifecycle trigger c6e8a0b2d4f6 refuses them; receives still work), and it RE-OPENS the file-read hole IF-01.
+2026-10-17 10:24:55  Do NOT start aaaaaaa. Do NOT run rollback_release.ps1 without the owner's recorded decision.
+2026-10-17 10:24:55  The OWNER decides between: (1) roll forward - fix the cause and start this release again (preferred);
+2026-10-17 10:24:55    (2) 'alembic downgrade -1' run from releases\bbbbbbb\backend (only the lifecycle guard; fresh backup first);
+2026-10-17 10:24:55    (3) restore the pre-deploy dump (loses everything written since the backup).
+2026-10-17 10:24:55  See docs/security/CKAM_PRODUCTION_ROLLBACK_STRATEGY.md (cases 2-4 and section 5) and the err/launcher logs in C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S07\root\logs.
+2026-10-17 10:24:55  Keep releases\bbbbbbb (the venv's editable install links to its backend) and releases\aaaaaaa. Delete no release folder.
+2026-10-17 10:24:55  The task keeps its at-startup trigger: after a server restart it would start bbbbbbb again. Disable-ScheduledTask only on the owner's decision.
+2026-10-17 10:24:55  ==============================================================================================================
+2026-10-17 10:24:55  STATE: branch=B; ckam_web=stopped; release_selected=bbbbbbb; previous_release=aaaaaaa; db_before=e6f8a0b2c4d6; db_now=c6e8a0b2d4f6; code_head=c6e8a0b2d4f6; switched_back=no; downgraded=no; restored=no; exit=3
+-- facts: exit 3; 3.1s; shared\.env unchanged: False; .env selects: bbbbbbb; task calls: STOP  -TaskName CKAM-Web-FAKE-DRYRUN -ErrorAction SilentlyContinue / START -TaskName CKAM-Web-FAKE-DRYRUN / STOP  -TaskName CKAM-Web-FAKE-DRYRUN -ErrorAction SilentlyContinue; fake python calls: 6 (alembic upgrade: 1); simulated db revision now: c6e8a0b2d4f6; previous release folder kept: True
+   python: -m pip install --disable-pip-version-check -c C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S07\root\releases\bbbbbbb\backend\constraints.txt -e C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S07\root\releases\bbbbbbb\backend | DATABASE_URL set: no | cwd: D:\ANKUR AI PROJECTS\Asset Management\.claude\worktrees\ckam-build
+   python: -m alembic heads | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S07\root\releases\bbbbbbb\backend
+   python: -m alembic current | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S07\root\releases\bbbbbbb\backend
+   python: -m alembic upgrade head | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S07\root\releases\bbbbbbb\backend
+   python: -m alembic current | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S07\root\releases\bbbbbbb\backend
+   python: -m alembic current | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S07\root\releases\bbbbbbb\backend
+   check PASS exit 3 (non-zero)
+   check PASS .env still selects the new release (no switch-back)
+   check PASS CKAM-Web left stopped (last task call STOP)
+   check PASS no .env restore
+   check PASS banner
+   check PASS banner: nothing done, the owner decides
+   check PASS banner points at the rollback strategy
+   check PASS STATE line
+   check PASS previous release folder kept
+   check PASS one-time password line hidden
+   check PASS only the NEW release was started
+   check PASS reason: verify exit 2
+   check PASS banner: the 3 owner options
+
+===== S08 : REAL run: pip fails but the database is ALREADY at the new head (safety net: stay down) =====
+args: -Kind deploy -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\deploy_ckam.ps1 -Sha bbbbbbb -Port 3999 -PackagePath C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\ckam-release-bbbbbbb.zip
+2026-10-17 10:24:55  === CKAM deploy bbbbbbb  ===
+2026-10-17 10:24:56  release folder complete: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S08\root\releases\bbbbbbb (keep it: the editable install links the venv to its backend)
+2026-10-17 10:24:56  RELEASE.json: release bbbbbbb, the database must reach Alembic head c6e8a0b2d4f6
+2026-10-17 10:24:56  JWT_SECRET meets the production rules (value not shown)
+2026-10-17 10:24:56  DATABASE_URL present exactly once (value not shown; database host: db.invalid)
+2026-10-17 10:24:56  pre-checks passed; current release: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S08\root\releases\aaaaaaa
+2026-10-17 10:24:56  backup confirmed by the operator (-BackupConfirmed)
+2026-10-17 10:24:56  step 4: save shared\.env as C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S08\root\shared\.env.pre-bbbbbbb   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:56  saved C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S08\root\shared\.env.pre-bbbbbbb
+2026-10-17 10:24:56  step 5: stop CKAM-Web-FAKE-DRYRUN   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:56  CKAM-Web stopped: nothing listens on port 3999
+2026-10-17 10:24:56  step 6: pip install -c constraints.txt -e <release>\backend   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:56  pip: ERROR: FAKE pip failure (simulated, e.g. the package index cannot be reached)
+2026-10-17 10:24:56  FAILED (branch A, before the migration step started): pip install failed with exit code 1
+2026-10-17 10:24:56  FAILED (branch B, after the migration step started): pip install failed with exit code 1 (and the database is already at the new head c6e8a0b2d4f6, so the previous release aaaaaaa must not be restarted)
+2026-10-17 10:24:56  CKAM-Web stopped: nothing listens on port 3999
+2026-10-17 10:24:56  ==============================================================================================================
+2026-10-17 10:24:56  CKAM DEPLOY bbbbbbb FAILED AFTER THE DATABASE MIGRATION STEP STARTED - CKAM-Web IS LEFT STOPPED
+2026-10-17 10:24:56  Reason: pip install failed with exit code 1 (and the database is already at the new head c6e8a0b2d4f6, so the previous release aaaaaaa must not be restarted)
+2026-10-17 10:24:56  Database now (alembic current): c6e8a0b2d4f6   | before this deploy: c6e8a0b2d4f6 | this release's head: c6e8a0b2d4f6
+2026-10-17 10:24:56  Nothing was switched back, downgraded or restored by this script.
+2026-10-17 10:24:56  shared\.env still selects bbbbbbb (the copy taken before the switch: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S08\root\shared\.env.pre-bbbbbbb).
+2026-10-17 10:24:56  The previous release aaaaaaa is INCOMPATIBLE with this schema: it cannot record moves, repairs, losses, disposals, sales
+2026-10-17 10:24:56  or scrapping (lifecycle trigger c6e8a0b2d4f6 refuses them; receives still work), and it RE-OPENS the file-read hole IF-01.
+2026-10-17 10:24:56  Do NOT start aaaaaaa. Do NOT run rollback_release.ps1 without the owner's recorded decision.
+2026-10-17 10:24:56  The OWNER decides between: (1) roll forward - fix the cause and start this release again (preferred);
+2026-10-17 10:24:56    (2) 'alembic downgrade -1' run from releases\bbbbbbb\backend (only the lifecycle guard; fresh backup first);
+2026-10-17 10:24:56    (3) restore the pre-deploy dump (loses everything written since the backup).
+2026-10-17 10:24:56  See docs/security/CKAM_PRODUCTION_ROLLBACK_STRATEGY.md (cases 2-4 and section 5) and the err/launcher logs in C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S08\root\logs.
+2026-10-17 10:24:56  Keep releases\bbbbbbb (the venv's editable install links to its backend) and releases\aaaaaaa. Delete no release folder.
+2026-10-17 10:24:56  The task keeps its at-startup trigger: after a server restart it would start bbbbbbb again. Disable-ScheduledTask only on the owner's decision.
+2026-10-17 10:24:56  ==============================================================================================================
+2026-10-17 10:24:56  STATE: branch=B; ckam_web=stopped; release_selected=bbbbbbb; previous_release=aaaaaaa; db_before=c6e8a0b2d4f6; db_now=c6e8a0b2d4f6; code_head=c6e8a0b2d4f6; switched_back=no; downgraded=no; restored=no; exit=3
+-- facts: exit 3; 0.6s; shared\.env unchanged: True; .env selects: aaaaaaa; task calls: STOP  -TaskName CKAM-Web-FAKE-DRYRUN -ErrorAction SilentlyContinue / STOP  -TaskName CKAM-Web-FAKE-DRYRUN -ErrorAction SilentlyContinue; fake python calls: 3 (alembic upgrade: 0); simulated db revision now: c6e8a0b2d4f6; previous release folder kept: True
+   python: -m pip install --disable-pip-version-check -c C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S08\root\releases\bbbbbbb\backend\constraints.txt -e C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S08\root\releases\bbbbbbb\backend | DATABASE_URL set: no | cwd: D:\ANKUR AI PROJECTS\Asset Management\.claude\worktrees\ckam-build
+   python: -m alembic current | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S08\root\releases\bbbbbbb\backend
+   python: -m alembic current | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S08\root\releases\bbbbbbb\backend
+   check PASS exit 3
+   check PASS old release NOT restarted
+   check PASS no upgrade
+   check PASS reason names the head
+   check PASS STATE branch B
+   check PASS no .env restore
+
+===== S09 : REAL run: DATABASE_URL missing (must stop before anything) =====
+args: -Kind deploy -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\deploy_ckam.ps1 -Sha bbbbbbb -Port 3999 -PackagePath C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\ckam-release-bbbbbbb.zip
+2026-10-17 10:24:56  === CKAM deploy bbbbbbb  ===
+2026-10-17 10:24:56  release folder complete: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S09\root\releases\bbbbbbb (keep it: the editable install links the venv to its backend)
+2026-10-17 10:24:56  RELEASE.json: release bbbbbbb, the database must reach Alembic head c6e8a0b2d4f6
+2026-10-17 10:24:56  JWT_SECRET meets the production rules (value not shown)
+2026-10-17 10:24:56  STOPPED: DATABASE_URL is missing in shared\.env (the app would silently use the development database address)
+2026-10-17 10:24:56  nothing in CKAM was changed (exit 2)
+-- facts: exit 2; 0.4s; shared\.env unchanged: True; .env selects: aaaaaaa; task calls: none; fake python calls: 0 (alembic upgrade: 0); simulated db revision now: e6f8a0b2c4d6; previous release folder kept: True
+   check PASS exit 2
+   check PASS .env unchanged
+   check PASS no task call
+   check PASS no python call
+   check PASS message
+
+===== S10 : REAL run: weak JWT_SECRET (must stop before anything) =====
+args: -Kind deploy -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\deploy_ckam.ps1 -Sha bbbbbbb -Port 3999 -PackagePath C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\ckam-release-bbbbbbb.zip
+2026-10-17 10:24:56  === CKAM deploy bbbbbbb  ===
+2026-10-17 10:24:57  release folder complete: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S10\root\releases\bbbbbbb (keep it: the editable install links the venv to its backend)
+2026-10-17 10:24:57  RELEASE.json: release bbbbbbb, the database must reach Alembic head c6e8a0b2d4f6
+2026-10-17 10:24:57  STOPPED: JWT_SECRET fails the production rules: fewer than 8 different characters (the app would refuse to start)
+2026-10-17 10:24:57  nothing in CKAM was changed (exit 2)
+-- facts: exit 2; 0.4s; shared\.env unchanged: True; .env selects: aaaaaaa; task calls: none; fake python calls: 0 (alembic upgrade: 0); simulated db revision now: e6f8a0b2c4d6; previous release folder kept: True
+   check PASS exit 2
+   check PASS .env unchanged
+   check PASS no task call
+   check PASS no python call
+   check PASS message
+
+===== S11 : REAL run: ENVIRONMENT_NAME=prod (must stop before anything) =====
+args: -Kind deploy -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\deploy_ckam.ps1 -Sha bbbbbbb -Port 3999 -PackagePath C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\ckam-release-bbbbbbb.zip
+2026-10-17 10:24:57  === CKAM deploy bbbbbbb  ===
+2026-10-17 10:24:57  release folder complete: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S11\root\releases\bbbbbbb (keep it: the editable install links the venv to its backend)
+2026-10-17 10:24:57  RELEASE.json: release bbbbbbb, the database must reach Alembic head c6e8a0b2d4f6
+2026-10-17 10:24:57  STOPPED: ENVIRONMENT_NAME in shared\.env is not "production"
+2026-10-17 10:24:57  nothing in CKAM was changed (exit 2)
+-- facts: exit 2; 0.5s; shared\.env unchanged: True; .env selects: aaaaaaa; task calls: none; fake python calls: 0 (alembic upgrade: 0); simulated db revision now: e6f8a0b2c4d6; previous release folder kept: True
+   check PASS exit 2
+   check PASS .env unchanged
+   check PASS no task call
+   check PASS no python call
+   check PASS message
+
+===== S13 : REAL run, rerun: an earlier .env.pre-bbbbbbb exists (must not be overwritten), pip fails =====
+args: -Kind deploy -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\deploy_ckam.ps1 -Sha bbbbbbb -Port 3999 -PackagePath C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\ckam-release-bbbbbbb.zip
+2026-10-17 10:24:57  === CKAM deploy bbbbbbb  ===
+2026-10-17 10:24:58  release folder complete: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S13\root\releases\bbbbbbb (keep it: the editable install links the venv to its backend)
+2026-10-17 10:24:58  RELEASE.json: release bbbbbbb, the database must reach Alembic head c6e8a0b2d4f6
+2026-10-17 10:24:58  JWT_SECRET meets the production rules (value not shown)
+2026-10-17 10:24:58  DATABASE_URL present exactly once (value not shown; database host: db.invalid)
+2026-10-17 10:24:58  pre-checks passed; current release: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S13\root\releases\aaaaaaa
+2026-10-17 10:24:58  backup confirmed by the operator (-BackupConfirmed)
+2026-10-17 10:24:58  step 4: save shared\.env as C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S13\root\shared\.env.pre-bbbbbbb.20261017_102457   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:58  saved C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S13\root\shared\.env.pre-bbbbbbb.20261017_102457
+2026-10-17 10:24:58  step 5: stop CKAM-Web-FAKE-DRYRUN   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:58  CKAM-Web stopped: nothing listens on port 3999
+2026-10-17 10:24:58  step 6: pip install -c constraints.txt -e <release>\backend   [a failure here -> BRANCH A: restore the previous settings and restart the previous release]
+2026-10-17 10:24:58  pip: ERROR: FAKE pip failure (simulated, e.g. the package index cannot be reached)
+2026-10-17 10:24:58  FAILED (branch A, before the migration step started): pip install failed with exit code 1
+2026-10-17 10:24:58  database revision (read-only check): e6f8a0b2c4d6
+2026-10-17 10:24:58  CKAM-Web stopped: nothing listens on port 3999
+2026-10-17 10:24:58  restored shared\.env from C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S13\root\shared\.env.pre-bbbbbbb.20261017_102457 (the previous release aaaaaaa is selected again)
+2026-10-17 10:24:58  the previous release aaaaaaa answers again (strategy case 1-A). The schema was not changed by this run.
+2026-10-17 10:24:58  IF-01 is still open on the previous release: re-plan the deploy at once. If pip ran, the venv now holds this release's pinned packages: smoke-test sign-in and one read.
+2026-10-17 10:24:58  Keep releases\bbbbbbb and releases\aaaaaaa (delete no release folder).
+2026-10-17 10:24:58  STATE: branch=A; release_selected=aaaaaaa; db_changed_by_this_run=no; exit=1
+-- facts: exit 1; 0.6s; shared\.env unchanged: True; .env selects: aaaaaaa; task calls: STOP  -TaskName CKAM-Web-FAKE-DRYRUN -ErrorAction SilentlyContinue / STOP  -TaskName CKAM-Web-FAKE-DRYRUN -ErrorAction SilentlyContinue / START -TaskName CKAM-Web-FAKE-DRYRUN; fake python calls: 2 (alembic upgrade: 0); simulated db revision now: e6f8a0b2c4d6; previous release folder kept: True
+   python: -m pip install --disable-pip-version-check -c C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S13\root\releases\bbbbbbb\backend\constraints.txt -e C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S13\root\releases\bbbbbbb\backend | DATABASE_URL set: no | cwd: D:\ANKUR AI PROJECTS\Asset Management\.claude\worktrees\ckam-build
+   python: -m alembic current | DATABASE_URL set: yes | cwd: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\S13\root\releases\bbbbbbb\backend
+   check PASS exit 1
+   check PASS .env restored (identical to before)
+   check PASS .env selects the previous release aaaaaaa
+   check PASS previous release restarted (1 START, last call START)
+   check PASS alembic upgrade never called
+   check PASS branch-A message + STATE line
+   check PASS previous release folder kept
+   check PASS earlier .env.pre-bbbbbbb untouched
+   check PASS this run saved .env.pre-bbbbbbb.<time>
+
+===== R01 : rollback -WhatIf to aaaaaaa (already selected: must stop) =====
+args: -Kind rollback -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\rollback_release.ps1 -ToSha aaaaaaa -DryRun
+2026-10-17 10:24:58  === CKAM rollback to aaaaaaa (WhatIf: nothing is changed) ===
+2026-10-17 10:24:58  current release: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\R01\root\releases\aaaaaaa; going back to: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\R01\root\releases\aaaaaaa
+2026-10-17 10:24:58  STOPPED: aaaaaaa is already the selected release
+-- facts: exit 2; 0.2s; shared\.env unchanged: True; .env selects: aaaaaaa; task calls: none; fake python calls: 0 (alembic upgrade: 0); simulated db revision now: e6f8a0b2c4d6; previous release folder kept: True
+   check PASS exit 2
+   check PASS .env unchanged
+   check PASS no task call
+   check PASS message
+
+===== R02 : rollback -WhatIf to bbbbbbb =====
+args: -Kind rollback -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\rollback_release.ps1 -ToSha bbbbbbb -DryRun
+2026-10-17 10:24:58  === CKAM rollback to bbbbbbb (WhatIf: nothing is changed) ===
+2026-10-17 10:24:58  current release: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\R02\root\releases\aaaaaaa; going back to: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\R02\root\releases\bbbbbbb
+What if: Performing the operation "copy to C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\R02\root\shared\.env.pre-rollback-20261017_102458" on target "C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\R02\root\shared\.env".
+What if: Performing the operation "stop CKAM (task + its own python listener only)" on target "CKAM-Web-FAKE-DRYRUN".
+What if: Performing the operation "set FRONTEND_DIST_DIR=C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\R02\root\releases\bbbbbbb\frontend-dist, APP_VERSION=bbbbbbb" on target "C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\R02\root\shared\.env".
+What if: Performing the operation "start CKAM" on target "CKAM-Web-FAKE-DRYRUN".
+2026-10-17 10:24:58  WhatIf: would wait for http://127.0.0.1:3999/api/health and run C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\verify_release.ps1 -ExpectedRelease bbbbbbb -ReleaseDir C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\R02\root\releases\bbbbbbb
+2026-10-17 10:24:58  === WhatIf finished: nothing in CKAM was changed (only this log file was written) ===
+-- facts: exit 0; 0.2s; shared\.env unchanged: True; .env selects: aaaaaaa; task calls: none; fake python calls: 0 (alembic upgrade: 0); simulated db revision now: e6f8a0b2c4d6; previous release folder kept: True
+   check PASS exit 0
+   check PASS .env unchanged
+   check PASS no task call
+   check PASS no python call
+   check PASS WhatIf finished
+
+===== L01 : launcher -WhatIf =====
+args: -Kind launcher -Script C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\parsed\run_ckam_web.ps1 -DryRun
+2026-10-17 10:24:59  settings loaded from C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\L01\root\shared\.env: 7 keys (DATABASE_URL, JWT_SECRET, ENVIRONMENT_NAME, FRONTEND_DIST_DIR, LOG_DIR, APP_VERSION, UPLOAD_DIR)
+What if: Performing the operation "map NAS share as ckappuser" on target "\\10.0.0.25\ckapplications_data".
+2026-10-17 10:24:59  serving release: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\L01\root\releases\aaaaaaa
+2026-10-17 10:24:59  environment: production; release id: aaaaaaa
+2026-10-17 10:24:59  starting: C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\L01\root\shared\venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 3999 --no-proxy-headers --no-server-header (working folder C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\L01\root\releases\aaaaaaa\backend)
+What if: Performing the operation "start CKAM" on target "C:\Users\User2\AppData\Local\Temp\claude\D--ANKUR-AI-PROJECTS-Asset-Management\33a6302e-4441-4084-94a5-472d20016684\scratchpad\sec\winfix\ps\cases\L01\root\shared\venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 3999 --no-proxy-headers --no-server-header".
+-- facts: exit 0; 0.2s; shared\.env unchanged: True; .env selects: aaaaaaa; task calls: none; fake python calls: 0 (alembic upgrade: 0); simulated db revision now: e6f8a0b2c4d6; previous release folder kept: True
+   check PASS exit 0
+   check PASS .env unchanged
+   check PASS uvicorn line has both flags
+   check PASS key names only, no values

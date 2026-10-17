@@ -1029,7 +1029,7 @@ requests, renamed uploads refused, staff-only setup lists, other company's ERP d
 | 1 | `f9a1c3e5b7d2` | `asset_user.token_version` | Additive; existing sessions stay valid |
 | 2 | `a3c5e7f9b1d4` | TRUNCATE guards on the four append-only tables; 5-year audit purge floor | Must run as the table owner |
 | 3 | `b5d7f9a1c3e5` | `auth_session` table (refresh-token reuse detection) | Additive; login writes to it, so the new code needs it |
-| 4 | `c6e8a0b2d4f6` | Trigger guarding `asset.status` / `current_asset_user_id` / `status_since` | Touches no row; **old code cannot record movements once it exists**, so start the new code right after the upgrade |
+| 4 | `c6e8a0b2d4f6` | Trigger guarding `asset.status` / `current_asset_user_id` / `status_since` | Touches no row; **old code cannot record movements once it exists** (moves, repairs, sales, scraps are refused with a misleading 422; receives still work: *updated 2026-10-17, security release, gate rehearsal GT-F01*), so start the new code right after the upgrade |
 
 Single head `c6e8a0b2d4f6`. Verified: fresh empty database → head; dev, UAT and security-test databases upgraded;
 downgrade −1 / upgrade cycles (`evidence/closure/backend/WPA2_RESULTS.md`, `evidence/closure/db/rs_06_downgrade_upgrade_cycle.out.txt`).

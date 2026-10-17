@@ -193,7 +193,9 @@ Keep the `icacls` outputs and the task principal as evidence.
   during the same high-pressure window adds risk (NAS mapping and file rights must be right first time). EXT-06 is a
   **30-day** item, not URGENT; schedule it in its own window.
 - **Independent of, but complementary to, the database role split (EXT-07).** EXT-07 changes *which database role*
-  the app connects as (`ckam_app`); this plan changes *which Windows account* runs the process. They can be done in
+  the app connects as (today `ckassetapp` on 10.0.0.205; *(updated 2026-10-17, security release: the earlier text
+  said `ckam_app`, which was the role of the retired server 10.0.1.12 and is NOLOGIN; it must never be reused)*);
+  this plan changes *which Windows account* runs the process. They can be done in
   either order. If both are planned for one window, do the DB role split first (it only changes `DATABASE_URL` in
   `shared\.env`, which `svc_ckam` reads), then the account switch, so the final test exercises both.
 - **Before or with EXT-23** (password manager): store `svc_ckam`'s password in the vault when it is created; a gMSA

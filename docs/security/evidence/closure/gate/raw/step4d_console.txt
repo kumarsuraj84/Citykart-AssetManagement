@@ -1,0 +1,9 @@
+waiting 65 s for a clean window
+PASS GT-400 [4] 20 sign-ins from one address (unknown ids, each with a different forged X-Forwarded-For) -> 401,401,401,401,401,401,401,401,401,401,401,401,401,401,401,401,401,401,401,401
+PASS GT-401 [4] 21st sign-in from the same address within 60 s (forged X-Forwarded-For again) -> 429 retry-after=60 {"detail":"Too many sign-in attempts. Wait a minute and try again.","errors":["Too many sign-in attempts. Wait a minute and try again."],"request_id":"79b18a1bd
+PASS GT-402 [4] a real persona during the address block -> 429
+waiting 65 s
+PASS GT-403 [4] 11 sign-ins for ONE login id within 60 s -> 401,401,401,401,401,401,401,401,401,401,429
+waiting 65 s
+PASS GT-404 [4] SECHO signs in after the window passed -> 200 token=true
+saved 5 cases (5 PASS, 0 FAIL) to C:/Users/User2/AppData/Local/Temp/claude/D--ANKUR-AI-PROJECTS-Asset-Management/33a6302e-4441-4084-94a5-472d20016684/scratchpad/gate/out/cases_step4d.csv

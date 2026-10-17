@@ -1,0 +1,44 @@
+﻿
+Check                                                               Result Detail                                                                                                           
+-----                                                               ------ ------                                                                                                           
+health                                                              PASS   /api/health 200 ok                                                                                               
+release in bundle                                                   FAIL   no /assets/index-*.js in the served index.html                                                                   
+headers once: app shell /                                           FAIL   status 200: Content-Security-Policy x0, Permissions-Policy x0                                                    
+headers once: api /api/health                                       FAIL   status 200: Content-Security-Policy x0, Permissions-Policy x0                                                    
+headers once: api 404                                               FAIL   status 200: Content-Security-Policy x0, Permissions-Policy x0                                                    
+headers once: missing script                                        FAIL   status 404: Content-Security-Policy x0, Permissions-Policy x0                                                    
+no-store: api /api/health                                           PASS   Cache-Control: no-store                                                                                          
+no-store: api 404                                                   PASS   Cache-Control: no-store                                                                                          
+CSP                                                                 FAIL   unexpected CSP: ''                                                                                               
+CSP without Google Fonts                                            PASS   no Google host in the CSP                                                                                        
+nosniff                                                             PASS   X-Content-Type-Options: nosniff                                                                                  
+docs closed: /docs                                                  FAIL   status 200 and the body is the API documentation                                                                 
+docs closed: /redoc                                                 FAIL   status 200 and the body is the API documentation                                                                 
+docs closed: /openapi.json                                          FAIL   status 200 and the body is the API documentation                                                                 
+unknown /api is JSON 404                                            FAIL   status 200, Content-Type 'text/html; charset=utf-8' (the app shell here means the N6 fix is not in this release) 
+app page /assets/1                                                  FAIL   status 404 (a JSON 404 here means the CL2-IF-04 fix is not in this release: scanned labels cannot open Asset 360)
+app page /assets/new                                                FAIL   status 404 (a JSON 404 here means the CL2-IF-04 fix is not in this release: scanned labels cannot open Asset 360)
+app page /assets/1?from=qr                                          FAIL   status 404 (a JSON 404 here means the CL2-IF-04 fix is not in this release: scanned labels cannot open Asset 360)
+missing .map stays 404                                              PASS   404                                                                                                              
+Server header                                                       PASS   no Server header                                                                                                 
+traversal /assets/..%2f..%2f..%2f..%2fshared%2f.env                 FAIL   status 200                                                                                                       
+traversal /assets/..%2f..%2f..%2f..%2fshared%2fnas.pw               FAIL   status 200                                                                                                       
+traversal /assets/..%2f..%2f..%2f..%2fshared%2frun_ckam_web.ps1     FAIL   status 200                                                                                                       
+traversal /assets/%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2fshared%2f.env FAIL   status 200                                                                                                       
+traversal /assets/..%5c..%5cshared%5c.env                           PASS   404                                                                                                              
+traversal /assets/..%5c..%5c..%5c..%5cshared%5c.env                 PASS   404                                                                                                              
+traversal /assets/%2e%2e%5c%2e%2e%5cshared%5c.env                   PASS   404                                                                                                              
+traversal /assets/..%2f..%2fbackend%2fapp%2fcore%2fconfig.py        FAIL   status 200                                                                                                       
+traversal /assets/..%2f..%2f..%2f..%2fshared%2f.env%00              PASS   404                                                                                                              
+traversal /assets/%252e%252e%252f%252e%252e%252fshared%252f.env     PASS   404                                                                                                              
+traversal /assets/%2fetc%2fpasswd                                   FAIL   status 200                                                                                                       
+traversal /assets/C:%2fWindows%2fwin.ini                            PASS   404                                                                                                              
+traversal /assets/C:%5cWindows%5cwin.ini                            PASS   404                                                                                                              
+traversal /assets/CON                                               PASS   404                                                                                                              
+traversal /assets/NUL                                               PASS   404                                                                                                              
+traversal /assets/index.html::$DATA                                 PASS   404                                                                                                              
+traversal /assets/%5c%5cserver%5cshare%5cx                          PASS   404                                                                                                              
+
+
+
+37 checks: 18 PASS, 0 WARN, 19 FAIL against http://127.0.0.1:4112

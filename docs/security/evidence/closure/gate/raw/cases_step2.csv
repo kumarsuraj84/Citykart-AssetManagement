@@ -1,0 +1,6 @@
+id,step,what,expected,actual,result,evidence
+"GT-020","2","old code health","200 ok","200 {""status"":""ok""}","PASS",""
+"GT-021","2","old code sign-in SECHO","200 + access token","200 token=true","PASS",""
+"GT-022","2","old code receive PO 2 line 2 (1 chair, no serial)","200, 1 asset created","200 {""po_id"":2,""invoice_number"":""GT-OLD-INV-1"",""assets_created"":1,""serial_pending"":0,""assets"":[{""asset_id"":17,""asset_code"":""CKSPL/ADFA-SPL/0005"",""line_no"":2,""serial_number"":""N/A"",""serial_pending"":false}],""label_asset_ids"":[17],""po_status"":""PARTLY_RECEIVED"",""waiting_units"":1}","PASS",""
+"GT-023","2","old code move asset 3 -> person SECEMPS1 (7)","201 ALLOTTED","201 ALLOTTED Allotted to Sec Plain Employee CKSPL","PASS",""
+"GT-024","2","old code move asset 3 back to stock room 3","201 IN_STOCK","201 IN_STOCK Returned to HO Stock Room CKSPL","PASS",""

@@ -3,8 +3,11 @@
   Read-only check of a running CKAM release (security IF-15 / IF-01 / IF-14 / AU-14 / N5 / N6 / FONTS).
 
 .DESCRIPTION
-  Sends only GET requests (no sign-in, no change of any kind) to a CKAM address and prints one PASS / WARN / FAIL
-  row per check. Exit code 0 = no FAIL, 1 = at least one FAIL, 2 = the address could not be reached.
+  Sends GET requests plus two harmless POSTs (a session renewal WITHOUT a cookie and a sign-in with a made-up login
+  id that matches no account; never real credentials) to a CKAM address and prints one PASS / WARN / FAIL / SKIP
+  row per check. Nothing is changed in CKAM: the bogus sign-in only leaves the usual "sign-in failed" security row
+  (login id "ckam-verify-release-<random>") and uses one try of the sign-in rate limit.
+  Exit code 0 = no FAIL, 1 = at least one FAIL, 2 = the address could not be reached.
 
   Checks:
     * /api/health answers 200 {"status":"ok"}
@@ -13,10 +16,15 @@
     * security headers (Content-Security-Policy, Permissions-Policy, X-Content-Type-Options, X-Frame-Options,
       Referrer-Policy) are present EXACTLY ONCE on the app shell, an /api answer, an /api 404 and a missing script;
       /api answers carry Cache-Control: no-store; the CSP has default-src 'self' and no Google Fonts host
-    * the API documentation is closed: /docs, /redoc and /openapi.json are 404, or the plain app shell, never
-      Swagger / ReDoc / the OpenAPI JSON (IF-14)
+    * the API documentation is closed: /docs, /redoc and /openapi.json are 404 (the single-port production server
+      answers a JSON 404, GT-F06), or the plain app shell, never Swagger / ReDoc / the OpenAPI JSON (IF-14)
     * an unknown /api address is a JSON 404, not the app shell (N6)
     * every path-traversal probe below answers 404 (IF-01, IF-01-WIN). Bodies are never saved or printed.
+    * POST /api/auth/refresh without a cookie answers 401 JSON and sets no session cookie; POST /api/auth/login with
+      a made-up login id answers 401 JSON "Invalid credentials" and sets no cookie (429 = rate limited: WARN)
+    * on the CKAM server itself (-LocalProcessCheck): the uvicorn process that listens on the port was started with
+      BOTH --no-proxy-headers (N2) and --no-server-header (CL2-IF-OBS-05), and there is exactly one such listener.
+      SKIP when the address is not this machine or no uvicorn listens here (e.g. the Docker dev stack).
 
   Requests are written byte-for-byte on a plain socket, so encoded paths such as ..%5c reach the server exactly as
   written (like curl --path-as-is); .NET's own web client would normalise some of them.
@@ -32,6 +40,10 @@
 .PARAMETER IncludeUncProbe
   Also send /assets/%5c%5cserver%5cshare%5cx. Only for a release that contains the IF-01-WIN fix: an older release
   could make the server look up the host "server" over SMB.
+.PARAMETER LocalProcessCheck
+  Auto (default): check the local uvicorn command line when the address is this machine and a uvicorn process
+  listens on its port, else SKIP. Require: the same, but FAIL instead of SKIP (use it on the app server, elevated, so
+  the command line of the task's process can be read). Skip: never check.
 .PARAMETER TimeoutSeconds
   Per-request timeout. Default 20.
 .PARAMETER OutCsv
@@ -41,6 +53,8 @@
   .\verify_release.ps1 -BaseUrl http://127.0.0.1:3211 -ExpectedRelease 3b5e842 -ReleaseDir D:\Citykart_Applications\Citykart_AssetManagement_App\releases\3b5e842
 .EXAMPLE
   .\verify_release.ps1 -BaseUrl http://localhost:3211      # the local Docker dev stack (nginx in front)
+.EXAMPLE
+  .\verify_release.ps1 -BaseUrl http://127.0.0.1:3211 -ExpectedRelease eed3de1 -LocalProcessCheck Require   # on 10.0.1.98, elevated
 #>
 [CmdletBinding()]
 param(
@@ -49,6 +63,7 @@ param(
     [string]$ReleaseDir = '',
     [string]$LauncherLogDir = '',
     [switch]$IncludeUncProbe,
+    [ValidateSet('Auto', 'Require', 'Skip')][string]$LocalProcessCheck = 'Auto',
     [ValidateRange(1, 300)][int]$TimeoutSeconds = 20,
     [string]$OutCsv = ''
 )
@@ -67,7 +82,8 @@ function Add-Result([string]$Check, [string]$Outcome, [string]$Detail) {
 }
 
 # One HTTP/1.1 request on a raw socket. Returns status, the header list (duplicates kept) and at most MaxBody bytes.
-function Invoke-RawHttp([string]$Path, [int]$MaxBody = 65536) {
+# Method is GET unless a POST is asked for; a POST sends Body as JSON (no cookie, no Authorization header, ever).
+function Invoke-RawHttp([string]$Path, [int]$MaxBody = 65536, [string]$Method = 'GET', [string]$Body = '') {
     $client = New-Object System.Net.Sockets.TcpClient
     try {
         $wait = $client.BeginConnect($script:TargetHost, $script:TargetPort, $null, $null)
@@ -80,9 +96,13 @@ function Invoke-RawHttp([string]$Path, [int]$MaxBody = 65536) {
             $stream = $tls
         }
         $stream.ReadTimeout = $TimeoutSeconds * 1000
-        $request = "GET $Path HTTP/1.1`r`nHost: $($script:HostHeader)`r`nUser-Agent: ckam-verify-release`r`nAccept: */*`r`nConnection: close`r`n`r`n"
+        $request = "$Method $Path HTTP/1.1`r`nHost: $($script:HostHeader)`r`nUser-Agent: ckam-verify-release`r`nAccept: */*`r`nConnection: close`r`n"
+        $bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($Body)
+        if ($Method -ne 'GET') { $request += "Content-Type: application/json`r`nContent-Length: $($bodyBytes.Length)`r`n" }
+        $request += "`r`n"
         $bytes = [System.Text.Encoding]::ASCII.GetBytes($request)
         $stream.Write($bytes, 0, $bytes.Length)
+        if ($Method -ne 'GET' -and $bodyBytes.Length -gt 0) { $stream.Write($bodyBytes, 0, $bodyBytes.Length) }
         $buffer = New-Object byte[] 65536
         $kept = New-Object System.IO.MemoryStream
         $limit = $MaxBody + 65536
@@ -244,11 +264,82 @@ foreach ($p in $probes) {
     else { Add-Result "traversal $p" 'FAIL' "status $($r.Status)"; $traversalFailures++ }
 }
 
+# --- sign-in endpoints (AU-05/AU-06): no session without a cookie; a made-up login id is a plain JSON 401.
+#     Never real credentials: the login id matches no account and the "password" is random. Bodies are not printed.
+function Test-Json401($Response, [string]$Name, [string]$WantDetail) {
+    $ct = (Get-HeaderValues $Response 'Content-Type') -join ', '
+    $setsSession = ((Get-HeaderValues $Response 'Set-Cookie') -join ' | ') -match 'refresh_token=[^";\s]'
+    $detailOk = $Response.Body -match '"detail"' -and $Response.Body.Contains($WantDetail)
+    if ($Response.Status -eq 429) { Add-Result $Name 'WARN' '429: the sign-in rate limit is active (run the script again in a minute)' }
+    elseif ($Response.Status -eq 401 -and $ct -match 'application/json' -and $detailOk -and -not $setsSession) { Add-Result $Name 'PASS' "401 $ct, `"$WantDetail`", no session cookie" }
+    else { Add-Result $Name 'FAIL' ("status $($Response.Status), Content-Type '$ct'" + $(if ($setsSession) { ', a session cookie was SET' } elseif (-not $detailOk) { ', not the expected JSON error' } else { '' })) }
+}
+try { Test-Json401 (Invoke-RawHttp '/api/auth/refresh' 65536 'POST' '') 'refresh without cookie is JSON 401' 'Invalid or expired refresh token' }
+catch { Add-Result 'refresh without cookie is JSON 401' 'FAIL' $_.Exception.Message }
+$bogusId = 'ckam-verify-release-' + [guid]::NewGuid().ToString('N').Substring(0, 12)
+$bogusBody = '{"login_id":"' + $bogusId + '","password":"' + [guid]::NewGuid().ToString('N') + '"}'
+try { Test-Json401 (Invoke-RawHttp '/api/auth/login' 65536 'POST' $bogusBody) "made-up sign-in is JSON 401 ($bogusId)" 'Invalid credentials' }
+catch { Add-Result "made-up sign-in is JSON 401 ($bogusId)" 'FAIL' $_.Exception.Message }
+$bogusBody = $null
+
+# --- the running uvicorn's own command line (N2 --no-proxy-headers, CL2-IF-OBS-05 --no-server-header): only when
+#     this script runs on the CKAM server itself. Only the two flags are reported, never the whole command line.
+function Test-IsThisMachine([string]$Name) {
+    $n = $Name.Trim('[', ']')
+    if ($n -in 'localhost', '127.0.0.1', '::1') { return $true }
+    try { return (@(Get-NetIPAddress -ErrorAction Stop | ForEach-Object { $_.IPAddress }) -contains $n) } catch { return $false }
+}
+$procCheck = 'uvicorn flags (local process)'
+if ($LocalProcessCheck -eq 'Skip') { Add-Result $procCheck 'SKIP' 'not checked (-LocalProcessCheck Skip)' }
+else {
+    $notHere = ''
+    $uv = @()
+    if (-not (Test-IsThisMachine $script:TargetHost)) { $notHere = "$($script:TargetHost) is not this machine" }
+    else {
+        $listenPids = @(Get-NetTCPConnection -LocalPort $script:TargetPort -State Listen -ErrorAction SilentlyContinue | ForEach-Object { $_.OwningProcess } | Sort-Object -Unique)
+        $unreadable = 0
+        foreach ($id in $listenPids) {
+            $p = Get-CimInstance Win32_Process -Filter "ProcessId = $id" -ErrorAction SilentlyContinue
+            if (-not $p) { continue }
+            $cmd = [string]$p.CommandLine
+            if (-not $cmd) { $unreadable++ }
+            # A venv python.exe on Windows can be a redirector whose child (the base interpreter) owns the socket:
+            # then the parent's command line is the one the launcher wrote.
+            if ($cmd -notmatch 'uvicorn') {
+                $parent = Get-CimInstance Win32_Process -Filter "ProcessId = $($p.ParentProcessId)" -ErrorAction SilentlyContinue
+                if ($parent -and [string]$parent.CommandLine -match 'uvicorn') { $cmd = [string]$parent.CommandLine }
+            }
+            if ($cmd -match 'uvicorn' -and $cmd -match 'app\.main:app') { $uv += [pscustomobject]@{ ProcessId = $id; Cmd = $cmd } }
+        }
+        if ($listenPids.Count -eq 0) { $notHere = "nothing listens on port $($script:TargetPort) on this machine" }
+        elseif ($uv.Count -eq 0) {
+            $notHere = "the listener on port $($script:TargetPort) (pid $($listenPids -join ', ')) is not a CKAM uvicorn process" +
+                $(if ($unreadable) { ' or its command line cannot be read (run elevated)' } else { '' })
+        }
+    }
+    if ($notHere) {
+        if ($LocalProcessCheck -eq 'Require') { Add-Result $procCheck 'FAIL' "$notHere (-LocalProcessCheck Require)" }
+        else { Add-Result $procCheck 'SKIP' "$notHere - not run on the CKAM server" }
+    } elseif ($uv.Count -gt 1) {
+        Add-Result $procCheck 'FAIL' "more than one CKAM uvicorn listener (pids $(($uv | ForEach-Object { $_.ProcessId }) -join ', '))"
+    } else {
+        $cmd = $uv[0].Cmd
+        $bad = @()
+        if ($cmd -notmatch '(^|\s)--no-proxy-headers(\s|"|$)') { $bad += '--no-proxy-headers missing' }
+        if ($cmd -notmatch '(^|\s)--no-server-header(\s|"|$)') { $bad += '--no-server-header missing' }
+        if ($cmd -match '(^|\s)--proxy-headers(\s|"|$)') { $bad += '--proxy-headers present' }
+        if ($cmd -match '(^|\s)--workers(\s|=)') { $bad += '--workers present (the in-process rate limits would multiply)' }
+        if ($bad.Count -eq 0) { Add-Result $procCheck 'PASS' "pid $($uv[0].ProcessId): --no-proxy-headers and --no-server-header present" }
+        else { Add-Result $procCheck 'FAIL' "pid $($uv[0].ProcessId): $($bad -join '; ')" }
+    }
+}
+
 # --- report
 $results | Format-Table -AutoSize -Wrap | Out-String -Width 220 | Write-Host
 if ($OutCsv) { $results | Export-Csv -LiteralPath $OutCsv -NoTypeInformation -Encoding UTF8 }
 $fail = @($results | Where-Object { $_.Result -eq 'FAIL' }).Count
 $warn = @($results | Where-Object { $_.Result -eq 'WARN' }).Count
-Write-Host ("{0} checks: {1} PASS, {2} WARN, {3} FAIL against {4}" -f $results.Count, ($results.Count - $fail - $warn), $warn, $fail, $BaseUrl)
+$skip = @($results | Where-Object { $_.Result -eq 'SKIP' }).Count
+Write-Host ("{0} checks: {1} PASS, {2} WARN, {3} FAIL, {4} SKIP against {5}" -f $results.Count, ($results.Count - $fail - $warn - $skip), $warn, $fail, $skip, $BaseUrl)
 if ($fail -gt 0) { exit 1 }
 exit 0

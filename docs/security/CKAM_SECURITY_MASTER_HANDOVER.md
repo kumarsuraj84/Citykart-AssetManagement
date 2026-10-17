@@ -575,10 +575,14 @@ address starting with `/assets/`.
 
 - **Before:** `/assets/1`, `/assets/42`, `/assets/new`, `/assets/1?from=qr` → `404 application/json` in a
   production-mode container; nginx (dev/UAT) answered the app page. Same code path in production `3b5e842`.
-- **Which QR codes:** `GET /api/assets/{id}/qr.png` (shown on Asset 360) encodes the deep link
-  `${BASE_URL}/assets/{id}`; the bulk **Print Labels** images (`/label.png`) encode the bare **asset code**, so
-  printed bulk labels are **not** affected (verified by reading `backend/app/assets/router.py`). Note: a code comment
-  in `main.py` and decision paper SD-04 describe this differently from each other; the code is as stated here.
+- **Which QR codes** *(updated 2026-10-17, security release, gate rehearsal GT-F02; the earlier text said bulk
+  labels were not affected)*: `GET /api/assets/{id}/qr.png` encodes the deep link `${BASE_URL}/assets/{id}`. It is
+  shown on Asset 360 **and printed by the bulk Print Labels screen in its default "Barcode + QR" format**
+  (`frontend/src/components/labels/AssetLabel.tsx`: `link-qr` → `/assets/{id}/qr.png`). Only the formats "QR Code"
+  (`label.png?symbol=qr`) and "Barcode" (`label.png?symbol=barcode`) encode the bare **asset code**. So printed bulk
+  labels in the default format **are** affected by this bug on the live server, and they keep pointing at the old
+  plain-HTTP address if `BASE_URL` changes later (HTTPS). Reading only `backend/app/assets/router.py` missed the
+  frontend's choice of image.
 - **Change (`ca94574`):** `_ASSETS_APP_ROUTE = [A-Za-z0-9_-]{1,64}(/[A-Za-z0-9_-]{1,64}){0,2}` → SPA shell with
   `Cache-Control: no-cache`, only after the IF-01 lexical check; missing `.js/.css/.woff2/.map` stay 404 (AU-12).
 - **After:** 31 permanent cases, including a test that reads the real `frontend/src/router.tsx` (60 routes) and
@@ -853,7 +857,7 @@ assistant.
 | 1 | `f9a1c3e5b7d2` | (previous head) | `asset_user.token_version INTEGER NOT NULL DEFAULT 0` | Additive; tokens without `tv` count as 0, so users stay signed in at upgrade. **New code fails every sign-in on the old schema** — upgrade first |
 | 2 | `a3c5e7f9b1d4` | `f9a1c3e5b7d2` | `BEFORE TRUNCATE` triggers on 4 ledgers; 5-year floor in `forbid_audit_log_write` and `ckam_purge_audit_log`; EXECUTE revoked from PUBLIC | Must run as the table owner (today `ckassetapp`) |
 | 3 | `b5d7f9a1c3e5` | `a3c5e7f9b1d4` | New table `auth_session` (hashed jti, previous hash + grace, expiry, revoked, legacy hash unique; FK to `asset_user`) | Additive; sign-in inserts into it — upgrade first |
-| 4 | `c6e8a0b2d4f6` | `b5d7f9a1c3e5` | Trigger `trg_asset_lifecycle_fields_guard` + function `forbid_asset_lifecycle_write()` | Touches no rows. **Old code cannot record any movement once this exists** (no marker) — upgrade only while CKAM is stopped and start the new code right after; see rollback note in 11.5 |
+| 4 | `c6e8a0b2d4f6` | `b5d7f9a1c3e5` | Trigger `trg_asset_lifecycle_fields_guard` + function `forbid_asset_lifecycle_write()` | Touches no rows. **Old code cannot record any movement once this exists** (no marker): moves, repairs, lost/found, dispose, sale, scrap and bulk actions are refused with a misleading 422; **receives still work** (rows are inserted, the `BEFORE UPDATE` trigger never fires) *(updated 2026-10-17, security release, gate rehearsal GT-F01)* — upgrade only while CKAM is stopped and start the new code right after; see rollback note in 11.5 |
 
 Verified: fresh empty DB → head; downgrade −1 / upgrade cycles; the owner's dev DB, the UAT copy and the security test
 DB upgraded to head (per lead). Not verified: `alembic check` drift detection (env.py import gap, 5.4); the migration
@@ -1097,7 +1101,7 @@ nothing was deployed and no people-run control has operated.
 |---|---|---|---|
 | 0 (today) | **Close or narrow the internet forward of TCP 3211** as an interim measure (SD-04, EXT-05) | Infra + owner | Confirm who outside the office needs CKAM; reduces IF-01 exposure while the deploy is prepared |
 | 0 (today) | Lock down the dev PC `.env`, `backups\`, worktree; check BitLocker (EXT-10) | Owner / IT (elevated) | `closure/infra/IF-09_ACL_PLAN.md`; do not lock out Docker Desktop |
-| 1 | Re-read the release paperwork: the runbook was updated on 2026-10-16 (Phase 4 lists `f9a1c3e5b7d2` → `a3c5e7f9b1d4` → `b5d7f9a1c3e5` → `c6e8a0b2d4f6`; start flags `--no-proxy-headers --no-server-header`; QR deep-link check; roll-forward-only note) — confirm `<RELEASE-SHA>` / `<FINAL-HEAD>` are filled in the change record; use `ops/windows/verify_release.ps1` | Dev | Before the window |
+| 1 | *(updated 2026-10-17, security release: the runbook is now steps A–N; the release is `<RELEASE-SHA>` from the rebuilt package (`<ZIP-SHA256>`), not the superseded `eed3de1`; go/no-go in `CKAM_PRODUCTION_SECURITY_GO_NO_GO.md`; change record draft `CKAM_EMERGENCY_CHANGE_RECORD_DRAFT.md`)* Re-read the release paperwork: the runbook was updated on 2026-10-16 (Phase 4 lists `f9a1c3e5b7d2` → `a3c5e7f9b1d4` → `b5d7f9a1c3e5` → `c6e8a0b2d4f6`; start flags `--no-proxy-headers --no-server-header`; QR deep-link check; roll-forward-only note) — confirm `<RELEASE-SHA>` / `<FINAL-HEAD>` are filled in the change record; use `ops/windows/verify_release.ps1` | Dev | Before the window |
 | 2 | Owner approvals in writing: **separate** deploy request for a named release (≥ `fd34520`); window; rotation of 4 secrets right after (SD-01). The push approval comes later (step 13) | Owner | Change record started (EXT-42, EXT-35 template) |
 | 3 | Copy production logs off the server with SHA-256 list **before anything restarts** (EXT-41) | IT | Admin-only evidence folder |
 | 4 | Precheck (EXT-39): `ENVIRONMENT_NAME=production`; `JWT_SECRET` ≥ 32 chars, ≥ 8 distinct, not a placeholder (checked without printing); backup task healthy and which DB login it uses; disk space; **is `ckappuser` / `ckpost` used only by CKAM?** (EXT-43); migration rehearsal on a scratch copy | IT, DBA, Dev | Stop if backup fails or release lacks `3e134c1` |
@@ -1106,10 +1110,10 @@ nothing was deployed and no people-run control has operated.
 | 7 | Stop `CKAM-Web` (only CKAM's listener); `pip install -c constraints.txt` (EXT-12; if a Windows wheel is missing, install as before and keep EXT-12 open); `alembic upgrade head` → `c6e8a0b2d4f6` **before** any new code starts | IT | Failure → do not start code; old release is not a safe fallback |
 | 8 | Switch `FRONTEND_DIST_DIR` / `APP_VERSION` to the release folder (UTF-8 without BOM) | IT | — |
 | 9 | Launcher: uvicorn with `--no-proxy-headers --no-server-header` (EXT-38; compare with `ops/windows/run_ckam_web.ps1.template`, EXT-13); keep `TRUSTED_PROXIES` empty | IT | Forged `X-Forwarded-For` logged as 127.0.0.1 |
-| 10 | **Verify** (runbook Phase 7 + `verify_release.ps1`): all traversal probes 404 incl. `..%5c`, `%2e%2e%5c`, `C:%2fWindows%2fwin.ini`, UNC, `CON`/`NUL`; unknown `/api` JSON 404; `/docs`,`/redoc`,`/openapi.json` 404; headers once; `/assets/<id>` and `/assets/new` open + one real label scan (EXT-44); diagnostics show release + `production`; sign-in; receive + move smoke writes ledger + audit rows | IT + SEC | **Gate: no rotation until every check passes**; from server and from a LAN PC |
+| 10 | **Verify** (runbook Phase 7 + `verify_release.ps1`): all traversal probes 404 incl. `..%5c`, `%2e%2e%5c`, `C:%2fWindows%2fwin.ini`, UNC, `CON`/`NUL`; unknown `/api` JSON 404; `/docs`,`/redoc`,`/openapi.json` 404; headers once; `/assets/<id>` and `/assets/new` open + one real label scan (EXT-44); diagnostics show release + `production` + migrations ok; sign-in; receive + move smoke writes ledger + audit rows. *(updated 2026-10-17, security release: `/api/health` + `verify_release.ps1` alone are not proof, GT-F05; the move, not the receive, proves the new code, GT-F01; also scan one default "Barcode + QR" label, GT-F02)* | IT + SEC | **Gate: no rotation until every check passes**; from server and from a LAN PC |
 | 11 | Rotate in order: JWT secret (everyone signs in again) → `ckassetapp` DB password (and the backup task's credential if it uses it) → NAS password (only if CKAM-only, else EXT-43 first) → ERP password (ERP owner) → restart, re-verify; delete `.env.pre-*` copies | IT / DBA / NAS admin / ERP owner | Owner types every password on the servers |
-| 12 | Compromise assessment (EXT-03): hunt `/assets/` requests with `..`, `%2e`, `%2f`, `%5c`, `C:`, UNC in the preserved `app.jsonl` (exists only since 2026-10-14); admin actions without matching LOGIN rows; unexpected admins/grants; PostgreSQL, NAS, router, Windows event logs; write the incident record honestly ("cannot be ruled out before 2026-10-14") | SEC / owner | Legal on CERT-In reporting (EXT-31) |
-| 13 | **Then** the approved `git push` (push only) — the repository is **PUBLIC**; alternatively make it private first, or keep `docs/security/evidence/**` out of the push | Dev | Owner's push phrase for this change; deploy verified and secrets rotated |
+| 12 | Compromise assessment (EXT-03; procedure `CKAM_COMPROMISE_ASSESSMENT_PLAN.md`, added 2026-10-17): hunt `/assets/` requests with `..`, `%2e`, `%2f`, `%5c`, `C:`, UNC in the preserved `app.jsonl` (exists only since 2026-10-14); admin actions without matching LOGIN rows; unexpected admins/grants; PostgreSQL, NAS, router, Windows event logs; write the incident record honestly ("cannot be ruled out before 2026-10-14") | SEC / owner | Legal on CERT-In reporting (EXT-31) |
+| 13 | **Then** the approved `git push` (push only) — the repository is **PUBLIC**; alternatively make it private first, or keep `docs/security/evidence/**` out of the push (options A/B/C with costs: `CKAM_GITHUB_PUBLIC_REPO_OPTIONS.md`, added 2026-10-17) | Dev | Owner's push phrase for this change; deploy verified and secrets rotated |
 | 14 | Within 30 days: HTTPS (EXT-04), service account (EXT-06), DB role split with the **updated** scripts (EXT-07 + EXT-45; run `check_least_privilege.sql` read-only first; mind the migrator-INHERIT caveat, 5.3), off-server backups + restore drill (EXT-08), alerts on `log_write_failed` and REFRESH_REUSE bursts (EXT-48), watch `RATE_LIMITED` rows and set the per-office NAT rule (EXT-40, EXT-49), patching, EDR | Infra / DBA / IT | Plans in `docs/security/` |
 | 15 | Every later deploy: re-run `check_least_privilege.sql` and keep the output (EXT-46) | IT / DBA | After EXT-07 |
 | 16 | After the first 8 hours post-deploy: a small release removing the legacy (no-`sid`) refresh-token path | Dev | All pre-deploy tokens have expired |
@@ -1267,8 +1271,9 @@ note).
     and the final closure report were brought up to date (commit counts, risk-register size, retest 3, the QR-link
     wording). Still slightly off, for the reviewer to note: the SoA working draft's "Source" line still names the
     2026-10-15 matrix although its totals are the v1.1 ones; the decisions paper (SD-12 is already implemented; SD-04
-    says labels carry only the asset code while a `main.py` comment says QR labels encode the deep link — the code
-    shows bulk labels = asset code, Asset 360 QR = deep link).
+    said labels carry only the asset code while a `main.py` comment says QR labels encode the deep link — the
+    `main.py` comment is right for the default format: bulk labels in "Barcode + QR" (default) = deep link, "QR
+    Code"/"Barcode" = asset code, Asset 360 QR = deep link; SD-04 corrected 2026-10-17, GT-F02).
 15. **Behaviour changed ahead of decisions:** Excel imports now refuse same-name brands/vendors/categories
     (OBS-NAME-IMPORT) although SD-12 is formally open.
 16. **Supply-chain integrity of the release itself:** the code lives on a PC where any local account can modify the
@@ -1277,7 +1282,8 @@ note).
     production layout. The GitHub repository **is public** (verified), so pushing before the deploy publishes a
     recipe for the live server.
 18. **Rollback is not symmetric** (section 11.5): after migration `c6e8a0b2d4f6`, the old code cannot record any
-    asset movement.
+    asset movement (move, repair, sale, scrap …). It can still receive, and users see a misleading 422 for the
+    refused actions *(updated 2026-10-17, security release, GT-F01)*.
 19. **Partial-closure labels:** IF-05/06 are "MITIGATED" only for non-owner roles; in production today the app role is
     the owner, so the practical protection begins only with EXT-07.
 
@@ -1347,22 +1353,37 @@ NAS. **Production stays vulnerable to IF-01 and keeps the QR/Asset 360 deep-link
 | 5 | Logs preserved and backup taken | Hash lists exist; `pg_restore --list` OK |
 | 6 | Shared accounts | Answers recorded for `ckappuser` and `ckpost` |
 | 7 | Users informed | ~30 min downtime; everyone signs in again after the JWT rotation; sessions open at deploy keep working until then (legacy tokens are upgraded on first renewal) |
-| 8 | Post-start | Phase 7 all 404, `/assets/<id>` and `/assets/new` shell + one real Asset 360 QR scan (EXT-44), JSON 404s, headers once, smoke receive + move OK, `RATE_LIMITED` rows appear only under abuse |
+| 8 | Post-start | *(updated 2026-10-17: runbook step H; diagnostics version + `production` + migrations ok and a real sign-in are mandatory, GT-F05)* Phase 7 all 404, `/assets/<id>` and `/assets/new` shell + one real Asset 360 QR scan (EXT-44), JSON 404s, headers once, smoke receive + move OK, `RATE_LIMITED` rows appear only under abuse |
 | 9 | Monitoring | If an uptime monitor uses `HEAD /`, expect 405 (use GET) |
 
 ### 11.5 Rollback notes
 
 - **Code rollback is not symmetric with the schema.** The migrations stay. `f9a1c3e5b7d2`, `a3c5e7f9b1d4`,
-  `b5d7f9a1c3e5` are additive and old code would ignore them. **`c6e8a0b2d4f6` breaks the old code:** every receive,
-  move, sale or scrap updates `asset.status` without the marker and is refused by the trigger. A code rollback to
-  `3b5e842` therefore needs the trigger removed (owner-run `alembic downgrade -1` or `DROP TRIGGER`), which the
-  runbook otherwise forbids on production — and `3b5e842` reopens IF-01 anyway.
+  `b5d7f9a1c3e5` are additive and old code would ignore them. **`c6e8a0b2d4f6` breaks the old code partly** *(updated
+  2026-10-17, security release, gate rehearsal GT-F01; the earlier text said every receive was refused too)*:
+  every move, repair, lost/found, dispose, sale or scrap **updates** `asset.status` / holder / status date without the
+  marker and is refused by the trigger, with a misleading HTTP 422 "Some of the values could not be saved. Check them
+  and try again." for the user (the real reason is only in `error.jsonl`). **Receives still work**, because a receive
+  **inserts** the asset already in its final state and the `BEFORE UPDATE OF …` trigger never fires. A code rollback
+  to `3b5e842` therefore needs the trigger removed (owner-run `alembic downgrade -1` from the new release's backend
+  folder, rehearsed in 0.89 s; never a downgrade of all four), which the runbook otherwise forbids on production —
+  and `3b5e842` reopens IF-01 anyway.
+- **A failed `alembic upgrade head` rolls back all four migrations** (one transaction): the database stays at
+  `e6f8a0b2c4d6` (GT-F04). **New code on that un-migrated database looks healthy** (`/api/health` 200, app page,
+  bare `verify_release.ps1` passes) but every sign-in fails with the same misleading 422 (GT-F05): only `alembic
+  current` = heads, the startup `head_mismatch` warning and a real sign-in catch it.
+- **The deploy template's automatic restart of the previous release after a late failure is being removed** in the
+  rebuilt package; until the operator has read the fixed template, no automatic rollback is relied on
+  (`CKAM_PRODUCTION_ROLLBACK_STRATEGY.md` §6).
 - **Recommended stance: roll forward.** If verification fails, stop `CKAM-Web`, keep the internet forward closed, fix
   and redeploy; restore the pre-deploy dump only on the owner's decision.
 - Reference scripts: `ops/windows/rollback_release.ps1.template` switches the release folder only and warns that the
   schema is not rolled back.
 
 ### 11.6 Go / no-go (one page)
+
+*(updated 2026-10-17, security release: the detailed gate table with an evidence path per gate is now
+`CKAM_PRODUCTION_SECURITY_GO_NO_GO.md`; this summary is kept as written on 2026-10-16.)*
 
 | Gate | Go when | Today |
 |---|---|---|

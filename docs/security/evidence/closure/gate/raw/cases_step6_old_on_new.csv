@@ -1,0 +1,6 @@
+id,step,what,expected,actual,result,evidence
+"GT-600","6","[step6_old_on_new] health + sign-in SECHO","200 / 200","200 / 200 ","PASS",""
+"GT-601","6","[step6_old_on_new] Receive PO 6 line 1 (1 unit) as SECHO","refused, nothing half-written","200 {""po_id"":6,""invoice_number"":""GT-step6_old_on_new-INV"",""assets_created"":1,""serial_pending"":0,""assets"":[{""asset_id"":20,""asset_code"":""CKVPL/ITFA-VPL/0005"",""line_no"":1,""serial_number"":""GTSstep6oldonne79577"",""serial_pending"":false}],""label_asset_ids"":[20],""po_status"":""RECEIVED"",""waiting_units"":0} | assets before/after 19/20","FAIL",""
+"GT-602","6","[step6_old_on_new] Move asset 5 (chair, in stock) to person SECEMPS1","refused; asset unchanged, no event row","422 {""detail"":""Some of the values could not be saved. Check them and try again."",""request_id"":""b382eb8c01014e8493bc38e56e594533""} | asset5 status=IN_STOCK events 1->1","PASS",""
+"GT-603","6","[step6_old_on_new] Sale (SOLD) of asset 7 (chair, in stock)","refused; asset still IN_STOCK","422 {""detail"":""Some of the values could not be saved. Check them and try again."",""request_id"":""de18a63f4aa34bc48642c0bc048f88ee""} | asset7 status=IN_STOCK","PASS",""
+"GT-604","6","[step6_old_on_new] read of an asset still works","200","200 CKSPL/ADFA-SPL/0004","PASS",""

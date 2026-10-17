@@ -23,19 +23,28 @@ NAS password on the servers himself; nothing secret goes into a script, a log, a
    `ENVIRONMENT_NAME=production` and `JWT_SECRET` meets the production rules (checked without printing it), saves
    `shared\.env` as `.env.pre-<sha>`, stops `CKAM-Web`, installs the pinned packages (`pip install -c
    constraints.txt`), switches `FRONTEND_DIST_DIR` (the single release switch) and `APP_VERSION`, runs
-   **`alembic upgrade head` before the start**, starts the task and runs the smoke test. On a failure it switches
-   the settings back and restarts the previous release; the database is never rolled back automatically.
+   **`alembic upgrade head` before the start**, starts the task and runs the smoke test. On a failure the earlier
+   template switched the settings back and restarted the previous release, even after the migrations had run; the
+   database is never rolled back automatically. *(Updated 2026-10-17, security release: that automatic restart of
+   the previous release after the migrations is being removed from the template. Until you have read the fixed
+   template in the release package, rely on no automatic rollback; for the security release follow
+   `docs/security/CKAM_PRODUCTION_ROLLBACK_STRATEGY.md`.)*
 4. **Verify.** `ops/windows/verify_release.ps1 -BaseUrl http://127.0.0.1:3211 -ExpectedRelease <sha> -ReleaseDir
    <AppRoot>\releases\<sha> -LauncherLogDir <AppRoot>\logs` (read-only), then once more from a LAN PC against
    `http://10.0.1.98:3211`. Expected: no FAIL; every security header exactly once; `/api/does-not-exist` a JSON
    404; every traversal probe 404. Then the functional smoke test (sign in, Home, Asset Register, one asset).
+   *(Updated 2026-10-17, security release: `verify_release.ps1` has no migration check, and new code on an
+   un-migrated database still answers `/api/health`; also confirm `alembic current` = heads, diagnostics health
+   (version, `production`, migrations ok) and a real sign-in. `/docs`, `/redoc`, `/openapi.json` are a JSON 404 in
+   production.)*
 5. **Rollback (code only).** `rollback_release.ps1 -ToSha <previous>` (first `-WhatIf`). If the release you leave
    added migrations, the old code may not work on the new schema: roll forward with a fix, or (owner's decision)
    restore the dump from step 2, which loses everything written since. Never `alembic downgrade` live data without
    a fresh backup. Release folders are never deleted by these scripts.
 
-The launcher (`run_ckam_web.ps1.template`) starts `python -m uvicorn app.main:app --host 0.0.0.0 --port 3211 --no-proxy-headers`
-(N2: never `--proxy-headers`; `TRUSTED_PROXIES` stays empty in production). Settings keys added since 2026-10-14:
+The launcher (`run_ckam_web.ps1.template`) starts `python -m uvicorn app.main:app --host 0.0.0.0 --port 3211 --no-proxy-headers --no-server-header`
+(N2: never `--proxy-headers`; `TRUSTED_PROXIES` stays empty in production; `--no-server-header` added for
+CL2-IF-OBS-05, *updated 2026-10-17, security release*). Settings keys added since 2026-10-14:
 `LOG_DIR` (`<AppRoot>\logs\app`), `ENVIRONMENT_NAME=production`, `APP_VERSION=<sha>`.
 
 ---

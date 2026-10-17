@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  CKAM production release script (REFERENCE TEMPLATE, security IF-15 / IF-11 / IF-04). Supports -WhatIf.
+  CKAM production release script (REFERENCE TEMPLATE, security IF-15 / IF-11 / IF-04, gate GT-F01/F04/F05). Supports -WhatIf.
 
 .DESCRIPTION
   Secret-free, parameterised reference version of the release steps used on the app server since 2026-10-14
@@ -10,33 +10,59 @@
 
   Order (each step that changes something is guarded by -WhatIf / -Confirm):
     1. Release folder  <AppRoot>\releases\<Sha>\{backend, frontend-dist}: unpacked from -PackagePath (a .zip built
-       on the dev PC) unless it already exists. Completeness is checked.
+       on the dev PC) unless it already exists. Completeness is checked. When the package has a RELEASE.json, its
+       release id must be <Sha>, and its "alembic_head" becomes the head the database must reach in step 8.
+       The release folder is NEVER deleted by this script: the editable install (pip install -e) links the venv
+       to releases\<Sha>\backend, and the previous release folder is needed for a switch-back.
     2. Read-only pre-checks of shared\.env WITHOUT printing any value: ENVIRONMENT_NAME is "production";
        JWT_SECRET is at least 32 characters with at least 8 different characters and is not a known placeholder;
-       DATABASE_URL and FRONTEND_DIST_DIR are present; the file is not readable by Users / Everyone /
-       Authenticated Users (warning only). Any failed rule stops the deploy before anything is touched.
+       DATABASE_URL is present exactly once, not empty, not in quotes, and not the development default / this
+       machine (the app silently falls back to a development database address when it is missing); FRONTEND_DIST_DIR
+       is present; the file is not readable by Users / Everyone / Authenticated Users (warning only). Any failed
+       rule stops the deploy before anything is touched.
     3. Backup: runs -BackupHook (your script that takes the database backup and exits 0), or requires
        -BackupConfirmed after you ran task CK_Backup_CKASSETMANAGEMENT on the database server and saw "OK" in its
        backup.log. Without one of them the script stops.
-    4. Saves shared\.env as shared\.env.pre-<Sha>.
+    4. Saves shared\.env as shared\.env.pre-<Sha> (never overwrites an earlier copy; a rerun gets a time suffix).
     5. Stops task CKAM-Web and ONLY the python process under shared\venv that listens on the port.
-    6. pip install -c constraints.txt -e <release>\backend into shared\venv (IF-11: the tested versions).
-    7. Sets FRONTEND_DIST_DIR=<release>\frontend-dist (the single release switch), APP_VERSION=<Sha>, and LOG_DIR /
-       ENVIRONMENT_NAME if they are missing. The file is rewritten as UTF-8 without BOM.
-    8. alembic upgrade head BEFORE the new code starts (audit rows are written inside business transactions, so new
-       code on an old schema fails every save), then checks that the database is at the code's head.
-    9. Starts CKAM-Web, waits for /api/health, then runs verify_release.ps1 (smoke test) against it.
-   10. On any failure in 6-9: restores shared\.env.pre-<Sha>, restarts the previous release, and says so.
-       The DATABASE IS NEVER ROLLED BACK automatically (see rollback_release.ps1.template and the runbook).
+    6. pip install -c <release>\backend\constraints.txt -e <release>\backend into shared\venv (IF-11: the tested
+       versions). Needs the Python package index (setuptools for the build, any pin not yet in the venv) or a
+       prepared wheel folder: see README.
+    7. Sets FRONTEND_DIST_DIR=<release>\frontend-dist (the single release switch), APP_VERSION=<Sha>, and LOG_DIR
+       if it is missing. The file is rewritten as UTF-8 without BOM, then the step-2 checks are run again on it.
+    8. a) read-only: the code's single Alembic head (= RELEASE.json "alembic_head" when that file exists) and the
+          database's revision before the migration ("alembic current").
+       b) alembic upgrade head BEFORE the new code starts (new code on the old schema refuses every sign-in), then
+          "alembic current" must equal that head.
+    9. Starts CKAM-Web, waits for /api/health, then runs verify_release.ps1 (smoke + security test) against it.
+
+  FAILURE HANDLING (roll forward first, docs/security/CKAM_PRODUCTION_ROLLBACK_STRATEGY.md):
+    * steps 1-3 fail: nothing was changed; the script stops (exit 2).
+    * BRANCH A - a failure in steps 4 to 8a, i.e. BEFORE "alembic upgrade head" was started: the schema is untouched,
+      so the script restores shared\.env.pre-<Sha> and restarts the previous release (strategy case 1-A; IF-01
+      stays open on the old release, re-plan the deploy at once), exit 1. Exception: when the database is already
+      at the new head (an earlier run or a hand migration), the old release cannot run on it, so the script
+      stays down as in branch B.
+    * BRANCH B - a failure from the moment "alembic upgrade head" is started (the upgrade itself, the head check,
+      the start, /api/health, verify_release.ps1): the script does NOT restart the previous release, does NOT run
+      alembic downgrade and does NOT restore anything. It leaves CKAM-Web STOPPED, prints a banner with the
+      database revision ("alembic current"), writes a STATE line to the deploy log and exits 3. On the new schema
+      the previous release cannot record moves / repairs / sales / scrapping (the lifecycle trigger c6e8a0b2d4f6
+      refuses them; receives still work, GT-F01) and it re-opens the file-read hole IF-01. The OWNER decides
+      between a roll-forward fix (preferred), "alembic downgrade -1" from releases\<Sha>\backend (owner's decision,
+      fresh backup first), or restoring the pre-deploy dump (loses everything written since).
 
   Nothing secret is passed on the command line, printed or logged. alembic output lines that mention a password
   (the one-time first-owner password on an EMPTY database) are hidden in the log; on a brand-new database run
   `alembic upgrade head` by hand instead and keep that line in an admin-only place.
 
+  Exit codes: 0 deployed and verified; 1 branch A (previous release restarted); 2 stopped before anything changed;
+  3 branch B (CKAM-Web left stopped, owner decides).
+
 .PARAMETER Sha
   Short git sha of the release (folder name under releases\). Required.
 .PARAMETER PackagePath
-  Zip with backend\ and frontend-dist\ at its top level. Not needed when releases\<Sha> already exists.
+  Zip with backend\ and frontend-dist\ (and RELEASE.json) at its top level. Not needed when releases\<Sha> exists.
 .PARAMETER AppRoot
   Default D:\Citykart_Applications\Citykart_AssetManagement_App
 .PARAMETER TaskName
@@ -71,22 +97,39 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'   # PS 5.1: native stderr (pip/alembic INFO lines) must not abort; exit codes are checked
+$stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
 $release = Join-Path $AppRoot "releases\$Sha"
+$releaseBackend = Join-Path $release 'backend'
+$releaseJson = Join-Path $release 'RELEASE.json'
 $envFile = Join-Path $AppRoot 'shared\.env'
+# Never overwrite the pre-deploy copy of an earlier run (a rerun after a branch-B fix would otherwise lose it).
 $envBackup = "$envFile.pre-$Sha"
+if (Test-Path -LiteralPath $envBackup) { $envBackup = "$envFile.pre-$Sha.$stamp" }
 $python = Join-Path $AppRoot 'shared\venv\Scripts\python.exe'
 $logDir = Join-Path $AppRoot 'logs'
 $verifyScript = Join-Path $PSScriptRoot 'verify_release.ps1'
+$strategyDoc = 'docs/security/CKAM_PRODUCTION_ROLLBACK_STRATEGY.md'
 $dryRun = [bool]$WhatIfPreference
 New-Item -ItemType Directory -Force -Path $logDir -WhatIf:$false | Out-Null
-$logFile = Join-Path $logDir ("deploy_{0}_{1}.log" -f $Sha, (Get-Date -Format 'yyyyMMdd_HHmmss'))
+$logFile = Join-Path $logDir ("deploy_{0}_{1}.log" -f $Sha, $stamp)
+
+# Failure branch state: 'A' until "alembic upgrade head" is started, then 'B' (no automatic switch-back any more).
+$script:Phase = 'A'
+$script:DbBefore = ''
+$script:ExpectedHead = ''
+$script:PreviousRelease = ''
 
 function Write-Log([string]$Message) {
     $line = '{0}  {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message
     Write-Host $line
     Add-Content -Path $logFile -Value $line -WhatIf:$false
 }
-function Stop-Here([string]$Why) { Write-Log "STOPPED: $Why"; exit 2 }
+function Stop-Here([string]$Why) { Write-Log "STOPPED: $Why"; Write-Log 'nothing in CKAM was changed (exit 2)'; exit 2 }
+function Write-Step([string]$Text) {
+    $branch = if ($script:Phase -eq 'A') { 'BRANCH A: restore the previous settings and restart the previous release' }
+              else { 'BRANCH B: CKAM-Web stays STOPPED, no switch-back, no downgrade, no restore' }
+    Write-Log "$Text   [a failure here -> $branch]"
+}
 
 function Read-EnvFile([string]$Path) {
     $map = [ordered]@{}
@@ -107,6 +150,52 @@ function Write-EnvFile([string[]]$Lines) {
 function Import-EnvToProcess {
     foreach ($kv in (Read-EnvFile $envFile).GetEnumerator()) { [Environment]::SetEnvironmentVariable($kv.Key, $kv.Value, 'Process') }
 }
+
+# The app and alembic fall back to a DEVELOPMENT database address when DATABASE_URL is missing (config.py, env.py),
+# and the launcher passes values exactly as written. Returns '' when fine, else the reason. The value is never shown.
+function Test-DatabaseUrl([string]$Path) {
+    $lines = @(Get-Content -LiteralPath $Path | Where-Object { $_ -match '^\s*DATABASE_URL\s*=' })
+    if ($lines.Count -eq 0) { return 'DATABASE_URL is missing in shared\.env (the app would silently use the development database address)' }
+    if ($lines.Count -gt 1) { return "DATABASE_URL appears $($lines.Count) times in shared\.env (exactly one line is allowed)" }
+    $value = ($lines[0] -replace '^\s*DATABASE_URL\s*=', '').Trim()
+    $why = ''
+    if (-not $value) { $why = 'DATABASE_URL in shared\.env is empty (the app would silently use the development database address)' }
+    elseif ($value -match '^["'']') { $why = 'DATABASE_URL in shared\.env is wrapped in quotes (the launcher passes values exactly as written)' }
+    elseif ($value -match '^postgresql(\+\w+)?://') {
+        $hostPart = ($value -replace '^postgresql(\+\w+)?://', '') -replace '^.*@', ''   # drop scheme and user:password@
+        $dbHost = if ($hostPart -match '^\[([^\]]*)\]') { $Matches[1] } else { ($hostPart -split '[/:?]')[0] }
+        $hostPart = $null
+        if ($value -match 'ckam_dev_pw') { $why = 'DATABASE_URL in shared\.env is the development default' }
+        elseif (-not $dbHost) { $why = 'DATABASE_URL in shared\.env names no database host' }
+        elseif ($dbHost -in 'localhost', '127.0.0.1', '::1') { $why = "DATABASE_URL in shared\.env points at this machine ($dbHost); the production database is on the database server" }
+        else { $script:DbHost = $dbHost }
+    } else { $why = 'DATABASE_URL in shared\.env is not a postgresql:// address' }
+    $value = $null
+    return $why
+}
+
+function Invoke-Alembic([string[]]$AlembicArgs) {
+    # Runs alembic from the NEW release's backend folder (only it knows the new revisions). Password lines are hidden.
+    Push-Location $releaseBackend
+    try { $out = & $python -m alembic @AlembicArgs 2>&1 | ForEach-Object { "$_" }; $code = $LASTEXITCODE }
+    finally { Pop-Location }
+    $shown = foreach ($l in @($out)) { if ($l -match '(?i)password') { '(a line mentioning a password was hidden)' } else { $l } }
+    $revs = @(@($out) | Where-Object { $_ -match '^[0-9a-f]{12}\b' } | ForEach-Object { ($_ -split ' ')[0] })
+    [pscustomobject]@{ Code = $code; Lines = @($shown); Revs = $revs }
+}
+function Get-DbRevision {
+    # Read-only "alembic current" for the failure banners. Never throws.
+    try {
+        if (-not (Test-Path -LiteralPath $python) -or -not (Test-Path -LiteralPath (Join-Path $releaseBackend 'alembic.ini'))) { return 'could not be read (no venv python or no release backend)' }
+        Import-EnvToProcess
+        if (-not $env:DATABASE_URL) { return 'could not be read (DATABASE_URL is not set)' }
+        $r = Invoke-Alembic @('current')
+        if ($r.Code -ne 0) { return "could not be read (alembic current exit $($r.Code))" }
+        if ($r.Revs.Count -eq 0) { return '(empty: no revision recorded)' }
+        return ($r.Revs -join ',')
+    } catch { return "could not be read ($($_.Exception.Message))" }
+}
+
 function Stop-Ckam {
     if (-not $PSCmdlet.ShouldProcess($TaskName, 'stop CKAM (task + its own python listener only)')) { return }
     Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
@@ -117,6 +206,9 @@ function Stop-Ckam {
         else { Write-Log "WARNING: another program listens on $Port (pid $($c.OwningProcess)); not touching it" }
     }
     Start-Sleep -Seconds 2
+    $left = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
+    if ($left.Count -eq 0) { Write-Log "CKAM-Web stopped: nothing listens on port $Port" }
+    else { Write-Log "WARNING: something still listens on port $Port (pid $(($left | ForEach-Object { $_.OwningProcess } | Sort-Object -Unique) -join ', ')): check it by hand (runbook step F1)" }
 }
 function Start-Ckam {
     if ($PSCmdlet.ShouldProcess($TaskName, 'start CKAM')) { Start-ScheduledTask -TaskName $TaskName; Start-Sleep -Seconds 8 }
@@ -129,22 +221,80 @@ function Wait-Health([int]$Seconds) {
     }
     return $false
 }
-function Invoke-Rollback([string]$Why) {
-    Write-Log "ROLLBACK: $Why"
+
+# BRANCH B: from the moment "alembic upgrade head" was started. Never restarts the old release, never downgrades,
+# never restores. CKAM stays down (IF-01 cannot be used while nothing listens) until the owner decides.
+function Invoke-StayDown([string]$Why) {
+    Write-Log "FAILED (branch B, after the migration step started): $Why"
+    Stop-Ckam
+    $now = Get-DbRevision
+    $prev = if ($script:PreviousRelease) { Split-Path -Leaf $script:PreviousRelease } else { '(unknown)' }
+    $head = if ($script:ExpectedHead) { $script:ExpectedHead } else { '(unknown)' }
+    $before = if ($script:DbBefore) { $script:DbBefore } else { '(not read)' }
+    $bar = '=' * 110
+    Write-Log $bar
+    Write-Log "CKAM DEPLOY $Sha FAILED AFTER THE DATABASE MIGRATION STEP STARTED - CKAM-Web IS LEFT STOPPED"
+    Write-Log "Reason: $Why"
+    Write-Log "Database now (alembic current): $now   | before this deploy: $before | this release's head: $head"
+    Write-Log 'Nothing was switched back, downgraded or restored by this script.'
+    Write-Log "shared\.env still selects $Sha (the copy taken before the switch: $envBackup)."
+    if ($script:DbBefore -and $now -eq $script:DbBefore -and $now -ne $head) {
+        Write-Log 'The database revision is unchanged (all pending migrations run in ONE transaction, a failure rolls back all of them, GT-F04).'
+        Write-Log "This is strategy case 1. Do NOT start $Sha on the old schema (every sign-in would fail). The OWNER chooses:"
+        Write-Log "  1-A switch back: rollback_release.ps1 -ToSha $prev -ReinstallBackend (IF-01 stays open on it; re-plan at once), or"
+        Write-Log '  1-B stay down until the cause is fixed and the deploy is repeated.'
+        Write-Log '  No alembic downgrade and no restore: there is nothing to undo.'
+    } else {
+        Write-Log "The previous release $prev is INCOMPATIBLE with this schema: it cannot record moves, repairs, losses, disposals, sales"
+        Write-Log 'or scrapping (lifecycle trigger c6e8a0b2d4f6 refuses them; receives still work), and it RE-OPENS the file-read hole IF-01.'
+        Write-Log "Do NOT start $prev. Do NOT run rollback_release.ps1 without the owner's recorded decision."
+        Write-Log 'The OWNER decides between: (1) roll forward - fix the cause and start this release again (preferred);'
+        Write-Log "  (2) 'alembic downgrade -1' run from releases\$Sha\backend (only the lifecycle guard; fresh backup first);"
+        Write-Log '  (3) restore the pre-deploy dump (loses everything written since the backup).'
+    }
+    Write-Log "See $strategyDoc (cases 2-4 and section 5) and the err/launcher logs in $logDir."
+    Write-Log "Keep releases\$Sha (the venv's editable install links to its backend) and releases\$prev. Delete no release folder."
+    Write-Log "The task keeps its at-startup trigger: after a server restart it would start $Sha again. Disable-ScheduledTask only on the owner's decision."
+    Write-Log $bar
+    Write-Log ("STATE: branch=B; ckam_web=stopped; release_selected={0}; previous_release={1}; db_before={2}; db_now={3}; code_head={4}; switched_back=no; downgraded=no; restored=no; exit=3" -f $Sha, $prev, $before, $now, $head)
+    exit 3
+}
+
+# BRANCH A: before "alembic upgrade head" was started. The schema is untouched, so the previous state may come back.
+function Invoke-EarlyRestore([string]$Why) {
+    Write-Log "FAILED (branch A, before the migration step started): $Why"
+    $prevSha = if ($script:PreviousRelease) { Split-Path -Leaf $script:PreviousRelease } else { '' }
+    if ($prevSha -and $prevSha -ne $Sha) {
+        # Safety net: if the database is ALREADY at the new head (an earlier run or a hand migration), the previous
+        # release cannot run on it - stay down instead.
+        $rev = Get-DbRevision
+        if ($script:ExpectedHead -and $rev -eq $script:ExpectedHead) {
+            $script:DbBefore = $rev
+            Invoke-StayDown "$Why (and the database is already at the new head $rev, so the previous release $prevSha must not be restarted)"
+        }
+        Write-Log "database revision (read-only check): $rev"
+    }
     Stop-Ckam
     if ((Test-Path -LiteralPath $envBackup) -and $PSCmdlet.ShouldProcess($envFile, "restore from $envBackup")) {
         Copy-Item -LiteralPath $envBackup -Destination $envFile -Force
-        Write-Log "restored .env from $envBackup (the previous release is selected again)"
+        Write-Log "restored shared\.env from $envBackup (the previous release $prevSha is selected again)"
     }
     Start-Ckam
-    if (Wait-Health 90) { Write-Log 'the previous release answers again. The DATABASE stays at its new version: check the runbook before using the old code for long.' }
-    else { Write-Log 'ROLLBACK DID NOT BRING THE SITE BACK - manual action needed (see rollback_release.ps1.template / the runbook)' }
+    if (Wait-Health 90) {
+        Write-Log "the previous release $prevSha answers again (strategy case 1-A). The schema was not changed by this run."
+        Write-Log 'IF-01 is still open on the previous release: re-plan the deploy at once. If pip ran, the venv now holds this release''s pinned packages: smoke-test sign-in and one read.'
+    } else {
+        Write-Log "THE PREVIOUS RELEASE DID NOT ANSWER - manual action needed (see rollback_release.ps1.template and $strategyDoc case 1)"
+    }
+    Write-Log "Keep releases\$Sha and releases\$prevSha (delete no release folder)."
+    Write-Log ("STATE: branch=A; release_selected={0}; db_changed_by_this_run=no; exit=1" -f $prevSha)
     exit 1
 }
+function Invoke-Failure([string]$Why) { if ($script:Phase -eq 'B') { Invoke-StayDown $Why } else { Invoke-EarlyRestore $Why } }
 
 Write-Log "=== CKAM deploy $Sha $(if ($dryRun) { '(WhatIf: nothing is changed)' }) ==="
 
-# 1. release folder
+# 1. release folder (kept for good: never deleted by this script)
 if (-not (Test-Path -LiteralPath (Join-Path $release 'backend\app\main.py'))) {
     if (-not $PackagePath) { Stop-Here "release folder $release does not exist and no -PackagePath was given" }
     if (-not (Test-Path -LiteralPath $PackagePath)) { Stop-Here "package not found: $PackagePath" }
@@ -152,12 +302,26 @@ if (-not (Test-Path -LiteralPath (Join-Path $release 'backend\app\main.py'))) {
         New-Item -ItemType Directory -Force -Path $release | Out-Null
         Expand-Archive -LiteralPath $PackagePath -DestinationPath $release -Force
     }
+} else {
+    Write-Log "release folder already there, used as it is (not replaced, not deleted): $release"
 }
 if (-not $dryRun -or (Test-Path -LiteralPath $release)) {
     foreach ($f in 'backend\app\main.py', 'backend\alembic.ini', 'backend\pyproject.toml', 'backend\constraints.txt', 'frontend-dist\index.html') {
         if (-not (Test-Path -LiteralPath (Join-Path $release $f))) { Stop-Here "release incomplete, missing $f" }
     }
-    Write-Log "release folder complete: $release"
+    Write-Log "release folder complete: $release (keep it: the editable install links the venv to its backend)"
+    if (Test-Path -LiteralPath $releaseJson) {
+        try { $meta = Get-Content -LiteralPath $releaseJson -Raw | ConvertFrom-Json } catch { Stop-Here "RELEASE.json cannot be read: $($_.Exception.Message)" }
+        $metaSha = [string]$meta.release_sha_short
+        if ($metaSha -and $metaSha -ne $Sha -and -not ([string]$meta.release_sha).StartsWith($Sha)) { Stop-Here "RELEASE.json says release $metaSha, not $Sha" }
+        $script:ExpectedHead = [string]$meta.alembic_head
+        if ($script:ExpectedHead -and $script:ExpectedHead -notmatch '^[0-9a-f]{12}$') { Stop-Here "RELEASE.json alembic_head '$($script:ExpectedHead)' is not a revision id" }
+        Write-Log "RELEASE.json: release $metaSha, the database must reach Alembic head $($script:ExpectedHead)"
+    } else {
+        Write-Log 'no RELEASE.json in the release folder: the head check uses "alembic heads" of the code only'
+    }
+} else {
+    Write-Log "WhatIf: the package is not unpacked yet; RELEASE.json (release id, alembic_head) would be read from $releaseJson"
 }
 
 # 2. pre-checks (read-only; values are never printed)
@@ -175,12 +339,20 @@ if ($placeholders -contains $secret.Trim().ToLowerInvariant()) { $problems += 'a
 $secret = $null
 if ($problems.Count -gt 0) { Stop-Here ('JWT_SECRET fails the production rules: ' + ($problems -join '; ') + ' (the app would refuse to start)') }
 Write-Log 'JWT_SECRET meets the production rules (value not shown)'
-foreach ($k in 'DATABASE_URL', 'FRONTEND_DIST_DIR') { if (-not $settings[$k]) { Stop-Here "$k is missing in shared\.env" } }
+$script:DbHost = ''
+$dbProblem = Test-DatabaseUrl $envFile
+if ($dbProblem) { Stop-Here $dbProblem }
+Write-Log "DATABASE_URL present exactly once (value not shown; database host: $($script:DbHost))"
+if (-not ([string]$settings['FRONTEND_DIST_DIR']).Trim()) { Stop-Here 'FRONTEND_DIST_DIR is missing in shared\.env' }
 if ($settings['TRUSTED_PROXIES']) { Write-Log 'WARNING: TRUSTED_PROXIES is set; CKAM runs without a proxy here, it should be empty (N2/N3)' }
 $wide = @((Get-Acl -LiteralPath $envFile).Access | Where-Object { $_.IdentityReference -match '\\(Users|Everyone|Authenticated Users)$|^Everyone$' })
 if ($wide.Count -gt 0) { Write-Log ('WARNING: shared\.env is readable by ' + (($wide | ForEach-Object { $_.IdentityReference }) -join ', ') + ' - restrict it to Administrators, SYSTEM and the task account') }
 $previousDist = [string]$settings['FRONTEND_DIST_DIR']
-Write-Log "pre-checks passed; current release: $(Split-Path -Parent $previousDist)"
+$script:PreviousRelease = Split-Path -Parent $previousDist
+if (-not (Test-Path -LiteralPath (Join-Path $script:PreviousRelease 'backend\app\main.py'))) {
+    Write-Log "WARNING: the current release folder $($script:PreviousRelease) is incomplete or missing: a branch-A switch-back could not start it"
+}
+Write-Log "pre-checks passed; current release: $($script:PreviousRelease)"
 
 # 3. backup
 if ($BackupHook) {
@@ -196,22 +368,26 @@ if ($BackupHook) {
     Stop-Here 'take the database backup first (task CK_Backup_CKASSETMANAGEMENT on the database server, check backup.log says OK), then rerun with -BackupConfirmed, or pass -BackupHook'
 }
 
-# 4. keep the current settings for the rollback
+# 4. keep the current settings for a branch-A switch-back
+Write-Step "step 4: save shared\.env as $envBackup"
 if ($PSCmdlet.ShouldProcess($envFile, "copy to $envBackup")) { Copy-Item -LiteralPath $envFile -Destination $envBackup -Force; Write-Log "saved $envBackup" }
 
 # 5. stop
+Write-Step "step 5: stop $TaskName"
 Stop-Ckam
 
-# 6. packages (IF-11: exactly the tested versions)
+# 6. packages (IF-11: exactly the tested versions; needs the package index or a wheel folder, see README)
+Write-Step 'step 6: pip install -c constraints.txt -e <release>\backend'
 if ($SkipPipInstall) { Write-Log 'pip install skipped (-SkipPipInstall)' }
-elseif ($PSCmdlet.ShouldProcess("$release\backend", 'pip install -c constraints.txt -e')) {
-    $pip = & $python -m pip install --disable-pip-version-check -c (Join-Path $release 'backend\constraints.txt') -e (Join-Path $release 'backend') 2>&1 | ForEach-Object { "$_" }
+elseif ($PSCmdlet.ShouldProcess($releaseBackend, 'pip install -c constraints.txt -e')) {
+    $pip = & $python -m pip install --disable-pip-version-check -c (Join-Path $releaseBackend 'constraints.txt') -e $releaseBackend 2>&1 | ForEach-Object { "$_" }
     $code = $LASTEXITCODE
     $pip | Select-Object -Last 5 | ForEach-Object { Write-Log "pip: $_" }
-    if ($code -ne 0) { Invoke-Rollback "pip install failed with exit code $code" }
+    if ($code -ne 0) { Invoke-Failure "pip install failed with exit code $code" }
 }
 
-# 7. switch the release (one setting) + release id
+# 7. switch the release (one setting) + release id, then the step-2 checks again on the written file
+Write-Step "step 7: set FRONTEND_DIST_DIR=$release\frontend-dist, APP_VERSION=$Sha"
 if ($PSCmdlet.ShouldProcess($envFile, "set FRONTEND_DIST_DIR=$release\frontend-dist, APP_VERSION=$Sha")) {
     $lines = Get-Content -LiteralPath $envFile
     $lines = Set-EnvKey $lines 'FRONTEND_DIST_DIR' (Join-Path $release 'frontend-dist')
@@ -219,33 +395,73 @@ if ($PSCmdlet.ShouldProcess($envFile, "set FRONTEND_DIST_DIR=$release\frontend-d
     if (-not $settings['LOG_DIR']) { $lines = Set-EnvKey $lines 'LOG_DIR' (Join-Path $AppRoot 'logs\app') }
     Write-EnvFile $lines
     Write-Log 'settings switched to the new release (FRONTEND_DIST_DIR, APP_VERSION)'
+    $again = Read-EnvFile $envFile
+    if (([string]$again['ENVIRONMENT_NAME']).Trim().ToLowerInvariant() -ne 'production') { Invoke-Failure 'after the switch ENVIRONMENT_NAME is no longer "production"' }
+    $dbProblem = Test-DatabaseUrl $envFile
+    if ($dbProblem) { Invoke-Failure "after the switch: $dbProblem" }
+    if ([string]$again['FRONTEND_DIST_DIR'] -ne (Join-Path $release 'frontend-dist')) { Invoke-Failure 'after the switch FRONTEND_DIST_DIR does not select the new release' }
+    Write-Log 'switched settings re-checked: ENVIRONMENT_NAME, DATABASE_URL (value not shown), FRONTEND_DIST_DIR'
 }
 
-# 8. migrations BEFORE the start
-if ($PSCmdlet.ShouldProcess("$release\backend", 'alembic upgrade head')) {
+# 8a. read-only: the code's head and the database revision BEFORE the migration (still branch A)
+Write-Step 'step 8a: alembic heads (code) and alembic current (database), read-only'
+if ($PSCmdlet.ShouldProcess($releaseBackend, 'alembic heads + alembic current (read-only)')) {
     Import-EnvToProcess
-    Push-Location (Join-Path $release 'backend')
-    $up = & $python -m alembic upgrade head 2>&1 | ForEach-Object { "$_" }
-    $code = $LASTEXITCODE
-    $heads = (& $python -m alembic heads 2>&1 | ForEach-Object { "$_" } | Where-Object { $_ -match '^[0-9a-f]{12}' } | ForEach-Object { ($_ -split ' ')[0] }) -join ','
-    $current = (& $python -m alembic current 2>&1 | ForEach-Object { "$_" } | Where-Object { $_ -match '^[0-9a-f]{12}' } | ForEach-Object { ($_ -split ' ')[0] }) -join ','
-    Pop-Location
-    foreach ($l in $up) { if ($l -match '(?i)password') { Write-Log 'alembic: (a line mentioning a password was hidden)' } else { Write-Log "alembic: $l" } }
-    if ($code -ne 0) { Invoke-Rollback "alembic upgrade failed with exit code $code" }
-    if (-not $heads -or $current -ne $heads) { Invoke-Rollback "database is at '$current' but the code's head is '$heads'" }
-    Write-Log "database at head $current"
+    if (-not $env:DATABASE_URL) { Invoke-Failure 'DATABASE_URL is not set in the process - alembic would use the development fallback' }
+    $h = Invoke-Alembic @('heads')
+    if ($h.Code -ne 0 -or $h.Revs.Count -ne 1) { Invoke-Failure "alembic heads did not give exactly one head (exit $($h.Code), heads '$($h.Revs -join ',')')" }
+    $codeHead = $h.Revs[0]
+    if ($script:ExpectedHead -and $codeHead -ne $script:ExpectedHead) { Invoke-Failure "the code's head $codeHead is not RELEASE.json's alembic_head $($script:ExpectedHead)" }
+    $script:ExpectedHead = $codeHead
+    $c = Invoke-Alembic @('current')
+    if ($c.Code -ne 0) { $c.Lines | Select-Object -Last 3 | ForEach-Object { Write-Log "alembic: $_" }; Invoke-Failure "alembic current failed with exit code $($c.Code) (database not reachable?)" }
+    $script:DbBefore = ($c.Revs -join ',')
+    Write-Log "database before the migration: '$($script:DbBefore)'; code head: $codeHead"
+    if ($script:DbBefore -eq $codeHead) { Write-Log 'the database is already at this head: the upgrade will be a no-op' }
+} elseif (-not $dryRun) {
+    Invoke-Failure 'the read-only alembic check was declined at the -Confirm prompt'
+} else {
+    Write-Log "WhatIf: would read alembic heads (must be ONE head$(if ($script:ExpectedHead) { " = RELEASE.json $($script:ExpectedHead)" })) and alembic current from $releaseBackend"
 }
 
-# 9. start + smoke test
+# 8b. migrations BEFORE the start. From the moment the upgrade starts there is NO automatic switch-back (branch B).
+Write-Log 'step 8b: alembic upgrade head   [from the moment it starts, a failure -> BRANCH B: CKAM-Web stays STOPPED, no switch-back, no downgrade, no restore]'
+if ($PSCmdlet.ShouldProcess($releaseBackend, 'alembic upgrade head')) {
+    $script:Phase = 'B'
+    Write-Log 'migration step started: from now on a failure leaves CKAM-Web stopped (branch B)'
+    $up = Invoke-Alembic @('upgrade', 'head')
+    foreach ($l in $up.Lines) { Write-Log "alembic: $l" }
+    if ($up.Code -ne 0) { Invoke-Failure "alembic upgrade failed with exit code $($up.Code)" }
+    $c = Invoke-Alembic @('current')
+    $current = ($c.Revs -join ',')
+    if ($c.Code -ne 0 -or $current -ne $script:ExpectedHead) { Invoke-Failure "after the upgrade the database is at '$current' but the release's head is '$($script:ExpectedHead)'" }
+    Write-Log "database at head $current"
+} elseif ($dryRun) {
+    $script:Phase = 'B'
+    Write-Log "WhatIf: would run alembic upgrade head, then require alembic current = $(if ($script:ExpectedHead) { $script:ExpectedHead } else { 'the code''s head' })"
+} else {
+    # Declined at a -Confirm prompt: the schema is untouched, never start the new code on the old schema.
+    Invoke-Failure 'the migration step was declined at the -Confirm prompt'
+}
+
+# 9. start + smoke test (still branch B)
+Write-Step "step 9: start $TaskName, wait for /api/health, run verify_release.ps1"
 Start-Ckam
 if ($dryRun) {
-    Write-Log "WhatIf: would wait for http://127.0.0.1:$Port/api/health and run $verifyScript -BaseUrl http://127.0.0.1:$Port -ExpectedRelease $Sha -ReleaseDir $release -LauncherLogDir $logDir"
+    $prev = Split-Path -Leaf $script:PreviousRelease
+    Write-Log "WhatIf: would wait for http://127.0.0.1:$Port/api/health and run $verifyScript -BaseUrl http://127.0.0.1:$Port -ExpectedRelease $Sha -ReleaseDir $release -LauncherLogDir $logDir -LocalProcessCheck Require"
+    Write-Log 'WhatIf: failure handling plan (nothing failed in this dry run):'
+    Write-Log '  steps 1-3 (release folder, pre-checks, backup)           -> STOP, nothing changed, exit 2'
+    Write-Log "  steps 4-8a (save settings, stop, pip, switch, read heads) -> BRANCH A: restore $envBackup, restart the previous release $prev (schema untouched), exit 1"
+    Write-Log "  steps 8b-9 (alembic upgrade head, head check, start, health, verify) -> BRANCH B: $TaskName left STOPPED, $prev NOT restarted, no downgrade, no restore, banner + STATE line, exit 3"
+    Write-Log "  release folders releases\$Sha and releases\$prev are kept in every case"
     Write-Log '=== WhatIf finished: nothing in CKAM was changed (only this log file was written) ==='
     exit 0
 }
-if (-not (Wait-Health $HealthTimeoutSeconds)) { Invoke-Rollback 'the new release did not answer /api/health' }
+if (-not (Wait-Health $HealthTimeoutSeconds)) { Invoke-Failure 'the new release did not answer /api/health' }
 Write-Log 'health ok'
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $verifyScript -BaseUrl "http://127.0.0.1:$Port" -ExpectedRelease $Sha -ReleaseDir $release -LauncherLogDir $logDir -OutCsv (Join-Path $logDir "verify_$Sha.csv") | ForEach-Object { Write-Log "verify: $_" }
-if ($LASTEXITCODE -ne 0) { Invoke-Rollback "verify_release.ps1 reported a failure (exit $LASTEXITCODE), see verify_$Sha.csv" }
-Write-Log "=== deploy $Sha finished OK. Keep the previous release folder ($(Split-Path -Parent $previousDist)) for rollback. ==="
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $verifyScript -BaseUrl "http://127.0.0.1:$Port" -ExpectedRelease $Sha -ReleaseDir $release -LauncherLogDir $logDir -LocalProcessCheck Require -OutCsv (Join-Path $logDir "verify_$Sha.csv") | ForEach-Object { Write-Log "verify: $_" }
+if ($LASTEXITCODE -ne 0) { Invoke-Failure "verify_release.ps1 reported a failure (exit $LASTEXITCODE), see verify_$Sha.csv" }
+Write-Log "=== deploy $Sha finished OK. Keep releases\$Sha (the venv's editable install links to it) and the previous release folder ($($script:PreviousRelease)). ==="
+Write-Log ("STATE: branch=none; ckam_web=running; release_selected={0}; db_now={1}; exit=0" -f $Sha, $script:ExpectedHead)
 exit 0

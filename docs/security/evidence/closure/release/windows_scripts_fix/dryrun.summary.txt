@@ -1,0 +1,36 @@
+﻿
+Case Result Exit Checks Failed Title                                                                                       
+---- ------ ---- ------ ------ -----                                                                                       
+D01  PASS      0      6      0 deploy -WhatIf, happy path (package not unpacked yet)                                       
+D02  PASS      0     10      0 deploy -WhatIf, happy path (release folder already unpacked, RELEASE.json read)             
+D03  PASS      2      5      0 deploy -WhatIf, DATABASE_URL missing (must stop)                                            
+D04  PASS      2      5      0 deploy -WhatIf, DATABASE_URL empty (must stop)                                              
+D05  PASS      2      5      0 deploy -WhatIf, DATABASE_URL twice (must stop)                                              
+D06  PASS      2      5      0 deploy -WhatIf, DATABASE_URL = development default (must stop)                              
+D07  PASS      2      5      0 deploy -WhatIf, DATABASE_URL points at this machine (must stop)                             
+D08  PASS      2      5      0 deploy -WhatIf, JWT_SECRET 40 x "a" (must stop)                                             
+D09  PASS      2      5      0 deploy -WhatIf, JWT_SECRET short (must stop)                                                
+D10  PASS      2      5      0 deploy -WhatIf, ENVIRONMENT_NAME=development (must stop)                                    
+D11  PASS      2      5      0 deploy -WhatIf, no backup step (must stop)                                                  
+S12  PASS      2      5      0 REAL run: the unpacked RELEASE.json names another release (must stop before anything)       
+S01  PASS      1      7      0 REAL run in the fake world: pip install fails (BEFORE the migration)                        
+S02  PASS      1      8      0 REAL run: the code's alembic head differs from RELEASE.json (BEFORE the migration, step 8a) 
+S03  PASS      1      8      0 REAL run: alembic current cannot reach the database (BEFORE the migration, step 8a)         
+S04  PASS      3     14      0 REAL run: alembic upgrade head FAILS (migration started; revision unchanged)                
+S05  PASS      3     14      0 REAL run: upgrade exits 0 but alembic current is not RELEASE.json's head                    
+S06  PASS      3     14      0 REAL run: migration OK, the new release does not answer /api/health                         
+S07  PASS      3     13      0 REAL run: migration OK, health OK, verify_release.ps1 fails (nothing on port 3999 -> exit 2)
+S08  PASS      3      6      0 REAL run: pip fails but the database is ALREADY at the new head (safety net: stay down)     
+S09  PASS      2      5      0 REAL run: DATABASE_URL missing (must stop before anything)                                  
+S10  PASS      2      5      0 REAL run: weak JWT_SECRET (must stop before anything)                                       
+S11  PASS      2      5      0 REAL run: ENVIRONMENT_NAME=prod (must stop before anything)                                 
+S13  PASS      1      9      0 REAL run, rerun: an earlier .env.pre-bbbbbbb exists (must not be overwritten), pip fails    
+R01  PASS      2      4      0 rollback -WhatIf to aaaaaaa (already selected: must stop)                                   
+R02  PASS      0      5      0 rollback -WhatIf to bbbbbbb                                                                 
+L01  PASS      0      4      0 launcher -WhatIf                                                                            
+LEAK PASS             1      0 secret leak scan of 349 files (logs, deploy logs, fake call logs, transcript)               
+
+
+
+cases: 28; PASS: 28; FAIL: 0; checks: 188; failed checks: 0
+secret leak hits: 0 (needles: the fake JWT secret, the fake DB password, the dev-default DB password, the fake NAS password, the fake one-time password)

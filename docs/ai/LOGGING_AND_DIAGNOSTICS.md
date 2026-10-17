@@ -114,7 +114,7 @@ tool and is unused.
 | `LOG_SLOW_SQL_MS` | `500` | a statement slower than this → WARNING line at once + row (`kind: slow_sql`) |
 | `LOG_RETENTION_DAYS` | `180` | see §4 |
 | `TRUSTED_PROXIES` | empty | comma-separated IPs / networks whose `X-Forwarded-For` is believed (leave empty for the single uvicorn process) |
-| `ENVIRONMENT_NAME` | `development` | shown in logs, events and the bundle (set `production` on 10.0.1.98) |
+| `ENVIRONMENT_NAME` | `production` when unset *(updated 2026-10-17, security release; was `development`)* | shown in logs, events and the bundle. Security N4 / CL1-N4-01: when the variable is **not set at all** the server counts as **production** (fail closed: the start-up secret check refuses weak `JWT_SECRET` values and the API docs are hidden). Docker dev/UAT sets `development` explicitly in `docker-compose.yml`. Still set `production` explicitly on 10.0.1.98 so logs and diagnostics are clear |
 | `APP_VERSION` | empty | release id; empty → `GIT_COMMIT` env (Docker build arg) → a `VERSION` file in the backend folder → `unknown` |
 
 Every line is one JSON object: `ts, level, logger, request_id, actor_id, msg` plus, for access lines,

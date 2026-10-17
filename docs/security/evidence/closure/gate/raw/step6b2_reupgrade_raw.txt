@@ -1,0 +1,4 @@
+RECEIVE PO 6 line 2 (NO_SERIAL): 200 {"po_id":6,"invoice_number":"GT-step6b2_reupgrade-INV","assets_created":1,"serial_pending":0,"assets":[{"asset_id":18,"asset_code":"CKVPL/ADFA-VPL/0005","line_no":2,"serial_number":"N/A","serial_pending":false}],"label_asset_ids":[18],"po_status":"RECEIVED","waiting_units":0}
+MOVE asset 8 -> person 7: 201 {"id":30,"asset_id":8,"event_type":"MOVED","event_date":"2026-10-17T04:21:46.438195Z","from_asset_user_id":3,"to_asset_user_id":7,"status_after":"ALLOTTED","remarks":"GT step6b2_reupgrade move","reference_no":null,"recorded_by":2,"label":"Allotted to Sec Plain Employee CKSPL"}
+MOVE asset 8 back to stock room: 201 IN_STOCK
+SOLD asset 13: 201 {"id":32,"asset_id":13,"event_type":"SOLD","event_date":"2026-10-17T04:21:46.465117Z","from_asset_user_id":8,"to_asset_user_id":null,"status_after":"SOLD","remarks":"GT step6b2_reupgrade sale","reference_no":"GT-SALE","recorded_by":2,"label":"Sold"}

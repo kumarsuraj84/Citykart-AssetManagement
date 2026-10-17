@@ -1,0 +1,6 @@
+id,step,what,expected,actual,result,evidence
+"GT-6P00","6","[new code, old schema] GET /api/health","observe (process up)","200 {""status"":""ok""}","PASS",""
+"GT-6P01","6","[new code, old schema] app shell /assets/1","observe","200 text/html; charset=utf-8","PASS",""
+"GT-6P02","6","[new code, old schema] sign-in SECHO","refused for everyone (no token), i.e. the deploy cannot look healthy to a user","422 {""detail"":""Some of the values could not be saved. Check them and try again."",""request_id"":""67fce15f62ab4e57ad8aac83425ef24f""}","PASS",""
+"GT-6P03","6","[new code, old schema] sign-in operator SECOPIT","fails visibly","422 {""detail"":""Some of the values could not be saved. Check them and try again."",""request_id"":""977befdcc3b845468b40fab3c99a72be""}","PASS",""
+"GT-6P04","6","[new code, old schema] sign-in with a WRONG password","observe","422 {""detail"":""Some of the values could not be saved. Check them and try again."",""request_id"":""bfb59be802b848ebb767c09363c0c2f7""}","PASS",""

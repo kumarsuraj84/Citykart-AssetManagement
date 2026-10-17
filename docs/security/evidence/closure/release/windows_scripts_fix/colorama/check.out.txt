@@ -1,0 +1,99 @@
+== python / pip
+Python 3.13.15
+pip 26.2.1 from /usr/local/lib/python3.13/site-packages/pip (python 3.13)
+== qrcode pin: 8.2
+
+== 1. Linux: pip install --dry-run -c constraints.txt (NEW) qrcode==8.2
+exit: 0
+Would install qrcode-8.2
+
+== 2. Windows wheels: qrcode==8.2 plus its win32-only requirement 'colorama' (unversioned, as qrcode asks)
+   (pip evaluates markers for THIS Linux interpreter even with --platform, so colorama is named explicitly)
+-- with the NEW constraints:
+exit: 0
+Would install colorama-0.4.6 qrcode-8.2
+-- with the COMMITTED constraints (HEAD, no colorama line):
+exit: 0
+Would install colorama-0.4.6 qrcode-8.2
+
+== 3. colorama 0.4.6 universal wheel for win_amd64 / cp313 (pip download --no-deps --only-binary=:all:)
+exit: 0
+total 28
+-rw-r--r-- 1 root root 25335 Oct 17 04:46 colorama-0.4.6-py2.py3-none-any.whl
+4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6  /tmp/dl/colorama-0.4.6-py2.py3-none-any.whl
+
+== 4. Linux full backend runtime deps (pyproject dependencies) with the NEW constraints (also gives the metadata)
+exit: 0
+SUMMARY resolved=43 at_pin=43 unpinned=0 mismatched=0 pins_in_file=44 pins_not_used=['colorama']
+  qrcode requires: colorama ; sys_platform == "win32"
+
+== 5. Windows closure (markers evaluated for win32 / CPython 3.13) against the NEW constraints
+wheel colorama-0.4.6-py2.py3-none-any.whl: Requires-Dist = none
+Windows closure: 43 packages; Linux closure: 43 packages
+only on Windows: ['colorama']
+only on Linux:   ['uvloop']
+Windows packages without metadata here (not resolved further): none
+  ok        alembic==1.20.0
+  ok        annotated-doc==0.0.5
+  ok        annotated-types==0.8.0
+  ok        anyio==4.15.1
+  ok        argon2-cffi==25.1.0
+  ok        argon2-cffi-bindings==26.1.0
+  ok        asyncpg==0.31.0
+  ok        cffi==2.1.1
+  ok        click==8.5.0
+  ok        colorama==0.4.6
+  ok        cryptography==50.0.1
+  ok        ecdsa==0.19.2
+  ok        et-xmlfile==2.0.0
+  ok        fastapi==0.141.1
+  ok        greenlet==3.5.6
+  ok        h11==0.16.0
+  ok        httptools==0.8.0
+  ok        idna==3.20
+  ok        mako==1.4.3
+  ok        markupsafe==3.0.3
+  ok        openpyxl==3.1.5
+  ok        pillow==12.3.0
+  ok        psycopg2-binary==2.9.13
+  ok        pyasn1==0.6.4
+  ok        pycparser==3.0
+  ok        pydantic==2.13.5
+  ok        pydantic-core==2.46.5
+  ok        pydantic-settings==2.15.0
+  ok        python-barcode==0.16.1
+  ok        python-dotenv==1.2.3
+  ok        python-jose==3.5.0
+  ok        python-multipart==0.0.32
+  ok        pyyaml==6.0.3
+  ok        qrcode==8.2
+  ok        rsa==4.9.1
+  ok        six==1.17.0
+  ok        sqlalchemy==2.1.1
+  ok        starlette==1.7.0
+  ok        typing-extensions==4.16.0
+  ok        typing-inspection==0.4.4
+  ok        uvicorn==0.54.0
+  ok        watchfiles==1.3.0
+  ok        websockets==17.1
+WINDOWS RESULT: 43 packages, 43 at their pin, 0 unpinned/mismatched
+
+== 6. The same against the COMMITTED constraints (HEAD, before this change; the colorama version shown is only the
+      downloaded wheel's - without a pin pip takes the newest, see step 2)
+Windows closure: 43 packages; Linux closure: 43 packages
+only on Windows: ['colorama']
+only on Linux:   ['uvloop']
+  UNPINNED  colorama==0.4.6
+WINDOWS RESULT: 43 packages, 42 at their pin, 1 unpinned/mismatched
+
+== 7. Every package of the Windows closure (NEW pins) has a win_amd64/cp313 or universal wheel (--no-deps dry run)
+exit: 0
+Would install Mako-1.4.3 MarkupSafe-3.0.3 PyYAML-6.0.3 SQLAlchemy-2.1.1 alembic-1.20.0 annotated-doc-0.0.5 annotated-types-0.8.0 anyio-4.15.1 argon2-cffi-25.1.0 argon2-cffi-bindings-26.1.0 asyncpg-0.3
+1.0 cffi-2.1.1 click-8.5.0 colorama-0.4.6 cryptography-50.0.1 ecdsa-0.19.2 et_xmlfile-2.0.0 fastapi-0.141.1 greenlet-3.5.6 h11-0.16.0 httptools-0.8.0 idna-3.20 openpyxl-3.1.5 pillow-12.3.0 psycopg2-bi
+nary-2.9.13 pyasn1-0.6.4 pycparser-3.0 pydantic-2.13.5 pydantic-settings-2.15.0 pydantic_core-2.46.5 python-barcode-0.16.1 python-dotenv-1.2.3 python-jose-3.5.0 python-multipart-0.0.32 qrcode-8.2 rsa-
+4.9.1 six-1.17.0 starlette-1.7.0 typing-inspection-0.4.4 typing_extensions-4.16.0 uvicorn-0.54.0 watchfiles-1.3.0 websockets-17.1
+
+== 8. Pinned versions unchanged: diff of the pin lines HEAD -> NEW
+9a10
+> colorama==0.4.6
+pins HEAD: 43  pins NEW: 44

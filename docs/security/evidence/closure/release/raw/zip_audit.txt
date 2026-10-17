@@ -1,0 +1,112 @@
+entries: 238 (files 215, directories 23)
+total uncompressed: 4272513 bytes; compressed data: 2090613 bytes
+backslash in any entry name: false; absolute or '..' names: false
+top-level names: RELEASE.json, backend, frontend-dist, ops
+
+largest 15 files:
+    1374250  frontend-dist/assets/index-C42ooaMX.js
+     904604  frontend-dist/logo.png
+     102844  frontend-dist/assets/index-Bj21ou3B.css
+      85068  frontend-dist/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2
+      66594  frontend-dist/favicon.webp
+      49724  backend/app/erp/service.py
+      49643  backend/app/imports/asset_import_service.py
+      48256  frontend-dist/assets/inter-latin-wght-normal-Dx4kXJAl.woff2
+      47985  backend/app/purchase_orders/service.py
+      39510  backend/app/masters/router.py
+      37946  backend/app/assets/router.py
+      35577  backend/app/asset_users/router.py
+      32857  backend/app/purchase_orders/router.py
+      30666  backend/app/erp/router.py
+      29597  backend/app/erp/changes.py
+
+exclusion assertions (entry names):
+  PASS  no .env (any .env*)
+  PASS  no *.map
+  PASS  no node_modules
+  PASS  no .git
+  PASS  no tests / test files
+  PASS  no docs folder
+  PASS  no demo
+  PASS  no screenshots/images outside frontend-dist
+  PASS  no dumps/backups (*.dump|*.sql.gz|*.bak|*.backup|backups/)
+  PASS  no keys/certs (.pem|.key|id_rsa|.pfx|.p12|.crt)
+  PASS  no python caches (__pycache__|*.pyc)
+  PASS  no coverage/caches (.coverage|htmlcov|.pytest_cache|.ruff_cache|.mypy_cache)
+  PASS  no password files (nas.pw|*.pw)
+  PASS  no docker files
+  PASS  no other backend scripts than create_owner.py
+  exclusion violations: 0
+
+secret scan (text entries):
+  HIT [URL with credentials (scheme://user:pass@)] backend/alembic.ini:89: "sqlalchemy.url = driver://user:pass@localhost/dbname"
+  HIT [URL with credentials (scheme://user:pass@)] backend/app/alembic/env.py:17: "\"DATABASE_URL\", \"postgresql+psycopg2://ckam:ckam_dev_pw@localhost:5432/ckam\""
+  HIT [password = value] backend/app/alembic/versions/d3f8a1c5b7e9_asset_user_rbac_responsibility_rebuild.py:153: "temp_password = secrets.token_urlsafe(9)"
+  HIT [password = value] backend/app/asset_users/models.py:59: "must_change_password: Mapped[bool] = mapped_column(default=True)"
+  HIT [password = value] backend/app/asset_users/people.py:76: "has_password: bool"
+  HIT [password = value] backend/app/asset_users/people.py:77: "must_change_password: bool"
+  HIT [password = value] backend/app/asset_users/people.py:100: "abled=user.login_enabled, has_password=user.password_hash is not None,"
+  HIT [password = value] backend/app/asset_users/people.py:101: "must_change_password=user.must_change_password, is_primary_owner=user.is_prim"
+  HIT [password = value] backend/app/asset_users/people.py:360: "gin_enabled=True, must_change_password=True,"
+  HIT [password = value] backend/app/asset_users/router.py:490: "e=u.name, email=u.email, temp_password=temp)"
+  HIT [password = value] backend/app/asset_users/router.py:624: "return ResetPasswordOut(temp_password=temp)"
+  HIT [password = value] backend/app/asset_users/schemas.py:86: "must_change_password: bool"
+  HIT [password = value] backend/app/asset_users/schemas.py:111: "temp_password: str"
+  HIT [password = value] backend/app/asset_users/schemas.py:122: "only_without_password: bool = True"
+  HIT [password = value] backend/app/asset_users/schemas.py:131: "temp_password: str"
+  HIT [password = value] backend/app/asset_users/service.py:109: "temp_password = secrets.token_urlsafe(9)"
+  HIT [password = value] backend/app/asset_users/service.py:111: "asset_user.must_change_password = True"
+  HIT [password = value] backend/app/asset_users/service.py:135: "user.must_change_password = True"
+  HIT [password = value] backend/app/auth/password_policy.py:64: "def password_problem(new_password: str, *, code: str | None = None, e"
+  HIT [password = value] backend/app/auth/router.py:63: "must_change_password=asset_user.must_change_password,"
+  HIT [password = value] backend/app/auth/router.py:365: ".name} could not change their password: \""
+  HIT [password = value] backend/app/auth/router.py:372: ".name} could not change their password: \""
+  HIT [password = value] backend/app/auth/router.py:377: "asset_user.must_change_password = False"
+  HIT [password = value] backend/app/auth/schemas.py:20: "password: str = Field(max_length=MAX_PASSWO"
+  HIT [password = value] backend/app/auth/schemas.py:25: "must_change_password: bool"
+  HIT [password = value] backend/app/auth/schemas.py:39: "old_password: str = Field(max_length=MAX_PASSWO"
+  HIT [password = value] backend/app/auth/schemas.py:40: "new_password: str = Field(min_length=MIN_PASSWO"
+  HIT [password = value] backend/app/auth/schemas.py:47: "if self.new_password == self.old_password:"
+  HIT [password = value] backend/app/core/config.py:52: "po_source_password: str | None = Field(default=None,"
+  HIT [URL with credentials (scheme://user:pass@)] backend/app/core/config.py:17: "ase_url: str = Field(default=\"postgresql+asyncpg://ckam:ckam_dev_pw@localhost:5432/ckam\", repr=Fal"
+  HIT [JWT_SECRET=] backend/app/core/config.py:8: "DEFAULT_DEV_JWT_SECRET = \"dev_secret_change_me\""
+  HIT [password = value] backend/app/erp/source.py:284: "the default). Holds the password: never log or show this dict.\"\"\""
+  HIT [password = value] backend/app/erp/source.py:287: "user=settings.po_source_user, password=settings.po_source_password,"
+  HIT [password = value] backend/app/erp/stores.py:9: "be created. A new user has no password: an"
+  HIT [password = value] backend/app/erp/stores.py:142: "gin_enabled=True, must_change_password=True,"
+  HIT [password = value] backend/app/observability/redact.py:7: "ngs, argon2 password hashes, \"password=...\" pairs, the password inside a"
+  HIT [password = value] backend/app/observability/redact.py:41: "# password=..., \"password\": \"...\", temp_passw"
+  HIT [password = value] backend/app/observability/redact.py:41: "=..., \"password\": \"...\", temp_password: ..."
+  HIT [URL with credentials (scheme://user:pass@)] backend/app/observability/redact.py:39: "# scheme://user:password@host  ->  scheme://user:***@ho"
+  HIT [URL with credentials (scheme://user:pass@)] backend/app/observability/redact.py:39: "eme://user:password@host  ->  scheme://user:***@host"
+  HIT [password = value] backend/scripts/create_owner.py:76: "temp_password: str | None = None"
+  HIT [password = value] backend/scripts/create_owner.py:85: "temp_password = secrets.token_urlsafe(9)"
+  HIT [password = value] backend/scripts/create_owner.py:98: "must_change_password=True,"
+  HIT [password = value] frontend-dist/assets/index-C42ooaMX.js:62: "0,email:!0,month:!0,number:!0,password:!0,range:!0,search:!0,tel:!0,text:!0,time:!0,url:!0,week:!0};function vr(e){var t"
+  HIT [password = value] frontend-dist/assets/index-C42ooaMX.js:64: "l,isPrimaryOwner:!1,mustChangePassword:!1,assetUserId:null,setAuth:t=>e({...t,assetUserId:t.assetUserId??yv(t.accessToke"
+  HIT [password = value] frontend-dist/assets/index-C42ooaMX.js:64: ":e.is_primary_owner,mustChangePassword:e.must_change_password,assetUserId:e.asset_user_id??null})}function ly(e){let t=b"
+  HIT [password = value] frontend-dist/assets/index-C42ooaMX.js:64: "er:t.isPrimaryOwner,mustChangePassword:!1,assetUserId:n?.asset_user_id??(n?null:t.assetUserId)})}var uy=null;function dy"
+  HIT [password = value] frontend-dist/assets/index-C42ooaMX.js:64: "er:e.isPrimaryOwner,mustChangePassword:!0}),window.location.pathname.startsWith(`/change-password`))return;let t=iy(py()"
+  HIT [password = value] frontend-dist/assets/index-C42ooaMX.js:105: ".min(1,`User ID is required`),password:fo().min(1,`Password is required`)}),JM=`The User"
+  HIT [password = value] frontend-dist/assets/index-C42ooaMX.js:105: "-4`})]})]})})})}var eN=Wo({oldPassword:fo().min(1,`Current password is required`),newPas"
+  HIT [password = value] frontend-dist/assets/index-C42ooaMX.js:105: "ent password is required`),newPassword:fo().min(8,`New password must be at least 8 c"
+  HIT [password = value] frontend-dist/assets/index-C42ooaMX.js:105: "t least 8 characters`),confirmPassword:fo().min(1,`Please confirm the new password`)})."
+  HIT [password = value] frontend-dist/assets/index-C42ooaMX.js:105: "w password`)}).refine(e=>e.newPassword===e.confirmPassword,{path:[`confirmPassword`],message:`Passwords do not match`})."
+  HIT [password = value] frontend-dist/assets/index-C42ooaMX.js:125: "s:l.map(e=>e.id),only_without_password:!1}:{kind:n,only_without_password:!0,...i?{company_id:i}:{}},t=await Z.post(`/ass"
+  HIT [password = value] frontend-dist/assets/index-C42ooaMX.js:125: "h===0?`No account was given a password: none of the chosen accounts could"
+  HIT [password = value] frontend-dist/assets/index-C42ooaMX.js:125: "et-password`);ue({name:e.name,password:t.temp_password}),pe()}catch(e){fe(e instanceof Error?e.message:`C"
+  HIT [password = value] frontend-dist/assets/index-C42ooaMX.js:125: "th/login`,{login_id:r.loginId,password:r.password});if(cy(i),i.must_change_password){await t({to:`/change-password`,sear"
+  HIT [password = value] frontend-dist/assets/index-C42ooaMX.js:125: "(`/auth/change-password`,{old_password:t.oldPassword,new_password:t.newPassword})),r.history.push(k0(bv.getState().role,"
+  HIT [password = value] frontend-dist/assets/index-C42ooaMX.js:125: "ccessToken:e,role:t,mustChangePassword:n}=bv.getState();throw au(e?{to:n?`/change-password`"
+  HIT [password = value] frontend-dist/assets/index-C42ooaMX.js:125: "ccessToken:t,role:n,mustChangePassword:r}=bv.getState();if(t)throw au(r?{to:`/change-password`,s"
+  HIT [password = value] frontend-dist/assets/index-C42ooaMX.js:125: ">{let{accessToken:t,mustChangePassword:n}=bv.getState();if(!t)throw au({to:`/login`,search:{next:"
+  HIT [DATABASE_URL=] ops/db/ROLE_SPLIT_RUNBOOK.md:117: "set DATABASE_URL=postgresql+asyncpg://ckasset_migrator:<typed at run time>@10.0.0.205:5432/"
+  HIT [password = value] ops/db/role_split.sql:31: "-- only, -v migrator_password=... / -v runtime_password=... are"
+  HIT [password = value] ops/db/role_split.sql:31: "tor_password=... / -v runtime_password=... are accepted at run time."
+  HIT [password = value] ops/db/role_split.sql:313: "ALTER ROLE :\"migrator_role\" PASSWORD :'migrator_password';"
+  HIT [password = value] ops/db/role_split.sql:316: "ALTER ROLE :\"runtime_role\" PASSWORD :'runtime_password';"
+  HIT [password = value] ops/windows/run_ckam_web.ps1.template:117: "$nasPassword = (Get-Content -LiteralPath $NasPasswordFile"
+  HIT [password = value] ops/windows/run_ckam_web.ps1.template:125: "$nasPassword = $null"
+  HIT [NAS/ERP password words] ops/windows/run_ckam_web.ps1.template:117: "$nasPassword = (Get-Content -LiteralPath $NasPasswordFile"
+  HIT [NAS/ERP password words] ops/windows/run_ckam_web.ps1.template:125: "$nasPassword = $null"
+scanned text entries: 205

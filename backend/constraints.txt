@@ -15,6 +15,9 @@ argon2-cffi-bindings==26.1.0
 asyncpg==0.31.0
 cffi==2.1.1
 click==8.5.0
+# Windows only (IF-11 residual, gate 2026-10-17): qrcode pulls colorama in on win32 (the production server), so it
+# is pinned too; on Linux nothing requires it and this line installs nothing. 0.4.6 is a universal py2.py3 wheel.
+colorama==0.4.6
 cryptography==50.0.1
 ecdsa==0.19.2
 et_xmlfile==2.0.0

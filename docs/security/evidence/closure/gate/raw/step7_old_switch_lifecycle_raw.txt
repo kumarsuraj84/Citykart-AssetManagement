@@ -1,0 +1,3 @@
+RECEIVE PO 8 line 1 (HAS_SERIAL): 200 {"po_id":8,"invoice_number":"GT-step7_old_switch_lifecycle-INV","assets_created":1,"serial_pending":0,"assets":[{"asset_id":23,"asset_code":"CKVPL/ITFA-VPL/0006","line_no":1,"serial_number":"GTSstep7oldsw76613","serial_pending":false}],"label_asset_ids":[23],"po_status":"PARTLY_RECEIVED","waiting_units":1}
+MOVE asset 17 -> person 7: 422 {"detail":"Some of the values could not be saved. Check them and try again.","request_id":"a9f27e271abc4c259c8237faba8f24a5"}
+SOLD asset 16: 422 {"detail":"Some of the values could not be saved. Check them and try again.","request_id":"98a874fbb23b474d973e72544d8454fa"}

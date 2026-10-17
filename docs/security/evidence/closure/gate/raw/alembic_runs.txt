@@ -1,0 +1,74 @@
+GT gate rehearsal -- Alembic runs of the PACKAGED backend (releases/eed3de1/backend, alembic.ini, packaged migrations),
+run with scripts/alembic_run.py in a throw-away container (image ckam-sec-api = the 43 pinned packages, Python 3.13.15),
+as the non-superuser owning role ckassetapp against the throw-away Postgres 17 container ckam-gate-db.
+DATABASE_URL is replaced by <DATABASE_URL> in any output line. "wall" = whole alembic process incl. ~0.7 s Python start-up.
+
+################ 1. MAIN scratch DB "ckassetmanagement": step-by-step upgrade (step 3) ################
+=== alembic heads  exit=0  wall=654 ms
+c6e8a0b2d4f6 (head)
+=== alembic current  exit=0  wall=1102 ms
+e6f8a0b2c4d6
+=== alembic upgrade f9a1c3e5b7d2  exit=0  wall=966 ms
+INFO  [alembic.runtime.migration] Running upgrade e6f8a0b2c4d6 -> f9a1c3e5b7d2, Security AU-05/AU-07: asset_user.token_version (the session version)
+=== alembic upgrade a3c5e7f9b1d4  exit=0  wall=961 ms
+INFO  [alembic.runtime.migration] Running upgrade f9a1c3e5b7d2 -> a3c5e7f9b1d4, Security AU-10/IF-05/IF-06: append-only tables refuse TRUNCATE; the audit purge flag cannot remove recent rows
+=== alembic upgrade b5d7f9a1c3e5  exit=0  wall=1008 ms
+INFO  [alembic.runtime.migration] Running upgrade a3c5e7f9b1d4 -> b5d7f9a1c3e5, Security AU-06: auth_session (server-side sign-in session records, refresh-token reuse detection)
+=== alembic upgrade c6e8a0b2d4f6  exit=0  wall=1014 ms
+INFO  [alembic.runtime.migration] Running upgrade b5d7f9a1c3e5 -> c6e8a0b2d4f6, Security OBS-STATUS: the database refuses a change of an asset's lifecycle fields outside the ledger writer
+=== alembic current  exit=0  wall=1068 ms
+c6e8a0b2d4f6 (head)
+=== total wall time of upgrade/downgrade commands: 3950 ms
+Server-side statement durations (PostgreSQL log, log_min_duration_statement=0; full log in pg_migration_statement_log.txt):
+  f9a1c3e5b7d2  ALTER TABLE asset_user ADD COLUMN token_version INTEGER DEFAULT '0' NOT NULL      0.679 ms  (+ version 0.270, COMMIT 0.587)
+  a3c5e7f9b1d4  CREATE FUNCTION forbid_append_only_truncate 0.823 ms; 4x CREATE TRIGGER ..._no_truncate 0.266/0.115/0.104/0.185 ms;
+                CREATE OR REPLACE forbid_audit_log_write 0.127 ms; ckam_purge_audit_log 0.143 ms; REVOKE 0.039 ms; COMMIT 0.995 ms
+  b5d7f9a1c3e5  CREATE TABLE auth_session 1.941 ms; 2x CREATE INDEX 0.198/0.355 ms; COMMIT 1.028 ms
+  c6e8a0b2d4f6  CREATE FUNCTION forbid_asset_lifecycle_write 0.919 ms; CREATE TRIGGER trg_asset_lifecycle_fields_guard 0.470 ms; COMMIT 0.725 ms
+
+################ 2. COPY A (fresh restore): single `alembic upgrade head` (what deploy_ckam.ps1 / runbook Phase 4 run) ################
+=== alembic current  exit=0  wall=852 ms
+e6f8a0b2c4d6
+=== alembic upgrade head  exit=0  wall=863 ms
+INFO  [alembic.runtime.migration] Running upgrade e6f8a0b2c4d6 -> f9a1c3e5b7d2, ...
+INFO  [alembic.runtime.migration] Running upgrade f9a1c3e5b7d2 -> a3c5e7f9b1d4, ...
+INFO  [alembic.runtime.migration] Running upgrade a3c5e7f9b1d4 -> b5d7f9a1c3e5, ...
+INFO  [alembic.runtime.migration] Running upgrade b5d7f9a1c3e5 -> c6e8a0b2d4f6, ...
+=== alembic current  exit=0  wall=847 ms
+c6e8a0b2d4f6 (head)
+
+################ 3. COPY A: recovery option (a) -- `alembic downgrade e6f8a0b2c4d6` (all four), after the new code had run ################
+(before: auth_session 3 rows (1 revoked), asset_user SECHO token_version=1)
+=== alembic current  exit=0  wall=766 ms
+c6e8a0b2d4f6 (head)
+=== alembic downgrade e6f8a0b2c4d6  exit=0  wall=777 ms
+INFO  [alembic.runtime.migration] Running downgrade c6e8a0b2d4f6 -> b5d7f9a1c3e5, Security OBS-STATUS: ...
+INFO  [alembic.runtime.migration] Running downgrade b5d7f9a1c3e5 -> a3c5e7f9b1d4, Security AU-06: auth_session ...
+INFO  [alembic.runtime.migration] Running downgrade a3c5e7f9b1d4 -> f9a1c3e5b7d2, Security AU-10/IF-05/IF-06: ...
+INFO  [alembic.runtime.migration] Running downgrade f9a1c3e5b7d2 -> e6f8a0b2c4d6, Security AU-05/AU-07: asset_user.token_version ...
+=== alembic current  exit=0  wall=782 ms
+e6f8a0b2c4d6
+Server-side: DROP TRIGGER lifecycle 0.499 ms, DROP FUNCTION 0.111 ms, (auth_session drop), 4x DROP TRIGGER truncate 0.045-0.084 ms,
+             DROP FUNCTION 0.030 ms, ALTER TABLE asset_user DROP COLUMN token_version 0.195 ms, COMMIT 1.096 ms
+Then on the same copy: `alembic upgrade head` again: exit 0, wall 866 ms, c6e8a0b2d4f6 (head)  (re-upgrade after a full downgrade works)
+
+################ 4. COPY B (fresh restore): upgrade head, new code ran, then recovery option (b) -- `alembic downgrade -1` ################
+=== alembic upgrade head  exit=0  wall=791 ms   -> c6e8a0b2d4f6 (head)
+(new code ran: auth_session 3 rows, SECHO token_version=1)
+=== alembic downgrade -1  exit=0  wall=892 ms
+INFO  [alembic.runtime.migration] Running downgrade c6e8a0b2d4f6 -> b5d7f9a1c3e5, Security OBS-STATUS: ...
+=== alembic current  exit=0  wall=780 ms
+b5d7f9a1c3e5
+Later (roll forward again): `alembic upgrade head`  exit=0  wall=809 ms
+INFO  [alembic.runtime.migration] Running upgrade b5d7f9a1c3e5 -> c6e8a0b2d4f6, ...
+=== alembic current -> c6e8a0b2d4f6 (head)
+
+################ 5. COPY C (fresh restore): fault injection -- migration 4 forced to fail ################
+(scripts/fault_inject.sql pre-created a trigger named trg_asset_lifecycle_fields_guard on asset)
+=== alembic current -> e6f8a0b2c4d6
+=== alembic upgrade head  exit=1
+sqlalchemy.exc.ProgrammingError: (psycopg2.errors.DuplicateObject) trigger "trg_asset_lifecycle_fields_guard" for relation "asset" already exists
+[SQL: CREATE TRIGGER trg_asset_lifecycle_fields_guard BEFORE UPDATE OF status, current_asset_user_id, status_since ON asset ...]
+Afterwards (copy_c_after_failed_upgrade.txt): alembic_version = e6f8a0b2c4d6, no token_version column, no auth_session table, no TRUNCATE
+triggers, audit purge function unchanged (1-day floor) -> the four migrations run in ONE transaction (app/alembic/env.py:
+one context.begin_transaction() around run_migrations); a failure anywhere leaves the database exactly at the starting revision.

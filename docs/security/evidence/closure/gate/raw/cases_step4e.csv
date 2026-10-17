@@ -1,0 +1,3 @@
+id,step,what,expected,actual,result,evidence
+"GT-340","4","Print Labels default label pictures (fresh browser)","observe: what the default bulk label encodes","default setting ""Barcode + QR · 70 × 20 mm""; images requested: /api/assets/1/qr.png, /api/assets/1/label.png?symbol=barcode","PASS",""
+"GT-341","4","docs claim (PRODUCTION_INFRASTRUCTURE.md): Print Labels labels contain just the asset code and no URL","only label.png (asset code) requested","the default label ALSO carries qr.png = the BASE_URL deep link","FAIL",""

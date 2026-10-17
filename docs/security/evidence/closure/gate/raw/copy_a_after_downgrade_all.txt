@@ -1,0 +1,32 @@
+ version_num  
+--------------
+ e6f8a0b2c4d6
+
+ token_version_column 
+----------------------
+ f
+
+ auth_session_table 
+--------------------
+ 
+
+ tbl | tgname 
+-----+--------
+
+        proname         |    purge_rule    
+------------------------+------------------
+ ckam_purge_audit_log   | 1-day floor
+ forbid_audit_log_write | no floor in body
+
+ assets | assets_with_state 
+--------+-------------------
+     16 |                16
+
+ asset_events 
+--------------
+           24
+
+ audit_rows 
+------------
+        243
+

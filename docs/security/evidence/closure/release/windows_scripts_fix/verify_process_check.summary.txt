@@ -1,0 +1,15 @@
+﻿
+Case LocalProcessCheck Expected Actual Verdict Detail                                                                                          
+---- ----------------- -------- ------ ------- ------                                                                                          
+V1   Auto              PASS     PASS   PASS    pid 44704: --no-proxy-headers and --no-server-header present                                    
+V2   Auto              FAIL     FAIL   PASS    pid 16192: --no-server-header missing                                                           
+V3   Auto              FAIL     FAIL   PASS    pid 50848: --no-proxy-headers missing; --proxy-headers present                                  
+V4   Auto              FAIL     FAIL   PASS    pid 44156: --workers present (the in-process rate limits would multiply)                        
+V5   Auto              SKIP     SKIP   PASS    the listener on port 3998 (pid 66652) is not a CKAM uvicorn process - not run on the CKAM server
+V6   Require           FAIL     FAIL   PASS    the listener on port 3998 (pid 21680) is not a CKAM uvicorn process (-LocalProcessCheck Require)
+V7   Skip              SKIP     SKIP   PASS    not checked (-LocalProcessCheck Skip)                                                           
+
+
+
+cases: 7; PASS: 7; FAIL: 0
+listener left on 3998 : 0

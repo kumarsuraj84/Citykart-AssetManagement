@@ -1,0 +1,21 @@
+===== V1: listener command line tag 'python -m uvicorn app.main:app --host 127.0.0.1 --port 3998 --no-proxy-headers --no-server-header', -LocalProcessCheck Auto, expected PASS
+row: PASS - pid 44704: --no-proxy-headers and --no-server-header present
+38 checks: 4 PASS, 3 WARN, 31 FAIL, 0 SKIP against http://127.0.0.1:3998
+===== V2: listener command line tag 'python -m uvicorn app.main:app --host 127.0.0.1 --port 3998 --no-proxy-headers', -LocalProcessCheck Auto, expected FAIL
+row: FAIL - pid 16192: --no-server-header missing
+38 checks: 3 PASS, 3 WARN, 32 FAIL, 0 SKIP against http://127.0.0.1:3998
+===== V3: listener command line tag 'python -m uvicorn app.main:app --host 127.0.0.1 --port 3998 --proxy-headers --no-server-header', -LocalProcessCheck Auto, expected FAIL
+row: FAIL - pid 50848: --no-proxy-headers missing; --proxy-headers present
+38 checks: 3 PASS, 3 WARN, 32 FAIL, 0 SKIP against http://127.0.0.1:3998
+===== V4: listener command line tag 'python -m uvicorn app.main:app --host 127.0.0.1 --port 3998 --no-proxy-headers --no-server-header --workers 4', -LocalProcessCheck Auto, expected FAIL
+row: FAIL - pid 44156: --workers present (the in-process rate limits would multiply)
+38 checks: 3 PASS, 3 WARN, 32 FAIL, 0 SKIP against http://127.0.0.1:3998
+===== V5: listener command line tag 'some-other-server --port 3998', -LocalProcessCheck Auto, expected SKIP
+row: SKIP - the listener on port 3998 (pid 66652) is not a CKAM uvicorn process - not run on the CKAM server
+38 checks: 3 PASS, 3 WARN, 31 FAIL, 1 SKIP against http://127.0.0.1:3998
+===== V6: listener command line tag 'some-other-server --port 3998', -LocalProcessCheck Require, expected FAIL
+row: FAIL - the listener on port 3998 (pid 21680) is not a CKAM uvicorn process (-LocalProcessCheck Require)
+38 checks: 3 PASS, 3 WARN, 32 FAIL, 0 SKIP against http://127.0.0.1:3998
+===== V7: listener command line tag 'python -m uvicorn app.main:app --host 127.0.0.1 --port 3998 --no-proxy-headers --no-server-header', -LocalProcessCheck Skip, expected SKIP
+row: SKIP - not checked (-LocalProcessCheck Skip)
+38 checks: 3 PASS, 3 WARN, 31 FAIL, 1 SKIP against http://127.0.0.1:3998

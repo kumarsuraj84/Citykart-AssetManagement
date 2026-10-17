@@ -1,0 +1,37 @@
+ version_num  
+--------------
+ b5d7f9a1c3e5
+
+ token_version_column 
+----------------------
+ t
+
+ auth_session_table 
+--------------------
+ auth_session
+
+        tbl         |               tgname               
+--------------------+------------------------------------
+ asset_event        | trg_asset_event_no_truncate
+ asset_field_change | trg_asset_field_change_no_truncate
+ audit_log          | trg_audit_log_no_truncate
+ master_audit       | trg_master_audit_no_truncate
+
+           proname           |    purge_rule    
+-----------------------------+------------------
+ ckam_purge_audit_log        | 5-year floor
+ forbid_append_only_truncate | no floor in body
+ forbid_audit_log_write      | 5-year floor
+
+ assets | assets_with_state 
+--------+-------------------
+     16 |                16
+
+ asset_events 
+--------------
+           24
+
+ audit_rows 
+------------
+        243
+

@@ -1,0 +1,6 @@
+id,step,what,expected,actual,result,evidence
+"GT-7L00","7","[step7_old_switch_lifecycle] health + sign-in SECHO","200 / 200","200 / 200 ","PASS",""
+"GT-7L01","7","[step7_old_switch_lifecycle] Receive PO 8 line 1 (1 unit, HAS_SERIAL) as SECHO","refused, nothing half-written","200 {""po_id"":8,""invoice_number"":""GT-step7_old_switch_lifecycle-INV"",""assets_created"":1,""serial_pending"":0,""assets"":[{""asset_id"":23,""asset_code"":""CKVPL/ITFA-VPL/0006"",""line_no"":1,""serial_number"":""GTSstep7oldsw76613"",""serial_pending"":false}],""label_asset_ids"":[23],"" | assets before/after 22/23","FAIL",""
+"GT-7L02","7","[step7_old_switch_lifecycle] Move asset 17 (IN_STOCK) to person SECEMPS1","refused; asset unchanged, no event row","422 {""detail"":""Some of the values could not be saved. Check them and try again."",""request_id"":""a9f27e271abc4c259c8237faba8f24a5""} | status now=IN_STOCK events 1->1","PASS",""
+"GT-7L03","7","[step7_old_switch_lifecycle] Sale (SOLD) of asset 16 (in stock)","refused; asset still IN_STOCK","422 {""detail"":""Some of the values could not be saved. Check them and try again."",""request_id"":""98a874fbb23b474d973e72544d8454fa""} | status now=IN_STOCK","PASS",""
+"GT-7L04","7","[step7_old_switch_lifecycle] read of an asset still works","200","200 CKSPL/ADFA-SPL/0004","PASS",""

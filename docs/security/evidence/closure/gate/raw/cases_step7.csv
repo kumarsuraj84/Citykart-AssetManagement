@@ -1,0 +1,10 @@
+id,step,what,expected,actual,result,evidence
+"GT-700","7","[old release, after switch-back] QR / Asset 360 deep link /assets/1","documented consequence: 404 JSON again (CL2-IF-04 not in 3b5e842), the app does not open","404 application/json {""detail"":""Not Found"",""request_id"":""04aa685a028b4a8182a256ef6f893107""}","PASS",""
+"GT-701","7","[old release, after switch-back] QR / Asset 360 deep link /assets/17","documented consequence: 404 JSON again (CL2-IF-04 not in 3b5e842), the app does not open","404 application/json {""detail"":""Not Found"",""request_id"":""fdb999a52bf74efa9adb978d001e397a""}","PASS",""
+"GT-702","7","[old release, after switch-back] QR / Asset 360 deep link /assets/new","documented consequence: 404 JSON again (CL2-IF-04 not in 3b5e842), the app does not open","404 application/json {""detail"":""Not Found"",""request_id"":""e012115276074f5abe92114a8f0dbfcc""}","PASS",""
+"GT-703","7","[old release] other app address /dashboard","200 shell from the old dist","200 <!doctype html><html><head><title>CKAM</title></head><body><","PASS",""
+"GT-704","7","[old release] POSITIVE CONTROL: the step-4 IF-01 probes against 3b5e842 on the same layout","the FAKE canaries leak (proves the canary layout of step 4 was reachable)","5 of 5 probes leaked a FAKE canary","PASS",""
+"GT-705","7","[old release] /docs","observe (old release behaviour)","200 text/html; charset=utf-8","PASS",""
+"GT-706","7","[old release] /openapi.json","observe (old release behaviour)","200 application/json","PASS",""
+"GT-707","7","[old release] unknown /api/nope","observe","200 text/html; charset=utf-8 <!doctype html><html><head><title>CKAM</title></head><body><","PASS",""
+"GT-708","7","[old release] headers","observe: CSP / Permissions-Policy present?","csp=false permissions-policy=false server=none","PASS",""

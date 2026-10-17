@@ -1,0 +1,62 @@
+ alembic_version 
+-----------------
+ c6e8a0b2d4f6
+
+  column_name  | data_type | is_nullable | column_default 
+---------------+-----------+-------------+----------------
+ token_version | integer   | NO          | 0
+
+ token_version | asset_users 
+---------------+-------------
+             0 |          31
+
+ auth_session_table | auth_session_rows 
+--------------------+-------------------
+ auth_session       |                 0
+
+             indexname             
+-----------------------------------
+ auth_session_pkey
+ ix_auth_session_asset_user_id
+ ix_auth_session_expires_at
+ uq_auth_session_legacy_token_hash
+
+        tbl         |               tgname               | fires_on | tgenabled 
+--------------------+------------------------------------+----------+-----------
+ asset              | trg_asset_lifecycle_fields_guard   | UPDATE   | O
+ asset              | trg_asset_no_identity_change       | UPDATE   | O
+ asset_event        | trg_asset_event_no_delete          | DELETE   | O
+ asset_event        | trg_asset_event_no_truncate        | TRUNCATE | O
+ asset_event        | trg_asset_event_no_update          | UPDATE   | O
+ asset_field_change | trg_asset_field_change_no_delete   | DELETE   | O
+ asset_field_change | trg_asset_field_change_no_truncate | TRUNCATE | O
+ asset_field_change | trg_asset_field_change_no_update   | UPDATE   | O
+ audit_log          | trg_audit_log_no_delete            | DELETE   | O
+ audit_log          | trg_audit_log_no_truncate          | TRUNCATE | O
+ audit_log          | trg_audit_log_no_update            | UPDATE   | O
+ master_audit       | trg_master_audit_no_delete         | DELETE   | O
+ master_audit       | trg_master_audit_no_truncate       | TRUNCATE | O
+ master_audit       | trg_master_audit_no_update         | UPDATE   | O
+
+           proname            
+------------------------------
+ ckam_purge_audit_log
+ forbid_append_only_truncate
+ forbid_asset_lifecycle_write
+ forbid_audit_log_write
+
+ audit_purge_floor_5y 
+----------------------
+ t
+
+    status    | count 
+--------------+-------
+ ALLOTTED     |     4
+ INSTALLED    |     2
+ IN_STOCK     |     9
+ UNDER_REPAIR |     2
+
+ assets | assets_missing_state 
+--------+----------------------
+     17 |                    0
+
