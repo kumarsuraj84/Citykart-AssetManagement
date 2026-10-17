@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | **Package built and checked on the dev PC. NOT copied to any server. NOT deployed.** Production still runs `ccae7b2` |
+| Status | **DEPLOYED to production 2026-10-17 14:56 IST** (owner approval `DEPLOY CKAM RELEASE 0b8c525`); record: `docs/security/CKAM_PRODUCTION_DEPLOYMENT_RECORD_0b8c525.md`. Written before the deploy: "built and checked on the dev PC, not copied to any server" |
 | What it changes | `GET /api/erp/pos` gets an optional `only_linked` (default off) and `counts.other_suppliers`; the *Purchase Orders from the ERP* screen starts with only the POs of vendors already added, plus the button "Also show other suppliers' POs (N)". Decision 12 in `DECISIONS.md` |
 | Database change | **None.** Alembic head stays `c6e8a0b2d4f6`; `alembic upgrade head` is a no-op. The 44 pinned packages are unchanged |
 | Commit | `0b8c5251b86e2dc27665965576416b3fe7e4e12d` (tree `2ba35e3cff254fdaa2b28555de73499aeca8d467`), pushed to `claude/brave-euler-07879a` |
