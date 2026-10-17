@@ -139,7 +139,10 @@ try {
   foreach ($t in $bt) {
     $i = Get-ScheduledTaskInfo -TaskName $t.TaskName -TaskPath $t.TaskPath -ErrorAction SilentlyContinue
     $a = @($t.Actions)[0]
-    Add-Row "Backup task $($t.TaskName)" 'INFO' (Mask ("state={0}, runs as {1}, last run {2}, last result {3}, next run {4}; action: {5} {6}" -f $t.State, $t.Principal.UserId, $i.LastRunTime, $i.LastTaskResult, $i.NextRunTime, $a.Execute, $a.Arguments))
+    # some unrelated Windows tasks matching the name filter use a COM action, which has no Execute/Arguments property
+    $exe = if ($a -and $a.PSObject.Properties['Execute']) { $a.Execute } else { '(not a program action)' }
+    $arg = if ($a -and $a.PSObject.Properties['Arguments']) { $a.Arguments } else { '' }
+    Add-Row "Backup task $($t.TaskName)" 'INFO' (Mask ("state={0}, runs as {1}, last run {2}, last result {3}, next run {4}; action: {5} {6}" -f $t.State, $t.Principal.UserId, $i.LastRunTime, $i.LastTaskResult, $i.NextRunTime, $exe, $arg))
     if ($i -and $i.LastTaskResult -ne 0) { Add-Row "Backup task $($t.TaskName) result" 'WARN' "last result $($i.LastTaskResult) (0 = success)" }
   }
 } catch { Add-Row 'Backup scheduled task' 'WARN' $_.Exception.Message }

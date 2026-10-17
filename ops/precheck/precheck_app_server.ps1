@@ -126,8 +126,10 @@ if (Test-Path -LiteralPath $launcherPath) {
     if ($text -match [regex]::Escape($flag)) { Add-Row "Launcher has $flag" 'PASS' 'yes' }
     else { Add-Row "Launcher has $flag" 'WARN' 'NO: add it at the deploy window (EXT-38)' }
   }
-  if ($text -match '--proxy-headers') { Add-Row 'Launcher has --proxy-headers' 'FAIL' 'must not be present' }
-  if ($text -match '--workers') { Add-Row 'Launcher uses --workers' 'WARN' 'the in-process rate limits and logs assume ONE process' }
+  # judge the two "must not" flags on CODE only: the reviewed launcher explains them in its comments (block and # lines)
+  $code = (([regex]::Replace($text, '(?s)<#.*?#>', '') -split "`r?`n") | Where-Object { $_.TrimStart() -notmatch '^#' }) -join "`n"
+  if ($code -match '(?<![\w-])--proxy-headers') { Add-Row 'Launcher has --proxy-headers' 'FAIL' 'must not be present' }
+  if ($code -match '--workers') { Add-Row 'Launcher uses --workers' 'WARN' 'the in-process rate limits and logs assume ONE process' }
   $secretLines = @(Select-String -LiteralPath $launcherPath -Pattern '(?i)(password|passwd|secret|token)\s*[=:]\s*["'']?\w' | ForEach-Object { $_.LineNumber })
   if ($secretLines.Count -gt 0) { Add-Row 'Launcher text' 'WARN' ("lines {0} look like a literal password/secret assignment (values not shown). Do not send this file to anyone" -f ($secretLines -join ',')) }
   else { Add-Row 'Launcher text' 'PASS' 'no literal password/secret assignment found (safe to send for review after you have looked yourself)' }
@@ -248,7 +250,7 @@ $nas = Test-Tcp '10.0.0.25' 445
 Add-Row 'TCP to NAS 10.0.0.25:445' $(if ($nas) { 'PASS' } else { 'WARN' }) $(if ($nas) { 'reachable' } else { 'NOT reachable' })
 foreach ($h in 'pypi.org', 'files.pythonhosted.org') {
   $ok = Test-Tcp $h 443
-  Add-Row "TCP to $h:443 (Python package index; needed to install the release)" $(if ($ok) { 'PASS' } else { 'FAIL' }) $(if ($ok) { 'reachable' } else { 'NOT reachable: use a prepared wheelhouse or STOP at runbook F2' })
+  Add-Row "TCP to ${h}:443 (Python package index; needed to install the release)" $(if ($ok) { 'PASS' } else { 'FAIL' }) $(if ($ok) { 'reachable' } else { 'NOT reachable: use a prepared wheelhouse or STOP at runbook F2' })
 }
 if ($TestErp -and $cfg.ContainsKey('PO_SOURCE_HOST') -and $cfg['PO_SOURCE_HOST']) {
   $ep = if ($cfg.ContainsKey('PO_SOURCE_PORT') -and $cfg['PO_SOURCE_PORT']) { [int]$cfg['PO_SOURCE_PORT'] } else { 5432 }

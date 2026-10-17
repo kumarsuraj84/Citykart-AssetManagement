@@ -617,7 +617,9 @@ second dump copy exists; NAS snapshot/copy exists; settings copy exists.
    ```
 
    Expected: `e2408eab01bf6c7d1ac4145b8fbd415010be590cc6d9519c2aabe2fb52f5848b` and `215`. If the snippet gives a
-   different value but the zip hash (E2) matched, do not guess. Compare file by file against
+   different value but the zip hash (E2) matched, do not guess. (On the real deploy of 2026-10-17 this snippet gave
+   `96cad826…` although the zip hash and all 215 per-file hashes matched the manifest: the snippet is unreliable. Use the
+   per-file comparison below: `docs/security/CKAM_PRODUCTION_DEPLOYMENT_RECORD_ccae7b2.md`.) Compare file by file against
    `MANIFEST.sha256.txt`, which DEV hands over with the zip. Its paths start with
    `ckam-security-release-ccae7b2/`. A matching zip hash is the primary proof.
 5. **Leave `releases\3b5e842` and every older release folder untouched.**
