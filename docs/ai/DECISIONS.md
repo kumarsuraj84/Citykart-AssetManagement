@@ -151,6 +151,14 @@ The Item form is short — Name, Type of asset (one pick of "Group › Sub-categ
 
 **How to apply.** Never copy category, serial rule or defaults into a screen; read the Item. Sub-category is still required by the server, so the Item form chooses the group's only Sub-category itself or offers "New Sub-category".
 
+## 2026-10-17 — (12) Pick from ERP starts with the POs of vendors already added; other suppliers' POs are one click away
+
+**Decision.** *Purchase Orders from the ERP* lists, by default, only the open POs whose ERP supplier is already linked to a CKAM vendor (`GET /api/erp/pos?only_linked=true`). A button **"Also show other suppliers' POs (N)"** (N = `counts.other_suppliers`) switches to every open PO, as before. The counts (All / Ready / Needs your input) follow the list that is shown. The API default is unchanged (no `only_linked` = every PO), so Home and other callers still count everything. When only other suppliers have POs, the empty list says how many are hidden and points to the button.
+
+**Why.** On the live system the owner added two vendors and was shown every open PO of the company, which looked wrong ("it should be visible of that vendor only"). Decision (7) of 2026-10-14 ("No ERP PO is hidden") stays true in spirit: nothing is lost or unreachable, it is one click away and counted; only the starting view changed.
+
+**How to apply.** Do not make "vendors only" a hard filter without the button: a PO of a supplier that is not a vendor yet must stay findable, because its vendor is matched in the review.
+
 ## 2026-10-13 — Not everything the ERP capitalises is tracked in CKAM: a "not tracked" decision
 
 The ERP's Fixed Assets division includes shop-fitting material (hangers, sensor tags, cables, brackets) and mixed Articles (cameras

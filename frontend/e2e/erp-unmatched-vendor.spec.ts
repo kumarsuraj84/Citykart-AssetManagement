@@ -59,7 +59,9 @@ test("an ERP purchase order of an unmatched supplier is listed as needing input,
   await page.goto("/purchase-orders/from-erp");
   await expect(page.getByRole("heading", { name: "Purchase Orders from the ERP", level: 1 })).toBeVisible();
 
-  // Listed under "All" (nothing hidden) -- found by its PO number.
+  // The list starts with the POs of vendors already added; the other suppliers' POs are one click away
+  // (nothing is lost) -- found by its PO number once they are shown.
+  await page.getByRole("button", { name: /^Also show other suppliers' POs/ }).click();
   await page.getByLabel("Search ERP purchase orders", { exact: true }).fill(po.po_number);
   const row = page.getByRole("row").filter({ has: page.getByRole("cell", { name: po.po_number, exact: true }) }).first();
   await expect(row).toBeVisible();

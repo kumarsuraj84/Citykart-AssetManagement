@@ -166,7 +166,7 @@ describe("Pick from ERP: every open PO, nothing hidden", () => {
     mockApi({ rows: [ROW, UNMATCHED_ROW] });
     renderScreen();
     expect(await screen.findByText("SPO/012994/26-27")).toBeInTheDocument();
-    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/erp/pos?envelope=true"));
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/erp/pos?envelope=true&only_linked=true"));
     const unmatched = screen.getByText("SPO/BS/5001").closest("tr")!;
     expect(within(unmatched).getByText("Needs your input")).toBeInTheDocument();
     expect(within(unmatched).getByText("Vendor needs matching. 2 items need a decision.")).toBeInTheDocument();
@@ -182,9 +182,9 @@ describe("Pick from ERP: every open PO, nothing hidden", () => {
     mockApi({ rows: [ROW, UNMATCHED_ROW] });
     renderScreen();
     fireEvent.click(await screen.findByRole("button", { name: "Needs your input (1)" }));
-    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/erp/pos?envelope=true&readiness=NEEDS_INPUT"));
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/erp/pos?envelope=true&readiness=NEEDS_INPUT&only_linked=true"));
     fireEvent.click(screen.getByRole("button", { name: /^Ready/ }));
-    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/erp/pos?envelope=true&readiness=READY"));
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/erp/pos?envelope=true&readiness=READY&only_linked=true"));
   });
 
   it("searches on the server (PO No, ERP supplier or vendor), after typing stops", async () => {
@@ -192,7 +192,7 @@ describe("Pick from ERP: every open PO, nothing hidden", () => {
     renderScreen();
     await screen.findByText("SPO/012994/26-27");
     fireEvent.change(screen.getByLabelText("Search ERP purchase orders"), { target: { value: "blue star" } });
-    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/erp/pos?envelope=true&q=blue+star"));
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/erp/pos?envelope=true&q=blue+star&only_linked=true"));
   });
 
   it("filters by company when the person works in more than one", async () => {
@@ -200,7 +200,35 @@ describe("Pick from ERP: every open PO, nothing hidden", () => {
     renderScreen();
     await screen.findByText("SPO/012994/26-27");
     await choose(screen.getByRole("combobox", { name: "Company" }), "Citykart Ventures");
-    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/erp/pos?envelope=true&company_id=2"));
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/erp/pos?envelope=true&company_id=2&only_linked=true"));
+  });
+
+  it("starts with the POs of vendors already added, and offers the other suppliers' POs with their number, one click away", async () => {
+    mockApi({ rows: [ROW], counts: { all: 1, ready: 1, needs_input: 0, other_suppliers: 3 } });
+    renderScreen();
+    await screen.findByText("SPO/012994/26-27");
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/erp/pos?envelope=true&only_linked=true"));
+    const toggle = screen.getByRole("button", { name: "Also show other suppliers' POs (3)" });
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(toggle);
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/erp/pos?envelope=true"));       // no only_linked: every open PO, as before
+    expect(screen.getByRole("button", { name: "Also show other suppliers' POs (3)" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Also show other suppliers' POs (3)" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Also show other suppliers' POs (3)" })).toHaveAttribute("aria-pressed", "false"));
+  });
+
+  it("shows no switch when every open PO already belongs to a vendor", async () => {
+    mockApi({ rows: [ROW], counts: { all: 1, ready: 1, needs_input: 0, other_suppliers: 0 } });
+    renderScreen();
+    await screen.findByText("SPO/012994/26-27");
+    expect(screen.queryByRole("button", { name: /Also show other suppliers/ })).not.toBeInTheDocument();
+  });
+
+  it("when only other suppliers have POs, the empty list says so and points to the switch", async () => {
+    mockApi({ rows: [], counts: { all: 0, ready: 0, needs_input: 0, other_suppliers: 5 } });
+    renderScreen();
+    expect(await screen.findByText("No open purchase orders of your vendors.")).toBeInTheDocument();
+    expect(screen.getByText(/5 open purchase orders belong to suppliers that are not vendors yet/)).toBeInTheDocument();
   });
 
   it("says when the ERP data is from, and calmly when it could not refresh (never blocking)", async () => {
@@ -227,8 +255,10 @@ describe("Pick from ERP: every open PO, nothing hidden", () => {
   });
 
   it("builds the list address from the filters", () => {
-    expect(erpPosPath({ readiness: "ALL", q: "", companyId: "" })).toBe("/erp/pos?envelope=true");
-    expect(erpPosPath({ readiness: "NEEDS_INPUT", q: " SPO/1 ", companyId: "2" })).toBe("/erp/pos?envelope=true&readiness=NEEDS_INPUT&q=SPO%2F1&company_id=2");
+    expect(erpPosPath({ readiness: "ALL", q: "", companyId: "" })).toBe("/erp/pos?envelope=true&only_linked=true");
+    expect(erpPosPath({ readiness: "NEEDS_INPUT", q: " SPO/1 ", companyId: "2" })).toBe("/erp/pos?envelope=true&readiness=NEEDS_INPUT&q=SPO%2F1&company_id=2&only_linked=true");
+    // "Also show other suppliers' POs": no only_linked, every open PO
+    expect(erpPosPath({ readiness: "ALL", q: "", companyId: "", includeOthers: true })).toBe("/erp/pos?envelope=true");
   });
 
   it("says so when the ERP connection is not set up", async () => {

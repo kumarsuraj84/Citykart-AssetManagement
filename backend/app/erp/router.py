@@ -487,7 +487,7 @@ READINESS = ("READY", "NEEDS_INPUT")
 @router.get("/pos")
 async def list_pos(
     readiness: str | None = Query(None), q: str | None = Query(None, max_length=200), company_id: int | None = None,
-    envelope: bool = False,
+    envelope: bool = False, only_linked: bool = False,
     session: AsyncSession = Depends(get_session), source: ErpSource = Depends(get_erp_source),
     actor=Depends(require_role(*WRITE_ROLES)),
 ):
@@ -497,22 +497,27 @@ async def list_pos(
     name), `company_id`. `envelope=true` answers `{pos, counts, freshness}` instead of the bare list: the
     counts per readiness (before the readiness filter) and how current the ERP data is ("ERP data as of ...",
     `refresh_failed` + message); with `envelope=true` an unreadable ERP gives an empty list and a message
-    instead of a 503, so the screen never blocks."""
+    instead of a 503, so the screen never blocks.
+    `only_linked=true` (the screen's default) keeps only the POs whose ERP supplier is already linked to a
+    vendor; the envelope's `counts.other_suppliers` says how many POs of not-yet-linked suppliers that left out,
+    so the screen can offer them with one click. Without it nothing is left out, as before."""
     wanted = readiness.strip().upper() if readiness else None
     if wanted is not None and wanted not in READINESS:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose ready or needs input.")
     try:
-        rows = await erp_po_rows(session, actor, source, q=q, company_id=company_id)
+        every = await erp_po_rows(session, actor, source, q=q, company_id=company_id)
         error = None
     except ErpUnavailable as exc:
         if not envelope:
             raise _unavailable(exc)
-        rows, error = [], str(exc)
+        every, error = [], str(exc)
+    other_suppliers = sum(not r["vendor_linked"] for r in every)
+    rows = [r for r in every if r["vendor_linked"]] if only_linked else every
     shown = [r for r in rows if wanted is None or r["readiness"] == wanted]
     if not envelope:
         return shown
     counts = {"all": len(rows), "ready": sum(r["readiness"] == "READY" for r in rows),
-              "needs_input": sum(r["readiness"] == "NEEDS_INPUT" for r in rows)}
+              "needs_input": sum(r["readiness"] == "NEEDS_INPUT" for r in rows), "other_suppliers": other_suppliers}
     fresh = await freshness(session)
     if error is not None:
         fresh = {**fresh, "available": False, "message": f"ERP data could not be read. {error}"}

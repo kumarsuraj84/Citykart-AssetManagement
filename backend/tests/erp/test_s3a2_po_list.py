@@ -90,9 +90,39 @@ async def test_the_envelope_carries_counts_and_freshness(client, erp):
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert [p["po_number"] for p in body["pos"]] == [READY_PO]
-    assert body["counts"] == {"all": 2, "ready": 1, "needs_input": 1}            # counted before the readiness filter
+    assert body["counts"] == {"all": 2, "ready": 1, "needs_input": 1, "other_suppliers": 1}            # counted before the readiness filter
     f = body["freshness"]
     assert (f["available"], f["refresh_failed"], f["message"], f["data_as_of"], f["copied"]) == (True, False, None, None, False)
+
+
+async def test_only_linked_leaves_out_pos_of_suppliers_not_linked_to_a_vendor_and_counts_them(client, erp):
+    """The screen's default: only the POs of vendors that were added / linked; the others are one click away,
+    and their number is in `counts.other_suppliers`. Without the option nothing is left out (as before)."""
+    await build_s3a2_world(erp)
+    erp.pos[5001] = bs_po()                                    # supplier BLUE STAR is not linked to any vendor
+    both = await client.get("/api/erp/pos", params={"envelope": "true"}, headers=await _headers(client, "OPR"))
+    assert {p["po_number"] for p in both.json()["pos"]} == {READY_PO, "SPO/BS/5001"}
+    only = await client.get("/api/erp/pos", params={"envelope": "true", "only_linked": "true"}, headers=await _headers(client, "OPR"))
+    assert only.status_code == 200, only.text
+    body = only.json()
+    assert [p["po_number"] for p in body["pos"]] == [READY_PO] and all(p["vendor_linked"] for p in body["pos"])
+    assert body["counts"] == {"all": 1, "ready": 1, "needs_input": 0, "other_suppliers": 1}      # the counts follow the list
+
+
+async def test_only_linked_works_with_the_filters_and_with_the_bare_list(client, erp):
+    ids = await build_s3a2_world(erp)
+    erp.pos[5001] = bs_po()
+    erp.pos[5002] = bs_po(po_code=5002, supplier="77", name="BLUE STAR LTD", company="CKVPL")
+    # a search for the unlinked supplier finds nothing in the linked-only list, but says how many it left out
+    body = (await client.get("/api/erp/pos", params={"envelope": "true", "only_linked": "true", "q": "blue star"}, headers=await _headers(client, "OWN"))).json()
+    assert body["pos"] == [] and body["counts"]["other_suppliers"] == 2
+    # readiness filter and company filter still apply on top
+    assert [r["po_number"] for r in await rows(client, "OWN", only_linked="true", readiness="ready")] == [READY_PO]
+    assert await rows(client, "OWN", only_linked="true", readiness="needs_input") == []
+    assert await rows(client, "OWN", only_linked="true", company_id=ids["vpl"]) == []
+    # the bare list (no envelope) is filtered too, and the default is unchanged
+    assert [r["po_number"] for r in await rows(client, "OWN", only_linked="true")] == [READY_PO]
+    assert {r["po_number"] for r in await rows(client, "OWN")} == {READY_PO, "SPO/BS/5001", "SPO/BS/5002"}
 
 
 async def test_a_failed_refresh_is_said_in_plain_words_with_the_time_of_the_data_in_use(client, erp):

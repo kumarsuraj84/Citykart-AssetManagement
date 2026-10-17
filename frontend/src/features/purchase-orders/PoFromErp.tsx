@@ -64,7 +64,7 @@ export interface ErpFreshness {
 
 interface ErpPoEnvelope {
   pos: ErpPoRow[];
-  counts?: { all: number; ready: number; needs_input: number };
+  counts?: { all: number; ready: number; needs_input: number; other_suppliers?: number };
   freshness?: ErpFreshness;
 }
 
@@ -78,12 +78,14 @@ interface Company {
 
 const money = (n: number) => n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-/** `/erp/pos?envelope=true&…` for the chosen filters. */
-export function erpPosPath(p: { readiness: Readiness; q: string; companyId: string }): string {
+/** `/erp/pos?envelope=true&…` for the chosen filters. By default only the POs of suppliers already linked to a
+ * vendor (`only_linked`); `includeOthers` asks for every open PO, as the screen did before. */
+export function erpPosPath(p: { readiness: Readiness; q: string; companyId: string; includeOthers?: boolean }): string {
   const params = new URLSearchParams({ envelope: "true" });
   if (p.readiness !== "ALL") params.set("readiness", p.readiness);
   if (p.q.trim()) params.set("q", p.q.trim());
   if (p.companyId) params.set("company_id", p.companyId);
+  if (!p.includeOthers) params.set("only_linked", "true");
   return `/erp/pos?${params.toString()}`;
 }
 
@@ -110,15 +112,17 @@ function ReadinessChip({ row }: { row: ErpPoRow }) {
 }
 
 /**
- * Pick from ERP (S3b-2): EVERY open ERP purchase order of the person's companies, each with a plain readiness
- * ("Ready" / "Needs your input" and what is needed). Nothing is hidden: a PO of a supplier not matched to a vendor
- * yet is listed and opens in the review like any other, where the vendor is matched.
+ * Pick from ERP (S3b-2): the open ERP purchase orders of the person's companies, each with a plain readiness
+ * ("Ready" / "Needs your input" and what is needed). By default only the POs of suppliers already linked to a vendor
+ * are listed; "Also show other suppliers' POs (N)" brings in the rest. Nothing is lost: a PO of a supplier not matched
+ * to a vendor yet opens in the review like any other, where the vendor is matched.
  */
 export function PoFromErp() {
   const [search, setSearch] = useState("");
   const q = useDebounced(search, 300);
   const [readiness, setReadiness] = useState<Readiness>("ALL");
   const [companyId, setCompanyId] = useState("");
+  const [includeOthers, setIncludeOthers] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
 
   const statusQ = useQuery({
@@ -127,7 +131,7 @@ export function PoFromErp() {
   });
   const companiesQ = useQuery({ queryKey: ["asset_users", "me", "companies"], queryFn: () => apiClient.get<Company[]>("/asset-users/me/companies") });
   const companies = Array.isArray(companiesQ.data) ? companiesQ.data : [];
-  const path = erpPosPath({ readiness, q, companyId });
+  const path = erpPosPath({ readiness, q, companyId, includeOthers });
   const posQ = useQuery({
     queryKey: ["erp", "pos", path],
     queryFn: async () => asEnvelope(await apiClient.get<unknown>(path)),
@@ -161,6 +165,8 @@ export function PoFromErp() {
   const freshness = envelope?.freshness;
   const freshnessProblem = !!freshness && (freshness.refresh_failed === true || freshness.available === false);
   const filtered = readiness !== "ALL" || q.trim() !== "" || companyId !== "";
+  const others = counts?.other_suppliers ?? 0;
+  const hiddenOthers = !includeOthers && others > 0;
 
   const columns: DataTableColumn<ErpPoRow>[] = [
     { key: "po_number", header: "PO No", cellClassName: "font-medium", cell: (p) => p.po_number },
@@ -203,7 +209,7 @@ export function PoFromErp() {
     <div className="flex flex-col gap-4">
       <PageHeader
         title="Purchase Orders from the ERP"
-        description="Every open purchase order in the ERP. Ready ones need only a check; the others say what is needed, and you decide it in the review. Nothing is written back to the ERP."
+        description="Open purchase orders in the ERP from the vendors you have added. Ready ones need only a check; the others say what is needed, and you decide it in the review. Purchase orders of other suppliers are one click away. Nothing is written back to the ERP."
         actions={<Link className="text-sm underline" to="/purchase-orders">Back to Purchase Orders</Link>}
       />
 
@@ -242,6 +248,14 @@ export function PoFromErp() {
                 </Button>
               ))}
             </div>
+            {(others > 0 || includeOthers) && (
+              <Button
+                size="sm" variant={includeOthers ? "default" : "outline"} aria-pressed={includeOthers}
+                onClick={() => setIncludeOthers((v) => !v)}
+              >
+                Also show other suppliers' POs{counts?.other_suppliers !== undefined ? ` (${others.toLocaleString("en-IN")})` : ""}
+              </Button>
+            )}
           </div>
 
           {freshness && (freshness.data_as_of_text || freshness.message) && (freshnessProblem || !syncLineShown) && (
@@ -262,8 +276,12 @@ export function PoFromErp() {
               columns={columns} rows={rows} rowKey={(p) => p.po_code} isLoading={posQ.isLoading}
               emptyState={
                 <EmptyState
-                  title={filtered ? "No matches" : "No open purchase orders to bring in."}
-                  description={filtered ? "Try a different search or filter." : "Every open ERP purchase order is already here."}
+                  title={filtered ? "No matches" : hiddenOthers ? "No open purchase orders of your vendors." : "No open purchase orders to bring in."}
+                  description={
+                    filtered
+                      ? hiddenOthers ? `Try a different search or filter. ${others.toLocaleString("en-IN")} purchase orders of other suppliers are hidden: use "Also show other suppliers' POs".` : "Try a different search or filter."
+                      : hiddenOthers ? `${others.toLocaleString("en-IN")} open purchase orders belong to suppliers that are not vendors yet. Use "Also show other suppliers' POs" to see them.` : "Every open ERP purchase order is already here."
+                  }
                 />
               }
             />
