@@ -1,0 +1,214 @@
+The files belonging to this database system will be owned by user "postgres".
+This user must also own the server process.
+
+The database cluster will be initialized with locale "en_US.utf8".
+The default database encoding has accordingly been set to "UTF8".
+The default text search configuration will be set to "english".
+
+Data page checksums are disabled.
+
+fixing permissions on existing directory /var/lib/postgresql/data ... ok
+creating subdirectories ... ok
+selecting dynamic shared memory implementation ... posix
+selecting default "max_connections" ... 100
+selecting default "shared_buffers" ... 128MB
+selecting default time zone ... Etc/UTC
+creating configuration files ... ok
+running bootstrap script ... ok
+performing post-bootstrap initialization ... ok
+syncing data to disk ... ok
+
+Success. You can now start the database server using:
+
+    pg_ctl -D /var/lib/postgresql/data -l logfile start
+
+waiting for server to start....2026-10-17 05:11:02.137 UTC [48] LOG:  starting PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+2026-10-17 05:11:02.138 UTC [48] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+2026-10-17 05:11:02.143 UTC [51] LOG:  database system was shut down at 2026-10-17 05:11:01 UTC
+2026-10-17 05:11:02.146 UTC [48] LOG:  database system is ready to accept connections
+ done
+server started
+
+/usr/local/bin/docker-entrypoint.sh: ignoring /docker-entrypoint-initdb.d/*
+
+2026-10-17 05:11:02.258 UTC [48] LOG:  received fast shutdown request
+waiting for server to shut down....2026-10-17 05:11:02.260 UTC [48] LOG:  aborting any active transactions
+2026-10-17 05:11:02.261 UTC [48] LOG:  background worker "logical replication launcher" (PID 54) exited with exit code 1
+2026-10-17 05:11:02.261 UTC [49] LOG:  shutting down
+2026-10-17 05:11:02.262 UTC [49] LOG:  checkpoint starting: shutdown immediate
+2026-10-17 05:11:02.269 UTC [49] LOG:  checkpoint complete: wrote 3 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.003 s, sync=0.001 s, total=0.008 s; sync files=2, longest=0.001 s, average=0.001 s; distance=0 kB, estimate=0 kB; lsn=0/14EF800, redo lsn=0/14EF800
+2026-10-17 05:11:02.271 UTC [48] LOG:  database system is shut down
+ done
+server stopped
+
+PostgreSQL init process complete; ready for start up.
+
+2026-10-17 05:11:02.372 UTC [1] LOG:  starting PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+2026-10-17 05:11:02.373 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+2026-10-17 05:11:02.373 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+2026-10-17 05:11:02.375 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+2026-10-17 05:11:02.378 UTC [62] LOG:  database system was shut down at 2026-10-17 05:11:02 UTC
+2026-10-17 05:11:02.381 UTC [1] LOG:  database system is ready to accept connections
+2026-10-17 05:11:35.061 UTC [184] LOG:  duration: 0.044 ms  statement: BEGIN
+2026-10-17 05:11:35.062 UTC [184] LOG:  duration: 0.595 ms  statement: SELECT t.oid, typarray
+	FROM pg_type t JOIN pg_namespace ns
+	    ON typnamespace = ns.oid
+	WHERE typname = 'hstore';
+	
+2026-10-17 05:11:35.062 UTC [184] LOG:  duration: 0.027 ms  statement: ROLLBACK
+2026-10-17 05:11:35.062 UTC [184] LOG:  duration: 0.004 ms  statement: BEGIN
+2026-10-17 05:11:35.062 UTC [184] LOG:  duration: 0.073 ms  statement: select pg_catalog.version()
+2026-10-17 05:11:35.063 UTC [184] LOG:  duration: 0.049 ms  statement: select current_schema()
+2026-10-17 05:11:35.063 UTC [184] LOG:  duration: 0.010 ms  statement: show transaction isolation level
+2026-10-17 05:11:35.063 UTC [184] LOG:  duration: 0.012 ms  statement: show standard_conforming_strings
+2026-10-17 05:11:35.063 UTC [184] LOG:  duration: 0.009 ms  statement: ROLLBACK
+2026-10-17 05:11:35.065 UTC [184] LOG:  duration: 0.007 ms  statement: BEGIN
+2026-10-17 05:11:35.066 UTC [184] LOG:  duration: 0.434 ms  statement: SELECT pg_catalog.pg_class.relname 
+	FROM pg_catalog.pg_class JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_class.relnamespace 
+	WHERE pg_catalog.pg_class.relname IN ('alembic_version') AND pg_catalog.pg_class.relkind = ANY (ARRAY['r', 'p', 'f', 'v', 'm']) AND pg_catalog.pg_table_is_visible(pg_catalog.pg_class.oid) AND pg_catalog.pg_namespace.nspname != 'pg_catalog'
+2026-10-17 05:11:35.066 UTC [184] LOG:  duration: 0.113 ms  statement: SELECT alembic_version.version_num 
+	FROM alembic_version
+2026-10-17 05:11:35.081 UTC [184] LOG:  duration: 0.030 ms  statement: COMMIT
+2026-10-17 05:11:35.759 UTC [185] LOG:  duration: 0.040 ms  statement: BEGIN
+2026-10-17 05:11:35.760 UTC [185] LOG:  duration: 0.616 ms  statement: SELECT t.oid, typarray
+	FROM pg_type t JOIN pg_namespace ns
+	    ON typnamespace = ns.oid
+	WHERE typname = 'hstore';
+	
+2026-10-17 05:11:35.760 UTC [185] LOG:  duration: 0.015 ms  statement: ROLLBACK
+2026-10-17 05:11:35.760 UTC [185] LOG:  duration: 0.004 ms  statement: BEGIN
+2026-10-17 05:11:35.761 UTC [185] LOG:  duration: 0.072 ms  statement: select pg_catalog.version()
+2026-10-17 05:11:35.761 UTC [185] LOG:  duration: 0.043 ms  statement: select current_schema()
+2026-10-17 05:11:35.761 UTC [185] LOG:  duration: 0.009 ms  statement: show transaction isolation level
+2026-10-17 05:11:35.761 UTC [185] LOG:  duration: 0.004 ms  statement: show standard_conforming_strings
+2026-10-17 05:11:35.761 UTC [185] LOG:  duration: 0.004 ms  statement: ROLLBACK
+2026-10-17 05:11:35.763 UTC [185] LOG:  duration: 0.003 ms  statement: BEGIN
+2026-10-17 05:11:35.763 UTC [185] LOG:  duration: 0.400 ms  statement: SELECT pg_catalog.pg_class.relname 
+	FROM pg_catalog.pg_class JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_class.relnamespace 
+	WHERE pg_catalog.pg_class.relname IN ('alembic_version') AND pg_catalog.pg_class.relkind = ANY (ARRAY['r', 'p', 'f', 'v', 'm']) AND pg_catalog.pg_table_is_visible(pg_catalog.pg_class.oid) AND pg_catalog.pg_namespace.nspname != 'pg_catalog'
+2026-10-17 05:11:35.764 UTC [185] LOG:  duration: 0.128 ms  statement: SELECT alembic_version.version_num 
+	FROM alembic_version
+2026-10-17 05:11:35.779 UTC [185] LOG:  duration: 0.649 ms  statement: ALTER TABLE asset_user ADD COLUMN token_version INTEGER DEFAULT '0' NOT NULL
+2026-10-17 05:11:35.780 UTC [185] LOG:  duration: 0.240 ms  statement: UPDATE alembic_version SET version_num='f9a1c3e5b7d2' WHERE alembic_version.version_num = 'e6f8a0b2c4d6'
+2026-10-17 05:11:35.781 UTC [185] LOG:  duration: 0.591 ms  statement: 
+	        CREATE OR REPLACE FUNCTION forbid_append_only_truncate() RETURNS trigger AS $$
+	        BEGIN
+	            RAISE EXCEPTION '% rows are append-only; TRUNCATE is not allowed', TG_TABLE_NAME;
+	        END;
+	        $$ LANGUAGE plpgsql;
+	    
+2026-10-17 05:11:35.781 UTC [185] LOG:  duration: 0.117 ms  statement: 
+	            CREATE TRIGGER trg_asset_event_no_truncate
+	            BEFORE TRUNCATE ON asset_event
+	            FOR EACH STATEMENT EXECUTE FUNCTION forbid_append_only_truncate();
+	        
+2026-10-17 05:11:35.782 UTC [185] LOG:  duration: 0.047 ms  statement: 
+	            CREATE TRIGGER trg_asset_field_change_no_truncate
+	            BEFORE TRUNCATE ON asset_field_change
+	            FOR EACH STATEMENT EXECUTE FUNCTION forbid_append_only_truncate();
+	        
+2026-10-17 05:11:35.782 UTC [185] LOG:  duration: 0.073 ms  statement: 
+	            CREATE TRIGGER trg_master_audit_no_truncate
+	            BEFORE TRUNCATE ON master_audit
+	            FOR EACH STATEMENT EXECUTE FUNCTION forbid_append_only_truncate();
+	        
+2026-10-17 05:11:35.782 UTC [185] LOG:  duration: 0.064 ms  statement: 
+	            CREATE TRIGGER trg_audit_log_no_truncate
+	            BEFORE TRUNCATE ON audit_log
+	            FOR EACH STATEMENT EXECUTE FUNCTION forbid_append_only_truncate();
+	        
+2026-10-17 05:11:35.782 UTC [185] LOG:  duration: 0.105 ms  statement: 
+	        CREATE OR REPLACE FUNCTION forbid_audit_log_write() RETURNS trigger AS $$
+	        BEGIN
+	            -- The purge setting opens only rows older than 5 years; the floor is fixed here, not by the session.
+	            IF TG_OP = 'DELETE' AND coalesce(current_setting('ckam.allow_audit_purge', true), '') = 'on'
+	               AND OLD.at < now() - interval '5 years' THEN
+	                RETURN OLD;
+	            END IF;
+	            RAISE EXCEPTION 'audit_log rows are append-only';
+	        END;
+	        $$ LANGUAGE plpgsql;
+	    
+2026-10-17 05:11:35.783 UTC [185] LOG:  duration: 0.134 ms  statement: 
+	        CREATE OR REPLACE FUNCTION ckam_purge_audit_log(p_before timestamptz) RETURNS bigint AS $$
+	        DECLARE
+	            removed bigint;
+	        BEGIN
+	            IF coalesce(current_setting('ckam.allow_audit_purge', true), '') <> 'on' THEN
+	                RAISE EXCEPTION 'audit_log purge is not allowed: export the rows first, then SET LOCAL ckam.allow_audit_purge = on in the same transaction';
+	            END IF;
+	            IF p_before IS NULL OR p_before > now() - interval '5 years' THEN
+	                RAISE EXCEPTION 'audit_log purge needs a cut-off date at least 5 years in the past';
+	            END IF;
+	            DELETE FROM audit_log WHERE at < p_before;
+	            GET DIAGNOSTICS removed = ROW_COUNT;
+	            RETURN removed;
+	        END;
+	        $$ LANGUAGE plpgsql;
+	    
+2026-10-17 05:11:35.783 UTC [185] LOG:  duration: 0.041 ms  statement: REVOKE ALL ON FUNCTION ckam_purge_audit_log(timestamptz) FROM PUBLIC;
+2026-10-17 05:11:35.783 UTC [185] LOG:  duration: 0.078 ms  statement: UPDATE alembic_version SET version_num='a3c5e7f9b1d4' WHERE alembic_version.version_num = 'f9a1c3e5b7d2'
+2026-10-17 05:11:35.786 UTC [185] LOG:  duration: 1.421 ms  statement: 
+	CREATE TABLE auth_session (
+		id BIGSERIAL NOT NULL, 
+		asset_user_id BIGINT NOT NULL, 
+		created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+		last_used_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+		expires_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+		revoked_at TIMESTAMP WITH TIME ZONE, 
+		revoked_reason VARCHAR(40), 
+		current_jti_hash VARCHAR(64) NOT NULL, 
+		previous_jti_hash VARCHAR(64), 
+		previous_valid_until TIMESTAMP WITH TIME ZONE, 
+		legacy_token_hash VARCHAR(64), 
+		PRIMARY KEY (id), 
+		CONSTRAINT uq_auth_session_legacy_token_hash UNIQUE (legacy_token_hash), 
+		FOREIGN KEY(asset_user_id) REFERENCES asset_user (id)
+	)
+	
+	
+2026-10-17 05:11:35.786 UTC [185] LOG:  duration: 0.253 ms  statement: CREATE INDEX ix_auth_session_asset_user_id ON auth_session (asset_user_id)
+2026-10-17 05:11:35.787 UTC [185] LOG:  duration: 0.271 ms  statement: CREATE INDEX ix_auth_session_expires_at ON auth_session (expires_at)
+2026-10-17 05:11:35.787 UTC [185] LOG:  duration: 0.071 ms  statement: UPDATE alembic_version SET version_num='b5d7f9a1c3e5' WHERE alembic_version.version_num = 'a3c5e7f9b1d4'
+2026-10-17 05:11:35.788 UTC [185] LOG:  duration: 0.100 ms  statement: 
+	        CREATE OR REPLACE FUNCTION forbid_asset_lifecycle_write() RETURNS trigger AS $$
+	        BEGIN
+	            -- OBS-STATUS: only app.lifecycle.service.apply_events (which records an asset_event) sets this marker.
+	            IF coalesce(current_setting('ckam.lifecycle_writer', true), '') <> 'on' THEN
+	                RAISE EXCEPTION 'asset status, holder and status date can only change through a recorded asset movement (asset_event)';
+	            END IF;
+	            RETURN NEW;
+	        END;
+	        $$ LANGUAGE plpgsql;
+	    
+2026-10-17 05:11:35.788 UTC [185] LOG:  duration: 0.147 ms  statement: 
+	        CREATE TRIGGER trg_asset_lifecycle_fields_guard
+	        BEFORE UPDATE OF status, current_asset_user_id, status_since ON asset
+	        FOR EACH ROW
+	        WHEN (NEW.status IS DISTINCT FROM OLD.status
+	              OR NEW.current_asset_user_id IS DISTINCT FROM OLD.current_asset_user_id
+	              OR NEW.status_since IS DISTINCT FROM OLD.status_since)
+	        EXECUTE FUNCTION forbid_asset_lifecycle_write();
+	    
+2026-10-17 05:11:35.788 UTC [185] LOG:  duration: 0.054 ms  statement: UPDATE alembic_version SET version_num='c6e8a0b2d4f6' WHERE alembic_version.version_num = 'b5d7f9a1c3e5'
+2026-10-17 05:11:35.789 UTC [185] LOG:  duration: 0.675 ms  statement: COMMIT
+2026-10-17 05:11:36.501 UTC [186] LOG:  duration: 0.051 ms  statement: BEGIN
+2026-10-17 05:11:36.502 UTC [186] LOG:  duration: 0.643 ms  statement: SELECT t.oid, typarray
+	FROM pg_type t JOIN pg_namespace ns
+	    ON typnamespace = ns.oid
+	WHERE typname = 'hstore';
+	
+2026-10-17 05:11:36.502 UTC [186] LOG:  duration: 0.026 ms  statement: ROLLBACK
+2026-10-17 05:11:36.502 UTC [186] LOG:  duration: 0.007 ms  statement: BEGIN
+2026-10-17 05:11:36.502 UTC [186] LOG:  duration: 0.077 ms  statement: select pg_catalog.version()
+2026-10-17 05:11:36.503 UTC [186] LOG:  duration: 0.068 ms  statement: select current_schema()
+2026-10-17 05:11:36.503 UTC [186] LOG:  duration: 0.016 ms  statement: show transaction isolation level
+2026-10-17 05:11:36.503 UTC [186] LOG:  duration: 0.012 ms  statement: show standard_conforming_strings
+2026-10-17 05:11:36.503 UTC [186] LOG:  duration: 0.008 ms  statement: ROLLBACK
+2026-10-17 05:11:36.505 UTC [186] LOG:  duration: 0.009 ms  statement: BEGIN
+2026-10-17 05:11:36.506 UTC [186] LOG:  duration: 0.486 ms  statement: SELECT pg_catalog.pg_class.relname 
+	FROM pg_catalog.pg_class JOIN pg_catalog.pg_namespace ON pg_catalog.pg_namespace.oid = pg_catalog.pg_class.relnamespace 
+	WHERE pg_catalog.pg_class.relname IN ('alembic_version') AND pg_catalog.pg_class.relkind = ANY (ARRAY['r', 'p', 'f', 'v', 'm']) AND pg_catalog.pg_table_is_visible(pg_catalog.pg_class.oid) AND pg_catalog.pg_namespace.nspname != 'pg_catalog'
+2026-10-17 05:11:36.506 UTC [186] LOG:  duration: 0.130 ms  statement: SELECT alembic_version.version_num 
+	FROM alembic_version
+2026-10-17 05:11:36.521 UTC [186] LOG:  duration: 0.036 ms  statement: COMMIT

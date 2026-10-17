@@ -1,9 +1,9 @@
-# CKAM Secret Rotation Checklists — after the `<RELEASE-SHA>` security release is verified
+# CKAM Secret Rotation Checklists — after the `ccae7b2` security release is verified
 
 | | |
 |---|---|
 | Status | **PREPARED — OWNER APPROVAL PENDING.** No secret has been rotated. Every command is `NOT EXECUTED`. This document contains **no secret value**. Where one is needed it says `<TYPED-ON-SERVER>` |
-| Date | 2026-10-17 **(updated 2026-10-17, security release)**: the release is now the placeholder `<RELEASE-SHA>` (the package is being rebuilt; the earlier candidate `eed3de1` is superseded). No rotation content changed |
+| Date | 2026-10-17 **(updated 2026-10-17, security release)**: the release is `ccae7b2` (rebuilt package, `evidence/closure/release/PACKAGE_REPORT_ccae7b2.md`; the earlier candidate `eed3de1` is superseded). No rotation content changed |
 | When | Step **I** of `CKAM_URGENT_PRODUCTION_SECURITY_RUNBOOK.md`, **only after step H (verification) has passed** and the APPROVER has signed "H passed". Rotating earlier is wasted effort: while IF-01 is open, the new value can be read the same way as the old one |
 | Order | §1 JWT secret → §2 DB role password (`ckassetapp`) → §3 NAS account password (`ckappuser`) → §4 ERP role password (`ckpost` / the actual `PO_SOURCE_USER`) → step J (restart and verify everything) |
 | Why these four | IF-01 could read `shared\.env` (`JWT_SECRET`, `DATABASE_URL` with the `ckassetapp` password, `PO_SOURCE_PASSWORD`) and `shared\nas.pw` on 10.0.1.98, from 2026-09-30 until the old code stopped (step F1) |
@@ -25,7 +25,7 @@
   do not rotate in this window, and record why.
 - Do the four rotations in one window if you can. Restart CKAM after each one (or once after a group, as long as
   each validation test below still runs).
-- The pre-change copy `<EVIDENCE-DIR>\env.pre-<RELEASE-SHA>` (runbook D5) and `shared\.env.pre-<RELEASE-SHA>` (if
+- The pre-change copy `<EVIDENCE-DIR>\env.pre-ccae7b2` (runbook D5) and `shared\.env.pre-ccae7b2` (if
   `deploy_ckam.ps1` was used) hold the **old, possibly copied** values. Use them only as a last-resort service
   restore. Delete them in step J5 once the new values are proven.
 
@@ -213,7 +213,7 @@ the rotation; the written shared/not-shared confirmation.
 ## 6. After the four rotations (step J)
 
 - One final restart; rerun the runbook H1, H2, H4, H5, H9 and H13 checks.
-- Delete the old secret copies (`<EVIDENCE-DIR>\env.pre-<RELEASE-SHA>`, `shared\.env.pre-*`) (runbook J5).
+- Delete the old secret copies (`<EVIDENCE-DIR>\env.pre-ccae7b2`, `shared\.env.pre-*`) (runbook J5).
 - Store the new values in the password manager with two named custodians (EXT-23), if one exists. Write down only
   **that** they are stored, never the values.
 - Rotation notes go into the change record (section E/F) and the incident record (section F "Secrets rotated —

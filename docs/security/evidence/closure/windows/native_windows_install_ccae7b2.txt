@@ -1,0 +1,24 @@
+Native Windows install of release package ckam-security-release-ccae7b2.zip (2026-10-17, dev PC 10.0.0.47, Windows 11, local scratch folder)
+
+Zip SHA-256 checked before use: b975c38d1f37387dbd8e15739ea2c27f563549e66bc80eac21878ea6327137e3 (match True), 2152224 bytes.
+Unpacked with Windows PowerShell Expand-Archive into <scratch>\winrel\releases\ccae7b2 -> backend, frontend-dist, ops, RELEASE.json.
+
+Python: portable "embeddable" Python 3.13.1 amd64 from python.org (NOT a venv, nothing installed on the PC; pip 26.2.1, setuptools 84.0.0, wheel 0.48.0 added with get-pip).
+Command (the documented production install command):
+    python -m pip install --no-warn-script-location -c <release>\backend\constraints.txt -e <release>\backend
+Result: "Successfully built ckam-backend" / "Successfully installed ... ckam-backend-0.1.0" -- 43 third-party packages, each at its pinned version:
+  Mako-1.4.3 MarkupSafe-3.0.3 alembic-1.20.0 annotated-doc-0.0.5 annotated-types-0.8.0 anyio-4.15.1 argon2-cffi-25.1.0
+  argon2-cffi-bindings-26.1.0 asyncpg-0.31.0 cffi-2.1.1 click-8.5.0 colorama-0.4.6 cryptography-50.0.1 ecdsa-0.19.2
+  et-xmlfile-2.0.0 fastapi-0.141.1 greenlet-3.5.6 h11-0.16.0 httptools-0.8.0 idna-3.20 openpyxl-3.1.5 pillow-12.3.0
+  psycopg2-binary-2.9.13 pyasn1-0.6.4 pycparser-3.0 pydantic-2.13.5 pydantic-core-2.46.5 pydantic-settings-2.15.0
+  python-barcode-0.16.1 python-dotenv-1.2.3 python-jose-3.5.0 python-multipart-0.0.32 pyyaml-6.0.3 qrcode-8.2 rsa-4.9.1
+  six-1.17.0 sqlalchemy-2.1.1 starlette-1.7.0 typing-extensions-4.16.0 typing-inspection-0.4.4 uvicorn-0.54.0
+  watchfiles-1.3.0 websockets-17.1   (colorama-0.4.6 is the line added to constraints.txt in ccae7b2)
+(uvloop, which constraints.txt pins for Linux, is not installed on Windows: it is only a constraint, not a requirement there.)
+
+Started (production settings, test-only values): ENVIRONMENT_NAME=production, a strong throw-away JWT secret, FRONTEND_DIST_DIR=<release>\frontend-dist,
+DATABASE_URL -> the throw-away Docker test database (migrated to c6e8a0b2d4f6), no ERP, port 3613 on 127.0.0.1.
+Process command line (Win32_Process): python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 3613 --no-proxy-headers --no-server-header
+Results: native_windows_release_ccae7b2.txt (32 payloads, 0 leaks, 0 5xx, one identical refusal body), native_windows_qr_ccae7b2.txt (cold load of /assets/1 -> sign-in -> asset page),
+native_windows_verify_release_ccae7b2.csv (packaged verify_release.ps1, 41 checks, 41 PASS incl. -LocalProcessCheck Require).
+Limits: embeddable Python (not a venv), test database in Docker, no Task Scheduler, no NAS, no PostgreSQL 18, not the production server. The portable Python and the unpacked package were deleted afterwards.

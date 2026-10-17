@@ -1,0 +1,3 @@
+qr_asset1.png (qr, 370x370): encodes -> ['deep link BASE_URL/assets/{id}']  = 'http://127.0.0.1:4111/assets/1'
+labelqr_asset1.png (qr, 290x290): encodes -> ['asset code']  = 'CKSPL/ITFA-SPL/0001'
+labelbar_asset1.png (bar, 610x200): encodes -> ['asset code']  = 'CKSPL/ITFA-SPL/0001'

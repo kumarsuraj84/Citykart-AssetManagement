@@ -1,12 +1,12 @@
-# CKAM Production Rollback Strategy — security release `<RELEASE-SHA>` (roll forward first)
+# CKAM Production Rollback Strategy — security release `ccae7b2` (roll forward first)
 
 | | |
 |---|---|
 | Status | **PREPARED — OWNER APPROVAL PENDING.** Nothing here has been run. Every command is `NOT EXECUTED`. No rollback, downgrade or restore is authorised by this document |
 | Date | 2026-10-17; **(updated 2026-10-17, security release)** with the gate rehearsal results (`docs/security/evidence/closure/gate/GATE_REHEARSAL.md`, findings GT-F01, GT-F04, GT-F05) and the package rebuild |
-| Applies to | The deploy of `<RELEASE-SHA>` (package SHA-256 `<ZIP-SHA256>`, `<ZIP-SIZE>` bytes; the lead fills both from the rebuilt package) to 10.0.1.98, replacing `3b5e842`, with database `ckassetmanagement` on 10.0.0.205 going from Alembic `e6f8a0b2c4d6` to `c6e8a0b2d4f6`. The earlier candidate `eed3de1` (SHA-256 `be3209af…`) is superseded; the gate rehearsal ran on it, with the same application code |
+| Applies to | The deploy of `ccae7b2` (package SHA-256 `b975c38d1f37387dbd8e15739ea2c27f563549e66bc80eac21878ea6327137e3`, `2152224` bytes; the lead fills both from the rebuilt package) to 10.0.1.98, replacing `3b5e842`, with database `ckassetmanagement` on 10.0.0.205 going from Alembic `e6f8a0b2c4d6` to `c6e8a0b2d4f6`. The earlier candidate `eed3de1` (SHA-256 `be3209af…`) is superseded; the gate rehearsal ran on it, with the same application code |
 | Steps referred to | A–N of `CKAM_URGENT_PRODUCTION_SECURITY_RUNBOOK.md` |
-| Scripts | `ops\windows\rollback_release.ps1.template` switches the release folder only and never touches the database. `deploy_ckam.ps1.template`: the old version **restarted the previous release automatically** after a late failure; that is being removed in the rebuilt package. **Until the operator has read the fixed template, rely on no automatic rollback** (§6) |
+| Scripts | `ops\windows\rollback_release.ps1.template` switches the release folder only and never touches the database. `deploy_ckam.ps1.template` is **fixed in `ccae7b2`** *(updated 2026-10-17, security release)*. Before `alembic upgrade head` a failure restores the previous settings and restarts the previous release (branch A, exit 1). From the upgrade on, a failure **never** restarts the old release, downgrades or restores: `CKAM-Web` stays stopped, with a banner and a `STATE` line (branch B, exit 3). Exit 2 = stopped by a pre-check, nothing touched; exit 0 = deployed and verified. It has been parser-checked and dry-run in a fake world only, **never run on a server**, so the operator reads it before use (§6) |
 
 ## 1. In plain words
 
@@ -17,7 +17,8 @@ a scrap**. Worse, the user only sees "Some of the values could not be saved. Che
 sounds like their own typing mistake; the real reason is only in the server log (GT-F01). The old program also
 still has the file-read hole. So if something goes wrong after the database change, the first choice is to **fix forward**:
 keep CKAM stopped, find the problem, and start the new release again. Going back is possible in two ways, and both
-are decisions for the owner. Nothing goes back automatically.
+are decisions for the owner. Once the database change has started, nothing goes back automatically. (Only before
+it does the deploy script put the old program back by itself, because then the old program still fits.)
 
 Example: you fitted a new lock and a new key at the same time. If the new key sticks, you do not put the old key
 back, because it no longer fits the new lock. You fix the new key while the door stays shut.
@@ -26,12 +27,12 @@ back, because it no longer fits the new lock. You fix the new key while the door
 
 | Code running | Database at | Works? | IF-01 | Verdict |
 |---|---|---|---|---|
-| `<RELEASE-SHA>` | `c6e8a0b2d4f6` | yes (target) | closed | **target state** |
+| `ccae7b2` | `c6e8a0b2d4f6` | yes (target) | closed | **target state** |
 | `3b5e842` | `e6f8a0b2c4d6` | yes (as before the window) | **open** | the state before the deploy; only a temporary fallback when the database was never changed (case 1) |
 | `3b5e842` | `f9a1c3e5b7d2` … `b5d7f9a1c3e5` (first 1–3 migrations only) | yes for `b5d7f9a1c3e5`: the gate rehearsal (option (b), `downgrade -1`) ran receive, move and sale on it with the old code. 1–2 only: expected yes, not tested | **open** | cannot happen after a failed upgrade (all four roll back together, §3); only after a deliberate `downgrade -1` (option 1a) |
 | `3b5e842` | **`c6e8a0b2d4f6`** | **PARTLY (GT-F01, measured).** **Receives still work** (new asset rows are inserted already in their final state, so the `BEFORE UPDATE OF …` trigger never fires). **Every move, send for repair, back from repair, lost, found, dispose, sell, scrap and bulk move/action is refused** by `trg_asset_lifecycle_fields_guard`, because it updates `asset.status` / `current_asset_user_id` / `status_since` without the marker. Users see a **misleading** HTTP 422 "Some of the values could not be saved. Check them and try again."; the real reason is only in `error.jsonl` (`DBAPIError`: "asset status, holder and status date can only change through a recorded asset movement (asset_event)"). Nothing is half-written. Reads and sign-in work | **open** | **UNSAFE — never as a "quick rollback"** |
-| `<RELEASE-SHA>` | `e6f8a0b2c4d6` | **NO, and it hides it (GT-F05, measured).** `/api/health` 200, the app page loads, a bare `verify_release.ps1` passes, but **every sign-in fails** with the same misleading 422 (server log: `column asset_user.token_version does not exist`). Caught only by `alembic current` ≠ `alembic heads`, the startup `system_event` `migration / head_mismatch` WARNING, and a real sign-in | closed | **UNSAFE — this is why the migrations run before the new code starts, and why H2/H3/H13 are mandatory** |
-| `<RELEASE-SHA>` | `b5d7f9a1c3e5` (only the trigger migration downgraded) | yes. The DB-level lifecycle guard (OBS-STATUS, defence in depth) is gone; diagnostics report a migration mismatch | closed | acceptable **temporarily**, by owner decision only (option 1a, §5) |
+| `ccae7b2` | `e6f8a0b2c4d6` | **NO, and it hides it (GT-F05, measured).** `/api/health` 200, the app page loads, a bare `verify_release.ps1` passes, but **every sign-in fails** with the same misleading 422 (server log: `column asset_user.token_version does not exist`). Caught only by `alembic current` ≠ `alembic heads`, the startup `system_event` `migration / head_mismatch` WARNING, and a real sign-in | closed | **UNSAFE — this is why the migrations run before the new code starts, and why H2/H3/H13 are mandatory** |
+| `ccae7b2` | `b5d7f9a1c3e5` (only the trigger migration downgraded) | yes. The DB-level lifecycle guard (OBS-STATUS, defence in depth) is gone; diagnostics report a migration mismatch | closed | acceptable **temporarily**, by owner decision only (option 1a, §5) |
 
 ## 3. Facts the decisions depend on
 
@@ -49,11 +50,11 @@ back, because it no longer fits the new lock. You fix the new key while the door
   both.
 - **Migrations 1–3 are additive** (a column with default 0, TRUNCATE triggers plus a stricter purge function, a new
   table). Their downgrades drop what they added (details in §5 option 1).
-- **The downgrade scripts exist only in the new release** (`releases\<RELEASE-SHA>\backend\app\alembic\versions\`). A
-  downgrade must be run from `releases\<RELEASE-SHA>\backend`, with the `.env` values loaded.
-- **`3b5e842` was installed without `constraints.txt`.** After step F2 the shared venv holds the `<RELEASE-SHA>` pinned
-  versions (including the newly pinned `colorama`). Gate rehearsal (Linux container whose packages equal the 43
-  runtime pins exactly): `3b5e842`'s backend ran in production mode on those versions, signed in, received, moved
+- **The downgrade scripts exist only in the new release** (`releases\ccae7b2\backend\app\alembic\versions\`). A
+  downgrade must be run from `releases\ccae7b2\backend`, with the `.env` values loaded.
+- **`3b5e842` was installed without `constraints.txt`.** After step F2 the shared venv holds the `ccae7b2` pinned
+  versions (44 pins incl. `colorama==0.4.6`; 43 packages installed on Windows). Gate rehearsal (Linux container
+  whose packages equal the 43 Linux runtime pins, i.e. the same versions without `colorama`): `3b5e842`'s backend ran in production mode on those versions, signed in, received, moved
   and sold (steps 2, 6a, 6b). **On the Windows venv this is not tested** (`TO BE FILLED BY LEAD` if a Windows run is
   added). `rollback_release.ps1 -ReinstallBackend` reinstalls `3b5e842`'s backend, but it does not downgrade
   packages that already satisfy its loose requirements.
@@ -82,7 +83,7 @@ Where did it fail?
 
 - **Situation:** CKAM `3b5e842` is still running; nothing in CKAM changed. Production is exactly as vulnerable as
   before.
-- **Do:** stop the change. Record why. Keep the evidence (B) and the dump (D). Leave `releases\<RELEASE-SHA>` in place if
+- **Do:** stop the change. Record why. Keep the evidence (B) and the dump (D). Leave `releases\ccae7b2` in place if
   it was expanded (delete nothing). Re-plan.
 - **Safe:** yes. **Who decides to re-plan:** APPROVER.
 
@@ -91,10 +92,10 @@ Where did it fail?
 Typical causes: the pip install failed (package index, wheel), the settings switch is wrong, `alembic upgrade`
 failed (lock wait, permission, unexpected schema).
 
-1. **Do not start `<RELEASE-SHA>`.** It cannot sign anyone in on the old schema, and it would hide that: health and the
+1. **Do not start `ccae7b2`.** It cannot sign anyone in on the old schema, and it would hide that: health and the
    app page look fine (GT-F05). A failed `alembic upgrade head` leaves **all four** migrations unapplied (GT-F04).
 2. Confirm the database revision (`NOT EXECUTED`):
-   `& "$root\shared\venv\Scripts\python.exe" -m alembic current` (from `releases\<RELEASE-SHA>\backend`, `.env` loaded),
+   `& "$root\shared\venv\Scripts\python.exe" -m alembic current` (from `releases\ccae7b2\backend`, `.env` loaded),
    or ask the DBA for `SELECT version_num FROM alembic_version;`. It must be `e6f8a0b2c4d6`. If it is anything
    else, this is **not** case 1: go to case 2.
 3. The owner chooses one of two:
@@ -104,6 +105,11 @@ failed (lock wait, permission, unexpected schema).
      then start. Then smoke-test sign-in and one read, because of the package-version caveat in §3. **Production is
      then back where it was this morning: still vulnerable.** Re-plan the deploy urgently.
    - **1-B (stay down):** keep `CKAM-Web` stopped until the cause is fixed and the deploy is repeated.
+   - *(updated 2026-10-17, security release)* **If `deploy_ckam.ps1` (`ccae7b2`) was used**, it has already done
+     1-A by itself (branch A: `.env.pre-ccae7b2` restored, previous release restarted, `STATE: branch=A; …; exit=1`).
+     Confirm that the old release really serves (`app_started` with `3b5e842`, sign-in, one read). If the owner
+     prefers 1-B, stop `CKAM-Web`. If the script exited 3 although the revision is unchanged (for example the
+     upgrade itself failed), it stayed down and offers only 1-A / 1-B: the owner chooses as above.
 4. Never `alembic downgrade` here (nothing to downgrade) and never restore the dump (nothing to restore).
 
 ### CASE 2 — migrations done (`c6e8a0b2d4f6`), new app does not start (G)
@@ -113,8 +119,9 @@ Typical causes: `Refusing to start` (JWT secret rule), `DATABASE_URL` missing or
 launcher error (path, quoting, flags), a log folder that cannot be written.
 
 1. **Keep CKAM stopped. Do NOT start `3b5e842`.** On this schema it can still receive but cannot move, repair,
-   sell or scrap (misleading 422 for the users, GT-F01), and it reopens IF-01. If any script restarted it
-   automatically, stop `CKAM-Web` again at once.
+   sell or scrap (misleading 422 for the users, GT-F01), and it reopens IF-01. The fixed `deploy_ckam.ps1` leaves
+   `CKAM-Web` stopped here (exit 3, `STATE: branch=B`). If `3b5e842` is running anyway, stop `CKAM-Web` again at
+   once.
 2. Read `logs\ckam-web_*.err.log`, the launcher log, and the last `system_event` lines in `logs\app\app.jsonl`.
 3. Fix the cause and start again. Examples: correct the `JWT_SECRET` value (C3 check), restore the missing
    `DATABASE_URL` line from the D5 copy, rerun F2, free the port (CKAM's own process only), fix the launcher.
@@ -123,7 +130,7 @@ launcher error (path, quoting, flags), a log folder that cannot be written.
 
 ### CASE 3 — new app runs, security checks pass, a functional smoke check fails (H13–H19)
 
-IF-01 is closed while `<RELEASE-SHA>` runs. **Running `<RELEASE-SHA>` with a functional fault is safer than running `3b5e842`
+IF-01 is closed while `ccae7b2` runs. **Running `ccae7b2` with a functional fault is safer than running `3b5e842`
 with the hole.**
 
 | Failing check | Recommended response (owner confirms) |
@@ -133,7 +140,7 @@ with the hole.**
 | Move refused (H17) — users see 422 "Some of the values could not be saved…"; `error.jsonl` says "asset status, holder and status date can only change through a recorded asset movement" | First check that the **new** code is really serving (H2/H11/H12): the **old** code gives exactly this on the migrated schema (GT-F01), and a successful receive (H16) does not tell them apart. If the new code is serving, the lifecycle trigger is refusing a write of the new code. **Owner decision:** keep the new code and downgrade **only** the trigger migration (option 1a, §5), or stay down until a fix is released. Do not switch to `3b5e842` (its moves are refused by the same trigger) |
 | ERP copy fails (H18) | Not a blocker: the ERP screens say "not set up" or show stale data, and it fails safe. Re-check after a minute (a past deploy saw a one-minute network blip to 10.0.1.69). Continue the gate if everything else passes; open a follow-up |
 | Upload/download fails (H19) | Usually the NAS mapping (launcher log). Fix `nas.pw` / mapping; the rest of CKAM works. Continue the gate only if the owner accepts it |
-| QR direct link fails (H10) | Check that `<RELEASE-SHA>` is really serving (H2/H11). If it is, this is a defect in the CL2-IF-04 fix: keep running (IF-01 is closed) and fix forward |
+| QR direct link fails (H10) | Check that `ccae7b2` is really serving (H2/H11). If it is, this is a defect in the CL2-IF-04 fix: keep running (IF-01 is closed) and fix forward |
 
 ### CASE 4 — an IF-01 probe or another security check fails (H4–H9, H11, H12)
 
@@ -142,8 +149,8 @@ header, `server: uvicorn`, or a forged `X-Forwarded-For` being believed.
 
 1. **Stop `CKAM-Web` at once** if any traversal probe returns `200` or a body other than the plain 404. The hole may
    still be open.
-2. Check that the right code is running before you suspect the fix: H2 (`app_started` with `<RELEASE-SHA>`), H11 (bundle
-   `<BUNDLE-JS>`), H12 (launcher log `releases\<RELEASE-SHA>`), the process command line (G3). Common causes: the
+2. Check that the right code is running before you suspect the fix: H2 (`app_started` with `ccae7b2`), H11 (bundle
+   `index-Cp5JgQR-.js`), H12 (launcher log `releases\ccae7b2`), the process flags (G3: `verify_release.ps1 -LocalProcessCheck Require`, or the manual command-line check). Common causes: the
    launcher still pointing at an old folder, or a second listener. On the LAN run: a proxy in between, or the wrong
    host.
 3. `400` instead of `404` on a probe is reported as WARN by `verify_release.ps1`. Analyse it before deciding: it is
@@ -174,13 +181,13 @@ otherwise the DBA exports `audit_log WHERE at >= <D time>` read-only).
 
 ### Option 1 — migration downgrade, one revision at a time
 
-Run from `releases\<RELEASE-SHA>\backend` with the `.env` values loaded (`NOT EXECUTED`):
+Run from `releases\ccae7b2\backend` with the `.env` values loaded (`NOT EXECUTED`):
 `& "$root\shared\venv\Scripts\python.exe" -m alembic downgrade <target revision>`, then `alembic current`.
 
 | Target | Undoes | Consequence | Which code can run afterwards |
 |---|---|---|---|
-| **1a: `b5d7f9a1c3e5`** (undo migration 4 only) | drops `trg_asset_lifecycle_fields_guard` and `forbid_asset_lifecycle_write()` | no data change. The database no longer refuses lifecycle writes from outside the ledger (OBS-STATUS defence in depth lost). Diagnostics report a migration mismatch (`head_mismatch` WARNING event at start) | `<RELEASE-SHA>` (**IF-01 stays closed**, recommended if only the trigger is the problem) **or** `3b5e842` (IF-01 open) |
-| 1b: `a3c5e7f9b1d4` (also undo 3) | drops `auth_session` | all server-side session records are gone. `<RELEASE-SHA>` can no longer sign anyone in | `3b5e842` only (IF-01 open) |
+| **1a: `b5d7f9a1c3e5`** (undo migration 4 only) | drops `trg_asset_lifecycle_fields_guard` and `forbid_asset_lifecycle_write()` | no data change. The database no longer refuses lifecycle writes from outside the ledger (OBS-STATUS defence in depth lost). Diagnostics report a migration mismatch (`head_mismatch` WARNING event at start) | `ccae7b2` (**IF-01 stays closed**, recommended if only the trigger is the problem) **or** `3b5e842` (IF-01 open) |
+| 1b: `a3c5e7f9b1d4` (also undo 3) | drops `auth_session` | all server-side session records are gone. `ccae7b2` can no longer sign anyone in | `3b5e842` only (IF-01 open) |
 | 1c: `f9a1c3e5b7d2` (also undo 2) | drops the TRUNCATE guards; restores the old purge function (1-day floor) | the append-only tables can again be emptied by `TRUNCATE`, and recent audit rows can again be purged with the session flag (IF-05/IF-06 protections lost) | `3b5e842` only |
 | 1d: `e6f8a0b2c4d6` (undo all four) | drops `asset_user.token_version` | session versions are lost (meaningless to the old code) | `3b5e842` only |
 
@@ -192,7 +199,7 @@ decide about the interim exposure (§7).
 - **1a (`alembic downgrade -1`)**: exit 0 in 0.89 s; only the lifecycle guard removed; `auth_session`,
   `token_version`, the TRUNCATE guards and the 5-year purge floor kept; the old code then received, moved and sold
   correctly; a later `alembic upgrade head` re-added the guard and the new code worked again; ledger consistent.
-  **This is the only downgrade the gate rehearsal recommends**, run from `releases\<RELEASE-SHA>\backend` (`3b5e842`'s
+  **This is the only downgrade the gate rehearsal recommends**, run from `releases\ccae7b2\backend` (`3b5e842`'s
   alembic does not know these revisions), followed by `alembic upgrade head` before the fixed release starts again.
 - **1d (`alembic downgrade e6f8a0b2c4d6`, all four)**: exit 0 in 0.78 s, the old code worked, re-upgrade worked,
   but every `auth_session` row (refresh-token reuse history) and every `token_version` value is lost, IF-05 (TRUNCATE)
@@ -219,20 +226,30 @@ decide about the interim exposure (§7).
 
 - **No automatic `alembic downgrade`** and **no automatic restore**, by any script or person, without the owner's
   recorded decision.
-- **No automatic start of `3b5e842` after a successful migration (updated 2026-10-17, security release).** The
-  `deploy_ckam.ps1.template` shipped with the superseded `eed3de1` package did exactly that: its `Invoke-Rollback`
-  restarted the previous release on a failure in its steps 6–9. After a failed **migration** that is harmless (the
-  database is unchanged, GT-F04). After a **successful** migration it left `3b5e842` running on `c6e8a0b2d4f6`:
-  receives still work, but moves, repairs, sales and scraps are refused with a misleading 422 (GT-F01), and IF-01
-  is reopened. **The template is being fixed right now (another engineer) so that it no longer restarts the old
-  release after the migrations.** Until the operator has **read the fixed template** in the rebuilt package
-  (`Invoke-Rollback` and its callers) and written in the change record what it does on each failure, **nobody
-  relies on any automatic rollback**: every failure is handled by hand with this document. If any log shows
-  `database at head c6e8a0b2d4f6` and then `ROLLBACK:` (or `3b5e842` is running after F4 for any reason), the
-  operator stops `CKAM-Web` immediately and continues with case 3 or 4.
+- **No automatic start of `3b5e842` after the migration has started (updated 2026-10-17, security release).** The
+  `deploy_ckam.ps1.template` of the superseded `eed3de1` package restarted the previous release even after a
+  successful migration. That would have left `3b5e842` on `c6e8a0b2d4f6`: receives work, but moves, repairs, sales
+  and scraps are refused with a misleading 422 (GT-F01), and IF-01 is reopened. **The template in `ccae7b2` is
+  fixed.** Its failure handling and exit codes:
+
+  | Exit | When | What the script did | What the operator does |
+  |---|---|---|---|
+  | **0** | deployed, `alembic current` = head, started, health ok, `verify_release.ps1 -LocalProcessCheck Require` passed | `STATE: branch=none; ckam_web=running` | continue with the manual H checks (H2, H3, H13–H19) |
+  | **1** | branch A: a failure **before** `alembic upgrade head` started (save settings, stop, pip, switch, reading the heads) | restored `shared\.env.pre-ccae7b2`, **restarted the previous release** (schema untouched); `STATE: branch=A; …; exit=1` | case 1: confirm the old release serves, or stop it for 1-B; IF-01 is open again, re-plan at once |
+  | **2** | a pre-check stopped it (release folder / `RELEASE.json` id or head, `ENVIRONMENT_NAME`, `JWT_SECRET`, `DATABASE_URL`, `FRONTEND_DIST_DIR`, no backup) | **nothing touched**; `3b5e842` still running | case 0: fix the cause, rerun |
+  | **3** | branch B: a failure **from** the moment `alembic upgrade head` started (upgrade, head check, start, health, verify). Also when the database was already at the new head | **`CKAM-Web` left STOPPED**; the old release is never restarted; no downgrade, no restore; banner with `alembic current`; `STATE: branch=B; ckam_web=stopped; …; switched_back=no; downgraded=no; restored=no; exit=3` | read the revision in the banner/STATE line: if `e6f8a0b2c4d6` → case 1 (1-A or 1-B); if `c6e8a0b2d4f6` → case 2, 3 or 4. The owner decides |
+
+  The template has been checked only by the PowerShell parser and a fake-world dry run (28 cases, all as expected;
+  `docs/security/evidence/closure/release/windows_scripts_fix/README.md`). **It has never run on a server.** That
+  test did not cover the real Task Scheduler, a real venv or `pip`, or whether stopping the task ends the uvicorn
+  child process. So the operator **reads it before use** (header "FAILURE HANDLING", `Invoke-EarlyRestore`,
+  `Invoke-StayDown`), watches it the whole time, and records the exit code and the `STATE` line in the change
+  record. If `3b5e842` is running after F4 for any reason, the operator stops `CKAM-Web` immediately and continues
+  with case 3 or 4.
 - **No acceptance on health alone (GT-F05).** A deploy, an abort or a roll-forward is judged by `alembic current`
   vs `alembic heads`, the `app_started` event (no `head_mismatch`) and a real sign-in, never by `/api/health` or a
-  bare `verify_release.ps1` run.
+  bare `verify_release.ps1` run. (The `ccae7b2` verify script's made-up sign-in expects a JSON 401, which would
+  probably fail on an un-migrated database, but that was not tested.)
 - **`rollback_release.ps1` is not run after F4** without the owner's decision. It switches the code only and warns
   that the schema stays.
 - No deletion of a release folder, a dump, a log copy or an evidence file as part of a rollback.

@@ -1,5 +1,16 @@
 # Release documentation pass, 2026-10-17 (second pass): what changed, assumptions, unknowns
 
+> **Addendum (third pass, same day).** The lead filled the placeholders (`ccae7b2`, `b975c38d…`, 2,152,224 bytes).
+> The fixed scripts are now described in the runbook ("Using `deploy_ckam.ps1`", observation 1, note 9, the scripts
+> row, C13, E3/E4, F2, G3, H4, rollback paragraph, checklist, DO NOT), the rollback strategy (Scripts row, §1, §3,
+> cases 1, 2 and 4, §6 exit-code table), the handover §11.5, the change record draft and the go/no-go table (evidence
+> columns of gates 1, 4, 5, 6, plus §1a native Windows). They cover: exit codes 0/1/2/3; branch A restores before the
+> migration; branch B stays down; "dry-run only, never on a server, read it first"; `verify_release.ps1
+> -LocalProcessCheck Require` as the flags check with a manual fallback; 44 pins incl. `colorama==0.4.6` (43 packages
+> on Windows); `PACKAGE_REPORT_ccae7b2.md`; and the native Windows evidence for `ccae7b2` with its limits. The
+> verdict and the gate Result cells were not touched. §3 below (placeholders) and the assumptions in §4 about the
+> unseen template are now resolved.
+
 Written by the release manager / technical writer. **Documents only.** I wrote no code and no scripts, ran no git
 write and no docker, and did not contact any server. Nothing is approved or executed. `ops/windows/**` was not
 touched (another engineer owns it).
@@ -20,7 +31,7 @@ touched (another engineer owns it).
 |---|---|
 | `docs/security/CKAM_URGENT_PRODUCTION_SECURITY_RUNBOOK.md` | `eed3de1` facts replaced by placeholders, with `eed3de1` kept only as the superseded candidate. GT-F01/F02/F04/F05/F06 corrected. Deploy-template warning: the automatic restart is being removed, so rely on no automatic rollback until the operator has read the fixed template. colorama is now pinned. `verify_release.ps1` gets launcher-flag checks. F4 timing filled from the gate rehearsal. H: mandatory GT-F05 checks, move as the real trigger test, default-label QR scan. Checklist and DO NOT list updated |
 | `docs/security/CKAM_PRODUCTION_ROLLBACK_STRATEGY.md` | Placeholders. §2 table: old code on the migrated schema receives but cannot move/sell (GT-F01); new code on the old schema hides the failure (GT-F05). §3 facts: GT-F04, plus the old code on the pinned packages (Linux) from the gate rehearsal. Cases 1–3 corrected. §5: rehearsal results (only `downgrade -1`; never all four). §6: the template's automatic restart is being removed, no reliance on it, no acceptance on health alone. §8: timings filled where rehearsed |
-| `docs/security/CKAM_SECRET_ROTATION_CHECKLISTS.md` | `eed3de1` → `<RELEASE-SHA>` only |
+| `docs/security/CKAM_SECRET_ROTATION_CHECKLISTS.md` | `eed3de1` → `ccae7b2` only |
 | `docs/security/CKAM_SECURITY_MASTER_HANDOVER.md` | §5 CL2-IF-04 "Which QR codes" (GT-F02). §6.3 row 4 (GT-F01). §9(a) rows 1, 10, 12, 13. §10 item 14 (GT-F02) and item 18 (GT-F01). §11.4 row 8. §11.5 (GT-F01, F04, F05, template). §11.6 pointer |
 | `docs/security/CKAM_SECURITY_FINAL_CLOSURE_REPORT.md` | Part A, "What was still open": the label sentence (GT-F02) |
 | `docs/security/CKAM_SECURITY_DECISIONS_REQUIRED.md` | SD-04 impact (GT-F02) |
@@ -37,13 +48,13 @@ touched (another engineer owns it).
 
 ## 3. Placeholders left for the lead
 
-`<RELEASE-SHA>` (short and full), `<ZIP-SHA256>`, `<ZIP-SIZE>`, `<CONTENT-HASH>`, plus four I added: `<FILE-COUNT>`,
-`<ENTRY-COUNT>`, `<BUNDLE-JS>` / `<BUNDLE-JS-REGEX>` and `<BUNDLE-CSS>`. The JS bundle name changes with every build
+`ccae7b2` (short and full), `b975c38d1f37387dbd8e15739ea2c27f563549e66bc80eac21878ea6327137e3`, `2152224`, `e2408eab01bf6c7d1ac4145b8fbd415010be590cc6d9519c2aabe2fb52f5848b`, plus four I added: `215`,
+`238`, `index-Cp5JgQR-.js` / `index-Cp5JgQR-.js` and `index-Bj21ou3B.css`. The JS bundle name changes with every build
 because the bundle contains the release id. All `TO BE FILLED BY LEAD` markers remain, notably:
 
 - the `git diff` scope against `fd34520`;
 - the colorama version and the pin count;
-- the regression run on `<RELEASE-SHA>`;
+- the regression run on `ccae7b2`;
 - whether the gate results carry over to the rebuilt package;
 - the rebuilt package report path;
 - the `verify_release.ps1` launcher-flag row names;

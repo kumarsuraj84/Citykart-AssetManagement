@@ -1,0 +1,57 @@
+HEADERS /api/health -> 200 ["date","content-length","content-type","x-content-type-options","x-frame-options","referrer-policy","permissions-policy","content-security-policy","cache-control","x-request-id"]
+HEADERS / -> 200 ["date","cache-control","content-type","accept-ranges","content-length","last-modified","etag","x-content-type-options","x-frame-options","referrer-policy","permissions-policy","content-security-policy","x-request-id"]
+HEADERS /login -> 200 ["date","cache-control","content-type","accept-ranges","content-length","last-modified","etag","x-content-type-options","x-frame-options","referrer-policy","permissions-policy","content-security-policy","x-request-id"]
+HEADERS /assets/index-Cp5JgQR-.js -> 200 ["date","content-type","accept-ranges","content-length","last-modified","etag","x-content-type-options","x-frame-options","referrer-policy","permissions-policy","content-security-policy","x-request-id"]
+HEADERS /assets/1 -> 200 ["date","cache-control","content-type","accept-ranges","content-length","last-modified","etag","x-content-type-options","x-frame-options","referrer-policy","permissions-policy","content-security-policy","x-request-id"]
+HEADERS /api/nope -> 404 ["date","content-length","content-type","x-content-type-options","x-frame-options","referrer-policy","permissions-policy","content-security-policy","cache-control","x-request-id"]
+HEADERS /assets/..%2f..%2fx -> 404 ["date","content-length","content-type","x-content-type-options","x-frame-options","referrer-policy","permissions-policy","content-security-policy","x-request-id"]
+HEADERS /favicon.svg -> 200 ["date","content-type","accept-ranges","content-length","last-modified","etag","x-content-type-options","x-frame-options","referrer-policy","permissions-policy","content-security-policy","x-request-id"]
+CSP default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'
+ok   404 fwd-slash x4 encoded -> shared/.env :: /assets/..%2f..%2f..%2f..%2fshared%2f.env :: {"detail":"Not Found","request_id":"954cafad84114298b7ff351b
+ok   404 fwd-slash x4 encoded -> nas.pw :: /assets/..%2f..%2f..%2f..%2fshared%2fnas.pw :: {"detail":"Not Found","request_id":"2070361ddb444ccaa6653d6f
+ok   404 fwd-slash x4 encoded -> launcher :: /assets/..%2f..%2f..%2f..%2fshared%2frun_ckam_web.ps1 :: {"detail":"Not Found","request_id":"5d482fbff451496494ce01a4
+ok   404 fwd-slash x5 -> canary_root.txt :: /assets/..%2f..%2f..%2f..%2fcanary_root.txt :: {"detail":"Not Found","request_id":"6c9a8781f58f42a9b1c68862
+ok   404 plain ../ (unencoded) x4 :: /assets/../../../../shared/.env :: {"detail":"Not Found","request_id":"06a93df2dfb14b6fb31c9fba
+ok   404 encoded dots %2e%2e%2f :: /assets/%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2fshared%2f.env :: {"detail":"Not Found","request_id":"e7b8c8f163dd47b2a4726968
+ok   404 backslash x4 (..%5c) :: /assets/..%5c..%5c..%5c..%5cshared%5c.env :: {"detail":"Not Found","request_id":"f96cd3a353ff4b5baa241bf9
+ok   404 encoded dotdot + backslash (%2e%2e%5c) :: /assets/%2e%2e%5c%2e%2e%5c%2e%2e%5c%2e%2e%5cshared%5c.env :: {"detail":"Not Found","request_id":"4d5af7173bf84f69a8758275
+ok   404 mixed slash/backslash :: /assets/..%5c../..%5c../shared/.env :: {"detail":"Not Found","request_id":"cf32031583f14ca7965245df
+ok   404 mixed encoded :: /assets/..%2f..%5c..%2f..%5cshared%2f.env :: {"detail":"Not Found","request_id":"6b68554d4c0e463390de4875
+ok   404 double encoded backslash :: /assets/..%255c..%255c..%255c..%255cshared%255c.env :: {"detail":"Not Found","request_id":"6ec9755c73a64075b9076969
+ok   404 double encoded slash :: /assets/%252e%252e%252f%252e%252e%252f%252e%252e%252f%252e%252e%252fshared%252f.env :: {"detail":"Not Found","request_id":"48da3c797f6640a78c6e1d1f
+ok   404 overlong UTF-8 slash :: /assets/..%c0%af..%c0%af..%c0%af..%c0%afshared%c0%af.env :: {"detail":"Not Found","request_id":"2ebe0cd0e01748a8b4122f6a
+ok   404 sibling file in dist (one up) :: /assets/..%2findex.html :: {"detail":"Not Found","request_id":"e5e8abb09a3d4b57aba2f483
+ok   404 sibling file in dist (backslash) :: /assets/..%5cindex.html :: {"detail":"Not Found","request_id":"c3dc11674332453390df7c72
+ok   404 sibling folder same prefix (assets-evil) :: /assets/..%2fassets-evil%2fx :: {"detail":"Not Found","request_id":"6d3384c71281460cbbfd7a23
+ok   404 sibling folder same prefix (backslash) :: /assets/..%5cassets-evil%5cx :: {"detail":"Not Found","request_id":"ef594c1d7c094fe3b79a4d40
+ok   404 absolute linux path encoded :: /assets/%2fsrv%2fckam%2fshared%2f.env :: {"detail":"Not Found","request_id":"34cca7251cc34e08a3622b9a
+ok   404 absolute linux path double slash :: /assets//srv/ckam/shared/.env :: {"detail":"Not Found","request_id":"1ea64771ec4e46d8bf8f0c63
+ok   404 /etc/passwd encoded :: /assets/%2fetc%2fpasswd :: {"detail":"Not Found","request_id":"f8824e1598c446c88a38f572
+ok   404 /etc/passwd traversal :: /assets/..%2f..%2f..%2f..%2f..%2f..%2f..%2fetc%2fpasswd :: {"detail":"Not Found","request_id":"67128ff185fd4b75af780990
+ok   404 drive fwd C:%2fWindows%2fwin.ini :: /assets/C:%2fWindows%2fwin.ini :: {"detail":"Not Found","request_id":"ee3b6b65cc614e528e008209
+ok   404 drive back C:%5cWindows%5cwin.ini :: /assets/C:%5cWindows%5cwin.ini :: {"detail":"Not Found","request_id":"84d37fc6e6d945ebbcef54d7
+ok   404 win.ini via leading slash :: /assets//C:/Windows/win.ini :: {"detail":"Not Found","request_id":"518af17a8ebb45feb5435aa9
+ok   404 drive-relative C:win.ini :: /assets/C:win.ini :: {"detail":"Not Found","request_id":"48ae46b134664a90a699176a
+ok   404 UNC %5c%5cserver%5cshare :: /assets/%5c%5cserver%5cshare%5cx :: {"detail":"Not Found","request_id":"c6f7961a041e415aa50b170c
+ok   404 UNC forward //server/share :: /assets//server/share/x.txt :: {"detail":"Not Found","request_id":"2b03e13fe0574fceae63dd53
+ok   404 UNC localhost admin share :: /assets/%5c%5clocalhost%5cC$%5cWindows%5cwin.ini :: {"detail":"Not Found","request_id":"161c1f0c735849bbb25a4ab1
+ok   404 ADS ::$DATA :: /assets/index-Cp5JgQR-.js::$DATA :: {"detail":"Not Found","request_id":"8551b94a76ff49d6a43077c3
+ok   404 ADS named stream :: /assets/index-Cp5JgQR-.js:stream :: {"detail":"Not Found","request_id":"87ceda991b764f8388f3ed02
+ok   404 trailing dot :: /assets/index-Cp5JgQR-.js. :: {"detail":"Not Found","request_id":"d5cca28dfb5e488693546234
+ok   404 trailing space :: /assets/index-Cp5JgQR-.js%20 :: {"detail":"Not Found","request_id":"7b029a5b84964729b7f56773
+ok   404 device CON :: /assets/CON :: {"detail":"Not Found","request_id":"066f22e8dbf44843a9f3e9e5
+ok   404 device NUL :: /assets/NUL :: {"detail":"Not Found","request_id":"cd21b46e4c6a47caa19f706c
+ok   404 device nul.txt :: /assets/nul.txt :: {"detail":"Not Found","request_id":"ce81de8a01a14921932cfe51
+ok   404 device aux.js :: /assets/aux.js :: {"detail":"Not Found","request_id":"1249a5b431c74ac0bf26d956
+ok   404 device COM1 :: /assets/COM1 :: {"detail":"Not Found","request_id":"39c3025b481547589e61fd1c
+ok   404 8.3 short name :: /assets/INDEX-~1.JS :: {"detail":"Not Found","request_id":"6cf42c5f9eef45aeb185529e
+ok   404 NUL byte :: /assets/index-Cp5JgQR-.js%00.txt :: {"detail":"Not Found","request_id":"0aca913f59ac4d41895fdb9c
+ok   404 NUL byte traversal :: /assets/..%2f..%2f..%2f..%2fshared%2f.env%00.js :: {"detail":"Not Found","request_id":"39896a67362e4eaf9f7ef6af
+ok   404 long name (5000) :: /assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa :: {"detail":"Not Found","request_id":"f9157f6d0aae43078bfe58f1
+ok   404 dot segment :: /assets/./index-Cp5JgQR-.js :: {"detail":"Not Found","request_id":"86c9c3b6660c445e82754528
+ok   404 hidden dotfile :: /assets/.env :: {"detail":"Not Found","request_id":"0f10f1e94ed543e89e7c687b
+ok   404 symlink file -> shared/.env :: /assets/link-env.txt :: {"detail":"Not Found","request_id":"1b8c749b19504674b3dc3c03
+ok   404 symlinked dir -> shared/.env :: /assets/linkdir/.env :: {"detail":"Not Found","request_id":"92714b0703e142f0a6363476
+ok   404 symlinked dir -> nas.pw :: /assets/linkdir/nas.pw :: {"detail":"Not Found","request_id":"62153e53321942e98020555e
+ok   404 symlinked dir encoded :: /assets/linkdir%2f.env :: {"detail":"Not Found","request_id":"bbbe977239644236b4201127
+DISTINCT REFUSAL ANSWERS: ["404|application/json|{\"detail\":\"Not Found\",\"request_id\":\"<id>\"}"]

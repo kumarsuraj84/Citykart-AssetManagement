@@ -1,0 +1,10 @@
+external: []
+csp: []
+api5xx: []
+console errors: [
+ "secho: Failed to load resource: the server responded with a status of 404 (Not Found)",
+ "secho: Failed to load resource: the server responded with a status of 404 (Not Found)",
+ "secopit: Failed to load resource: the server responded with a status of 404 (Not Found)",
+ "secopit: Failed to load resource: the server responded with a status of 404 (Not Found)"
+]
+fonts: ["/assets/inter-latin-wght-normal-Dx4kXJAl.woff2"]

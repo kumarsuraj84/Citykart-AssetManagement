@@ -1,0 +1,18 @@
+﻿PowerShell 5.1.26100.9168 Desktop (powershell.exe, the version on the server)
+zip SHA-256 b975c38d1f37387dbd8e15739ea2c27f563549e66bc80eac21878ea6327137e3  size 2152224
+Expand-Archive -LiteralPath <zip> -DestinationPath <empty folder>: ok=True  files=215
+  backend\app                present=True
+  backend\app\main.py        present=True
+  backend\constraints.txt    present=True
+  backend\VERSION            present=True
+  frontend-dist\index.html   present=True
+  RELEASE.json               present=True
+  backend\alembic.ini        present=True
+  backend\pyproject.toml     present=True
+  backend\VERSION = ccae7b2281bc4ca71f4b6113f61dc86de392bc3e
+RELEASE.json read like deploy_ckam.ps1 step 1 (ConvertFrom-Json): release_sha_short=ccae7b2 release_sha=ccae7b2281bc4ca71f4b6113f61dc86de392bc3e alembic_head=c6e8a0b2d4f6 head_is_revision_id=True
+  deploy -Sha ccae7b2 sha check passes: True   deploy -Sha eed3de1 would stop: True
+Parser::ParseFile deploy_ckam.ps1.template         errors=0 tokens=2858
+Parser::ParseFile rollback_release.ps1.template    errors=0 tokens=820
+Parser::ParseFile run_ckam_web.ps1.template        errors=0 tokens=692
+Parser::ParseFile verify_release.ps1               errors=0 tokens=2635

@@ -1,0 +1,6 @@
+id,step,what,expected,actual,result,evidence
+"GD-400","4","20 sign-ins from one address (unknown ids, each with a different forged X-Forwarded-For)","all 401 (allowed, wrong credentials)","401,401,401,401,401,401,401,401,401,401,401,401,401,401,401,401,401,401,401,401","PASS",""
+"GD-401","4","21st sign-in from the same address within 60 s (forged X-Forwarded-For again)","429, forged header does not dodge the limit (--no-proxy-headers)","429 retry-after=60 {""detail"":""Too many sign-in attempts. Wait a minute and try again."",""errors"":[""Too many sign-in attempts. Wait a minute and try again.""],""request_id"":""d7752af17","PASS",""
+"GD-402","4","a real persona during the address block","429 too (per-address limit), not a lock-out","429","PASS",""
+"GD-403","4","11 sign-ins for ONE login id within 60 s","1-10: 401, 11th: 429","401,401,401,401,401,401,401,401,401,401,429","PASS",""
+"GD-404","4","SECHO signs in after the window passed","200 (persona not locked by the rate-limit test)","200 token=true","PASS",""

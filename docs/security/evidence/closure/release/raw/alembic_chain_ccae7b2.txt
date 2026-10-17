@@ -1,0 +1,50 @@
+migration files: 43 revisions: 43
+roots: ['62108649b9c8']
+heads: ['c6e8a0b2d4f6']
+merge revisions: []
+branch points: {}
+linear walk length: 43 of 43
+  1 62108649b9c8 0001_masters_and_holders.py
+  2 da18ab258def 0002_numbering.py
+  3 ff2d24d960b8 0003_assets_and_events.py
+  4 cf5fc76a3fb2 0004_documents.py
+  5 83d063397a4a 0005_holder_email_unique.py
+  6 d2bcc801fcc1 0006_data_integrity_indexes_and_snapshots.py
+  7 3a44505b6b10 0007_closed_value_check_constraints.py
+  8 a409768dc2cf a409768dc2cf_asset_field_change_audit.py
+  9 370399c6380e 370399c6380e_custom_field_company_scope.py
+ 10 f28b6a913dce f28b6a913dce_asset_field_change_correction_reason.py
+ 11 9f973f6c81e9 9f973f6c81e9_purchase_orders_and_pending_assets.py
+ 12 8c5638e1b65e 8c5638e1b65e_purchase_order_cost_center.py
+ 13 6c882ef3b225 6c882ef3b225_asset_and_pending_asset_barcode.py
+ 14 278437eb710e 278437eb710e_asset_serial_number_uniqueness.py
+ 15 b7f4a1d92e6c b7f4a1d92e6c_warranty_years.py
+ 16 c2a8f731d904 c2a8f731d904_invoice_amount.py
+ 17 d4e9a2f8b1c3 d4e9a2f8b1c3_brand_master.py
+ 18 a1c7e5f3d9b2 a1c7e5f3d9b2_vendor_code_length.py
+ 19 f3b6c8a1d7e4 f3b6c8a1d7e4_location_company_scope.py
+ 20 c7e2f9a4b6d1 c7e2f9a4b6d1_holder_to_asset_user.py
+ 21 d3f8a1c5b7e9 d3f8a1c5b7e9_asset_user_rbac_responsibility_rebuild.py
+ 22 e5b2c8a4d1f6 e5b2c8a4d1f6_bundles.py
+ 23 f7a1d4c8b3e2 f7a1d4c8b3e2_po_reader.py
+ 24 a9c3e5d7b1f4 a9c3e5d7b1f4_erp_links.py
+ 25 b4d6f8a0c2e3 b4d6f8a0c2e3_serial_rules.py
+ 26 c5e7a9b1d3f5 c5e7a9b1d3f5_items.py
+ 27 d6f8b0c2e4a6 d6f8b0c2e4a6_item_map_company.py
+ 28 e7a0c2d4f6b8 e7a0c2d4f6b8_company_erp_code.py
+ 29 f8b1d3e5a7c9 f8b1d3e5a7c9_serial_on_item_only.py
+ 30 a1d3f5b7c9e2 a1d3f5b7c9e2_serial_pending.py
+ 31 b2c4e6a8d0f1 b2c4e6a8d0f1_po_erp_baseline.py
+ 32 c3e5a7b9d1f2 c3e5a7b9d1f2_erp_local_copy.py
+ 33 d4f6b8c0e2a3 d4f6b8c0e2a3_vendor_erp_link.py
+ 34 e5a7c9b1d3f4 e5a7c9b1d3f4_erp_site_copy.py
+ 35 f6b8d0e2a4c5 f6b8d0e2a4c5_not_tracked_rules.py
+ 36 b8d0f2a4c6e8 b8d0f2a4c6e8_pending_asset_line_no.py
+ 37 c1d3e5f7a9b0 c1d3e5f7a9b0_master_audit.py
+ 38 d2e4f6a8b0c2 d2e4f6a8b0c2_s7_idempotency_and_po_number_index.py
+ 39 e6f8a0b2c4d6 e6f8a0b2c4d6_logging_tables.py
+ 40 f9a1c3e5b7d2 f9a1c3e5b7d2_asset_user_token_version.py
+ 41 a3c5e7f9b1d4 a3c5e7f9b1d4_append_only_truncate_and_purge_floor.py
+ 42 b5d7f9a1c3e5 b5d7f9a1c3e5_auth_session_refresh_reuse.py
+ 43 c6e8a0b2d4f6 c6e8a0b2d4f6_asset_lifecycle_fields_guard.py
+LINEAR_SINGLE_HEAD: True HEAD: c6e8a0b2d4f6

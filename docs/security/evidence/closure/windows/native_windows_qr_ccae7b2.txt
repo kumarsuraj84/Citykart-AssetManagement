@@ -1,0 +1,5 @@
+cold load of /assets/1 -> /login?next=%2Fassets%2F1
+after sign-in url: /assets/1
+page text starts: Assets CKSPL/ITFA-SPL/0001 With Employee Work area: IT Team Move… Print Label Edit History Item Laptop (CKSPL) With Sec Self Service (Employee) · Head Office CK
+Inter loaded: true | non-local requests: blob:http://127.0.0.1:3613/e2b | count: 1 | CSP console messages: 0
+hard navigation to /assets/2 stays on: /assets/2 | text: Assets CKSPL/ITFA-SPL/0002 Under Repair Work area: IT Team Move… Print Label Edi

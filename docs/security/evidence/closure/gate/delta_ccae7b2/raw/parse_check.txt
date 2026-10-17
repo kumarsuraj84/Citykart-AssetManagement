@@ -1,0 +1,12 @@
+﻿PowerShell 5.1.26100.9168 (Desktop) on Microsoft Windows NT 10.0.26200.0
+
+File                          SHA256           ParseErrors FirstError Tokens UvicornArgLines WithBothFlags HardcodedSecretLike
+----                          ------           ----------- ---------- ------ --------------- ------------- -------------------
+deploy_ckam.ps1.template      68182E074949D09B           0              2858               0             0                   0
+rollback_release.ps1.template CAD2CF8389A106AE           0               820               0             0                   0
+run_ckam_web.ps1.template     56F9B5C7171EEEF5           0               692               1             1                   0
+verify_release.ps1            B2BB0749F0C7B76E           0              2635               0             0                   0
+
+
+
+files: 4; total parse errors: 0

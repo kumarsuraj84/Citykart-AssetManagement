@@ -1,0 +1,58 @@
+{
+  "name": "ckam-security-release-ccae7b2",
+  "purpose": "CKAM emergency security release (IF-01 file-read fix and the security closure programme)",
+  "release_commit": "ccae7b2281bc4ca71f4b6113f61dc86de392bc3e",
+  "release_commit_short": "ccae7b2",
+  "release_sha": "ccae7b2281bc4ca71f4b6113f61dc86de392bc3e",
+  "release_sha_short": "ccae7b2",
+  "release_sha_note": "release_sha / release_sha_short repeat release_commit / release_commit_short because ops/windows/deploy_ckam.ps1.template reads these two names to check that the package is the release it was asked to deploy",
+  "release_tree": "ffd2de554fb2b97043ab3f376a0ec543ed5dcdf1",
+  "supersedes": "ckam-security-release-eed3de1 (built 2026-10-17, never deployed)",
+  "code_identical_to_fd34520_except": [
+    "backend/constraints.txt",
+    "ops/windows/README.md",
+    "ops/windows/deploy_ckam.ps1.template",
+    "ops/windows/verify_release.ps1"
+  ],
+  "code_identical_note": "git diff --name-only fd34520..ccae7b2 -- . ':!docs' lists exactly these four files; everything else outside docs/ is byte-identical to fd345202f127e9abe4d61390817e6064e926c2dd. Application code (backend/app, frontend) is unchanged; constraints.txt only adds colorama==0.4.6 (44 pins)",
+  "branch": "worktree-ckam-build",
+  "default_branch": "claude/brave-euler-07879a",
+  "commit_date": "2026-10-17T10:28:34+05:30",
+  "build_date_utc": "2026-10-17T04:59:40Z",
+  "built_from": "git archive of the committed tree ccae7b2 (no working-tree or untracked files)",
+  "build_host": "dev PC 10.0.0.47 (Windows 11)",
+  "node_version": "v24.14.0",
+  "npm_version": "11.9.0",
+  "frontend_build": "npm ci; VITE_APP_VERSION=ccae7b2 npm run build; npm run check:build (OK)",
+  "python_required": ">=3.13",
+  "constraints_pins": 44,
+  "install_command": "python -m pip install -c <release>\\backend\\constraints.txt -e <release>\\backend",
+  "alembic_head": "c6e8a0b2d4f6",
+  "alembic_revision_count": 43,
+  "security_migrations_in_order": [
+    {"revision": "f9a1c3e5b7d2", "down_revision": "e6f8a0b2c4d6", "what": "asset_user.token_version (sessions end on access change); the new code cannot sign anyone in without it"},
+    {"revision": "a3c5e7f9b1d4", "down_revision": "f9a1c3e5b7d2", "what": "TRUNCATE guards on the append-only tables; 5-year floor for the audit purge"},
+    {"revision": "b5d7f9a1c3e5", "down_revision": "a3c5e7f9b1d4", "what": "auth_session table (refresh-token reuse detection, AU-06); must be applied before the new code starts"},
+    {"revision": "c6e8a0b2d4f6", "down_revision": "b5d7f9a1c3e5", "what": "trigger trg_asset_lifecycle_fields_guard: asset.status / current_asset_user_id / status_since may only change through the ledger writer (OBS-STATUS)"}
+  ],
+  "migration_notes": {
+    "one_transaction": "alembic upgrade head runs all four migrations in ONE database transaction: a failed upgrade rolls back all four and leaves the database at e6f8a0b2c4d6 (confirm with alembic current)",
+    "old_release_on_new_schema": "After c6e8a0b2d4f6 the OLD release 3b5e842 can still RECEIVE assets, but it CANNOT move, repair, mark lost/found, dispose, sell or scrap: the lifecycle trigger refuses those updates and the user sees a misleading HTTP 422. It also still has IF-01. Never use it as a quick rollback",
+    "new_release_on_old_schema": "The new code on the un-migrated schema looks healthy (/api/health 200) but every sign-in fails: always migrate before starting it",
+    "policy": "roll forward first (fix and redeploy); a database restore from the pre-deploy dump only by owner decision"
+  },
+  "components": {
+    "backend/app/": "production backend code incl. app/alembic (migrations); no tests, no __pycache__",
+    "backend/alembic.ini": "Alembic configuration (script_location = app/alembic)",
+    "backend/pyproject.toml": "project metadata and runtime dependencies",
+    "backend/constraints.txt": "exact runtime package versions, 44 pins incl. colorama==0.4.6 for Windows (IF-11)",
+    "backend/scripts/create_owner.py": "one-time first-owner bootstrap script (only script shipped)",
+    "backend/VERSION": "full release commit sha",
+    "frontend-dist/": "built frontend (no source maps, self-hosted fonts)",
+    "ops/windows/": "reference launcher, deploy, verify and rollback scripts + README",
+    "ops/db/": "role-split, verify and least-privilege check SQL + runbook, for the DBA (not used by this deploy)",
+    "RELEASE.json": "this file"
+  },
+  "excluded": [".git", ".env*", "node_modules", "backend/tests", "frontend sources/e2e/tests", "docs (incl. security evidence)", "screenshots and demo files", "coverage and caches", "backups and dumps", "docker-compose and Dockerfiles", "dev/seed scripts other than create_owner.py"],
+  "zip_sha256": "not stored inside the zip (a file cannot contain its own hash): see ../MANIFEST.sha256.txt next to the zip, which lists the SHA-256 of the zip and of every file in this folder"
+}

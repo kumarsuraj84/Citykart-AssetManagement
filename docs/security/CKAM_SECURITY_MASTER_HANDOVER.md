@@ -1101,7 +1101,7 @@ nothing was deployed and no people-run control has operated.
 |---|---|---|---|
 | 0 (today) | **Close or narrow the internet forward of TCP 3211** as an interim measure (SD-04, EXT-05) | Infra + owner | Confirm who outside the office needs CKAM; reduces IF-01 exposure while the deploy is prepared |
 | 0 (today) | Lock down the dev PC `.env`, `backups\`, worktree; check BitLocker (EXT-10) | Owner / IT (elevated) | `closure/infra/IF-09_ACL_PLAN.md`; do not lock out Docker Desktop |
-| 1 | *(updated 2026-10-17, security release: the runbook is now steps A–N; the release is `<RELEASE-SHA>` from the rebuilt package (`<ZIP-SHA256>`), not the superseded `eed3de1`; go/no-go in `CKAM_PRODUCTION_SECURITY_GO_NO_GO.md`; change record draft `CKAM_EMERGENCY_CHANGE_RECORD_DRAFT.md`)* Re-read the release paperwork: the runbook was updated on 2026-10-16 (Phase 4 lists `f9a1c3e5b7d2` → `a3c5e7f9b1d4` → `b5d7f9a1c3e5` → `c6e8a0b2d4f6`; start flags `--no-proxy-headers --no-server-header`; QR deep-link check; roll-forward-only note) — confirm `<RELEASE-SHA>` / `<FINAL-HEAD>` are filled in the change record; use `ops/windows/verify_release.ps1` | Dev | Before the window |
+| 1 | *(updated 2026-10-17, security release: the runbook is now steps A–N; the release is `ccae7b2` from the rebuilt package (`b975c38d1f37387dbd8e15739ea2c27f563549e66bc80eac21878ea6327137e3`), not the superseded `eed3de1`; go/no-go in `CKAM_PRODUCTION_SECURITY_GO_NO_GO.md`; change record draft `CKAM_EMERGENCY_CHANGE_RECORD_DRAFT.md`)* Re-read the release paperwork: the runbook was updated on 2026-10-16 (Phase 4 lists `f9a1c3e5b7d2` → `a3c5e7f9b1d4` → `b5d7f9a1c3e5` → `c6e8a0b2d4f6`; start flags `--no-proxy-headers --no-server-header`; QR deep-link check; roll-forward-only note) — confirm `ccae7b2` / `<FINAL-HEAD>` are filled in the change record; use `ops/windows/verify_release.ps1` | Dev | Before the window |
 | 2 | Owner approvals in writing: **separate** deploy request for a named release (≥ `fd34520`); window; rotation of 4 secrets right after (SD-01). The push approval comes later (step 13) | Owner | Change record started (EXT-42, EXT-35 template) |
 | 3 | Copy production logs off the server with SHA-256 list **before anything restarts** (EXT-41) | IT | Admin-only evidence folder |
 | 4 | Precheck (EXT-39): `ENVIRONMENT_NAME=production`; `JWT_SECRET` ≥ 32 chars, ≥ 8 distinct, not a placeholder (checked without printing); backup task healthy and which DB login it uses; disk space; **is `ckappuser` / `ckpost` used only by CKAM?** (EXT-43); migration rehearsal on a scratch copy | IT, DBA, Dev | Stop if backup fails or release lacks `3e134c1` |
@@ -1372,9 +1372,12 @@ NAS. **Production stays vulnerable to IF-01 and keeps the QR/Asset 360 deep-link
   `e6f8a0b2c4d6` (GT-F04). **New code on that un-migrated database looks healthy** (`/api/health` 200, app page,
   bare `verify_release.ps1` passes) but every sign-in fails with the same misleading 422 (GT-F05): only `alembic
   current` = heads, the startup `head_mismatch` warning and a real sign-in catch it.
-- **The deploy template's automatic restart of the previous release after a late failure is being removed** in the
-  rebuilt package; until the operator has read the fixed template, no automatic rollback is relied on
-  (`CKAM_PRODUCTION_ROLLBACK_STRATEGY.md` §6).
+- **The deploy template is fixed in `ccae7b2`.** Before `alembic upgrade head`, a failure restores the settings and
+  restarts the previous release (exit 1). From the upgrade on, a failure never restarts the old release, never
+  downgrades and never restores: `CKAM-Web` stays stopped, with a banner and a `STATE` line (exit 3). Exit 2 means
+  stopped by a pre-check with nothing touched; exit 0 means deployed and verified. The template has been dry-run
+  only, never on a server, so the operator reads it first (`CKAM_PRODUCTION_ROLLBACK_STRATEGY.md` §6;
+  `evidence/closure/release/windows_scripts_fix/README.md`).
 - **Recommended stance: roll forward.** If verification fails, stop `CKAM-Web`, keep the internet forward closed, fix
   and redeploy; restore the pre-deploy dump only on the owner's decision.
 - Reference scripts: `ops/windows/rollback_release.ps1.template` switches the release folder only and warns that the

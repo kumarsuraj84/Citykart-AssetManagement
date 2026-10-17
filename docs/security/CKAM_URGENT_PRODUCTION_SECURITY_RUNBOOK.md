@@ -1,17 +1,18 @@
-# CKAM Urgent Production Security Runbook — release `<RELEASE-SHA>` (IF-01 fix, QR deep-link fix, secret rotation, compromise check)
+# CKAM Urgent Production Security Runbook — release `ccae7b2` (IF-01 fix, QR deep-link fix, secret rotation, compromise check)
 
 | | |
 |---|---|
 | Status | **PREPARED — OWNER APPROVAL PENDING.** Nothing in this document has been run on any server. Every command is marked `NOT EXECUTED`. **PRODUCTION REMAINS NOT REMEDIATED** until steps A–H have passed on 10.0.1.98. Even then, anyone who copied a secret through IF-01 can still use it until step I has been done |
-| Revision | **(updated 2026-10-17, security release — second pass)**: the release package is being **rebuilt** (fixed Windows reference scripts and `backend/constraints.txt`), so the release commit, zip hash, zip size and content hash are now the placeholders `<RELEASE-SHA>`, `<ZIP-SHA256>`, `<ZIP-SIZE>`, `<CONTENT-HASH>` (plus `<FILE-COUNT>`, `<ENTRY-COUNT>`, `<BUNDLE-JS>`, `<BUNDLE-CSS>`), filled in by the lead from the new package report. The earlier candidate `eed3de1` (zip SHA-256 `be3209af…`, 2,141,099 bytes) is **superseded and is NOT the approval target**. Corrected from the gate rehearsal (`docs/security/evidence/closure/gate/GATE_REHEARSAL.md`): GT-F01 (the old release can still **receive** on the migrated schema; it cannot move/sell/scrap), GT-F04 (a failed upgrade leaves `e6f8a0b2c4d6`), GT-F05 (new code on an un-migrated database looks healthy), GT-F06 (docs = JSON 404); deploy-template automatic restart (see "Using `deploy_ckam.ps1`"). First 2026-10-17 pass: steps re-ordered as **A → M** (plus N for the push), push moved to the very end, roll-forward first, one-transaction migrations, replacement checks for `/openapi.json`, both uvicorn flags, `-c constraints.txt`. Earlier versions: 2026-10-16 (WP-D1, then the lead's update "deploy before push") |
+| Revision | **Final values filled in 2026-10-17 (security release)**: the package was rebuilt from commit `ccae7b2` (fixed Windows reference scripts, `colorama` pinned in `backend/constraints.txt`, corrected `RELEASE.json`); all release identifiers in this runbook are the real ones. Earlier candidate `eed3de1` is SUPERSEDED — never deploy it |
 | Production today | 10.0.1.98 runs release `3b5e842`; its database `ckassetmanagement` is at Alembic revision `e6f8a0b2c4d6`. `3b5e842` has **IF-01**: anyone who can reach port 3211 can read any file on the server, including `shared\.env` and `shared\nas.pw`. It also has the QR / Asset 360 deep-link bug **CL2-IF-04**: a scanned `/assets/<id>` link gives an error. This includes labels printed from Print Labels in the **default "Barcode + QR"** format, whose QR is the same `BASE_URL` deep link (GT-F02) |
-| Release to deploy | `<RELEASE-SHA>` (full 40-character sha: `<RELEASE-SHA>`; the lead fills both), branch `worktree-ckam-build`. Expected contents: the code of `fd34520` (all security fixes) **plus** the fixed `ops/windows/` reference scripts and `backend/constraints.txt` with `colorama` pinned. The exact `git diff --name-only` against `fd34520` is recorded in the new package report (`TO BE FILLED BY LEAD`). **Not pushed. A deploy does not need a push** |
-| Package | Zip `release-packages\ckam-security-release-<RELEASE-SHA>.zip` on the dev PC: **`<ZIP-SIZE>` bytes**, **`<ENTRY-COUNT>` entries**, **SHA-256 `<ZIP-SHA256>`**, content hash `<CONTENT-HASH>` (`<FILE-COUNT>` files). Build and inspection: the package report of the rebuilt package (`TO BE FILLED BY LEAD`; `docs/security/evidence/closure/release/PACKAGE_REPORT.md` describes the superseded `eed3de1` build) |
+| Release to deploy | `ccae7b2` (full 40-character sha: `ccae7b2281bc4ca71f4b6113f61dc86de392bc3e`), branch `worktree-ckam-build`. Expected contents: the code of `fd34520` (all security fixes) **plus** the fixed `ops/windows/` reference scripts and `backend/constraints.txt` with `colorama` pinned. `git diff --name-only fd34520..ccae7b2 -- . ':!docs'` lists exactly four files: `backend/constraints.txt` (43 → 44 pins, `colorama==0.4.6`), `ops/windows/README.md`, `ops/windows/deploy_ckam.ps1.template`, `ops/windows/verify_release.ps1` (`PACKAGE_REPORT_ccae7b2.md` §1). **Not pushed. A deploy does not need a push** |
+| Package | Zip `release-packages\ckam-security-release-ccae7b2.zip` on the dev PC: **2,152,224 bytes**, **238 entries**, **SHA-256 `b975c38d1f37387dbd8e15739ea2c27f563549e66bc80eac21878ea6327137e3`**, content hash `e2408eab01bf6c7d1ac4145b8fbd415010be590cc6d9519c2aabe2fb52f5848b` (215 files). Build and inspection: **`docs/security/evidence/closure/release/PACKAGE_REPORT_ccae7b2.md`** (`PACKAGE_REPORT.md` describes the superseded `eed3de1` build) |
+| Native Windows evidence for this package (updated 2026-10-17, security release) | On the dev PC (Windows 11), the `ccae7b2` package was unpacked and installed with the exact documented command `pip install -c backend\constraints.txt -e backend` (Python 3.13.1: 43 packages, all at their pins, `colorama` 0.4.6 included; succeeded). It was started with production settings and both flags (`--no-proxy-headers --no-server-header`). Results: the 32-payload Windows attack list gave **0 leaks, 0 server errors, one identical refusal**; `/assets/<id>` and `/assets/new` opened the app page; `/docs`, `/redoc`, `/openapi.json` gave JSON 404; there was no `Server` header; a browser cold load of `/assets/1` went to sign-in and then to the asset page; the packaged `verify_release.ps1` gave **41/41 PASS**, including `-LocalProcessCheck Require`. Evidence: `docs/security/evidence/closure/windows/native_windows_release_ccae7b2.txt`, `native_windows_qr_ccae7b2.txt`, `native_windows_verify_release_ccae7b2.csv`. **Limits:** portable (embeddable) Python, not a venv; test database on Docker (PostgreSQL 17), not PostgreSQL 18; no Task Scheduler, no `CKAM-Web` task, no NAS mapping, no real launcher run, not 10.0.1.98. It proves the install command, the Windows path handling and the verify script on Windows. It does **not** prove the server, the task, the venv redirector or the NAS. **Nothing has been run on production** |
 | Database change | Four migrations, in this order: `f9a1c3e5b7d2` → `a3c5e7f9b1d4` → `b5d7f9a1c3e5` → `c6e8a0b2d4f6` (single head). They take the database from `e6f8a0b2c4d6` to **`c6e8a0b2d4f6`** |
 | Applies to | App server **10.0.1.98** (`D:\Citykart_Applications\Citykart_AssetManagement_App`, task `CKAM-Web`, port 3211). Database server **10.0.0.205** (PostgreSQL 18, database `ckassetmanagement`). NAS **10.0.0.25** (`\\10.0.0.25\ckapplications_data\CKASSETMANAGEMENT_DATA`). ERP warehouse 10.0.1.69 (password change only, done by the ERP owner) |
 | Never applies to | **10.0.1.12 (retired; must stay dead).** Also never: Spinwheel or Citykart Desk folders, tasks, databases, roles, NAS folders or config on the shared servers |
 | Companion documents | `CKAM_PRODUCTION_ROLLBACK_STRATEGY.md` (what to do when a step fails) · `CKAM_SECRET_ROTATION_CHECKLISTS.md` (step I) · `CKAM_COMPROMISE_ASSESSMENT_PLAN.md` (steps B and K) · `CKAM_EMERGENCY_CHANGE_RECORD_DRAFT.md` (steps A and L) · `CKAM_GITHUB_PUBLIC_REPO_OPTIONS.md` (step N) · `CKAM_PRODUCTION_SECURITY_GO_NO_GO.md` (the gate before step C) · `CKAM_EXTERNAL_SECURITY_ACTIONS.md` (EXT-01…50) · `CKAM_HTTPS_IMPLEMENTATION_PLAN.md`, `CKAM_SERVICE_ACCOUNT_PLAN.md`, `CKAM_BACKUP_RESTORE_PLAN.md` (step M) · `docs/ai/PRODUCTION_INFRASTRUCTURE.md`, `docs/ai/LOGGING_AND_DIAGNOSTICS.md` |
-| Reference scripts (shipped in the package under `ops\windows\`) | `run_ckam_web.ps1.template` (launcher with `--no-proxy-headers --no-server-header`), `deploy_ckam.ps1.template` (steps E–H as one script; **being fixed** so that it no longer restarts the previous release automatically after the migrations; read "Using `deploy_ckam.ps1`"), `verify_release.ps1` (read-only checks; **gets launcher-flag checks** in the rebuilt package), `rollback_release.ps1.template` (switches the release folder only; never the database). None of them has been run on a server (EXT-13). The scripts are owned by another engineer; this runbook describes them only as far as the rebuilt package report confirms (`TO BE FILLED BY LEAD`) |
+| Reference scripts (shipped in the package under `ops\windows\`) | `run_ckam_web.ps1.template` (launcher with `--no-proxy-headers --no-server-header`), `deploy_ckam.ps1.template` (steps E–H as one script; **fixed in `ccae7b2`**: once `alembic upgrade head` has started, a failure never restarts the old release. Exit codes 0/1/2/3; read "Using `deploy_ckam.ps1`"), `verify_release.ps1` (read-only checks; **new in `ccae7b2`**: `-LocalProcessCheck Require` checks both uvicorn flags on the server; JSON-401 checks), `rollback_release.ps1.template` (switches the release folder only; never the database). **None of them has been run on a server (EXT-13).** They were checked by the PowerShell parser, by a fake-world dry run of 28 cases (`docs/security/evidence/closure/release/windows_scripts_fix/README.md`) and, for `verify_release.ps1`, natively on Windows (row above) |
 
 ---
 
@@ -19,13 +20,13 @@
 
 | Step | What | Gate before the next step |
 |---|---|---|
-| **A** | Start the change record and the incident record | Owner's written deploy approval for `<RELEASE-SHA>`, the window and the later rotation are recorded |
+| **A** | Start the change record and the incident record | Owner's written deploy approval for `ccae7b2`, the window and the later rotation are recorded |
 | **B** | **Preserve the production logs off-server**, before anything is changed | Hash list of the copied logs exists off the server |
-| **C** | **Precheck** (read-only): `ENVIRONMENT_NAME`, JWT strength (value never printed), `DATABASE_URL` present, disk, exact live release `3b5e842`, backup capability, **zip SHA-256 on the server = `<ZIP-SHA256>`**, launcher review, migration head `e6f8a0b2c4d6`, shared-account answers | Every precheck answered; any STOP item → stop |
+| **C** | **Precheck** (read-only): `ENVIRONMENT_NAME`, JWT strength (value never printed), `DATABASE_URL` present, disk, exact live release `3b5e842`, backup capability, **zip SHA-256 on the server = `b975c38d1f37387dbd8e15739ea2c27f563549e66bc80eac21878ea6327137e3`**, launcher review, migration head `e6f8a0b2c4d6`, shared-account answers | Every precheck answered; any STOP item → stop |
 | **D** | **Back up** the production database and prove the dump is readable; NAS and settings copies | Dump readable (`pg_restore` exit 0) |
-| **E** | **Copy** the new release into `releases\<RELEASE-SHA>\` and **verify the checksum after the copy** | Zip hash and content check match |
+| **E** | **Copy** the new release into `releases\ccae7b2\` and **verify the checksum after the copy** | Zip hash and content check match |
 | **F** | Stop CKAM only, install, switch the settings, **run the four migrations BEFORE any new code starts** | `alembic current` = `c6e8a0b2d4f6 (head)` |
-| **G** | **Start** the new release with `--no-proxy-headers --no-server-header` | One CKAM listener; launcher log names `<RELEASE-SHA>`; no "Refusing to start" |
+| **G** | **Start** the new release with `--no-proxy-headers --no-server-header` | One CKAM listener; launcher log names `ccae7b2`; no "Refusing to start" |
 | **H** | **Verify**: health, startup event, Alembic head, static security, IF-01 Windows probes, API docs unavailable, unknown API = JSON 404, security headers once, QR direct link `/assets/<id>`, sign-in, Asset list, PO, Receive, Move | **Every H check passes. Otherwise no rotation; follow the rollback strategy** |
 | **I** | **Only now rotate** the secrets: JWT secret → DB password (`ckassetapp`) → NAS password → ERP password | Each rotation validated |
 | **J** | Restart and verify every connection; delete the old secret copies | H re-run passes |
@@ -45,7 +46,7 @@ A record → B logs off-server → C precheck → D backup → E copy + checksum
 
 The live CKAM server has a hole (IF-01). A stranger can ask it for any file and get it. That includes the file that
 holds the database password and the key that signs logins. The fix is packaged on the development PC as release
-`<RELEASE-SHA>`. It is not on the server yet. On the day of the fix:
+`ccae7b2`. It is not on the server yet. On the day of the fix:
 
 1. Open the paperwork (A) and **copy the server's logs to a safe place first** (B). They are the only evidence of
    whether someone already used the hole, and a restart can make them rotate away.
@@ -87,12 +88,12 @@ door, then you change the locks. Changing the locks while the back door is still
 | Name | Value / meaning |
 |---|---|
 | `<ROOT>` | `D:\Citykart_Applications\Citykart_AssetManagement_App` on 10.0.1.98 |
-| Release | `<RELEASE-SHA>` (folder `<ROOT>\releases\<RELEASE-SHA>`) |
+| Release | `ccae7b2` (folder `<ROOT>\releases\ccae7b2`) |
 | Previous release | `3b5e842` (folder `<ROOT>\releases\3b5e842`; confirm in C1) |
 | Database revision before / after | `e6f8a0b2c4d6` / `c6e8a0b2d4f6` |
-| Zip SHA-256 / size / entries | `<ZIP-SHA256>` / `<ZIP-SIZE>` bytes / `<ENTRY-COUNT>` |
-| Content hash / files | `<CONTENT-HASH>` / `<FILE-COUNT>` |
-| Served bundle names of `<RELEASE-SHA>` | `/assets/<BUNDLE-JS>`, `/assets/<BUNDLE-CSS>` (from the rebuilt package report; the JS name changes with every build because the bundle contains the release id). `<BUNDLE-JS-REGEX>` = `<BUNDLE-JS>` with the dot escaped, for `Select-String` |
+| Zip SHA-256 / size / entries | `b975c38d1f37387dbd8e15739ea2c27f563549e66bc80eac21878ea6327137e3` / 2,152,224 bytes / 238 |
+| Content hash / files | `e2408eab01bf6c7d1ac4145b8fbd415010be590cc6d9519c2aabe2fb52f5848b` / 215 |
+| Served bundle names of `ccae7b2` | `/assets/index-Cp5JgQR-.js`, `/assets/index-Bj21ou3B.css` (`PACKAGE_REPORT_ccae7b2.md`; the JS name changes with every build because the bundle contains the release id). In `Select-String` patterns the dot is escaped: `index-Cp5JgQR-\.js` |
 | Superseded candidate (do **not** approve or deploy) | `eed3de1`, zip SHA-256 `be3209af…d246`, 2,141,099 bytes. Kept only as the subject of the gate rehearsal evidence |
 | `<STAGING-DIR>` | Admin-only folder on 10.0.1.98 for the incoming zip, **not** inside `releases\` (e.g. a new folder under `<ROOT>\backup\`) |
 | `<EVIDENCE-DIR>` | Admin-only evidence folder for this change on 10.0.1.98 (e.g. `<ROOT>\backup\CHG-<id>-evidence`) |
@@ -116,11 +117,12 @@ door, then you change the locks. Changing the locks while the back door is still
 
 ### Observations from the package build that change how you deploy
 
-1. **`colorama` (updated 2026-10-17, security release).** On Windows, `qrcode 8.2` pulls in `colorama`. The
-   superseded `eed3de1` package had no pin for it; the rebuilt `backend\constraints.txt` **pins it** (version:
-   `TO BE FILLED BY LEAD` from the new package report). In F2, check that `pip freeze` shows exactly that pinned
-   version and record it in the change record. If `pip freeze` shows a different `colorama`, the package is not the
-   rebuilt one: stop and ask DEV.
+1. **`colorama` is pinned (updated 2026-10-17, security release).** On Windows, `qrcode 8.2` pulls in `colorama`.
+   The superseded `eed3de1` package had no pin for it. `ccae7b2`'s `backend\constraints.txt` has **44 pins,
+   including `colorama==0.4.6`** (`PACKAGE_REPORT_ccae7b2.md`). On Windows the install gives **43 packages**: all 44
+   pins except `uvloop`, which is never installed on Windows (native Windows run: 43 packages at their pins). In F2,
+   check that `pip freeze` shows `colorama==0.4.6` and record it in the change record. A different `colorama` means
+   the package is not `ccae7b2`: stop and ask DEV.
 2. **The install needs the Python package index** (or a local wheel folder). `pyproject.toml` has no
    `[build-system]` table, so `pip install -e` fetches the newest `setuptools` into an isolated build environment.
    Any pinned package not already in the venv is downloaded too. Precheck C11 confirms that 10.0.1.98 can reach the
@@ -130,19 +132,18 @@ door, then you change the locks. Changing the locks while the back door is still
    `app/alembic/env.py` fall back to `…ckam:ckam_dev_pw@localhost:5432/ckam`. The app does **not** refuse this in
    production. Precheck C4 must therefore **stop** if `DATABASE_URL` is missing or empty. Step H2 confirms that the
    started app reports `database_host = 10.0.0.205`.
-4. **Keep `releases\<RELEASE-SHA>\backend` on the server** for as long as this release runs. The editable install
+4. **Keep `releases\ccae7b2\backend` on the server** for as long as this release runs. The editable install
    (`pip install -e`) points the venv at that folder. **Keep `releases\3b5e842`** too, and every older folder,
    until the rollback window has passed. Never delete a release folder during this change.
-5. `backend\VERSION` holds the full sha. `APP_VERSION=<RELEASE-SHA>` in `shared\.env` takes precedence, so
-   diagnostics show `<RELEASE-SHA>`.
+5. `backend\VERSION` holds the full sha. `APP_VERSION=ccae7b2` in `shared\.env` takes precedence, so
+   diagnostics show `ccae7b2`.
 6. **API docs are off in production (GT-F06).** `/docs`, `/redoc` and `/openapi.json` answer a small **JSON 404**
    (`{"detail":"Not Found","request_id":…}`), not Swagger/ReDoc, not OpenAPI and not the app page (`app/main.py`,
    `_serve_frontend_shell`; confirmed by the gate rehearsal, step 4a). The old post-deploy check "`/openapi.json`
    lists the new routes" can no longer be used. Step H gives the replacement checks: `/api/health`, the
    `app_started` startup event, diagnostics health (signed in as a head-office admin) showing the version,
    environment `production` and migrations ok, the bundle name in `index.html`, the launcher log, and the QR direct
-   link `/assets/<id>`. (`ops/windows/README.md` still says "app shell (200)"; that sentence is wrong and is owned by
-   the script engineer.)
+   link `/assets/<id>`.
 7. **All four migrations run in ONE transaction (GT-F04)** (`app/alembic/env.py` opens a single
    `begin_transaction()`; `transaction_per_migration` is not set). If any of them fails, PostgreSQL rolls back
    **all four**, and the database stays at **`e6f8a0b2c4d6`**: nothing of migrations 1–3 is kept. This was
@@ -160,11 +161,13 @@ door, then you change the locks. Changing the locks while the back door is still
    unsafe** (and it reopens IF-01). **Roll forward first** (`CKAM_PRODUCTION_ROLLBACK_STRATEGY.md`).
 9. **The new code on an UN-migrated database looks healthy (GT-F05).** In the gate rehearsal, the security release's
    application code (rehearsed as `eed3de1`) started on `e6f8a0b2c4d6` answered `/api/health` 200 and served the app page, and a bare
-   `verify_release.ps1` run has no migration check, but **every sign-in failed** with the same misleading 422
-   ("Some of the values could not be saved…"; server log: `column asset_user.token_version does not exist`). Only
-   three things catch it: the `alembic current` = `alembic heads` check (F4, and `deploy_ckam.ps1`), the startup
-   log (`system_event` `migration / head_mismatch` WARNING, H2) and a real sign-in (H13). **Never accept health +
-   verify script alone as proof** that the deploy worked.
+   `verify_release.ps1` run (old version) passed, but **every sign-in failed** with the same misleading 422
+   ("Some of the values could not be saved…"; server log: `column asset_user.token_version does not exist`). Three
+   things catch it: the `alembic current` = `alembic heads` check (F4, and `deploy_ckam.ps1` step 8b), the startup
+   log (`system_event` `migration / head_mismatch` WARNING, H2) and a real sign-in (H13). `ccae7b2`'s
+   `verify_release.ps1` also sends a made-up sign-in and expects a JSON 401, which would *probably* fail on an
+   un-migrated database. That was **not tested** on an un-migrated database, so do not rely on it. **Never accept
+   health + verify script alone as proof** that the deploy worked.
 
 ### Using `deploy_ckam.ps1` (optional) — read this first
 
@@ -173,31 +176,38 @@ F (stop, `pip install -c`, switch, migrate), G (start) and part of H (`verify_re
 runbook**. It does **not** replace B, C, D, the launcher update in G, the functional checks in H, or anything
 after H.
 
-> **WARNING — automatic switch-back (updated 2026-10-17, security release).** In the template shipped with the
-> superseded `eed3de1` package, a failure in its steps 6–9 called `Invoke-Rollback`, which restored
-> `shared\.env.pre-<sha>` and **restarted the previous release `3b5e842`, even after a successful migration**. The
-> database is never rolled back. **That old automatic restart of the previous release after the migrations is being
-> removed: the deploy template is being fixed right now by another engineer** for the rebuilt package. Until the
-> operator has **read the fixed template in `releases\<RELEASE-SHA>\ops\windows\deploy_ckam.ps1.template`**
-> (`Invoke-Rollback` and every place that calls it) and confirmed in the change record what it now does on each
-> failure, **nobody may rely on any automatic rollback.** Treat every failure as manual and follow
-> `CKAM_PRODUCTION_ROLLBACK_STRATEGY.md`. What the old behaviour meant, for reference:
-> - **Failure before or during the migration** (pip error, or `alembic upgrade` fails): the database is still at
->   `e6f8a0b2c4d6` (all four migrations roll back together, GT-F04). Restarting `3b5e842` puts production back
->   where it was this morning: it works, and IF-01 is still open.
-> - **Failure after a successful migration** (health or `verify_release.ps1` fails): `3b5e842` would run on the
->   `c6e8a0b2d4f6` schema. **Receives would still work, but every move, repair, sale and scrap is refused with a
->   misleading 422 (GT-F01), and IF-01 is open again.** If any script log shows `database at head c6e8a0b2d4f6`
->   followed by `ROLLBACK:` (or `3b5e842` starts for any reason after F4), **stop `CKAM-Web` at once** (step F1
->   commands) and follow `CKAM_PRODUCTION_ROLLBACK_STRATEGY.md` case 3/4. Do not leave the old code running.
+> **Failure handling of the FIXED template (updated 2026-10-17, security release; `ccae7b2`).** The template is
+> **fixed**. It has been checked only by the PowerShell parser and a fake-world **dry run** (28 cases, all as expected,
+> `docs/security/evidence/closure/release/windows_scripts_fix/README.md`). **It has never run on a server.** The
+> operator must still **read it before use** (its header "FAILURE HANDLING" and the functions `Invoke-EarlyRestore`
+> and `Invoke-StayDown`) and write in the change record that they did. What it does:
+> - **Steps 1–3 (release folder, pre-checks, backup) fail → exit 2.** It stops before anything is touched. The
+>   pre-checks are: `RELEASE.json` release id = `-Sha` and its `alembic_head` taken as the target; `ENVIRONMENT_NAME`;
+>   `JWT_SECRET` rules; **`DATABASE_URL` present exactly once, not empty, not quoted, not the development default or
+>   this machine**; `FRONTEND_DIST_DIR`; a backup (`-BackupConfirmed` or `-BackupHook`).
+> - **Branch A, a failure BEFORE `alembic upgrade head` starts (steps 4–8a: save settings, stop, pip, switch, read
+>   the heads) → exit 1.** The schema is untouched, so the script itself restores `shared\.env.pre-ccae7b2` and
+>   **restarts the previous release `3b5e842`**: production is back as it was this morning, **IF-01 still open**.
+>   Re-plan at once (rollback strategy case 1-A). Exception: if the database is already at the new head, it stays
+>   down as in branch B.
+> - **Branch B, a failure FROM the moment `alembic upgrade head` starts (upgrade, head check, start, health,
+>   `verify_release.ps1`) → exit 3.** The script **never** restarts the old release, **never** downgrades and
+>   **never** restores. `CKAM-Web` stays **STOPPED**. It prints a banner with the database revision and writes a
+>   `STATE: branch=B; ckam_web=stopped; …; switched_back=no; downgraded=no; restored=no; exit=3` line to the deploy
+>   log. The owner decides (rollback strategy cases 2–4). On the new schema `3b5e842` could still receive but not
+>   move/sell/scrap (GT-F01), and it would reopen IF-01, which is why the script no longer starts it.
+> - **Exit 0** = deployed, `alembic current` = head, started, health ok, and `verify_release.ps1 -LocalProcessCheck
+>   Require` passed (`STATE: branch=none; ckam_web=running`).
 >
-> If the script is used, the operator watches it the whole time.
+> The operator watches the script the whole time. If `3b5e842` is running after F4 for any reason, **stop
+> `CKAM-Web` at once** (F1 commands) and follow `CKAM_PRODUCTION_ROLLBACK_STRATEGY.md` case 3/4.
 
-To use the script: copy `releases\<RELEASE-SHA>\ops\windows\deploy_ckam.ps1.template` and `verify_release.ps1` into
+To use the script: copy `releases\ccae7b2\ops\windows\deploy_ckam.ps1.template` and `verify_release.ps1` into
 one admin-only folder. Drop the `.template` suffix (the script calls `verify_release.ps1` from its own folder). Read
-it first (see the warning). Run it first with `-WhatIf`, then for real. Example (`NOT EXECUTED`):
-`.\deploy_ckam.ps1 -Sha <RELEASE-SHA> -PackagePath <STAGING-DIR>\ckam-security-release-<RELEASE-SHA>.zip -BackupConfirmed -WhatIf`
-(the parameter names are those of the superseded template; confirm them against the fixed template).
+it first (see above). Run it first with `-WhatIf` (it prints the planned steps, each with its failure branch), then
+for real. Example (`NOT EXECUTED`):
+`.\deploy_ckam.ps1 -Sha ccae7b2 -PackagePath <STAGING-DIR>\ckam-security-release-ccae7b2.zip -BackupConfirmed -WhatIf`
+Record the exit code and the `STATE:` line in the change record.
 
 ---
 
@@ -212,7 +222,7 @@ it first (see the warning). Run it first with `-WhatIf`, then for real. Example 
 2. Open an incident record from `docs/security/policies/templates/incident_record.md` (`INC-2026-NNN`, title
    "IF-01 file-read exposure on production since 2026-09-30"). Step K completes it.
 3. Get the owner's **written** answers. Today none of them exists:
-   - deploy approval for release **`<RELEASE-SHA>`** (package SHA-256 `<ZIP-SHA256>`, `<ZIP-SIZE>` bytes) in a named
+   - deploy approval for release **`ccae7b2`** (package SHA-256 `b975c38d1f37387dbd8e15739ea2c27f563549e66bc80eac21878ea6327137e3`, `2152224` bytes) in a named
      window. An approval that names `eed3de1` / `be3209af…` is **not valid** for the rebuilt package;
    - approval to rotate the four secrets **after** step H passes;
    - the answers to the shared-account questions (C10);
@@ -227,7 +237,7 @@ it first (see the warning). Run it first with `-WhatIf`, then for real. Example 
 
 **Evidence:** change id, incident id, the approval messages (words used, channel, time).
 
-**Stop if:** there is no written deploy approval for `<RELEASE-SHA>`. The push phrase "commit and push to git and main"
+**Stop if:** there is no written deploy approval for `ccae7b2`. The push phrase "commit and push to git and main"
 is **not** a deploy approval (`CLAUDE.md`).
 
 ---
@@ -396,15 +406,15 @@ SELECT count(*) FROM audit_log;
 **STOP** if the revision is not `e6f8a0b2c4d6`.
 
 **C8 — Release zip SHA-256 verified ON THE SERVER.** DEV hands IT the zip
-`ckam-security-release-<RELEASE-SHA>.zip` and the expected hash through a channel separate from the file. IT copies the
+`ckam-security-release-ccae7b2.zip` and the expected hash through a channel separate from the file. IT copies the
 zip into `<STAGING-DIR>` (step E1 describes the copy; it may be done now, because copying a file to staging changes
 nothing in CKAM). Then (`NOT EXECUTED`):
 
 ```powershell
 # NOT EXECUTED
-$zip = '<STAGING-DIR>\ckam-security-release-<RELEASE-SHA>.zip'
-(Get-Item $zip).Length                                         # expected <ZIP-SIZE>
-(Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()  # expected <ZIP-SHA256>
+$zip = '<STAGING-DIR>\ckam-security-release-ccae7b2.zip'
+(Get-Item $zip).Length                                         # expected 2152224
+(Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()  # expected b975c38d1f37387dbd8e15739ea2c27f563549e66bc80eac21878ea6327137e3
 ```
 
 **STOP** if either value differs. Do not "re-download until it matches" without asking DEV why it differed.
@@ -422,7 +432,7 @@ Select-String -Path "$root\shared\run_ckam_web.ps1" -Pattern 'uvicorn' | ForEach
 'mentions --workers (bad: multiplies the rate limits): ' + [bool](Select-String -Path "$root\shared\run_ckam_web.ps1" -Pattern '--workers' -SimpleMatch -Quiet)
 ```
 
-Compare the live launcher with `releases\<RELEASE-SHA>\ops\windows\run_ckam_web.ps1.template` (after E) using
+Compare the live launcher with `releases\ccae7b2\ops\windows\run_ckam_web.ps1.template` (after E) using
 `Compare-Object (Get-Content A) (Get-Content B)`. Write down every difference that is not a documented server path.
 If the live launcher contains a hard-coded secret, write only "yes" in the change record (never the value), and plan
 to replace that launcher with the template in G1. **Do not send the live launcher off the server until someone has
@@ -460,9 +470,9 @@ maintenance either.
 
 ```bash
 # NOT EXECUTED
-git rev-parse <RELEASE-SHA>                                   # <RELEASE-SHA, full 40 characters>
-git diff --name-only fd34520 <RELEASE-SHA> | grep -v '^docs/' # expected: only ops/windows/* and backend/constraints.txt (the rebuild fixes); TO BE FILLED BY LEAD
-for c in 3e134c1 7b039fb 69c3a51 734fd19 ca94574 fafa225; do git merge-base --is-ancestor $c <RELEASE-SHA> && echo "$c included"; done
+git rev-parse ccae7b2                                   # ccae7b2281bc4ca71f4b6113f61dc86de392bc3e
+git diff --name-only fd34520 ccae7b2 -- . ':!docs'      # expected exactly: backend/constraints.txt, ops/windows/README.md, ops/windows/deploy_ckam.ps1.template, ops/windows/verify_release.ps1
+for c in 3e134c1 7b039fb 69c3a51 734fd19 ca94574 fafa225; do git merge-base --is-ancestor $c ccae7b2 && echo "$c included"; done
 ```
 
 Also record:
@@ -470,10 +480,18 @@ Also record:
   the **superseded** `eed3de1` package, Linux container, never on Windows. 283 cases, 280 PASS, 3 FAIL (all three
   were documentation claims: GT-F01, GT-F02); no release-code defect. Migration `e6f8a0b2c4d6 → c6e8a0b2d4f6` on a
   restored copy as the owning role: one `upgrade head` 0.86 s wall, no row rewritten, 39 of 39 tables' row counts
-  unchanged. IF-01: 47 probes, 0 leaks. Whether these results carry over to `<RELEASE-SHA>` (the application code
-  should be unchanged; only the ops scripts and `constraints.txt` change): `TO BE FILLED BY LEAD` (at least the
-  package checks and a start + `verify_release.ps1` of the rebuilt package should be repeated).
-- **The lead's regression run on `<RELEASE-SHA>`**: backend pytest, vitest, tsc, Playwright and security journeys.
+  unchanged. IF-01: 47 probes, 0 leaks. Whether these results carry over to `ccae7b2` (the application code
+  is unchanged, `PACKAGE_REPORT_ccae7b2.md` §1; only the ops scripts and `constraints.txt` change): `TO BE FILLED
+  BY LEAD` (delta rehearsal).
+- **Native Windows run of the `ccae7b2` package** (updated 2026-10-17, security release): installed with
+  `pip install -c backend\constraints.txt -e backend` (Python 3.13.1, 43 packages at their pins, succeeded). Then
+  started with production settings and both flags. The 32-payload Windows list gave 0 leaks and one identical
+  refusal. `/assets/<id>` and `/assets/new` opened the app. A cold browser load of `/assets/1` went to sign-in and
+  then to the asset. Packaged `verify_release.ps1`: 41/41 PASS incl. `-LocalProcessCheck Require`. Evidence:
+  `docs/security/evidence/closure/windows/native_windows_release_ccae7b2.txt`, `native_windows_qr_ccae7b2.txt`,
+  `native_windows_verify_release_ccae7b2.csv`. Limits: portable (embeddable) Python, not a venv; test database on
+  Docker, not PostgreSQL 18; no Task Scheduler, no NAS; the dev PC, not 10.0.1.98.
+- **The lead's regression run on `ccae7b2`**: backend pytest, vitest, tsc, Playwright and security journeys.
   `TO BE FILLED BY LEAD`. The last recorded run is on `fd34520`: 2541 passed / 1 skipped, vitest 1257, security
   journeys 14/14 (`CKAM_SECURITY_FINAL_CLOSURE_REPORT.md` §B.5).
 
@@ -533,8 +551,8 @@ secret.
 
    ```powershell
    # NOT EXECUTED
-   Copy-Item "$root\shared\.env" "$ev\env.pre-<RELEASE-SHA>"
-   Get-FileHash "$root\shared\.env" -Algorithm SHA256 | Out-File "$ev\env.pre-<RELEASE-SHA>.sha256.txt"
+   Copy-Item "$root\shared\.env" "$ev\env.pre-ccae7b2"
+   Get-FileHash "$root\shared\.env" -Algorithm SHA256 | Out-File "$ev\env.pre-ccae7b2.sha256.txt"
    ```
 
    This copy holds the **current (exposed) secrets**. Keep it only until J has verified the new ones, then delete it
@@ -560,30 +578,31 @@ second dump copy exists; NAS snapshot/copy exists; settings copy exists.
 1. **Transfer** (only after A's deploy approval). The established method is `scp` from the dev PC with the key
    `~/.ssh/citykart_newservers`, into `<STAGING-DIR>` (`NOT EXECUTED`; `MSYS_NO_PATHCONV=1` is needed in Git
    Bash):
-   `MSYS_NO_PATHCONV=1 scp -i ~/.ssh/citykart_newservers "/d/ANKUR AI PROJECTS/Asset Management/release-packages/ckam-security-release-<RELEASE-SHA>.zip" <admin-user>@10.0.1.98:"<STAGING-DIR>/"`
+   `MSYS_NO_PATHCONV=1 scp -i ~/.ssh/citykart_newservers "/d/ANKUR AI PROJECTS/Asset Management/release-packages/ckam-security-release-ccae7b2.zip" <admin-user>@10.0.1.98:"<STAGING-DIR>/"`
 2. **Verify the copy:** rerun C8 against the file that is now in `<STAGING-DIR>`. The expected SHA-256 is
-   `<ZIP-SHA256>` and the size is `<ZIP-SIZE>` bytes. **STOP if
+   `b975c38d1f37387dbd8e15739ea2c27f563549e66bc80eac21878ea6327137e3` and the size is `2152224` bytes. **STOP if
    it differs.**
 3. **Expand into the release folder.** Never overwrite an existing folder (`NOT EXECUTED`):
 
    ```powershell
    # NOT EXECUTED
-   $rel = "$root\releases\<RELEASE-SHA>"
-   if (Test-Path $rel) { 'STOP: releases\<RELEASE-SHA> already exists - find out why before continuing' } else {
+   $rel = "$root\releases\ccae7b2"
+   if (Test-Path $rel) { 'STOP: releases\ccae7b2 already exists - find out why before continuing' } else {
      New-Item -ItemType Directory -Path $rel | Out-Null
-     Expand-Archive -LiteralPath '<STAGING-DIR>\ckam-security-release-<RELEASE-SHA>.zip' -DestinationPath $rel
+     Expand-Archive -LiteralPath '<STAGING-DIR>\ckam-security-release-ccae7b2.zip' -DestinationPath $rel
    }
-   Get-Content "$rel\backend\VERSION"                   # <RELEASE-SHA, full 40 characters>
+   Get-Content "$rel\backend\VERSION"                   # ccae7b2281bc4ca71f4b6113f61dc86de392bc3e
    Test-Path "$rel\frontend-dist\index.html"            # True
    Test-Path "$rel\backend\constraints.txt"             # True
-   (Get-ChildItem $rel -Recurse -File).Count            # <FILE-COUNT>
-   Select-String -Path "$rel\frontend-dist\index.html" -Pattern '<BUNDLE-JS-REGEX>' -Quiet   # True
+   (Get-ChildItem $rel -Recurse -File).Count            # 215
+   Select-String -Path "$rel\frontend-dist\index.html" -Pattern 'index-Cp5JgQR-\.js' -Quiet   # True
+   (Get-Content "$rel\RELEASE.json" -Raw | ConvertFrom-Json) | Select-Object release_sha_short, alembic_head, constraints_pins   # ccae7b2, c6e8a0b2d4f6, 44
    ```
 
 4. **Content check BEFORE the install.** `pip install -e` later adds build metadata to the backend folder, and
    Python adds `__pycache__`, so this check is only valid now. The content hash is the SHA-256 of the lines
-   "`<lower-case sha256>␠␠<path with forward slashes>`\n" for all `<FILE-COUNT>` files, sorted by path in byte (ordinal) order
-   (`PACKAGE_REPORT.md` §7) (`NOT EXECUTED`; this PowerShell form has not been tried):
+   "`<lower-case sha256>␠␠<path with forward slashes>`\n" for all `215` files, sorted by path in byte (ordinal) order
+   (`PACKAGE_REPORT_ccae7b2.md` §7) (`NOT EXECUTED`; this PowerShell form has not been tried):
 
    ```powershell
    # NOT EXECUTED
@@ -597,16 +616,16 @@ second dump copy exists; NAS snapshot/copy exists; settings copy exists.
    "files: $($arr.Count)"
    ```
 
-   Expected: `<CONTENT-HASH>` and `<FILE-COUNT>`. If the snippet gives a
+   Expected: `e2408eab01bf6c7d1ac4145b8fbd415010be590cc6d9519c2aabe2fb52f5848b` and `215`. If the snippet gives a
    different value but the zip hash (E2) matched, do not guess. Compare file by file against
    `MANIFEST.sha256.txt`, which DEV hands over with the zip. Its paths start with
-   `ckam-security-release-<RELEASE-SHA>/`. A matching zip hash is the primary proof.
+   `ckam-security-release-ccae7b2/`. A matching zip hash is the primary proof.
 5. **Leave `releases\3b5e842` and every older release folder untouched.**
 
-**Verification:** zip SHA-256 and size match on the server; the expanded folder has `<FILE-COUNT>` files, the right `VERSION`
+**Verification:** zip SHA-256 and size match on the server; the expanded folder has `215` files, the right `VERSION`
 and bundle name, and the content hash (or the manifest comparison) matches.
 
-**Rollback:** delete nothing. If E fails, leave `releases\<RELEASE-SHA>` as it is for investigation. Nothing in CKAM has
+**Rollback:** delete nothing. If E fails, leave `releases\ccae7b2` as it is for investigation. Nothing in CKAM has
 switched yet; the old release is still running.
 
 **Evidence:** both hash outputs (dev PC and server), the file count, the content-hash output.
@@ -647,7 +666,7 @@ return nothing. **From this moment CKAM is down. IF-01 is not reachable while it
 ```powershell
 # NOT EXECUTED
 $ErrorActionPreference = 'Continue'
-$rel = "$root\releases\<RELEASE-SHA>"
+$rel = "$root\releases\ccae7b2"
 & "$root\shared\venv\Scripts\python.exe" -m pip install --disable-pip-version-check -c "$rel\backend\constraints.txt" -e "$rel\backend" 2>&1 | ForEach-Object { "$_" } | Out-File "$ev\pip-install.txt"
 "pip exit code: $LASTEXITCODE"
 & "$root\shared\venv\Scripts\python.exe" -m pip check 2>&1 | ForEach-Object { "$_" } | Out-File "$ev\pip-check.txt"
@@ -656,18 +675,22 @@ Select-String -Path "$rel\pip-freeze.txt" -Pattern '^colorama==' | ForEach-Objec
 Select-String -Path "$rel\backend\constraints.txt" -Pattern '^colorama==' | ForEach-Object { "colorama pin: $($_.Line)" }
 ```
 
-Expected: pip exit code 0, and `pip freeze` matches the pins of the rebuilt `constraints.txt` (the 43 runtime pins
-of the superseded package plus the new `colorama` pin; exact count `TO BE FILLED BY LEAD`), plus the editable
-`ckam-backend`. Any other unpinned package in `pip freeze` is a finding to write down. If the constrained install
-fails (for `eed3de1` it was verified only as a dry run for `win_amd64` wheels, `PACKAGE_REPORT.md` §5), **do not start any code**. Write down the error. The database is
-still unchanged at this point, so `CKAM_PRODUCTION_ROLLBACK_STRATEGY.md` case 1 applies (abort, restart `3b5e842`
-after reinstalling its backend, or stay down, per the owner). The earlier fallback "install without `-c`" is allowed
+Expected *(updated 2026-10-17, security release)*: pip exit code 0. `pip freeze` shows **43 packages, every one
+at its pin** in `constraints.txt` (44 pins; `uvloop` is never installed on Windows), including `colorama==0.4.6`,
+plus the editable `ckam-backend`. This exact command succeeded natively on Windows with the `ccae7b2` package
+(Python 3.13.1, portable Python rather than a venv, `native_windows_release_ccae7b2.txt`), and the Windows-wheel
+dry run covers every pin (`PACKAGE_REPORT_ccae7b2.md`). It has **not** been run in the production venv. Any other
+unpinned package in `pip freeze` is a finding to write down. If the constrained install fails, **do not start any
+code**. Write down the error. The database is still unchanged at this point, so
+`CKAM_PRODUCTION_ROLLBACK_STRATEGY.md` case 1 applies (abort, restart `3b5e842` after reinstalling its backend, or
+stay down, per the owner). If `deploy_ckam.ps1` is used, it does this case itself: branch A, exit 1, previous
+release restarted. The earlier fallback "install without `-c`" is allowed
 only with the owner's explicit OK, recorded in the change record, with EXT-12 kept open.
 
-**F3 — Switch the settings to `<RELEASE-SHA>`** (Notepad as Administrator, or `deploy_ckam.ps1` step 7):
-- `FRONTEND_DIST_DIR=<ROOT>\releases\<RELEASE-SHA>\frontend-dist`. This is **the single release switch**: the launcher
+**F3 — Switch the settings to `ccae7b2`** (Notepad as Administrator, or `deploy_ckam.ps1` step 7):
+- `FRONTEND_DIST_DIR=<ROOT>\releases\ccae7b2\frontend-dist`. This is **the single release switch**: the launcher
   runs the backend from the `backend` folder next to it.
-- `APP_VERSION=<RELEASE-SHA>`.
+- `APP_VERSION=ccae7b2`.
 - keep `ENVIRONMENT_NAME=production`, `LOG_DIR=<ROOT>\logs\app`, `TRUSTED_PROXIES` empty, `COOKIE_SECURE=false`,
   `BASE_URL` unchanged.
 - **only if C3 failed:** set `JWT_SECRET=<TYPED-ON-SERVER>`, a new strong value (procedure in
@@ -680,7 +703,7 @@ only with the owner's explicit OK, recorded in the change record, with EXT-12 ke
   'BOM present: ' + ($b.Length -ge 3 -and $b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF)   # must be False
   ```
 
-  Then rerun the allow-listed print of C1. It must show the new `FRONTEND_DIST_DIR` and `APP_VERSION=<RELEASE-SHA>`.
+  Then rerun the allow-listed print of C1. It must show the new `FRONTEND_DIST_DIR` and `APP_VERSION=ccae7b2`.
   Rerun C3 and C4: they must still pass.
 
 **F4 — Migrate (old code stopped, new code not started)** (`NOT EXECUTED`). The `.env` values are loaded into this
@@ -733,7 +756,7 @@ contain no secret before they leave the server. **`alembic current` must equal `
 
 **If F4 fails:** **do not start any code.** The database is unchanged (`e6f8a0b2c4d6`; all four migrations rolled
 back together, GT-F04). Confirm it with `alembic current` (or the DBA's `SELECT version_num FROM alembic_version;`).
-Starting `<RELEASE-SHA>` now would look healthy but sign nobody in (GT-F05). Follow
+Starting `ccae7b2` now would look healthy but sign nobody in (GT-F05). Follow
 `CKAM_PRODUCTION_ROLLBACK_STRATEGY.md` case 1 (the safe abort). Do not run `alembic downgrade`, and do not restore a
 dump.
 
@@ -753,7 +776,7 @@ itself in a `Server` header (CL2-IF-OBS-05).
 **G1 — Launcher.** The live `shared\run_ckam_web.ps1` must start
 `python -m uvicorn app.main:app --host 0.0.0.0 --port 3211 --no-proxy-headers --no-server-header`, from the release's
 `backend` folder, with the venv. Recommended: replace it with the reviewed template
-`releases\<RELEASE-SHA>\ops\windows\run_ckam_web.ps1.template` (renamed to `run_ckam_web.ps1`). Keep only the documented
+`releases\ccae7b2\ops\windows\run_ckam_web.ps1.template` (renamed to `run_ckam_web.ps1`). Keep only the documented
 server-specific parameter values that C9 found. The template reads `shared\.env` and `shared\nas.pw` at run time and
 contains no secret. Never add `--workers` (the in-process rate limits would multiply) and never add
 `--proxy-headers`. Keep `TRUSTED_PROXIES` empty. Record the new launcher's SHA-256 (`NOT EXECUTED`):
@@ -763,7 +786,20 @@ It maps nothing and starts nothing. It shows the uvicorn line.
 
 **G2 — Start** (`NOT EXECUTED`): `Start-ScheduledTask -TaskName 'CKAM-Web'`. Wait about 20 seconds.
 
-**G3 — Check the process and the launcher log** (`NOT EXECUTED`):
+**G3 — Check the process flags and the launcher log** (`NOT EXECUTED`) *(updated 2026-10-17, security release)*.
+
+**Primary flags check:** `ccae7b2`'s `verify_release.ps1` with **`-LocalProcessCheck Require`**, run **on 10.0.1.98,
+elevated** (so that it can read the command line of the task's process). It FAILS unless exactly one uvicorn
+process listens on the port and its command line has **both** `--no-proxy-headers` and `--no-server-header`. In
+`Require` mode it never SKIPs. It is part of H4 (and `deploy_ckam.ps1` runs it the same way):
+
+```powershell
+# NOT EXECUTED — 10.0.1.98, elevated
+powershell -NoProfile -ExecutionPolicy Bypass -File "$rel\ops\windows\verify_release.ps1" -BaseUrl http://127.0.0.1:3211 -ExpectedRelease ccae7b2 -ReleaseDir $rel -LauncherLogDir "$root\logs" -LocalProcessCheck Require -OutCsv "$ev\verify_g3.csv"
+"verify exit code: $LASTEXITCODE   (0 = no FAIL, 1 = at least one FAIL, 2 = address not reachable)"
+```
+
+**Manual fallback** (if the script cannot be used, or to look at the details), plus the launcher and stderr logs:
 
 ```powershell
 # NOT EXECUTED
@@ -777,8 +813,8 @@ Select-String -Path $err.FullName -Pattern 'Refusing to start|Traceback|Error' |
 
 | Check | Expected |
 |---|---|
-| Process command line | contains `--no-proxy-headers`, `--no-server-header`, `--port 3211`; executable under `shared\venv`; exactly **one** CKAM listener |
-| Launcher log | `serving release: <ROOT>\releases\<RELEASE-SHA>`; `environment: production; release id: <RELEASE-SHA>`; a NAS mapping line that succeeded (e.g. `NAS mapping attempt 1: The command completed successfully`) |
+| Process flags | `verify_release.ps1 -LocalProcessCheck Require`: the process-check row PASS (exit 0). Fallback: the command line contains `--no-proxy-headers`, `--no-server-header`, `--port 3211`; executable under `shared\venv`; exactly **one** CKAM listener |
+| Launcher log | `serving release: <ROOT>\releases\ccae7b2`; `environment: production; release id: ccae7b2`; a NAS mapping line that succeeded (e.g. `NAS mapping attempt 1: The command completed successfully`) |
 | stderr log | **no** `Refusing to start` (that means the JWT check failed: fix the secret per F3, restart); no traceback |
 
 **If G fails** (the app does not start): `CKAM_PRODUCTION_ROLLBACK_STRATEGY.md` case 2 (migrations done, app not
@@ -802,10 +838,10 @@ Windows path forms), that the other protections are on, and that normal work sti
 documentation is off and answers a JSON 404 (GT-F06). To prove the new code is running **on the migrated
 database**, use H1, H2, H3, H10, H11, H12 and H13 together:
 - `/api/health` ok (H1);
-- diagnostics health signed in as a **head-office admin**: `version` `<RELEASE-SHA>`, `environment` `production`,
+- diagnostics health signed in as a **head-office admin**: `version` `ccae7b2`, `environment` `production`,
   `migrations.ok` true (H13, with H2 and H3);
-- the bundle name `<BUNDLE-JS>` in the served `index.html` (H11);
-- the launcher log line `serving release: …\releases\<RELEASE-SHA>` (H12);
+- the bundle name `index-Cp5JgQR-.js` in the served `index.html` (H11);
+- the launcher log line `serving release: …\releases\ccae7b2` (H12);
 - the QR direct link `/assets/<ASSET-ID>` answering 200 with the app page (H10).
 
 > **GT-F05 — health alone is not proof.** If F4 had been skipped or had failed, the new code would still answer
@@ -820,18 +856,18 @@ database**, use H1, H2, H3, H10, H11, H12 and H13 together:
 | # | Check | How (`NOT EXECUTED`) | Expected |
 |---|---|---|---|
 | H1 | Health | `curl.exe -s http://127.0.0.1:3211/api/health` | `{"status":"ok"}` |
-| H2 | Startup event | newest `"app_started"` line in `<ROOT>\logs\app\app.jsonl`: `Select-String -Path "$root\logs\app\app.jsonl" -Pattern 'app_started' \| Select-Object -Last 1` (or, signed in, `GET /api/admin/logs/system?event=app_started`) | `version` `<RELEASE-SHA>`, `environment` `production`, `migration.matches` true (`code_head` = `db_head` = `c6e8a0b2d4f6`), `config.database_host` **`10.0.0.205`**, `config.database_name` `ckassetmanagement`, `jwt_signing_key_is_placeholder` false, `jwt_signing_key_long_enough` true. **No** `migration / head_mismatch` and no `config / log_dir_unwritable` event after it |
+| H2 | Startup event | newest `"app_started"` line in `<ROOT>\logs\app\app.jsonl`: `Select-String -Path "$root\logs\app\app.jsonl" -Pattern 'app_started' \| Select-Object -Last 1` (or, signed in, `GET /api/admin/logs/system?event=app_started`) | `version` `ccae7b2`, `environment` `production`, `migration.matches` true (`code_head` = `db_head` = `c6e8a0b2d4f6`), `config.database_host` **`10.0.0.205`**, `config.database_name` `ckassetmanagement`, `jwt_signing_key_is_placeholder` false, `jwt_signing_key_long_enough` true. **No** `migration / head_mismatch` and no `config / log_dir_unwritable` event after it |
 | H3 | Alembic head | `alembic-after.txt` from F4, and H13's diagnostics `migrations.ok` | `c6e8a0b2d4f6 (head)`; `ok: true` |
-| H4 | Static security (scripted) | `powershell -NoProfile -ExecutionPolicy Bypass -File "$rel\ops\windows\verify_release.ps1" -BaseUrl http://127.0.0.1:3211 -ExpectedRelease <RELEASE-SHA> -ReleaseDir $rel -LauncherLogDir "$root\logs" -IncludeUncProbe -OutCsv "$ev\verify_server.csv"`; from the LAN PC the same with `-BaseUrl http://10.0.1.98:3211 -IncludeUncProbe -OutCsv verify_lan.csv` (no `-ReleaseDir`/`-LauncherLogDir`) | exit code 0, **0 FAIL**. Every traversal row is `PASS 404`; a `WARN` on a traversal row is **not acceptable in production** (it means 200 with the shell); `Server header` PASS. The rebuilt script also checks the **launcher flags** (`--no-proxy-headers`, `--no-server-header`); the exact row names and parameters are `TO BE FILLED BY LEAD` from the rebuilt package. **The script has no migration check (GT-F05): its exit 0 never replaces H2/H3/H13** |
+| H4 | Static security (scripted) | `powershell -NoProfile -ExecutionPolicy Bypass -File "$rel\ops\windows\verify_release.ps1" -BaseUrl http://127.0.0.1:3211 -ExpectedRelease ccae7b2 -ReleaseDir $rel -LauncherLogDir "$root\logs" -IncludeUncProbe -LocalProcessCheck Require -OutCsv "$ev\verify_server.csv"` (on the server, **elevated**); from the LAN PC the same with `-BaseUrl http://10.0.1.98:3211 -IncludeUncProbe -LocalProcessCheck Skip -OutCsv verify_lan.csv` (no `-ReleaseDir`/`-LauncherLogDir`; the process check only works on the server itself) | exit code 0 (verify script: 0 = no FAIL, 1 = a FAIL, 2 = not reachable), **0 FAIL**. Every traversal row is `PASS 404`; a `WARN` on a traversal row is **not acceptable in production** (it means 200 with the shell); `Server header` PASS; the **local process check** PASS on the server (both uvicorn flags, one listener); `POST /api/auth/refresh` without a cookie and a made-up sign-in both a **JSON 401** with no cookie (the made-up sign-in leaves one ordinary "sign-in failed" security row and uses one try of the sign-in rate limit; a 429 is a WARN). Reference: native Windows run of the package 41/41 PASS (`native_windows_verify_release_ccae7b2.csv`, dev PC, not the server). **The script has no explicit migration check (GT-F05): its exit 0 never replaces H2/H3/H13** |
 | H5 | IF-01 Windows probes (manual list) | the loop below, from the server and from the LAN | every status `404`, "Any non-404" = 0 |
 | H6 | API docs unavailable | `curl.exe -s -o NUL -w '%{http_code}' $B/openapi.json` (also `/docs`, `/redoc`); `curl.exe -s $B/openapi.json` | `404`; body is the small JSON error envelope (`{"detail":"Not Found","request_id":…}`), **not** Swagger/ReDoc/OpenAPI and **not** the app page (GT-F06). `verify_release.ps1` also accepts the app page here, but the security release answers JSON 404 (gate rehearsal step 4a); a 200 means the wrong code is running → case 4 |
 | H7 | Unknown API path | `curl.exe -s -o NUL -w '%{http_code}' $B/api/does-not-exist`; `curl.exe -s -D - $B/api/does-not-exist` | `404`, `Content-Type: application/json`, body with `detail` and `request_id`, not HTML |
 | H8 | Security headers exactly once | `curl.exe -s -D - -o NUL $B/api/health` and `curl.exe -s -D - -o NUL $B/` | each of `Content-Security-Policy`, `X-Content-Type-Options: nosniff`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` appears **once**; `Cache-Control: no-store` on `/api/`, `no-cache` on `/`; an `X-Request-ID` header; **no** `server: uvicorn` |
 | H9 | Forged address ignored | `curl.exe -s -H "X-Forwarded-For: 203.0.113.77" $B/api/health`, then `Select-String -Path "$root\logs\app\app.jsonl" -Pattern '203.0.113.77'` | **no** access line carries `"ip": "203.0.113.77"`; the line for that request shows `127.0.0.1` |
 | H10 | QR direct link (CL2-IF-04, EXT-44) | `curl.exe -s -o NUL -w '%{http_code}' $B/assets/<ASSET-ID>` and `$B/assets/new`; then **scan one real QR** from an Asset 360 page with a phone on the LAN, **and one label printed from Print Labels in the default "Barcode + QR" format** (its QR is the same `BASE_URL/assets/<id>` deep link, GT-F02) | `200` (app shell, `Cache-Control: no-cache`); the phone opens the asset page after sign-in, for both |
-| H11 | Bundle in `index.html` | `curl.exe -s $B/ \| Select-String '<BUNDLE-JS-REGEX>'` | found (the `<RELEASE-SHA>` bundle; `verify_release.ps1` also checks that the bundle contains `<RELEASE-SHA>`) |
-| H12 | Launcher log | G3 | `serving release: …\releases\<RELEASE-SHA>`, NAS mapping succeeded |
-| H13 | Sign-in + diagnostics | sign in in a browser as a **head-office admin**; open `GET /api/admin/diagnostics/health` | sign-in works; `version` `<RELEASE-SHA>`, `environment` `production`, `database.ok` true, `log_dir.ok` true, `migrations.ok` true, `erp_sync` as expected (see H18) |
+| H11 | Bundle in `index.html` | `curl.exe -s $B/ \| Select-String 'index-Cp5JgQR-\.js'` | found (the `ccae7b2` bundle; `verify_release.ps1` also checks that the bundle contains `ccae7b2`) |
+| H12 | Launcher log | G3 | `serving release: …\releases\ccae7b2`, NAS mapping succeeded |
+| H13 | Sign-in + diagnostics | sign in in a browser as a **head-office admin**; open `GET /api/admin/diagnostics/health` | sign-in works; `version` `ccae7b2`, `environment` `production`, `database.ok` true, `log_dir.ok` true, `migrations.ok` true, `erp_sync` as expected (see H18) |
 | H14 | Asset list | open the Asset Register; search | rows appear; one asset's detail opens (Overview / History / Changes tabs) |
 | H15 | Purchase orders | open the PO list and one PO | list and PO lines show |
 | H16 | Receive | receive **one** unit on a PO line the owner chose for the test (production has no hard delete, so the asset stays; pick a real pending receipt) | succeeds; one `asset_event` row and one `audit_log` row (`RECEIVE`) |
@@ -853,7 +889,7 @@ database**, use H1, H2, H3, H10, H11, H12 and H13 together:
 | 7 | `/assets/%2e%2e%5c%2e%2e%5cshared%5c.env` | mixed back-slash form |
 | 8 | `/assets/C:%2fWindows%2fwin.ini` | an absolute drive path |
 | 9 | `/assets/C:%5cWindows%5cwin.ini` | drive path with back-slash |
-| 10 | `/assets/%5c%5cserver%5cshare%5cx` | a UNC path (must not cause any outbound lookup; `<RELEASE-SHA>` refuses it before any filesystem call) |
+| 10 | `/assets/%5c%5cserver%5cshare%5cx` | a UNC path (must not cause any outbound lookup; `ccae7b2` refuses it before any filesystem call) |
 | 11 | `/assets/CON` | reserved device name |
 | 12 | `/assets/NUL` | reserved device name |
 | 13 | `/assets/index.html::$DATA` | alternate data stream |
@@ -880,8 +916,9 @@ both places; the APPROVER signs "H passed" with the time in the change record.
 
 > **Gate:** do not start step I until every H check passes. Until then **PRODUCTION REMAINS NOT REMEDIATED.**
 > If any check fails, follow `CKAM_PRODUCTION_ROLLBACK_STRATEGY.md` (case 3: functional smoke fails; case 4: an
-> IF-01 probe or a security check fails). There is **no automatic downgrade and no automatic restore**, and no
-> automatic restart of `3b5e842` may be relied on (see "Using `deploy_ckam.ps1`").
+> IF-01 probe or a security check fails). There is **no automatic downgrade and no automatic restore**. After the
+> migrations nothing restarts `3b5e842`: the fixed `deploy_ckam.ps1` exits 3 with `CKAM-Web` stopped (see "Using
+> `deploy_ckam.ps1`").
 
 **Evidence:** `verify_server.csv`, `verify_lan.csv`, both probe CSVs, header dumps, the `app_started` line, the
 diagnostics JSON (version, migrations), the ids of the receive/move `asset_event` and `audit_log` rows, the QR scan
@@ -912,13 +949,13 @@ in this window. Write "not rotated: shared / unanswered" in the change record an
 
 1. Final restart of `CKAM-Web`, if one has not happened since the last rotation (F1 stop commands, then
    `Start-ScheduledTask`) (`NOT EXECUTED`).
-2. Rerun H1, H2 (a new `app_started` with `<RELEASE-SHA>`), H4 (`verify_release.ps1`, server + LAN), H5, H9 and H13.
+2. Rerun H1, H2 (a new `app_started` with `ccae7b2`), H4 (`verify_release.ps1`, server + LAN), H5, H9 and H13.
 3. Connections: database (`diagnostics/health` `database.ok`); NAS (the launcher log mapping line, plus an
    upload/download); ERP (`sync_success`); a sign-in with a **fresh** session. A token from before the JWT rotation
    is refused with `401`.
 4. Run the backup task once more (D1) and confirm it still succeeds with the current DB credential.
-5. **Delete the old secret copies** now that the new secrets are proven: `<EVIDENCE-DIR>\env.pre-<RELEASE-SHA>`,
-   `<ROOT>\shared\.env.pre-<RELEASE-SHA>` (written by `deploy_ckam.ps1` if it was used), any `shared\.env.pre-*`
+5. **Delete the old secret copies** now that the new secrets are proven: `<EVIDENCE-DIR>\env.pre-ccae7b2`,
+   `<ROOT>\shared\.env.pre-ccae7b2` (written by `deploy_ckam.ps1` if it was used), any `shared\.env.pre-*`
    (including `.env.pre-3b5e842` from the 2026-10-14 deploy), and any `.env.pre-rollback-*`. Check (`NOT EXECUTED`):
    `Get-ChildItem "$root\shared" -Force -Filter '.env.pre-*'` returns nothing. **Do not** delete the database
    dumps, the log copies or any release folder. They hold no live secret, and they are evidence and the rollback
@@ -992,7 +1029,7 @@ main" = push only, to `origin`, default branch `claude/brave-euler-07879a`; no b
 chosen option says. **Never force-push. Never rewrite history.** Never add the untracked
 `docs/ai/CKAM_DEMO_WALKTHROUGH.md` / `docs/ai/demo-screens/` (they contain a demo password).
 
-**Verification:** `git ls-remote origin claude/brave-euler-07879a` shows `<RELEASE-SHA>` or a descendant.
+**Verification:** `git ls-remote origin claude/brave-euler-07879a` shows `ccae7b2` or a descendant.
 
 **Rollback:** none. A pushed commit does not change production. Pushed history is never rewritten.
 
@@ -1005,11 +1042,12 @@ all four migrations, GT-F04), and `3b5e842` can be restarted (with IF-01 still o
 After F4 succeeds, the old code `3b5e842` **can still receive, but cannot move, repair, sell or scrap** (trigger
 `trg_asset_lifecycle_fields_guard`; users see a misleading 422 "Some of the values could not be saved…", GT-F01),
 and it reopens IF-01. So the preferred response to a failure after F4 is: stop `CKAM-Web`, keep CKAM down, find the
-cause, fix it, and start `<RELEASE-SHA>` again (or a corrected release). Going back is only one of two **owner
+cause, fix it, and start `ccae7b2` again (or a corrected release). Going back is only one of two **owner
 decisions**: (1) a migration downgrade of **only** the trigger migration (`alembic downgrade -1` from
-`releases\<RELEASE-SHA>\backend`, rehearsed: 0.89 s, nothing of value lost), never all four; or (2) restoring the D
-dump, which **loses everything written after the backup**. Neither is ever done automatically, and no automatic
-restart of the old release may be relied on (the deploy template is being fixed; read it first).
+`releases\ccae7b2\backend`, rehearsed: 0.89 s, nothing of value lost), never all four; or (2) restoring the D
+dump, which **loses everything written after the backup**. Neither is ever done automatically. The fixed deploy
+template restarts the old release only **before** the migrations (branch A, exit 1). From `alembic upgrade head` on
+it leaves `CKAM-Web` stopped (branch B, exit 3). It has only been dry-run, so read it first.
 `ops\windows\rollback_release.ps1` switches only the release folder and never touches the database. Do not run it
 after F4 without the owner's decision.
 
@@ -1020,12 +1058,12 @@ after F4 without the owner's decision.
 No secret values on this sheet. Tick each line; write "n/a" with a reason where an item is skipped.
 
 ```
-CKAM URGENT SECURITY DEPLOY — <RELEASE-SHA>      Change id: CHG-2026-____   Incident id: INC-2026-____
+CKAM URGENT SECURITY DEPLOY — ccae7b2      Change id: CHG-2026-____   Incident id: INC-2026-____
 Date: __________  Window: __________   Approver: __________  IT: __________  DBA(owner): __________  SEC: __________
-Release <RELEASE-SHA> (zip SHA-256 <ZIP-SHA256>, <ZIP-SIZE> bytes)   Previous 3b5e842   DB e6f8a0b2c4d6 -> c6e8a0b2d4f6
+Release ccae7b2 (zip SHA-256 b975c38d1f37387dbd8e15739ea2c27f563549e66bc80eac21878ea6327137e3, 2152224 bytes)   Previous 3b5e842   DB e6f8a0b2c4d6 -> c6e8a0b2d4f6
 (NOT eed3de1 / be3209af… — superseded)
 
-A RECORDS    [ ] change record opened  [ ] incident record opened  [ ] written deploy approval for <RELEASE-SHA> + window
+A RECORDS    [ ] change record opened  [ ] incident record opened  [ ] written deploy approval for ccae7b2 + window
              [ ] rotation-after-verification approved   [ ] user notice sent
 B LOGS       [ ] logs\ + logs\app copied, SHA-256 list  [ ] event logs + task XML  [ ] DB/NAS/router logs requested
              [ ] copied off-server, hashes re-checked
@@ -1033,20 +1071,21 @@ C PRECHECK   [ ] live = 3b5e842   [ ] ENVIRONMENT_NAME=production   [ ] JWT True
              [ ] DATABASE_URL present, host 10.0.0.205   [ ] disk OK (app + DB)   [ ] backup task OK, login noted
              [ ] alembic_version = e6f8a0b2c4d6   [ ] zip SHA-256 + size on server OK   [ ] launcher reviewed + hashed
              [ ] shared accounts: ckappuser __ ckpost __ ckassetapp __   [ ] package index reachable, Python 3.13
-             [ ] not overlapping 03:00 backup   [ ] <RELEASE-SHA> contents OK   [ ] GATE rehearsal READY  [ ] go/no-go signed
+             [ ] not overlapping 03:00 backup   [ ] ccae7b2 contents OK   [ ] GATE rehearsal READY  [ ] go/no-go signed
 D BACKUP     [ ] dump taken + SHA-256   [ ] pg_restore --list + -f NUL exit 0   [ ] 2nd dump copy kept
              [ ] NAS snapshot/copy   [ ] .env copy in evidence
-E COPY       [ ] zip hash re-checked after copy   [ ] expanded to releases\<RELEASE-SHA> (<FILE-COUNT> files)   [ ] content hash / manifest OK
+E COPY       [ ] zip hash re-checked after copy   [ ] expanded to releases\ccae7b2 (215 files)   [ ] content hash / manifest OK
 F MIGRATE    [ ] final log top-up   [ ] CKAM listener stopped (CKAM only)   [ ] pip install -c constraints exit 0
-             [ ] colorama = pinned version   [ ] .env -> <RELEASE-SHA>, no BOM, C3/C4 re-pass
+             [ ] colorama = pinned version   [ ] .env -> ccae7b2, no BOM, C3/C4 re-pass
              [ ] alembic before e6f8a0b2c4d6 -> after c6e8a0b2d4f6 (head), exit 0   [ ] current == heads (GT-F05)
-             [ ] deploy template read: no automatic restart of 3b5e842 relied on
+             [ ] fixed deploy template read (branch A exit 1 / branch B exit 3); exit code + STATE line recorded
 G START      [ ] launcher has --no-proxy-headers --no-server-header (hash recorded)   [ ] one listener
-             [ ] serving release <RELEASE-SHA>, NAS map OK, no "Refusing to start"
-H VERIFY     [ ] health  [ ] app_started <RELEASE-SHA>/production/db host 10.0.0.205  [ ] head c6e8a0b2d4f6
+             [ ] verify_release.ps1 -LocalProcessCheck Require: process check PASS (elevated, on the server)
+             [ ] serving release ccae7b2, NAS map OK, no "Refusing to start"
+H VERIFY     [ ] health  [ ] app_started ccae7b2/production/db host 10.0.0.205  [ ] head c6e8a0b2d4f6
              [ ] verify_release.ps1 0 FAIL (server + LAN)  [ ] 13 probes 404 (server + LAN)  [ ] docs 404 JSON
              [ ] unknown /api JSON 404  [ ] headers once, no Server: uvicorn  [ ] forged XFF -> 127.0.0.1
-             [ ] /assets/<id> + /assets/new 200 + real QR scan (Asset 360 + default "Barcode + QR" label)  [ ] bundle <BUNDLE-JS>
+             [ ] /assets/<id> + /assets/new 200 + real QR scan (Asset 360 + default "Barcode + QR" label)  [ ] bundle index-Cp5JgQR-.js
              [ ] sign-in + diagnostics: version, production, migrations ok (GT-F05: health alone is NOT enough)
              [ ] Asset list  [ ] PO  [ ] Receive (ledger + audit)  [ ] Move (ledger + audit; the real trigger test)  [ ] ERP sync  [ ] upload/download
                     >>> GATE: approver signs "H passed" — no rotation before this <<<
@@ -1069,14 +1108,15 @@ N PUSH (AFTER VERIFICATION)  [ ] option chosen (A/B/C)  [ ] owner push phrase fo
 - **Do not start any new code before F4 succeeds**, and do not start `3b5e842` after F4 succeeds without the
   owner's rollback decision. On the new schema it can still receive but cannot move, repair, sell or scrap (users
   get a misleading 422, GT-F01), and it reopens IF-01.
-- **Do not rely on any automatic rollback.** The old deploy template restarted `3b5e842` automatically after a late
-  failure; that is being removed. Until the operator has read the fixed template, treat every failure as manual.
+- **Do not use the deploy template without reading it.** The `ccae7b2` template is fixed: after the migrations
+  start it never restarts `3b5e842` (exit 3, `CKAM-Web` stopped). Before the migrations it does restore and restart
+  the previous release itself (exit 1). It has only been dry-run, never run on a server.
   Watch the script; stop `CKAM-Web` if `3b5e842` starts after a successful migration.
 - **Do not accept `/api/health` + `verify_release.ps1` alone as proof of a good deploy** (GT-F05): also
   `alembic current` = heads, no `head_mismatch` at start, and a real sign-in.
 - **Do not run `alembic downgrade` and do not restore a dump automatically or on your own initiative.** Both are owner
   decisions (`CKAM_PRODUCTION_ROLLBACK_STRATEGY.md`).
-- **Do not delete any release folder** (`releases\<RELEASE-SHA>` is linked by the editable install; `releases\3b5e842`
+- **Do not delete any release folder** (`releases\ccae7b2` is linked by the editable install; `releases\3b5e842`
   and the older ones are the rollback path), the database dumps, or the log copies.
 - **Do not deploy if `DATABASE_URL` is missing.** The app would silently use the development address.
 - **Do not touch 10.0.1.12** (retired). Never start, enable or deploy anything there.
