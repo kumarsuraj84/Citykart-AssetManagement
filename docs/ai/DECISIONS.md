@@ -151,6 +151,18 @@ The Item form is short — Name, Type of asset (one pick of "Group › Sub-categ
 
 **How to apply.** Never copy category, serial rule or defaults into a screen; read the Item. Sub-category is still required by the server, so the Item form chooses the group's only Sub-category itself or offers "New Sub-category".
 
+## 2026-11-11 — (19) Add Assets splits a set into its parts, and each part follows its own Item's serial rule
+
+**Decision.** Choosing a **set** Item (a Desktop, a Mouse+Keyboard combo) in Add Assets (`POST /api/assets/batch`) adds the set as its **parts**, exactly as a PO does: Quantity = number of **sets**, and each set adds one ordinary asset of every part's own Item (its category, brand and warranty defaults). Nothing of the set itself is saved on the assets. Before this, the manual add ignored `item.bundle_id` and created `quantity` assets of the set Item itself (found in production testing: a combo gave 1 asset, not a mouse and a keyboard).
+* **Serials per part, by the part's own Item.** A part whose Item has no serial (a mouse) is never asked and gets "N/A"; a part whose Item has a serial (a CPU, a TFT) gets its own serial box, `quantity` serials; a "serial later" part waits on the Serial Pending list. Sent as `part_serials: {"<part id>": [...]}`; a serial typed under two parts, a serial already in CKAM, a short list or serials for a part that takes none are refused with the part named, and nothing is written (the same all-or-nothing rule as a single Item).
+* **Cost.** A typed cost is the price of **one set** and is split over the parts by their share % to the paisa (the same `split_amounts` the PO uses); tax % applies to every part.
+* **Not offered for a set:** the serial-rule override, one serial list, Brand, Model, an old asset code and "different values per asset" (a set's parts differ); the API refuses them with a plain sentence. A typed Description gets the part's name added ("Front desk - Mouse"). Extra fields common to the set go on every part.
+* `GET /api/items` lists `set_parts` (`part_id`, `name`, `item_id`, `item_name`, `serial_mode`, `share_percent`) so the screen can show what a set becomes and ask serials only where they belong.
+
+**Why.** Same business meaning as the PO path: a set is a purchase shortcut, the register holds the parts. The owner stated the serial rule: it comes from each part's Item, never from the set.
+
+**How to apply.** Any new way of creating assets from an Item must check `item.bundle_id` and add the parts (see `app/assets/batch.py::_add_set`), not the set Item.
+
 ## 2026-11-11 — (18) Companies, head offices and warehouses are added from the ERP (guided "Add from the ERP"), not typed
 
 **Decision.** The ERP holds the company master (2 rows: code and name, `silver.dim_company`) and a site list with kinds (`gold_ckpost.site`: STORE, HEAD_OFFICE, WAREHOUSE, WAREHOUSE_OTHER, WAREHOUSE_LEGACY, VIRTUAL, EXTERNAL). Settings › Organisation now has **Add from the ERP** on **Companies** and on **Places** (head-office admin only); stores keep their own People & Places › Stores › Stores from ERP.

@@ -11,10 +11,18 @@
  */
 import { MAX_QUANTITY, quantityProblem } from "@/lib/limits";
 import { serialConflictSentence } from "../purchase-orders/serial-conflict";
-import type { Item } from "../items/types";
+import type { Item, SetPart } from "../items/types";
 import { andNumbers, serialEntries, todayIso, unitValueRows, type SerialEntry, type SerialMode } from "../receive/receive-model";
 
 export type { SerialMode };
+
+/**
+ * The parts a set Item is added as (empty for a single Item). A set -- a Desktop, a Mouse+Keyboard combo -- is
+ * added as `quantity` assets of each part's own Item; each part follows ITS Item's serial rule.
+ */
+export function setPartsOf(item: Pick<Item, "is_set" | "set_parts"> | null | undefined): SetPart[] {
+  return item?.is_set === true && Array.isArray(item.set_parts) ? item.set_parts : [];
+}
 
 /** A custom field definition as `GET /masters/custom-fields` returns it. */
 export interface CustomFieldDef {
@@ -56,6 +64,8 @@ export interface AddInput {
   /** null = follow the Item's rule. */
   mode: SerialMode | null;
   serialText: string;
+  /** A set: the serial numbers typed for each part that has them (part id -> one serial per line). */
+  partSerialText: Record<string, string>;
   // Purchase details (optional)
   vendorId: string;
   poNumber: string;
@@ -82,7 +92,7 @@ export interface AddInput {
 
 export function emptyInput(): AddInput {
   return {
-    itemId: "", quantity: "1", receivedInto: "", costCenterId: "", mode: null, serialText: "",
+    itemId: "", quantity: "1", receivedInto: "", costCenterId: "", mode: null, serialText: "", partSerialText: {},
     vendorId: "", poNumber: "", poDate: "", invoiceNumber: "", invoiceDate: "", invoiceAmount: "",
     purchaseCost: "", taxPercent: "",
     brandId: "", model: "", warrantyYears: "", description: "", barcode: "", legacyCode: "",
@@ -113,6 +123,8 @@ export function quantityOf(raw: string): number {
 export interface AddProblem {
   unit_index?: number | null;
   serial?: string | null;
+  /** A set: the part this problem is about (unit_index is then the row in that part's serial box). */
+  part_id?: number | null;
   message: string;
 }
 
@@ -131,6 +143,8 @@ export interface AddCheck {
   qtyProblem: string | null;
   mode: SerialMode;
   serials: SerialCheck;
+  /** A set: the serial box check of each part whose Item has serial numbers (empty for a single Item). */
+  partSerials: { part: SetPart; check: SerialCheck }[];
   /** Extra-field problems shown next to the fields. */
   fieldMessages: Record<string, string>;
   /** Purchase-detail problems shown in that section. */
@@ -220,10 +234,19 @@ export function checkAdd(
   const qtyProblem = quantityProblem(input.quantity);
   const qty = qtyProblem ? 0 : Number(input.quantity.trim());
   const mode = effectiveMode(input, item);
+  const parts = setPartsOf(item);
+  const isSet = parts.length > 0;
   // Serial numbers are asked for only once the Item (and so its rule) is known.
-  const serials = item && mode === "HAS_SERIAL" && qty > 0
+  const serials = !isSet && item && mode === "HAS_SERIAL" && qty > 0
     ? checkSerials(input.serialText, qty, conflicts, server)
     : { entries: [], countProblem: null, badRows: new Map<number, string>(), messages: [] };
+  // A set: one box per part whose own Item has serial numbers (a mouse that has none is never asked).
+  const partSerials = isSet && qty > 0
+    ? parts.filter((p) => p.serial_mode === "HAS_SERIAL").map((part) => ({
+        part,
+        check: checkSerials(input.partSerialText[String(part.part_id)] ?? "", qty, conflicts, server.filter((p) => p.part_id === part.part_id)),
+      }))
+    : [];
 
   // Extra fields: the common value, or (when chosen) one value for every asset.
   const fieldMessages: Record<string, string> = {};
@@ -233,7 +256,7 @@ export function checkAdd(
     const commonRaw = typeof input.fieldValues[f.field_key] === "string" ? (input.fieldValues[f.field_key] as string).trim() : "";
     const bad = fieldValueProblem(f, commonRaw);
     if (bad) { fieldMessages[f.field_key] = bad; fieldReasons.push(bad); continue; }
-    const rows = input.perUnit && qty > 1 ? unitValueRows(input.unitValues[f.field_key]) : [];
+    const rows = input.perUnit && qty > 1 && !isSet ? unitValueRows(input.unitValues[f.field_key]) : [];
     if (rows.length > qty && qty > 0) {
       const m = `${f.label}: ${plural(rows.length, "value")} typed for ${plural(qty, "asset")}.`;
       fieldMessages[f.field_key] = m;
@@ -274,13 +297,17 @@ export function checkAdd(
   if (input.costCenterId === "") reasons.push("Choose the Cost Centre.");
   if (serials.countProblem) reasons.push(serials.countProblem);
   if (serials.messages.length > 0) reasons.push(serials.messages[0]);
+  for (const { part, check } of partSerials) {
+    if (check.countProblem) reasons.push(`${part.name}: ${check.countProblem}`);
+    if (check.messages.length > 0) reasons.push(`${part.name}: ${check.messages[0]}`);
+  }
   reasons.push(...fieldReasons);
   reasons.push(...purchaseMessages.map((m) => `Purchase details: ${m}`));
   const warranty = input.warrantyYears.trim();
   if (warranty !== "" && !(Number.isInteger(Number(warranty)) && Number(warranty) >= 0 && Number(warranty) <= 100)) {
     reasons.push("Warranty years must be a whole number from 0 to 100.");
   }
-  return { qty, qtyProblem, mode, serials, fieldMessages, purchaseMessages, reasons };
+  return { qty, qtyProblem, mode, serials, partSerials, fieldMessages, purchaseMessages, reasons };
 }
 
 /** The one line printed next to the Add button. */
@@ -309,6 +336,8 @@ export interface AddBody {
   cost_center_id: number;
   serial_mode?: SerialMode;
   serial_numbers?: string[];
+  /** A set: part id -> the serial numbers of the parts whose Item has them. */
+  part_serials?: Record<string, string[]>;
   vendor_id?: number;
   po_number?: string;
   po_date?: string;
@@ -344,8 +373,19 @@ export function buildAddBody(input: AddInput, item: Item | null | undefined, fie
     received_into_asset_user_id: Number(input.receivedInto),
     cost_center_id: Number(input.costCenterId),
   };
-  if (input.mode !== null && input.mode !== itemSerialMode(item)) body.serial_mode = input.mode;
-  if (mode === "HAS_SERIAL") body.serial_numbers = serialEntries(input.serialText).map((e) => e.value);
+  const parts = setPartsOf(item);
+  const isSet = parts.length > 0;
+  if (isSet) {
+    // Each part follows its own Item's serial rule; only the parts that have serial numbers send any.
+    const partSerials: Record<string, string[]> = {};
+    for (const p of parts) {
+      if (p.serial_mode === "HAS_SERIAL") partSerials[String(p.part_id)] = serialEntries(input.partSerialText[String(p.part_id)] ?? "").map((e) => e.value);
+    }
+    if (Object.keys(partSerials).length > 0) body.part_serials = partSerials;
+  } else {
+    if (input.mode !== null && input.mode !== itemSerialMode(item)) body.serial_mode = input.mode;
+    if (mode === "HAS_SERIAL") body.serial_numbers = serialEntries(input.serialText).map((e) => e.value);
+  }
   const optional: Partial<AddBody> = {
     vendor_id: input.vendorId ? Number(input.vendorId) : undefined,
     po_number: text(input.poNumber),
@@ -355,12 +395,13 @@ export function buildAddBody(input: AddInput, item: Item | null | undefined, fie
     invoice_amount: num(input.invoiceAmount),
     purchase_cost: num(input.purchaseCost),
     tax_percent: num(input.taxPercent),
-    brand_id: input.brandId ? Number(input.brandId) : undefined,
-    model: text(input.model),
+    // A set's parts take their brand from their own Items; a model and an old code make no sense for several parts.
+    brand_id: !isSet && input.brandId ? Number(input.brandId) : undefined,
+    model: isSet ? undefined : text(input.model),
     warranty_years: num(input.warrantyYears),
     description: text(input.description),
     barcode: text(input.barcode),
-    legacy_asset_code: qty === 1 ? text(input.legacyCode) : undefined,
+    legacy_asset_code: qty === 1 && !isSet ? text(input.legacyCode) : undefined,
   };
   for (const [k, v] of Object.entries(optional)) if (v !== undefined) (body as unknown as Record<string, unknown>)[k] = v;
 
@@ -370,7 +411,7 @@ export function buildAddBody(input: AddInput, item: Item | null | undefined, fie
     if (v !== undefined) common[f.field_key] = v;
   }
   if (Object.keys(common).length > 0) body.custom_fields = common;
-  if (input.perUnit && qty > 1) {
+  if (input.perUnit && qty > 1 && !isSet) {
     const perUnit: (Record<string, FieldValue> | null)[] = Array.from({ length: qty }, () => null);
     let any = false;
     for (const f of fields) {

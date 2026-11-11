@@ -22,6 +22,18 @@ export interface Item {
   /** S6: the Item comes as a set, and that set's name (from the server). */
   is_set?: boolean;
   bundle_name?: string | null;
+  /** The parts a set is added as (each part's own Item decides its serial rule); [] for a single Item. */
+  set_parts?: SetPart[];
+}
+
+/** One part of a set, as `GET /items` lists it. */
+export interface SetPart {
+  part_id: number;
+  name: string;
+  item_id: number | null;
+  item_name: string | null;
+  serial_mode: "HAS_SERIAL" | "NO_SERIAL" | "SERIAL_LATER";
+  share_percent: number;
 }
 
 export type MatchType = "CODE" | "NAME" | "ARTICLE" | "DEPARTMENT" | "SECTION" | "DIVISION";

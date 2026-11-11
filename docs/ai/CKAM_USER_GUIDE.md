@@ -145,7 +145,7 @@ You can also write a PO by hand: **Work › Purchase Orders › New Purchase Ord
 
 ## 9. Add assets that have no PO
 
-**Add Assets** button (on Home or Assets): choose the **Item**, the **Quantity**, **Received Into** and **Cost Centre**; add serials if the Item needs them. Purchase details are folded away until you need them.
+**Add Assets** button (on Home or Assets): choose the **Item**, the **Quantity**, **Received Into** and **Cost Centre**; add serials if the Item needs them. Purchase details are folded away until you need them. If the Item is a **set** (a Desktop, a Mouse+Keyboard combo), Quantity means sets: each set adds one asset of every part (1 combo = 1 keyboard + 1 mouse), and a serial box appears only for the parts whose own Item has a serial number.
 
 ## 10. Move an asset
 

@@ -50,6 +50,9 @@ class ItemOut(BaseModel):
     # S6 (additive): whether the Item is a set, and its set's name.
     is_set: bool = False
     bundle_name: str | None = None
+    # The set's parts (list only): [{part_id, name, item_id, item_name, serial_mode, share_percent}]; [] for a
+    # single Item. Add Assets adds a set as these parts, each following its own Item's serial rule.
+    set_parts: list[dict] = []
 
 
 class ItemMapIn(BaseModel):

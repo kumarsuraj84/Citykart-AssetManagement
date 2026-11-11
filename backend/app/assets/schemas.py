@@ -99,6 +99,10 @@ class AssetBatchIn(InModel):
     company_id: int | None = None
     serial_mode: str | None = Field(default=None, max_length=20)
     serial_numbers: list[str | None] | None = Field(default=None, max_length=MAX_BATCH_UNITS)
+    # A set Item (a Desktop: CPU + TFT + Keyboard + Mouse) is added as its parts, `quantity` of each. Each part
+    # follows its own Item's serial rule, so serials are given per part: {"<part id>": ["SN1", ...]} -- only for
+    # the parts whose Item has a serial; `serial_numbers` / `serial_mode` are for a single Item only.
+    part_serials: dict[str, list[str | None]] | None = Field(default=None, max_length=50)
     vendor_id: int | None = None
     po_number: str | None = Field(default=None, max_length=100)
     po_date: date | None = None

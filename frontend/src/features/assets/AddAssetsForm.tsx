@@ -36,7 +36,7 @@ import { SERIAL_MODES, problemsFrom, serialEntries, todayIso, type SerialMode } 
 import {
   type AddInput, type AddProblem, type CustomFieldDef, type ProblemPlace,
   applicableFields, buildAddBody, checkAdd, defaultDescription, emptyInput, itemSerialMode, problemPlace,
-  refusalSummary, whyNotSentence,
+  refusalSummary, setPartsOf, whyNotSentence,
 } from "./add-assets-model";
 import { ErrorMessage } from "@/components/shared/ErrorMessage";
 
@@ -66,7 +66,8 @@ export function isAddInputDirty(input: AddInput): boolean {
     input.invoiceAmount, input.purchaseCost, input.taxPercent, input.model, input.description, input.barcode, input.legacyCode,
   ].some((v) => v.trim() !== "");
   const fieldTyped = Object.values(input.fieldValues).some((v) => (typeof v === "string" ? v.trim() !== "" : v === true));
-  return typed || fieldTyped || input.quantity.trim() !== "1";
+  const partsTyped = Object.values(input.partSerialText).some((v) => v.trim() !== "");
+  return typed || fieldTyped || partsTyped || input.quantity.trim() !== "1";
 }
 const asArray = <T,>(d: unknown): T[] => (Array.isArray(d) ? (d as T[]) : []);
 /** How long typing in the serial box settles before the box is checked again. */
@@ -176,6 +177,9 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
 
   const item = items.find((i) => String(i.id) === input.itemId) ?? null;
   const itemMode = itemSerialMode(item);
+  // A set (a Desktop, a Mouse+Keyboard combo) is added as its parts, each with its own Item's serial rule.
+  const setParts = useMemo(() => setPartsOf(item), [item]);
+  const isSet = setParts.length > 0;
   const brandName = brands.find((b) => String(b.id) === input.brandId)?.name ?? null;
 
   const loadError = [itemsQ, costCentersQ, customFieldsQ].some((q) => q.isError);
@@ -205,6 +209,7 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
       ...s,
       itemId: String(next.id),
       mode: null,
+      partSerialText: {},
       brandId: next.default_brand_id ? String(next.default_brand_id) : "",
       warrantyYears: next.default_warranty_years != null ? String(next.default_warranty_years) : "",
     }));
@@ -214,12 +219,18 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
 
   // The serial box is checked once typing settles (a 100-row paste is checked once, not per key).
   const settledText = useDebounced(input.serialText, CHECK_DELAY_MS);
-  const checkedInput = useMemo(() => ({ ...input, serialText: settledText }), [input, settledText]);
-  const preCheck = checkAdd(checkedInput, item, fields);
-  const typed = useMemo(
-    () => (preCheck.mode === "HAS_SERIAL" ? [...new Set(serialEntries(settledText).map((e) => e.value))].filter((v) => v.toLowerCase() !== "n/a") : []),
-    [preCheck.mode, settledText],
+  const settledPartText = useDebounced(input.partSerialText, CHECK_DELAY_MS);
+  const checkedInput = useMemo(
+    () => ({ ...input, serialText: settledText, partSerialText: settledPartText }),
+    [input, settledText, settledPartText],
   );
+  const preCheck = checkAdd(checkedInput, item, fields);
+  const typed = useMemo(() => {
+    const lines = isSet
+      ? setParts.filter((p) => p.serial_mode === "HAS_SERIAL").flatMap((p) => serialEntries(settledPartText[String(p.part_id)] ?? "").map((e) => e.value))
+      : preCheck.mode === "HAS_SERIAL" ? serialEntries(settledText).map((e) => e.value) : [];
+    return [...new Set(lines)].filter((v) => v.toLowerCase() !== "n/a");
+  }, [isSet, setParts, preCheck.mode, settledText, settledPartText]);
   const conflicts = useSerialConflicts(typed);
   const check = checkAdd(checkedInput, item, fields, conflicts, serverProblems);
   const reasons = check.reasons;
@@ -306,7 +317,7 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
   const purchaseFilled = [input.vendorId, input.poNumber, input.poDate, input.invoiceNumber, input.invoiceDate, input.invoiceAmount, input.purchaseCost, input.taxPercent]
     .filter((v) => v.trim() !== "").length;
 
-  const perUnitToggle = perUnitFields.length > 0 && qty > 1 ? (
+  const perUnitToggle = perUnitFields.length > 0 && qty > 1 && !isSet ? (
     <PerUnitValues fields={perUnitFields} qty={qty} input={input} onChange={(patch) => edit(patch, ["fields"])} />
   ) : null;
 
@@ -351,14 +362,21 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
               <div className="flex flex-wrap gap-1.5" aria-label="What the Item decides">
                 {groupText && <Chip title="Type of asset">{groupText}</Chip>}
                 {itemArea && <Chip title="Work area">{workAreaLabel(itemArea)}</Chip>}
-                <Chip title="Serial number rule">{serialModeLabel(itemMode)}</Chip>
+                {isSet
+                  ? <Chip title="Set">Comes as a set of {setParts.length} parts: {setParts.map((p) => p.name).join(", ")}</Chip>
+                  : <Chip title="Serial number rule">{serialModeLabel(itemMode)}</Chip>}
               </div>
             )}
             {!itemsQ.isLoading && capsSettled && itemsQ.isSuccess && items.length === 0 && !may(caps, "item") && (
               <p className="text-xs text-muted-foreground" role="note">{ASK_TO_ADD.item}</p>
             )}
           </Field>
-          <Field id="quantity" label="Quantity" required problems={problemsAt("quantity")} error={check.qtyProblem ?? undefined} help={quantityHint()}>
+          <Field
+            id="quantity" label="Quantity" required problems={problemsAt("quantity")} error={check.qtyProblem ?? undefined}
+            help={isSet
+              ? `How many sets. Each set adds one asset of every part, so ${plural(qty || 1, "set")} = ${plural((qty || 1) * setParts.length, "asset")}.`
+              : quantityHint()}
+          >
             <div className="flex items-center gap-1">
               <Button type="button" size="icon" variant="outline" className="h-9 w-9 shrink-0" tabIndex={-1} aria-label="One less" disabled={!(qtyNum > 1)} onClick={() => step(-1)}>
                 <Minus className="h-4 w-4" aria-hidden="true" />
@@ -415,7 +433,53 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
       {item && (
         <section className="flex flex-col gap-2 rounded-md border p-3" aria-labelledby="add-serial-heading">
           <h2 id="add-serial-heading" className="text-sm font-semibold">Identification</h2>
-          <div role="radiogroup" aria-label="Serial number rule" className="flex flex-wrap items-center gap-1.5">
+          {isSet && (
+            <div className="flex flex-col gap-3">
+              <p className="text-xs text-muted-foreground">
+                This is a set, so each part is added as its own asset and follows its own Item's serial number rule.
+              </p>
+              {setParts.map((p) => {
+                const partCheck = check.partSerials.find((c) => c.part.part_id === p.part_id)?.check;
+                const boxId = `add-serials-${p.part_id}`;
+                const countLine = `${boxId}-count`;
+                if (p.serial_mode === "NO_SERIAL") {
+                  return <p key={p.part_id} className="text-xs"><span className="font-medium">{p.name}:</span> <span className="text-muted-foreground">no serial number</span></p>;
+                }
+                if (p.serial_mode === "SERIAL_LATER") {
+                  return (
+                    <p key={p.part_id} className="text-xs">
+                      <span className="font-medium">{p.name}:</span>{" "}
+                      <span className="text-muted-foreground">serial numbers will be entered later from Assets &gt; Serial Pending.</span>
+                    </p>
+                  );
+                }
+                if (qty <= 0 || !partCheck) return null;
+                return (
+                  <div key={p.part_id} className="flex flex-col gap-1">
+                    <Label htmlFor={boxId} className="text-xs">
+                      {p.name} serial numbers ({plural(qty, "asset")})<span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
+                    </Label>
+                    <SerialBox
+                      id={boxId}
+                      label={`${p.name} serial numbers`}
+                      text={input.partSerialText[String(p.part_id)] ?? ""}
+                      onChange={(t) => edit({ partSerialText: { ...input.partSerialText, [String(p.part_id)]: t } }, ["serials"])}
+                      badRows={partCheck.badRows}
+                      rows={qty}
+                      describedBy={countLine}
+                      placeholder="One serial per line — paste a list or scan; each scan goes on a new line."
+                    />
+                    <p id={countLine} className={cn("text-xs", partCheck.countProblem || partCheck.badRows.size > 0 ? "text-destructive" : "text-muted-foreground")}>
+                      {partCheck.entries.length} of {qty} entered
+                      {partCheck.entries.length > qty ? ` — ${partCheck.entries.length - qty} too many, remove ${partCheck.entries.length - qty === 1 ? "it" : "them"}` : ""}
+                    </p>
+                    <ProblemList label={`Problems with the ${p.name} serial numbers`} items={partCheck.messages} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {!isSet && <div role="radiogroup" aria-label="Serial number rule" className="flex flex-wrap items-center gap-1.5">
             {SERIAL_MODES.map((m) => (
               <button
                 key={m}
@@ -431,11 +495,11 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
                 {serialModeLabel(m)}
               </button>
             ))}
-          </div>
-          {check.mode !== itemMode && (
+          </div>}
+          {!isSet && check.mode !== itemMode && (
             <p className="text-xs text-muted-foreground">Changed for these assets only; the Item says “{serialModeLabel(itemMode)}”.</p>
           )}
-          {check.mode === "HAS_SERIAL" && qty > 0 && (
+          {!isSet && check.mode === "HAS_SERIAL" && qty > 0 && (
             <div className="flex flex-col gap-1">
               <Label htmlFor="add-serials" className="text-xs">
                 Serial numbers ({plural(qty, "asset")})<span className="ml-0.5 text-destructive" aria-hidden="true">*</span>
@@ -456,7 +520,7 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
               </p>
             </div>
           )}
-          {check.mode === "SERIAL_LATER" && (
+          {!isSet && check.mode === "SERIAL_LATER" && (
             <p className="text-xs text-muted-foreground">Serial numbers will be entered later from Assets &gt; Serial Pending.</p>
           )}
           <ProblemList label="Problems with the serial numbers" items={[...check.serials.messages, ...serialServerMessages]} />
@@ -517,8 +581,8 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
           <Field id="invoice-amount" label="Invoice Amount" help="The invoice total.">
             <Input id="invoice-amount" aria-label="Invoice Amount" type="number" inputMode="decimal" min={0} step="0.01" value={input.invoiceAmount} onChange={(e) => edit({ invoiceAmount: e.target.value }, ["purchase"])} />
           </Field>
-          <Field id="purchase-cost" label="Cost per asset">
-            <Input id="purchase-cost" aria-label="Cost per asset" type="number" inputMode="decimal" min={0} step="0.01" value={input.purchaseCost} onChange={(e) => edit({ purchaseCost: e.target.value }, ["purchase"])} />
+          <Field id="purchase-cost" label={isSet ? "Cost per set" : "Cost per asset"} help={isSet ? "Split over the parts by their share." : undefined}>
+            <Input id="purchase-cost" aria-label={isSet ? "Cost per set" : "Cost per asset"} type="number" inputMode="decimal" min={0} step="0.01" value={input.purchaseCost} onChange={(e) => edit({ purchaseCost: e.target.value }, ["purchase"])} />
           </Field>
           <Field id="tax-percent" label="Tax %">
             <Input id="tax-percent" aria-label="Tax %" type="number" inputMode="decimal" min={0} max={100} step="0.01" value={input.taxPercent} onChange={(e) => edit({ taxPercent: e.target.value }, ["purchase"])} />
@@ -526,7 +590,7 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
         </div>
         {purchaseCost > 0 && (
           <p className="text-xs text-muted-foreground">
-            Per asset: tax <span data-testid="tax-amount">{taxAmount.toFixed(2)}</span>, total <span data-testid="total-cost">{(purchaseCost + taxAmount).toFixed(2)}</span> (preview).
+            {isSet ? "Per set" : "Per asset"}: tax <span data-testid="tax-amount">{taxAmount.toFixed(2)}</span>, total <span data-testid="total-cost">{(purchaseCost + taxAmount).toFixed(2)}</span> (preview).
           </p>
         )}
         <ProblemList label="Problems with the purchase details" items={[...check.purchaseMessages, ...problemsAt("purchase")]} />
@@ -541,28 +605,35 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
         onToggle={() => setAdvancedOpen((o) => !o)}
       >
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field id="brand" label="Brand" help={item?.default_brand_id ? "Starts as the Item's brand." : undefined}>
-            <SearchableSelect
-              id="brand"
-              aria-label="Brand"
-              value={input.brandId || undefined}
-              onValueChange={(v) => edit({ brandId: v }, ["advanced"])}
-              options={brandOptions(brands)}
-              placeholder="No brand"
-              onCreateNew={may(caps, "brand") ? opener(setNewBrand) : undefined}
-              createLabel="New Brand…"
-            />
-          </Field>
-          <Field id="model" label="Model">
-            <Input id="model" aria-label="Model" value={input.model} onChange={(e) => edit({ model: e.target.value }, ["advanced"])} />
-          </Field>
+          {!isSet && (
+            <Field id="brand" label="Brand" help={item?.default_brand_id ? "Starts as the Item's brand." : undefined}>
+              <SearchableSelect
+                id="brand"
+                aria-label="Brand"
+                value={input.brandId || undefined}
+                onValueChange={(v) => edit({ brandId: v }, ["advanced"])}
+                options={brandOptions(brands)}
+                placeholder="No brand"
+                onCreateNew={may(caps, "brand") ? opener(setNewBrand) : undefined}
+                createLabel="New Brand…"
+              />
+            </Field>
+          )}
+          {!isSet && (
+            <Field id="model" label="Model">
+              <Input id="model" aria-label="Model" value={input.model} onChange={(e) => edit({ model: e.target.value }, ["advanced"])} />
+            </Field>
+          )}
           <Field
             id="warranty-years" label="Warranty years"
             help={warrantyUpto && Number(input.warrantyYears) > 0 ? `Warranty until ${warrantyUpto} (preview).` : item?.default_warranty_years != null ? "Starts as the Item's warranty." : "Leave empty for no warranty."}
           >
             <Input id="warranty-years" aria-label="Warranty years" type="number" inputMode="numeric" min={0} step={1} value={input.warrantyYears} onChange={(e) => edit({ warrantyYears: e.target.value }, ["advanced"])} />
           </Field>
-          <Field id="description" label="Description" help="Leave empty to use the Item name, brand and model.">
+          <Field
+            id="description" label="Description"
+            help={isSet ? "Leave empty to use each part's Item name. A typed description gets the part's name added." : "Leave empty to use the Item name, brand and model."}
+          >
             <Input
               id="description" aria-label="Description" value={input.description}
               placeholder={descriptionDefault || "Item name, brand and model"}
@@ -572,7 +643,7 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
           <Field id="barcode" label="Barcode" help="Labels use the Asset Code unless a barcode is given here.">
             <Input id="barcode" aria-label="Barcode" value={input.barcode} onChange={(e) => edit({ barcode: e.target.value }, ["advanced"])} />
           </Field>
-          {qty === 1 && (
+          {qty === 1 && !isSet && (
             <Field id="legacy-code" label="Old asset code" help="Only when adding one asset that had a code in the previous system.">
               <Input id="legacy-code" aria-label="Old asset code" value={input.legacyCode} onChange={(e) => edit({ legacyCode: e.target.value }, ["advanced"])} />
             </Field>
@@ -626,7 +697,9 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
             aria-describedby="add-why"
             title="Ctrl+Enter"
           >
-            {qty > 0 ? `Add ${plural(qty, "asset")}` : "Add assets"}
+            {qty > 0
+              ? isSet ? `Add ${plural(qty, "set")} (${plural(qty * setParts.length, "asset")})` : `Add ${plural(qty, "asset")}`
+              : "Add assets"}
           </AsyncButton>
         </div>
       </div>

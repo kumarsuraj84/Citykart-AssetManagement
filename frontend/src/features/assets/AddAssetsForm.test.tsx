@@ -869,5 +869,82 @@ describe("S7 fixes on Add Assets", () => {
     expect(isAddInputDirty({ ...base, quantity: "5" })).toBe(true);
     expect(isAddInputDirty({ ...base, serialText: "A1" })).toBe(true);
     expect(isAddInputDirty({ ...base, fieldValues: { tag: "x" } })).toBe(true);
+    expect(isAddInputDirty({ ...base, partSerialText: { "1": "C1" } })).toBe(true);
+  });
+});
+
+// A set (a Desktop, a Mouse+Keyboard combo) is added as its parts; each part follows its own Item's serial rule.
+const part = (id: number, name: string, serial_mode: string, share = 25) => ({
+  part_id: id, name, item_id: id + 100, item_name: name, serial_mode, share_percent: share,
+});
+const DESKTOP = item(21, "Desktop", {
+  bundle_id: 5, is_set: true, bundle_name: "Desktop",
+  set_parts: [part(1, "CPU", "HAS_SERIAL"), part(2, "TFT", "HAS_SERIAL"), part(3, "Keyboard", "NO_SERIAL"), part(4, "Mouse", "NO_SERIAL")],
+});
+const COMBO = item(22, "Mouse Keyboard Combo", {
+  bundle_id: 6, is_set: true, bundle_name: "Combo", set_parts: [part(5, "Keyboard", "NO_SERIAL", 50), part(6, "Mouse", "NO_SERIAL", 50)],
+});
+const setButton = () => screen.getByRole("button", { name: /^add \d+ sets? \(\d+ assets?\)$/i });
+
+describe("Add Assets: a set Item", () => {
+  it("a combo whose parts have no serial asks for none and adds one of each part", async () => {
+    mockApi({ items: [LAPTOP, COMBO] });
+    onBatch(batchResult(2));
+    renderAt();
+    await fillEssentials("Mouse Keyboard Combo");
+    expect(screen.getByLabelText("What the Item decides")).toHaveTextContent("Comes as a set of 2 parts: Keyboard, Mouse");
+    expect(screen.queryByRole("radiogroup", { name: /serial number rule/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/serial numbers/i)).not.toBeInTheDocument();
+    expect(screen.getAllByText("no serial number")).toHaveLength(2);
+    await waitFor(() => expect(setButton()).toBeEnabled());
+    expect(setButton()).toHaveTextContent("Add 1 set (2 assets)");
+    fireEvent.click(setButton());
+    await waitFor(() => expect(lastBatchBody()).toEqual({
+      item_id: 22, quantity: 1, received_into_asset_user_id: 4, cost_center_id: 3,
+    }));
+  });
+
+  it("two sets say how many assets that is", async () => {
+    mockApi({ items: [COMBO] });
+    renderAt();
+    await fillEssentials("Mouse Keyboard Combo", "2");
+    await waitFor(() => expect(setButton()).toHaveTextContent("Add 2 sets (4 assets)"));
+    expect(screen.getByText(/2 sets = 4 assets/)).toBeInTheDocument();
+  });
+
+  it("only the parts whose Item has a serial get a serial box, and each goes to the server under its part", async () => {
+    mockApi({ items: [DESKTOP] });
+    onBatch(batchResult(8));
+    renderAt();
+    await fillEssentials("Desktop", "2");
+    expect(screen.getByLabelText("CPU serial numbers")).toBeInTheDocument();
+    expect(screen.getByLabelText("TFT serial numbers")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Mouse serial numbers")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Keyboard serial numbers")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("CPU serial numbers"), { target: { value: "C1\nC2" } });
+    await waitFor(() => expect(whyLine()).toHaveTextContent("TFT: 2 serial numbers needed, 0 entered."));
+    expect(setButton()).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("TFT serial numbers"), { target: { value: "T1\nT2" } });
+    await waitFor(() => expect(setButton()).toBeEnabled());
+    expect(setButton()).toHaveTextContent("Add 2 sets (8 assets)");
+    fireEvent.click(setButton());
+    await waitFor(() => expect(lastBatchBody()).toEqual({
+      item_id: 21, quantity: 2, received_into_asset_user_id: 4, cost_center_id: 3,
+      part_serials: { "1": ["C1", "C2"], "2": ["T1", "T2"] },
+    }));
+  });
+
+  it("brand, model and the old asset code are not asked for a set, and the cost is per set", async () => {
+    mockApi({ items: [COMBO] });
+    renderAt();
+    await fillEssentials("Mouse Keyboard Combo");
+    fireEvent.click(screen.getByRole("button", { name: /advanced/i }));
+    expect(screen.queryByLabelText("Brand")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Model")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Old asset code")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Description")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /purchase details/i }));
+    expect(screen.getByLabelText("Cost per set")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Cost per asset")).not.toBeInTheDocument();
   });
 });

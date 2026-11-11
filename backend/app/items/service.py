@@ -10,6 +10,7 @@ from app.erp.source import ErpItem, ErpSource
 from app.items.models import Item, ItemMap, LEVEL_TYPES, MATCH_TYPES
 from app.items.suggest import SUGGESTION_THRESHOLD, ItemMatcher  # noqa: F401  (S7: re-exported, one scoring)
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company
+from app.masters.serial_rule import serial_mode_of
 
 
 ALL_CODES_LIMIT = 5000
@@ -164,6 +165,24 @@ async def list_items(session: AsyncSession) -> list[dict]:
     bundle_ids = {i.bundle_id for i in items if i.bundle_id is not None}
     bundles = dict((await session.execute(
         select(Bundle.id, Bundle.name).where(Bundle.id.in_(bundle_ids)))).all()) if bundle_ids else {}
+    # The parts of each set, so Add Assets can show what a set becomes and ask serials per part: the part's
+    # own Item decides whether it has a serial (a mouse has none). One lookup each per list.
+    set_parts: dict[int, list[dict]] = {}
+    if bundle_ids:
+        part_rows = (await session.execute(
+            select(BundlePart).where(BundlePart.bundle_id.in_(bundle_ids), BundlePart.is_active.is_(True))
+            .order_by(BundlePart.sort_order, BundlePart.id)
+        )).scalars().all()
+        part_item_ids = {p.item_id for p in part_rows if p.item_id is not None}
+        part_items = {pi.id: pi for pi in (await session.execute(
+            select(Item).where(Item.id.in_(part_item_ids)))).scalars().all()} if part_item_ids else {}
+        for p in part_rows:
+            part_item = part_items.get(p.item_id)
+            set_parts.setdefault(p.bundle_id, []).append({
+                "part_id": p.id, "name": p.name, "item_id": p.item_id,
+                "item_name": part_item.name if part_item is not None else None,
+                "serial_mode": serial_mode_of(part_item), "share_percent": float(p.share_percent),
+            })
     return [
         {
             "id": i.id, "name": i.name, "category_id": i.category_id, "subcategory_id": i.subcategory_id,
@@ -175,6 +194,7 @@ async def list_items(session: AsyncSession) -> list[dict]:
             "subcategory_name": subs.get(i.subcategory_id),
             "is_set": i.bundle_id is not None,
             "bundle_name": bundles.get(i.bundle_id),
+            "set_parts": set_parts.get(i.bundle_id, []) if i.bundle_id is not None else [],
         }
         for i in items
     ]
