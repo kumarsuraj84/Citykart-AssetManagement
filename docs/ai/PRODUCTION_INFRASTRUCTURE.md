@@ -2,7 +2,7 @@
 
 No passwords, keys or tokens are written here, only where they live.
 
-> **Update 2026-11-11:** the live release is **`0df67d3`** (movement redesign, releases 1-3), database head `e8a0c2d4f6b8`. Earlier releases are kept under `releases\` (`0b8c525` is the previous one; do not use it as a quick rollback now that the schema has moved: roll forward). Pre-deploy backup: `ckassetmanagement_20261111_124159.dump`. Record: `docs/security/CKAM_PRODUCTION_DEPLOYMENT_RECORD_0df67d3.md`. The release names in the "Releases" row below are history.
+> **Update 2026-11-11:** the live release is **`138e67a`** (on top of `0df67d3`, movement redesign releases 1-3: now with Switch on again for companies), database head `e8a0c2d4f6b8`. Earlier releases are kept under `releases\` (`0b8c525` is the previous one; do not use it as a quick rollback now that the schema has moved: roll forward). Pre-deploy backup: `ckassetmanagement_20261111_124159.dump`. Record: `docs/security/CKAM_PRODUCTION_DEPLOYMENT_RECORD_0df67d3.md`. The release names in the "Releases" row below are history.
 
 ## Layout
 

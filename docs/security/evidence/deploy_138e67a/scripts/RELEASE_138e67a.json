@@ -1,0 +1,49 @@
+{
+  "name": "ckam-release-138e67a",
+  "purpose": "CKAM release: a switched-off company can be switched on again (head-office admin only), and a note on every screen when no company is on",
+  "release_commit": "138e67a062467de1ae2b19fcf38e8a528efa37bc",
+  "release_commit_short": "138e67a",
+  "release_sha": "138e67a062467de1ae2b19fcf38e8a528efa37bc",
+  "release_sha_short": "138e67a",
+  "release_sha_note": "release_sha / release_sha_short repeat release_commit / release_commit_short because ops/windows/deploy_ckam.ps1.template reads these two names to check that the package is the release it was asked to deploy",
+  "release_tree": "2e73f9f342dff781a3813b3529e2068845b595c4",
+  "supersedes": "ckam-release-0df67d3 (live on production since 2026-11-11 12:45 IST)",
+  "code_identical_to_0df67d3_except": [
+    "backend/app/masters/router.py (GET /api/masters/companies/inactive, POST /api/masters/companies/{id}/reactivate)",
+    "frontend (NoCompanyBanner, SwitchedOffCompanies, Companies screen, router; rebuilt frontend-dist)"
+  ],
+  "code_identical_note": "git diff --name-only 0df67d3..138e67a over the packaged paths lists exactly backend/app/masters/router.py and the frontend sources above. backend/constraints.txt (44 pins), alembic migrations, ops/windows and ops/db are byte-identical to 0df67d3.",
+  "branch": "worktree-ckam-build",
+  "default_branch": "claude/brave-euler-07879a",
+  "commit_date": "2026-11-11T13:33:26+05:30",
+  "build_date_utc": "2026-11-11",
+  "built_from": "git archive of the committed tree 138e67a (no working-tree or untracked files)",
+  "build_host": "dev PC 10.0.0.47 (Windows 11)",
+  "node_version": "v24.14.0",
+  "npm_version": "11.9.0",
+  "frontend_build": "npm ci; VITE_APP_VERSION=138e67a npm run build; npm run check:build",
+  "python_required": ">=3.13",
+  "constraints_pins": 44,
+  "install_command": "python -m pip install -c <release>\\backend\\constraints.txt -e <release>\\backend",
+  "alembic_head": "e8a0c2d4f6b8",
+  "alembic_revision_count": 45,
+  "database_change": "NONE. No migration in this release: production stays at e8a0c2d4f6b8 and `alembic upgrade head` is a no-op.",
+  "migration_notes": {
+    "rollback": "No schema change, so the previous release 0df67d3 can be started again from its release folder if needed (it understands the same schema). The change is two read/write routes under /api/masters/companies and the Companies screen / app-shell banner.",
+    "never": "Never start release 3b5e842 or older: it has the IF-01 file-read hole and cannot move assets on the current schema."
+  },
+  "components": {
+    "backend/app/": "production backend code incl. app/alembic (migrations); no tests, no __pycache__",
+    "backend/alembic.ini": "Alembic configuration (script_location = app/alembic)",
+    "backend/pyproject.toml": "project metadata and runtime dependencies",
+    "backend/constraints.txt": "exact runtime package versions, 44 pins (unchanged)",
+    "backend/scripts/create_owner.py": "one-time first-owner bootstrap script (only script shipped)",
+    "backend/VERSION": "full release commit sha",
+    "frontend-dist/": "built frontend (no source maps, self-hosted fonts)",
+    "ops/windows/": "reference launcher, deploy, verify and rollback scripts + README (unchanged)",
+    "ops/db/": "role-split, verify and least-privilege check SQL + runbook, for the DBA (not used by this deploy)",
+    "RELEASE.json": "this file"
+  },
+  "excluded": [".git", ".env*", "node_modules", "backend/tests", "frontend sources/e2e/tests", "docs (incl. security evidence)", "ops/precheck", "screenshots and demo files", "coverage and caches", "backups and dumps", "docker-compose and Dockerfiles", "dev/seed scripts other than create_owner.py"],
+  "zip_sha256": "not stored inside the zip (a file cannot contain its own hash): see MANIFEST.138e67a.sha256.txt next to the zip, which lists the SHA-256 of the zip and of every file in this folder"
+}
