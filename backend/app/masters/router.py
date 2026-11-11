@@ -613,6 +613,47 @@ router.include_router(build_master_router(
         FieldSpec("Name", "name", required=True, max_length=200),
     ],
 ))
+
+
+# A company that was switched off disappears from the Companies list; these two routes (head-office admin only, like
+# adding or switching one off) show the switched-off ones and switch one back on. Only the company itself changes:
+# its places, cost centres, people and assets are left exactly as they are. The change is written to the audit trail
+# automatically (DATA / REACTIVATE).
+@router.get("/companies/inactive", response_model=list[schemas.CompanyOut])
+async def switched_off_companies(session: AsyncSession = Depends(get_session), _owner=Depends(require_primary_owner())):
+    rows = await session.execute(select(models.Company).where(models.Company.is_active.is_(False)).order_by(models.Company.name))
+    return rows.scalars().all()
+
+
+@router.post("/companies/{company_id}/reactivate", response_model=schemas.CompanyOut)
+async def switch_company_on_again(
+    company_id: int, session: AsyncSession = Depends(get_session), actor=Depends(require_primary_owner()),
+):
+    company = await session.get(models.Company, company_id)
+    if company is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "This company was not found.")
+    if company.is_active:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"{company.name} is already switched on.")
+    others = (await session.execute(
+        select(models.Company).where(models.Company.is_active.is_(True), models.Company.id != company.id)
+    )).scalars().all()
+    same_name = next((o for o in others if o.name.strip().lower() == company.name.strip().lower()), None)
+    if same_name is not None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            f"Another company that is switched on is already called {same_name.name}. "
+                            "Rename or switch off that one first.")
+    same_erp = next((o for o in others if o.erp_code.lower() == company.erp_code.lower()), None)
+    if same_erp is not None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            f"{same_erp.name}, which is switched on, already uses the ERP company code {company.erp_code}. "
+                            "Two companies cannot share one ERP code: change or switch off one of them first.")
+    company.is_active = True
+    company.updated_by = actor.id
+    await session.commit()
+    await session.refresh(company)
+    return company
+
+
 router.include_router(build_master_router(
     "/locations", models.Location, schemas.LocationIn, schemas.LocationOut, SCOPE_COMPANY_ID,
     schema_edit=schemas.LocationEditIn,

@@ -1,5 +1,6 @@
 import { MasterCrudScreen } from "../../components/master-crud/MasterCrudScreen";
 import type { FormField } from "../../components/master-crud/types";
+import { SwitchedOffCompanies } from "../../features/settings/SwitchedOffCompanies";
 
 interface Company {
   id: number;
@@ -24,6 +25,7 @@ export default function CompaniesSetup({ embedded = false, onCreated }: {
   onCreated?: (company: Company) => void;
 } = {}) {
   return (
+    <div className="flex flex-col gap-4">
     <MasterCrudScreen<Company>
       embedded={embedded}
       onCreated={onCreated}
@@ -32,6 +34,7 @@ export default function CompaniesSetup({ embedded = false, onCreated }: {
         historyEntity: "company",
         title: "Companies",
         singular: "Company",
+        emptyDescription: "No company is switched on. Add a company, or switch one back on if you switched one off.",
         columns: [
           { key: "code", label: "Code" },
           { key: "name", label: "Name" },
@@ -45,5 +48,8 @@ export default function CompaniesSetup({ embedded = false, onCreated }: {
         editFields: [{ key: "name", label: "Name" }, ERP_CODE_FIELD],
       }}
     />
+    {/* A company that was switched off is switched back on here (it no longer shows in the list above). */}
+    <SwitchedOffCompanies />
+    </div>
   );
 }

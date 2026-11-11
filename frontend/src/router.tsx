@@ -23,6 +23,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { AppNav } from "@/components/app-shell/AppNav";
+import { NoCompanyBanner } from "@/components/app-shell/NoCompanyBanner";
 import { guarded, guardedCatalogue } from "@/components/app-shell/RouteGuard";
 import { apiClient } from "./lib/api-client";
 import {
@@ -242,6 +243,7 @@ function AppShell() {
 
           <SidebarInset>
             <main className="flex-1 p-4 md:p-6">
+              <NoCompanyBanner />
               <Outlet />
             </main>
           </SidebarInset>

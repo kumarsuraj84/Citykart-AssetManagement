@@ -50,6 +50,8 @@ export interface MasterConfig<T> {
   /** Singular noun for dialog titles and confirmation copy (e.g. "Vendor",
    * "Cost Centre"). Defaults to `title` when omitted. */
   singular?: string;
+  /** What the empty list says under "No <title> yet" (default: "Create your first <singular> to get started."). */
+  emptyDescription?: string;
   columns: Column<T>[];
   formFields: FormField[];
   /** Fields editable after creation -- a subset of `formFields` (AM-05). A

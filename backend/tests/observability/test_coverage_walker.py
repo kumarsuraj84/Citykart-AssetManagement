@@ -104,6 +104,9 @@ for _master in ("companies", "locations", "departments", "cost-centers", "catego
     AUDITED[("POST", f"/api/masters/{_master}/import/preview")] = "IMPORT IMPORT_PREVIEW"
     AUDITED[("POST", f"/api/masters/{_master}/import/commit")] = "IMPORT IMPORT_COMMIT + DATA per new record"
 
+# A switched-off company is switched on again (the session audit writes DATA / REACTIVATE).
+AUDITED[("POST", "/api/masters/companies/{company_id}/reactivate")] = AUTO + " (REACTIVATE)"
+
 # Write-method routes that legitimately leave no audit row.
 ALLOW_LIST: dict[tuple[str, str], str] = {
     ("POST", "/api/code-rules/preview"): "shows what a code format would look like; saves nothing",

@@ -151,6 +151,14 @@ The Item form is short — Name, Type of asset (one pick of "Group › Sub-categ
 
 **How to apply.** Never copy category, serial rule or defaults into a screen; read the Item. Sub-category is still required by the server, so the Item form chooses the group's only Sub-category itself or offers "New Sub-category".
 
+## 2026-11-11 — (17) A switched-off company can be switched on again (head-office admin only); a note when no company is on
+
+**Decision.** Switching a company off used to hide it from the Companies list for good, so the only way back was to create a new company (production lost its only company that way on 2026-10-10). Now **Settings › Organisation › Companies** has **Show switched-off companies** (opens by itself when no company is on) with **Switch on again** and a confirmation. Server: `GET /api/masters/companies/inactive` and `POST /api/masters/companies/{id}/reactivate`, both **head-office admin only** (like adding or switching off a company). It changes only the company row (`is_active`); its places, cost centres, people and assets are left as they are; the session audit writes DATA / REACTIVATE. It is refused with a plain sentence when another company that is on has the same name or the same ERP company code (`erp_code`, which the ERP copy maps by). No schema change. The app shell shows a note on every screen for staff when **no** company is on (not inside Settings, not for self-service logins): the head-office admin gets a link to the Companies tab, everyone else is told to ask them.
+
+**Why.** An empty company list with no explanation (the "vendor dialog is empty" report) and no way to undo a deactivation.
+
+**How to apply.** Other masters (places, cost centres, ...) still cannot be reactivated; if that is wanted, use the same pattern (an inactive list and a guarded reactivate route, classified in `test_coverage_walker.py`).
+
 ## 2026-11-11 — (16) A store's own Stock Room and Install Point stay as they are (for now)
 
 **Decision.** The owner reviewed whether a store still needs its own Stock Room (`STK-<code>`) and Install Point (`INS-<code>`) now that assets are given to the **Store** itself (decision 13), and chose to **change nothing for now**: Add Store and the ERP store create keep making all three records (decision 9); Move keeps hiding the two rooms as places to send to; "With Store" is the only way an asset at a store is described.

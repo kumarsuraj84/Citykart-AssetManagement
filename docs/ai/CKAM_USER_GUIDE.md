@@ -38,6 +38,10 @@ Seven short steps. Do them **for each company** (CKSPL and CKVPL). Progress is s
 6. **People / Stores** — Employees and Stores. A Store is created together with its own Stock Room and Install Point.
 7. **Asset Code Format** — how asset codes look. Assets cannot be added until this is saved.
 
+**A company was switched off by mistake?** **Settings › Organisation › Companies** → **Show switched-off companies** → **Switch on again** (you confirm first). Only the company itself comes back on: its places, cost centres, people and assets are exactly as you left them. It is refused, with the reason, if another company that is on already has the same name or the same ERP code. Only the head-office admin can do this.
+
+**"No company is switched on."** When every company is off, every screen shows a yellow note at the top saying purchase orders, assets and receiving cannot be added. The head-office admin gets a link to the Companies tab; everyone else is told to ask the head-office admin.
+
 ## 4. Add vendors from the ERP (for each company)
 
 The ERP numbers its suppliers separately in each company. The same real supplier has a **different code** in CKSPL and in CKVPL. CKAM keeps **one vendor** and links it to the supplier code of each company.

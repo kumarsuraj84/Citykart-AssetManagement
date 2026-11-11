@@ -389,7 +389,10 @@ describe("route guards by area", () => {
     loginAs("OPERATOR");
     renderAt("/setup/companies");
     await screen.findByText(NO_ACCESS);
-    expect(apiClient.get).not.toHaveBeenCalledWith(expect.stringContaining("/masters/companies"));
+    // The Companies screen itself is never shown or loaded: no switched-off list, no Add Company. (The plain company
+    // list is also read by the app shell's "No company is switched on" banner, which any staff login may see.)
+    expect(apiClient.get).not.toHaveBeenCalledWith("/masters/companies/inactive");
+    expect(screen.queryByRole("button", { name: /add company/i })).not.toBeInTheDocument();
   });
 
   it("keeps Asset 360 open to everyone the server allows, including a self-service login", async () => {

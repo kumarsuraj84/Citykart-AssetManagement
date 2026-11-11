@@ -441,7 +441,7 @@ export function MasterCrudScreen<T extends object>({
             <EmptyState
               icon={Inbox}
               title={`No ${config.title.toLowerCase()} yet`}
-              description={`Create your first ${singular.toLowerCase()} to get started.`}
+              description={config.emptyDescription ?? `Create your first ${singular.toLowerCase()} to get started.`}
               action={<Button onClick={openCreate}>Add {singular}</Button>}
             />
           )
