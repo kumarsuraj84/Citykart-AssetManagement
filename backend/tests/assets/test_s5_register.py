@@ -186,6 +186,31 @@ async def test_pick_takes_the_oldest_in_stock_assets_of_an_item_from_a_stock_roo
     assert other_room[0]["asset_id"] not in [r["asset_id"] for r in more.json()]
 
 
+async def test_pick_takes_from_any_place_not_only_stock_rooms_and_only_what_the_action_can_apply_to(client):
+    """Move's "Currently with": the oldest N of an Item held by an EMPLOYEE (or a store, or a site) too, limited to
+    the assets the chosen action can be recorded for."""
+    w = await build_s4_world()
+    h = await login(client, w, "op_it")
+    made = await batch(client, h, w, "camera", 4, serial_numbers=serials("PA", 4))
+    for m in made[:3]:
+        await move(client, h, m["asset_id"], w["employee"])                  # three now with the employee (allotted)
+    params = {"item_id": w["item_camera"], "asset_user_id": w["employee"], "quantity": 2}
+    got = await client.get("/api/assets/pick", headers=h, params=params)       # default action: a move
+    assert got.status_code == 200, got.text
+    assert [r["asset_id"] for r in got.json()] == [m["asset_id"] for m in made[:2]]     # the oldest two
+    assert got.headers["X-Total-Count"] == "3"
+    # what can be sold / is already in stock is a different set: an allotted asset cannot be sold from the employee
+    assert (await client.get("/api/assets/pick", headers=h, params={**params, "event_type": "SOLD"})).json() == []
+    # an allotted asset CAN be sent for repair
+    repair = await client.get("/api/assets/pick", headers=h, params={**params, "event_type": "SENT_FOR_REPAIR", "quantity": 5})
+    assert len(repair.json()) == 3 and repair.headers["X-Total-Count"] == "3"
+    # the stock room still gives only what is left there, as before
+    room = await client.get("/api/assets/pick", headers=h, params={**params, "asset_user_id": w["stock"], "quantity": 5})
+    assert [r["asset_id"] for r in room.json()] == [made[3]["asset_id"]]
+    bad = await client.get("/api/assets/pick", headers=h, params={**params, "event_type": "TELEPORTED"})
+    assert bad.status_code == 422 and bad.json()["detail"] == "That action is not one CKAM knows."
+
+
 async def test_pick_scope_roles_and_limits(client):
     w = await build_s4_world()
     admin = await login(client, w, "admin")
@@ -195,7 +220,7 @@ async def test_pick_scope_roles_and_limits(client):
     assert len((await client.get("/api/assets/pick", headers=await login(client, w, "op_nonit"), params=params)).json()) == 2
     other = await client.get("/api/assets/pick", headers=await login(client, w, "op_it"),
                              params={**params, "asset_user_id": w["stock_b"]})
-    assert other.status_code == 404 and other.json()["detail"] == "This stock room was not found."
+    assert other.status_code == 404 and other.json()["detail"] == "This place was not found."
     assert (await client.get("/api/assets/pick", headers=await login(client, w, "viewer_it"), params=params)).status_code == 403
     assert (await client.get("/api/assets/pick", headers=admin, params={**params, "quantity": 0})).status_code == 422
     assert (await client.get("/api/assets/pick", headers=admin, params={**params, "quantity": 1001})).status_code == 422

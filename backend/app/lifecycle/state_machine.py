@@ -23,6 +23,12 @@ _ALLOWED_EVENTS = {
     "SCRAPPED": set(),
 }
 
+def statuses_allowing(event_type: str) -> list[str]:
+    """The statuses an asset may be in for `event_type` to be recorded (empty for an event CKAM does not know).
+    Used by Move's "take N of an Item from a place" so it only picks assets the chosen action can really apply to."""
+    return [status for status, events in _ALLOWED_EVENTS.items() if event_type in events]
+
+
 # S0.4: events that move the asset to a holder, and events that by definition
 # have no destination (the asset stays recorded against its last holder).
 DESTINATION_EVENTS = frozenset({"PROCURED", "IMPORTED", "MOVED", "RECEIVED_FROM_REPAIR", "FOUND"})

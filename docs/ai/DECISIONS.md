@@ -151,6 +151,14 @@ The Item form is short — Name, Type of asset (one pick of "Group › Sub-categ
 
 **How to apply.** Never copy category, serial rule or defaults into a screen; read the Item. Sub-category is still required by the server, so the Item form chooses the group's only Sub-category itself or offers "New Sub-category".
 
+## 2026-11-11 — (13) Move: you choose only where an asset goes; sites are Install Points; a store is given things
+
+**Decision.** *Release 1 of the movement redesign* (`docs/superpowers/specs/2026-11-11-movement-redesign-design.md`). The Move choices are **Give to Employee · Give to Store · Install at HO / Warehouse · Move to Stock Point · Send for Repair · Receive from Repair · Report Lost · Mark Found · Sell · Scrap · Dispose** (same events and URL keys as before; only the words changed). CKAM shows where each asset is now as **From**, with a summary above Apply. A store's own Stock Room (`STK-<store code>`) and Install Point (`INS-<store code>`) are not offered as places to send to; HO and warehouse **sites are Install Points** (one per site), spare stock goes to **Stock Points**. *Add by Item* takes the oldest N of an Item from **any** place (`GET /api/assets/pick?event_type=…`), limited to assets the chosen action can apply to.
+
+**Why.** "Send to HO / WH" is ambiguous (stock or use?), and Store / its Stock Room / its Install Point overlapped. The owner wants assets to move from any place to any place (employee to employee, store to store, store to WH stock, …) in simple words.
+
+**Still to come (releases 2 and 3 of the same design):** moves between CKSPL and CKVPL with a fixed *Owned by* company and cost centre and an admin correction; repair vendors as places with a repairs screen and an ask-every-time return. Not changed yet: *Receive from Repair* still lists every place.
+
 ## 2026-10-17 — (12) Pick from ERP starts with the POs of vendors already added; other suppliers' POs are one click away
 
 **Decision.** *Purchase Orders from the ERP* lists, by default, only the open POs whose ERP supplier is already linked to a CKAM vendor (`GET /api/erp/pos?only_linked=true`). A button **"Also show other suppliers' POs (N)"** (N = `counts.other_suppliers`) switches to every open PO, as before. The counts (All / Ready / Needs your input) follow the list that is shown. The API default is unchanged (no `only_linked` = every PO), so Home and other callers still count everything. When only other suppliers have POs, the empty list says how many are hidden and points to the button.

@@ -16,7 +16,7 @@ import { useCategoryLookups, usePlaceLookups } from "../../lib/lookups";
 import { useCanCreate } from "../../lib/capabilities";
 import { cn } from "@/lib/utils";
 import { NewStockRoomDialog } from "@/components/quick-create/masters";
-import { stockRoomPickerOptions, useStockRooms } from "@/components/quick-create/StockRoomSelect";
+import { fromSummary, storeOwnedRoomIds } from "./storeRooms";
 import { MAX_QUANTITY, quantityHint, quantityProblem } from "../../lib/limits";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -92,9 +92,9 @@ function notInStockRoomText(assetUserType: string | null | undefined): string {
   return assetUserType === "INSTALLED" ? "At an install point" : "With a person or at a store";
 }
 
-/** "With: Suraj (Head Office) · With Employee". */
+/** "From: Suraj (Head Office) · With Employee": where the asset is now (CKAM records it as the "from"). */
 function withLine(a: AssetSearchResult): string {
-  return `With: ${a.current_asset_user_name ?? "—"} (${a.current_asset_user_location_name ?? "—"}) · ${statusLabel(a.status, a.current_asset_user_type)}`;
+  return `From: ${a.current_asset_user_name ?? "—"} (${a.current_asset_user_location_name ?? "—"}) · ${statusLabel(a.status, a.current_asset_user_type)}`;
 }
 
 function NotInStockRoomBadge({ type }: { type: string | null | undefined }) {
@@ -130,7 +130,7 @@ interface AssetMovementProps {
 
 /**
  * Move: the one place an asset changes hands or status. Pick what to do in plain words
- * (Give to Employee, Send to Store, Send for Repair, ...), add the assets (scan, search,
+ * (Give to Employee, Give to Store, Send for Repair, ...), add the assets (scan, search,
  * by Item and quantity, or from whoever has them now), then apply once. Only choices the
  * server would accept for every queued asset are offered (actionRules.ts, the same rule
  * Asset 360 uses); the server re-checks each one.
@@ -227,6 +227,8 @@ export function AssetMovement({ preloadIds, initialChoice }: AssetMovementProps 
   const peopleAndPlaces = placeOptions(asset_users, placeLookups);
   // The destination list shows only the kind the choice sends to; "Receive from Repair"
   // can go back to anyone, so there each entry also says what it is.
+  // A store's own Stock Room and Install Point are not offered as places to send to (a store is GIVEN things).
+  const storeRooms = useMemo(() => storeOwnedRoomIds(asset_users), [asset_users]);
   const destinationOptions: PickerOption[] = useMemo(() => {
     const kind = choice?.destination;
     if (!kind) return [];
@@ -237,10 +239,8 @@ export function AssetMovement({ preloadIds, initialChoice }: AssetMovementProps 
         return { ...opt, detail: [type, opt.detail].filter(Boolean).join(" · ") || undefined };
       });
     }
-    return peopleAndPlaces.filter((_, i) => asset_users[i].asset_user_type === kind);
-  }, [choice?.destination, asset_users, peopleAndPlaces]);
-  // Stock rooms of every company this person works in (Add by Item's "where it is now").
-  const stockRoomsQ = useStockRooms("all");
+    return peopleAndPlaces.filter((_, i) => asset_users[i].asset_user_type === kind && !storeRooms.has(asset_users[i].id));
+  }, [choice?.destination, asset_users, peopleAndPlaces, storeRooms]);
   // A destination stock room that does not exist yet is added right here (people and
   // stores are not: those belong to People & Places).
   const mayAddStockRoom = useCanCreate("stock_room");
@@ -299,30 +299,32 @@ export function AssetMovement({ preloadIds, initialChoice }: AssetMovementProps 
     enqueue([asset]);
   }
 
-  // Add by Item: the oldest N in stock of that Item at that stock room, one label each.
+  // Add by Item: the oldest N of that Item that the chosen action can apply to, held by ANY place (an employee, a
+  // store, a site or a stock point), one label each.
   // S5b-1: one GET /assets/pick (X-Total-Count = how many are there), then the picked
   // assets' full rows for the batch and the labels.
   const byItemMutation = useMutation({
     mutationFn: async (v: { itemId: string; fromId: string; count: number }) => {
       // Ask for enough to cover the ones already in this batch too.
       const want = Math.min(MAX_QUANTITY, v.count + queue.length);
+      const action = encodeURIComponent(choice?.eventType ?? "MOVED");
       const picked = await apiClient.getPage<{ asset_id: number; asset_code: string; serial_number: string | null }[]>(
-        `/assets/pick?item_id=${v.itemId}&asset_user_id=${v.fromId}&quantity=${want}`,
+        `/assets/pick?item_id=${v.itemId}&asset_user_id=${v.fromId}&quantity=${want}&event_type=${action}`,
       );
       const rows = Array.isArray(picked?.data) ? picked.data : [];
       const have = new Set(queue.map((a) => a.id));
       const freeIds = rows.map((r) => r.asset_id).filter((id) => !have.has(id));
-      const inStock = picked?.total ?? rows.length;
-      if (freeIds.length < v.count) return { assets: [] as AssetSearchResult[], inStock, free: freeIds.length };
+      const there = picked?.total ?? rows.length;
+      if (freeIds.length < v.count) return { assets: [] as AssetSearchResult[], inStock: there, free: freeIds.length };
       const assets = await fetchAssetsByIds<AssetSearchResult>(freeIds.slice(0, v.count));
-      return { assets, inStock, free: freeIds.length };
+      return { assets, inStock: there, free: freeIds.length };
     },
     onSuccess: (result, v) => {
       if (result.free < v.count) {
-        const room = stockRoomsQ.rows.find((r) => String(r.id) === v.fromId)?.name ?? "that stock room";
+        const place = asset_users.find((u) => String(u.id) === v.fromId)?.name ?? "that place";
         const inBatch = result.inStock - result.free;
         setItemError(
-          `Only ${result.inStock} in stock at ${room}` +
+          `Only ${result.inStock} there at ${place}` +
             (inBatch > 0 ? ` (${inBatch} already in this batch)` : "") +
             ` — you asked for ${v.count}. Nothing was added.`,
         );
@@ -332,7 +334,7 @@ export function AssetMovement({ preloadIds, initialChoice }: AssetMovementProps 
       setBulkSummary(null);
       enqueue(result.assets);
     },
-    onError: (err) => setItemError(err instanceof Error ? err.message : "Could not take them from stock -- try again."),
+    onError: (err) => setItemError(err instanceof Error ? err.message : "Could not take them from there -- try again."),
   });
 
   function removeFromQueue(id: number) {
@@ -596,10 +598,10 @@ export function AssetMovement({ preloadIds, initialChoice }: AssetMovementProps 
             </div>
           ))}
         </div>
-        {/* S7 (P2-13): the two ways a store gets things, in one sentence. */}
+        {/* Release 1: where each choice sends things, in one sentence. You only choose where it goes: CKAM knows where it is now. */}
         <p className="text-xs text-muted-foreground" id="move-store-or-room">
-          Send to Store: the assets are with the store itself. Move to Stock Room: they are kept in a stock room
-          (a store's own stock room, STK-…, is in that list too).
+          Give to Store: the store uses them. Install at HO / Warehouse: used at a head-office or warehouse site.
+          Move to Stock Point: kept as spare stock. You only choose where it goes: where it is now is shown as From.
         </p>
         {/* S7 (P3-5): why a choice is off, in words (not only on hover). */}
         {offReasons && <p className="text-xs text-muted-foreground" role="note" aria-label="Choices not possible now">{offReasons}</p>}
@@ -720,8 +722,8 @@ export function AssetMovement({ preloadIds, initialChoice }: AssetMovementProps 
       <div className="rounded-md border p-3">
         <h2 className="mb-1 text-sm font-semibold">No serial to scan? Add by Item</h2>
         <p className="mb-2 text-xs text-muted-foreground">
-          For things such as mice and keyboards with no serial: choose the Item, where it is now and how many, and CKAM takes that many
-          from that stock room{labelsOn ? ", with one label each" : ""}.
+          For things such as mice and keyboards with no serial: choose the Item, who or where has them now (an employee, a store, a
+          site or a stock point) and how many, and CKAM takes that many from there{labelsOn ? ", with one label each" : ""}.
         </p>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <FormField htmlFor="movement-item" label="Item">
@@ -730,11 +732,11 @@ export function AssetMovement({ preloadIds, initialChoice }: AssetMovementProps 
               options={itemOptions(myItems, categoryLookups)} placeholder="Choose the Item"
             />
           </FormField>
-          <FormField htmlFor="movement-from" label="Currently in stock at">
+          <FormField htmlFor="movement-from" label="From">
             <SearchableSelect
-              id="movement-from" aria-label="Currently in stock at" value={selectValue(fromId)} onValueChange={setFromId}
-              options={stockRoomPickerOptions(stockRoomsQ.rows)}
-              placeholder="Choose the Stock Room"
+              id="movement-from" aria-label="From" value={selectValue(fromId)} onValueChange={setFromId}
+              options={peopleAndPlaces} placeholder="Choose who or where"
+              searchPlaceholder="Search by name or code…"
             />
           </FormField>
           <FormField htmlFor="movement-item-qty" label="How many" helperText={quantityHint()} errorText={itemQtyProblem ?? undefined}>
@@ -835,11 +837,16 @@ export function AssetMovement({ preloadIds, initialChoice }: AssetMovementProps 
               <span className="text-xs text-muted-foreground">Sort:</span>
               <QueueSortButton label="Code" sortKey="asset_code" />
               <QueueSortButton label="Description" sortKey="description" />
-              <QueueSortButton label="With" sortKey="asset_user" />
+              <QueueSortButton label="From" sortKey="asset_user" />
               <QueueSortButton label="Status" sortKey="status" />
             </div>
           )}
         </div>
+        {queue.length > 0 && (
+          <p className="mb-2 text-xs text-muted-foreground" aria-label="Where they are now">
+            {fromSummary(queue.map((a) => a.current_asset_user_name))}
+          </p>
+        )}
         {queue.length > 1 && (
           <Input
             aria-label="Search queued assets"

@@ -18,9 +18,9 @@ describe("the plain-word choices", () => {
   it("are the eleven the owner asked for, each mapped to an existing event and destination kind", () => {
     expect(MOVE_CHOICES.map((c) => [c.label, c.eventType, c.destination])).toEqual([
       ["Give to Employee", "MOVED", "EMPLOYEE"],
-      ["Move to Stock Room", "MOVED", "STOCK_POINT"],
-      ["Send to Store", "MOVED", "STORE"],
-      ["Install", "MOVED", "INSTALLED"],
+      ["Move to Stock Point", "MOVED", "STOCK_POINT"],
+      ["Give to Store", "MOVED", "STORE"],
+      ["Install at HO / Warehouse", "MOVED", "INSTALLED"],
       ["Send for Repair", "SENT_FOR_REPAIR", null],
       ["Receive from Repair", "RECEIVED_FROM_REPAIR", "ANY"],
       ["Report Lost", "LOST", null],
@@ -41,12 +41,12 @@ describe("the plain-word choices", () => {
 
   it("an asset in stock can go anywhere, be repaired, reported lost or leave; not 'receive from repair'", () => {
     expect(labels("IN_STOCK")).toEqual([
-      "Give to Employee", "Move to Stock Room", "Send to Store", "Install", "Send for Repair", "Report Lost", "Sell", "Scrap", "Dispose",
+      "Give to Employee", "Move to Stock Point", "Give to Store", "Install at HO / Warehouse", "Send for Repair", "Report Lost", "Sell", "Scrap", "Dispose",
     ]);
   });
 
   it("an asset with someone can be moved on, repaired or reported lost -- not sold or scrapped", () => {
-    expect(labels("ALLOTTED")).toEqual(["Give to Employee", "Move to Stock Room", "Send to Store", "Install", "Send for Repair", "Report Lost"]);
+    expect(labels("ALLOTTED")).toEqual(["Give to Employee", "Move to Stock Point", "Give to Store", "Install at HO / Warehouse", "Send for Repair", "Report Lost"]);
     expect(labels("INSTALLED")).toEqual(labels("ALLOTTED"));
   });
 
@@ -58,7 +58,7 @@ describe("the plain-word choices", () => {
   });
 
   it("moveChoice finds a choice by its URL key", () => {
-    expect(moveChoice("store")?.label).toBe("Send to Store");
+    expect(moveChoice("store")?.label).toBe("Give to Store");
     expect(moveChoice("nope")).toBeUndefined();
     expect(moveChoice(undefined)).toBeUndefined();
     expect(isChoiceAllowed(moveChoice("from-repair")!, "UNDER_REPAIR")).toBe(true);
@@ -94,6 +94,6 @@ describe("choiceAvailability (a batch)", () => {
   it("S7 P3-5: the reasons choices are off, as one visible sentence", () => {
     expect(unavailableSentence(choiceAvailability([], { isAdmin: true }))).toBeNull();
     expect(unavailableSentence(choiceAvailability([], { isAdmin: false }))).toBe("Not possible now: Mark Found (only an admin can do this).");
-    expect(unavailableSentence(choiceAvailability(["LOST"], { isAdmin: true }))).toMatch(/^Not possible now: Give to Employee, Move to Stock Room, .* \(not possible for every asset in this batch\)\.$/);
+    expect(unavailableSentence(choiceAvailability(["LOST"], { isAdmin: true }))).toMatch(/^Not possible now: Give to Employee, Move to Stock Point, .* \(not possible for every asset in this batch\)\.$/);
   });
 });

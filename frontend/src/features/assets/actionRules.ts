@@ -53,16 +53,17 @@ export interface MoveChoice {
 
 export const MOVE_CHOICES: MoveChoice[] = [
   { key: "employee", label: "Give to Employee", eventType: "MOVED", destination: "EMPLOYEE", destinationLabel: "Employee", doneWord: "given to the employee" },
-  // S7 (P2-13): "Move to Stock Room" (a store's own stock room STK-… is one of them) vs "Send to Store"
-  // (the assets are then with the store itself). Same events as before; only the words changed.
-  { key: "stock-room", label: "Move to Stock Room", eventType: "MOVED", destination: "STOCK_POINT", destinationLabel: "Stock Room", doneWord: "moved to the stock room" },
-  { key: "store", label: "Send to Store", eventType: "MOVED", destination: "STORE", destinationLabel: "Store", doneWord: "sent to the store" },
-  { key: "install", label: "Install", eventType: "MOVED", destination: "INSTALLED", destinationLabel: "Install Point", doneWord: "installed" },
+  // Release 1 (movement redesign, 2026-11-11): you choose only WHERE it goes (CKAM shows where it is now). A store is
+  // GIVEN things (the store uses them); a head-office or warehouse SITE is an Install Point ("Install at HO /
+  // Warehouse"); spare stock goes to a Stock Point. Same events and keys as before; only the words changed.
+  { key: "stock-room", label: "Move to Stock Point", eventType: "MOVED", destination: "STOCK_POINT", destinationLabel: "Stock Point", doneWord: "moved to the stock point" },
+  { key: "store", label: "Give to Store", eventType: "MOVED", destination: "STORE", destinationLabel: "Store", doneWord: "given to the store" },
+  { key: "install", label: "Install at HO / Warehouse", eventType: "MOVED", destination: "INSTALLED", destinationLabel: "Install Point", doneWord: "installed" },
   { key: "repair", label: "Send for Repair", eventType: "SENT_FOR_REPAIR", destination: null, doneWord: "sent for repair" },
   { key: "from-repair", label: "Receive from Repair", eventType: "RECEIVED_FROM_REPAIR", destination: "ANY", destinationLabel: "Received into", doneWord: "received back from repair" },
   { key: "lost", label: "Report Lost", eventType: "LOST", destination: null, doneWord: "reported lost" },
   // The server sends a found asset back to a stock room only.
-  { key: "found", label: "Mark Found", eventType: "FOUND", destination: "STOCK_POINT", destinationLabel: "Stock Room", doneWord: "marked found", adminOnly: true },
+  { key: "found", label: "Mark Found", eventType: "FOUND", destination: "STOCK_POINT", destinationLabel: "Stock Point", doneWord: "marked found", adminOnly: true },
   { key: "sell", label: "Sell", eventType: "SOLD", destination: null, doneWord: "sold" },
   { key: "scrap", label: "Scrap", eventType: "SCRAPPED", destination: null, doneWord: "scrapped" },
   { key: "dispose", label: "Dispose", eventType: "DISPOSED", destination: null, doneWord: "disposed" },

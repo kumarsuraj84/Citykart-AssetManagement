@@ -167,9 +167,9 @@ One screen, **Move**. "What do you want to do?" is a list of 11 plain-word choic
 | Choice | Goes to | Result status |
 |---|---|---|
 | Give to Employee | an Employee | With Employee |
-| Return to Stock Room | a Stock Room | In Stock |
-| Send to Store | a Store | With Store |
-| Install | an Install Point | Installed |
+| Move to Stock Point *(Release 1, 2026-11-11; was "Move to Stock Room")* | a Stock Point (a store's own `STK-` room is not offered) | In Stock |
+| Give to Store *(was "Send to Store")* | a Store | With Store |
+| Install at HO / Warehouse *(was "Install")* | an Install Point that is a site (a store's own `INS-` point is not offered) | Installed |
 | Send for Repair | nowhere | Under Repair |
 | Receive from Repair | any Employee, Store, Stock Room or Install Point (marked "Received into") | per destination |
 | Report Lost | nowhere | Lost |

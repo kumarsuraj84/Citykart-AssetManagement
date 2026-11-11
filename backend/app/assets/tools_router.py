@@ -1,5 +1,5 @@
-"""S5 asset endpoints that act on many assets at once: batch Add Assets, "take N of an Item from a stock
-room" for Move, and linking existing assets to Items. Mounted BEFORE app.assets.router so these fixed paths
+"""S5 asset endpoints that act on many assets at once: batch Add Assets, "take N of an Item from a place"
+for Move, and linking existing assets to Items. Mounted BEFORE app.assets.router so these fixed paths
 are matched before `/api/assets/{asset_id}`."""
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
@@ -17,7 +17,7 @@ from app.core.problems import Refused
 from app.core.validation import InModel
 from app.erp.source import ErpSource, get_erp_source
 from app.items.models import Item
-from app.lifecycle.state_machine import LifecycleError
+from app.lifecycle.state_machine import LifecycleError, statuses_allowing
 from app.observability import audit as obs_audit
 from app.observability import events as obs_events
 
@@ -65,25 +65,30 @@ async def add_assets(
 
 
 @router.get("/pick")
-async def pick_from_stock_room(
+async def pick_from_place(
     response: Response,
     item_id: int = Query(...),
     asset_user_id: int = Query(...),
     quantity: int = Query(..., ge=1, le=MAX_BATCH_UNITS),
+    event_type: str = Query("MOVED", max_length=30),
     session: AsyncSession = Depends(get_session),
     actor=Depends(require_role(*WRITE_ROLES)),
 ):
-    """Move's "take N of an Item from a stock room": the OLDEST (first added) N in-stock assets of that Item
-    held by that stock room, within the caller's companies and work area -> [{asset_id, asset_code,
-    serial_number}] (at most `quantity`; fewer when fewer are there). `X-Total-Count` = how many are there in
-    all, so the screen can say "only 3 in stock"."""
+    """Move's "take N of an Item from a place": the OLDEST (first added) N assets of that Item held by that
+    place (an employee, a store, a site or a stock point), within the caller's companies and work area, that
+    `event_type` can be recorded for (default `MOVED`: in stock, with a person or store, or installed) ->
+    [{asset_id, asset_code, serial_number}] (at most `quantity`; fewer when fewer are there). `X-Total-Count` =
+    how many are there in all, so the screen can say "only 3 there"."""
+    statuses = statuses_allowing(event_type)
+    if not statuses:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "That action is not one CKAM knows.")
     allowed = await scoped_company_ids(session, actor)
     place = await session.get(AssetUser, asset_user_id)
     if place is None or (allowed is not None and place.company_id not in allowed):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "This stock room was not found.")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "This place was not found.")
     domains = await allowed_asset_domains(session, actor)
     stmt = select(Asset.id, Asset.asset_code, Asset.serial_number).where(
-        Asset.item_id == item_id, Asset.current_asset_user_id == place.id, Asset.status == "IN_STOCK",
+        Asset.item_id == item_id, Asset.current_asset_user_id == place.id, Asset.status.in_(statuses),
         Asset.deleted_at.is_(None),
     )
     if allowed is not None:
