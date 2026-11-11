@@ -153,7 +153,9 @@ You only choose **where it goes**. CKAM already knows where each asset is now an
 - **Give to Store** — the store uses it.
 - **Install at HO / Warehouse** — used at a head-office or warehouse site (an Install Point, for example "HO Site").
 - **Move to Stock Point** — kept as spare stock (HO Stock, WH Stock).
-- **Send for Repair** · **Receive from Repair** · **Report Lost** · **Mark Found** (admin) · **Sell** · **Scrap** · **Dispose**.
+- **Send for Repair** — choose the **repair vendor** (a Vendor from your list). The asset shows as "With <vendor>, under repair" until it comes back.
+- **Receive from Repair** — choose the vendor to see what it holds (and where each asset was sent from), tick what came back, then answer **Where do they go?**: **Back where each came from** or **Another place** (one place for all of them). CKAM asks every time; nothing is pre-selected.
+- **Report Lost** · **Mark Found** (admin) · **Sell** · **Scrap** · **Dispose**.
 
 A store's own stock room and install point (made together with the store) are not offered as places to send to: give things to the store itself.
 **From any place:** an asset can be moved from a stock point, an employee, a store or a site to any other place. The **From** box in "No serial to scan? Add by Item" also accepts any of them.
@@ -164,6 +166,8 @@ Every move is written to the asset's history. You can move up to 1,000 assets at
 - **Owned by** is the company and cost centre the asset was bought under. It **never changes when you move it**, until the asset is sold, scrapped or disposed.
 - **Currently at** is the company of the place that holds it now. Asset 360 shows it only when it is different, and the Assets list has two filters: **Owned by** and **Currently at**.
 - **Received Into** (Receive and Add Assets) may be a stock room of either company; the assets stay owned by the company you bought them under.
+
+**Repairs.** **Work › Repairs** shows, for each repair vendor, how many of your assets it holds and how long the oldest has been away; open a vendor to see each asset and where it was sent from. Assets sent for repair before vendors were recorded appear under **No vendor recorded**: find them in Assets (status Under Repair) and receive them back from Move as usual. If "Back where each came from" cannot return an asset (for example the employee has left), that asset stays in the batch with the reason: receive it into another place.
 
 **Chose the wrong company or cost centre while receiving?** Only the platform owner or a Full Admin can fix it: open the asset → **⋯ More actions** → **Correct owner company / cost centre**, choose the right company and cost centre, and write the reason. It is kept in the asset's history ("Field changes"). It cannot be done once the asset is sold, scrapped or disposed, and the asset code never changes. **Tip:** don't put the company or the cost centre into the Asset Code Format, so a corrected asset never carries a wrong code.
 

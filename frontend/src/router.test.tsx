@@ -148,7 +148,7 @@ describe("login flow", () => {
 
 const navLinkNames = (nav: HTMLElement) => within(nav).getAllByRole("link").map((l) => l.textContent?.trim());
 
-const OPERATOR_MENU = ["Home", "Assets", "Purchase Orders", "Receive", "Move", "Reports"];
+const OPERATOR_MENU = ["Home", "Assets", "Purchase Orders", "Receive", "Move", "Repairs", "Reports"];
 const PEOPLE_MENU = ["Employees", "Stores", "Stock Rooms", "Install Points"];
 const SETTINGS_LINKS = [
   "All Settings", "Organisation",
@@ -164,7 +164,7 @@ describe("AppShell navigation (role-aware sidebar)", () => {
     loginAs("ADMIN", false, true);
     renderAt("/dashboard");
     const nav = await screen.findByRole("navigation", { name: "Main" });
-    expect(navLinkNames(nav)).toEqual(["Home", "Assets", "Purchase Orders", "Receive", "Move", ...PEOPLE_MENU, "Reports"]);
+    expect(navLinkNames(nav)).toEqual(["Home", "Assets", "Purchase Orders", "Receive", "Move", "Repairs", ...PEOPLE_MENU, "Reports"]);
 
     // Settings starts collapsed: none of its screens are listed until it is opened.
     const settings = within(nav).getByRole("button", { name: /settings/i });
@@ -204,7 +204,7 @@ describe("AppShell navigation (role-aware sidebar)", () => {
     loginAs("ADMIN");
     renderAt("/dashboard");
     const nav = await screen.findByRole("navigation", { name: "Main" });
-    expect(navLinkNames(nav)).toEqual(["Home", "Assets", "Purchase Orders", "Receive", "Move", ...PEOPLE_MENU, "Users & Access", "Reports"]);
+    expect(navLinkNames(nav)).toEqual(["Home", "Assets", "Purchase Orders", "Receive", "Move", "Repairs", ...PEOPLE_MENU, "Users & Access", "Reports"]);
     expect(within(nav).getByRole("link", { name: "Users & Access" })).toHaveAttribute("href", "/settings/users-access");
     expect(within(nav).queryByRole("button", { name: /settings/i })).not.toBeInTheDocument();
   });
@@ -216,7 +216,7 @@ describe("AppShell navigation (role-aware sidebar)", () => {
     const nav = await screen.findByRole("navigation", { name: "Main" });
     await waitFor(() => expect(within(nav).getByRole("link", { name: "Asset Groups" })).toBeInTheDocument());
     expect(navLinkNames(nav)).toEqual([
-      "Home", "Assets", "Purchase Orders", "Receive", "Move", ...PEOPLE_MENU, "Users & Access", "Reports",
+      "Home", "Assets", "Purchase Orders", "Receive", "Move", "Repairs", ...PEOPLE_MENU, "Users & Access", "Reports",
       "Items", "Asset Groups", "Link Assets to Items",
     ]);
     expect(within(nav).getByRole("link", { name: "Items" })).toHaveAttribute("href", "/settings/catalogue/items");
@@ -225,7 +225,7 @@ describe("AppShell navigation (role-aware sidebar)", () => {
     expect(within(nav).queryByRole("link", { name: "Vendors" })).not.toBeInTheDocument();
   });
 
-  it("gives an OPERATOR (IT or Non-IT: the same menu) Home, Assets, Purchase Orders, Receive, Move and Reports", async () => {
+  it("gives an OPERATOR (IT or Non-IT: the same menu) Home, Assets, Purchase Orders, Receive, Move, Repairs and Reports", async () => {
     loginAs("OPERATOR");
     renderAt("/dashboard");
     const nav = await screen.findByRole("navigation", { name: "Main" });

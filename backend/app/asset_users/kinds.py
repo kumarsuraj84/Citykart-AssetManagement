@@ -26,7 +26,16 @@ STOCK_ROOM_PREFIX = "STK-"
 INSTALL_POINT_PREFIX = "INS-"
 
 
+# Release 3: a repair vendor is a place too (it holds the assets sent to it), but never one of the four lists above:
+# it is made automatically the first time a vendor is chosen for "Send for Repair" and no screen lists or edits it.
+REPAIR_VENDOR_TYPE = "REPAIR_VENDOR"
+REPAIR_VENDOR_LABEL = "Repair vendor"
+REPAIR_PLACE_PREFIX = "RPR-"
+
+
 def kind_label(asset_user_type: str | None) -> str | None:
+    if asset_user_type == REPAIR_VENDOR_TYPE:
+        return REPAIR_VENDOR_LABEL
     return KIND_LABELS.get(asset_user_type or "")
 
 

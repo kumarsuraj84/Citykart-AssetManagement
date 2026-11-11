@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.db import Base
 from app.core.models import AuditMixin, SoftDeleteMixin
@@ -25,11 +25,14 @@ class AssetUser(Base, AuditMixin, SoftDeleteMixin):
         # of its own. Every ordinary asset_user (EMPLOYEE/STORE/INSTALLED/
         # STOCK_POINT) still requires all four, enforced here rather than only
         # in application code so the exemption can never silently drift.
+        # Release 3: a REPAIR_VENDOR place (an outside workshop; see app.repairs) needs no location.
         CheckConstraint(
-            "is_primary_owner OR (company_id IS NOT NULL AND location_id IS NOT NULL "
-            "AND code IS NOT NULL AND asset_user_type IS NOT NULL)",
+            "is_primary_owner OR (company_id IS NOT NULL AND code IS NOT NULL AND asset_user_type IS NOT NULL "
+            "AND (location_id IS NOT NULL OR asset_user_type = 'REPAIR_VENDOR'))",
             name="ck_asset_user_ordinary_fields_required",
         ),
+        Index("uq_asset_user_repair_vendor", "company_id", "vendor_id", unique=True,
+              postgresql_where=text("vendor_id IS NOT NULL")),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -39,6 +42,8 @@ class AssetUser(Base, AuditMixin, SoftDeleteMixin):
     asset_user_type: Mapped[str | None] = mapped_column(String(20))
     location_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("location.id"))
     department_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("department.id"))
+    # Release 3: set only on a REPAIR_VENDOR place -- the Vendor (master) that workshop is.
+    vendor_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("vendor.id"))
     email: Mapped[str | None] = mapped_column(String(200))
     phone: Mapped[str | None] = mapped_column(String(30))
 

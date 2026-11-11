@@ -231,8 +231,8 @@ async def test_the_diagnostics_bundle_has_everything_and_no_secrets(client):
     for key in ("generated_at", "app", "migration", "config", "erp_sync", "database", "table_counts", "error_groups",
                 "security_events", "system_events", "new_client_reports", "slow", "markdown"):
         assert key in body, key
-    # Security migrations (intended change): the head is now d7f9b1c3e5a7 (release 2: owner correction marker; before it c6e8a0b2d4f6, OBS-STATUS asset guard).
-    assert body["migration"]["code_head"] == "d7f9b1c3e5a7" and body["database"]["connected"] is True
+    # Security migrations (intended change): the head is now e8a0c2d4f6b8 (release 3: repair vendor places; before it d7f9b1c3e5a7, release 2 owner correction marker; before that c6e8a0b2d4f6, OBS-STATUS asset guard).
+    assert body["migration"]["code_head"] == "e8a0c2d4f6b8" and body["database"]["connected"] is True
     assert body["app"]["packages"]["fastapi"] and body["table_counts"]["asset_user"] >= 10
     assert len(body["error_groups"]) == 2 and body["error_groups"][0]["stack"]
     assert any(e["action"] == "LOGIN_FAILED" for e in body["security_events"])
@@ -293,7 +293,7 @@ async def test_the_health_check(client):
     assert body["status"] in ("ok", "degraded")
     checks = body["checks"]
     assert checks["database"]["ok"] is True and checks["log_dir"]["ok"] is True
-    assert checks["migrations"]["code_head"] == checks["migrations"]["db_head"] == "d7f9b1c3e5a7"   # release 2
+    assert checks["migrations"]["code_head"] == checks["migrations"]["db_head"] == "e8a0c2d4f6b8"   # release 3
     assert "asset" in checks["table_counts"]
 
 

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Owner approved 2026-11-11. **Release 1 built** (`697cc9f`, pushed, not deployed). **Release 2 built locally** (see decision 14 in `DECISIONS.md`; migration `d7f9b1c3e5a7`). Release 3 not started. Production runs `0b8c525` |
+| Status | Owner approved 2026-11-11. **Release 1 built** (`697cc9f`, pushed, not deployed). **Release 2 built locally** (see decision 14 in `DECISIONS.md`; migration `d7f9b1c3e5a7`). **Release 3 built locally** (decision 15; migration `e8a0c2d4f6b8`). Production runs `0b8c525` |
 | Owner decisions | 2026-11-11, in chat (listed in section 1). They override older text in `ITEM_MODEL.md`, `CKAM_FINAL_OPERATING_MODEL.md` §9–§10 and the "assets move only within their own company" rule |
 | Rules that still hold | `CLAUDE.md`: backend authorisation is authoritative; `lifecycle/service.py::apply_events` is the only writer of status / holder / status date; the ledger is append-only; every schema change has an Alembic migration; no hard deletes |
 

@@ -20,8 +20,10 @@ def test_the_master_audit_migration_is_the_only_head():
     # refuse TRUNCATE, audit purge floor) on top of that; closure WP-A2 (intended change): b5d7f9a1c3e5
     # (auth_session, AU-06) on top of that; closure WP-B (intended change): c6e8a0b2d4f6 (asset lifecycle-field
     # guard trigger, OBS-STATUS) on top of that; release 2 (intended change, 2026-11-11): d7f9b1c3e5a7 (the owner
-    # company / cost centre may change only through the audited owner correction) on top of that.
-    assert script.get_heads() == ["d7f9b1c3e5a7"]
+    # company / cost centre may change only through the audited owner correction) on top of that; release 3
+    # (intended change, 2026-11-12): e8a0c2d4f6b8 (a repair vendor is a place) on top of that.
+    assert script.get_heads() == ["e8a0c2d4f6b8"]
+    assert script.get_revision("e8a0c2d4f6b8").down_revision == "d7f9b1c3e5a7"
     assert script.get_revision("d7f9b1c3e5a7").down_revision == "c6e8a0b2d4f6"
     assert script.get_revision("c6e8a0b2d4f6").down_revision == "b5d7f9a1c3e5"
     assert script.get_revision("b5d7f9a1c3e5").down_revision == "a3c5e7f9b1d4"

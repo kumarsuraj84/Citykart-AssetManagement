@@ -31,6 +31,7 @@ from app.asset_users.models import AssetUser
 from app.lifecycle.service import apply_event
 from app.lifecycle.state_machine import LifecycleError
 from app.masters.models import AssetCategory, Brand, Vendor
+from app.repairs.service import ensure_repair_place, origins_of
 from app.reports.export_service import asset_label_png, asset_qr_png
 from app.observability import audit as obs_audit
 from app.observability import events as obs_events
@@ -80,6 +81,11 @@ class BulkActionIn(InModel):
     # S6: see BulkMoveIn -- one date and one reference for the whole batch, checked per asset.
     event_date: datetime | None = None
     reference_no: str | None = Field(default=None, max_length=100)
+    # Release 3 (repair vendors are places): SENT_FOR_REPAIR with `repair_vendor_id` (a Vendor) sends each asset to that
+    # vendor's repair place (made on first use, in the asset's company); RECEIVED_FROM_REPAIR with `back_to_origin`
+    # puts each asset back at the place it was sent from (instead of one `to_asset_user_id` for all).
+    repair_vendor_id: int | None = None
+    back_to_origin: bool = False
 
 
 class BulkActionOut(BaseModel):
@@ -212,6 +218,7 @@ async def list_assets(
 async def _bulk_apply_event(
     asset_ids: list[int], event_type: str, to_asset_user_id: int | None, remarks: str | None,
     session: AsyncSession, actor, event_date: datetime | None = None, reference_no: str | None = None,
+    *, repair_vendor_id: int | None = None, back_to_origin: bool = False,
 ) -> tuple[int, list[dict]]:
     """Shared by /bulk-move (MOVED only, kept for backward compatibility with
     the Asset Register's existing bulk-move) and /bulk-action (AM-20, any
@@ -223,6 +230,23 @@ async def _bulk_apply_event(
     done = 0
     failed: list[dict] = []
     wanted = list(dict.fromkeys(asset_ids))
+    # Release 3: the two repair options are checked once, before anything is written.
+    vendor = None
+    if repair_vendor_id is not None:
+        if event_type != "SENT_FOR_REPAIR":
+            raise HTTPException(422, "A repair vendor is only chosen when sending an asset for repair.")
+        if to_asset_user_id is not None:
+            raise HTTPException(422, "Choose the repair vendor, not another destination.")
+        vendor = await session.get(Vendor, repair_vendor_id)
+        if vendor is None:
+            raise HTTPException(422, "The repair vendor you chose does not exist.")
+    origins: dict[int, dict] = {}
+    if back_to_origin:
+        if event_type != "RECEIVED_FROM_REPAIR":
+            raise HTTPException(422, "Putting an asset back where it came from is only for receiving it back from repair.")
+        if to_asset_user_id is not None:
+            raise HTTPException(422, "Choose either one place for all of them or 'back where each came from', not both.")
+        origins = await origins_of(session, wanted)
     # S7 (P1-2): lock every chosen asset row up front, in id order (two overlapping bulk moves can then never
     # deadlock, and a second identical request waits and is checked against what the first one wrote).
     # apply_event re-reads each asset under the lock before checking the move.
@@ -239,14 +263,24 @@ async def _bulk_apply_event(
             # a per-item failure so one out-of-scope id doesn't abort the rest of the batch.
             failed.append({"asset_id": asset_id, "reason": "not found"})
             continue
+        destination = to_asset_user_id
+        if back_to_origin:
+            origin = origins.get(asset.id)
+            if origin is None:
+                failed.append({"asset_id": asset_id, "reason": f"CKAM does not know where {asset.asset_code} was sent from: choose a place."})
+                continue
+            destination = origin["place_id"]
         try:
             # Each asset in its own savepoint: one refusal never leaves a
             # half-written event behind for the others' commit.
             async with session.begin_nested():
-                await apply_event(session, asset, event_type, to_asset_user_id=to_asset_user_id, actor=actor,
+                if vendor is not None:
+                    # the vendor's repair place in THIS asset's company (made on first use)
+                    destination = (await ensure_repair_place(session, actor, vendor, asset.company_id)).id
+                await apply_event(session, asset, event_type, to_asset_user_id=destination, actor=actor,
                                   remarks=remarks, event_date=event_date, reference_no=reference_no)
             done += 1
-        except LifecycleError as exc:
+        except (LifecycleError, ValueError) as exc:
             failed.append({"asset_id": asset_id, "reason": str(exc)})
     return done, failed
 
@@ -273,6 +307,7 @@ async def bulk_action(
     done, failed = await _bulk_apply_event(
         body.asset_ids, body.event_type, body.to_asset_user_id, body.remarks, session, actor,
         event_date=body.event_date, reference_no=body.reference_no,
+        repair_vendor_id=body.repair_vendor_id, back_to_origin=body.back_to_origin,
     )
     await lifecycle_summary(session, "MOVE" if body.event_type == "MOVED" else body.event_type, body.event_type,
                             body.asset_ids, failed, body.to_asset_user_id, body.reference_no)

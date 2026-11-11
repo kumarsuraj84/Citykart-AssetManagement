@@ -25,11 +25,15 @@ async def test_events_without_a_destination_refuse_one(client):
     w = await build_world()
     h = await login(client, w, "admin")
     asset = await make_asset(client, h, w)
-    for event_type in ("SENT_FOR_REPAIR", "LOST", "DISPOSED", "SOLD", "SCRAPPED", "CORRECTION"):
+    for event_type in ("LOST", "DISPOSED", "SOLD", "SCRAPPED", "CORRECTION"):
         resp = await client.post(f"/api/assets/{asset['id']}/events", headers=h,
                                  json={"event_type": event_type, "to_asset_user_id": w["employee"]})
         assert resp.status_code == 422, (event_type, resp.text)
         assert resp.json()["detail"] == "This action does not send the asset anywhere, so do not choose a destination."
+    # Release 3: a repair MAY have a destination, but only a repair vendor's place (see test_r3_repair_vendors.py)
+    repair = await client.post(f"/api/assets/{asset['id']}/events", headers=h,
+                               json={"event_type": "SENT_FOR_REPAIR", "to_asset_user_id": w["employee"]})
+    assert repair.status_code == 422 and repair.json()["detail"] == "Choose the repair vendor the asset is sent to."
     row = await _asset_row(asset["id"])
     assert row.current_asset_user_id == w["stock"] and row.status == "IN_STOCK"
     assert await _event_count(asset["id"]) == 1

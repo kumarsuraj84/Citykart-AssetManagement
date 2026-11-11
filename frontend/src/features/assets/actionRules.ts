@@ -33,7 +33,7 @@ export function allowedEvents(status: string | null | undefined): string[] {
  * "ANY" for a return from repair (back to a person, store, stock room or install point),
  * or null when the choice sends it nowhere.
  */
-export type DestinationKind = "EMPLOYEE" | "STOCK_POINT" | "STORE" | "INSTALLED" | "ANY";
+export type DestinationKind = "EMPLOYEE" | "STOCK_POINT" | "STORE" | "INSTALLED" | "ANY" | "REPAIR_VENDOR";
 
 export interface MoveChoice {
   /** Stable key, used in the URL (/asset-movement?choice=store). */
@@ -59,7 +59,9 @@ export const MOVE_CHOICES: MoveChoice[] = [
   { key: "stock-room", label: "Move to Stock Point", eventType: "MOVED", destination: "STOCK_POINT", destinationLabel: "Stock Point", doneWord: "moved to the stock point" },
   { key: "store", label: "Give to Store", eventType: "MOVED", destination: "STORE", destinationLabel: "Store", doneWord: "given to the store" },
   { key: "install", label: "Install at HO / Warehouse", eventType: "MOVED", destination: "INSTALLED", destinationLabel: "Install Point", doneWord: "installed" },
-  { key: "repair", label: "Send for Repair", eventType: "SENT_FOR_REPAIR", destination: null, doneWord: "sent for repair" },
+  // Release 3: Send for Repair names the REPAIR VENDOR (a Vendor, not a person or place: CKAM keeps a place for it).
+  // Receive from Repair always ASKS where they go (back where each came from, or one other place); no default.
+  { key: "repair", label: "Send for Repair", eventType: "SENT_FOR_REPAIR", destination: "REPAIR_VENDOR", destinationLabel: "Repair vendor", doneWord: "sent for repair" },
   { key: "from-repair", label: "Receive from Repair", eventType: "RECEIVED_FROM_REPAIR", destination: "ANY", destinationLabel: "Received into", doneWord: "received back from repair" },
   { key: "lost", label: "Report Lost", eventType: "LOST", destination: null, doneWord: "reported lost" },
   // The server sends a found asset back to a stock room only.

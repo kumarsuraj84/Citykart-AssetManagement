@@ -47,6 +47,7 @@ import SerialPendingRoute from "./routes/assets/serial-pending";
 import AssetDetailRoute from "./routes/assets/$id";
 import AssetMovementRoute from "./routes/asset-movement";
 import PrintLabelsRoute from "./routes/print-labels";
+import RepairsRoute from "./routes/repairs";
 import PurchaseOrdersIndexRoute from "./routes/purchase-orders/index";
 import NewPurchaseOrderRoute from "./routes/purchase-orders/new";
 import PoFromErpRoute from "./routes/purchase-orders/from-erp";
@@ -420,6 +421,13 @@ function searchText(v: unknown): string | undefined {
   if (typeof v === "number" && Number.isFinite(v)) return String(v);
   return typeof v === "string" && v !== "" ? v : undefined;
 }
+
+// Release 3: what each repair vendor holds and for how long (sending and receiving are on Move).
+export const repairsRoute = createRoute({
+  getParentRoute: () => authedLayoutRoute,
+  path: "/repairs",
+  component: guarded("work", RepairsRoute),
+});
 
 export const printLabelsRoute = createRoute({
   getParentRoute: () => authedLayoutRoute,
@@ -900,6 +908,7 @@ const routeTree = rootRoute.addChildren([
     serialPendingRoute,
     assetDetailRoute,
     assetMovementRoute,
+    repairsRoute,
     printLabelsRoute,
     receiveRoute,
     receivePoRoute,

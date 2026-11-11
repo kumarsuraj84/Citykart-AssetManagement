@@ -44,6 +44,7 @@ function mockGets(found: Record<string, unknown[]> = {}, pool: { id: number }[] 
     // Add by Item lists every place, from GET /asset-users.
     if (path === "/stock-rooms") return Promise.resolve(USERS.filter((u) => u.asset_user_type === "STOCK_POINT"));
     if (path === "/items?work_area=mine") return Promise.resolve(ITEMS);
+    if (path === "/masters/vendors") return Promise.resolve([{ id: 7, code: "V7", name: "Fix It Services" }]);   // Release 3: Send for Repair names one
     if (path.startsWith("/assets?")) {
       const q = /[?&]q=([^&]*)/.exec(path);
       const ids = /[?&]ids=([^&]*)/.exec(path);
@@ -323,12 +324,20 @@ describe("S0: the destination follows the server's rule", () => {
     ["Move to Stock Point", "Stock Point"],
     ["Give to Store", "Store"],
     ["Install at HO / Warehouse", "Install Point"],
-    ["Receive from Repair", "Received into"],
   ])("%s asks for a destination (%s) and will not apply without one", async (choice, label) => {
     mockGets();
     await renderMovement();
     choose(choice);
     expect(screen.getByRole("combobox", { name: label })).toBeInTheDocument();
+  });
+
+  it("Release 3: Receive from Repair first asks where they go; the place picker (Received into) appears only for 'Another place'", async () => {
+    mockGets();
+    await renderMovement();
+    choose("Receive from Repair");
+    expect(screen.queryByRole("combobox", { name: "Received into" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: "Another place" }));
+    expect(screen.getByRole("combobox", { name: "Received into" })).toBeInTheDocument();
   });
 
   it.each(["Send for Repair", "Report Lost", "Dispose", "Sell", "Scrap"])(
@@ -342,6 +351,8 @@ describe("S0: the destination follows the server's rule", () => {
       await chooseDestination();                                    // chosen while the choice was "Give to Store"
       choose(choice);
       expect(screen.queryByRole("combobox", { name: /^(employee|store|stock room|install point|received into)$/i })).not.toBeInTheDocument();
+      // Release 3: a repair names its vendor (not a person or place); the place chosen earlier is still not sent.
+      if (choice === "Send for Repair") await chooseDestination("Repair vendor", "Fix It Services");
       fireEvent.click(applyButton(choice, 1));
       // S7 P2-8: Sell / Scrap / Dispose are final: confirmed first.
       if (["Dispose", "Sell", "Scrap"].includes(choice)) {

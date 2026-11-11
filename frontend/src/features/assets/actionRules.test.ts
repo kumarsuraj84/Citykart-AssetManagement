@@ -21,7 +21,7 @@ describe("the plain-word choices", () => {
       ["Move to Stock Point", "MOVED", "STOCK_POINT"],
       ["Give to Store", "MOVED", "STORE"],
       ["Install at HO / Warehouse", "MOVED", "INSTALLED"],
-      ["Send for Repair", "SENT_FOR_REPAIR", null],
+      ["Send for Repair", "SENT_FOR_REPAIR", "REPAIR_VENDOR"],
       ["Receive from Repair", "RECEIVED_FROM_REPAIR", "ANY"],
       ["Report Lost", "LOST", null],
       ["Mark Found", "FOUND", "STOCK_POINT"],

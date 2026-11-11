@@ -5,6 +5,7 @@ import {
   ChevronRight,
   ClipboardList,
   FolderTree,
+  Hammer,
   Home,
   KeyRound,
   Link2,
@@ -70,6 +71,7 @@ const PURCHASE_ORDERS: NavLinkDef = {
 };
 const RECEIVE: NavLinkDef = { to: "/receive", label: "Receive", icon: PackageCheck, activePrefixes: ["/receive/"] };
 const MOVE: NavLinkDef = { to: "/asset-movement", label: "Move", icon: ScanBarcode };
+const REPAIRS: NavLinkDef = { to: "/repairs", label: "Repairs", icon: Hammer };
 
 export const PEOPLE_LINKS: NavLinkDef[] = [
   { to: "/people/employees", label: "Employees", icon: UserRound },
@@ -116,7 +118,7 @@ export function navSectionsFor(s: AccessState, caps?: Capabilities | null): NavS
   if (canUse("staff", s)) sections.push({ links: [HOME] });
   const work: NavLinkDef[] = [];
   if (canUse("staff", s)) work.push(ASSETS);
-  if (canUse("work", s)) work.push(PURCHASE_ORDERS, RECEIVE, MOVE);
+  if (canUse("work", s)) work.push(PURCHASE_ORDERS, RECEIVE, MOVE, REPAIRS);
   if (work.length > 0) sections.push({ label: "Work", links: work });
   if (canUse("people", s)) {
     // The head-office admin finds Users & Access under Settings; a Full Admin here.

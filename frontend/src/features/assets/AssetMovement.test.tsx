@@ -44,9 +44,18 @@ const PEOPLE = [
   { id: 13, name: "Lamington Install Point", asset_user_type: "INSTALLED" },
 ];
 
-function mockGets({ searchResults = {} as Record<string, unknown[]>, byIds = [] as unknown[] } = {}) {
+// Release 3: a repair vendor (Send for Repair names it) and what such a vendor holds (Receive from Repair lists it).
+const FIXIT = { id: 7, code: "V7", name: "Fix It Services" };
+const NO_REPAIRS = { vendors: [], without_vendor: { assets: 0, oldest_days: null } };
+
+function mockGets({
+  searchResults = {} as Record<string, unknown[]>, byIds = [] as unknown[], repairs = NO_REPAIRS as unknown, vendorAssets = [] as unknown[],
+} = {}) {
   (apiClient.get as any).mockImplementation((path: string) => {
     if (path.startsWith("/asset-users")) return Promise.resolve(PEOPLE);
+    if (path === "/masters/vendors") return Promise.resolve([FIXIT]);
+    if (path === "/repairs") return Promise.resolve(repairs);
+    if (path.startsWith("/repairs/vendors/")) return Promise.resolve(vendorAssets);
     if (path.startsWith("/assets?ids=")) return Promise.resolve({ items: byIds, total: byIds.length });
     if (path.startsWith("/assets?q=")) {
       const q = decodeURIComponent(path.split("q=")[1].split("&")[0]);
@@ -400,10 +409,12 @@ describe("S5a: one Move screen with plain-word choices", () => {
     expect(names.map((n) => n.trim())).toEqual(expected);
   });
 
-  it("Receive from Repair may go back to anyone, and each entry says what it is", async () => {
+  it("Receive from Repair may go to anyone (when 'Another place' is chosen), and each entry says what it is", async () => {
     mockGets();
     await renderMovement();
     choose("Receive from Repair");
+    expect(screen.queryByRole("combobox", { name: "Received into" })).not.toBeInTheDocument();     // asked first: where do they go?
+    fireEvent.click(screen.getByRole("radio", { name: "Another place" }));
     fireEvent.click(screen.getByRole("combobox", { name: "Received into" }));
     expect(await screen.findByRole("option", { name: /IT Stock-HO\s?· Stock Room/ })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: /Ankur\s?· Employee/ })).toBeInTheDocument();
@@ -506,9 +517,10 @@ describe("S5a: one Move screen with plain-word choices", () => {
     scan("SN-001");
     await screen.findByText(/Queued \(1\)/);
     choose("Send for Repair");
+    await pick("Repair vendor", /Fix It Services/);
     fireEvent.click(applyButton("Send for Repair", 1));
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/assets/bulk-action", {
-      asset_ids: [1], event_type: "SENT_FOR_REPAIR", to_asset_user_id: null, remarks: "handed over at reception",
+      asset_ids: [1], event_type: "SENT_FOR_REPAIR", to_asset_user_id: null, repair_vendor_id: 7, remarks: "handed over at reception",
     }));
   });
 
@@ -519,11 +531,12 @@ describe("S5a: one Move screen with plain-word choices", () => {
     scan("SN-001");
     await screen.findByText(/Queued \(1\)/);
     choose("Send for Repair");
+    await pick("Repair vendor", /Fix It Services/);
     fireEvent.click(screen.getByRole("button", { name: /^more/i }));
     fireEvent.change(screen.getByLabelText("Reference number"), { target: { value: " GP-9 " } });
     fireEvent.click(applyButton("Send for Repair", 1));
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/assets/bulk-action", {
-      asset_ids: [1], event_type: "SENT_FOR_REPAIR", to_asset_user_id: null, remarks: null, reference_no: "GP-9",
+      asset_ids: [1], event_type: "SENT_FOR_REPAIR", to_asset_user_id: null, repair_vendor_id: 7, remarks: null, reference_no: "GP-9",
     }));
   });
 
@@ -679,6 +692,7 @@ describe("S7 fixes on Move", () => {
     });
     await renderMovement();
     choose("Send for Repair");
+    await pick("Repair vendor", /Fix It Services/);
     scan("SN-001");
     await screen.findByText(/Queued \(1\)/);
     const button = applyButton("Send for Repair", 1);
@@ -712,11 +726,100 @@ describe("S7 fixes on Move", () => {
     (apiClient.post as any).mockResolvedValue({ done: 1, failed: [] });
     await renderMovement();
     choose("Send for Repair");
+    await pick("Repair vendor", /Fix It Services/);
     scan("SN-001");
     await screen.findByText(/Queued \(1\)/);
     fireEvent.click(applyButton("Send for Repair", 1));
     await waitFor(() => expect(apiClient.post).toHaveBeenCalled());
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("Release 3: Send for Repair cannot be applied until the repair vendor is chosen, and says so", async () => {
+    mockGets({ searchResults: { "SN-001": [LAPTOP] } });
+    await renderMovement();
+    choose("Send for Repair");
+    scan("SN-001");
+    await screen.findByText(/Queued \(1\)/);
+    expect(applyButton("Send for Repair", 1)).toBeDisabled();
+    expect(screen.getByText("Choose the repair vendor.")).toBeInTheDocument();
+    await pick("Repair vendor", /Fix It Services/);
+    expect(applyButton("Send for Repair", 1)).toBeEnabled();
+  });
+
+  describe("Release 3: Receive from Repair always asks where the assets go", () => {
+    const BACK = [
+      { asset_id: 3, asset_code: "FA/HO01/IT/PRN/CK_3", serial_number: "SN-003", description: "Printer", days: 4, origin_name: "Ankur", origin_active: true },
+      { asset_id: 8, asset_code: "FA/HO01/IT/PRN/CK_8", serial_number: null, description: "Scanner", days: 9, origin_name: "Old Store", origin_active: false },
+    ];
+    const SUMMARY = { vendors: [{ vendor_id: 7, vendor_name: "Fix It Services", assets: 2, oldest_days: 9 }], without_vendor: { assets: 1, oldest_days: 30 } };
+
+    it("has no default: Apply waits for the answer, and 'Back where each came from' sends back_to_origin and no place", async () => {
+      mockGets({ searchResults: { "SN-003": [REPAIR_PRINTER] } });
+      (apiClient.post as any).mockResolvedValue({ done: 1, failed: [] });
+      await renderMovement();
+      choose("Receive from Repair");
+      scan("SN-003");
+      await screen.findByText(/Queued \(1\)/);
+      for (const r of screen.getAllByRole("radio", { name: /Back where each came from|Another place/ })) expect(r).not.toBeChecked();
+      expect(applyButton("Receive from Repair", 1)).toBeDisabled();
+      expect(screen.getByText("Choose where they go: back where each came from, or another place.")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("radio", { name: "Back where each came from" }));
+      expect(applyButton("Receive from Repair", 1)).toBeEnabled();
+      expect(screen.queryByRole("combobox", { name: "Received into" })).not.toBeInTheDocument();
+      fireEvent.click(applyButton("Receive from Repair", 1));
+      await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/assets/bulk-action", {
+        asset_ids: [3], event_type: "RECEIVED_FROM_REPAIR", to_asset_user_id: null, back_to_origin: true, remarks: null,
+      }));
+    });
+
+    it("'Another place' needs the place, then sends it (and no back_to_origin)", async () => {
+      mockGets({ searchResults: { "SN-003": [REPAIR_PRINTER] } });
+      (apiClient.post as any).mockResolvedValue({ done: 1, failed: [] });
+      await renderMovement();
+      choose("Receive from Repair");
+      scan("SN-003");
+      await screen.findByText(/Queued \(1\)/);
+      fireEvent.click(screen.getByRole("radio", { name: "Another place" }));
+      expect(applyButton("Receive from Repair", 1)).toBeDisabled();
+      expect(screen.getByText("Choose the place.")).toBeInTheDocument();
+      await pick("Received into", /IT Stock-HO/);
+      fireEvent.click(applyButton("Receive from Repair", 1));
+      await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/assets/bulk-action", {
+        asset_ids: [3], event_type: "RECEIVED_FROM_REPAIR", to_asset_user_id: 9, remarks: null,
+      }));
+    });
+
+    it("asks again every time: after the batch is done the answer is cleared", async () => {
+      mockGets({ searchResults: { "SN-003": [REPAIR_PRINTER] } });
+      (apiClient.post as any).mockResolvedValue({ done: 1, failed: [] });
+      await renderMovement();
+      choose("Receive from Repair");
+      scan("SN-003");
+      await screen.findByText(/Queued \(1\)/);
+      fireEvent.click(screen.getByRole("radio", { name: "Back where each came from" }));
+      fireEvent.click(applyButton("Receive from Repair", 1));
+      await screen.findByTestId("move-result");
+      fireEvent.click(screen.getByRole("button", { name: "Move more" }));
+      expect(screen.getByRole("radio", { name: "Back where each came from" })).not.toBeChecked();
+      expect(screen.getByRole("radio", { name: "Another place" })).not.toBeChecked();
+    });
+
+    it("the vendor's list shows what it holds, where each was sent from, and adds the ticked ones to the batch", async () => {
+      // GET /assets?ids=3 answers the one ticked asset
+      mockGets({ repairs: SUMMARY, vendorAssets: BACK, byIds: [{ ...REPAIR_PRINTER, id: 3 }] });
+      await renderMovement();
+      choose("Receive from Repair");
+      expect(await screen.findByRole("note", { name: "Repairs with no vendor recorded" }))
+        .toHaveTextContent("1 asset was sent for repair before vendors were recorded");
+      await pick("Repair vendor", /Fix It Services/);
+      expect(await screen.findByText(/sent from Ankur/)).toBeInTheDocument();
+      expect(screen.getByText(/sent from Old Store \(no longer active\)/)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("checkbox", { name: "Select FA/HO01/IT/PRN/CK_3 from the vendor" }));
+      fireEvent.click(screen.getByRole("button", { name: /Add 1 Selected to Batch/ }));
+      await waitFor(() => expect(screen.getByText(/Queued \(1\)/)).toBeInTheDocument());
+      expect(apiClient.get).toHaveBeenCalledWith("/repairs/vendors/7/assets");
+      expect(apiClient.get).toHaveBeenCalledWith("/assets?ids=3&limit=1000");        // only the ticked one is fetched
+    });
   });
 
   it("P2-7: an operator is told who adds a missing employee; a Full Admin gets '+ Add employee'", async () => {

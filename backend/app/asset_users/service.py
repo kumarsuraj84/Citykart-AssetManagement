@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import secrets
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
+from app.asset_users.kinds import REPAIR_VENDOR_TYPE
 from app.assets.models import Asset
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import end_all_sessions, hash_password
@@ -42,6 +43,9 @@ class AssetUserService:
             stmt = stmt.where(AssetUser.company_id == requested_company_id)
         if asset_user_type is not None:
             stmt = stmt.where(AssetUser.asset_user_type == asset_user_type)
+        else:
+            # Release 3: a repair vendor's place holds assets but is never listed as a person or place to pick.
+            stmt = stmt.where(or_(AssetUser.asset_user_type.is_(None), AssetUser.asset_user_type != REPAIR_VENDOR_TYPE))
         return (await self.session.execute(stmt)).scalars().all()
 
     async def get(self, asset_user_id: int) -> AssetUser | None:

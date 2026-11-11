@@ -18,8 +18,8 @@ async def test_startup_and_shutdown_are_recorded_with_version_and_safe_config():
     assert [(e.component, e.event) for e in events] == [("startup", "app_started"), ("shutdown", "app_stopped")]
     details = events[0].details
     assert details["environment"] == settings.environment_name and details["version"]
-    # Security migrations (intended change): the head is now d7f9b1c3e5a7 (release 2: owner correction marker; before it c6e8a0b2d4f6, OBS-STATUS asset guard).
-    assert details["migration"]["code_head"] == "d7f9b1c3e5a7" and details["migration"]["matches"] is True
+    # Security migrations (intended change): the head is now e8a0c2d4f6b8 (release 3: repair vendor places; before it d7f9b1c3e5a7, release 2 owner correction marker; before that c6e8a0b2d4f6, OBS-STATUS asset guard).
+    assert details["migration"]["code_head"] == "e8a0c2d4f6b8" and details["migration"]["matches"] is True
     assert "database_url" not in str(details) and settings.jwt_secret not in str(details)
     assert details["config"]["jwt_signing_key_is_placeholder"] in (True, False)
 
@@ -29,7 +29,7 @@ async def test_a_migration_mismatch_is_a_warning(monkeypatch):
     await system.on_startup()
     [mismatch] = await system_events(SystemEvent.component == "migration")
     assert mismatch.level == "WARNING" and mismatch.event == "head_mismatch"
-    assert "ffffffffffff" in mismatch.message and "d7f9b1c3e5a7" in mismatch.message   # release 2 head
+    assert "ffffffffffff" in mismatch.message and "e8a0c2d4f6b8" in mismatch.message   # release 3 head
 
 
 def test_the_version_comes_from_the_setting_the_environment_or_a_file(monkeypatch, tmp_path):

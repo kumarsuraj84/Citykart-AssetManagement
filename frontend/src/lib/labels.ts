@@ -49,6 +49,8 @@ export function statusLabel(status: string | null | undefined, holderType?: stri
     if (holderType === "EMPLOYEE") return "With Employee";
     if (holderType === "STORE") return "With Store";
   }
+  // Release 3: an asset sent for repair is held by the repair vendor's place.
+  if (status === "UNDER_REPAIR" && holderType === "REPAIR_VENDOR") return "With vendor, under repair";
   return STATUS_LABELS[status] ?? humanizeCode(status);
 }
 
@@ -69,6 +71,8 @@ const PLACE_TYPE_LABELS: Record<string, string> = {
   STORE: "Store",
   STOCK_POINT: "Stock Room",
   INSTALLED: "Install Point",
+  // Release 3: a repair vendor holds the assets sent to it (made by CKAM, never listed with the places above).
+  REPAIR_VENDOR: "Repair vendor",
 };
 
 const PLACE_TYPE_PLURALS: Record<string, string> = {
@@ -76,6 +80,7 @@ const PLACE_TYPE_PLURALS: Record<string, string> = {
   STORE: "Stores",
   STOCK_POINT: "Stock Rooms",
   INSTALLED: "Install Points",
+  REPAIR_VENDOR: "Repair vendors",
 };
 
 /** "STOCK_POINT" -> "Stock Room". */

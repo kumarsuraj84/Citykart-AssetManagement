@@ -32,6 +32,7 @@ from app.bundles.router import router as bundles_router
 from app.erp.router import router as erp_router
 from app.items.router import router as items_router
 from app.home.router import router as home_router
+from app.repairs.router import router as repairs_router
 
 from app.core.db import engine
 from app.observability import audit as obs_audit
@@ -192,6 +193,7 @@ app.include_router(bundles_router)
 app.include_router(erp_router)
 app.include_router(items_router)
 app.include_router(home_router)
+app.include_router(repairs_router)
 # S8: admin logs / diagnostics (head-office admin only) and the browser's problem reports.
 app.include_router(admin_logs_router)
 app.include_router(client_reports_router)

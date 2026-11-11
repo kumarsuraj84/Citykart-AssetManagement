@@ -33,6 +33,14 @@ describe("labels: the one place codes become words", () => {
     expect(statusLabel("IN_STOCK", "EMPLOYEE")).toBe("In Stock");
   });
 
+  it("Release 3: an asset under repair held by a repair vendor's place says so; a repair with no vendor keeps the old word", () => {
+    expect(statusLabel("UNDER_REPAIR", "REPAIR_VENDOR")).toBe("With vendor, under repair");
+    expect(statusLabel("UNDER_REPAIR", "EMPLOYEE")).toBe("Under Repair");
+    expect(statusLabel("UNDER_REPAIR")).toBe("Under Repair");
+    expect(placeTypeLabel("REPAIR_VENDOR")).toBe("Repair vendor");
+    expect(placeTypePlural("REPAIR_VENDOR")).toBe("Repair vendors");
+  });
+
   it("status options keep the backend value and show the word", () => {
     const opts = statusOptions();
     expect(opts.map((o) => o.value)).toEqual([...ASSET_STATUSES]);

@@ -11,7 +11,7 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { placeTypeLabel, statusLabel } from "../../lib/labels";
-import { itemOptions, placeOptions, type Option as PickerOption } from "../../lib/option-labels";
+import { itemOptions, placeOptions, vendorOptions, type Option as PickerOption, type VendorLike } from "../../lib/option-labels";
 import { useCategoryLookups, usePlaceLookups } from "../../lib/lookups";
 import { useCanCreate } from "../../lib/capabilities";
 import { cn } from "@/lib/utils";
@@ -21,6 +21,7 @@ import { MAX_QUANTITY, quantityHint, quantityProblem } from "../../lib/limits";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { Badge } from "@/components/ui/badge";
@@ -71,6 +72,31 @@ interface BulkActionResult {
   failed: { asset_id: number; reason: string }[];
 }
 
+/** GET /repairs: what each repair vendor holds now (Release 3). */
+interface RepairSummary {
+  vendors: { vendor_id: number; vendor_name: string; assets: number; oldest_days: number | null }[];
+  without_vendor: { assets: number; oldest_days: number | null };
+}
+
+/** GET /repairs/vendors/{id}/assets: one asset a vendor holds, with where it was sent from. */
+interface VendorAsset {
+  asset_id: number;
+  asset_code: string;
+  serial_number: string | null;
+  description: string | null;
+  days: number | null;
+  origin_name: string | null;
+  origin_active: boolean | null;
+}
+
+/** "Receive from Repair" always asks: back where each came from, or one other place. Never a default. */
+type ReturnMode = "" | "origin" | "place";
+
+function daysWord(n: number | null | undefined): string {
+  if (n == null) return "";
+  return n === 0 ? "today" : `${n} day${n === 1 ? "" : "s"}`;
+}
+
 interface ApplyOutcome extends BulkActionResult {
   choice: MoveChoice;
   /** The assets that were sent, so the result can name failures and print labels. */
@@ -91,6 +117,7 @@ function isNotInStockRoom(assetUserType: string | null | undefined): boolean {
 }
 
 function notInStockRoomText(assetUserType: string | null | undefined): string {
+  if (assetUserType === "REPAIR_VENDOR") return "With a repair vendor";
   return assetUserType === "INSTALLED" ? "At an install point" : "With a person or at a store";
 }
 
@@ -156,10 +183,36 @@ export function AssetMovement({ preloadIds, initialChoice }: AssetMovementProps 
   const [currentlyWithId, setCurrentlyWithId] = useState("");
   const [browseSelected, setBrowseSelected] = useState<number[]>([]);
   const [outcome, setOutcome] = useState<ApplyOutcome | null>(null);
+  // Release 3: Send for Repair names the vendor; Receive from Repair asks where each asset goes (every time).
+  const [repairVendorId, setRepairVendorId] = useState("");
+  const [returnMode, setReturnMode] = useState<ReturnMode>("");
+  const [fromVendorId, setFromVendorId] = useState("");
+  const [vendorSelected, setVendorSelected] = useState<number[]>([]);
   const scanRef = useRef<HTMLInputElement>(null);
 
   const choice = moveChoice(choiceKey);
   const eligibleFor = (a: { status: string }) => !choice || isChoiceAllowed(choice, a.status);
+  const isRepairOut = choice?.destination === "REPAIR_VENDOR";
+  const isRepairBack = choice?.eventType === "RECEIVED_FROM_REPAIR";
+  /** A person or place is chosen (not a repair vendor, and for a return from repair only when "Another place" is picked). */
+  const placeChoice = choice?.destination != null && !isRepairOut && !isRepairBack;
+  const placeWanted = placeChoice || (isRepairBack && returnMode === "place");
+
+  const vendorsQ = useQuery({
+    queryKey: ["masters", "vendors"], queryFn: () => apiClient.get<VendorLike[]>("/masters/vendors"), enabled: isRepairOut,
+  });
+  const repairsQ = useQuery({
+    queryKey: ["repairs", "summary"], queryFn: () => apiClient.get<RepairSummary>("/repairs"), enabled: isRepairBack,
+  });
+  const vendorAssetsQ = useQuery({
+    queryKey: ["repairs", "vendor", fromVendorId],
+    queryFn: () => apiClient.get<VendorAsset[]>(`/repairs/vendors/${fromVendorId}/assets`),
+    enabled: isRepairBack && fromVendorId !== "",
+  });
+  const vendorAssets = Array.isArray(vendorAssetsQ.data) ? vendorAssetsQ.data : [];
+  // What each vendor holds (a malformed answer is treated as "nothing", never a crash).
+  const repairSummary = repairsQ.data && Array.isArray(repairsQ.data.vendors) ? repairsQ.data : null;
+  const noVendorCount = repairSummary?.without_vendor?.assets ?? 0;
 
   /** The scan box gets the cursor back after every add, so a scanner can keep going. */
   function focusScan() {
@@ -253,11 +306,22 @@ export function AssetMovement({ preloadIds, initialChoice }: AssetMovementProps 
   function chooseChoice(next: MoveChoice) {
     setChoiceKey(next.key);
     setOutcome(null);
-    // A destination chosen for another kind of choice does not carry over.
-    const stillFits = next.destination != null && (next.destination === "ANY" ||
-      asset_users.some((u) => String(u.id) === toAssetUserId && u.asset_user_type === next.destination));
+    // A destination chosen for another kind of choice does not carry over; a return from repair asks again every time.
+    const stillFits = next.destination != null && next.destination !== "ANY" && next.destination !== "REPAIR_VENDOR" &&
+      asset_users.some((u) => String(u.id) === toAssetUserId && u.asset_user_type === next.destination);
     if (!stillFits) setToAssetUserId("");
+    setReturnMode("");
+    setVendorSelected([]);
   }
+
+  // Receive from Repair: the assets a vendor holds, ticked and added to the batch (each with where it was sent from).
+  const addFromVendorMutation = useMutation({
+    mutationFn: (ids: number[]) => fetchAssetsByIds<AssetSearchResult>(ids),
+    onSuccess: (assets) => {
+      enqueue(assets);
+      setVendorSelected([]);
+    },
+  });
 
   // "Currently With" browse: everything a specific person/store/point holds
   // right now, so an operator who knows WHO has something (but not its
@@ -488,9 +552,13 @@ export function AssetMovement({ preloadIds, initialChoice }: AssetMovementProps 
   const unprinted = labelsOn ? eligibleQueue.filter((a) => !a.printed) : [];
   const unconfirmed = scanPrefs.verify && labelsOn ? eligibleQueue.filter((a) => !a.confirmed).length : 0;
   const tooManyToApply = eligibleQueue.length > MAX_QUANTITY;
-  const needsDestination = choice?.destination != null && toAssetUserId === "";
+  // Release 3: a repair needs its vendor; a return from repair needs the answer to "where do they go?" (and the
+  // place, when it is "Another place"); every other choice with a destination needs that person or place.
+  const needsVendor = isRepairOut && repairVendorId === "";
+  const needsReturnAnswer = isRepairBack && returnMode === "";
+  const needsDestination = needsVendor || needsReturnAnswer || (placeWanted && toAssetUserId === "");
   // Release 2: an asset may go to a place of the OTHER company; it stays owned by its purchase company.
-  const destinationCompanyId = choice?.destination != null && toAssetUserId !== ""
+  const destinationCompanyId = placeWanted && toAssetUserId !== ""
     ? asset_users.find((u) => String(u.id) === toAssetUserId)?.company_id ?? null
     : null;
   const otherCompanyCount = destinationCompanyId == null
@@ -504,9 +572,13 @@ export function AssetMovement({ preloadIds, initialChoice }: AssetMovementProps 
       ? "Add the assets."
       : eligibleQueue.length === 0
         ? `None of these assets can be ${choice.doneWord}.`
-        : needsDestination
-          ? `Choose the ${choice.destinationLabel?.toLowerCase()}.`
-          : null;
+        : needsVendor
+          ? "Choose the repair vendor."
+          : needsReturnAnswer
+            ? "Choose where they go: back where each came from, or another place."
+            : needsDestination
+              ? `Choose the ${isRepairBack ? "place" : choice.destinationLabel?.toLowerCase()}.`
+              : null;
 
   // The batch always goes in ONE request (S6: the batch endpoint takes the date and the
   // reference). An asset the ledger refuses (a date before its last movement, ...) comes
@@ -522,7 +594,10 @@ export function AssetMovement({ preloadIds, initialChoice }: AssetMovementProps 
       const body = {
         asset_ids: sent.map((a) => a.id),
         event_type: c.eventType,
-        to_asset_user_id: c.destination ? Number(toAssetUserId) : null,
+        // a person or place (or, for a return from repair, the one place chosen); a repair names its vendor instead
+        to_asset_user_id: placeWanted ? Number(toAssetUserId) : null,
+        ...(isRepairOut ? { repair_vendor_id: Number(repairVendorId) } : {}),
+        ...(isRepairBack && returnMode === "origin" ? { back_to_origin: true } : {}),
         remarks: remarks.trim() || null,
         ...(customDate ? { event_date: new Date(eventDate).toISOString() } : {}),
         ...(reference ? { reference_no: reference } : {}),
@@ -547,6 +622,8 @@ export function AssetMovement({ preloadIds, initialChoice }: AssetMovementProps 
     setReferenceNo("");
     setEventDate(todayIso());
     setToAssetUserId("");
+    setReturnMode("");                // a return from repair asks again every time
+    setVendorSelected([]);
     setCurrentlyWithId("");
     setBrowseSelected([]);
     focusScan();
@@ -611,14 +688,133 @@ export function AssetMovement({ preloadIds, initialChoice }: AssetMovementProps 
         {/* Release 1: where each choice sends things, in one sentence. You only choose where it goes: CKAM knows where it is now. */}
         <p className="text-xs text-muted-foreground" id="move-store-or-room">
           Give to Store: the store uses them. Install at HO / Warehouse: used at a head-office or warehouse site.
-          Move to Stock Point: kept as spare stock. You only choose where it goes: where it is now is shown as From.
+          Move to Stock Point: kept as spare stock. Send for Repair: choose the repair vendor. Receive from Repair: CKAM asks where they go.
+          You only choose where it goes: where it is now is shown as From.
         </p>
         {/* S7 (P3-5): why a choice is off, in words (not only on hover). */}
         {offReasons && <p className="text-xs text-muted-foreground" role="note" aria-label="Choices not possible now">{offReasons}</p>}
         {mixedLine && <p className="text-xs text-muted-foreground" role="note">{mixedLine}</p>}
       </div>
 
-      {choice?.destination && (
+      {/* Release 3: Send for Repair names the repair vendor. CKAM keeps a place for it, so Asset 360 says "With <vendor>". */}
+      {isRepairOut && (
+        <FormField
+          htmlFor="movement-repair-vendor" label="Repair vendor" required className="sm:max-w-md"
+          helperText="The workshop the assets are sent to. Each asset will show as with this vendor until you receive it back."
+        >
+          <SearchableSelect
+            id="movement-repair-vendor"
+            aria-label="Repair vendor"
+            value={selectValue(repairVendorId)}
+            onValueChange={setRepairVendorId}
+            options={vendorOptions(Array.isArray(vendorsQ.data) ? vendorsQ.data : [])}
+            placeholder="Choose the repair vendor…"
+            searchPlaceholder="Search by name or code…"
+          />
+        </FormField>
+      )}
+
+      {/* Release 3: Receive from Repair. Which vendor holds what, and ALWAYS asked: where do they go? */}
+      {isRepairBack && (
+        <>
+          <section className="flex flex-col gap-2 rounded-md border p-3" aria-label="Assets with a repair vendor">
+            <h2 className="text-sm font-semibold">Assets with a repair vendor</h2>
+            <p className="text-xs text-muted-foreground">
+              Choose the vendor to see what it holds, tick what came back and add it to the batch. You can also scan or type below.
+            </p>
+            <FormField htmlFor="repair-from-vendor" label="Repair vendor" className="sm:max-w-md">
+              <SearchableSelect
+                id="repair-from-vendor"
+                aria-label="Repair vendor"
+                value={selectValue(fromVendorId)}
+                onValueChange={(v) => { setFromVendorId(v); setVendorSelected([]); }}
+                options={(repairSummary?.vendors ?? []).map((v) => ({
+                  value: String(v.vendor_id), label: v.vendor_name,
+                  detail: `${assetsWord(v.assets)}${v.oldest_days != null ? ` · oldest ${daysWord(v.oldest_days)}` : ""}`,
+                }))}
+                placeholder={repairsQ.isLoading ? "Loading…" : "Choose the vendor…"}
+                searchPlaceholder="Search by vendor name…"
+              />
+            </FormField>
+            {repairSummary && repairSummary.vendors.length === 0 && (
+              <p className="text-xs text-muted-foreground" role="note">No repair vendor holds any asset right now.</p>
+            )}
+            {noVendorCount > 0 && (
+              <p className="text-xs text-muted-foreground" role="note" aria-label="Repairs with no vendor recorded">
+                {assetsWord(noVendorCount)} {noVendorCount === 1 ? "was" : "were"} sent for repair before vendors were recorded:
+                add {noVendorCount === 1 ? "it" : "them"} by scanning or typing the code below.
+              </p>
+            )}
+            {fromVendorId !== "" && (
+              vendorAssetsQ.isLoading ? (
+                <p className="text-sm text-muted-foreground">Loading…</p>
+              ) : vendorAssets.length === 0 ? (
+                <EmptyState title="Nothing here." description="This vendor holds no assets right now." />
+              ) : (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Checkbox
+                        aria-label="Select all from this vendor"
+                        checked={vendorAssets.every((a) => vendorSelected.includes(a.asset_id))}
+                        onCheckedChange={(checked) => setVendorSelected(checked === true ? vendorAssets.map((a) => a.asset_id) : [])}
+                      />
+                      Select all ({vendorAssets.length})
+                    </label>
+                    <Button
+                      type="button" size="sm" disabled={vendorSelected.length === 0 || addFromVendorMutation.isPending}
+                      onClick={() => addFromVendorMutation.mutate(vendorSelected)}
+                    >
+                      Add {vendorSelected.length > 0 ? vendorSelected.length : ""} Selected to Batch
+                    </Button>
+                  </div>
+                  <ul className="flex max-h-80 flex-col gap-1.5 overflow-y-auto">
+                    {vendorAssets.map((a) => (
+                      <li key={a.asset_id} className="flex items-center gap-2 rounded-sm border bg-muted/40 px-2 py-1.5 text-sm">
+                        <Checkbox
+                          aria-label={`Select ${a.asset_code} from the vendor`}
+                          checked={vendorSelected.includes(a.asset_id)}
+                          onCheckedChange={(checked) =>
+                            setVendorSelected((s) => (checked === true ? [...s, a.asset_id] : s.filter((x) => x !== a.asset_id)))}
+                        />
+                        <div className="flex min-w-0 flex-col">
+                          <span className="font-medium break-words">{a.asset_code} — {a.description}</span>
+                          <span className="text-xs text-muted-foreground">
+                            Serial: {a.serial_number ?? "—"} · with the vendor {daysWord(a.days)} · sent from {a.origin_name ?? "an unknown place"}
+                            {a.origin_name != null && a.origin_active === false ? " (no longer active)" : ""}
+                          </span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )
+            )}
+          </section>
+
+          <div role="group" aria-labelledby="repair-return-label" className="flex flex-col gap-1.5 sm:max-w-md">
+            <span className="text-sm font-medium" id="repair-return-label">Where do they go? <span className="text-destructive" aria-hidden="true">*</span></span>
+            <RadioGroup value={returnMode} onValueChange={(v) => setReturnMode(v as ReturnMode)} aria-label="Where do they go" className="flex flex-col gap-2">
+              <label className="flex items-start gap-2 rounded-md border px-2.5 py-2 text-sm has-[[data-state=checked]]:border-primary/50 has-[[data-state=checked]]:bg-primary/5">
+                <RadioGroupItem value="origin" aria-label="Back where each came from" className="mt-0.5" />
+                <span className="flex flex-col">
+                  <span className="font-medium">Back where each came from</span>
+                  <span className="text-xs text-muted-foreground">Each asset returns to the person or place it was sent from. One that cannot (that place is closed) stays in the batch with the reason.</span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2 rounded-md border px-2.5 py-2 text-sm has-[[data-state=checked]]:border-primary/50 has-[[data-state=checked]]:bg-primary/5">
+                <RadioGroupItem value="place" aria-label="Another place" className="mt-0.5" />
+                <span className="flex flex-col">
+                  <span className="font-medium">Another place</span>
+                  <span className="text-xs text-muted-foreground">All of them go to one person or place you choose (a stock point, a store, an employee …).</span>
+                </span>
+              </label>
+            </RadioGroup>
+          </div>
+        </>
+      )}
+
+      {placeWanted && choice && (
         <FormField
           htmlFor="movement-asset-user" label={choice.destinationLabel ?? "To"} required className="sm:max-w-md"
           helperText={choice.destination === "STORE" ? "The assets will be with this store." : undefined}
@@ -629,7 +825,7 @@ export function AssetMovement({ preloadIds, initialChoice }: AssetMovementProps 
             value={selectValue(toAssetUserId)}
             onValueChange={setToAssetUserId}
             options={destinationOptions}
-            placeholder={`Choose the ${choice.destinationLabel?.toLowerCase()}…`}
+            placeholder={`Choose the ${isRepairBack ? "place" : choice.destinationLabel?.toLowerCase()}…`}
             searchPlaceholder="Search by name or code…"
             onCreateNew={canAddDestination ? (typed) => { setNewStockRoomName(typed); setNewStockRoom(true); } : undefined}
             createLabel="New Stock Room…"

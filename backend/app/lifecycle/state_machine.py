@@ -31,8 +31,12 @@ def statuses_allowing(event_type: str) -> list[str]:
 
 # S0.4: events that move the asset to a holder, and events that by definition
 # have no destination (the asset stays recorded against its last holder).
+# Release 3: SENT_FOR_REPAIR is the one that MAY have a destination -- the repair vendor's place (an asset_user of
+# type REPAIR_VENDOR, made by app.repairs.service.ensure_repair_place). Without one (an old caller, an import) it
+# behaves as before: the asset stays recorded against its last holder, status under repair, vendor not recorded.
+REPAIR_VENDOR_TYPE = "REPAIR_VENDOR"
 DESTINATION_EVENTS = frozenset({"PROCURED", "IMPORTED", "MOVED", "RECEIVED_FROM_REPAIR", "FOUND"})
-NO_DESTINATION_EVENTS = frozenset({"SENT_FOR_REPAIR", "LOST", "DISPOSED", "SOLD", "SCRAPPED", "CORRECTION"})
+NO_DESTINATION_EVENTS = frozenset({"LOST", "DISPOSED", "SOLD", "SCRAPPED", "CORRECTION"})
 
 # Plain words for messages (never the stored codes).
 STATUS_WORDS = {
@@ -102,10 +106,16 @@ def transition(current_status: str, event_type: str, to_asset_user_type: str | N
     if event_type == "FOUND" and actor_role != "ADMIN":
         raise LifecycleError("Only an admin can mark a lost asset as found.")
 
+    # Release 3: only "Send for Repair" goes to a repair vendor, and "Send for Repair" goes nowhere else.
+    if to_asset_user_type == REPAIR_VENDOR_TYPE and event_type != "SENT_FOR_REPAIR":
+        raise LifecycleError("A repair vendor is only chosen when sending an asset for repair.")
+
     if event_type in ("PROCURED", "IMPORTED", "MOVED", "RECEIVED_FROM_REPAIR"):
         return _status_by_destination(to_asset_user_type)
 
     if event_type == "SENT_FOR_REPAIR":
+        if to_asset_user_type not in (None, REPAIR_VENDOR_TYPE):
+            raise LifecycleError("Choose the repair vendor the asset is sent to.")
         return "UNDER_REPAIR"
 
     if event_type == "FOUND":
@@ -128,8 +138,11 @@ def label_for_event(event_type: str, from_asset_user_type: str | None, to_asset_
     if event_type == "IMPORTED":
         return "Imported, assigned to {to}"
     if event_type == "SENT_FOR_REPAIR":
-        return "Sent for repair"
+        # Release 3: "Sent for repair to Acme Services" (an old event without a vendor reads as before)
+        return "Sent for repair to {to}" if to_asset_user_type == REPAIR_VENDOR_TYPE else "Sent for repair"
     if event_type == "RECEIVED_FROM_REPAIR":
+        if from_asset_user_type == REPAIR_VENDOR_TYPE:
+            return "Received back from {from} into {to}"
         return "Received from repair, into {to}"
     if event_type == "DISPOSED":
         return "Disposed"
