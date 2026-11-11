@@ -720,6 +720,22 @@ export function AssetDetail({ assetId }: { assetId: number }) {
               </>
             }
           />
+          {/* Category and Sub-category sit here (not buried under More > Advanced); changing them is the separate
+              "Correct Classification" form (AM-07), offered right beside them to anyone who can edit. */}
+          <ReadField label="Category" value={asset.category_name} />
+          <ReadField
+            label="Sub-category"
+            value={
+              <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span>{asset.subcategory_name ?? "—"}</span>
+                {canEdit && !editing && (
+                  <Button type="button" variant="link" className="h-auto p-0 text-xs" onClick={openCorrection}>
+                    Correct Classification
+                  </Button>
+                )}
+              </span>
+            }
+          />
           {asset.holder_company_id != null && asset.holder_company_id !== asset.company_id && (
             <ReadField
               label="Currently at"
@@ -977,8 +993,6 @@ export function AssetDetail({ assetId }: { assetId: number }) {
               <TabsContent value="advanced" className="pt-3">
                 <dl className="grid gap-3 sm:grid-cols-2">
                   <ReadField label="Legacy Asset Code" value={asset.legacy_asset_code} />
-                  <ReadField label="Category" value={asset.category_name} />
-                  <ReadField label="Sub-category" value={asset.subcategory_name} />
                 </dl>
               </TabsContent>
             </Tabs>

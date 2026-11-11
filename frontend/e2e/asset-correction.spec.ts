@@ -118,11 +118,10 @@ test("asset correction journey: correct classification and purchase date, Asset 
   // Asset Code unchanged -- still the same heading, no navigation happened.
   await expect(page.getByRole("heading", { name: asset.asset_code })).toBeVisible();
 
-  // Category / Sub-category now sit under More > Advanced.
-  await page.getByRole("tab", { name: "Advanced", exact: true }).click();
-  const advanced = page.getByRole("tabpanel", { name: "Advanced" });
-  await expect(advanced.getByText(category2.name, { exact: true })).toBeVisible();
-  await expect(advanced.getByText(subcategory2.name, { exact: true })).toBeVisible();
+  // Category / Sub-category sit in the asset's summary (with a "Correct Classification" button beside them).
+  const summary = page.getByTestId("asset-summary");
+  await expect(summary.getByText(category2.name, { exact: true })).toBeVisible();
+  await expect(summary.getByText(subcategory2.name, { exact: true })).toBeVisible();
 
   await expect(page.getByRole("region", { name: "Procurement" }).getByText("2025-05-28", { exact: true })).toBeVisible();
 

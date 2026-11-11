@@ -281,13 +281,27 @@ describe("AssetDetail (Asset 360)", () => {
     expect(within(panel).getByText("kept for history")).toBeInTheDocument();
   });
 
-  it("Advanced (under More) keeps the legacy code and the category", async () => {
+  it("Advanced (under More) keeps the legacy code; the category and sub-category are in the summary, not buried there", async () => {
     mockGets();
     await openPage();
+    const summary = screen.getByTestId("asset-summary");
+    expect(within(summary).getByText("Category")).toBeInTheDocument();
+    expect(within(summary).getByText("IT Equipment")).toBeInTheDocument();
+    expect(within(summary).getByText("Sub-category")).toBeInTheDocument();
+    expect(within(summary).getByText("Laptop")).toBeInTheDocument();
     clickTab("Advanced");
     const panel = await screen.findByRole("tabpanel", { name: "Advanced" });
     expect(within(panel).getByText("OLD-001")).toBeInTheDocument();
-    expect(within(panel).getByText("IT Equipment")).toBeInTheDocument();
+    expect(within(panel).queryByText("IT Equipment")).not.toBeInTheDocument();       // not shown twice
+  });
+
+  it("the summary offers 'Correct Classification' right beside the category, and it opens the same form as the ⋯ menu", async () => {
+    mockGets();
+    await openPage();
+    const summary = screen.getByTestId("asset-summary");
+    fireEvent.click(within(summary).getByRole("button", { name: "Correct Classification" }));
+    const dialog = await screen.findByRole("dialog", { name: /correct classification/i });
+    await waitFor(() => expect(within(dialog).getByRole("combobox", { name: "Category" })).toHaveTextContent("IT Equipment"));
   });
 
   it("AM-05: only Global and this asset's own company's custom fields are editable -- another company's field never appears, and its stored value is still shown read-only", async () => {
@@ -850,9 +864,10 @@ describe("AssetDetail -- AM-07 asset correction", () => {
     expect((apiClient.post as any).mock.calls[0][1]).not.toHaveProperty("purchase_date");
 
     await waitFor(() => expect(screen.queryByRole("dialog", { name: /correct classification/i })).not.toBeInTheDocument());
-    clickTab("Advanced");
-    const panel = await screen.findByRole("tabpanel", { name: "Advanced" });
-    expect(within(panel).getByText("Furniture")).toBeInTheDocument();
+    // the summary now shows the corrected classification
+    const summary = screen.getByTestId("asset-summary");
+    await waitFor(() => expect(within(summary).getByText("Furniture")).toBeInTheDocument());
+    expect(within(summary).getByText("Chair")).toBeInTheDocument();
   });
 
   it("shows a server validation error inside the dialog without closing it", async () => {
