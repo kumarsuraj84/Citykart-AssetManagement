@@ -14,13 +14,13 @@ from app.core.validation import (
 )
 from app.asset_users.kinds import parse_holder_type
 from app.assets.audit_service import AUDITED_SCALAR_FIELDS, record_field_changes
-from app.assets.correction_service import correct_asset, UNSET as CORRECTION_UNSET
+from app.assets.correction_service import correct_asset, correct_owner, UNSET as CORRECTION_UNSET
 from app.assets.custom_field_values import validate_custom_field_values
 from app.assets.labels import asset_label_rows
 from app.assets.models import Asset, AssetFieldChange
 from app.assets.schemas import (
-    SerialFillIn, AssetCorrectionIn, AssetCreateIn, AssetDetailOut, AssetFieldChangeOut, AssetOut, AssetUpdateIn,
-    SerialBulkIn, SerialBulkOut, SerialFilledOut, with_labels,
+    SerialFillIn, AssetCorrectionIn, AssetCreateIn, AssetDetailOut, AssetFieldChangeOut, AssetOut, AssetOwnerCorrectionIn,
+    AssetUpdateIn, SerialBulkIn, SerialBulkOut, SerialFilledOut, with_labels,
 )
 from app.assets.search_service import search_assets
 from app.assets.service import (
@@ -152,6 +152,7 @@ async def list_assets(
     vendor_id: int | None = Query(None),
     po_number: str | None = Query(None, max_length=100),
     work_area: str | None = Query(None, max_length=10),
+    holder_company_id: int | None = Query(None, description="release 2: the company of the place holding it now (company_id is the OWNER company)"),
     session: AsyncSession = Depends(get_session),
     asset_user=Depends(get_current_asset_user),
 ):
@@ -201,6 +202,7 @@ async def list_assets(
         session, allowed, status, category_id, asset_user_id, company_id, q, sort_by, sort_dir, limit, offset,
         allowed_domains=domains, domain=wanted_domain, exact=exact, serial_pending=serial_pending or None,
         item_id=item_id, ids=id_list, vendor_id=vendor_id, po_number=po_number, holder_type=wanted_holder_type,
+        holder_company_id=holder_company_id,
     )
     # S5: every name on the page from ONE query (app.assets.labels), however many rows.
     labels = await asset_label_rows(session, [a.id for a in items])
@@ -672,6 +674,39 @@ async def correct_asset_classification(
         await session.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
     asset.updated_by = actor.id
+    await session.commit()
+    await session.refresh(asset)
+    return await _to_detail_out(session, asset)
+
+
+@router.post("/{asset_id}/owner-correction", response_model=AssetDetailOut)
+async def correct_asset_owner(
+    asset_id: int,
+    body: AssetOwnerCorrectionIn,
+    session: AsyncSession = Depends(get_session),
+    actor=Depends(require_role("ADMIN")),
+):
+    """Release 2: corrects the OWNER company and cost centre of an asset (the ones it was bought under; a move never
+    changes them) when they were chosen wrongly while inwarding. The platform owner and a Full Admin only
+    (`require_role("ADMIN")`; an admin limited to one work area reaches only assets of that area, like every asset
+    route). A reason is mandatory; not possible once the asset is sold, scrapped or disposed; the asset code never
+    changes. Written to the asset's field-change history (with the reason) and to the audit trail."""
+    asset = await _get_scoped_asset(asset_id, session, actor)
+    before_company, before_cost_center = asset.company_id, asset.cost_center_id
+    try:
+        await correct_owner(
+            session, asset, actor, company_id=body.company_id, cost_center_id=body.cost_center_id, reason=body.reason,
+        )
+    except ValueError as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    asset.updated_by = actor.id
+    obs_audit.record(
+        session, "DATA", "OWNER_CORRECTION",
+        f"{obs_events.who()} corrected the owner company / cost centre of {asset.asset_code}.",
+        entity="asset", entity_id=asset.id, company_id=asset.company_id,
+        changes={"company_id": (before_company, asset.company_id), "cost_center_id": (before_cost_center, asset.cost_center_id)},
+    )
     await session.commit()
     await session.refresh(asset)
     return await _to_detail_out(session, asset)

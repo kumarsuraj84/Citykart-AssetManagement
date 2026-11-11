@@ -352,6 +352,7 @@ function validateAssetsSearch(search: Record<string, unknown>): AssetsSearch {
     po: searchText(search.po),
     area: searchText(search.area),
     company: searchText(search.company),
+    at: searchText(search.at),
     group: searchText(search.group),
     ids: searchText(search.ids),
     find: truthyParam(search.find) ? true : undefined,

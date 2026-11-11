@@ -375,11 +375,15 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
               </Button>
             </div>
           </Field>
-          <Field id="received-into" label="Received Into" required problems={problemsAt("received")} help="The Stock Room the assets go to.">
+          <Field
+            id="received-into" label="Received Into" required problems={problemsAt("received")}
+            help="The Stock Room the assets go to. It can belong to another company: the assets stay owned by the company and cost centre chosen here."
+          >
             <StockRoomSelect
               id="received-into"
               aria-label="Received Into"
               companyId={companyId}
+              acrossCompanies
               value={input.receivedInto}
               onValueChange={(v) => edit({ receivedInto: v }, ["received"])}
             />

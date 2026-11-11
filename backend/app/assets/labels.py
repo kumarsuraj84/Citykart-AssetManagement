@@ -16,6 +16,7 @@ from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, 
 _HOLDER = aliased(AssetUser, name="label_holder")
 _HOLDER_LOCATION = aliased(Location, name="label_holder_location")
 _HOLDER_DEPARTMENT = aliased(Department, name="label_holder_department")
+_HOLDER_COMPANY = aliased(Company, name="label_holder_company")      # release 2: "Currently at" (the owner is Company)
 
 
 async def asset_label_rows(session: AsyncSession, asset_ids) -> dict[int, dict]:
@@ -29,6 +30,7 @@ async def asset_label_rows(session: AsyncSession, asset_ids) -> dict[int, dict]:
             Company.code, Company.name, CostCenter.name, AssetCategory.name, AssetSubcategory.name,
             Vendor.name, Brand.name, Item.name,
             _HOLDER.name, _HOLDER.code, _HOLDER.asset_user_type, _HOLDER_LOCATION.name, _HOLDER_DEPARTMENT.name,
+            _HOLDER_COMPANY.id, _HOLDER_COMPANY.code, _HOLDER_COMPANY.name,
         )
         .select_from(Asset)
         .outerjoin(Company, Company.id == Asset.company_id)
@@ -41,11 +43,13 @@ async def asset_label_rows(session: AsyncSession, asset_ids) -> dict[int, dict]:
         .outerjoin(_HOLDER, _HOLDER.id == Asset.current_asset_user_id)
         .outerjoin(_HOLDER_LOCATION, _HOLDER_LOCATION.id == _HOLDER.location_id)
         .outerjoin(_HOLDER_DEPARTMENT, _HOLDER_DEPARTMENT.id == _HOLDER.department_id)
+        .outerjoin(_HOLDER_COMPANY, _HOLDER_COMPANY.id == _HOLDER.company_id)
         .where(Asset.id.in_(ids))
     )
     out: dict[int, dict] = {}
     for (asset_id, domain, company_code, company_name, cost_center_name, category_name, subcategory_name, vendor_name,
-         brand_name, item_name, holder_name, holder_code, holder_type, holder_location, holder_department) in (
+         brand_name, item_name, holder_name, holder_code, holder_type, holder_location, holder_department,
+         holder_company_id, holder_company_code, holder_company_name) in (
             await session.execute(stmt)).all():
         out[asset_id] = {
             "company_code": company_code, "company_name": company_name, "cost_center_name": cost_center_name,
@@ -54,6 +58,8 @@ async def asset_label_rows(session: AsyncSession, asset_ids) -> dict[int, dict]:
             "holder_type": holder_type, "holder_kind_label": kind_label(holder_type), "holder_name": holder_name,
             "holder_code": holder_code, "holder_location_name": holder_location,
             "holder_department_name": holder_department,
+            "holder_company_id": holder_company_id, "holder_company_code": holder_company_code,
+            "holder_company_name": holder_company_name,
             "work_area": domain, "work_area_label": AREA_WORDS.get(domain or ""),
             # the older names of the same facts (kept: the register screen already reads them)
             "current_asset_user_name": holder_name, "current_asset_user_type": holder_type,

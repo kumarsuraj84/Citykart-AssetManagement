@@ -100,7 +100,7 @@ async def test_a_batch_takes_a_constant_number_of_queries():
 @pytest.mark.parametrize("case, message", [
     ("future", "The date cannot be in the future."),
     ("closed", "Closed Stock is no longer active, so assets cannot be sent there."),
-    ("other_company", "Assets can only move within their own company."),
+    ("other_company", "Other Co Stock belongs to a company you do not work in, so assets cannot be sent there."),
     ("twice", "The same asset was chosen twice."),
     ("destination_on_lost", "This action does not send the asset anywhere, so do not choose a destination."),
     ("no_destination", "Choose where the asset is going."),

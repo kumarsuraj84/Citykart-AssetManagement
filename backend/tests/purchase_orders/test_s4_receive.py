@@ -431,7 +431,6 @@ async def test_the_invoice_is_checked_once_for_the_receipt(client, over, message
 
 @pytest.mark.parametrize("place, message", [
     ("dead_stock", "Closed Stock is no longer active, so goods cannot be received there."),
-    ("stock_b", "The place the goods are received into must belong to the purchase order's company."),
     ("employee", "Ravi Kumar is not a stock room. Choose a stock room (or the purchase order's delivery place)."),
     (None, "The place you chose to receive the goods into does not exist."),
 ])
@@ -443,6 +442,31 @@ async def test_the_place_goods_are_received_into_must_be_an_active_stock_room_of
                                                        received_into_asset_user_id=w[place] if place else 999999))
     assert resp.status_code == 422
     assert resp.json()["problems"] == [{"line_no": None, "message": message}]
+
+
+async def test_goods_may_be_received_into_a_stock_room_of_the_other_company_by_someone_who_works_in_both(client):
+    """Release 2: the assets stay owned by the purchase order's company; only where they are kept differs."""
+    w = await build_s4_world()
+    h = await login(client, w, "admin")
+    po = await make_po(client, h, w, [("gangbox", 1)])
+    resp = await receive(client, h, po["id"], receipt(w, [{"line_no": 1, "quantity": 1}], received_into_asset_user_id=w["stock_b"]))
+    assert resp.status_code in (200, 201), resp.text
+    from sqlalchemy import select
+    from app.assets.models import Asset
+    from app.core.db import SessionLocal
+    async with SessionLocal() as s:
+        asset = (await s.execute(select(Asset))).scalars().one()
+    assert (asset.company_id, asset.current_asset_user_id) == (w["co"], w["stock_b"])
+
+
+async def test_goods_cannot_be_received_into_a_company_the_person_does_not_work_in(client):
+    w = await build_s4_world()
+    admin = await login(client, w, "admin")
+    po = await make_po(client, admin, w, [("gangbox", 1)])
+    resp = await receive(client, await login(client, w, "op_both"), po["id"],
+                         receipt(w, [{"line_no": 1, "quantity": 1}], received_into_asset_user_id=w["stock_b"]))
+    assert resp.status_code == 422
+    assert resp.json()["problems"] == [{"line_no": None, "message": "B Stock belongs to a company you do not work in, so goods cannot be received there."}]
 
 
 async def test_without_a_delivery_place_the_receipt_asks_where(client):

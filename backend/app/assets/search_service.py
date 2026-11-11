@@ -113,6 +113,7 @@ def build_asset_query(
     vendor_id: int | None = None,
     po_number: str | None = None,
     holder_type: str | None = None,
+    holder_company_id: int | None = None,
     purchase_from: date | None = None,
     purchase_to: date | None = None,
 ):
@@ -156,10 +157,13 @@ def build_asset_query(
     if purchase_to is not None:
         stmt = stmt.where(Asset.purchase_date <= purchase_to)
     searching = bool(q and q.strip())
-    if searching or holder_type is not None:
+    if searching or holder_type is not None or holder_company_id is not None:
         stmt = stmt.join(HOLDER, HOLDER.id == Asset.current_asset_user_id)
     if holder_type is not None:
         stmt = stmt.where(HOLDER.asset_user_type == holder_type)
+    if holder_company_id is not None:
+        # Release 2 "Currently at": the company of the place that holds it now (`company_id` above is the OWNER).
+        stmt = stmt.where(HOLDER.company_id == holder_company_id)
     if searching and exact:
         stmt = stmt.where(_exact_match_clause(q))
     elif searching:

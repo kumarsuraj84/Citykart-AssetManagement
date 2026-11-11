@@ -53,6 +53,8 @@ interface AssetSearchResult extends LabelAsset {
   current_asset_user_name: string | null;
   current_asset_user_location_name: string | null;
   current_asset_user_type: string | null;
+  /** The OWNER company (bought under; a move never changes it). */
+  company_id?: number | null;
 }
 
 interface QueuedAsset extends AssetSearchResult {
@@ -487,6 +489,14 @@ export function AssetMovement({ preloadIds, initialChoice }: AssetMovementProps 
   const unconfirmed = scanPrefs.verify && labelsOn ? eligibleQueue.filter((a) => !a.confirmed).length : 0;
   const tooManyToApply = eligibleQueue.length > MAX_QUANTITY;
   const needsDestination = choice?.destination != null && toAssetUserId === "";
+  // Release 2: an asset may go to a place of the OTHER company; it stays owned by its purchase company.
+  const destinationCompanyId = choice?.destination != null && toAssetUserId !== ""
+    ? asset_users.find((u) => String(u.id) === toAssetUserId)?.company_id ?? null
+    : null;
+  const otherCompanyCount = destinationCompanyId == null
+    ? 0
+    : eligibleQueue.filter((a) => a.company_id != null && a.company_id !== destinationCompanyId).length;
+  const destinationCompanyName = destinationCompanyId != null ? placeLookups.companies[destinationCompanyId] : undefined;
   const canApply = !!choice && eligibleQueue.length > 0 && !tooManyToApply && !needsDestination && unconfirmed === 0;
   const applyHint = !choice
     ? "Choose what to do."
@@ -642,6 +652,13 @@ export function AssetMovement({ preloadIds, initialChoice }: AssetMovementProps 
             </p>
           )}
         </FormField>
+      )}
+
+      {otherCompanyCount > 0 && (
+        <p className="rounded-md border border-warning/50 bg-warning-soft px-3 py-2 text-xs text-on-warning-soft" role="note" aria-label="Another company">
+          {assetsWord(otherCompanyCount)} {otherCompanyCount === 1 ? "is" : "are"} owned by another company than {destinationCompanyName ?? "the place you chose"}. They stay
+          owned by that company and keep their cost centre; only where they are changes.
+        </p>
       )}
 
       {labelsOn && <LabelSettingsDisclosure settings={labelSettings} scanPrefs={scanPrefs} />}

@@ -222,8 +222,10 @@ async def test_inactive_and_missing_records_are_refused_in_words(client):
     assert place.json()["detail"] == "Closed Stock is no longer active, so assets cannot be received there."
     mismatch = await add(client, h, body(w, "ap", 1, company_id=w["co_b"]))
     assert mismatch.json()["detail"] == "The cost centre must belong to the company you chose."
-    wrong_place = await add(client, h, body(w, "ap", 1, received_into_asset_user_id=w["stock_b"]))
-    assert wrong_place.json()["detail"] == "The place the asset is received into must belong to the same company as the asset."
+    # Release 2: a place of the other company is allowed for someone who works in both (an admin), refused otherwise.
+    wrong_place = await add(client, await login(client, w, "op_both"), body(w, "ap", 1, received_into_asset_user_id=w["stock_b"]))
+    assert wrong_place.status_code == 422
+    assert wrong_place.json()["detail"] == "B Stock belongs to a company you do not work in, so assets cannot be sent there."
     future = await add(client, h, body(w, "ap", 1, invoice_date="2999-01-01"))
     assert future.json()["detail"] == "Invoice date cannot be in the future."
     assert await counts() == (0, 0, 0)

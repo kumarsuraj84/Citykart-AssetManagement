@@ -194,16 +194,21 @@ class AssetOut(BaseModel):
     holder_name: str | None = None
     holder_code: str | None = None
     holder_location_name: str | None = None
-    company_code: str | None = None
+    company_code: str | None = None            # the OWNER company (bought under; fixed, see "Owned by")
     work_area: str | None = None               # IT / NON_IT (= asset_domain)
     work_area_label: str | None = None         # IT / Non-IT
+    # Release 2: the company of the place that holds it now ("Currently at"); differs from the owner company
+    # when the asset was given to a place of the other company.
+    holder_company_id: int | None = None
+    holder_company_code: str | None = None
+    holder_company_name: str | None = None
 
 
 LABEL_FIELDS = (
     "item_name", "current_asset_user_name", "current_asset_user_location_name", "current_asset_user_type",
     "company_name", "category_name", "subcategory_name", "cost_center_name", "vendor_name", "brand_name",
     "holder_type", "holder_kind_label", "holder_name", "holder_code", "holder_location_name", "company_code",
-    "work_area", "work_area_label",
+    "work_area", "work_area_label", "holder_company_id", "holder_company_code", "holder_company_name",
 )
 
 
@@ -269,6 +274,15 @@ class AssetCorrectionIn(InModel):
     # snapshot only, never the Category's own default. Same reason/ADMIN-only
     # discipline as every other field this correction endpoint touches.
     asset_domain: str | None = None
+    reason: str = Field(max_length=2000)
+
+
+class AssetOwnerCorrectionIn(InModel):
+    """Release 2: `POST /api/assets/{id}/owner-correction` -- the platform owner or a Full Admin corrects the OWNER
+    company and cost centre of an asset (the ones it was bought under, never changed by a move) when they were chosen
+    wrongly while inwarding. Both are required (the cost centre must belong to the company), and so is the reason."""
+    company_id: int
+    cost_center_id: int
     reason: str = Field(max_length=2000)
 
 

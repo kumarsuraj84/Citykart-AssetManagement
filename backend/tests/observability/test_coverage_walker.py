@@ -47,6 +47,7 @@ AUDITED: dict[tuple[str, str], str] = {
     ("PUT", "/api/assets/serials"): "DATA SERIALS_FILLED (one row)",
     ("PUT", "/api/assets/{asset_id}/serial"): AUTO,
     ("POST", "/api/assets/{asset_id}/corrections"): AUTO,
+    ("POST", "/api/assets/{asset_id}/owner-correction"): AUTO + " + DATA OWNER_CORRECTION",
     ("POST", "/api/assets/{asset_id}/events"): "LIFECYCLE <event>",
     ("POST", "/api/assets/{asset_id}/documents"): AUTO + " + ACCESS DOCUMENT_UPLOADED",
     ("POST", "/api/imports/assets/preview"): "IMPORT IMPORT_PREVIEW",

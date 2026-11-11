@@ -434,11 +434,22 @@ describe("AssetRegister: S1 navigation and plain words", () => {
     mockRegister();
     renderRegisterAt();
     fireEvent.click(await screen.findByRole("button", { name: /more filters/i }));
-    fireEvent.click(await screen.findByRole("combobox", { name: "Company" }));
+    fireEvent.click(await screen.findByRole("combobox", { name: "Owned by" }));
     expect(await screen.findByPlaceholderText("Search…")).toBeInTheDocument();
     fireEvent.click(await screen.findByRole("option", { name: "CityKart Ventures" }));
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("company_id=2")));
     expect(screen.getByRole("combobox", { name: "Asset group" })).toBeInTheDocument();
+  });
+
+  it("Release 2: 'Currently at' filters by the company of the place holding the asset now, and shows as a chip", async () => {
+    loginAs("OPERATOR");
+    mockRegister();
+    renderRegisterAt();
+    fireEvent.click(await screen.findByRole("button", { name: /more filters/i }));
+    fireEvent.click(await screen.findByRole("combobox", { name: "Currently at" }));
+    fireEvent.click(await screen.findByRole("option", { name: "CityKart Ventures" }));
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining("holder_company_id=2")));
+    expect(await screen.findByRole("button", { name: /Remove filter Currently at: CityKart Ventures/ })).toBeInTheDocument();
   });
 });
 
@@ -498,10 +509,10 @@ describe("AssetRegister: S5b-1 one search box, more filters in the address bar",
     }
   });
 
-  it("with two companies the Company column and filter appear", async () => {
+  it("with two companies the Owned by column and the Owned by and Currently at filters appear", async () => {
     mockApi([{ id: 1, code: "CKSPL", name: "Citykart Stores" }, { id: 2, code: "CKV", name: "Citykart Ventures" }]);
     renderRegisterAt();
-    await waitFor(() => expect(screen.getByRole("columnheader", { name: "Company" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("columnheader", { name: "Owned by" })).toBeInTheDocument());
     expect(screen.getAllByText("CKSPL").length).toBe(3);
   });
 

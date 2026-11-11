@@ -38,7 +38,7 @@ export function stockRoomPickerOptions(rows: StockRoomRow[]): SearchableSelectOp
  * has none yet.
  */
 export function StockRoomSelect({
-  id, companyId, value, onValueChange, disabled, "aria-label": ariaLabel, placeholder, extraOptions = [],
+  id, companyId, value, onValueChange, disabled, "aria-label": ariaLabel, placeholder, extraOptions = [], acrossCompanies = false,
 }: {
   id: string;
   companyId: number | null | undefined;
@@ -49,8 +49,14 @@ export function StockRoomSelect({
   placeholder?: string;
   /** Kept in the list even though they are not stock rooms (a PO's older delivery place). */
   extraOptions?: SearchableSelectOption[];
+  /** Release 2: also list the stock rooms of the OTHER companies the person works in (the company's own come first,
+   * each row shows its company code). The assets stay owned by their purchase company wherever they are kept. */
+  acrossCompanies?: boolean;
 }) {
-  const { rows, isSuccess } = useStockRooms(companyId);
+  const { rows: found, isSuccess } = useStockRooms(acrossCompanies ? "all" : companyId, acrossCompanies ? companyId != null : true);
+  const rows = acrossCompanies
+    ? [...found.filter((r) => r.company_id === companyId), ...found.filter((r) => r.company_id !== companyId)]
+    : found;
   const { caps, settled } = useCapabilities();
   const mayCreate = canCreate(caps, "stock_room");
   const [creating, setCreating] = useState(false);

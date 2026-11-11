@@ -3,6 +3,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.assets.models import Asset
 from app.asset_users.models import AssetUser
+from app.core.deps import scoped_company_ids
 from app.lifecycle.models import AssetEvent
 from app.lifecycle.schemas import AssetEventOut
 from app.lifecycle.state_machine import NO_DESTINATION_EVENTS, LifecycleError, label_for_event, transition
@@ -157,6 +158,7 @@ async def apply_events(
         )).scalars().all()}
 
     planned: list[tuple[Asset, int | None, AssetEvent, str, datetime]] = []
+    works_in: set[int] | None = None       # the actor's companies, read only if a destination is in another company
     for asset, to_asset_user_id in moves:
         when = event_date
         last_event = last_events.get(asset.id)
@@ -179,8 +181,16 @@ async def apply_events(
                 raise LifecycleError("The destination you chose does not exist.")
             if not to_asset_user.is_active:
                 raise LifecycleError(f"{to_asset_user.name} is no longer active, so assets cannot be sent there.")
-            if to_asset_user.company_id != asset.company_id:
-                raise LifecycleError("Assets can only move within their own company.")
+            # Release 2 (2026-11-11): an asset may be held by a place of ANOTHER company (bought in CKVPL, given to a
+            # CKSPL employee). It stays owned by its purchase company: company and cost centre never change on a move.
+            # The person who does it must work in the destination's company too (an ADMIN works in every company).
+            if to_asset_user.company_id != asset.company_id and actor.role != "ADMIN":
+                if works_in is None:
+                    works_in = set(await scoped_company_ids(session, actor) or [])
+                if to_asset_user.company_id not in works_in:
+                    raise LifecycleError(
+                        f"{to_asset_user.name} belongs to a company you do not work in, so assets cannot be sent there."
+                    )
             to_asset_user_type = to_asset_user.asset_user_type
 
         from_asset_user = holders.get(asset.current_asset_user_id) if asset.current_asset_user_id is not None else None

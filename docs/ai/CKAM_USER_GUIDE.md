@@ -160,6 +160,13 @@ A store's own stock room and install point (made together with the store) are no
 
 Every move is written to the asset's history. You can move up to 1,000 assets at once.
 
+**Between CKSPL and CKVPL.** An asset can be given to an employee, a store or a site of the **other company** (for example a laptop bought in CKVPL for a CKSPL employee). Whoever does it must work in both companies (an admin does). The Move screen says so when you choose such a place.
+- **Owned by** is the company and cost centre the asset was bought under. It **never changes when you move it**, until the asset is sold, scrapped or disposed.
+- **Currently at** is the company of the place that holds it now. Asset 360 shows it only when it is different, and the Assets list has two filters: **Owned by** and **Currently at**.
+- **Received Into** (Receive and Add Assets) may be a stock room of either company; the assets stay owned by the company you bought them under.
+
+**Chose the wrong company or cost centre while receiving?** Only the platform owner or a Full Admin can fix it: open the asset → **⋯ More actions** → **Correct owner company / cost centre**, choose the right company and cost centre, and write the reason. It is kept in the asset's history ("Field changes"). It cannot be done once the asset is sold, scrapped or disposed, and the asset code never changes. **Tip:** don't put the company or the cost centre into the Asset Code Format, so a corrected asset never carries a wrong code.
+
 ## 11. Find things
 
 **Work › Assets**: one search box. Type a serial, asset code, ERP code, PO number, vendor, Item, person or place. Open any asset to see its full history (**Asset 360**). Scanning a QR label opens the same page after sign-in.

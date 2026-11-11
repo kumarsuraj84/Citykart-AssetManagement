@@ -30,12 +30,17 @@ for the full audit):
 from datetime import date, datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from uuid import uuid4
+
+from sqlalchemy import text
+
 from app.assets.audit_service import record_correction_changes
 from app.core.validation import EARLIEST_PURCHASE_DATE
-from app.assets.models import Asset
+from app.assets.models import Asset, AssetFieldChange
 from app.asset_users.models import AssetUser
 from app.lifecycle.models import AssetEvent
-from app.masters.models import AssetCategory, AssetSubcategory
+from app.lifecycle.state_machine import STATUS_WORDS
+from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter
 
 # Sentinel distinguishing "this field was not part of the request at all"
 # from a real value (including `None`, which for subcategory_id means
@@ -170,3 +175,76 @@ async def correct_asset(
     return await record_correction_changes(
         session, asset_id=asset.id, actor_id=actor.id, reason=reason, before=before, after=after,
     )
+
+
+# ---- Release 2 (2026-11-11): owner company and cost centre -----------------------------------------------------------
+
+OWNER_CORRECTION_SETTING = "ckam.owner_correction"
+FINAL_STATUSES = ("SOLD", "SCRAPPED", "DISPOSED")
+
+
+async def _set_owner_correction_marker(session: AsyncSession, on: bool) -> None:
+    """Switches the owner-correction marker for the current transaction only (`set_config(..., true)` = SET LOCAL).
+    The database trigger `forbid_asset_identity_change` (migration d7f9b1c3e5a7) refuses a change of company_id /
+    cost_center_id unless it is on. Only `correct_owner` below switches it on."""
+    await session.execute(
+        text("SELECT set_config(:name, :value, true)"),
+        {"name": OWNER_CORRECTION_SETTING, "value": "on" if on else "off"},
+    )
+
+
+async def correct_owner(
+    session: AsyncSession, asset: Asset, actor: AssetUser, *, company_id: int, cost_center_id: int, reason: str,
+) -> int:
+    """Corrects the OWNER company and cost centre of an asset (the ones it was bought under): a platform-owner / Full
+    Admin action, ALLOWED ONLY until the asset is sold, scrapped or disposed, with a mandatory reason; one
+    `asset_field_change` row per changed field carries the reason, the old and the new value. The asset code never
+    changes. Status, holder and every movement are untouched (`apply_events` is not called). Raises ValueError (the
+    router turns it into a 422). Returns the number of history rows written. The caller checks the role."""
+    reason = (reason or "").strip()
+    if not reason:
+        raise ValueError("a reason is required for this correction")
+    if len(reason) > REASON_MAX_LENGTH:
+        raise ValueError(f"reason must be at most {REASON_MAX_LENGTH} characters")
+    if asset.status in FINAL_STATUSES:
+        raise ValueError(
+            f"This asset has been {STATUS_WORDS.get(asset.status, asset.status.lower())}, "
+            "so its owner company and cost centre can no longer be corrected."
+        )
+    company = await session.get(Company, company_id)
+    if company is None or not company.is_active:
+        raise ValueError("The company you chose does not exist or is no longer active.")
+    cost_center = await session.get(CostCenter, cost_center_id)
+    if cost_center is None or not cost_center.is_active:
+        raise ValueError("The cost centre you chose does not exist or is no longer active.")
+    if cost_center.company_id != company.id:
+        raise ValueError("The cost centre must belong to the company you chose.")
+    if company.id == asset.company_id and cost_center.id == asset.cost_center_id:
+        raise ValueError("no changes requested -- the asset already belongs to this company and cost centre")
+
+    old_company = await session.get(Company, asset.company_id)
+    old_cost_center = await session.get(CostCenter, asset.cost_center_id)
+
+    def describe(obj) -> str | None:
+        return f"{obj.code} · {obj.name}" if obj is not None else None
+
+    changes = []
+    if company.id != asset.company_id:
+        changes.append(("company_id", describe(old_company), describe(company)))
+    if cost_center.id != asset.cost_center_id:
+        changes.append(("cost_center_id", describe(old_cost_center), describe(cost_center)))
+
+    await session.flush()
+    await _set_owner_correction_marker(session, True)
+    asset.company_id = company.id
+    asset.cost_center_id = cost_center.id
+    await session.flush()
+    await _set_owner_correction_marker(session, False)
+
+    request_id = str(uuid4())
+    for field, old, new in changes:
+        session.add(AssetFieldChange(
+            asset_id=asset.id, field_name=field, old_value=old, new_value=new,
+            actor_id=actor.id, request_id=request_id, reason=reason,
+        ))
+    return len(changes)

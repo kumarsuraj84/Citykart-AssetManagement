@@ -21,7 +21,7 @@ from app.asset_users.models import AssetUser
 from app.assets.custom_field_values import applicable_custom_fields, custom_field_problems
 from app.assets.models import Asset
 from app.assets.service import NO_SERIAL_PLACEASSET_USER, build_procure_context, find_serials_in_use, prepare_unit, serial_key
-from app.core.deps import check_work_area
+from app.core.deps import check_work_area, scoped_company_ids
 from app.core.validation import MAX_QUANTITY
 from app.masters.models import AssetCategory, Company, Vendor
 from app.numbering.service import get_active_rule
@@ -147,7 +147,9 @@ async def receive_info(session: AsyncSession, po: PurchaseOrder, domains: tuple[
 
 # ---- POST /purchase-orders/{id}/receive ------------------------------------
 
-async def _check_place(session: AsyncSession, po: PurchaseOrder, place_id: int | None, problems: list[dict]) -> AssetUser | None:
+async def _check_place(
+    session: AsyncSession, po: PurchaseOrder, place_id: int | None, problems: list[dict], actor: AssetUser,
+) -> AssetUser | None:
     if place_id is None:
         problems.append(_problem("Choose where the goods are received into."))
         return None
@@ -155,9 +157,14 @@ async def _check_place(session: AsyncSession, po: PurchaseOrder, place_id: int |
     if place is None:
         problems.append(_problem("The place you chose to receive the goods into does not exist."))
         return None
-    if place.company_id != po.company_id:
-        problems.append(_problem("The place the goods are received into must belong to the purchase order's company."))
-        return None
+    # Release 2 (2026-11-11): the place may belong to ANOTHER company than the purchase order's (the assets stay owned
+    # by the PO's company) if the person receiving works in that company too (an ADMIN works in every company).
+    if place.company_id != po.company_id and actor.role != "ADMIN":
+        if place.company_id not in (await scoped_company_ids(session, actor) or []):
+            problems.append(_problem(
+                f"{place.name} belongs to a company you do not work in, so goods cannot be received there."
+            ))
+            return None
     if not place.is_active:
         problems.append(_problem(f"{place.name} is no longer active, so goods cannot be received there."))
         return None
@@ -199,7 +206,7 @@ async def receive_goods(
         raise ReceiveRefused([_problem(DELETED_PO)])
     problems: list[dict] = []
     invoice_number, invoice_date, invoice_amount = _check_invoice(po, body, problems)
-    place = await _check_place(session, po, body.get("received_into_asset_user_id") or po.delivery_asset_user_id, problems)
+    place = await _check_place(session, po, body.get("received_into_asset_user_id") or po.delivery_asset_user_id, problems, actor)
 
     requested: list[dict] = body.get("lines") or []
     if not requested:

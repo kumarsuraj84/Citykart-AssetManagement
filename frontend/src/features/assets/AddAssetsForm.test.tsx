@@ -584,14 +584,16 @@ describe("Add Assets: company, smart defaults and creating what is missing", () 
     expect(lastBatchBody()).not.toHaveProperty("company_id");
   });
 
-  it("someone in more than one company picks it first; switching re-scopes Cost Centre and Received Into", async () => {
+  it("someone in more than one company picks it first; switching re-scopes the Cost Centre, and Received Into lists both companies' stock rooms, the chosen company's first", async () => {
     (apiClient.get as any).mockImplementation(withCapabilities(HEAD_OFFICE, (path: string) => {
       if (path.startsWith("/items")) return Promise.resolve([MOUSE]);
       if (path === "/asset-users/me/companies") return Promise.resolve([{ id: 1, name: "Company A" }, { id: 2, name: "Company B" }]);
       if (path === "/masters/cost-centers?company_id=1") return Promise.resolve([{ id: 3, name: "A Cost Centre" }]);
       if (path === "/masters/cost-centers?company_id=2") return Promise.resolve([{ id: 30, name: "B Cost Centre" }]);
-      if (path === "/stock-rooms?company_id=2") return Promise.resolve([{ id: 40, name: "B Stock" }]);
-      if (path.startsWith("/stock-rooms")) return Promise.resolve([{ id: 4, name: "A Stock" }]);
+      // Release 2: Received Into asks for every company's stock rooms (the asset stays owned by the company above).
+      if (path === "/stock-rooms") return Promise.resolve([{ id: 4, name: "A Stock", company_id: 1 }, { id: 40, name: "B Stock", company_id: 2 }]);
+      if (path === "/stock-rooms?company_id=2") return Promise.resolve([{ id: 40, name: "B Stock", company_id: 2 }]);
+      if (path.startsWith("/stock-rooms")) return Promise.resolve([{ id: 4, name: "A Stock", company_id: 1 }]);
       return Promise.resolve([]);
     }));
     (apiClient.post as any).mockResolvedValue({ conflicts: [] });
@@ -603,7 +605,27 @@ describe("Add Assets: company, smart defaults and creating what is missing", () 
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/masters/cost-centers?company_id=2"));
     await waitFor(() => expect(screen.getByRole("combobox", { name: /^cost centre$/i })).toBeEnabled());
     await pick(/^cost centre$/i, "B Cost Centre");
-    await pick(/^received into$/i, "B Stock");
+    // company B is chosen: its stock room is listed FIRST, and the other company's is still there (release 2)
+    fireEvent.click(screen.getByRole("combobox", { name: /^received into$/i }));
+    const options = await screen.findAllByRole("option");
+    expect(options.slice(0, 2).map((o) => o.textContent)).toEqual([expect.stringMatching(/^B Stock/), expect.stringMatching(/^A Stock/)]);
+    fireEvent.click(options[0]);
+    expect(screen.getByRole("combobox", { name: /^received into$/i })).toHaveTextContent("B Stock");
+  });
+
+  it("Release 2: a stock room of the OTHER company can be chosen; the screen says the assets stay owned by the company chosen", async () => {
+    (apiClient.get as any).mockImplementation(withCapabilities(HEAD_OFFICE, (path: string) => {
+      if (path.startsWith("/items")) return Promise.resolve([MOUSE]);
+      if (path === "/asset-users/me/companies") return Promise.resolve([{ id: 1, name: "Company A" }, { id: 2, name: "Company B" }]);
+      if (path.startsWith("/masters/cost-centers")) return Promise.resolve([{ id: 3, name: "A Cost Centre" }]);
+      if (path === "/stock-rooms") return Promise.resolve([{ id: 4, name: "A Stock", company_id: 1 }, { id: 40, name: "B Stock", company_id: 2 }]);
+      return Promise.resolve([]);
+    }));
+    renderAt();
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /^company$/i })).toBeInTheDocument());
+    expect(screen.getByText(/It can belong to another company: the assets stay owned by the company and cost centre chosen here\./)).toBeInTheDocument();
+    await pick(/^company$/i, "Company A");
+    await pick(/^received into$/i, "B Stock");                       // the other company's stock room
     expect(screen.getByRole("combobox", { name: /^received into$/i })).toHaveTextContent("B Stock");
   });
 

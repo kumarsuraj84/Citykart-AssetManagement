@@ -82,6 +82,9 @@ function mockGets(overrides: Record<string, unknown> = {}) {
     if (path.startsWith("/masters/custom-fields")) return Promise.resolve(overrides.customFieldDefs ?? CUSTOM_FIELD_DEFS);
     if (path.startsWith("/masters/categories")) return Promise.resolve(overrides.categories ?? CATEGORIES);
     if (path.startsWith("/masters/subcategories")) return Promise.resolve(overrides.subcategories ?? SUBCATEGORIES);
+    if (path === "/masters/companies") return Promise.resolve([{ id: 1, name: "CityKart Stores" }, { id: 2, name: "CityKart Ventures" }]);
+    if (path === "/masters/cost-centers?company_id=1") return Promise.resolve([{ id: 3, name: "Head Office" }, { id: 4, name: "Warehouse" }]);
+    if (path === "/masters/cost-centers?company_id=2") return Promise.resolve([{ id: 6, name: "Ventures HO" }]);
     return Promise.resolve([]);
   });
 }
@@ -198,9 +201,25 @@ describe("AssetDetail (Asset 360)", () => {
     expect(within(summary).getByText("In Stock")).toBeInTheDocument();
     expect(within(summary).getByText("IT Stock-HO")).toBeInTheDocument();
     expect(within(summary).getByText(/\(Stock Room\)/)).toBeInTheDocument();
-    expect(within(summary).getByText("Company")).toBeInTheDocument();
+    expect(within(summary).getByText("Owned by")).toBeInTheDocument();
     expect(within(summary).getByText("CityKart Stores")).toBeInTheDocument();
     expect(within(screen.getByTestId("work-area-chip")).getByText("IT Team")).toBeInTheDocument();
+  });
+
+  it("Release 2: 'Currently at' appears only when another company's place holds it, and the owner stays 'Owned by'", async () => {
+    mockGets({ asset: { ...FULL_ASSET, cost_center_name: "Head Office", holder_company_id: 2, holder_company_name: "CityKart Ventures", company_id: 1 } });
+    await openPage();
+    const summary = screen.getByTestId("asset-summary");
+    expect(within(summary).getByText("Owned by")).toBeInTheDocument();
+    expect(summary).toHaveTextContent("CityKart Stores · Head Office");
+    expect(within(summary).getByText("Currently at")).toBeInTheDocument();
+    expect(summary).toHaveTextContent("CityKart Ventures · bought under CityKart Stores");
+  });
+
+  it("Release 2: no 'Currently at' while it is held in its owner's own company", async () => {
+    mockGets({ asset: { ...FULL_ASSET, holder_company_id: FULL_ASSET.company_id } });
+    await openPage();
+    expect(screen.queryByText("Currently at")).not.toBeInTheDocument();
   });
 
   it("S5a: every fact is shown once -- nothing repeated between the summary and the sections", async () => {
@@ -532,7 +551,9 @@ describe("AssetDetail (Asset 360)", () => {
         mockGets({ asset: { ...FULL_ASSET, status } });
         await openPage();
         await openMoreActions();
-        expect(menuLabels()).toEqual([...choicesFor(status, { isAdmin: true }).map((c) => c.label), "Correct Classification"]);
+        expect(menuLabels()).toEqual([
+          ...choicesFor(status, { isAdmin: true }).map((c) => c.label), "Correct Classification", "Correct owner company / cost centre",
+        ]);
       },
     );
 
@@ -623,6 +644,110 @@ describe("AssetDetail (Asset 360)", () => {
     expect(sheets).toEqual([1]);                                      // exactly one label on the printed sheet
     // The print-only stylesheet is there only while printing.
     await waitFor(() => expect(document.querySelector(".print-labels-sheet")).toBeNull());
+  });
+});
+
+describe("AssetDetail -- release 2: correct the owner company / cost centre", () => {
+  async function openOwnerCorrection() {
+    await openMoreActions();
+    fireEvent.click(screen.getByRole("menuitem", { name: /correct owner company \/ cost centre/i }));
+    return await screen.findByRole("dialog", { name: /correct owner company \/ cost centre/i });
+  }
+
+  it("is offered to an admin only, and never for a sold, scrapped or disposed asset", async () => {
+    for (const status of ["SOLD", "SCRAPPED", "DISPOSED"]) {
+      mockGets({ asset: { ...FULL_ASSET, status } });
+      const { unmount } = await openPage();
+      await openMoreActions();
+      expect(screen.queryByRole("menuitem", { name: /correct owner company/i })).not.toBeInTheDocument();
+      unmount();
+    }
+    mockAuth("OPERATOR");
+    mockGets();
+    await openPage();
+    await openMoreActions();
+    expect(screen.queryByRole("menuitem", { name: /correct owner company/i })).not.toBeInTheDocument();
+  });
+
+  it("opens showing who owns it now, says a move never changes it, and keeps Confirm off until a change and a reason", async () => {
+    mockGets();
+    await openPage();
+    const dialog = await openOwnerCorrection();
+    expect(within(dialog).getByText("Owned by now")).toBeInTheDocument();
+    expect(dialog).toHaveTextContent("CityKart Stores · Head Office");
+    expect(dialog).toHaveTextContent("never change when it is moved");
+    expect(dialog).toHaveTextContent("Asset Code will not change");
+    const confirm = within(dialog).getByRole("button", { name: /confirm owner correction/i });
+    expect(confirm).toBeDisabled();                                                   // nothing changed yet
+    await waitFor(() => expect(within(dialog).getByRole("combobox", { name: "Owner company" })).toHaveTextContent("CityKart Stores"));
+    fireEvent.change(within(dialog).getByLabelText("Reason for the owner correction"), { target: { value: "x" } });
+    expect(confirm).toBeDisabled();                                                   // a reason but no change
+  });
+
+  it("choosing another company clears the cost centre, shows the impact, and sends company, cost centre and reason", async () => {
+    const served: { asset: unknown } = { asset: FULL_ASSET };
+    mockGets(served);
+    const corrected = { ...FULL_ASSET, company_id: 2, cost_center_id: 6, company_name: "CityKart Ventures", cost_center_name: "Ventures HO" };
+    (apiClient.post as any).mockImplementation(() => { served.asset = corrected; return Promise.resolve(corrected); });   // the server now serves the corrected asset
+    await openPage();
+    const dialog = await openOwnerCorrection();
+    await pickSelectOption("Owner company", "CityKart Ventures");
+    expect(within(dialog).getByRole("combobox", { name: "Owner cost centre" })).toHaveTextContent(/choose the cost centre/i);
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/masters/cost-centers?company_id=2"));
+    const confirm = within(dialog).getByRole("button", { name: /confirm owner correction/i });
+    fireEvent.change(within(dialog).getByLabelText("Reason for the owner correction"), { target: { value: "Wrong company chosen while inwarding" } });
+    expect(confirm).toBeDisabled();                                                   // the cost centre must be chosen too
+    await pickSelectOption("Owner cost centre", "Ventures HO");
+    expect(await within(dialog).findByText("Company: CityKart Stores → CityKart Ventures")).toBeInTheDocument();
+    expect(within(dialog).getByText("Cost Centre: Head Office → Ventures HO")).toBeInTheDocument();
+    expect(within(dialog).getByText(/Asset Code: FA\/HO01\/IT\/LAP\/CK_1 — unchanged/)).toBeInTheDocument();
+    fireEvent.click(confirm);
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/assets/1/owner-correction", {
+      company_id: 2, cost_center_id: 6, reason: "Wrong company chosen while inwarding",
+    }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /correct owner company/i })).not.toBeInTheDocument());
+    expect(within(screen.getByTestId("asset-summary")).getByText("CityKart Ventures")).toBeInTheDocument();     // the screen shows the new owner
+  });
+
+  it("the cost centre alone can be corrected inside the same company", async () => {
+    mockGets();
+    (apiClient.post as any).mockResolvedValue({ ...FULL_ASSET, cost_center_id: 4, cost_center_name: "Warehouse" });
+    await openPage();
+    const dialog = await openOwnerCorrection();
+    await waitFor(() => expect(within(dialog).getByRole("combobox", { name: "Owner cost centre" })).toHaveTextContent("Head Office"));
+    await pickSelectOption("Owner cost centre", "Warehouse");
+    expect(await within(dialog).findByText("Cost Centre: Head Office → Warehouse")).toBeInTheDocument();
+    expect(within(dialog).queryByText(/^Company:/)).not.toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText("Reason for the owner correction"), { target: { value: "Wrong cost centre" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: /confirm owner correction/i }));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/assets/1/owner-correction", { company_id: 1, cost_center_id: 4, reason: "Wrong cost centre" }));
+  });
+
+  it("shows the server's refusal inside the dialog without closing it", async () => {
+    mockGets();
+    (apiClient.post as any).mockRejectedValue(new Error("The cost centre must belong to the company you chose."));
+    await openPage();
+    const dialog = await openOwnerCorrection();
+    await waitFor(() => expect(within(dialog).getByRole("combobox", { name: "Owner cost centre" })).toHaveTextContent("Head Office"));
+    await pickSelectOption("Owner cost centre", "Warehouse");
+    fireEvent.change(within(dialog).getByLabelText("Reason for the owner correction"), { target: { value: "Wrong cost centre" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: /confirm owner correction/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/must belong to the company/i);
+    expect(screen.getByRole("dialog", { name: /correct owner company/i })).toBeInTheDocument();
+  });
+
+  it("the history shows the corrected company with the reason", async () => {
+    mockGets({
+      changes: [{
+        id: 1, field_name: "company_id", old_value: "S0A · Company A", new_value: "S0B · Company B", actor_id: 2, actor_name: "Ordinary Admin",
+        request_id: "r1", created_at: "2026-11-12T10:00:00Z", reason: "Wrong company chosen while inwarding",
+      }],
+    });
+    await openPage();
+    clickTab("Field changes");
+    const panel = await screen.findByRole("tabpanel", { name: "Field changes" });
+    expect(within(panel).getByText("Owner company")).toBeInTheDocument();
+    expect(within(panel).getByText("Wrong company chosen while inwarding")).toBeInTheDocument();
   });
 });
 

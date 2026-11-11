@@ -239,6 +239,7 @@ const FIELD_LABELS: Record<string, string> = {
   category_id: "Category",
   subcategory_id: "Sub-category",
   purchase_date: "Purchase date",
+  company_id: "Owner company",
   cost_center_id: "Cost Centre",
   item_id: "Item",
 };

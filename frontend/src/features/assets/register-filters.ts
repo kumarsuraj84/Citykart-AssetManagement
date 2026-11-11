@@ -26,7 +26,10 @@ export interface RegisterSearch {
   po?: string;
   /** IT | NON_IT */
   area?: string;
+  /** The OWNER company (bought under; fixed). */
   company?: string;
+  /** Release 2: the company of the place holding it now ("Currently at"). */
+  at?: string;
   /** Asset group (Category id). */
   group?: string;
   /** Comma-separated asset ids (Receive / Add Assets "Open assets"). */
@@ -56,7 +59,7 @@ export function holderWord(code: string): string {
 }
 
 /** The filters that narrow the list (not the search box, not paging). */
-export const FILTER_KEYS = ["status", "holder", "with", "mine", "item", "vendor", "po", "area", "company", "group", "exact"] as const;
+export const FILTER_KEYS = ["status", "holder", "with", "mine", "item", "vendor", "po", "area", "company", "at", "group", "exact"] as const;
 export type FilterKey = (typeof FILTER_KEYS)[number];
 
 /** A stable text of everything that changes which rows match (paging restarts when it changes). */
@@ -66,7 +69,7 @@ export function filterKey(s: RegisterSearch): string {
 
 /** How many "More filters" are on (for the button). */
 export function moreFilterCount(s: RegisterSearch): number {
-  const n = (["status", "holder", "with", "item", "vendor", "po", "area", "company", "group"] as const).filter((k) => !!s[k]).length;
+  const n = (["status", "holder", "with", "item", "vendor", "po", "area", "company", "at", "group"] as const).filter((k) => !!s[k]).length;
   // "With Store" is one choice (a status and its holder), so it counts once.
   return statusChoiceOf(s).includes(":") ? n - 1 : n;
 }
@@ -90,6 +93,7 @@ export function registerQuery(
   if (s.po?.trim()) p.set("po_number", s.po.trim());
   if (s.area) p.set("work_area", s.area);
   if (s.company) p.set("company_id", s.company);
+  if (s.at) p.set("holder_company_id", s.at);
   if (s.group) p.set("category_id", s.group);
   if (s.ids) p.set("ids", s.ids);
   if (opts.sortBy) {

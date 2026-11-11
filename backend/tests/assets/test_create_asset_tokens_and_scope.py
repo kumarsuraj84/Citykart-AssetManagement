@@ -120,12 +120,16 @@ async def test_unresolvable_token_is_422_not_500(client):
     assert "sub-category" in resp.json()["detail"]
 
 
-async def test_initial_asset_user_from_other_company_is_422_not_500(client):
+async def test_initial_asset_user_from_other_company_is_allowed_for_an_admin_and_the_asset_stays_owned_by_its_company(client):
+    """Release 2 (2026-11-11): the place an asset is received into may belong to another company; the asset stays owned by
+    the company it is bought under. (Before: 422 "the same company".)"""
     a, b, cat, sub = await _setup()
     headers = await _headers(client, a["co"].id, "ADM")
     resp = await client.post("/api/assets", json=_asset_body(a, cat, sub, initial_asset_user_id=b["stock"].id), headers=headers)
-    assert resp.status_code == 422
-    assert "same company" in resp.json()["detail"]
+    assert resp.status_code == 201, resp.text
+    made = resp.json()
+    made = made[0] if isinstance(made, list) else made
+    assert made["company_id"] == a["co"].id and made["current_asset_user_id"] == b["stock"].id
 
 
 async def test_cost_center_from_other_company_is_rejected(client):

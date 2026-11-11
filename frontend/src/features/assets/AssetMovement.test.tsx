@@ -94,6 +94,30 @@ describe("AssetMovement", () => {
     expect(screen.getByText(/From: Suraj/)).toBeInTheDocument();
   });
 
+  it("Release 2: going to a place of the OTHER company says the asset stays owned by its company; the same company says nothing", async () => {
+    const owned = { ...LAPTOP, status: "IN_STOCK", company_id: 1 };
+    (apiClient.get as any).mockImplementation((path: string) => {
+      if (path.startsWith("/asset-users")) return Promise.resolve([
+        { id: 11, code: "E11", name: "Ankur", asset_user_type: "EMPLOYEE", company_id: 1 },
+        { id: 21, code: "E21", name: "Meena", asset_user_type: "EMPLOYEE", company_id: 2 },
+      ]);
+      if (path === "/masters/companies") return Promise.resolve([{ id: 1, code: "CKSPL", name: "Citykart Stores" }, { id: 2, code: "CKVPL", name: "Citykart Ventures" }]);
+      if (path.startsWith("/assets?q=")) return Promise.resolve({ items: [owned], total: 1 });
+      return Promise.resolve([]);
+    });
+    await renderMovement();
+    choose("Give to Employee");
+    scan("SN-001");
+    await screen.findByText(/Queued \(1\)/);
+    expect(screen.queryByRole("note", { name: "Another company" })).not.toBeInTheDocument();     // no place chosen yet
+    await pick("Employee", /Ankur/);
+    expect(screen.queryByRole("note", { name: "Another company" })).not.toBeInTheDocument();     // Ankur works in the owner's company
+    await pick("Employee", /Meena/);
+    const note = await screen.findByRole("note", { name: "Another company" });
+    expect(note).toHaveTextContent("1 asset is owned by another company than CKVPL.");
+    expect(note).toHaveTextContent("They stay owned by that company and keep their cost centre; only where they are changes.");
+  });
+
   it("shows an error when nothing matches", async () => {
     mockGets({ searchResults: {} });
     await renderMovement();

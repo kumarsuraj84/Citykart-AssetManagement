@@ -71,6 +71,11 @@ interface AssetRow {
   holder_location_name?: string | null;
   company_name: string | null;
   company_code?: string | null;
+  /** Release 2: the company of the place holding it now ("Currently at"); `company_*` is the OWNER. */
+  holder_company_id?: number | null;
+  holder_company_code?: string | null;
+  holder_company_name?: string | null;
+  company_id?: number | null;
   work_area?: string | null;
   work_area_label?: string | null;
   vendor_name: string | null;
@@ -159,7 +164,19 @@ const ASSET_OPTIONAL_COLUMNS: AssetColumnDef[] = [
   },
   { key: "serial_number", label: "Serial", defaultVisible: true, className: "font-mono text-xs", cell: (a) => (a.serial_pending ? "Pending" : dash(a.serial_number)) },
   { key: "with", label: "With", defaultVisible: true, cell: (a) => <WithCell a={a} /> },
-  { key: "company", label: "Company", defaultVisible: true, cell: (a) => dash(a.company_code ?? a.company_name) },
+  {
+    key: "company", label: "Owned by", defaultVisible: true,
+    // Release 2: the owner company, and (only when another company's place holds it) where it is now.
+    cell: (a) => {
+      const elsewhere = a.holder_company_id != null && a.company_id != null && a.holder_company_id !== a.company_id;
+      return (
+        <>
+          {dash(a.company_code ?? a.company_name)}
+          {elsewhere && <span className="block text-[11px] text-muted-foreground">at {a.holder_company_code ?? a.holder_company_name}</span>}
+        </>
+      );
+    },
+  },
   { key: "po_number", label: "PO", defaultVisible: true, cell: (a) => dash(a.po_number) },
   {
     key: "status", label: "Status", defaultVisible: true,
@@ -393,7 +410,8 @@ export function AssetRegister({ search = {}, onSearchChange }: AssetRegisterProp
   if (mine) chips.push({ key: "mine", label: "Mine", remove: { ...search, mine: undefined } });
   else if (search.with) chips.push({ key: "with", label: `With: ${nameOf(people, search.with) ?? "the chosen person or place"}`, remove: { ...search, with: undefined } });
   if (search.area) chips.push({ key: "area", label: `Work area: ${workAreaLabel(search.area)}`, remove: { ...search, area: undefined } });
-  if (search.company) chips.push({ key: "company", label: `Company: ${nameOf(allCompanies, search.company) ?? search.company}`, remove: { ...search, company: undefined } });
+  if (search.company) chips.push({ key: "company", label: `Owned by: ${nameOf(allCompanies, search.company) ?? search.company}`, remove: { ...search, company: undefined } });
+  if (search.at) chips.push({ key: "at", label: `Currently at: ${nameOf(allCompanies, search.at) ?? search.at}`, remove: { ...search, at: undefined } });
   if (search.item) chips.push({ key: "item", label: `Item: ${nameOf(itemList, search.item) ?? "the chosen Item"}`, remove: { ...search, item: undefined } });
   if (search.group) chips.push({ key: "group", label: `Asset group: ${nameOf(categories, search.group) ?? "the chosen group"}`, remove: { ...search, group: undefined } });
   if (search.vendor) chips.push({ key: "vendor", label: `Vendor: ${nameOf(vendors, search.vendor) ?? "the chosen vendor"}`, remove: { ...search, vendor: undefined } });
@@ -529,14 +547,24 @@ export function AssetRegister({ search = {}, onSearchChange }: AssetRegisterProp
                 </Select>
               </FilterField>
               {companies.length > 1 && (
-                <FilterField id="filter-company" label="Company">
-                  <SearchableSelect
-                    id="filter-company" aria-label="Company" className="bg-background"
-                    value={search.company || ALL}
-                    onValueChange={(v) => setSearch({ ...search, company: v === ALL ? undefined : v })}
-                    options={[{ value: ALL, label: "All companies" }, ...companyOptions(companies)]}
-                  />
-                </FilterField>
+                <>
+                  <FilterField id="filter-company" label="Owned by">
+                    <SearchableSelect
+                      id="filter-company" aria-label="Owned by" className="bg-background"
+                      value={search.company || ALL}
+                      onValueChange={(v) => setSearch({ ...search, company: v === ALL ? undefined : v })}
+                      options={[{ value: ALL, label: "All companies" }, ...companyOptions(companies)]}
+                    />
+                  </FilterField>
+                  <FilterField id="filter-at" label="Currently at">
+                    <SearchableSelect
+                      id="filter-at" aria-label="Currently at" className="bg-background"
+                      value={search.at || ALL}
+                      onValueChange={(v) => setSearch({ ...search, at: v === ALL ? undefined : v })}
+                      options={[{ value: ALL, label: "All companies" }, ...companyOptions(companies)]}
+                    />
+                  </FilterField>
+                </>
               )}
               <FilterField id="filter-item" label="Item">
                 <SearchableSelect

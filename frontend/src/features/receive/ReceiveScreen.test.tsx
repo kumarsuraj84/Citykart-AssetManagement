@@ -61,7 +61,7 @@ function mockApi(i = info(), opts: { caps?: Capabilities | null; rooms?: unknown
   currentInfo = i;
   const base = (path: string) => {
     if (path === "/purchase-orders/1/receive-info") return Promise.resolve(currentInfo);
-    if (path.startsWith("/stock-rooms?company_id=")) return Promise.resolve(opts.rooms ?? [{ id: 5, name: "IT Stock-HO" }, { id: 6, name: "Gate Stock" }]);
+    if (path.startsWith("/stock-rooms")) return Promise.resolve(opts.rooms ?? [{ id: 5, name: "IT Stock-HO" }, { id: 6, name: "Gate Stock" }]);
     if (path.startsWith("/assets?")) return Promise.resolve({ items: [], total: 0 });
     return Promise.resolve([]);
   };
@@ -219,7 +219,7 @@ describe("Receive screen: one screen, common details once, a quantity per line",
     const base = (apiClient.get as any).getMockImplementation();
     let created = false;
     (apiClient.get as any).mockImplementation((path: string) => {
-      if (path.startsWith("/stock-rooms?company_id=") && created) return Promise.resolve([{ id: 5, name: "IT Stock-HO" }, { id: 77, name: "Back Room" }]);
+      if (path.startsWith("/stock-rooms") && created) return Promise.resolve([{ id: 5, name: "IT Stock-HO" }, { id: 77, name: "Back Room" }]);
       if (path === "/masters/locations?company_id=1") return Promise.resolve([{ id: 50, name: "Head Office" }]);
       return base(path);
     });

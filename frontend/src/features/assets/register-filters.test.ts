@@ -15,6 +15,13 @@ describe("register filters", () => {
     expect(registerQuery({ mine: true, with: "6" }, { ...opts, myId: 5 })).toBe("asset_user_id=5&limit=50&offset=0");
   });
 
+  it("Release 2: 'Currently at' (the company of the place holding it) is its own filter, apart from the owner company", () => {
+    expect(registerQuery({ company: "2", at: "3" }, opts)).toBe("company_id=2&holder_company_id=3&limit=50&offset=0");
+    expect(registerQuery({ at: "3" }, opts)).toBe("holder_company_id=3&limit=50&offset=0");
+    expect(moreFilterCount({ company: "2", at: "3" })).toBe(2);
+    expect(filterKey({ at: "3" })).not.toBe(filterKey({}));        // paging restarts when it changes
+  });
+
   it("holder words and codes", () => {
     expect(holderCode("install-point")).toBe("INSTALLED");
     expect(holderCode("STORE")).toBe("STORE");

@@ -109,7 +109,14 @@ interface Asset {
   holder_kind_label?: string | null;
   holder_name?: string | null;
   holder_location_name?: string | null;
+  /** Release 2: the company of the place that holds it now ("Currently at"); `company_*` is the OWNER company. */
+  holder_company_id?: number | null;
+  holder_company_code?: string | null;
+  holder_company_name?: string | null;
 }
+
+/** Sold, scrapped or disposed: the owner company and cost centre can no longer be corrected. */
+const FINAL_STATUSES = ["SOLD", "SCRAPPED", "DISPOSED"];
 
 interface CustomFieldDef {
   field_key: string;
@@ -554,6 +561,47 @@ export function AssetDetail({ assetId }: { assetId: number }) {
     },
   });
 
+  // Release 2: Correct owner company / cost centre -- the platform owner and a Full Admin only (the server checks), for a
+  // company or cost centre chosen wrongly while inwarding. A reason is required; not once sold / scrapped / disposed; the
+  // asset code never changes. A move never changes the owner: this is the only way.
+  const [ownerOpen, setOwnerOpen] = useState(false);
+  const [ownerCompanyId, setOwnerCompanyId] = useState("");
+  const [ownerCostCenterId, setOwnerCostCenterId] = useState("");
+  const [ownerReason, setOwnerReason] = useState("");
+  const { data: ownerCompanies = [] } = useQuery({
+    queryKey: ["masters", "companies"],
+    queryFn: () => apiClient.get<MasterOption[]>("/masters/companies"),
+    enabled: ownerOpen,
+  });
+  const { data: ownerCostCenters = [] } = useQuery({
+    queryKey: ["masters", "cost-centers", ownerCompanyId],
+    queryFn: () => apiClient.get<MasterOption[]>(`/masters/cost-centers?company_id=${ownerCompanyId}`),
+    enabled: ownerOpen && ownerCompanyId !== "",
+  });
+  function openOwnerCorrection() {
+    if (!asset) return;
+    setOwnerCompanyId(String(asset.company_id));
+    setOwnerCostCenterId(String(asset.cost_center_id));
+    setOwnerReason("");
+    ownerMutation.reset();
+    setOwnerOpen(true);
+  }
+  const ownerCompanyChanged = asset ? ownerCompanyId !== String(asset.company_id) : false;
+  const ownerCostCenterChanged = asset ? ownerCostCenterId !== String(asset.cost_center_id) : false;
+  const ownerNameOf = (rows: MasterOption[], id: string) => rows.find((r) => String(r.id) === id)?.name ?? id;
+  const ownerMutation = useKeyedMutation({
+    mutationFn: (_: void, keyed) => {
+      const body = { company_id: Number(ownerCompanyId), cost_center_id: Number(ownerCostCenterId), reason: ownerReason.trim() };
+      return keyed(body, () => apiClient.post<Asset>(`/assets/${assetId}/owner-correction`, body));
+    },
+    onSuccess: (updated) => {
+      qc.setQueryData(["assets", assetId], updated);
+      qc.invalidateQueries({ queryKey: ["assets", assetId, "changes"] });
+      qc.invalidateQueries({ queryKey: ["assets"] });
+      setOwnerOpen(false);
+    },
+  });
+
   if (assetQ.isError && assetQ.error instanceof ApiError && assetQ.error.status === 404) {
     return (
       <div className="flex flex-col gap-4">
@@ -641,6 +689,9 @@ export function AssetDetail({ assetId }: { assetId: number }) {
                     </>
                   )}
                   <DropdownMenuItem onSelect={openCorrection}>Correct Classification</DropdownMenuItem>
+                  {role === "ADMIN" && !FINAL_STATUSES.includes(asset.status) && (
+                    <DropdownMenuItem onSelect={openOwnerCorrection}>Correct owner company / cost centre</DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -660,7 +711,26 @@ export function AssetDetail({ assetId }: { assetId: number }) {
               </>
             }
           />
-          <ReadField label="Company" value={asset.company_name} />
+          <ReadField
+            label="Owned by"
+            value={
+              <>
+                <span className="font-medium">{asset.company_name ?? "—"}</span>
+                {asset.cost_center_name && <span className="text-muted-foreground"> · {asset.cost_center_name}</span>}
+              </>
+            }
+          />
+          {asset.holder_company_id != null && asset.holder_company_id !== asset.company_id && (
+            <ReadField
+              label="Currently at"
+              value={
+                <>
+                  <span className="font-medium">{asset.holder_company_name ?? "another company"}</span>
+                  <span className="text-muted-foreground"> · bought under {asset.company_name ?? "its owner company"}</span>
+                </>
+              }
+            />
+          )}
         </dl>
       </div>
 
@@ -1015,6 +1085,67 @@ export function AssetDetail({ assetId }: { assetId: number }) {
               pendingLabel="Saving…"
             >
               Confirm Correction
+            </AsyncButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Release 2: Correct owner company / cost centre (platform owner and Full Admin). */}
+      <Dialog open={ownerOpen} onOpenChange={(open) => !open && setOwnerOpen(false)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Correct owner company / cost centre</DialogTitle>
+          </DialogHeader>
+          {asset && (
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1 rounded-md border bg-muted/50 px-3 py-2 text-sm">
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Owned by now</span>
+                  <span className="font-medium">{asset.company_name ?? "—"}{asset.cost_center_name ? ` · ${asset.cost_center_name}` : ""}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  The company and cost centre an asset was bought under never change when it is moved. Use this only to correct a
+                  mistake made while inwarding. Asset Code will not change.
+                </p>
+              </div>
+              <FormField htmlFor="owner-company" label="Company" required>
+                <SearchableSelect
+                  id="owner-company" aria-label="Owner company" value={ownerCompanyId || undefined}
+                  onValueChange={(v) => { setOwnerCompanyId(v); setOwnerCostCenterId(""); }}
+                  options={nameOptions(ownerCompanies)}
+                />
+              </FormField>
+              <FormField htmlFor="owner-cost-center" label="Cost Centre" required helperText="The cost centres of the chosen company.">
+                <SearchableSelect
+                  id="owner-cost-center" aria-label="Owner cost centre" value={ownerCostCenterId || undefined}
+                  onValueChange={setOwnerCostCenterId} options={nameOptions(ownerCostCenters)} placeholder="Choose the cost centre"
+                />
+              </FormField>
+              {(ownerCompanyChanged || ownerCostCenterChanged) && ownerCostCenterId !== "" && (
+                <div className="flex flex-col gap-1 rounded-md border bg-muted/50 px-3 py-2 text-sm" aria-label="Impact Summary">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Impact Summary</p>
+                  {ownerCompanyChanged && <p>Company: {asset.company_name ?? "—"} → {ownerNameOf(ownerCompanies, ownerCompanyId)}</p>}
+                  {ownerCostCenterChanged && <p>Cost Centre: {asset.cost_center_name ?? "—"} → {ownerNameOf(ownerCostCenters, ownerCostCenterId)}</p>}
+                  <p className="text-muted-foreground">Asset Code: {asset.asset_code} — unchanged · where it is and its status — unchanged</p>
+                </div>
+              )}
+              <FormField htmlFor="owner-reason" label="Reason" required helperText="Required. Explain what was chosen wrongly. It is kept in the asset's history.">
+                <Textarea id="owner-reason" aria-label="Reason for the owner correction" value={ownerReason} onChange={(e) => setOwnerReason(e.target.value)} />
+              </FormField>
+              {ownerMutation.isError && (
+                <ErrorMessage className="text-sm text-destructive" error={ownerMutation.error} message={ownerMutation.error instanceof Error ? ownerMutation.error.message : "Correction failed."} />
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOwnerOpen(false)}>Cancel</Button>
+            <AsyncButton
+              onClick={() => ownerMutation.mutate()}
+              disabled={!(ownerCompanyChanged || ownerCostCenterChanged) || ownerCostCenterId === "" || ownerReason.trim().length === 0}
+              pending={ownerMutation.isPending}
+              pendingLabel="Saving…"
+            >
+              Confirm owner correction
             </AsyncButton>
           </DialogFooter>
         </DialogContent>

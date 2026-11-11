@@ -144,8 +144,9 @@ def _check_initial_asset_user(asset_user: AssetUser | None, company_id: int, ini
         raise ValueError("The place you chose to receive the asset into does not exist.")
     if not asset_user.is_active:
         raise ValueError(f"{asset_user.name} is no longer active, so assets cannot be received there.")
-    if asset_user.company_id != company_id:
-        raise ValueError("The place the asset is received into must belong to the same company as the asset.")
+    # Release 2 (2026-11-11): the place may belong to ANOTHER company than the asset's owner (the asset stays owned by
+    # its purchase company). Whether the person doing it works in that company is checked by the ledger writer
+    # (app.lifecycle.service.apply_events) when the asset is received into it.
     return asset_user
 
 

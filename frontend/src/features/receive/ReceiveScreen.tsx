@@ -270,11 +270,14 @@ function ReceiveForm({ info, focusLine, onReceived }: {
               id="received-into"
               aria-label="Received Into"
               companyId={info.company_id}
+              acrossCompanies
               value={common.receivedInto}
               onValueChange={(v) => editCommon({ receivedInto: v })}
               extraOptions={extraPlace}
             />
-            <p className="text-xs text-muted-foreground">The Stock Room the goods go to.</p>
+            <p className="text-xs text-muted-foreground">
+              The Stock Room the goods go to. It can belong to another company: the assets stay owned by {info.company_name ?? "the purchase order's company"}.
+            </p>
           </div>
           <div className="flex min-w-0 flex-col gap-1">
             <Label htmlFor="invoice-number" className="text-xs">
