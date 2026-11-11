@@ -8,7 +8,7 @@ POs from an uploaded PDF (that code was dropped, never released).
 
 | | |
 |---|---|
-| Server | `10.0.1.69:5432`, PostgreSQL 17, database `data_extraction` |
+| Server | **`10.0.0.82:5432`** (moved from `10.0.1.69` on 2026-11-11; the old address is dead), PostgreSQL 17.7 on Windows, database `data_extraction`. CKAM was switched over on 2026-11-11 (dev and production `PO_SOURCE_HOST`); the first copy from the new host ran clean (production: 73 new / 1,072 changed / 10 gone PO lines, 190 vendors, 1,079 items). Note: `ckpost` can also read `meta.app_secrets` and other internal `meta` tables, which CKAM does not need; the DBA should narrow the grant |
 | Login | role `ckpost`, read-only (every connection also sets `default_transaction_read_only`) |
 | Settings | `PO_SOURCE_HOST/PORT/DB/USER/PASSWORD` in `.env` (dev) or `shared\.env` (prod). The password is typed in by the user, never into chat, code or compose files. All empty = ERP screens off |
 | Code | `backend/app/erp/`: `warehouse.py` reads the warehouse (for the nightly copy), `sync.py` makes the copy, `local_source.py` serves it to the screens, `source.py` is the live reader and the `ErpSource` interface; tests replace the source through the `get_erp_source` dependency and the warehouse through `get_warehouse_reader` |

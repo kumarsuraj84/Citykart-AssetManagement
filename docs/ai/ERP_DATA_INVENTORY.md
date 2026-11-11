@@ -1,6 +1,6 @@
 # What CKAM's ERP login (`ckpost`) can read (surveyed 2026-10-12, metadata and row estimates only)
 
-Warehouse `data_extraction` on 10.0.1.69, loaded **daily** (see `meta.v_freshness`). 94 of 96 relations are readable.
+Warehouse `data_extraction` on 10.0.0.82 (moved from 10.0.1.69 on 2026-11-11), loaded **daily** (see `meta.v_freshness`). 94 of 96 relations are readable.
 CKAM uses only `gold_ckam.po_line` today (and `silver.dim_item` as the item fallback). Everything below is read-only.
 Row counts are estimates. **Large tables (millions of rows) time out unless filtered by a date or key**; CKAM must never
 query them live without a narrow filter or a purpose-built `gold_ckam` view.
