@@ -36,6 +36,10 @@ use into CKAM's own tables (`erp_po_line`, `erp_vendor`, `erp_item`, `erp_sync_r
   and mean different things; item codes (`CT...` / `CV...`) and PO codes do not.
 - **Receipts and invoices** (`po_receipt_line`, `po_invoice`) are still read live and are not created yet (see below).
 
+## Companies, head offices and warehouses from the ERP (built 2026-11-11, decision 18)
+
+Settings › Organisation › Companies / Places › **Add from the ERP** (head-office admin). Companies: `GET/POST /api/erp/companies[/create]`, names from a live read of `silver.dim_company` (code, name; 2 rows), falling back to the codes in `erp_site` when that read fails. Places: `GET/POST /api/erp/places[/create]` from `erp_site` kinds HEAD_OFFICE / WAREHOUSE (ticked) and WAREHOUSE_OTHER / WAREHOUSE_LEGACY (offered); EXTERNAL and VIRTUAL never. Real data (2026-11-11): CKSPL has 321 stores, 5 head offices, 3 warehouses + 7 other + 1 legacy, 21 virtual and 123 external sites; CKVPL has 1 head office, 5 warehouses and 18 external. The CKSPL list also holds sites named for CKVPL (`CKVPL-HO`, `CKVPL-GRGN-WH`): offered with a warning, not ticked. The ERP's name for CKVPL (`CITYKART RETAIL PVT. LTD.`) differs from CKAM's ("Citykart Ventures"): shown, never overwritten.
+
 ## Store users from the ERP's site list (built 2026-10-13)
 
 The copy also holds the ERP's sites (`erp_site`, key = company + site code: site codes repeat across the companies). Asset Users ->

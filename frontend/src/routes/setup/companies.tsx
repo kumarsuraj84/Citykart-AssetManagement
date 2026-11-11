@@ -1,6 +1,7 @@
 import { MasterCrudScreen } from "../../components/master-crud/MasterCrudScreen";
 import type { FormField } from "../../components/master-crud/types";
 import { SwitchedOffCompanies } from "../../features/settings/SwitchedOffCompanies";
+import { ErpCompaniesDialog } from "../../features/settings/ErpCompaniesDialog";
 
 interface Company {
   id: number;
@@ -29,6 +30,7 @@ export default function CompaniesSetup({ embedded = false, onCreated }: {
     <MasterCrudScreen<Company>
       embedded={embedded}
       onCreated={onCreated}
+      extraActions={<ErpCompaniesDialog />}
       config={{
         resource: "companies",
         historyEntity: "company",

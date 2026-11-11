@@ -348,6 +348,8 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   CLIENT_REPORT_STATUS: "Problem report marked",
   ERP_SYNC: "ERP data copied",
   STORES_CREATE: "Stores created from the ERP",
+  COMPANIES_CREATE: "Companies created from the ERP",
+  PLACES_CREATE: "Places created from the ERP",
   CREATE_FROM_ERP: "Created from the ERP",
   ERP_CHANGES_APPLIED: "ERP changes applied",
 };

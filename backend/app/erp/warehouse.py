@@ -86,7 +86,18 @@ class WhSite:
     city: str | None
 
 
+@dataclass
+class WhCompany:
+    """One row of the ERP's company master (`silver.dim_company`): a handful of rows."""
+    company_code: str
+    company_name: str | None
+    short_name: str | None
+
+
 class WarehouseReader(Protocol):
+    async def companies(self) -> list[WhCompany]:
+        """The ERP's companies with their names (read only when a person adds a company from the ERP; the copy
+        has no company names). May fail (the table is outside the four the copy reads): callers fall back."""
     async def sites(self) -> list[WhSite]:
         """Every site of both companies (a few hundred rows): stores, warehouses, head offices."""
     async def po_lines(self, since: date, also_po_codes: frozenset[int] = frozenset()) -> list[WhPoLine]:
@@ -180,6 +191,13 @@ class PgWarehouseReader(PgReadOnly):
                    cat3=_text(r["cat3"]), cat4=_text(r["cat4"]), cat5=_text(r["cat5"]), cat6=_text(r["cat6"]),
                    hsn=_text(r["hsn_code"]), unit=_text(r["unit"]))
             for r in rows
+        ]
+
+    async def companies(self) -> list[WhCompany]:
+        rows = await self._fetch("select company_code, company_name, shrtname from silver.dim_company order by company_code")
+        return [
+            WhCompany(company_code=(r["company_code"] or "").strip(), company_name=_text(r["company_name"]), short_name=_text(r["shrtname"]))
+            for r in rows if (r["company_code"] or "").strip()
         ]
 
     async def sites(self) -> list[WhSite]:

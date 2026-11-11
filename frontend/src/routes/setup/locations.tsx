@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { MasterCrudScreen } from "../../components/master-crud/MasterCrudScreen";
 import { apiClient } from "../../lib/api-client";
+import { ErpPlacesDialog } from "../../features/settings/ErpPlacesDialog";
 
 interface Location {
   id: number;
@@ -25,6 +26,7 @@ export default function LocationsSetup({ embedded = false }: { embedded?: boolea
   return (
     <MasterCrudScreen<Location>
       embedded={embedded}
+      extraActions={<ErpPlacesDialog />}
       config={{
         resource: "locations",
         historyEntity: "location",

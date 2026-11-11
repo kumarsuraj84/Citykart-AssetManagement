@@ -137,6 +137,25 @@ class StoresCreateIn(BaseModel):
     codes: list[str] = Field(min_length=1, max_length=500)
 
 
+class CompanyPickIn(BaseModel):
+    """One company the owner ticked in "Add from the ERP": its ERP code, the name to give it (blank = the ERP's name,
+    tidied) and whether to also make the cost centre named after it."""
+    code: str = Field(min_length=1, max_length=50)
+    name: str | None = Field(default=None, max_length=200)
+    with_cost_centre: bool = True
+
+
+class CompaniesCreateIn(BaseModel):
+    companies: list[CompanyPickIn] = Field(min_length=1, max_length=20)
+
+
+class PlacesCreateIn(BaseModel):
+    """Head offices and warehouses ticked in "Add from the ERP" (their ERP short names), for one company."""
+    company_id: int
+    codes: list[str] = Field(min_length=1, max_length=500)
+    with_stock_point: bool = True
+
+
 class SyncRunOut(BaseModel):
     """One run of the copy of the ERP data (see app.erp.sync)."""
     model_config = ConfigDict(from_attributes=True)

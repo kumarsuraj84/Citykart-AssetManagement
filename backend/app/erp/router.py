@@ -14,9 +14,10 @@ from app.erp.reminders import delivery_reminders
 from app.erp.inbox import build_inbox, inbox_counts, resolve_items_batch, resolve_vendors_batch
 from app.erp.readiness import freshness
 from app.erp.schemas import (
-    ChangesApplyIn, DraftCreateIn, ErpVendorLinkIn, InboxItemDecisionIn, InboxVendorDecisionIn, NotTrackedIn, PiApplyIn,
-    StoresCreateIn, SyncRunOut, SyncStatusOut, VendorCodesIn,
+    ChangesApplyIn, CompaniesCreateIn, DraftCreateIn, ErpVendorLinkIn, InboxItemDecisionIn, InboxVendorDecisionIn, NotTrackedIn,
+    PiApplyIn, PlacesCreateIn, StoresCreateIn, SyncRunOut, SyncStatusOut, VendorCodesIn,
 )
+from app.erp import setup_from_erp
 from app.erp.service import NotAllowed, build_draft, create_from_draft, erp_po_rows, mark_not_tracked, untracked_codes
 from app.erp.source import ErpSource, ErpUnavailable, ErpViewMissing, get_erp_source, is_configured
 from app.erp.sync import last_runs, run_sync
@@ -96,6 +97,69 @@ async def create_stores(
                      "skipped": (result.get("skipped") or [])[:200],
                      "stock_rooms_created": result.get("stock_rooms_created"),
                      "install_points_created": result.get("install_points_created")})
+        await session.commit()
+    except LookupError as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
+    return result
+
+
+# ---- companies, head offices and warehouses (the guided "Add from the ERP" in Setup) -----------------
+
+@router.get("/companies")
+async def list_companies(
+    session: AsyncSession = Depends(get_session), reader: WarehouseReader = Depends(get_warehouse_reader),
+    _actor=Depends(require_primary_owner()),
+):
+    """The ERP's companies (code and name), and which CKAM already has."""
+    return await setup_from_erp.list_erp_companies(session, reader)
+
+
+@router.post("/companies/create")
+async def create_companies(
+    body: CompaniesCreateIn, session: AsyncSession = Depends(get_session),
+    reader: WarehouseReader = Depends(get_warehouse_reader), actor=Depends(require_primary_owner()),
+):
+    """Makes each ticked company (and its cost centre, unless asked not to). Nothing that exists is changed."""
+    obs_audit.suppress(session, "company", "cost_center")       # one row for the whole run
+    result = await setup_from_erp.create_erp_companies(session, actor, reader, body.companies)
+    obs_audit.record(
+        session, "ERP", "COMPANIES_CREATE",
+        f"{obs_events.who()} made {obs_events.plural(len(result['created']), 'company')} from the ERP "
+        f"({len(result['skipped'])} skipped; {result['cost_centres_created']} cost centres).",
+        entity="company", changes={"asked": [p.code for p in body.companies][:50], "created": result["created"][:50],
+                                   "skipped": result["skipped"][:50], "cost_centres_created": result["cost_centres_created"]})
+    await session.commit()
+    return result
+
+
+@router.get("/places")
+async def list_places(
+    company_id: int, session: AsyncSession = Depends(get_session), _actor=Depends(require_primary_owner()),
+):
+    """The head offices and warehouses of one company's ERP, and which of them can be made into places here."""
+    try:
+        return await setup_from_erp.list_erp_places(session, company_id)
+    except LookupError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
+
+
+@router.post("/places/create")
+async def create_places(
+    body: PlacesCreateIn, session: AsyncSession = Depends(get_session), actor=Depends(require_primary_owner()),
+):
+    """Makes a Place, an Install Point and (by default) a Stock Point for each head office / warehouse asked for."""
+    obs_audit.suppress(session, "asset_user", "location")       # one row for the whole run
+    try:
+        result = await setup_from_erp.create_erp_places(session, actor, body.company_id, body.codes, body.with_stock_point)
+        obs_audit.record(
+            session, "ERP", "PLACES_CREATE",
+            f"{obs_events.who()} made {obs_events.plural(len(result['created']), 'place')} from the ERP "
+            f"({len(result['skipped'])} skipped; {result['install_points_created']} install points, "
+            f"{result['stock_points_created']} stock points).",
+            entity="company", entity_id=body.company_id, company_id=body.company_id,
+            changes={"asked": body.codes[:200], "created": result["created"][:200], "skipped": result["skipped"][:200],
+                     "install_points_created": result["install_points_created"], "stock_points_created": result["stock_points_created"]})
         await session.commit()
     except LookupError as exc:
         await session.rollback()

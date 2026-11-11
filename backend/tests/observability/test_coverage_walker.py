@@ -75,6 +75,8 @@ AUDITED: dict[tuple[str, str], str] = {
     ("DELETE", "/api/bundles/{bundle_id}"): AUTO + " (DEACTIVATE)",
     ("POST", "/api/erp/sync"): "ERP ERP_SYNC + system_event sync_started / sync_<status>",
     ("POST", "/api/erp/stores/create"): "ERP STORES_CREATE (one row)",
+    ("POST", "/api/erp/companies/create"): "ERP COMPANIES_CREATE (one row)",
+    ("POST", "/api/erp/places/create"): "ERP PLACES_CREATE (one row)",
     ("POST", "/api/erp/vendors/import"): AUTO + " (vendor + vendor_erp_link)",
     ("POST", "/api/erp/vendors/{vendor_id}/link"): AUTO + " (vendor_erp_link)",
     ("DELETE", "/api/erp/vendors/{vendor_id}/link"): AUTO + " (vendor_erp_link DELETE)",

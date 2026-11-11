@@ -30,12 +30,12 @@ The screen hides what you may not use, and the server checks again every time.
 
 Seven short steps. Do them **for each company** (CKSPL and CKVPL). Progress is saved: you can stop and come back.
 
-1. **Company** — CKSPL and CKVPL are already created. (The code can never be changed because it goes into every asset code.)
-2. **Stock Room / Places** — where goods are received (for example "Head Office Stock"). Make at least one Stock Room per company.
+1. **Company** — **Settings › Organisation › Companies › Add from the ERP**. The ERP's code and name fill in by themselves (nobody types the "ERP company code"); tick the company, change the name if you want, and add. It can also make the company's cost centre in the same click. (The code can never be changed because it goes into every asset code. A company CKAM already has is shown with the ERP's name beside its own and is never changed.)
+2. **Stock Room / Places** — where goods are received (for example "Head Office Stock"). **Settings › Organisation › Places › Add from the ERP** lists the company's **head offices and warehouses**; tick them and each becomes a Place, an **Install Point** (things fixed at that site, "<name> Site") and a **Stock Point** (spare stock, "<name> Stock"; you can untick this). Suppliers, customers and virtual sites in the ERP are never offered. A site named for the other company (for example `CKVPL-HO` listed under CKSPL) is shown with a warning and not ticked. Stores come in step 6.
 3. **Cost Centre** — add the cost centres of each company.
 4. **Asset Groups and first Items** — groups (for example "IT Fixed Assets") with Sub-categories (for example "Server"), then your Items.
 5. **Vendors** — see section 4.
-6. **People / Stores** — Employees and Stores. A Store is created together with its own Stock Room and Install Point.
+6. **People / Stores** — Employees and Stores. **People & Places › Stores › Stores from ERP** adds the stores. A Store is created together with its own Stock Room and Install Point.
 7. **Asset Code Format** — how asset codes look. Assets cannot be added until this is saved.
 
 **A company was switched off by mistake?** **Settings › Organisation › Companies** → **Show switched-off companies** → **Switch on again** (you confirm first). Only the company itself comes back on: its places, cost centres, people and assets are exactly as you left them. It is refused, with the reason, if another company that is on already has the same name or the same ERP code. Only the head-office admin can do this.

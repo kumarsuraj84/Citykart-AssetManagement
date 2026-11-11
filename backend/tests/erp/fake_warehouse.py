@@ -2,7 +2,7 @@
 from datetime import date, datetime, timezone
 
 from app.erp.source import ErpUnavailable
-from app.erp.warehouse import WhItem, WhPoLine, WhSite, WhVendor
+from app.erp.warehouse import WhCompany, WhItem, WhPoLine, WhSite, WhVendor
 
 LOADED = datetime(2026, 10, 13, 5, 44, tzinfo=timezone.utc)
 
@@ -44,6 +44,8 @@ class FakeWarehouse:
 
     def __init__(self):
         self.site_list: list[WhSite] = []
+        self.company_list: list[WhCompany] = []
+        self.companies_down: str | None = None          # the company table cannot be read (the rest still can)
         self.lines: list[WhPoLine] = []
         self.vendor_list: list[WhVendor] = []
         self.item_list: list[WhItem] = []
@@ -72,6 +74,12 @@ class FakeWarehouse:
     async def sites(self):
         self._check()
         return list(self.site_list)
+
+    async def companies(self):
+        self._check()
+        if self.companies_down:
+            raise ErpUnavailable(self.companies_down)
+        return list(self.company_list)
 
     async def source_stamp(self):
         self._check()
