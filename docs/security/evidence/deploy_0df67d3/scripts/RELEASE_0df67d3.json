@@ -1,0 +1,50 @@
+{
+  "name": "ckam-release-0df67d3",
+  "purpose": "CKAM release: movement redesign releases 1-3 (simple Move, moves between companies with a fixed owner company and an admin correction, repair vendors as places with a Repairs screen)",
+  "release_commit": "0df67d33784545884bc63651f0276407d06d47cf",
+  "release_commit_short": "0df67d3",
+  "release_sha": "0df67d33784545884bc63651f0276407d06d47cf",
+  "release_sha_short": "0df67d3",
+  "release_sha_note": "release_sha / release_sha_short repeat release_commit / release_commit_short because ops/windows/deploy_ckam.ps1.template reads these two names to check that the package is the release it was asked to deploy",
+  "release_tree": "0d87ed148631fcb435ae0d0ca3fc62eeeaca26cd",
+  "supersedes": "ckam-release-0b8c525 (live on production since 2026-10-17 14:56 IST)",
+  "code_identical_note": "backend/constraints.txt (44 pins), backend/alembic.ini, backend/pyproject.toml and ops/windows/* are byte-identical to 0b8c525. Changed: backend/app (movement rules, owner correction, repairs, two migrations) and the frontend.",
+  "branch": "worktree-ckam-build",
+  "default_branch": "claude/brave-euler-07879a",
+  "commit_date": "2026-11-11T11:49:00+05:30",
+  "build_date_utc": "2026-11-11",
+  "built_from": "git archive of the committed tree 0df67d3 (no working-tree or untracked files)",
+  "build_host": "dev PC 10.0.0.47 (Windows 11)",
+  "node_version": "v24.14.0",
+  "npm_version": "11.9.0",
+  "frontend_build": "npm ci; VITE_APP_VERSION=0df67d3 npm run build; npm run check:build",
+  "python_required": ">=3.13",
+  "constraints_pins": 44,
+  "install_command": "python -m pip install -c <release>\\backend\\constraints.txt -e <release>\\backend",
+  "alembic_head": "e8a0c2d4f6b8",
+  "alembic_revision_count": 45,
+  "database_change": "TWO migrations on top of production's c6e8a0b2d4f6, run by `alembic upgrade head` in one transaction.",
+  "migrations_in_order": [
+    {"revision": "d7f9b1c3e5a7", "down_revision": "c6e8a0b2d4f6", "what": "release 2: trigger forbid_asset_identity_change refuses asset_code always and company_id / cost_center_id unless the audited owner correction switches its marker on"},
+    {"revision": "e8a0c2d4f6b8", "down_revision": "d7f9b1c3e5a7", "what": "release 3: asset_user.vendor_id (FK to vendor), one repair place per vendor per company (unique partial index), type REPAIR_VENDOR allowed, a repair place needs no location"}
+  ],
+  "migration_notes": {
+    "one_transaction": "A failed upgrade rolls back both and leaves the database at c6e8a0b2d4f6 (confirm with alembic current).",
+    "old_release_on_new_schema": "The previous release 0b8c525 does not know the new trigger rules (owner correction) or repair places. Do not use it as a quick rollback after the migrations have run: roll forward (fix and redeploy); a database restore from the pre-deploy dump only by owner decision.",
+    "never": "Never start release 3b5e842 or older: it has the IF-01 file-read hole and cannot move assets on the current schema."
+  },
+  "components": {
+    "backend/app/": "production backend code incl. app/alembic (migrations); no tests, no __pycache__",
+    "backend/alembic.ini": "Alembic configuration (script_location = app/alembic)",
+    "backend/pyproject.toml": "project metadata and runtime dependencies",
+    "backend/constraints.txt": "exact runtime package versions, 44 pins (unchanged)",
+    "backend/scripts/create_owner.py": "one-time first-owner bootstrap script (only script shipped)",
+    "backend/VERSION": "full release commit sha",
+    "frontend-dist/": "built frontend (no source maps, self-hosted fonts)",
+    "ops/windows/": "reference launcher, deploy, verify and rollback scripts + README (unchanged)",
+    "ops/db/": "role-split, verify and least-privilege check SQL + runbook, for the DBA (not used by this deploy)",
+    "RELEASE.json": "this file"
+  },
+  "excluded": [".git", ".env*", "node_modules", "backend/tests", "frontend sources/e2e/tests", "docs (incl. security evidence)", "ops/precheck", "screenshots and demo files", "coverage and caches", "backups and dumps", "docker-compose and Dockerfiles", "dev/seed scripts other than create_owner.py"],
+  "zip_sha256": "not stored inside the zip (a file cannot contain its own hash): see MANIFEST.0df67d3.sha256.txt next to the zip, which lists the SHA-256 of the zip and of every file in this folder"
+}
