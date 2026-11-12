@@ -2,7 +2,9 @@
 
 No passwords, keys or tokens are written here, only where they live.
 
-> **Update 2026-11-12 (later):** the live release is **`201ef76`** (`89d377b` + every supplier that has ever been on a Fixed Assets PO is copied from the ERP; no database change, head `e8a0c2d4f6b8`). `89d377b` is kept under `releases\` and can be started again. Pre-deploy backup: `ckassetmanagement_20261112_094132.dump`. Record: `docs/security/CKAM_PRODUCTION_DEPLOYMENT_RECORD_201ef76.md`.
+> **Update 2026-11-12 (latest):** the live release is **`2951388`** (PI ready in ERP, full ERP history, old-data import check, Add all suppliers). **Database head is now `a9c1e3b5d7f2`** (one additive migration: table `erp_pi`). `201ef76` is kept under `releases\` and can be started again (it ignores the new table). Pre-deploy backup: `ckassetmanagement_20261112_110400.dump`. Record: `docs/security/CKAM_PRODUCTION_DEPLOYMENT_RECORD_2951388.md`.
+>
+> **Update 2026-11-12 (later):** the live release was **`201ef76`** (`89d377b` + every supplier that has ever been on a Fixed Assets PO is copied from the ERP; no database change, head `e8a0c2d4f6b8`). `89d377b` is kept under `releases\` and can be started again. Pre-deploy backup: `ckassetmanagement_20261112_094132.dump`. Record: `docs/security/CKAM_PRODUCTION_DEPLOYMENT_RECORD_201ef76.md`.
 >
 > **Update 2026-11-12:** the live release was **`89d377b`** (`7ea352d` + Add Assets splits a set Item into its parts; no database change, head still `e8a0c2d4f6b8`). `7ea352d` is kept under `releases\` and can be started again (same schema). Pre-deploy backup: `ckassetmanagement_20261112_085816.dump`. Record: `docs/security/CKAM_PRODUCTION_DEPLOYMENT_RECORD_89d377b.md`.
 >

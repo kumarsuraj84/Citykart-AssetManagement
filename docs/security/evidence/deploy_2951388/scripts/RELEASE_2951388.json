@@ -1,0 +1,30 @@
+{
+  "name": "ckam-release-2951388",
+  "purpose": "CKAM release: PI ready in ERP (the ERP's purchase invoices are copied; received invoices are matched by the vendor's bill number and a person adds the PI), full ERP PO/PI/vendor history in the copy, the old-data import checks rows with the ERP and fills blank cells, Add all suppliers",
+  "release_commit": "2951388b0d9d58ddce8ac237c8b2b9819aec29b8",
+  "release_commit_short": "2951388",
+  "release_sha": "2951388b0d9d58ddce8ac237c8b2b9819aec29b8",
+  "release_sha_short": "2951388",
+  "release_sha_note": "release_sha / release_sha_short repeat release_commit / release_commit_short because ops/windows/deploy_ckam.ps1.template reads these two names to check that the package is the release it was asked to deploy",
+  "release_tree": "1ea264962893decd35e9c728d70f12ff00cd5166",
+  "supersedes": "ckam-release-201ef76 (live on production since 2026-11-12 09:42 IST)",
+  "branch": "worktree-ckam-build",
+  "default_branch": "claude/brave-euler-07879a",
+  "build_date_utc": "2026-11-12",
+  "built_from": "git archive of the committed tree 2951388 (no working-tree or untracked files)",
+  "build_host": "dev PC 10.0.0.47 (Windows 11)",
+  "node_version": "v24.14.0",
+  "npm_version": "11.9.0",
+  "frontend_build": "npm ci; VITE_APP_VERSION=2951388 npm run build; npm run check:build",
+  "python_required": ">=3.13",
+  "constraints_pins": 44,
+  "install_command": "python -m pip install -c <release>\\backend\\constraints.txt -e <release>\\backend",
+  "alembic_head": "a9c1e3b5d7f2",
+  "alembic_previous_head": "e8a0c2d4f6b8",
+  "database_change": "ONE additive migration: a9c1e3b5d7f2 creates the table erp_pi (the ERP's purchase invoices) and its index; no existing table or row changes. alembic upgrade head runs exactly one upgrade.",
+  "migration_notes": {
+    "rollback": "The migration only adds a table, so the previous release 201ef76 (it ignores the new erp_pi table; the startup record then shows a migration mismatch warning) can be started again from its release folder. Never start 3b5e842 or older.",
+    "never": "Never start release 3b5e842 or older: it has the IF-01 file-read hole."
+  },
+  "zip_sha256": "not stored inside the zip: see MANIFEST.2951388.sha256.txt next to the zip"
+}
