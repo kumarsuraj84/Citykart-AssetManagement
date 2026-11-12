@@ -151,6 +151,27 @@ The Item form is short — Name, Type of asset (one pick of "Group › Sub-categ
 
 **How to apply.** Never copy category, serial rule or defaults into a screen; read the Item. Sub-category is still required by the server, so the Item form chooses the group's only Sub-category itself or offers "New Sub-category".
 
+## 2026-11-12 — (27) An ERP Barcode typed by hand must be right for the Item, or LOCAL
+
+**Decision (owner's table, 2026-11-12).** When something is added by hand the ERP Barcode is checked against the Item chosen, using the Item's ERP links (per company) and CKAM's copy of the ERP item list (`app/items/erp_code_check.py`):
+| Typed | CKAM says | Allowed |
+|---|---|---|
+| a code linked to this Item | "OK: Dell Desktop i3" | yes |
+| a code linked to a different Item | "CT2 is Mouse, not Desktop." | **no** |
+| a real ERP code no Item is linked to yet | "…not linked to any Item yet. Please link it first." | **no** |
+| a code marked not tracked | "…marked not tracked…" | **no** |
+| not an ERP code (or another company's) | "…is not an ERP code…" (+ hint to ask the head-office admin for Refresh now: a code made in the ERP today is in CKAM only after the nightly copy) | **no** |
+| `LOCAL` (any letter case) | accepted | yes |
+| blank | "Type the ERP code, or LOCAL if it was bought locally." | **no** |
+* **Where it is enforced (server, whatever a client sends):** Add Assets (`POST /api/assets/batch`, a set against the set Item), a manual PO (`POST /api/purchase-orders/with-lines`, lines against their Item and sets against the Items of that set), `POST /api/purchase-orders/{id}/lines`, `/bundle-lines`, and a **changed** barcode on a PO line (`PUT line-groups`, clearing is still allowed) or an asset (`PUT /api/assets/{id}`). A set is checked as the set (the Desktop), not its parts. The company is the PO's / cost centre's. When **no ERP copy exists yet** (a fresh install) a typed code is accepted unchecked and blank is still refused.
+* **Not checked:** POs picked from the ERP (the code already comes from the ERP), the Excel imports of old data, and the ERP review's own barcode edit.
+* **Screens:** Add Assets shows the live message (`GET /api/items/erp-code-check`, debounced) under an ERP Barcode box that is now in the main part of the form with a "Bought locally" button, and Add waits for it. The manual PO form requires the ERP Barcode on every line and set (a "Local" button; the server's sentence appears under the line on Save). The code stays in `barcode`; `erp_item_code` is still only set from the ERP.
+* **Tests:** the suite's HTTP client adds `"LOCAL"` to those manual-entry requests when a test does not mention a barcode (`tests/conftest.py`); a test about the rule sends it explicitly.
+
+**Why.** The owner: wrong ERP codes should not be typed in by hand, and locally bought things need a value CKAM can accept.
+
+**How to apply.** A new manual path that makes assets or PO lines calls `ensure_erp_code` (server) and shows `ErpBarcodeField` (screen). If people are blocked by "not linked yet", link the code under Settings › Catalogue › Items › ERP codes.
+
 ## 2026-11-12 — (26) Add Assets: "Where do they go" lists Stores, Sites and Stock rooms in one searchable list
 
 **Decision.** Add Assets used to ask "Received Into" and list only Stock Rooms: on the real system 232 of them, 226 being each store's own room named by code, and an asset put there was "In Stock", never "With Store". The picker is now **"Where do they go"**, one searchable list in three groups, the same places Move uses:

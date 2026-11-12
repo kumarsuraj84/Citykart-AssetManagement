@@ -122,6 +122,7 @@ function lineProblem(l: LineRow): string | null {
   const t = taxProblem(l.tax);
   if (t) return t;
   if (l.warranty.trim() !== "" && !(Number.isInteger(Number(l.warranty)) && Number(l.warranty) >= 0)) return "warranty must be a whole number of years";
+  if (l.barcode.trim() === "") return "type the ERP Barcode, or LOCAL if it was bought locally (under More details)";
   return null;
 }
 
@@ -133,6 +134,7 @@ function setProblem(s: SetRow, bundle: Bundle | undefined): string | null {
   const t = taxProblem(s.tax);
   if (t) return t;
   if (!partsMatchPrice(bundle, s.amounts, s.price)) return `the part amounts must add up to ${money(Number(s.price) || 0)}`;
+  if (s.barcode.trim() === "") return "type the ERP Barcode of the set, or LOCAL if it was bought locally";
   return null;
 }
 
@@ -557,8 +559,11 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
                               onChange={(e) => patchLine(l.key, { description: e.target.value, descriptionTouched: true })}
                             />
                           </FormField>
-                          <FormField htmlFor={`${id}-barcode`} label="ERP Barcode" helperText="Optional.">
-                            <Input id={`${id}-barcode`} value={l.barcode} onChange={(e) => patchLine(l.key, { barcode: e.target.value })} />
+                          <FormField htmlFor={`${id}-barcode`} label="ERP Barcode" required helperText="The ERP code of this Item (checked when you save), or LOCAL.">
+                            <div className="flex gap-1">
+                              <Input id={`${id}-barcode`} value={l.barcode} onChange={(e) => patchLine(l.key, { barcode: e.target.value })} />
+                              <Button type="button" variant="outline" size="sm" className="h-10 shrink-0" onClick={() => patchLine(l.key, { barcode: "LOCAL" })}>Local</Button>
+                            </div>
                           </FormField>
                           <FormField htmlFor={`${id}-brand`} label="Brand">
                             <SearchableSelect
@@ -636,8 +641,11 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
                   <FormField htmlFor={`${id}-description`} label="Description" className="col-span-2" helperText="Each part's line is named “Description - Part”.">
                     <Input id={`${id}-description`} value={s.description} placeholder={bundle?.name ?? ""} onChange={(e) => patchSet(s.key, { description: e.target.value })} />
                   </FormField>
-                  <FormField htmlFor={`${id}-barcode`} label="ERP Barcode" helperText="Optional. The same ERP Barcode goes on every part.">
-                    <Input id={`${id}-barcode`} value={s.barcode} onChange={(e) => patchSet(s.key, { barcode: e.target.value })} />
+                  <FormField htmlFor={`${id}-barcode`} label="ERP Barcode" required helperText="The ERP code of the set (checked when you save), or LOCAL. The same ERP Barcode goes on every part.">
+                    <div className="flex gap-1">
+                      <Input id={`${id}-barcode`} value={s.barcode} onChange={(e) => patchSet(s.key, { barcode: e.target.value })} />
+                      <Button type="button" variant="outline" size="sm" className="h-10 shrink-0" onClick={() => patchSet(s.key, { barcode: "LOCAL" })}>Local</Button>
+                    </div>
                   </FormField>
                   <FormField htmlFor={`${id}-warranty`} label="Warranty Years">
                     <Input id={`${id}-warranty`} type="number" min={0} step={1} value={s.warranty} onChange={(e) => patchSet(s.key, { warranty: e.target.value })} />

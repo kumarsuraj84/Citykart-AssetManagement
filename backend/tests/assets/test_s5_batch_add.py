@@ -278,11 +278,15 @@ async def test_one_asset_by_batch_equals_one_asset_by_add_asset(client):
     assert [getattr(events[0], f) for f in fields] == [getattr(events[1], f) for f in fields]
 
 
-async def test_blank_barcode_is_stored_as_nothing_and_limits_hold(client):
+async def test_a_blank_barcode_is_refused_and_limits_hold(client):
+    """The ERP Barcode is required (an ERP code right for the Item, or LOCAL): blank, even spaces, is refused."""
     w = await build_s4_world()
     h = await login(client, w, "admin")
     resp = await add(client, h, body(w, "gangbox", 1, barcode="   "))
-    assert resp.status_code == 201 and (await assets_of())[0].barcode is None
+    assert resp.status_code == 422 and "Type the ERP code, or LOCAL" in resp.text
+    assert await assets_of() == []
+    resp = await add(client, h, body(w, "gangbox", 1, barcode=" LOCAL "))
+    assert resp.status_code == 201 and (await assets_of())[0].barcode == "LOCAL"
     assert (await add(client, h, body(w, "gangbox", 0))).status_code == 422
     too_many = await add(client, h, body(w, "gangbox", 1001))
     assert too_many.status_code == 422 and "Quantity must be at most 1,000." in too_many.json()["detail"]

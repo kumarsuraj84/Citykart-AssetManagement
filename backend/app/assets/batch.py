@@ -31,6 +31,7 @@ from app.bundles.service import split_amounts
 from app.core.deps import check_work_area
 from app.core.problems import Refused, collapse_units, plural
 from app.items.models import Item
+from app.items.erp_code_check import check_erp_code
 from app.masters.brand_areas import brand_fit_problem, domain_of_category
 from app.masters.models import AssetCategory, Brand, CostCenter
 from app.masters.serial_rule import serial_mode_of
@@ -180,6 +181,10 @@ async def add_assets_batch(
         problem("Invoice date cannot be in the future.")
     if po_date is not None and invoice_date is not None and invoice_date < po_date:
         problem(f"The invoice date cannot be before the PO date ({po_date.strftime('%d-%m-%Y')}).")
+    # The ERP Barcode must be right for this Item (an ERP code linked to it, or LOCAL); for a set it is the set's.
+    verdict = await check_erp_code(session, body.get("barcode"), company_id, [item])
+    if not verdict.ok:
+        problem(f"ERP Barcode: {verdict.message}")
     # A set Item (a Desktop) is added as its parts, `quantity` of each: its own path.
     if item.bundle_id is not None:
         return await _add_set(

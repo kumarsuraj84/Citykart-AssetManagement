@@ -16,6 +16,7 @@ from app.asset_users.models import AssetUser
 from app.bundles.models import Bundle
 from app.bundles.service import add_bundle_lines
 from app.core.problems import Refused
+from app.items.erp_code_check import ensure_erp_code
 from app.items.models import Item
 from app.masters.models import Brand
 from app.purchase_orders.models import PurchaseOrder
@@ -26,12 +27,13 @@ def _blank_to_none(value: str | None) -> str | None:
     return (value or "").strip() or None
 
 
-async def _line_values(session: AsyncSession, ln: dict) -> dict:
+async def _line_values(session: AsyncSession, ln: dict, company_id: int | None = None) -> dict:
     item = await session.get(Item, ln["item_id"])
     if item is None:
         raise ValueError("The Item you chose does not exist.")
     if not item.is_active:
         raise ValueError(f"The Item {item.name} is no longer active; choose another.")
+    await ensure_erp_code(session, ln.get("barcode"), company_id, item_id=item.id)
     brand_id = ln.get("brand_id")
     if brand_id is None and item.default_brand_id is not None:
         default = await session.get(Brand, item.default_brand_id)
@@ -56,10 +58,11 @@ async def _line_values(session: AsyncSession, ln: dict) -> dict:
     }
 
 
-async def _set_values(session: AsyncSession, st: dict) -> dict:
+async def _set_values(session: AsyncSession, st: dict, company_id: int | None = None) -> dict:
     bundle = await session.get(Bundle, st["bundle_id"])
     if bundle is None or not bundle.is_active:
         raise ValueError("The set you chose does not exist or is no longer active.")
+    await ensure_erp_code(session, st.get("barcode"), company_id, bundle_id=bundle.id)
     return {
         "bundle_id": bundle.id, "description": _blank_to_none(st.get("description")) or bundle.name,
         "barcode": _blank_to_none(st.get("barcode")), "barcode_optional": True,
@@ -93,7 +96,7 @@ async def create_po_with_lines(
     for position, ln in enumerate(data.get("lines") or [], start=1):
         try:
             async with session.begin_nested():
-                made = await add_pending_asset_line(session, po, await _line_values(session, ln), actor, allowed_domains=allowed_domains)
+                made = await add_pending_asset_line(session, po, await _line_values(session, ln, po.company_id), actor, allowed_domains=allowed_domains)
         except HTTPException as exc:
             raise _labelled(f"Line {position}", exc) from exc
         except ValueError as exc:
@@ -104,7 +107,7 @@ async def create_po_with_lines(
     for position, st in enumerate(data.get("sets") or [], start=1):
         try:
             async with session.begin_nested():
-                made = await add_bundle_lines(session, po, await _set_values(session, st), actor, allowed_domains=allowed_domains)
+                made = await add_bundle_lines(session, po, await _set_values(session, st, po.company_id), actor, allowed_domains=allowed_domains)
         except HTTPException as exc:
             raise _labelled(f"Set {position}", exc) from exc
         except ValueError as exc:

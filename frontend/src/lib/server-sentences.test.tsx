@@ -55,6 +55,8 @@ describe("the server's sentence reaches the screen (real api-client)", () => {
     fireEvent.click(screen.getByLabelText("Line 1 Item"));
     fireEvent.click(await screen.findByRole("option", { name: /^Laptop/ }));
     fireEvent.change(screen.getByLabelText("Line 1 Unit Cost"), { target: { value: "50000" } });
+    fireEvent.click(screen.getByRole("button", { name: "Line 1: more details" }));
+    fireEvent.change(await screen.findByLabelText(/^ERP Barcode/), { target: { value: "LOCAL" } });      // required on every line
     fireEvent.click(screen.getByRole("button", { name: /save po/i }));
 
     const alert = await screen.findByRole("alert");

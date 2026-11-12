@@ -30,6 +30,7 @@ from app.items.lookup import fill_from_item
 from app.asset_users.models import AssetUser
 from app.lifecycle.service import apply_event
 from app.lifecycle.state_machine import LifecycleError
+from app.items.erp_code_check import ensure_erp_code
 from app.masters.brand_areas import brand_fit_problem
 from app.masters.models import AssetCategory, Brand, Vendor
 from app.purchase_orders.models import PendingAsset
@@ -438,6 +439,13 @@ async def _check_edit_values(session: AsyncSession, asset: Asset, data: dict) ->
             not_in_future(data.get("invoice_date"), "Invoice date")
     except ValueError as exc:
         refuse(str(exc))
+    # A changed ERP Barcode must be right for the asset's Item (an ERP code linked to it, or LOCAL).
+    typed_barcode = (data.get("barcode") or "").strip()
+    if typed_barcode and typed_barcode != (asset.barcode or "").strip() and asset.item_id is not None:
+        try:
+            await ensure_erp_code(session, typed_barcode, asset.company_id, item_id=asset.item_id)
+        except ValueError as exc:
+            refuse(str(exc))
     for field, model, what in (("vendor_id", Vendor, "vendor"), ("brand_id", Brand, "brand")):
         if data.get(field) is not None and changed(field):
             obj = await session.get(model, data[field])

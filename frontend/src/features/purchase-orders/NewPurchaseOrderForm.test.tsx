@@ -80,10 +80,18 @@ async function fillHeader(poNo = "PO-1") {
   await pick(/^cost centre/i, /^Head Office$/);
 }
 
-async function fillLine(n: number, itemName: RegExp, qty: string, cost: string) {
+async function fillLine(n: number, itemName: RegExp, qty: string, cost: string, barcode: string | null = "LOCAL") {
   await pick(`Line ${n} Item`, itemName);
   fireEvent.change(screen.getByLabelText(`Line ${n} Quantity`), { target: { value: qty } });
   fireEvent.change(screen.getByLabelText(`Line ${n} Unit Cost`), { target: { value: cost } });
+  // The ERP Barcode (or LOCAL) is required on every line; it sits under "More details".
+  if (barcode !== null) await typeBarcode(n, barcode);
+}
+
+async function typeBarcode(n: number, barcode: string) {
+  const group = screen.getByRole("group", { name: `Line ${n}` });
+  if (!within(group).queryByLabelText(/^ERP Barcode/)) fireEvent.click(screen.getByRole("button", { name: `Line ${n}: more details` }));
+  fireEvent.change(within(screen.getByRole("group", { name: `Line ${n}` })).getByLabelText(/^ERP Barcode/), { target: { value: barcode } });
 }
 
 const saveButton = () => screen.getByRole("button", { name: /^save po$/i });
@@ -110,6 +118,9 @@ describe("New Purchase Order: one screen (S3b-2)", () => {
     expect(screen.getByText(/Line 1: enter the unit cost\./)).toBeInTheDocument();
     expect(saveButton()).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Line 1 Unit Cost"), { target: { value: "55000" } });
+    expect(await screen.findByText(/Line 1: type the ERP Barcode, or LOCAL if it was bought locally/)).toBeInTheDocument();
+    expect(saveButton()).toBeDisabled();
+    await typeBarcode(1, "LOCAL");
     await waitFor(() => expect(saveButton()).not.toBeDisabled());
   });
 
@@ -128,8 +139,8 @@ describe("New Purchase Order: one screen (S3b-2)", () => {
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/purchase-orders/with-lines", {
       company_id: 1, po_number: "PO-1", po_date: expect.any(String), vendor_id: 9, cost_center_id: 3,
       lines: [
-        { item_id: 12, quantity: 2, purchase_cost: 55000, tax_percent: 18 },
-        { item_id: 13, quantity: 1, purchase_cost: 4000, tax_percent: 12 },
+        { item_id: 12, quantity: 2, purchase_cost: 55000, tax_percent: 18, barcode: "LOCAL" },
+        { item_id: 13, quantity: 1, purchase_cost: 4000, tax_percent: 12, barcode: "LOCAL" },
       ],
       sets: [],
     }));
@@ -143,7 +154,7 @@ describe("New Purchase Order: one screen (S3b-2)", () => {
     renderFormAt();
     await ready();
     await fillHeader();
-    await fillLine(1, /^Laptop/, "1", "60000");
+    await fillLine(1, /^Laptop/, "1", "60000", null);
     fireEvent.click(screen.getByRole("button", { name: "Line 1: more details" }));
     const id = (await screen.findByLabelText("Description")).id;
     expect(screen.getByLabelText("Description")).toHaveValue("Laptop");
@@ -153,7 +164,8 @@ describe("New Purchase Order: one screen (S3b-2)", () => {
     expect(chips).toHaveTextContent("IT Fixed Assets › Laptops");
     expect(chips).toHaveTextContent("IT Team");
     expect(chips).toHaveTextContent("Has serial number");
-    expect(screen.getByLabelText("ERP Barcode")).toHaveValue("");             // optional, never required
+    expect(screen.getByLabelText(/^ERP Barcode/)).toHaveValue("");            // required: the ERP code or LOCAL
+    expect(saveButton()).toBeDisabled();
 
     fireEvent.change(document.getElementById(id.replace("description", "model"))!, { target: { value: "Latitude 5440" } });
     fireEvent.change(document.getElementById(id.replace("description", "barcode"))!, { target: { value: "BC-1" } });
@@ -168,9 +180,10 @@ describe("New Purchase Order: one screen (S3b-2)", () => {
     renderFormAt();
     await ready();
     await fillHeader();
-    await fillLine(1, /^Laptop/, "1", "60000");
+    await fillLine(1, /^Laptop/, "1", "60000", null);
     fireEvent.click(screen.getByRole("button", { name: "Line 1: more details" }));
     const id = (await screen.findByLabelText("Description")).id;
+    fireEvent.change(screen.getByLabelText(/^ERP Barcode/), { target: { value: "LOCAL" } });
     fireEvent.change(screen.getByLabelText("Description"), { target: { value: "Laptop for CFO" } });
     await pick(new RegExp(`^Brand$`), /^HP$/);
     fireEvent.change(document.getElementById(id.replace("description", "warranty"))!, { target: { value: "1" } });
@@ -220,6 +233,9 @@ describe("New Purchase Order: one screen (S3b-2)", () => {
     fireEvent.change(screen.getByLabelText("Set 1 amount for CPU"), { target: { value: "700" } });
     expect(screen.getByText(/Set 1: the part amounts must add up to 1,000\.00\./)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Set 1 amount for TFT"), { target: { value: "300" } });
+    expect(screen.getByText(/Set 1: type the ERP Barcode of the set, or LOCAL if it was bought locally/)).toBeInTheDocument();
+    if (!within(set).queryByLabelText(/^ERP Barcode/)) fireEvent.click(screen.getByRole("button", { name: "Set 1: more details" }));
+    fireEvent.change(within(screen.getByLabelText("Set 1")).getByLabelText(/^ERP Barcode/), { target: { value: "LOCAL" } });
     fireEvent.click(saveButton());
     await waitFor(() => expect(sentBody()).toBeDefined());
     expect(sentBody()).toMatchObject({

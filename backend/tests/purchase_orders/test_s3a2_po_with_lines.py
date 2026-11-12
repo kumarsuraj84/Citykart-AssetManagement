@@ -58,7 +58,7 @@ async def test_a_whole_po_is_made_in_one_call_with_defaults_from_the_item(client
     resp = await client.post(URL, headers=h, json=body(w, lines=[
         {"item_id": w["item_it"], "quantity": 2, "purchase_cost": 50000, "tax_percent": 18},
         {"item_id": w["item_it"], "quantity": 1, "purchase_cost": 60000, "brand_id": w["brand"], "model": "Latitude 5440",
-         "description": "  ", "barcode": "  ", "warranty_years": 1},
+         "description": "  ", "warranty_years": 1},
         {"item_id": w["item_later"], "quantity": 1, "purchase_cost": 900, "barcode": "AMP-1"},
         {"item_id": w["item_mouse"], "quantity": 3, "purchase_cost": 300},
     ]))
@@ -68,16 +68,17 @@ async def test_a_whole_po_is_made_in_one_call_with_defaults_from_the_item(client
     assert (po["ordered_units"], po["waiting_units"], po["lines_created"], po["units_created"]) == (7, 7, 4, 7)
     rows = await units(po["id"])
     first, second, amp, mouse = rows[0], rows[2], rows[3], rows[4]
-    assert (first.description, first.brand_id, first.warranty_years, first.barcode, first.model) == ("Laptop", w["brand"], 3, None, None)
+    # (the test client adds the barcode LOCAL to a line that names none: it is required, see test_erp_code_check)
+    assert (first.description, first.brand_id, first.warranty_years, first.barcode, first.model) == ("Laptop", w["brand"], 3, "LOCAL", None)
     assert (first.category_id, first.subcategory_id, first.asset_domain, first.serial_required) == (w["it"], w["lap"], "IT", True)
-    assert (second.description, second.warranty_years, second.barcode) == ("Laptop Dell Latitude 5440", 1, None)
+    assert (second.description, second.warranty_years, second.barcode) == ("Laptop Dell Latitude 5440", 1, "LOCAL")
     assert (amp.barcode, amp.serial_later, amp.brand_id, amp.warranty_years) == ("AMP-1", True, None, 0)
     assert (mouse.serial_required, mouse.description) == (False, "Mouse")
     assert [r.line_no for r in rows] == [1, 1, 2, 3, 4, 4, 4]
     assert (first.tax_percent, float(first.total_cost)) == (18, 59000)
 
 
-async def test_lines_then_sets_get_line_numbers_and_a_set_needs_no_barcode(client):
+async def test_lines_then_sets_get_line_numbers_and_a_set_carries_its_own_barcode(client):
     w = await world()
     h = await login(client, w, "admin")
     resp = await client.post(URL, headers=h, json=body(w, sets=[{"bundle_id": w["kit"], "quantity": 2, "price_per_set": 1000, "tax_percent": 18}]))
@@ -85,8 +86,8 @@ async def test_lines_then_sets_get_line_numbers_and_a_set_needs_no_barcode(clien
     assert (resp.json()["lines_created"], resp.json()["units_created"]) == (3, 6)
     groups = (await client.get(f"/api/purchase-orders/{resp.json()['id']}/line-groups", headers=h)).json()
     assert [(g["line_no"], g["description"], g["ordered"], g["rate"], g["bundle_label"], g["barcode"]) for g in groups] == [
-        (1, "Laptop", 2, 50000.0, None, None), (2, "Desktop Kit - CPU", 2, 800.0, "Desktop Kit", None),
-        (3, "Desktop Kit - Mouse", 2, 200.0, "Desktop Kit", None)]
+        (1, "Laptop", 2, 50000.0, None, "LOCAL"), (2, "Desktop Kit - CPU", 2, 800.0, "Desktop Kit", "LOCAL"),
+        (3, "Desktop Kit - Mouse", 2, 200.0, "Desktop Kit", "LOCAL")]
     edited = await client.post(URL, headers=h, json=body(w, po_number="MAN-2", lines=[], sets=[{
         "bundle_id": w["kit"], "quantity": 1, "price_per_set": 1000, "description": "Reception desktop", "barcode": "KIT-9",
         "part_amounts": [{"part_id": p, "amount": a} for p, a in await _parts_with(w, 700, 300)]}]))
@@ -163,7 +164,7 @@ async def test_limits_per_line_and_per_request(client):
     assert (await client.post(URL, headers=h, json=body(w, lines=entries[:50], sets=sets[:50]))).status_code == 201
 
 
-async def test_units_without_a_barcode_are_received_and_their_labels_print(client):
+async def test_units_bought_locally_are_received_and_their_labels_print_from_the_asset_code(client):
     w = await world()
     h = await login(client, w, "admin")
     po = (await client.post(URL, headers=h, json=body(w))).json()
@@ -176,9 +177,9 @@ async def test_units_without_a_barcode_are_received_and_their_labels_print(clien
     asset_ids = [u["delivered_asset_id"] for u in delivered.json()]
     for asset_id in asset_ids:
         asset = (await client.get(f"/api/assets/{asset_id}", headers=h)).json()
-        assert asset["barcode"] is None and asset["asset_code"]
+        assert asset["barcode"] == "LOCAL" and asset["asset_code"]          # the label bars come from the asset code, never the barcode
         for path in (f"/api/assets/{asset_id}/label.png", f"/api/assets/{asset_id}/label.png?symbol=qr", f"/api/assets/{asset_id}/qr.png"):
             label = await client.get(path, headers=h)
             assert label.status_code == 200 and label.headers["content-type"] == "image/png"
     groups = (await client.get(f"/api/purchase-orders/{po['id']}/line-groups", headers=h)).json()
-    assert [(g["received"], g["waiting"], g["status"], g["barcode"]) for g in groups] == [(2, 0, "RECEIVED", None)]
+    assert [(g["received"], g["waiting"], g["status"], g["barcode"]) for g in groups] == [(2, 0, "RECEIVED", "LOCAL")]

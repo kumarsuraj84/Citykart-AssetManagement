@@ -92,6 +92,24 @@ async def _audit_item_edit(session: AsyncSession, item: Item, data: dict, actor,
     })
 
 
+@router.get("/erp-code-check")
+async def erp_code_check(
+    code: str = Query("", max_length=200), item_id: int | None = Query(None), bundle_id: int | None = Query(None),
+    company_id: int | None = Query(None),
+    session: AsyncSession = Depends(get_session), actor=Depends(require_role(*WRITE_ROLES)),
+):
+    """Is this ERP Barcode right for the Item (or set) chosen? The live message under the ERP Barcode box; the
+    server applies the very same check when the entry is saved (app.items.erp_code_check)."""
+    from app.core.deps import ensure_company_in_scope          # local: keeps this router's imports as they were
+    from app.items.erp_code_check import check_erp_code, items_for
+    if company_id is not None:
+        await ensure_company_in_scope(session, actor, company_id)
+    items = await items_for(session, item_id, bundle_id)
+    if not items:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose the Item first.")
+    return (await check_erp_code(session, code, company_id, items)).out()
+
+
 @router.post("", response_model=ItemOut, status_code=201)
 async def create(body: ItemIn, session: AsyncSession = Depends(get_session), actor=Depends(require_small_create("an Item"))):
     """S3a-1: ADMIN and OPERATOR may add an Item while working (e.g. reviewing

@@ -64,6 +64,16 @@ interface Setup {
   conflicts?: { serial: string; asset_code: string }[];
 }
 
+/** What the server's ERP Barcode check would say: CT1 is right for the Item; the others show each refusal. */
+function erpVerdict(code: string) {
+  switch (code.toUpperCase()) {
+    case "CT1": return { state: "OK", ok: true, message: "OK: Laptop (DELL LAPTOP)" };
+    case "CT2": return { state: "OTHER_ITEM", ok: false, message: "CT2 is Mouse, not Laptop." };
+    case "CT3": return { state: "UNLINKED", ok: false, message: "CT3 is an ERP code (NEW THING) that is not linked to any Item yet. Please link it first (Settings › Catalogue › Items › ERP codes)." };
+    default: return { state: "NOT_ERP", ok: false, message: `${code} is not an ERP code. Check it, or type LOCAL if this was bought locally.` };
+  }
+}
+
 function mockApi(s: Setup = {}) {
   const {
     stores = [], sites = [],
@@ -73,6 +83,7 @@ function mockApi(s: Setup = {}) {
     companies = [{ id: 1, name: "Company A" }], caps = ADMIN_BOTH, conflicts = [],
   } = s;
   (apiClient.get as any).mockImplementation(withCapabilities(caps, (path: string) => {
+    if (path.startsWith("/items/erp-code-check")) return Promise.resolve(erpVerdict(new URLSearchParams(path.split("?")[1]).get("code") ?? ""));
     if (path.startsWith("/items")) return Promise.resolve(items);
     if (path.startsWith("/stock-rooms")) return Promise.resolve(rooms);
     if (path.startsWith("/people?kind=stores")) return Promise.resolve(stores);
@@ -124,6 +135,7 @@ async function ready() {
 async function fillEssentials(itemName = "Laptop", qty?: string) {
   await ready();
   await pick(/^item$/i, itemName);
+  fireEvent.change(screen.getByLabelText("ERP Barcode"), { target: { value: "LOCAL" } });       // bought locally: always accepted
   if (qty !== undefined) fireEvent.change(screen.getByLabelText("Quantity"), { target: { value: qty } });
   await pick(/^where do they go$/i, "HO Stock");
   await pick(/^cost centre$/i, "HO01 · Head Office");
@@ -144,7 +156,7 @@ beforeEach(() => {
 afterEach(() => useAuthStore.getState().logout());
 
 describe("Add Assets: the batch form", () => {
-  it("asks only for the essentials; purchase details and the rest are folded away (22 fields -> 4)", async () => {
+  it("asks only for the essentials; purchase details and the rest are folded away (21 fields -> 5)", async () => {
     mockApi();
     renderAt();
     expect(await screen.findByRole("heading", { name: "Add Assets" })).toBeInTheDocument();
@@ -153,7 +165,7 @@ describe("Add Assets: the batch form", () => {
     expect(screen.getByRole("combobox", { name: /^where do they go$/i })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: /^cost centre$/i })).toBeInTheDocument();
     // Folded: nothing of them is on the page until opened.
-    for (const label of ["Vendor", "PO No", "Invoice No", "Brand", "ERP Barcode", "Description", "Warranty years"]) {
+    for (const label of ["Vendor", "PO No", "Invoice No", "Brand", "Description", "Warranty years"]) {
       expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
     }
     expect(screen.getByRole("button", { name: /purchase details/i })).toHaveAttribute("aria-expanded", "false");
@@ -193,7 +205,7 @@ describe("Add Assets: the batch form", () => {
     expect(addButton()).toHaveTextContent("Add 3 assets");
     fireEvent.click(addButton());
     await waitFor(() => expect(lastBatchBody()).toEqual({
-      item_id: 11, quantity: 3, received_into_asset_user_id: 4, cost_center_id: 3, serial_numbers: ["SN-1", "SN-2", "SN-3"],
+      item_id: 11, quantity: 3, received_into_asset_user_id: 4, cost_center_id: 3, barcode: "LOCAL", serial_numbers: ["SN-1", "SN-2", "SN-3"],
     }));
     expect(apiClient.post).not.toHaveBeenCalledWith("/assets", expect.anything());
   });
@@ -236,7 +248,7 @@ describe("Add Assets: the batch form", () => {
     expect(screen.getByRole("radio", { name: "No serial number" })).toHaveAttribute("aria-checked", "true");
     await waitFor(() => expect(addButton()).toBeEnabled());
     fireEvent.click(addButton());
-    await waitFor(() => expect(lastBatchBody()).toEqual({ item_id: 12, quantity: 50, received_into_asset_user_id: 4, cost_center_id: 3 }));
+    await waitFor(() => expect(lastBatchBody()).toEqual({ item_id: 12, quantity: 50, received_into_asset_user_id: 4, cost_center_id: 3, barcode: "LOCAL" }));
   });
 
   it("10 whose serials are read later: one line instead of a box; saved as pending", async () => {
@@ -248,7 +260,7 @@ describe("Add Assets: the batch form", () => {
     expect(screen.queryByLabelText("Serial numbers")).not.toBeInTheDocument();
     await waitFor(() => expect(addButton()).toBeEnabled());
     fireEvent.click(addButton());
-    await waitFor(() => expect(lastBatchBody()).toEqual({ item_id: 13, quantity: 10, received_into_asset_user_id: 4, cost_center_id: 3 }));
+    await waitFor(() => expect(lastBatchBody()).toEqual({ item_id: 13, quantity: 10, received_into_asset_user_id: 4, cost_center_id: 3, barcode: "LOCAL" }));
     expect(await screen.findByText("10 serial numbers pending — enter them later from Assets > Serial Pending.")).toBeInTheDocument();
   });
 
@@ -285,7 +297,51 @@ describe("Add Assets: the batch form", () => {
     expect(screen.getByLabelText("Warranty years")).toHaveValue(3);
     fireEvent.change(screen.getByLabelText("Model"), { target: { value: "Latitude 5440" } });
     expect(screen.getByLabelText("Description")).toHaveAttribute("placeholder", "Laptop Dell Latitude 5440");
-    expect(screen.getByText("The ERP item code, for example CT123456. The same ERP Barcode goes on every part of a set.")).toBeInTheDocument();
+    expect(screen.getByText("The ERP item code, for example CT123456, checked against this Item. Type LOCAL if it was bought locally.")).toBeInTheDocument();
+  });
+
+  it("the ERP Barcode is checked against the Item as it is typed: a right code, another Item's, an unlinked one, a made-up one, LOCAL and blank", async () => {
+    mockApi();
+    renderAt();
+    await ready();
+    expect(screen.getByLabelText("ERP Barcode")).toBeDisabled();                       // nothing to check against before the Item
+    await pick(/^item$/i, "Mouse");
+    await pick(/^where do they go$/i, "HO Stock");
+    await pick(/^cost centre$/i, "HO01 · Head Office");
+    await waitFor(() => expect(whyLine()).toHaveTextContent("ERP Barcode: Type the ERP code, or LOCAL if it was bought locally."));
+    expect(addButton()).toBeDisabled();
+    const box = screen.getByLabelText("ERP Barcode");
+    for (const [typed, said] of [
+      ["CT2", "CT2 is Mouse, not Laptop."],
+      ["CT3", "CT3 is an ERP code (NEW THING) that is not linked to any Item yet. Please link it first (Settings › Catalogue › Items › ERP codes)."],
+      ["CT404", "CT404 is not an ERP code. Check it, or type LOCAL if this was bought locally."],
+    ]) {
+      fireEvent.change(box, { target: { value: typed } });
+      await waitFor(() => expect(whyLine()).toHaveTextContent(`ERP Barcode: ${said}`));
+      expect(addButton()).toBeDisabled();
+    }
+    fireEvent.change(box, { target: { value: "ct1" } });                               // a right code, any letter case
+    await waitFor(() => expect(whyLine()).toHaveTextContent("Ready."));
+    expect(screen.getByText("OK: Laptop (DELL LAPTOP)")).toBeInTheDocument();
+    expect(addButton()).toBeEnabled();
+    fireEvent.change(box, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Bought locally" }));           // the shortcut types LOCAL
+    expect(box).toHaveValue("LOCAL");
+    await waitFor(() => expect(whyLine()).toHaveTextContent("Ready."));
+    expect(screen.getByText("Bought locally.")).toBeInTheDocument();
+  });
+
+  it("the server's refusal of an ERP Barcode is shown under the ERP Barcode box", async () => {
+    mockApi();
+    onBatch(new ApiError("Nothing was added: 1 problem needs fixing.", 422, {
+      problems: [{ message: "ERP Barcode: CT1 is Mouse, not Laptop." }],
+    }), true);
+    renderAt();
+    await fillEssentials("Mouse");
+    await waitFor(() => expect(addButton()).toBeEnabled());
+    fireEvent.click(addButton());
+    expect(await screen.findByText("ERP Barcode: CT1 is Mouse, not Laptop.")).toBeInTheDocument();
+    expect(screen.getByLabelText("ERP Barcode")).toHaveValue("LOCAL");               // nothing typed is lost
   });
 
   it("Where do they go lists Stores, Sites and Stock rooms in groups, leaves out a store's own rooms, and sends the chosen store", async () => {
@@ -310,6 +366,7 @@ describe("Add Assets: the batch form", () => {
     // the store, the real site and the real stock room; the store's own Install Point and Stock Room are not offered
     expect(listed).toEqual(["MMR · Mamura Store · Mamura", "Head Office Site · Head Office", "HO Stock · Head Office"]);
     fireEvent.click(screen.getByRole("option", { name: /Mamura Store/ }));
+    fireEvent.change(screen.getByLabelText("ERP Barcode"), { target: { value: "LOCAL" } });
     await pick(/^cost centre$/i, "HO01 · Head Office");
     await waitFor(() => expect(addButton()).toBeEnabled());
     fireEvent.click(addButton());
@@ -321,6 +378,7 @@ describe("Add Assets: the batch form", () => {
     renderAt();
     await ready();
     await pick(/^item$/i, "Mouse");
+    fireEvent.change(screen.getByLabelText("ERP Barcode"), { target: { value: "LOCAL" } });
     await pick(/^where do they go$/i, "Head Office Site");
     await pick(/^cost centre$/i, "HO01 · Head Office");
     await waitFor(() => expect(addButton()).toBeEnabled());
@@ -359,12 +417,12 @@ describe("Add Assets: the batch form", () => {
     fireEvent.change(screen.getByLabelText("Model"), { target: { value: "MS116" } });
     fireEvent.change(screen.getByLabelText("Warranty years"), { target: { value: "2" } });
     fireEvent.change(screen.getByLabelText("Description"), { target: { value: "Black mouse" } });
-    fireEvent.change(screen.getByLabelText("ERP Barcode"), { target: { value: "BC-1" } });
+    fireEvent.change(screen.getByLabelText("ERP Barcode"), { target: { value: "CT1" } });
     fireEvent.change(screen.getByLabelText("Old asset code"), { target: { value: "OLD-9" } });
     await waitFor(() => expect(addButton()).toBeEnabled());
     fireEvent.click(addButton());
     await waitFor(() => expect(lastBatchBody()).toMatchObject({
-      brand_id: 9, model: "MS116", warranty_years: 2, description: "Black mouse", barcode: "BC-1", legacy_asset_code: "OLD-9",
+      brand_id: 9, model: "MS116", warranty_years: 2, description: "Black mouse", barcode: "CT1", legacy_asset_code: "OLD-9",
     }));
     cleanup();
     vi.clearAllMocks();
@@ -394,7 +452,7 @@ describe("Add Assets: the batch form", () => {
     await waitFor(() => expect(addButton()).toBeEnabled());
     fireEvent.click(addButton());
     await waitFor(() => expect(lastBatchBody()).toEqual({
-      item_id: 12, quantity: 4, received_into_asset_user_id: 4, cost_center_id: 3, vendor_id: 7, po_number: "PO-77", po_date: "2026-01-01",
+      item_id: 12, quantity: 4, received_into_asset_user_id: 4, cost_center_id: 3, barcode: "LOCAL", vendor_id: 7, po_number: "PO-77", po_date: "2026-01-01",
       invoice_number: "INV-9", invoice_date: "2026-02-01", invoice_amount: 4720, purchase_cost: 1000, tax_percent: 18,
     }));
   });
@@ -449,10 +507,12 @@ describe("Add Assets: the batch form", () => {
     await ready();
     await waitFor(() => expect(whyLine()).toHaveTextContent("Why can't I add? Choose the Item. (2 more things to fix)"));
     await pick(/^item$/i, "Mouse");
-    await waitFor(() => expect(whyLine()).toHaveTextContent("Choose where the assets go. (1 more thing to fix)"));
+    await waitFor(() => expect(whyLine()).toHaveTextContent("Choose where the assets go. (2 more things to fix)"));
     await pick(/^where do they go$/i, "HO Stock");
-    await waitFor(() => expect(whyLine()).toHaveTextContent("Choose the Cost Centre."));
+    await waitFor(() => expect(whyLine()).toHaveTextContent("Choose the Cost Centre. (1 more thing to fix)"));
     await pick(/^cost centre$/i, "HO01 · Head Office");
+    await waitFor(() => expect(whyLine()).toHaveTextContent("ERP Barcode: Type the ERP code, or LOCAL if it was bought locally."));
+    fireEvent.change(screen.getByLabelText("ERP Barcode"), { target: { value: "LOCAL" } });
     await waitFor(() => expect(whyLine()).toHaveTextContent("Ready. Ctrl+Enter also adds."));
   });
 
@@ -714,6 +774,7 @@ describe("Add Assets: company, smart defaults and creating what is missing", () 
     renderAt();
     await ready();
     await pick(/^item$/i, "Mouse");
+    fireEvent.change(screen.getByLabelText("ERP Barcode"), { target: { value: "LOCAL" } });
     await pick(/^where do they go$/i, "WH Stock");
     await pick(/^cost centre$/i, "WH · Warehouse");
     await waitFor(() => expect(addButton()).toBeEnabled());
@@ -969,7 +1030,7 @@ describe("Add Assets: a set Item", () => {
     expect(setButton()).toHaveTextContent("Add 1 set (2 assets)");
     fireEvent.click(setButton());
     await waitFor(() => expect(lastBatchBody()).toEqual({
-      item_id: 22, quantity: 1, received_into_asset_user_id: 4, cost_center_id: 3,
+      item_id: 22, quantity: 1, received_into_asset_user_id: 4, cost_center_id: 3, barcode: "LOCAL",
     }));
   });
 
@@ -998,7 +1059,7 @@ describe("Add Assets: a set Item", () => {
     expect(setButton()).toHaveTextContent("Add 2 sets (8 assets)");
     fireEvent.click(setButton());
     await waitFor(() => expect(lastBatchBody()).toEqual({
-      item_id: 21, quantity: 2, received_into_asset_user_id: 4, cost_center_id: 3,
+      item_id: 21, quantity: 2, received_into_asset_user_id: 4, cost_center_id: 3, barcode: "LOCAL",
       part_serials: { "1": ["C1", "C2"], "2": ["T1", "T2"] },
     }));
   });

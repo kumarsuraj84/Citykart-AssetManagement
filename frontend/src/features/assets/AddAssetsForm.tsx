@@ -27,6 +27,7 @@ import { AsyncButton } from "@/components/shared/AsyncButton";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { NewBrandDialog, NewCostCenterDialog, NewVendorDialog } from "@/components/quick-create/masters";
 import { WhereSelect, useWherePlaces } from "@/components/quick-create/WhereSelect";
+import { ErpBarcodeField, useErpCodeCheck } from "../erp/ErpBarcodeField";
 import type { Item } from "../items/types";
 import { ItemFormDialog } from "../items/ItemFormDialog";
 import { PrintLabelsAction } from "../labels/PrintLabelsAction";
@@ -245,7 +246,9 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
   }, [isSet, setParts, preCheck.mode, settledText, settledPartText]);
   const conflicts = useSerialConflicts(typed);
   const check = checkAdd(checkedInput, item, fields, conflicts, serverProblems);
-  const reasons = check.reasons;
+  // The ERP Barcode must be right for the Item (an ERP code linked to it, or LOCAL); the server checks it again on Add.
+  const barcodeCheck = useErpCodeCheck({ code: input.barcode, itemId: item?.id, companyId });
+  const reasons = [...check.reasons, ...barcodeCheck.reasons];
   const qty = check.qty;
 
   const problemsAt = (place: ProblemPlace) => serverProblems.filter((p) => problemPlace(p, fields) === place).map((p) => p.message);
@@ -285,7 +288,7 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
   function submit() {
     if (addMutation.isPending) return;
     // The very latest serial text too (the settled check may be a moment behind the typing).
-    if (checkAdd(input, item, fields, conflicts).reasons.length > 0) return;
+    if (checkAdd(input, item, fields, conflicts).reasons.length > 0 || barcodeCheck.reasons.length > 0) return;
     setServerSummary(null);
     addMutation.mutate();
   }
@@ -380,6 +383,20 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
             {!itemsQ.isLoading && capsSettled && itemsQ.isSuccess && items.length === 0 && !may(caps, "item") && (
               <p className="text-xs text-muted-foreground" role="note">{ASK_TO_ADD.item}</p>
             )}
+          </Field>
+          <Field
+            id="barcode" label="ERP Barcode" required className="sm:col-span-2" problems={problemsAt("barcode")}
+            help={isSet
+              ? "The ERP code of the set (for example the Desktop's), or LOCAL if it was bought locally. The same ERP Barcode goes on every part."
+              : "The ERP item code, for example CT123456, checked against this Item. Type LOCAL if it was bought locally."}
+          >
+            <ErpBarcodeField
+              id="barcode"
+              value={input.barcode}
+              onChange={(v) => edit({ barcode: v }, ["barcode"])}
+              check={barcodeCheck}
+              disabled={!item}
+            />
           </Field>
           <Field
             id="quantity" label="Quantity" required problems={problemsAt("quantity")} error={check.qtyProblem ?? undefined}
@@ -609,7 +626,7 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
       <Fold
         id="add-advanced"
         title="Advanced"
-        hint="Optional: brand, model, warranty, description, ERP barcode, old asset code, extra fields"
+        hint="Optional: brand, model, warranty, description, old asset code, extra fields"
         open={advancedOpen}
         onToggle={() => setAdvancedOpen((o) => !o)}
       >
@@ -648,9 +665,6 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
               placeholder={descriptionDefault || "Item name, brand and model"}
               onChange={(e) => edit({ description: e.target.value }, ["advanced"])}
             />
-          </Field>
-          <Field id="barcode" label="ERP Barcode" help="The ERP item code, for example CT123456. The same ERP Barcode goes on every part of a set.">
-            <Input id="barcode" aria-label="ERP Barcode" value={input.barcode} onChange={(e) => edit({ barcode: e.target.value }, ["advanced"])} />
           </Field>
           {qty === 1 && !isSet && (
             <Field id="legacy-code" label="Old asset code" help="Only when adding one asset that had a code in the previous system.">

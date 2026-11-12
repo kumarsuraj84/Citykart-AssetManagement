@@ -433,13 +433,14 @@ export function buildAddBody(input: AddInput, item: Item | null | undefined, fie
 // ---------------------------------------------------------------------------
 
 /** Where on the screen a server sentence belongs. */
-export type ProblemPlace = "serials" | "item" | "quantity" | "received" | "costCentre" | "purchase" | "advanced" | "fields" | "general";
+export type ProblemPlace = "serials" | "item" | "quantity" | "received" | "costCentre" | "purchase" | "advanced" | "fields" | "barcode" | "general";
 
 /** Puts a refusal sentence next to the part of the form it is about (by its words). */
 export function problemPlace(p: AddProblem, fields: CustomFieldDef[] = []): ProblemPlace {
   if (p.unit_index != null || p.serial) return "serials";
   const m = p.message;
   if (fields.some((f) => m.includes(f.label)) || /extra[- ]field/i.test(m)) return "fields";
+  if (/^ERP Barcode/i.test(m)) return "barcode";
   if (/serial/i.test(m)) return "serials";
   if (/cost cent(re|er)/i.test(m)) return "costCentre";
   if (/received|stock room|place/i.test(m)) return "received";

@@ -1,4 +1,5 @@
 import os
+import re
 import tempfile
 
 # S8: the test run writes its log files into a throw-away directory, never into the dev stack's /data/logs.
@@ -97,8 +98,29 @@ async def _truncate_tables():
     yield
 
 
+class _TestClient(AsyncClient):
+    """The suite's HTTP client. Entering something BY HAND (Add Assets, a manual PO line or set) now needs an ERP
+    Barcode that is right for the Item, or LOCAL (app/items/erp_code_check.py). Most tests are about something else
+    and never mention a barcode, so a request to one of those routes that leaves `barcode` out gets `"LOCAL"` (always
+    accepted). A test about the rule itself sends `barcode` explicitly (even blank or null) and is not touched."""
+    _MANUAL_ENTRY = re.compile(r"^/api/(assets/batch|purchase-orders/(with-lines|\d+/lines|\d+/bundle-lines))$")
+
+    @staticmethod
+    def _with_barcode(entry):
+        return {**entry, "barcode": "LOCAL"} if isinstance(entry, dict) and "barcode" not in entry else entry
+
+    async def post(self, url, *args, **kwargs):
+        body = kwargs.get("json")
+        if isinstance(body, dict) and self._MANUAL_ENTRY.match(str(url).split("?")[0]):
+            body = self._with_barcode(body)
+            if str(url).split("?")[0].endswith("/with-lines"):
+                body = {**body, **{key: [self._with_barcode(e) for e in body[key]] for key in ("lines", "sets") if isinstance(body.get(key), list)}}
+            kwargs["json"] = body
+        return await super().post(url, *args, **kwargs)
+
+
 @pytest.fixture
 async def client():
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as c:
+    async with _TestClient(transport=transport, base_url="http://test") as c:
         yield c

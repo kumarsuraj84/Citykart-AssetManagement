@@ -22,7 +22,8 @@ def key() -> str:
 
 
 def batch_body(w, quantity=2, **over):
-    body = {"item_id": w["item_chair"], "quantity": quantity, "received_into_asset_user_id": w["stock"], "cost_center_id": w["cc"]}
+    body = {"item_id": w["item_chair"], "quantity": quantity, "received_into_asset_user_id": w["stock"], "cost_center_id": w["cc"],
+            "barcode": "LOCAL"}                  # required; sent raw in one test, where the test client does not add it
     body.update(over)
     return body
 
