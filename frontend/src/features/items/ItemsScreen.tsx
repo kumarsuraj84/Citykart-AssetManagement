@@ -34,12 +34,14 @@ export function ItemsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => apiClient.get<Item[]>("/items") });
   const categoriesQ = useQuery({ queryKey: ["masters", "categories"], queryFn: () => apiClient.get<Named[]>("/masters/categories") });
   const subsQ = useQuery({ queryKey: ["masters", "subcategories"], queryFn: () => apiClient.get<Sub[]>("/masters/subcategories") });
+  const brandsQ = useQuery({ queryKey: ["masters", "brands"], queryFn: () => apiClient.get<Named[]>("/masters/brands") });
   const items = itemsQ.data ?? [];
   // S6: Item rows carry `is_set` / `bundle_name`; the set list is read only for an older answer without them.
   const needSetNames = Array.isArray(items) && items.some((i) => i.bundle_id != null && i.bundle_name === undefined);
   const bundlesQ = useQuery({ queryKey: ["bundles"], queryFn: () => apiClient.get<Bundle[]>("/bundles"), enabled: needSetNames });
   const categories = categoriesQ.data ?? [];
   const subs = subsQ.data ?? [];
+  const brands = Array.isArray(brandsQ.data) ? brandsQ.data : [];
   const bundles = bundlesQ.data ?? [];
 
   // S7 (final review): a Full Admin of one work area edits / deactivates that area's Items here (server-decided;
@@ -97,6 +99,15 @@ export function ItemsScreen({ embedded = false }: { embedded?: boolean } = {}) {
     {
       key: "serial", header: "Serial number",
       cell: (i) => (i.serial_required && i.serial_later ? "Yes (entered later)" : yesNo(i.serial_required)),
+    },
+    {
+      // The Item's default brand (what Add Assets and a PO line start with); "—" when none is set.
+      key: "brand", header: "Brand",
+      cell: (i) => (i.default_brand_id != null ? brands.find((b) => b.id === i.default_brand_id)?.name ?? "—" : "—"),
+    },
+    {
+      key: "warranty", header: "Warranty",
+      cell: (i) => (i.default_warranty_years ? `${i.default_warranty_years} year${i.default_warranty_years === 1 ? "" : "s"}` : "—"),
     },
     {
       key: "bundle", header: "Comes as a set",

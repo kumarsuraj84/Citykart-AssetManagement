@@ -82,6 +82,23 @@ describe("Items screen", () => {
     expect(await screen.findByText("Accessories › Mouse Unit")).toBeInTheDocument();
   });
 
+  it("shows each Item's default brand and warranty in their own columns ('—' when none is set)", async () => {
+    mockApi();
+    const prev = (apiClient.get as any).getMockImplementation();
+    (apiClient.get as any).mockImplementation((path: string) =>
+      path === "/items"
+        ? Promise.resolve([item(1, "Desktop", { default_brand_id: 4, default_warranty_years: 3 }), item(2, "Mouse", { default_warranty_years: 1 }), item(3, "UPS")])
+        : prev(path));
+    renderAt("/settings/catalogue/items");
+    expect(await screen.findByRole("columnheader", { name: "Brand" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Warranty" })).toBeInTheDocument();
+    const rowOf = (name: string) => screen.getByText(name).closest("tr") as HTMLElement;
+    await waitFor(() => expect(within(rowOf("Desktop")).getByText("Dell")).toBeInTheDocument());
+    expect(within(rowOf("Desktop")).getByText("3 years")).toBeInTheDocument();
+    expect(within(rowOf("Mouse")).getByText("1 year")).toBeInTheDocument();
+    expect(within(rowOf("UPS")).queryByText(/year|Dell/)).not.toBeInTheDocument();
+  });
+
   it("S6: the set comes from the Item row itself (is_set / bundle_name): the sets list is not read", async () => {
     mockApi();
     (apiClient.get as any).mockImplementation(((prev) => (path: string) =>
