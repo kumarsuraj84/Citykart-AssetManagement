@@ -642,7 +642,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
         <FormField htmlFor={`${id}-description`} label="Description" required className="col-span-3">
           <Input id={`${id}-description`} value={l.description} onChange={(e) => setLine(l.uid, { description: e.target.value })} />
         </FormField>
-        <FormField htmlFor={`${id}-barcode`} label="Barcode" helperText="Optional.">
+        <FormField htmlFor={`${id}-barcode`} label="ERP Barcode" helperText="Optional.">
           <Input id={`${id}-barcode`} value={l.barcode} onChange={(e) => setLine(l.uid, { barcode: e.target.value })} />
         </FormField>
         <FormField

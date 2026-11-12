@@ -121,7 +121,7 @@ export function AddBundleDialog({ poId, open, onOpenChange, onAdded }: Props) {
                 <FormField htmlFor="bundle-description" label="Description" required helperText="Each part's line is named “Description - Part”.">
                   <Input id="bundle-description" value={description} onChange={(e) => setDescription(e.target.value)} />
                 </FormField>
-                <FormField htmlFor="bundle-barcode" label="Barcode" required helperText="The same barcode goes on every part.">
+                <FormField htmlFor="bundle-barcode" label="ERP Barcode" required helperText="The ERP item code of the set. The same ERP Barcode goes on every part.">
                   <Input id="bundle-barcode" value={barcode} onChange={(e) => setBarcode(e.target.value)} />
                 </FormField>
                 <FormField htmlFor="bundle-quantity" label="Quantity" required helperText={quantityHint()} errorText={quantityProblem(quantity) ?? undefined}>

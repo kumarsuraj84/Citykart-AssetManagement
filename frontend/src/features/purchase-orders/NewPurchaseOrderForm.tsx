@@ -554,7 +554,7 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
                               onChange={(e) => patchLine(l.key, { description: e.target.value, descriptionTouched: true })}
                             />
                           </FormField>
-                          <FormField htmlFor={`${id}-barcode`} label="Barcode" helperText="Optional.">
+                          <FormField htmlFor={`${id}-barcode`} label="ERP Barcode" helperText="Optional.">
                             <Input id={`${id}-barcode`} value={l.barcode} onChange={(e) => patchLine(l.key, { barcode: e.target.value })} />
                           </FormField>
                           <FormField htmlFor={`${id}-brand`} label="Brand">
@@ -632,7 +632,7 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
                   <FormField htmlFor={`${id}-description`} label="Description" className="col-span-2" helperText="Each part's line is named “Description - Part”.">
                     <Input id={`${id}-description`} value={s.description} placeholder={bundle?.name ?? ""} onChange={(e) => patchSet(s.key, { description: e.target.value })} />
                   </FormField>
-                  <FormField htmlFor={`${id}-barcode`} label="Barcode" helperText="Optional.">
+                  <FormField htmlFor={`${id}-barcode`} label="ERP Barcode" helperText="Optional. The same ERP Barcode goes on every part.">
                     <Input id={`${id}-barcode`} value={s.barcode} onChange={(e) => patchSet(s.key, { barcode: e.target.value })} />
                   </FormField>
                   <FormField htmlFor={`${id}-warranty`} label="Warranty Years">

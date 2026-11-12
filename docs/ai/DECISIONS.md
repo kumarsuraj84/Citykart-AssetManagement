@@ -151,6 +151,14 @@ The Item form is short — Name, Type of asset (one pick of "Group › Sub-categ
 
 **How to apply.** Never copy category, serial rule or defaults into a screen; read the Item. Sub-category is still required by the server, so the Item form chooses the group's only Sub-category itself or offers "New Sub-category".
 
+## 2026-11-12 — (24) The "Barcode" field is called "ERP Barcode" on every screen
+
+**Decision.** In CityKart the barcode people type is always the **ERP item code** (`CT123456`), so every screen that fills in or shows the asset's `barcode` field now says **ERP Barcode** (Add Assets, manual PO lines and sets, the ERP review, edit-a-line, Asset 360 Identity and edit, the register column and search hint, the PO lines table, the change history). The old Add Assets help ("Labels use the Asset Code unless a barcode is given here") was wrong (the printed label's bars and QR always come from the asset code) and is replaced by "The ERP item code, for example CT123456. The same ERP Barcode goes on every part of a set."
+* **Only the wording changed.** The column is still `asset.barcode` / `pending_asset.barcode`, still optional, still not unique, still copied to every part of a set. From the ERP it is pre-filled with the ERP item code (and the asset's `erp_item_code` is set too); by hand it is whatever is typed, and `erp_item_code` stays empty (owner: "no need" to fill it from the typed value, 2026-11-12).
+* **Not renamed:** the import sheet's `Barcode` column (existing sheets keep working), the label-printing choice "Barcode / QR" (that is the symbol on the label), and scan fields.
+
+**How to apply.** New screens that show this field call it ERP Barcode.
+
 ## 2026-11-12 — (23) Pick from ERP can also list POs the ERP has already CLOSED, behind a switch that is off by default
 
 **Decision.** `GPO/000687/26-27` (CKSPL, HOPBOX, ordered 1 / received 1, dated 15 Jul 2026) was in the ERP copy but not in the picker: the picker only listed **OPEN** POs, and the ERP closes a PO when its goods are received.

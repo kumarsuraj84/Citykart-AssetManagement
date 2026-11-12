@@ -473,7 +473,7 @@ describe("AssetDetail (Asset 360)", () => {
     expect(within(region("Identity")).getByText("BC-XYZ789")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
-    const barcodeInput = await screen.findByLabelText(/^barcode$/i);
+    const barcodeInput = await screen.findByLabelText(/^erp barcode$/i);
     fireEvent.change(barcodeInput, { target: { value: "BC-NEW-000" } });
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
 

@@ -211,7 +211,7 @@ function LineUnits({ poId, line, onEditUnit, onCancelUnit }: {
             <TableHeader>
               <TableRow>
                 <TableHead>Description</TableHead>
-                <TableHead>Barcode</TableHead>
+                <TableHead>ERP Barcode</TableHead>
                 {filter === "RECEIVED" && <TableHead>Serial No</TableHead>}
                 {filter === "RECEIVED" && <TableHead>Invoice No</TableHead>}
                 {filter === "RECEIVED" && <TableHead>Asset</TableHead>}

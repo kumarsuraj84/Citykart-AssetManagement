@@ -153,7 +153,7 @@ describe("New Purchase Order: one screen (S3b-2)", () => {
     expect(chips).toHaveTextContent("IT Fixed Assets › Laptops");
     expect(chips).toHaveTextContent("IT Team");
     expect(chips).toHaveTextContent("Has serial number");
-    expect(screen.getByLabelText("Barcode")).toHaveValue("");             // optional, never required
+    expect(screen.getByLabelText("ERP Barcode")).toHaveValue("");             // optional, never required
 
     fireEvent.change(document.getElementById(id.replace("description", "model"))!, { target: { value: "Latitude 5440" } });
     fireEvent.change(document.getElementById(id.replace("description", "barcode"))!, { target: { value: "BC-1" } });

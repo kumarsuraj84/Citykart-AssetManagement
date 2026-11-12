@@ -188,7 +188,7 @@ export function LineEditDialog({ poId, target, onClose, onSaved, itemSelectOptio
               <Input id="edit-description" disabled={!fieldsEditable} value={form.description} onChange={(e) => set({ description: e.target.value })} />
             </FormField>
             {/* S7 fix 2 (N5): optional, as the server treats it (and as in the ERP review). */}
-            <FormField htmlFor="edit-barcode" label="Barcode" helperText="Optional.">
+            <FormField htmlFor="edit-barcode" label="ERP Barcode" helperText="Optional.">
               <Input id="edit-barcode" disabled={!fieldsEditable} value={form.barcode} onChange={(e) => set({ barcode: e.target.value })} />
             </FormField>
             <FormField htmlFor="edit-item" label="Item" helperText="Changing the Item also changes the Category and Sub-category.">

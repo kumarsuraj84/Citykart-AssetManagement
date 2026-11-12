@@ -536,7 +536,7 @@ describe("AssetRegister: S5b-1 one search box, more filters in the address bar",
     mockApi();
     const router = renderRegisterAt();
     const box = await screen.findByLabelText("Search");
-    expect(box).toHaveAttribute("placeholder", "Search asset code, serial, barcode, ERP code, item, vendor, PO number or person…");
+    expect(box).toHaveAttribute("placeholder", "Search asset code, serial, ERP barcode, item, vendor, PO number or person…");
     await screen.findByText("FA/CK/IT/0001");
     const before = registerCalls().length;
     fireEvent.change(box, { target: { value: "l" } });

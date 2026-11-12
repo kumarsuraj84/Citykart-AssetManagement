@@ -796,7 +796,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
                 </label>
               </div>
             </FormField>
-            <FormField htmlFor="edit-barcode" label="Barcode"><Input id="edit-barcode" aria-label="Barcode" value={editForm.barcode} onChange={(e) => setEditField("barcode", e.target.value)} /></FormField>
+            <FormField htmlFor="edit-barcode" label="ERP Barcode"><Input id="edit-barcode" aria-label="ERP Barcode" value={editForm.barcode} onChange={(e) => setEditField("barcode", e.target.value)} /></FormField>
             <FormField htmlFor="edit-legacy" label="Legacy Asset Code"><Input id="edit-legacy" aria-label="Legacy Asset Code" value={editForm.legacyAssetCode} onChange={(e) => setEditField("legacyAssetCode", e.target.value)} /></FormField>
             <FormField htmlFor="edit-vendor" label="Vendor">
               <SearchableSelect
@@ -913,7 +913,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
             <Section title="Identity">
               <dl className="grid gap-3 sm:grid-cols-2">
                 <ReadField label="Serial Number" value={serialValue(asset)} />
-                <ReadField label="Barcode" value={asset.barcode} />
+                <ReadField label="ERP Barcode" value={asset.barcode} />
                 <ReadField label="ERP Item Code" value={asset.erp_item_code ? <span className="font-mono">{asset.erp_item_code}</span> : null} />
                 {asset.part_of_set && (
                   <div className="sm:col-span-2">

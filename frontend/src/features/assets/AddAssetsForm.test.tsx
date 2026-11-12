@@ -146,7 +146,7 @@ describe("Add Assets: the batch form", () => {
     expect(screen.getByRole("combobox", { name: /^received into$/i })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: /^cost centre$/i })).toBeInTheDocument();
     // Folded: nothing of them is on the page until opened.
-    for (const label of ["Vendor", "PO No", "Invoice No", "Brand", "Barcode", "Description", "Warranty years"]) {
+    for (const label of ["Vendor", "PO No", "Invoice No", "Brand", "ERP Barcode", "Description", "Warranty years"]) {
       expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
     }
     expect(screen.getByRole("button", { name: /purchase details/i })).toHaveAttribute("aria-expanded", "false");
@@ -278,7 +278,7 @@ describe("Add Assets: the batch form", () => {
     expect(screen.getByLabelText("Warranty years")).toHaveValue(3);
     fireEvent.change(screen.getByLabelText("Model"), { target: { value: "Latitude 5440" } });
     expect(screen.getByLabelText("Description")).toHaveAttribute("placeholder", "Laptop Dell Latitude 5440");
-    expect(screen.getByText("Labels use the Asset Code unless a barcode is given here.")).toBeInTheDocument();
+    expect(screen.getByText("The ERP item code, for example CT123456. The same ERP Barcode goes on every part of a set.")).toBeInTheDocument();
   });
 
   it("Advanced values are sent only when typed; the old asset code only for one asset", async () => {
@@ -290,7 +290,7 @@ describe("Add Assets: the batch form", () => {
     fireEvent.change(screen.getByLabelText("Model"), { target: { value: "MS116" } });
     fireEvent.change(screen.getByLabelText("Warranty years"), { target: { value: "2" } });
     fireEvent.change(screen.getByLabelText("Description"), { target: { value: "Black mouse" } });
-    fireEvent.change(screen.getByLabelText("Barcode"), { target: { value: "BC-1" } });
+    fireEvent.change(screen.getByLabelText("ERP Barcode"), { target: { value: "BC-1" } });
     fireEvent.change(screen.getByLabelText("Old asset code"), { target: { value: "OLD-9" } });
     await waitFor(() => expect(addButton()).toBeEnabled());
     fireEvent.click(addButton());

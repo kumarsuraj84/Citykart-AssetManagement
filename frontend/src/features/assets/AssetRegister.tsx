@@ -188,7 +188,7 @@ const ASSET_OPTIONAL_COLUMNS: AssetColumnDef[] = [
   { key: "model", label: "Model", defaultVisible: false, cell: (a) => dash(a.model) },
   { key: "asset_domain", label: "Work area", defaultVisible: false, cell: (a) => dash(workAreaLabel(a.work_area ?? a.asset_domain)) },
   { key: "legacy_asset_code", label: "Old asset code", defaultVisible: false, cell: (a) => dash(a.legacy_asset_code) },
-  { key: "barcode", label: "Barcode", defaultVisible: false, cell: (a) => dash(a.barcode) },
+  { key: "barcode", label: "ERP Barcode", defaultVisible: false, cell: (a) => dash(a.barcode) },
   { key: "vendor", label: "Vendor", defaultVisible: false, cell: (a) => dash(a.vendor_name) },
   { key: "cost_center", label: "Cost Centre", defaultVisible: false, cell: (a) => dash(a.cost_center_name) },
   { key: "po_date", label: "PO Date", defaultVisible: false, cell: (a) => dash(a.po_date) },
@@ -229,7 +229,7 @@ function loadVisibleColumnKeys(): string[] {
   }
 }
 
-const SEARCH_PLACEHOLDER = "Search asset code, serial, barcode, ERP code, item, vendor, PO number or person…";
+const SEARCH_PLACEHOLDER = "Search asset code, serial, ERP barcode, item, vendor, PO number or person…";
 
 interface AssetRegisterProps {
   /** The view, from the address bar. */

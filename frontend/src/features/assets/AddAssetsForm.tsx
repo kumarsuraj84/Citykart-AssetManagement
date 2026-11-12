@@ -600,7 +600,7 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
       <Fold
         id="add-advanced"
         title="Advanced"
-        hint="Optional: brand, model, warranty, description, barcode, old asset code, extra fields"
+        hint="Optional: brand, model, warranty, description, ERP barcode, old asset code, extra fields"
         open={advancedOpen}
         onToggle={() => setAdvancedOpen((o) => !o)}
       >
@@ -640,8 +640,8 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
               onChange={(e) => edit({ description: e.target.value }, ["advanced"])}
             />
           </Field>
-          <Field id="barcode" label="Barcode" help="Labels use the Asset Code unless a barcode is given here.">
-            <Input id="barcode" aria-label="Barcode" value={input.barcode} onChange={(e) => edit({ barcode: e.target.value }, ["advanced"])} />
+          <Field id="barcode" label="ERP Barcode" help="The ERP item code, for example CT123456. The same ERP Barcode goes on every part of a set.">
+            <Input id="barcode" aria-label="ERP Barcode" value={input.barcode} onChange={(e) => edit({ barcode: e.target.value }, ["advanced"])} />
           </Field>
           {qty === 1 && !isSet && (
             <Field id="legacy-code" label="Old asset code" help="Only when adding one asset that had a code in the previous system.">

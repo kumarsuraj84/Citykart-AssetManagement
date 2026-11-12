@@ -295,8 +295,8 @@ describe("PurchaseOrderDetail: editing a line (S2)", () => {
 
   it("S7 fix 2 (N5): the barcode is optional, as on the server -- no required mark, and clearing it saves null", async () => {
     const dialog = await openLineEdit();
-    const barcode = within(dialog).getByLabelText(/^barcode/i);
-    expect(within(dialog).getByText("Barcode").closest("label")).not.toHaveTextContent("*");
+    const barcode = within(dialog).getByLabelText(/^erp barcode/i);
+    expect(within(dialog).getByText("ERP Barcode").closest("label")).not.toHaveTextContent("*");
     expect(within(dialog).getByText("Optional.")).toBeInTheDocument();
     fireEvent.change(barcode, { target: { value: "" } });
     const save = within(dialog).getByRole("button", { name: /^save$/i });
@@ -451,7 +451,7 @@ describe("PurchaseOrderDetail: adding lines and sets", () => {
     await waitFor(() => expect(screen.getByLabelText(/^description\*?$/i)).toBeInTheDocument());
 
     fireEvent.change(screen.getByLabelText(/^description\*?$/i), { target: { value: "Dell Laptop" } });
-    fireEvent.change(screen.getByLabelText(/^barcode\*?$/i), { target: { value: "BC-BATCH-9" } });
+    fireEvent.change(screen.getByLabelText(/^erp barcode\*?$/i), { target: { value: "BC-BATCH-9" } });
 
     // The Item alone isn't enough -- Cost/Quantity are also mandatory.
     expect(screen.getByRole("button", { name: /^add line$/i })).toBeDisabled();
@@ -483,7 +483,7 @@ describe("PurchaseOrderDetail: adding lines and sets", () => {
     fireEvent.click(screen.getByRole("button", { name: /\+ add line/i }));
     await waitFor(() => expect(screen.getByLabelText(/^description\*?$/i)).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText(/^description\*?$/i), { target: { value: "Dell Laptop" } });
-    fireEvent.change(screen.getByLabelText(/^barcode\*?$/i), { target: { value: "BC-1" } });
+    fireEvent.change(screen.getByLabelText(/^erp barcode\*?$/i), { target: { value: "BC-1" } });
     fireEvent.click(screen.getByLabelText(/^item\*?$/i));
     fireEvent.click(await screen.findByRole("option", { name: /^Laptop ?· IT Equipment$/ }));
     fireEvent.change(screen.getByLabelText(/^cost\*?$/i), { target: { value: "1000" } });
@@ -517,7 +517,7 @@ describe("PurchaseOrderDetail: adding lines and sets", () => {
     fireEvent.click(screen.getByRole("button", { name: /\+ add line/i }));
     await waitFor(() => expect(screen.getByLabelText(/^description\*?$/i)).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText(/^description\*?$/i), { target: { value: "Dell Laptop" } });
-    fireEvent.change(screen.getByLabelText(/^barcode\*?$/i), { target: { value: "BC-1" } });
+    fireEvent.change(screen.getByLabelText(/^erp barcode\*?$/i), { target: { value: "BC-1" } });
     fireEvent.click(screen.getByLabelText(/^item\*?$/i));
     fireEvent.click(await screen.findByRole("option", { name: /^Laptop ?· IT Equipment$/ }));
     fireEvent.change(screen.getByLabelText(/^cost\*?$/i), { target: { value: "1000" } });
@@ -535,7 +535,7 @@ describe("PurchaseOrderDetail: adding lines and sets", () => {
     await waitFor(() => expect(screen.getByLabelText(/^description\*?$/i)).toBeInTheDocument());
 
     fireEvent.change(screen.getByLabelText(/^description\*?$/i), { target: { value: "Dell Laptop" } });
-    fireEvent.change(screen.getByLabelText(/^barcode\*?$/i), { target: { value: "BC-BATCH-9" } });
+    fireEvent.change(screen.getByLabelText(/^erp barcode\*?$/i), { target: { value: "BC-BATCH-9" } });
 
     fireEvent.click(screen.getByLabelText(/^item\*?$/i));
     fireEvent.click(await screen.findByRole("option", { name: /^Laptop ?· IT Equipment$/ }));

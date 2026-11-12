@@ -228,7 +228,7 @@ const FIELD_LABELS: Record<string, string> = {
   brand_id: "Brand",
   model: "Model",
   serial_number: "Serial number",
-  barcode: "Barcode",
+  barcode: "ERP Barcode",
   description: "Description",
   vendor_id: "Vendor",
   po_number: "PO number",

@@ -352,7 +352,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
               <FormField htmlFor="line-description" label="Description" required>
                 <Input id="line-description" value={lineForm.description} onChange={(e) => setLineForm((f) => ({ ...f, description: e.target.value }))} />
               </FormField>
-              <FormField htmlFor="line-barcode" label="Barcode" required helperText="CityKart's own internal tag — may repeat across assets.">
+              <FormField htmlFor="line-barcode" label="ERP Barcode" required helperText="The ERP item code. It may repeat across assets.">
                 <Input id="line-barcode" value={lineForm.barcode} onChange={(e) => setLineForm((f) => ({ ...f, barcode: e.target.value }))} />
               </FormField>
               <FormField

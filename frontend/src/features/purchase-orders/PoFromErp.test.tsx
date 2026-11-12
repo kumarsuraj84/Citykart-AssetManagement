@@ -997,7 +997,7 @@ describe("S7 fixes in the ERP review", () => {
     await waitFor(() => expect(create).not.toBeDisabled());
     expect(screen.queryByText(/barcode is required/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Line 1: details" }));
-    expect(screen.getByText("Barcode").closest("label")).not.toHaveTextContent("*");
+    expect(screen.getByText("ERP Barcode").closest("label")).not.toHaveTextContent("*");
     fireEvent.click(create);
     await waitFor(() => expect(posted("/erp/pos/create")).toBeDefined());
     expect(posted("/erp/pos/create").lines[0].barcode).toBeNull();

@@ -34,7 +34,7 @@ async function fillDesktop(price = "20000") {
   fireEvent.click(await screen.findByLabelText(/^set\*?$/i));
   fireEvent.click(await screen.findByText("Desktop"));
   fireEvent.change(screen.getByLabelText(/^description\*?$/i), { target: { value: "Dell Desktop i3" } });
-  fireEvent.change(screen.getByLabelText(/^barcode\*?$/i), { target: { value: "CT324973" } });
+  fireEvent.change(screen.getByLabelText(/^erp barcode\*?$/i), { target: { value: "CT324973" } });
   fireEvent.change(screen.getByLabelText(/^quantity\*?$/i), { target: { value: "4" } });
   fireEvent.change(screen.getByLabelText(/price per set/i), { target: { value: price } });
 }
@@ -136,7 +136,7 @@ describe("AddBundleDialog", () => {
     expect(add).toBeDisabled();
     await fillDesktop("1000");
     expect(add).not.toBeDisabled();
-    fireEvent.change(screen.getByLabelText(/^barcode\*?$/i), { target: { value: "  " } });
+    fireEvent.change(screen.getByLabelText(/^erp barcode\*?$/i), { target: { value: "  " } });
     expect(add).toBeDisabled();
   });
 
