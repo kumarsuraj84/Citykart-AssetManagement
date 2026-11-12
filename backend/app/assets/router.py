@@ -30,7 +30,7 @@ from app.items.lookup import fill_from_item
 from app.asset_users.models import AssetUser
 from app.lifecycle.service import apply_event
 from app.lifecycle.state_machine import LifecycleError
-from app.items.erp_code_check import ensure_erp_code
+from app.items.erp_code_check import canonical_barcode, ensure_erp_code
 from app.masters.brand_areas import brand_fit_problem
 from app.masters.models import AssetCategory, Brand, Vendor
 from app.purchase_orders.models import PendingAsset
@@ -446,6 +446,7 @@ async def _check_edit_values(session: AsyncSession, asset: Asset, data: dict) ->
             await ensure_erp_code(session, typed_barcode, asset.company_id, item_id=asset.item_id)
         except ValueError as exc:
             refuse(str(exc))
+        data["barcode"] = canonical_barcode(typed_barcode)
     for field, model, what in (("vendor_id", Vendor, "vendor"), ("brand_id", Brand, "brand")):
         if data.get(field) is not None and changed(field):
             obj = await session.get(model, data[field])

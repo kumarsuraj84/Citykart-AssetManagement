@@ -151,6 +151,17 @@ The Item form is short — Name, Type of asset (one pick of "Group › Sub-categ
 
 **How to apply.** Never copy category, serial rule or defaults into a screen; read the Item. Sub-category is still required by the server, so the Item form chooses the group's only Sub-category itself or offers "New Sub-category".
 
+## 2026-11-12 — (28) OLD STOCK: a second accepted word, and the old-stock Excel import has an ERP Barcode column
+
+**Decision (owner, 2026-11-12).** Old stock is uploaded without an ERP code, so **`OLD STOCK`** is accepted wherever `LOCAL` is (decision 27): any letter case, extra spaces, a dash or underscore between the words (`old-stock`); `OLDSTOCK` is not the two words. `LOCAL` and `OLD STOCK` are **stored written one way** (`canonical_barcode`); a real ERP code is stored as typed.
+* **Add Assets / manual PO / line and asset edits:** the same check, with an "Old stock" button beside "Bought locally" on Add Assets.
+* **Bulk Import › Add New Assets:** a new optional column **ERP Barcode** (`BARCODE_COLUMN`). **Empty cell, or no such column = stored as `OLD STOCK`** (nothing to type on every row). Filled = an ERP code right for the row's Item (company of the row), `LOCAL` or `OLD STOCK`; a wrong one is a row error in the preview. A row that names **no Item** can only say `LOCAL` or `OLD STOCK` (there is nothing to check an ERP code against). The preview shows an "ERP Barcode" column with what each row will get.
+* **Not changed:** the Edit-mode sheet's `Barcode` column is still unchecked; assets already imported keep their empty barcode (no backfill); the PO import is unchanged.
+
+**Why.** Old stock cannot carry an ERP code, and typing a word on every row of a large sheet would be a burden; one default does it.
+
+**How to apply.** A new word goes into `ACCEPTED_WORDS` (backend) and `acceptedWord` (frontend) together.
+
 ## 2026-11-12 — (27) An ERP Barcode typed by hand must be right for the Item, or LOCAL
 
 **Decision (owner's table, 2026-11-12).** When something is added by hand the ERP Barcode is checked against the Item chosen, using the Item's ERP links (per company) and CKAM's copy of the ERP item list (`app/items/erp_code_check.py`):

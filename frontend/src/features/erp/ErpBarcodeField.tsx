@@ -26,8 +26,16 @@ export interface ErpCodeVerdict {
 }
 
 export const LOCAL_WORD = "LOCAL";
-export const BLANK_VERDICT: ErpCodeVerdict = { state: "BLANK", ok: false, message: "Type the ERP code, or LOCAL if it was bought locally." };
+export const OLD_STOCK_WORD = "OLD STOCK";
+export const BLANK_VERDICT: ErpCodeVerdict = { state: "BLANK", ok: false, message: "Type the ERP code, or LOCAL if it was bought locally, or OLD STOCK for old stock." };
 const LOCAL_VERDICT: ErpCodeVerdict = { state: "LOCAL", ok: true, message: "Bought locally." };
+const OLD_STOCK_VERDICT: ErpCodeVerdict = { state: "OLD_STOCK", ok: true, message: "Old stock." };
+
+/** LOCAL or OLD STOCK when that is what was typed (any letter case, extra spaces, a dash or underscore between the words), else null. */
+export function acceptedWord(typed: string): typeof LOCAL_WORD | typeof OLD_STOCK_WORD | null {
+  const words = typed.toUpperCase().replace(/[-_]/g, " ").split(/\s+/).filter(Boolean).join(" ");
+  return words === LOCAL_WORD ? LOCAL_WORD : words === OLD_STOCK_WORD ? OLD_STOCK_WORD : null;
+}
 
 export interface ErpCodeCheck {
   /** The answer for what is typed now; null while it is being asked, when there is no Item yet, or when the check could not be reached. */
@@ -43,8 +51,8 @@ export function useErpCodeCheck({
   const typed = code.trim();
   const settled = useDebounced(typed, 350);
   const hasTarget = itemId != null || bundleId != null;
-  const isLocal = typed.toUpperCase() === LOCAL_WORD;
-  const ask = hasTarget && companyId != null && settled !== "" && settled.toUpperCase() !== LOCAL_WORD;
+  const word = acceptedWord(typed);
+  const ask = hasTarget && companyId != null && settled !== "" && acceptedWord(settled) === null;
   const params = new URLSearchParams({ code: settled });
   if (itemId != null) params.set("item_id", String(itemId));
   if (bundleId != null) params.set("bundle_id", String(bundleId));
@@ -56,7 +64,7 @@ export function useErpCodeCheck({
   });
   if (!hasTarget) return { verdict: null, checking: false, reasons: [] };
   if (typed === "") return { verdict: BLANK_VERDICT, checking: false, reasons: [`ERP Barcode: ${BLANK_VERDICT.message}`] };
-  if (isLocal) return { verdict: LOCAL_VERDICT, checking: false, reasons: [] };
+  if (word) return { verdict: word === LOCAL_WORD ? LOCAL_VERDICT : OLD_STOCK_VERDICT, checking: false, reasons: [] };
   if (typed !== settled || (ask && q.isFetching && !q.data)) {
     return { verdict: null, checking: true, reasons: ["Checking the ERP Barcode…"] };
   }
@@ -82,6 +90,9 @@ export function ErpBarcodeField({
         <Input id={id} aria-label={ariaLabel} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} />
         <Button type="button" variant="outline" size="sm" className="h-10 shrink-0" disabled={disabled} onClick={() => onChange(LOCAL_WORD)}>
           Bought locally
+        </Button>
+        <Button type="button" variant="outline" size="sm" className="h-10 shrink-0" disabled={disabled} onClick={() => onChange(OLD_STOCK_WORD)}>
+          Old stock
         </Button>
       </div>
       <div aria-live="polite" className="min-h-4 text-xs">

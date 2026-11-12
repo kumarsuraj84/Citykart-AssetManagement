@@ -297,7 +297,7 @@ describe("Add Assets: the batch form", () => {
     expect(screen.getByLabelText("Warranty years")).toHaveValue(3);
     fireEvent.change(screen.getByLabelText("Model"), { target: { value: "Latitude 5440" } });
     expect(screen.getByLabelText("Description")).toHaveAttribute("placeholder", "Laptop Dell Latitude 5440");
-    expect(screen.getByText("The ERP item code, for example CT123456, checked against this Item. Type LOCAL if it was bought locally.")).toBeInTheDocument();
+    expect(screen.getByText("The ERP item code, for example CT123456, checked against this Item. Type LOCAL if it was bought locally, or OLD STOCK for old stock.")).toBeInTheDocument();
   });
 
   it("the ERP Barcode is checked against the Item as it is typed: a right code, another Item's, an unlinked one, a made-up one, LOCAL and blank", async () => {
@@ -308,7 +308,7 @@ describe("Add Assets: the batch form", () => {
     await pick(/^item$/i, "Mouse");
     await pick(/^where do they go$/i, "HO Stock");
     await pick(/^cost centre$/i, "HO01 · Head Office");
-    await waitFor(() => expect(whyLine()).toHaveTextContent("ERP Barcode: Type the ERP code, or LOCAL if it was bought locally."));
+    await waitFor(() => expect(whyLine()).toHaveTextContent("ERP Barcode: Type the ERP code, or LOCAL if it was bought locally, or OLD STOCK for old stock."));
     expect(addButton()).toBeDisabled();
     const box = screen.getByLabelText("ERP Barcode");
     for (const [typed, said] of [
@@ -329,6 +329,25 @@ describe("Add Assets: the batch form", () => {
     expect(box).toHaveValue("LOCAL");
     await waitFor(() => expect(whyLine()).toHaveTextContent("Ready."));
     expect(screen.getByText("Bought locally.")).toBeInTheDocument();
+  });
+
+  it("OLD STOCK is accepted like LOCAL, in any spelling, and an Old stock button types it", async () => {
+    mockApi();
+    renderAt();
+    await ready();
+    await pick(/^item$/i, "Mouse");
+    await pick(/^where do they go$/i, "HO Stock");
+    await pick(/^cost centre$/i, "HO01 · Head Office");
+    const box = screen.getByLabelText("ERP Barcode");
+    fireEvent.change(box, { target: { value: " old-stock " } });
+    await waitFor(() => expect(whyLine()).toHaveTextContent("Ready."));
+    expect(screen.getByText("Old stock.")).toBeInTheDocument();
+    fireEvent.change(box, { target: { value: "oldstock" } });                          // not the two words: asked of the server
+    await waitFor(() => expect(whyLine()).toHaveTextContent("ERP Barcode: oldstock is not an ERP code"));
+    fireEvent.click(screen.getByRole("button", { name: "Old stock" }));
+    expect(box).toHaveValue("OLD STOCK");
+    await waitFor(() => expect(whyLine()).toHaveTextContent("Ready."));
+    expect(addButton()).toBeEnabled();
   });
 
   it("the server's refusal of an ERP Barcode is shown under the ERP Barcode box", async () => {
@@ -511,7 +530,7 @@ describe("Add Assets: the batch form", () => {
     await pick(/^where do they go$/i, "HO Stock");
     await waitFor(() => expect(whyLine()).toHaveTextContent("Choose the Cost Centre. (1 more thing to fix)"));
     await pick(/^cost centre$/i, "HO01 · Head Office");
-    await waitFor(() => expect(whyLine()).toHaveTextContent("ERP Barcode: Type the ERP code, or LOCAL if it was bought locally."));
+    await waitFor(() => expect(whyLine()).toHaveTextContent("ERP Barcode: Type the ERP code, or LOCAL if it was bought locally, or OLD STOCK for old stock."));
     fireEvent.change(screen.getByLabelText("ERP Barcode"), { target: { value: "LOCAL" } });
     await waitFor(() => expect(whyLine()).toHaveTextContent("Ready. Ctrl+Enter also adds."));
   });

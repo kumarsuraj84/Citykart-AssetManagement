@@ -11,7 +11,8 @@ say whether the code is right for the Item chosen:
   NOT_TRACKED  a code CKAM is told not to track                             refused
   NOT_ERP      not an ERP code (or not this company's)                      refused
   LOCAL        the word LOCAL, for something bought locally                 accepted
-  BLANK        nothing typed                                                refused ("type the code, or LOCAL")
+  OLD_STOCK    the words OLD STOCK, for old stock uploaded without a code   accepted
+  BLANK        nothing typed                                                refused ("type the code, LOCAL or OLD STOCK")
   UNCHECKED    no ERP copy exists yet (a fresh install): nothing to check   accepted, said so
 
 Only entry by hand is checked. A PO picked from the ERP already carries its ERP code; the Excel imports of old data are
@@ -28,7 +29,24 @@ from app.items.service import resolve_items
 from app.masters.models import Company
 
 LOCAL_WORD = "LOCAL"
+OLD_STOCK_WORD = "OLD STOCK"
+# The words accepted instead of an ERP code: bought locally, or old stock (uploaded without an ERP code).
+ACCEPTED_WORDS = (LOCAL_WORD, OLD_STOCK_WORD)
+BLANK_MESSAGE = "Type the ERP code, or LOCAL if it was bought locally, or OLD STOCK for old stock."
 WHERE_TO_LINK = "Settings › Catalogue › Items › ERP codes"
+
+
+def accepted_word(code: str | None) -> str | None:
+    """LOCAL or OLD STOCK when that is what was typed (any letter case, extra spaces, a dash or underscore between
+    the words are fine), else None."""
+    words = " ".join((code or "").upper().replace("-", " ").replace("_", " ").split())
+    return words if words in ACCEPTED_WORDS else None
+
+
+def canonical_barcode(code: str | None) -> str | None:
+    """What is stored: LOCAL / OLD STOCK written one way, any other text as typed (trimmed), nothing for blank."""
+    typed = (code or "").strip()
+    return (accepted_word(typed) or typed) or None
 REFRESH_HINT = "If it is a new ERP code, ask the head-office admin to use Refresh now in Settings › ERP Data Sync."
 
 
@@ -52,9 +70,12 @@ async def check_erp_code(session: AsyncSession, code: str | None, company_id: in
     """The verdict for `code` typed against the Item(s) chosen (several only for a set: the Items that share it)."""
     typed = (code or "").strip()
     if not typed:
-        return Verdict("BLANK", False, "Type the ERP code, or LOCAL if it was bought locally.")
-    if typed.upper() == LOCAL_WORD:
+        return Verdict("BLANK", False, BLANK_MESSAGE)
+    word = accepted_word(typed)
+    if word == LOCAL_WORD:
         return Verdict("LOCAL", True, "Bought locally.")
+    if word == OLD_STOCK_WORD:
+        return Verdict("OLD_STOCK", True, "Old stock.")
     has_copy = (await session.execute(select(ErpSyncRun.id).where(ErpSyncRun.status == "success").limit(1))).first() is not None
     if not has_copy:
         return Verdict("UNCHECKED", True, "The ERP data has not been copied yet, so this code was not checked.")
@@ -62,7 +83,7 @@ async def check_erp_code(session: AsyncSession, code: str | None, company_id: in
         select(ErpItemCopy).where(func.upper(ErpItemCopy.icode) == typed.upper(), ErpItemCopy.is_present.is_(True)).limit(1)
     )).scalar_one_or_none()
     if row is None:
-        return Verdict("NOT_ERP", False, f"{typed} is not an ERP code. Check it, or type LOCAL if this was bought locally. {REFRESH_HINT}")
+        return Verdict("NOT_ERP", False, f"{typed} is not an ERP code. Check it, or type LOCAL if this was bought locally, or OLD STOCK for old stock. {REFRESH_HINT}")
     company = await session.get(Company, company_id) if company_id is not None else None
     if company is not None and (row.company_code or "").strip().lower() != company.erp_code.lower():
         return Verdict("NOT_ERP", False, f"{row.icode} belongs to the ERP company {row.company_code}, not {company.erp_code}.")

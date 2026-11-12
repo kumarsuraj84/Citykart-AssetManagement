@@ -387,8 +387,8 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
           <Field
             id="barcode" label="ERP Barcode" required className="sm:col-span-2" problems={problemsAt("barcode")}
             help={isSet
-              ? "The ERP code of the set (for example the Desktop's), or LOCAL if it was bought locally. The same ERP Barcode goes on every part."
-              : "The ERP item code, for example CT123456, checked against this Item. Type LOCAL if it was bought locally."}
+              ? "The ERP code of the set (for example the Desktop's), or LOCAL if it was bought locally, or OLD STOCK. The same ERP Barcode goes on every part."
+              : "The ERP item code, for example CT123456, checked against this Item. Type LOCAL if it was bought locally, or OLD STOCK for old stock."}
           >
             <ErpBarcodeField
               id="barcode"

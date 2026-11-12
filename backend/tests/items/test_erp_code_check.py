@@ -67,7 +67,7 @@ async def test_each_kind_of_code_gets_its_verdict(client):
     local = await _check(client, h, w, ids, " local ")
     assert (local["state"], local["ok"]) == ("LOCAL", True)
     blank = await _check(client, h, w, ids, "")
-    assert (blank["state"], blank["ok"], blank["message"]) == ("BLANK", False, "Type the ERP code, or LOCAL if it was bought locally.")
+    assert (blank["state"], blank["ok"], blank["message"]) == ("BLANK", False, "Type the ERP code, or LOCAL if it was bought locally, or OLD STOCK for old stock.")
 
 
 async def test_with_no_erp_copy_yet_a_typed_code_is_accepted_unchecked_but_blank_is_still_refused(client):
@@ -150,3 +150,20 @@ async def test_changing_a_barcode_on_an_asset_is_checked_but_clearing_or_keeping
     assert refused.status_code in (403, 422) and "CT2 is Mouse, not Desktop" in refused.text
     assert (await client.put(f"/api/assets/{asset_id}", headers=h, json={**base, "barcode": "CT1", "model": "x"})).status_code == 200   # unchanged
     assert (await client.put(f"/api/assets/{asset_id}", headers=h, json={**base, "barcode": "LOCAL"})).status_code == 200
+
+
+async def test_old_stock_is_accepted_like_local_in_any_spelling_and_stored_one_way(client):
+    """Old stock is uploaded without an ERP code: OLD STOCK (any letter case, spacing, dash or underscore) is accepted
+    everywhere LOCAL is, and LOCAL / OLD STOCK are stored written one way."""
+    w = await build_world()
+    ids = await _items(w)
+    await _erp_world(w, ids)
+    h = await login(client, w, "admin")
+    for typed in ("OLD STOCK", "old stock", "  Old   Stock ", "old-stock", "OLD_STOCK"):
+        verdict = await _check(client, h, w, ids, typed)
+        assert (verdict["state"], verdict["ok"], verdict["message"]) == ("OLD_STOCK", True, "Old stock."), typed
+    assert (await _check(client, h, w, ids, "OLDSTOCK"))["ok"] is False                 # not the two words
+    for typed in ("old stock", "Local", "OLD-STOCK"):
+        assert (await _add(client, h, w, ids, barcode=typed)).status_code == 201, typed
+    async with SessionLocal() as s:
+        assert sorted(a.barcode for a in (await s.execute(select(Asset))).scalars()) == ["LOCAL", "OLD STOCK", "OLD STOCK"]

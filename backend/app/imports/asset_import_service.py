@@ -45,6 +45,7 @@ from app.asset_users.models import AssetUser
 from app.lifecycle.service import apply_event
 from app.lifecycle.state_machine import LifecycleError
 from app.items.models import Item
+from app.items.erp_code_check import OLD_STOCK_WORD, accepted_word, canonical_barcode, check_erp_code
 from app.masters.brand_areas import brand_fit_problem, domain_of_category
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Location, Vendor
 from app.numbering.models import CodeRule
@@ -68,6 +69,9 @@ from app.imports import erp_check
 RECEIVED_INTO = "Received Into Code"
 RECEIVED_INTO_OLD = "Initial AssetUser Code"
 ITEM_COLUMN = "Item"
+# Optional. Old stock has no ERP code, so an empty cell is stored as OLD STOCK; a filled one must be an ERP code right
+# for the row's Item, LOCAL or OLD STOCK (the same check as Add Assets: app.items.erp_code_check).
+BARCODE_COLUMN = "ERP Barcode"
 
 ADD_TEMPLATE_COLUMNS = [
     "Company Code", "Cost Centre Code", ITEM_COLUMN, "Category Code", "Subcategory Code",
@@ -75,6 +79,7 @@ ADD_TEMPLATE_COLUMNS = [
     "Vendor Code", "PO Number", "PO Date", "Invoice Number", "Invoice Date", "Invoice Amount",
     "PI Number", "PI Date", "Purchase Cost", "Tax %",
     "Brand Code", "Model", "Serial Number", "Warranty Years",
+    BARCODE_COLUMN,
     RECEIVED_INTO, "Quantity",
 ]
 
@@ -592,8 +597,26 @@ async def _validate_add_rows(
             errors.append({"row": row_idx, "message": str(exc)})
             continue
 
+        # The ERP Barcode: empty = OLD STOCK (old stock has no ERP code); filled = an ERP code right for the Item,
+        # LOCAL or OLD STOCK. A row that names no Item can only say LOCAL or OLD STOCK (there is nothing to check a code against).
+        raw_barcode = cell(BARCODE_COLUMN)
+        if _is_blank(raw_barcode):
+            barcode = OLD_STOCK_WORD
+        else:
+            typed_barcode = str(raw_barcode).strip()
+            if item is None and accepted_word(typed_barcode) is None:
+                errors.append({"row": row_idx, "field": BARCODE_COLUMN, "message":
+                               "Name the Item (column Item) to use an ERP code here, or leave ERP Barcode empty, or type LOCAL or OLD STOCK."})
+                continue
+            if item is not None:
+                verdict = await check_erp_code(session, typed_barcode, company.id, [item])
+                if not verdict.ok:
+                    errors.append({"row": row_idx, "field": BARCODE_COLUMN, "message": verdict.message})
+                    continue
+            barcode = canonical_barcode(typed_barcode)
+
         valid_rows.append({
-            "row": row_idx, "legacy_asset_code": cell("Legacy Asset Code"), "company": company,
+            "row": row_idx, "legacy_asset_code": cell("Legacy Asset Code"), "company": company, "barcode": barcode,
             "cost_center": cost_center, "category": category, "subcategory": subcategory, "item": item,
             "description": description, "purchase_date": purchase_date, "asset_user": asset_user,
             "quantity": quantity, "vendor": vendor,
@@ -814,7 +837,7 @@ async def preview_import(
     checks = await erp_check.check_rows(session, valid_rows) if check_erp else None          # old-data import: what the ERP knows
     out_rows = [
         {
-            "row": r["row"], "legacy_asset_code": r["legacy_asset_code"],
+            "row": r["row"], "legacy_asset_code": r["legacy_asset_code"], "barcode": r["barcode"],
             "item": r["item"].name if r["item"] is not None else None,          # S7 (additive)
             "company": r["company"].name, "category": r["category"].name,
             "subcategory": r["subcategory"].name if r["subcategory"] else None,
@@ -965,7 +988,7 @@ async def _commit_add(
                         subcategory_id=r["subcategory"].id if r["subcategory"] else None,
                         item_id=r["item"].id if r["item"] is not None else None,          # S7 (P2-10)
                         brand_id=r["brand"].id if r["brand"] else None, model=r["model"], serial_number=r["serial_number"],
-                        serial_pending=r["serial_pending"], description=r["description"],
+                        barcode=r["barcode"], serial_pending=r["serial_pending"], description=r["description"],
                         vendor_id=r["vendor"].id if r["vendor"] else None,
                         po_number=r["po_number"], po_date=r["po_date"],
                         invoice_number=r["invoice_number"], invoice_date=r["invoice_date"],

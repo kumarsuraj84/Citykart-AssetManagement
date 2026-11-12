@@ -16,7 +16,7 @@ from app.asset_users.models import AssetUser
 from app.bundles.models import Bundle
 from app.bundles.service import add_bundle_lines
 from app.core.problems import Refused
-from app.items.erp_code_check import ensure_erp_code
+from app.items.erp_code_check import canonical_barcode, ensure_erp_code
 from app.items.models import Item
 from app.masters.models import Brand
 from app.purchase_orders.models import PurchaseOrder
@@ -52,7 +52,7 @@ async def _line_values(session: AsyncSession, ln: dict, company_id: int | None =
     if warranty is None:
         warranty = item.default_warranty_years or 0
     return {
-        "item_id": item.id, "description": description, "barcode": _blank_to_none(ln.get("barcode")),
+        "item_id": item.id, "description": description, "barcode": canonical_barcode(ln.get("barcode")),
         "brand_id": brand_id, "model": _blank_to_none(ln.get("model")), "warranty_years": warranty,
         "purchase_cost": ln["purchase_cost"], "tax_percent": ln.get("tax_percent"), "quantity": ln["quantity"],
     }
@@ -65,7 +65,7 @@ async def _set_values(session: AsyncSession, st: dict, company_id: int | None = 
     await ensure_erp_code(session, st.get("barcode"), company_id, bundle_id=bundle.id)
     return {
         "bundle_id": bundle.id, "description": _blank_to_none(st.get("description")) or bundle.name,
-        "barcode": _blank_to_none(st.get("barcode")), "barcode_optional": True,
+        "barcode": canonical_barcode(st.get("barcode")), "barcode_optional": True,
         "quantity": st["quantity"], "price": st["price_per_set"],
         "tax_percent": st.get("tax_percent"), "warranty_years": st.get("warranty_years") or 0,
         "parts": st.get("part_amounts"),

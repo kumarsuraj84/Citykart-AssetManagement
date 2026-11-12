@@ -55,6 +55,8 @@ interface AddPreviewRow {
   description: string;
   asset_user: string;
   quantity: number;
+  /** What the row will get as its ERP Barcode: an ERP code, LOCAL, or OLD STOCK (an empty cell). */
+  barcode?: string | null;
   /** Present when the preview was asked to check with the ERP. */
   erp?: ErpRowCheck;
 }
@@ -137,6 +139,7 @@ const ADD_PREVIEW_COLUMNS: DataTableColumn<AddPreviewRow>[] = [
     cell: (r) => (r.subcategory ? `${r.category} / ${r.subcategory}` : r.category),
   },
   { key: "description", header: "Description", cell: (r) => r.description },
+  { key: "barcode", header: "ERP Barcode", cell: (r) => r.barcode ?? "—" },
   { key: "asset_user", header: "Received Into", cell: (r) => r.asset_user },
   { key: "quantity", header: "Qty", cell: (r) => r.quantity },
 ];
@@ -335,7 +338,10 @@ export function ImportScreen() {
             <span className="font-medium">Item</span> (its name, as in Settings › Items): it decides the Category,
             Sub-category and work area, so those two codes and the Description may then stay empty -- the same rules
             as Add Assets. <span className="font-medium">Received Into Code</span> is the Stock Room the assets go to;{" "}
-            <span className="font-medium">Vendor Code</span> is optional.
+            <span className="font-medium">Vendor Code</span> is optional.{" "}
+            <span className="font-medium">ERP Barcode</span> is optional: old stock has no ERP code, so an empty cell becomes
+            <span className="font-medium"> OLD STOCK</span>; if you fill it, it must be an ERP code that belongs to the Item,{" "}
+            <span className="font-medium">LOCAL</span> or <span className="font-medium">OLD STOCK</span>.
           </p>
         )}
         {mode === "po" && (

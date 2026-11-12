@@ -9,7 +9,7 @@ from app.asset_users.models import AssetUser
 from app.core.deps import check_work_area
 from app.core.validation import MAX_QUANTITY, escape_like
 from app.items.models import Item
-from app.items.erp_code_check import ensure_erp_code
+from app.items.erp_code_check import canonical_barcode, ensure_erp_code
 from app.masters.brand_areas import ensure_brand_fits
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Vendor
 from app.items.lookup import fill_from_item
@@ -787,6 +787,7 @@ async def update_line_group(
     typed = (fields.get("barcode") or "").strip()
     if typed and typed != (template.barcode or "").strip():
         await ensure_erp_code(session, typed, po.company_id, item_id=fields.get("item_id") or template.item_id)
+        fields["barcode"] = canonical_barcode(typed)
     if fields:
         adds_units = quantity is not None and quantity > ordered
         if waiting == 0 and not adds_units:

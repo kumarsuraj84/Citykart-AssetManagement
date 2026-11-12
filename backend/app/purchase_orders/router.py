@@ -23,7 +23,7 @@ from app.assets.models import Asset
 from app.assets.service import find_serials_in_use
 from app.bundles.schemas import BundleLinesIn
 from app.bundles.service import add_bundle_lines
-from app.items.erp_code_check import ensure_erp_code
+from app.items.erp_code_check import canonical_barcode, ensure_erp_code
 from app.lifecycle.state_machine import LifecycleError
 from app.observability import audit as obs_audit
 from app.observability import events as obs_events
@@ -385,7 +385,8 @@ async def add_line(
         # the ERP Barcode must be right for the Item (an ERP code linked to it, or LOCAL)
         await ensure_erp_code(session, body.barcode, po.company_id, item_id=body.item_id)
         lines = await add_pending_asset_line(
-            session, po, body.model_dump(), actor, allowed_domains=await allowed_asset_domains(session, actor),
+            session, po, {**body.model_dump(), "barcode": canonical_barcode(body.barcode)}, actor,
+            allowed_domains=await allowed_asset_domains(session, actor),
         )
     except ValueError as exc:
         await session.rollback()
@@ -413,7 +414,8 @@ async def add_bundle(
         # the ERP Barcode must be right for the set's Item (an ERP code linked to it, or LOCAL)
         await ensure_erp_code(session, body.barcode, po.company_id, bundle_id=body.bundle_id)
         lines = await add_bundle_lines(
-            session, po, body.model_dump(), actor, allowed_domains=await allowed_asset_domains(session, actor),
+            session, po, {**body.model_dump(), "barcode": canonical_barcode(body.barcode)}, actor,
+            allowed_domains=await allowed_asset_domains(session, actor),
         )
     except ValueError as exc:
         await session.rollback()

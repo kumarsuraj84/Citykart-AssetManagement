@@ -73,6 +73,21 @@ describe("ImportScreen", () => {
     expect(screen.getByRole("columnheader", { name: "Type of asset" })).toBeInTheDocument();
   });
 
+  it("old stock: the add-mode help explains the optional ERP Barcode column and the preview shows what each row gets", async () => {
+    (apiClient.post as any).mockResolvedValue({
+      valid_rows: [{ ...VALID_ROW, barcode: "OLD STOCK" }, { ...VALID_ROW, row: 3, barcode: "CT123456" }], errors: [],
+    });
+    render(<ImportScreen />);
+    const help = screen.getByTestId("add-import-help");
+    expect(help).toHaveTextContent("ERP Barcode is optional: old stock has no ERP code, so an empty cell becomes OLD STOCK");
+    expect(help).toHaveTextContent("must be an ERP code that belongs to the Item, LOCAL or OLD STOCK");
+    selectFile();
+    fireEvent.click(screen.getByRole("button", { name: /^preview$/i }));
+    expect(await screen.findByText("CT123456")).toBeInTheDocument();
+    expect(screen.getAllByText("OLD STOCK").length).toBeGreaterThanOrEqual(2);       // in the help, and as the first row's barcode
+    expect(screen.getByRole("columnheader", { name: "ERP Barcode" })).toBeInTheDocument();
+  });
+
   it("disables Commit when preview found no valid rows", async () => {
     (apiClient.post as any).mockResolvedValue({ valid_rows: [], errors: [ROW_ERROR] });
     render(<ImportScreen />);

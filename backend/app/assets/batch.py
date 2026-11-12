@@ -31,7 +31,7 @@ from app.bundles.service import split_amounts
 from app.core.deps import check_work_area
 from app.core.problems import Refused, collapse_units, plural
 from app.items.models import Item
-from app.items.erp_code_check import check_erp_code
+from app.items.erp_code_check import canonical_barcode, check_erp_code
 from app.masters.brand_areas import brand_fit_problem, domain_of_category
 from app.masters.models import AssetCategory, Brand, CostCenter
 from app.masters.serial_rule import serial_mode_of
@@ -230,7 +230,7 @@ async def add_assets_batch(
     base = {
         "company_id": company_id, "cost_center_id": body["cost_center_id"],
         "item_id": item.id, "category_id": item.category_id, "subcategory_id": item.subcategory_id,
-        "erp_item_code": None, "brand_id": brand_id, "model": model, "barcode": _blank_to_none(body.get("barcode")),
+        "erp_item_code": None, "brand_id": brand_id, "model": model, "barcode": canonical_barcode(body.get("barcode")),
         "description": description, "vendor_id": body.get("vendor_id"),
         "po_number": _blank_to_none(body.get("po_number")), "po_date": po_date,
         "invoice_number": _blank_to_none(body.get("invoice_number")), "invoice_date": invoice_date,
@@ -372,7 +372,7 @@ async def _add_set(
             "item_id": part_item.id if part_item is not None else None,
             "category_id": p["category_id"], "subcategory_id": p["subcategory_id"],
             "erp_item_code": None, "brand_id": brand.id if brand is not None else None, "model": None,
-            "barcode": _blank_to_none(body.get("barcode")),
+            "barcode": canonical_barcode(body.get("barcode")),
             "description": description, "vendor_id": body.get("vendor_id"),
             "po_number": _blank_to_none(body.get("po_number")), "po_date": po_date,
             "invoice_number": _blank_to_none(body.get("invoice_number")), "invoice_date": invoice_date,
