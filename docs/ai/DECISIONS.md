@@ -151,6 +151,17 @@ The Item form is short — Name, Type of asset (one pick of "Group › Sub-categ
 
 **How to apply.** Never copy category, serial rule or defaults into a screen; read the Item. Sub-category is still required by the server, so the Item form chooses the group's only Sub-category itself or offers "New Sub-category".
 
+## 2026-11-12 — (23) Pick from ERP can also list POs the ERP has already CLOSED, behind a switch that is off by default
+
+**Decision.** `GPO/000687/26-27` (CKSPL, HOPBOX, ordered 1 / received 1, dated 15 Jul 2026) was in the ERP copy but not in the picker: the picker only listed **OPEN** POs, and the ERP closes a PO when its goods are received.
+* **`GET /api/erp/pos?include_closed=true&closed_days=N`** (default 180, 1–3,650) also returns the POs whose every line is closed or cancelled (`LocalErpSource.closed_pos_with_lines`, one query; a PO that orders nothing, every line cancelled, stays out). The window is the **PO date**: the warehouse keeps no closing date. Each row carries `erp_status` (OPEN / CLOSED) and `assets_already` (live assets of that company that already carry the PO number); with the switch on, `counts.closed` is added. Without it nothing changes (same rows, same counts, home counts and ERP Inbox unaffected).
+* **Screen:** "Also show closed POs" (off), then a window (3 months / **6 months** / 1 year / 2 years); closed rows say "Closed in the ERP (already received)" and, when assets already carry the number, "N assets already carry this PO number. Check before creating it again."
+* **Creating one is allowed** and works like any PO (the draft was already built to carry "closed" and "already received" warnings; the draft now also warns when assets already carry the PO number, for any PO). A PO made this way is expected to be received straight away.
+
+**Why.** Goods are often received in the ERP before anyone makes the PO here, and old POs may still be wanted; always listing closed POs would bury the open ones, and a closed PO's goods may already be in the register (old data, an import), so the duplicate warning is part of the decision.
+
+**How to apply.** Keep the switch off by default; never let the duplicate warning be dropped. The window was 60 days when first proposed; 6 months is the default because the first real case was 120 days old.
+
 ## 2026-11-12 — (22) Old data is tagged from the ERP: full PO / PI / vendor history, a "check with the ERP" step in the import, and "Add all" vendors
 
 **Decision.** The owner will import the old assets with a sheet that carries the **PO number and the vendor's bill number**; the ERP has the matching vendors, POs and PIs, so CKAM uses them.

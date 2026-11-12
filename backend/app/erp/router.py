@@ -19,7 +19,9 @@ from app.erp.schemas import (
     PiApplyIn, PiApplyManyIn, PlacesCreateIn, StoresCreateIn, SyncRunOut, SyncStatusOut, VendorCodesIn,
 )
 from app.erp import setup_from_erp
-from app.erp.service import NotAllowed, build_draft, create_from_draft, erp_po_rows, mark_not_tracked, untracked_codes
+from app.erp.service import (
+    DEFAULT_CLOSED_DAYS, NotAllowed, build_draft, create_from_draft, erp_po_rows, mark_not_tracked, untracked_codes,
+)
 from app.erp.source import ErpSource, ErpUnavailable, ErpViewMissing, get_erp_source, is_configured
 from app.erp.sync import last_runs, run_sync
 from app.erp.warehouse import WarehouseReader, get_warehouse_reader
@@ -629,6 +631,7 @@ READINESS = ("READY", "NEEDS_INPUT")
 async def list_pos(
     readiness: str | None = Query(None), q: str | None = Query(None, max_length=200), company_id: int | None = None,
     envelope: bool = False, only_linked: bool = False,
+    include_closed: bool = False, closed_days: int = Query(DEFAULT_CLOSED_DAYS, ge=1, le=3650),
     session: AsyncSession = Depends(get_session), source: ErpSource = Depends(get_erp_source),
     actor=Depends(require_role(*WRITE_ROLES)),
 ):
@@ -641,12 +644,16 @@ async def list_pos(
     instead of a 503, so the screen never blocks.
     `only_linked=true` (the screen's default) keeps only the POs whose ERP supplier is already linked to a
     vendor; the envelope's `counts.other_suppliers` says how many POs of not-yet-linked suppliers that left out,
-    so the screen can offer them with one click. Without it nothing is left out, as before."""
+    so the screen can offer them with one click. Without it nothing is left out, as before.
+    `include_closed=true` also lists the POs the ERP has already CLOSED (goods received there before anyone
+    made them here), dated within `closed_days` (default 180) -- each row says `erp_status: CLOSED` and
+    `assets_already` (assets that carry its PO number); the envelope's counts then add `closed`."""
     wanted = readiness.strip().upper() if readiness else None
     if wanted is not None and wanted not in READINESS:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose ready or needs input.")
     try:
-        every = await erp_po_rows(session, actor, source, q=q, company_id=company_id)
+        every = await erp_po_rows(session, actor, source, q=q, company_id=company_id,
+                                  include_closed=include_closed, closed_days=closed_days)
         error = None
     except ErpUnavailable as exc:
         if not envelope:
@@ -659,6 +666,8 @@ async def list_pos(
         return shown
     counts = {"all": len(rows), "ready": sum(r["readiness"] == "READY" for r in rows),
               "needs_input": sum(r["readiness"] == "NEEDS_INPUT" for r in rows), "other_suppliers": other_suppliers}
+    if include_closed:
+        counts["closed"] = sum(r["erp_status"] == "CLOSED" for r in rows)
     fresh = await freshness(session)
     if error is not None:
         fresh = {**fresh, "available": False, "message": f"ERP data could not be read. {error}"}

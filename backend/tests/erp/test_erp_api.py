@@ -121,6 +121,12 @@ class FakeErp:
             raise ErpUnavailable(self.down)
         return [p for p in self.pos.values() if p.status == "OPEN" and (company_codes is None or p.company_code in company_codes)]
 
+    async def closed_pos_with_lines(self, company_codes, since):
+        if self.down:
+            raise ErpUnavailable(self.down)
+        return [p for p in self.pos.values() if p.status == "CLOSED" and p.po_date >= since
+                and (company_codes is None or p.company_code in company_codes)]
+
     async def po(self, po_code):
         if self.down:
             raise ErpUnavailable(self.down)

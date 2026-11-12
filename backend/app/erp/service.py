@@ -2,15 +2,17 @@
 from the reviewed draft. Nothing is guessed silently: whatever cannot be
 matched with confidence is left empty with a warning for the review screen."""
 import re
+from datetime import date, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.asset_users.models import AssetUser
+from app.assets.models import Asset
 from app.bundles.models import Bundle
 from app.bundles.service import add_bundle_lines
 from app.core.deps import allowed_asset_domains, check_work_area, ensure_company_in_scope, scoped_company_ids
 from app.core.validation import MAX_QUANTITY
 from app.erp.readiness import (
-    article_names, live_lines, open_erp_pos, problems_for, resolution_of, suggested_scope,
+    article_names, closed_erp_pos, live_lines, open_erp_pos, problems_for, resolution_of, suggested_scope,
 )
 from app.erp.source import ErpPo, ErpSource, ErpUnavailable, ErpVendor
 from app.erp.vendors import (
@@ -172,8 +174,25 @@ def _index_items(erp_items: list) -> dict:
     return out
 
 
+DEFAULT_CLOSED_DAYS = 180
+
+
+async def assets_with_po_number(session: AsyncSession, pairs: set[tuple[int, str]]) -> dict[tuple[int, str], int]:
+    """(company id, PO number) -> how many live assets already carry that PO number (one query). Used to warn that
+    a PO the ERP closed long ago may already be in the register (old data, an import) before it is made again."""
+    if not pairs:
+        return {}
+    rows = (await session.execute(
+        select(Asset.company_id, Asset.po_number, func.count(Asset.id))
+        .where(Asset.deleted_at.is_(None), Asset.po_number.in_({number for _cid, number in pairs}))
+        .group_by(Asset.company_id, Asset.po_number)
+    )).all()
+    return {(cid, number): n for cid, number, n in rows if (cid, number) in pairs}
+
+
 async def erp_po_rows(
     session: AsyncSession, actor: AssetUser, source: ErpSource, *, q: str | None = None, company_id: int | None = None,
+    include_closed: bool = False, closed_days: int = DEFAULT_CLOSED_DAYS,
 ) -> list[dict]:
     """S3a-2: every OPEN ERP PO of the companies this login works in, of EVERY supplier (a PO of a supplier
     not matched yet is listed with the problem "Vendor needs matching.", never left out), not yet created in
@@ -190,6 +209,12 @@ async def erp_po_rows(
     links = await links_of_companies(session, [c.id for c in companies])
     pos = [p for p in await open_erp_pos(source, [c.erp_code for c in companies])
            if p.po_code not in created and (p.company_code or "").lower() in by_erp]
+    if include_closed:
+        # POs the ERP closed (goods received there before anyone made them here), dated within the window. One
+        # whose every line was cancelled orders nothing and stays out.
+        since = date.today() - timedelta(days=closed_days)
+        pos += [p for p in await closed_erp_pos(source, [c.erp_code for c in companies], since)
+                if p.po_code not in created and (p.company_code or "").lower() in by_erp and live_lines(p)]
     codes = sorted({ln.item_code for p in pos for ln in live_lines(p) if ln.item_code})
     erp_items = _index_items(await source.items(codes)) if codes else {}
     rules = await active_rule_sets(session, [c.id for c in companies])
@@ -216,6 +241,8 @@ async def erp_po_rows(
         area_of_category = dict((await session.execute(
             select(AssetCategory.id, AssetCategory.asset_domain).where(AssetCategory.id.in_(category_ids))
         )).all())
+    already = await assets_with_po_number(
+        session, {(by_erp[p.company_code.lower()].id, p.po_number) for p in pos if p.status != "OPEN"})
     out: list[dict] = []
     for p, company, decisions in resolved:
         live = [ln for ln, _res in decisions]
@@ -246,6 +273,9 @@ async def erp_po_rows(
             "undecided_item_count": len(undecided), "tracked_line_count": len(live) - untracked,
             "untracked_line_count": untracked,
             "readiness": "NEEDS_INPUT" if problems else "READY", "problems": problems,
+            # OPEN, or CLOSED (the ERP already received it; only listed when closed POs were asked for) and, for
+            # a closed one, how many assets already carry its PO number in this company.
+            "erp_status": p.status, "assets_already": already.get((company.id, p.po_number), 0),
         }
         if needle and not any(needle in (text or "").casefold() for text in (p.po_number, p.supplier_name, row["vendor_name"])):
             continue
@@ -392,8 +422,16 @@ async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source
     )).scalar_one_or_none()
     if existing is not None:
         warnings.append(f"Purchase order {po.po_number} was already created here; it cannot be created again.")
-    if po.status != "OPEN":
+    if po.status == "CLOSED":
+        warnings.append("This purchase order is closed in the ERP: the goods were already received there. "
+                        "You can still create it here so the assets are tracked.")
+    elif po.status != "OPEN":
         warnings.append(f"This purchase order is {po.status.lower()} in the ERP.")
+    if company is not None:
+        carried = (await assets_with_po_number(session, {(company.id, po.po_number)})).get((company.id, po.po_number), 0)
+        if carried:
+            warnings.append(f"{carried} asset{' already carries' if carried == 1 else 's already carry'} the PO number "
+                            f"{po.po_number} in the register. Check that creating this purchase order does not count the same goods twice.")
 
     brands = (await session.execute(select(Brand).where(Brand.is_active.is_(True)))).scalars().all()
     derived_tax, raw_tax = derive_tax(po)

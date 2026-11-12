@@ -143,6 +143,23 @@ async def test_open_pos_with_lines_and_article_names_from_the_copy(local_source)
     assert names["NOPE"] == set() and all(n.startswith("product") for n in names["ARTICLE 00"])
 
 
+async def test_closed_pos_from_the_copy_are_only_those_with_no_open_line_in_the_window(local_source):
+    await _seed_masters()
+    await _seed_pos(10_000, open_pos=2, lines_per_po=3, closed_pos=2, closed_lines=2)
+    async with SessionLocal() as s:          # PO 10000 gets one CLOSED line beside its open ones: it is still open
+        await s.execute(insert(ErpPoLineCopy), [{
+            "company_code": "CKSPL", "po_line_key": "10000-x", "po_code": 10_000, "po_number": "SPO/10000", "po_date": date(2026, 9, 1),
+            "line_status": "CLOSED", "supplier_code": "S0", "icode": _icode(1), "ordqty": 1, "rate": 1, "line_netamt": 1, "rcqty": 1,
+            "cnlqty": 0, "hdr_netamt": 1, "hdr_chgamt": 0, "row_hash": "x", "first_seen_at": NOW, "last_seen_at": NOW, "is_present": True}])
+        await s.commit()
+    closed = await local_source.closed_pos_with_lines(["CKSPL"], date(2026, 8, 1))
+    assert {p.po_code for p in closed} == {10_002, 10_003}
+    assert all(p.status == "CLOSED" and len(p.lines) == 2 for p in closed)
+    assert await local_source.closed_pos_with_lines(["CKSPL"], date(2026, 9, 2)) == []          # the PO date is the window
+    assert await local_source.closed_pos_with_lines(["CKVPL"], date(2026, 8, 1)) == []
+    assert await local_source.closed_pos_with_lines([], date(2026, 8, 1)) == []
+
+
 async def test_a_copy_the_size_of_the_real_one_is_listed_quickly(client, local_source, capsys):
     ids = await _setup()
     await _seed_masters()

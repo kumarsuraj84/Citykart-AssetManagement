@@ -8,6 +8,7 @@ source, so a fresh install keeps working.
 A PO has no status of its own in the warehouse: it is derived from its lines (`derive_po_status`). Lines
 the warehouse stopped returning (`is_present = false`) are not part of the PO any more."""
 from collections import defaultdict
+from datetime import date
 from sqlalchemy import func, or_, select, tuple_
 
 from app.core.db import SessionLocal
@@ -111,6 +112,25 @@ class LocalErpSource:
             open_keys = open_keys.where(ErpPoLineCopy.company_code.in_(company_codes))
         pos = await self._pos([tuple_(ErpPoLineCopy.company_code, ErpPoLineCopy.po_code).in_(open_keys.distinct())], with_lines=True)
         return sorted((p for p in pos if p.status == "OPEN"), key=lambda p: (p.po_date, p.po_code), reverse=True)
+
+    async def closed_pos_with_lines(self, company_codes: list[str] | None, since: date) -> list[ErpPo]:
+        """POs the ERP has already CLOSED (every line closed or cancelled: the goods were received there) dated
+        `since` or later, with all their lines, in ONE query. The warehouse keeps no closing date, so the PO
+        date is the only window there is. Only used when the person asks for closed POs in the picker."""
+        if not await self._has_copy():
+            return []
+        if company_codes is not None and not company_codes:
+            return []
+        # A PO is closed when no line is OPEN: find the POs that have a line and none open, dated in the window.
+        has_open = select(ErpPoLineCopy.company_code, ErpPoLineCopy.po_code).where(
+            ErpPoLineCopy.is_present.is_(True), ErpPoLineCopy.line_status == "OPEN")
+        recent = select(ErpPoLineCopy.company_code, ErpPoLineCopy.po_code).where(
+            ErpPoLineCopy.is_present.is_(True), ErpPoLineCopy.po_date >= since,
+            tuple_(ErpPoLineCopy.company_code, ErpPoLineCopy.po_code).not_in(has_open.distinct()))
+        if company_codes is not None:
+            recent = recent.where(ErpPoLineCopy.company_code.in_(company_codes))
+        pos = await self._pos([tuple_(ErpPoLineCopy.company_code, ErpPoLineCopy.po_code).in_(recent.distinct())], with_lines=True)
+        return sorted((p for p in pos if p.status == "CLOSED"), key=lambda p: (p.po_date, p.po_code), reverse=True)
 
     async def article_product_names(self, article_keys: list[str], company_code: str | None = None) -> dict[str, set[str]]:
         """S3a-2: for each Article, the product names (the ERP item's own name, normalised) of the codes this

@@ -49,6 +49,10 @@ export interface ErpPoRow {
   untracked_line_count?: number;
   readiness?: "READY" | "NEEDS_INPUT";
   problems?: ErpPoProblem[];
+  /** OPEN, or CLOSED: the ERP already received it (only listed when closed POs are asked for). */
+  erp_status?: string;
+  /** For a closed PO: how many assets already carry its PO number in this company. */
+  assets_already?: number;
 }
 
 export interface ErpFreshness {
@@ -64,7 +68,7 @@ export interface ErpFreshness {
 
 interface ErpPoEnvelope {
   pos: ErpPoRow[];
-  counts?: { all: number; ready: number; needs_input: number; other_suppliers?: number };
+  counts?: { all: number; ready: number; needs_input: number; other_suppliers?: number; closed?: number };
   freshness?: ErpFreshness;
 }
 
@@ -78,14 +82,30 @@ interface Company {
 
 const money = (n: number) => n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+/** How far back a closed PO may be dated (by its PO date; the ERP keeps no closing date). */
+export const CLOSED_WINDOWS: { value: string; label: string }[] = [
+  { value: "90", label: "PO dated in the last 3 months" },
+  { value: "180", label: "PO dated in the last 6 months" },
+  { value: "365", label: "PO dated in the last 1 year" },
+  { value: "730", label: "PO dated in the last 2 years" },
+];
+export const DEFAULT_CLOSED_DAYS = "180";
+
 /** `/erp/pos?envelope=true&…` for the chosen filters. By default only the POs of suppliers already linked to a
- * vendor (`only_linked`); `includeOthers` asks for every open PO, as the screen did before. */
-export function erpPosPath(p: { readiness: Readiness; q: string; companyId: string; includeOthers?: boolean }): string {
+ * vendor (`only_linked`); `includeOthers` asks for every open PO, as the screen did before. `includeClosed` also asks for
+ * the POs the ERP already closed, dated within `closedDays`. */
+export function erpPosPath(p: {
+  readiness: Readiness; q: string; companyId: string; includeOthers?: boolean; includeClosed?: boolean; closedDays?: string;
+}): string {
   const params = new URLSearchParams({ envelope: "true" });
   if (p.readiness !== "ALL") params.set("readiness", p.readiness);
   if (p.q.trim()) params.set("q", p.q.trim());
   if (p.companyId) params.set("company_id", p.companyId);
   if (!p.includeOthers) params.set("only_linked", "true");
+  if (p.includeClosed) {
+    params.set("include_closed", "true");
+    params.set("closed_days", p.closedDays || DEFAULT_CLOSED_DAYS);
+  }
   return `/erp/pos?${params.toString()}`;
 }
 
@@ -96,17 +116,37 @@ function asEnvelope(data: unknown): ErpPoEnvelope {
   return { pos: [] };
 }
 
-/** "Ready", or "Needs your input" with the server's own sentences. */
-function ReadinessChip({ row }: { row: ErpPoRow }) {
-  const needs = row.readiness === "NEEDS_INPUT" || (row.readiness === undefined && row.vendor_id === null);
-  if (!needs) {
-    return <span className="inline-flex rounded-full bg-success-soft px-2 py-0.5 text-xs font-medium text-on-success-soft">Ready</span>;
-  }
-  const sentences = (row.problems ?? []).map((p) => p.message).filter(Boolean);
+/** What the row says about a PO the ERP already closed: that it is, and whether assets already carry its number. */
+function ClosedNote({ row }: { row: ErpPoRow }) {
+  if (row.erp_status !== "CLOSED") return null;
+  const already = row.assets_already ?? 0;
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="inline-flex w-fit rounded-full bg-warning-soft px-2 py-0.5 text-xs font-medium text-on-warning-soft">Needs your input</span>
-      {sentences.length > 0 && <span className="text-xs text-muted-foreground">{sentences.join(" ")}</span>}
+      <span className="inline-flex w-fit rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">Closed in the ERP (already received)</span>
+      {already > 0 && (
+        <span className="text-xs text-on-warning-soft">
+          {already === 1 ? "1 asset already carries" : `${already.toLocaleString("en-IN")} assets already carry`} this PO number. Check before creating it again.
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** "Ready", or "Needs your input" with the server's own sentences; a closed PO also says it is closed. */
+function ReadinessChip({ row }: { row: ErpPoRow }) {
+  const needs = row.readiness === "NEEDS_INPUT" || (row.readiness === undefined && row.vendor_id === null);
+  const sentences = (row.problems ?? []).map((p) => p.message).filter(Boolean);
+  return (
+    <div className="flex flex-col gap-1">
+      {needs ? (
+        <div className="flex flex-col gap-0.5">
+          <span className="inline-flex w-fit rounded-full bg-warning-soft px-2 py-0.5 text-xs font-medium text-on-warning-soft">Needs your input</span>
+          {sentences.length > 0 && <span className="text-xs text-muted-foreground">{sentences.join(" ")}</span>}
+        </div>
+      ) : (
+        <span className="inline-flex w-fit rounded-full bg-success-soft px-2 py-0.5 text-xs font-medium text-on-success-soft">Ready</span>
+      )}
+      <ClosedNote row={row} />
     </div>
   );
 }
@@ -123,6 +163,8 @@ export function PoFromErp() {
   const [readiness, setReadiness] = useState<Readiness>("ALL");
   const [companyId, setCompanyId] = useState("");
   const [includeOthers, setIncludeOthers] = useState(false);
+  const [includeClosed, setIncludeClosed] = useState(false);
+  const [closedDays, setClosedDays] = useState(DEFAULT_CLOSED_DAYS);
   const [selected, setSelected] = useState<number | null>(null);
 
   const statusQ = useQuery({
@@ -131,7 +173,7 @@ export function PoFromErp() {
   });
   const companiesQ = useQuery({ queryKey: ["asset_users", "me", "companies"], queryFn: () => apiClient.get<Company[]>("/asset-users/me/companies") });
   const companies = Array.isArray(companiesQ.data) ? companiesQ.data : [];
-  const path = erpPosPath({ readiness, q, companyId, includeOthers });
+  const path = erpPosPath({ readiness, q, companyId, includeOthers, includeClosed, closedDays });
   const posQ = useQuery({
     queryKey: ["erp", "pos", path],
     queryFn: async () => asEnvelope(await apiClient.get<unknown>(path)),
@@ -209,7 +251,7 @@ export function PoFromErp() {
     <div className="flex flex-col gap-4">
       <PageHeader
         title="Purchase Orders from the ERP"
-        description="Open purchase orders in the ERP from the vendors you have added. Ready ones need only a check; the others say what is needed, and you decide it in the review. Purchase orders of other suppliers are one click away. Nothing is written back to the ERP."
+        description="Open purchase orders in the ERP from the vendors you have added (closed ones are one switch away). Ready ones need only a check; the others say what is needed, and you decide it in the review. Purchase orders of other suppliers are one click away. Nothing is written back to the ERP."
         actions={<Link className="text-sm underline" to="/purchase-orders">Back to Purchase Orders</Link>}
       />
 
@@ -256,7 +298,27 @@ export function PoFromErp() {
                 Also show other suppliers' POs{counts?.other_suppliers !== undefined ? ` (${others.toLocaleString("en-IN")})` : ""}
               </Button>
             )}
+            <Button
+              size="sm" variant={includeClosed ? "default" : "outline"} aria-pressed={includeClosed}
+              onClick={() => setIncludeClosed((v) => !v)}
+            >
+              Also show closed POs{includeClosed && counts?.closed !== undefined ? ` (${counts.closed.toLocaleString("en-IN")})` : ""}
+            </Button>
+            {includeClosed && (
+              <div className="w-60">
+                <SearchableSelect
+                  id="erp-po-closed-window" aria-label="Closed POs dated" value={closedDays}
+                  onValueChange={(v) => setClosedDays(v || DEFAULT_CLOSED_DAYS)} options={CLOSED_WINDOWS}
+                />
+              </div>
+            )}
           </div>
+          {includeClosed && (
+            <p className="text-xs text-muted-foreground">
+              Closed POs are ones the ERP has already received. They are marked, and still need their vendor and items checked like any other.
+              The window uses the PO date (the ERP does not keep the closing date).
+            </p>
+          )}
 
           {freshness && (freshness.data_as_of_text || freshness.message) && (freshnessProblem || !syncLineShown) && (
             <p className="text-xs text-muted-foreground" aria-label={syncLineShown ? "ERP data problem" : "ERP data freshness"}>

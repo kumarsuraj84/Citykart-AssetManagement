@@ -78,6 +78,15 @@ async def open_erp_pos(source: ErpSource, company_codes: list[str]) -> list[ErpP
     return [p for p in out if p.status == "OPEN"]
 
 
+async def closed_erp_pos(source: ErpSource, company_codes: list[str], since) -> list[ErpPo]:
+    """The POs the ERP has already CLOSED (goods received there) dated `since` or later, with their lines. Only
+    CKAM's own ERP copy can answer; before the first copy (or for a stand-in without it) there are none."""
+    reader = getattr(source, "closed_pos_with_lines", None)
+    if reader is None:
+        return []
+    return [p for p in await reader(company_codes, since) if p.status == "CLOSED"]
+
+
 async def article_names(source: ErpSource, article_keys, company_code: str | None) -> dict[str, set[str]]:
     keys = sorted({k for k in article_keys if k})
     if not keys:

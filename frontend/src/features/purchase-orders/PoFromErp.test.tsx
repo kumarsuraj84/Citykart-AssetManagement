@@ -261,6 +261,44 @@ describe("Pick from ERP: every open PO, nothing hidden", () => {
     expect(erpPosPath({ readiness: "ALL", q: "", companyId: "", includeOthers: true })).toBe("/erp/pos?envelope=true");
   });
 
+  it("closed POs are off by default and one switch brings them in, marked, with a window", async () => {
+    const CLOSED_ROW = {
+      ...ROW, po_code: 1132649558, po_number: "GPO/000687/26-27", po_date: "2026-07-15", erp_status: "CLOSED", assets_already: 0,
+    };
+    mockApi({ rows: [ROW], counts: { all: 1, ready: 1, needs_input: 0, other_suppliers: 0 } });
+    renderScreen();
+    await screen.findByText("SPO/012994/26-27");
+    expect(apiClient.get).not.toHaveBeenCalledWith(expect.stringContaining("include_closed"));
+    const toggle = screen.getByRole("button", { name: "Also show closed POs" });
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByRole("combobox", { name: "Closed POs dated" })).not.toBeInTheDocument();
+
+    mockApi({ rows: [ROW, CLOSED_ROW], counts: { all: 2, ready: 2, needs_input: 0, other_suppliers: 0, closed: 1 } });
+    fireEvent.click(toggle);
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/erp/pos?envelope=true&only_linked=true&include_closed=true&closed_days=180"));
+    expect(await screen.findByText("GPO/000687/26-27")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Also show closed POs (1)" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getAllByText("Closed in the ERP (already received)")).toHaveLength(1);       // only the closed row says it
+    expect(screen.getByRole("combobox", { name: "Closed POs dated" })).toBeInTheDocument();
+    await choose(screen.getByRole("combobox", { name: "Closed POs dated" }), "PO dated in the last 1 year");
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/erp/pos?envelope=true&only_linked=true&include_closed=true&closed_days=365"));
+  });
+
+  it("a closed PO says when assets already carry its PO number", async () => {
+    const CLOSED_ROW = { ...ROW, po_number: "GPO/000687/26-27", erp_status: "CLOSED", assets_already: 3 };
+    const ONE = { ...ROW, po_code: 77, po_number: "GPO/000700/26-27", erp_status: "CLOSED", assets_already: 1 };
+    mockApi({ rows: [CLOSED_ROW, ONE] });
+    renderScreen();
+    expect(await screen.findByText("3 assets already carry this PO number. Check before creating it again.")).toBeInTheDocument();
+    expect(screen.getByText("1 asset already carries this PO number. Check before creating it again.")).toBeInTheDocument();
+  });
+
+  it("builds the closed-PO part of the list address", () => {
+    expect(erpPosPath({ readiness: "ALL", q: "", companyId: "", includeClosed: true })).toBe("/erp/pos?envelope=true&only_linked=true&include_closed=true&closed_days=180");
+    expect(erpPosPath({ readiness: "ALL", q: "", companyId: "", includeClosed: true, closedDays: "90" })).toBe("/erp/pos?envelope=true&only_linked=true&include_closed=true&closed_days=90");
+    expect(erpPosPath({ readiness: "ALL", q: "", companyId: "", closedDays: "90" })).toBe("/erp/pos?envelope=true&only_linked=true");
+  });
+
   it("says so when the ERP connection is not set up", async () => {
     mockApi({ configured: false });
     renderScreen();

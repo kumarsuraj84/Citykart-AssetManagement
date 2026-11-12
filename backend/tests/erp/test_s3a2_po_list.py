@@ -1,6 +1,8 @@
 """S3a-2: Pick from ERP lists the open POs of EVERY supplier of the caller's companies, each READY or
 NEEDS_INPUT with its problems in plain words, filterable, with how current the ERP data is."""
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+
+from sqlalchemy import select
 
 from app.core.db import SessionLocal
 from app.erp.mirror_models import ErpSyncRun
@@ -123,6 +125,79 @@ async def test_only_linked_works_with_the_filters_and_with_the_bare_list(client,
     # the bare list (no envelope) is filtered too, and the default is unchanged
     assert [r["po_number"] for r in await rows(client, "OWN", only_linked="true")] == [READY_PO]
     assert {r["po_number"] for r in await rows(client, "OWN")} == {READY_PO, "SPO/BS/5001", "SPO/BS/5002"}
+
+
+def _closed_po(po_code=5101, po_date=None, **over):
+    """A PO the ERP already CLOSED (goods received there) of the linked supplier, one received desktop line."""
+    base = dict(po_code=po_code, po_number=f"GPO/{po_code}/26-27", status="CLOSED",
+                po_date=po_date or date.today() - timedelta(days=120),
+                lines=[line(1, "CT324973", "DELL DESKTOP", 1, 20000, received=1)])
+    base.update(over)
+    return desktop_po(**base)
+
+
+async def test_a_po_the_erp_closed_is_hidden_until_closed_pos_are_asked_for(client, erp):
+    await build_s3a2_world(erp)
+    erp.pos[5101] = _closed_po()
+    assert [r["po_number"] for r in await rows(client)] == [READY_PO]                  # the default is unchanged
+    body = (await client.get("/api/erp/pos", params={"envelope": "true", "include_closed": "true"},
+                             headers=await _headers(client, "OPR"))).json()
+    by = {r["po_number"]: r for r in body["pos"]}
+    assert set(by) == {READY_PO, "GPO/5101/26-27"}
+    assert (by["GPO/5101/26-27"]["erp_status"], by["GPO/5101/26-27"]["assets_already"]) == ("CLOSED", 0)
+    assert by["GPO/5101/26-27"]["readiness"] == "READY"                                 # same readiness rules as any PO
+    assert by[READY_PO]["erp_status"] == "OPEN"
+    assert body["counts"] == {"all": 2, "ready": 2, "needs_input": 0, "other_suppliers": 0, "closed": 1}
+    # no switch, no "closed" count: the answer keeps its old shape
+    off = (await client.get("/api/erp/pos", params={"envelope": "true"}, headers=await _headers(client, "OPR"))).json()
+    assert "closed" not in off["counts"]
+
+
+async def test_closed_pos_follow_the_window_the_company_and_the_cancelled_lines(client, erp):
+    ids = await build_s3a2_world(erp)
+    erp.pos[5101] = _closed_po()                                                         # 120 days old
+    erp.pos[5102] = _closed_po(5102, date.today() - timedelta(days=400))                 # older than any default
+    erp.pos[5103] = _closed_po(5103, supplier_code="77", supplier_name="BLUE STAR LTD", company_code="CKVPL")
+    erp.pos[5104] = _closed_po(5104, lines=[line(1, "CT324973", "DELL DESKTOP", 1, 20000, cancelled=1)])   # orders nothing
+    h = await _headers(client, "OPR")
+
+    async def closed(**params):
+        r = await client.get("/api/erp/pos", params={"include_closed": "true", **params}, headers=h)
+        assert r.status_code == 200, r.text
+        return {p["po_number"] for p in r.json() if p["erp_status"] == "CLOSED"}
+    assert await closed() == {"GPO/5101/26-27"}                                           # 180 days by default; CKVPL's is not this login's
+    assert await closed(closed_days=60) == set()
+    assert await closed(closed_days=500) == {"GPO/5101/26-27", "GPO/5102/26-27"}
+    assert (await client.get("/api/erp/pos", params={"include_closed": "true", "closed_days": 0}, headers=h)).status_code == 422
+
+
+async def test_a_closed_po_says_when_assets_already_carry_its_po_number_and_can_be_created(client, erp):
+    from datetime import date as d
+    from app.assets.models import Asset
+    from app.asset_users.models import AssetUser
+    from app.masters.models import AssetCategory, CostCenter
+    from tests.erp.s3a2_world import create_body
+    ids = await build_s3a2_world(erp)
+    erp.pos[5101] = _closed_po()
+    async with SessionLocal() as s:
+        cat = (await s.execute(select(AssetCategory).where(AssetCategory.code == "COMP"))).scalar_one()
+        cc = (await s.execute(select(CostCenter).where(CostCenter.company_id == ids["spl"]))).scalars().first()
+        holder = (await s.execute(select(AssetUser).where(AssetUser.code == "OPR"))).scalar_one()
+        for n in (1, 2):
+            s.add(Asset(asset_code=f"OLD/{n}", company_id=ids["spl"], cost_center_id=cc.id, category_id=cat.id, description="Old desktop",
+                        po_number="GPO/5101/26-27", purchase_date=d(2026, 7, 20), status="IN_STOCK", current_asset_user_id=holder.id,
+                        status_since=d(2026, 7, 20), asset_domain="IT"))
+        await s.commit()
+    h = await _headers(client, "OPR")
+    [row] = [r for r in await rows(client, include_closed="true") if r["po_number"] == "GPO/5101/26-27"]
+    assert row["assets_already"] == 2
+    draft = (await client.get("/api/erp/pos/5101/draft", headers=h)).json()
+    assert draft["status"] == "CLOSED"
+    assert any("closed in the ERP" in w for w in draft["warnings"])
+    assert any(w.startswith("2 assets already carry the PO number GPO/5101/26-27") for w in draft["warnings"])
+    # a closed PO is not refused: it becomes a CKAM PO like any other, and then leaves the picker
+    assert (await client.post("/api/erp/pos/create", headers=h, json=create_body(draft, ids))).status_code == 201
+    assert [r for r in await rows(client, include_closed="true") if r["po_number"] == "GPO/5101/26-27"] == []
 
 
 async def test_a_failed_refresh_is_said_in_plain_words_with_the_time_of_the_data_in_use(client, erp):
