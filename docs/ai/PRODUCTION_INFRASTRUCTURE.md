@@ -2,7 +2,9 @@
 
 No passwords, keys or tokens are written here, only where they live.
 
-> **Update 2026-11-12:** the live release is **`89d377b`** (`7ea352d` + Add Assets splits a set Item into its parts; no database change, head still `e8a0c2d4f6b8`). `7ea352d` is kept under `releases\` and can be started again (same schema). Pre-deploy backup: `ckassetmanagement_20261112_085816.dump`. Record: `docs/security/CKAM_PRODUCTION_DEPLOYMENT_RECORD_89d377b.md`.
+> **Update 2026-11-12 (later):** the live release is **`201ef76`** (`89d377b` + every supplier that has ever been on a Fixed Assets PO is copied from the ERP; no database change, head `e8a0c2d4f6b8`). `89d377b` is kept under `releases\` and can be started again. Pre-deploy backup: `ckassetmanagement_20261112_094132.dump`. Record: `docs/security/CKAM_PRODUCTION_DEPLOYMENT_RECORD_201ef76.md`.
+>
+> **Update 2026-11-12:** the live release was **`89d377b`** (`7ea352d` + Add Assets splits a set Item into its parts; no database change, head still `e8a0c2d4f6b8`). `7ea352d` is kept under `releases\` and can be started again (same schema). Pre-deploy backup: `ckassetmanagement_20261112_085816.dump`. Record: `docs/security/CKAM_PRODUCTION_DEPLOYMENT_RECORD_89d377b.md`.
 >
 > **Update 2026-11-11:** the live release was **`7ea352d`** (on top of `138e67a` and `0df67d3`: movement redesign releases 1-3, Switch on again for companies, and Add from the ERP for companies, head offices and warehouses), database head `e8a0c2d4f6b8`. Earlier releases are kept under `releases\` (`0b8c525` is the previous one; do not use it as a quick rollback now that the schema has moved: roll forward). Pre-deploy backup: `ckassetmanagement_20261111_124159.dump`. Record: `docs/security/CKAM_PRODUCTION_DEPLOYMENT_RECORD_0df67d3.md`. The release names in the "Releases" row below are history.
 

@@ -1,0 +1,29 @@
+{
+  "name": "ckam-release-201ef76",
+  "purpose": "CKAM release: The ERP copy keeps every supplier that has ever been on a Fixed Assets PO (Add from ERP lists them, e.g. DEV IT SERV), not only suppliers of recent POs",
+  "release_commit": "201ef76e83a535a31ef70be97da440550fa19658",
+  "release_commit_short": "201ef76",
+  "release_sha": "201ef76e83a535a31ef70be97da440550fa19658",
+  "release_sha_short": "201ef76",
+  "release_sha_note": "release_sha / release_sha_short repeat release_commit / release_commit_short because ops/windows/deploy_ckam.ps1.template reads these two names to check that the package is the release it was asked to deploy",
+  "release_tree": "9dbb1a79ea6f29d50d7f519f71dd93f34dce8e3f",
+  "supersedes": "ckam-release-89d377b (live on production since 2026-11-12 09:00 IST)",
+  "branch": "worktree-ckam-build",
+  "default_branch": "claude/brave-euler-07879a",
+  "build_date_utc": "2026-11-12",
+  "built_from": "git archive of the committed tree 201ef76 (no working-tree or untracked files)",
+  "build_host": "dev PC 10.0.0.47 (Windows 11)",
+  "node_version": "v24.14.0",
+  "npm_version": "11.9.0",
+  "frontend_build": "npm ci; VITE_APP_VERSION=201ef76 npm run build; npm run check:build",
+  "python_required": ">=3.13",
+  "constraints_pins": 44,
+  "install_command": "python -m pip install -c <release>\\backend\\constraints.txt -e <release>\\backend",
+  "alembic_head": "e8a0c2d4f6b8",
+  "database_change": "NONE. No migration in this release: production stays at e8a0c2d4f6b8 and alembic upgrade head is a no-op.",
+  "migration_notes": {
+    "rollback": "No schema change, so the previous release 89d377b can be started again from its release folder (same schema). Never start 3b5e842 or older.",
+    "never": "Never start release 3b5e842 or older: it has the IF-01 file-read hole."
+  },
+  "zip_sha256": "not stored inside the zip: see MANIFEST.201ef76.sha256.txt next to the zip"
+}
