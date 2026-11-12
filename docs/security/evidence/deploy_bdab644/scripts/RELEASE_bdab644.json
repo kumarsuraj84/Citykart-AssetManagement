@@ -1,0 +1,29 @@
+{
+  "name": "ckam-release-bdab644",
+  "purpose": "CKAM release: the Items list shows each Item's default Brand and Warranty columns (frontend only)",
+  "release_commit": "bdab644a2315201619e16a958624416e742cff4d",
+  "release_commit_short": "bdab644",
+  "release_sha": "bdab644a2315201619e16a958624416e742cff4d",
+  "release_sha_short": "bdab644",
+  "release_sha_note": "release_sha / release_sha_short repeat release_commit / release_commit_short because ops/windows/deploy_ckam.ps1.template reads these two names to check that the package is the release it was asked to deploy",
+  "release_tree": "90542e993cd29438f7d3a5e9e67dd4b27d9830e0",
+  "supersedes": "ckam-release-2951388 (live on production since 2026-11-12 11:05 IST)",
+  "branch": "worktree-ckam-build",
+  "default_branch": "claude/brave-euler-07879a",
+  "build_date_utc": "2026-11-12",
+  "built_from": "git archive of the committed tree bdab644 (no working-tree or untracked files)",
+  "build_host": "dev PC 10.0.0.47 (Windows 11)",
+  "node_version": "v24.14.0",
+  "npm_version": "11.9.0",
+  "frontend_build": "npm ci; VITE_APP_VERSION=bdab644 npm run build; npm run check:build",
+  "python_required": ">=3.13",
+  "constraints_pins": 44,
+  "install_command": "python -m pip install -c <release>\\backend\\constraints.txt -e <release>\\backend",
+  "alembic_head": "a9c1e3b5d7f2",
+  "database_change": "NONE. No migration in this release: production stays at a9c1e3b5d7f2 and alembic upgrade head is a no-op.",
+  "migration_notes": {
+    "rollback": "No schema change, so the previous release 2951388 can be started again from its release folder (same schema). Never start 3b5e842 or older.",
+    "never": "Never start release 3b5e842 or older: it has the IF-01 file-read hole."
+  },
+  "zip_sha256": "not stored inside the zip: see MANIFEST.bdab644.sha256.txt next to the zip"
+}
