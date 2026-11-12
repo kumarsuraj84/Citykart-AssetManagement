@@ -1,6 +1,6 @@
 # CKAM — Current Stage
 
-> **Update 2026-11-12 (newest):** production runs release **`bdab644`** (= `2951388` + Brand and Warranty columns on the Items list; frontend only, no database change, head still `a9c1e3b5d7f2`). Record: `docs/security/CKAM_PRODUCTION_DEPLOYMENT_RECORD_bdab644.md`.
+> **Update 2026-11-12 (newest):** production runs release **`9c95b1f`** (= `bdab644` + closed ERP POs in Pick from ERP, "Part of set" on Asset 360, ERP Barcode wording, brands by work area, Add Assets "Where do they go", ERP Barcode check; one additive migration, head `b3d5f7a9c1e4`). Record: `docs/security/CKAM_PRODUCTION_DEPLOYMENT_RECORD_9c95b1f.md`. Before it: `bdab644` (Items list Brand and Warranty columns; record `…_bdab644.md`).
 >
 > **Update 2026-11-12 (latest):** production ran release **`2951388`** (= `201ef76` + PI ready in ERP, full ERP PO/PI/vendor history, the old-data import check and Add all suppliers; **one additive migration**, database head `a9c1e3b5d7f2`). Record: `docs/security/CKAM_PRODUCTION_DEPLOYMENT_RECORD_2951388.md`. The paragraphs below are history.
 >

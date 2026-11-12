@@ -2,7 +2,7 @@
 
 No passwords, keys or tokens are written here, only where they live.
 
-> **Update 2026-11-12 (newest):** the live release is **`bdab644`** (`2951388` + Brand and Warranty columns on the Items list; no database change, head `a9c1e3b5d7f2`). `2951388` is kept under `releases\` and can be started again. Pre-deploy backup: `ckassetmanagement_20261112_120451.dump`. Record: `docs/security/CKAM_PRODUCTION_DEPLOYMENT_RECORD_bdab644.md`.
+> **Update 2026-11-12 (newest):** the live release is **`9c95b1f`** (`bdab644` + closed ERP POs in the picker, Part of set, ERP Barcode wording and check, brands by work area, Where do they go; ONE additive migration, head `b3d5f7a9c1e4` adds `brand.work_areas`). `bdab644` is kept under `releases\` and can be started again (it ignores the new column). Pre-deploy backup: `ckassetmanagement_20261112_165758.dump`. Record: `docs/security/CKAM_PRODUCTION_DEPLOYMENT_RECORD_9c95b1f.md`. Before it: `bdab644` (backup `ckassetmanagement_20261112_120451.dump`, record `…_bdab644.md`).
 >
 > **Update 2026-11-12 (latest):** the live release was **`2951388`** (PI ready in ERP, full ERP history, old-data import check, Add all suppliers). **Database head is now `a9c1e3b5d7f2`** (one additive migration: table `erp_pi`). `201ef76` is kept under `releases\` and can be started again (it ignores the new table). Pre-deploy backup: `ckassetmanagement_20261112_110400.dump`. Record: `docs/security/CKAM_PRODUCTION_DEPLOYMENT_RECORD_2951388.md`.
 >

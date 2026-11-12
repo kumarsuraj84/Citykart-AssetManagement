@@ -1,0 +1,29 @@
+{
+  "name": "ckam-release-9c95b1f",
+  "purpose": "CKAM release: closed ERP POs can be shown in Pick from ERP (off by default); Asset 360 says a part was bought as part of a set; the Barcode field is called ERP Barcode; brands say which work areas they are used for; Add Assets asks Where do they go (store / site / stock room); an ERP Barcode typed by hand is checked against the Item (or LOCAL)",
+  "release_commit": "9c95b1fd67029953a00f3ff3d7a432e38d87a73e",
+  "release_commit_short": "9c95b1f",
+  "release_sha": "9c95b1fd67029953a00f3ff3d7a432e38d87a73e",
+  "release_sha_short": "9c95b1f",
+  "release_sha_note": "release_sha / release_sha_short repeat release_commit / release_commit_short because ops/windows/deploy_ckam.ps1.template reads these two names to check that the package is the release it was asked to deploy",
+  "release_tree": "0b92a5f03d4b4164c0c81fd345cc79c7c15f533e",
+  "supersedes": "ckam-release-bdab644 (live on production since 2026-11-12 12:05 IST)",
+  "branch": "worktree-ckam-build",
+  "default_branch": "claude/brave-euler-07879a",
+  "build_date_utc": "2026-11-12",
+  "built_from": "git archive of the committed tree 9c95b1f (no working-tree or untracked files)",
+  "build_host": "dev PC 10.0.0.47 (Windows 11)",
+  "node_version": "v24.14.0",
+  "npm_version": "11.9.0",
+  "frontend_build": "npm ci; VITE_APP_VERSION=9c95b1f npm run build; npm run check:build",
+  "python_required": ">=3.13",
+  "constraints_pins": 44,
+  "install_command": "python -m pip install -c <release>\\backend\\constraints.txt -e <release>\\backend",
+  "alembic_head": "b3d5f7a9c1e4",
+  "database_change": "ONE additive migration: b3d5f7a9c1e4 adds the column brand.work_areas (varchar[], default both IT and NON_IT) and fills each brand from where it is already used (Items that default to it, its assets, its PO lines); a brand used nowhere stays in both areas. No brand, code, name or Item link changes. The database moves from a9c1e3b5d7f2.",
+  "migration_notes": {
+    "rollback": "The previous release bdab644 does not know the new column but ignores it (the column has a default), so it can be started again from its release folder if this release must go back; the column may stay. Never start 3b5e842 or older.",
+    "never": "Never start release 3b5e842 or older: it has the IF-01 file-read hole."
+  },
+  "zip_sha256": "not stored inside the zip: see MANIFEST.9c95b1f.sha256.txt next to the zip"
+}
