@@ -10,6 +10,7 @@ from app.core.security import hash_password
 from app.asset_users.models import AssetUser
 from app.items.models import Item
 from app.masters.models import AssetCategory, AssetSubcategory, Company, CostCenter, Department, Location
+from app.numbering.models import CodeRule
 from app.purchase_orders.models import PendingAsset, PurchaseOrder
 
 
@@ -247,6 +248,74 @@ async def test_four_desktops_become_sixteen_ordinary_lines(client):
     one_of_each = [v[0] for v in by_desc.values()]
     assert sum(float(l.purchase_cost) for l in one_of_each) == 20000
     assert sum(float(l.total_cost) for l in one_of_each) == 23600
+
+
+async def _add_code_rule(po_id: int) -> None:
+    """Delivering makes real assets, which need this company's asset-code rule."""
+    async with SessionLocal() as session:
+        po = await session.get(PurchaseOrder, po_id)
+        session.add(CodeRule(company_id=po.company_id, prefix_template="BND/{category.code}/", suffix_template="",
+                             start_number=1, pad_width=3))
+        await session.commit()
+
+
+async def test_a_delivered_part_says_it_was_bought_as_part_of_the_set_and_carries_the_sets_erp_code(client):
+    """Asset 360 for a CPU that came inside a Desktop: it is its own Item (CPU), it carries the DESKTOP's ERP
+    code (the ERP bought one Desktop), and the server tells the screen which set it belongs to."""
+    ctx = await _setup("P1")
+    await _add_code_rule(ctx["po"])
+    bundle = await _make_desktop(client, ctx)
+    op = await _headers(client, ctx["operator"])
+    resp = await client.post(f"/api/purchase-orders/{ctx['po']}/bundle-lines", headers=op, json={
+        "bundle_id": bundle["id"], "description": "Dell Desktop i3", "barcode": "BC-1",
+        "quantity": 1, "price": 20000, "tax_percent": 18, "warranty_years": 1})
+    assert resp.status_code == 201, resp.text
+    cpu_line = next(l for l in await _lines(ctx["po"]) if l.description.endswith("- CPU"))
+    # The ERP pick path (app.erp.service) hands the Desktop's ERP code to every part's line; the manual
+    # "add a set" request has no field for it, so put it on the line the way the ERP path would.
+    async with SessionLocal() as session:
+        for line in await _lines(ctx["po"]):
+            (await session.get(PendingAsset, line.id)).erp_item_code = "DT-1001"
+        await session.commit()
+    async with SessionLocal() as session:
+        operator_id = (await session.execute(select(AssetUser.id).where(AssetUser.code == ctx["operator"]))).scalar_one()
+    resp = await client.post(f"/api/purchase-orders/{ctx['po']}/deliver", headers=op, json={
+        "invoice_number": "INV-B3", "invoice_date": "2026-02-01", "invoice_amount": 100,
+        "lines": [{"pending_asset_id": cpu_line.id, "serial_number": "SN-CPU-1", "initial_asset_user_id": operator_id}]})
+    assert resp.status_code == 200, resp.text
+    async with SessionLocal() as session:
+        asset_id = (await session.get(PendingAsset, cpu_line.id)).delivered_asset_id
+    assert asset_id is not None
+
+    detail = (await client.get(f"/api/assets/{asset_id}", headers=op)).json()
+    assert detail["part_of_set"] == "Desktop"
+    assert detail["erp_item_code"] == "DT-1001"
+    assert detail["item_id"] == ctx["cpu_item"]                      # still a CPU, never the "Desktop" Item
+
+
+async def test_an_asset_that_is_not_part_of_a_set_has_no_set_name(client):
+    ctx = await _setup("B4")
+    await _add_code_rule(ctx["po"])
+    op =await _headers(client, ctx["operator"])
+    async with SessionLocal() as session:
+        operator = (await session.execute(select(AssetUser).where(AssetUser.code == ctx["operator"]))).scalar_one()
+        po = await session.get(PurchaseOrder, ctx["po"])
+        line = PendingAsset(purchase_order_id=po.id, company_id=po.company_id, description="Loose mouse",
+                            category_id=ctx["acc"], subcategory_id=ctx["ms_sub"], cost_center_id=po.cost_center_id,
+                            item_id=ctx["ms_item"], serial_required=False, asset_domain="IT",
+                            purchase_cost=100, tax_percent=0, tax_amount=0, total_cost=100, line_no=1,
+                            created_by=operator.id, updated_by=operator.id)
+        session.add(line)
+        await session.commit()
+        line_id, operator_id = line.id, operator.id
+    resp = await client.post(f"/api/purchase-orders/{ctx['po']}/deliver", headers=op, json={
+        "invoice_number": "INV-B4", "invoice_date": "2026-02-01", "invoice_amount": 100,
+        "lines": [{"pending_asset_id": line_id, "serial_number": "N/A", "initial_asset_user_id": operator_id}]})
+    assert resp.status_code == 200, resp.text
+    async with SessionLocal() as session:
+        asset_id = (await session.get(PendingAsset, line_id)).delivered_asset_id
+    detail = (await client.get(f"/api/assets/{asset_id}", headers=op)).json()
+    assert detail["part_of_set"] is None
 
 
 async def test_edited_part_amounts_are_used_when_they_add_up_to_the_price(client):

@@ -99,6 +99,8 @@ interface Asset {
   // under (a link back to the PO / receipt / PI, not what the asset IS).
   item_name?: string | null;
   erp_item_code?: string | null;
+  // The set ("Desktop") this asset was bought as part of; its ERP code is then the set's.
+  part_of_set?: string | null;
   current_asset_user_name: string | null;
   current_asset_user_type: string | null;
   location_name: string | null;
@@ -913,6 +915,18 @@ export function AssetDetail({ assetId }: { assetId: number }) {
                 <ReadField label="Serial Number" value={serialValue(asset)} />
                 <ReadField label="Barcode" value={asset.barcode} />
                 <ReadField label="ERP Item Code" value={asset.erp_item_code ? <span className="font-mono">{asset.erp_item_code}</span> : null} />
+                {asset.part_of_set && (
+                  <div className="sm:col-span-2">
+                    <ReadField
+                      label="Part of set"
+                      value={
+                        asset.erp_item_code
+                          ? `Bought as part of a ${asset.part_of_set}. The ERP bought the ${asset.part_of_set} as one item, so ${asset.erp_item_code} is the ${asset.part_of_set}'s ERP code, not this part's own.`
+                          : `Bought as part of a ${asset.part_of_set}.`
+                      }
+                    />
+                  </div>
+                )}
                 <ReadField label="Brand" value={asset.brand_name} />
                 <ReadField label="Model" value={asset.model} />
                 <ReadField label="Warranty" value={warrantyValue(asset.warranty_years, asset.warranty_upto)} />

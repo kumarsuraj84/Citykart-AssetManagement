@@ -31,6 +31,7 @@ from app.asset_users.models import AssetUser
 from app.lifecycle.service import apply_event
 from app.lifecycle.state_machine import LifecycleError
 from app.masters.models import AssetCategory, Brand, Vendor
+from app.purchase_orders.models import PendingAsset
 from app.repairs.service import ensure_repair_place, origins_of
 from app.reports.export_service import asset_label_png, asset_qr_png
 from app.observability import audit as obs_audit
@@ -338,9 +339,17 @@ async def _to_detail_out(session: AsyncSession, asset: Asset) -> AssetDetailOut:
     """AM-04 §25: Asset 360 needs human-readable labels, not bare IDs. S5: every
     name from the same single label query the register uses (app.assets.labels)."""
     labels = (await asset_label_rows(session, [asset.id])).get(asset.id, {})
+    # A part delivered from a set on a PO (a CPU from a Desktop): the PO line remembers the set's
+    # name, and every part carries the SET's ERP code -- the ERP bought one Desktop, not a CPU.
+    part_of_set = (await session.execute(
+        select(PendingAsset.bundle_label)
+        .where(PendingAsset.delivered_asset_id == asset.id, PendingAsset.bundle_label.is_not(None))
+        .limit(1)
+    )).scalar_one_or_none()
     return with_labels(
         asset, labels, AssetDetailOut,
         location_name=labels.get("holder_location_name"), department_name=labels.get("holder_department_name"),
+        part_of_set=part_of_set,
     )
 
 

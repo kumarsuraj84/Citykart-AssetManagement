@@ -244,6 +244,26 @@ describe("AssetDetail (Asset 360)", () => {
     }
   });
 
+  it("a part bought as part of a set says the ERP code is the set's, not its own", async () => {
+    mockGets({ asset: { ...FULL_ASSET, item_name: "CPU", erp_item_code: "DT-1001", part_of_set: "Desktop" } });
+    await openPage();
+    const identity = region("Identity");
+    expect(within(identity).getByText("Part of set")).toBeInTheDocument();
+    expect(within(identity).getByText(/Bought as part of a Desktop\. The ERP bought the Desktop as one item, so DT-1001 is the Desktop's ERP code, not this part's own\./)).toBeInTheDocument();
+  });
+
+  it("a part of a set that has no ERP code just says it is part of the set", async () => {
+    mockGets({ asset: { ...FULL_ASSET, erp_item_code: null, part_of_set: "Desktop" } });
+    await openPage();
+    expect(within(region("Identity")).getByText("Bought as part of a Desktop.")).toBeInTheDocument();
+  });
+
+  it("an ordinary asset shows no 'Part of set' line", async () => {
+    mockGets();
+    await openPage();
+    expect(within(region("Identity")).queryByText("Part of set")).not.toBeInTheDocument();
+  });
+
   it("a pending serial and a 'no serial' asset say so in plain words", async () => {
     mockGets({ asset: { ...FULL_ASSET, serial_number: null, serial_pending: true } });
     const { unmount } = await openPage();

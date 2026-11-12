@@ -52,6 +52,12 @@ name.
   its parts (CPU, TFT, Keyboard, Mouse) are Items of their own (`bundle_part.item_id`; category and
   sub-category are copied from the part's Item). Delivered part assets carry `item_id` = CPU / TFT / ...
   and never "Desktop". A bundle Item cannot be a part, and a part Item cannot become a bundle.
+- **A part's ERP code is the set's (decided 2026-11-12).** The ERP bought one Desktop, so every part split from a PO
+  line carries the **Desktop's** ERP code, never one of the CPU Item's own codes: that is what the PO, receipt and PI
+  say, and which of the CPU's several codes would be "right" cannot be told. The CPU Item's codes only map a *CPU
+  bought alone* to the CPU Item. Asset 360 says so: `GET /api/assets/{id}` returns `part_of_set` ("Desktop", from the
+  delivering PO line's `bundle_label`; null for everything else) and Identity shows a "Part of set" line. Parts made
+  by Add Assets (no PO) carry no ERP code and no set marker.
 
 ## Create it where you need it
 

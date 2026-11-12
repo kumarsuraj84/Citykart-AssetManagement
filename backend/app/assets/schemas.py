@@ -234,6 +234,9 @@ class AssetDetailOut(AssetOut):
     current_asset_user_type: str | None
     location_name: str | None
     department_name: str | None
+    # The set this asset was bought as part of ("Desktop"), when it was delivered from a set on a PO;
+    # its ERP Item Code is then the SET's code. None for everything else.
+    part_of_set: str | None = None
 
 
 def with_labels(asset, labels: dict | None, out_cls=AssetOut, **extra):
