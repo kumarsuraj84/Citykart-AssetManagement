@@ -337,3 +337,60 @@ async def resolve_vendors_batch(session: AsyncSession, actor: AssetUser, source:
             await _undo(session, actor)
             out.append({"ok": False, "message": "That ERP supplier is already linked."})
     return out
+
+
+# ---- "Add all": every ERP supplier of a company that is not a CKAM vendor yet (old-data import) -----------------
+
+STRONG_REASONS = ("gstin", "pan")        # the same GSTIN or PAN: the same business, so a link is safe without asking
+ADD_ALL_SECONDS = 30                      # one call works this long, then says how many are left (the screen calls again)
+
+
+async def add_all_plan(session: AsyncSession, source: ErpSource, company_id: int) -> dict:
+    """What "Add all" would do for one company, supplier GROUP by group (a group = the registrations of one business,
+    by PAN): LINK it to the CKAM vendor it already belongs to (the group's other registrations are linked to it, or
+    the same GSTIN / PAN), CREATE one vendor for it, or SKIP it because the only match is a similar NAME, which a
+    person must confirm. Nothing is written."""
+    from app.erp.vendors import list_erp_vendors             # local: keeps this module's imports as they were
+    rows = await list_erp_vendors(session, source, company_id)
+    groups: dict[str, list[dict]] = {}
+    for r in rows:
+        if r["linked_vendor_id"] is None:
+            groups.setdefault(r["group_key"], []).append(r)
+    link, create, skip = [], [], []
+    for members in groups.values():
+        codes = [m["erp_code"] for m in members]
+        target = next((m["group_linked_to_vendor_id"] for m in members if m.get("group_linked_to_vendor_id")), None)
+        if target is None:
+            target = next((m["suggested_vendor_id"] for m in members
+                           if m.get("suggested_vendor_id") and m.get("suggestion_reason") in STRONG_REASONS), None)
+        if target is not None:
+            link.append({"company_id": company_id, "action": "LINK", "vendor_id": target, "erp_vendor_codes": codes})
+            continue
+        similar = next((m for m in members if m.get("suggested_vendor_id")), None)
+        if similar is not None:
+            skip.append({"erp_vendor_codes": codes, "name": members[0]["name"], "similar_to": similar["suggested_vendor_name"]})
+        else:
+            create.append({"company_id": company_id, "action": "CREATE", "erp_vendor_codes": codes, "name": None})
+    return {"link": link, "create": create, "skip": skip}
+
+
+async def add_all_vendors(session: AsyncSession, actor: AssetUser, source: ErpSource, company_id: int) -> dict:
+    """Runs the plan, each group in its own transaction (one bad group never blocks the rest), for at most
+    ADD_ALL_SECONDS; `remaining` tells the screen to call again. Groups that only have a similar-name match are
+    never touched: they come back in `skipped` for a person to link or add by hand."""
+    import time
+    plan = await add_all_plan(session, source, company_id)
+    entries = plan["link"] + plan["create"]
+    started = time.monotonic()
+    done: list[dict] = []
+    for i in range(0, len(entries), 10):
+        if time.monotonic() - started > ADD_ALL_SECONDS:
+            break
+        done += await resolve_vendors_batch(session, actor, source, entries[i:i + 10])
+    ok = [r for r in done if r["ok"]]
+    created = sum(1 for e, r in zip(entries, done) if r["ok"] and e["action"] == "CREATE")
+    return {
+        "created": created, "linked": len(ok) - created, "failed": [r["message"] for r in done if not r["ok"]][:20],
+        "failed_count": len(done) - len(ok), "remaining": len(entries) - len(done),
+        "skipped": plan["skip"][:200], "skipped_count": len(plan["skip"]),
+    }

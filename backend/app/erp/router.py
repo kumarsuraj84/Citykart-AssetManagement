@@ -12,10 +12,10 @@ from app.erp.changes import OutsideWorkArea, apply_changes, changes_summary, po_
 from app.erp.invoices import apply_pi, pi_preview
 from app.erp.pi_ready import pi_copy_exists, worklist as pi_worklist
 from app.erp.reminders import delivery_reminders
-from app.erp.inbox import build_inbox, inbox_counts, resolve_items_batch, resolve_vendors_batch
+from app.erp.inbox import add_all_plan, add_all_vendors, build_inbox, inbox_counts, resolve_items_batch, resolve_vendors_batch
 from app.erp.readiness import freshness
 from app.erp.schemas import (
-    ChangesApplyIn, CompaniesCreateIn, DraftCreateIn, ErpVendorLinkIn, InboxItemDecisionIn, InboxVendorDecisionIn, NotTrackedIn,
+    AddAllVendorsIn, ChangesApplyIn, CompaniesCreateIn, DraftCreateIn, ErpVendorLinkIn, InboxItemDecisionIn, InboxVendorDecisionIn, NotTrackedIn,
     PiApplyIn, PiApplyManyIn, PlacesCreateIn, StoresCreateIn, SyncRunOut, SyncStatusOut, VendorCodesIn,
 )
 from app.erp import setup_from_erp
@@ -201,6 +201,47 @@ async def list_vendors(
     if limit is not None or offset or needle:
         rows = rows[offset: offset + (limit or VENDOR_PAGE_DEFAULT)]
     return rows
+
+
+@router.get("/vendors/add-all/plan")
+async def vendors_add_all_plan(
+    company_id: int, session: AsyncSession = Depends(get_session), source: ErpSource = Depends(get_erp_source),
+    _actor=Depends(require_primary_owner()),
+):
+    """What "Add all" would do for this company, as counts (nothing is written): `link` groups join a vendor CKAM already
+    has (same business by GSTIN / PAN), `create` groups become a new vendor, `skipped` only look like an existing vendor by
+    name and are left for a person."""
+    try:
+        plan = await add_all_plan(session, source, company_id)
+    except ErpUnavailable as exc:
+        raise _unavailable(exc)
+    except LookupError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
+    return {"link": len(plan["link"]), "create": len(plan["create"]), "skipped": len(plan["skip"]),
+            "suppliers": sum(len(e["erp_vendor_codes"]) for e in plan["link"] + plan["create"])}
+
+
+@router.post("/vendors/add-all")
+async def vendors_add_all(
+    body: AddAllVendorsIn, session: AsyncSession = Depends(get_session), source: ErpSource = Depends(get_erp_source),
+    actor=Depends(require_primary_owner()),
+):
+    """Adds every ERP supplier of the company that is not a CKAM vendor yet (head-office admin): links or creates one vendor per
+    group of registrations, each group in its own transaction. Works for up to 30 seconds and answers `remaining`: call again
+    until it is 0. Suppliers that only have a similar-name match come back in `skipped` and are never touched."""
+    try:
+        result = await add_all_vendors(session, actor, source, body.company_id)
+    except ErpUnavailable as exc:
+        await session.rollback()
+        raise _unavailable(exc)
+    except LookupError as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
+    obs_audit.record(session, "ERP", "VENDORS_ADD_ALL",
+                     f"{obs_events.who()} added all ERP suppliers as vendors: {result['created']} created, {result['linked']} linked.",
+                     entity="vendor", changes={"created": result["created"], "linked": result["linked"], "failed": result["failed_count"]})
+    await session.commit()
+    return result
 
 
 @router.post("/vendors/import", response_model=VendorOut, status_code=201)

@@ -87,6 +87,7 @@ AUDITED: dict[tuple[str, str], str] = {
     ("POST", "/api/erp/purchase-orders/{po_id}/changes/apply"): "ERP ERP_CHANGES_APPLIED + DATA baseline rows",
     ("POST", "/api/erp/purchase-orders/{po_id}/pi/apply"): "ERP PI_RECORDED (one row)",
     ("POST", "/api/erp/pi/apply"): "ERP PI_RECORDED (one row per PO)",
+    ("POST", "/api/erp/vendors/add-all"): "ERP VENDORS_ADD_ALL (one row)",
     ("POST", "/api/erp/pos/{po_code}/not-tracked"): AUTO + " (item_map)",
     ("POST", "/api/erp/pos/create"): AUTO + " (purchase_order) + ERP CREATE_FROM_ERP",
     ("POST", "/api/items"): AUTO,

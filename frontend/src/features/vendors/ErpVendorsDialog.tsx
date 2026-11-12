@@ -7,6 +7,117 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { companyOptions, vendorOptions } from "@/lib/option-labels";
 import { ErrorMessage } from "@/components/shared/ErrorMessage";
+import { AsyncButton } from "@/components/shared/AsyncButton";
+
+interface AddAllPlan {
+  link: number;
+  create: number;
+  skipped: number;
+  suppliers: number;
+}
+
+interface AddAllResult {
+  created: number;
+  linked: number;
+  failed: string[];
+  failed_count: number;
+  remaining: number;
+  skipped: { name: string; similar_to: string; erp_vendor_codes: string[] }[];
+  skipped_count: number;
+}
+
+/**
+ * "Add all" for one company (old-data import): every ERP supplier that is not a CKAM vendor yet becomes one, so the vendor
+ * codes of an old-asset sheet exist. The plan is shown first. Suppliers of one business (same GSTIN or PAN as a vendor you
+ * have) are linked to it, the rest become new vendors, and suppliers that only look like an existing vendor by name are
+ * left alone for you to decide.
+ */
+export function AddAllSuppliers({ companyId, onDone }: { companyId: number; onDone: () => void }) {
+  const [plan, setPlan] = useState<AddAllPlan | null>(null);
+  const [totals, setTotals] = useState<{ created: number; linked: number; failed: number; skipped: AddAllResult["skipped"]; skippedCount: number } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+
+  async function readPlan() {
+    setError(null);
+    setTotals(null);
+    setBusy(true);
+    try {
+      setPlan(await apiClient.get<AddAllPlan>(`/erp/vendors/add-all/plan?company_id=${companyId}`));
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function run() {
+    setError(null);
+    setBusy(true);
+    const sum = { created: 0, linked: 0, failed: 0, skipped: [] as AddAllResult["skipped"], skippedCount: 0 };
+    try {
+      // One call works up to 30 seconds and says how many are left: call again until none are, or nothing moved.
+      for (let round = 0; round < 50; round++) {
+        const r = await apiClient.post<AddAllResult>("/erp/vendors/add-all", { company_id: companyId });
+        sum.created += r.created;
+        sum.linked += r.linked;
+        sum.failed += r.failed_count;
+        sum.skipped = r.skipped;
+        sum.skippedCount = r.skipped_count;
+        setTotals({ ...sum });
+        if (r.remaining === 0 || r.created + r.linked === 0) break;
+      }
+      setPlan(null);
+      onDone();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const nothing = plan !== null && plan.link + plan.create === 0;
+  return (
+    <section className="flex flex-col gap-2 rounded-md border bg-muted/30 p-2.5 text-sm" aria-label="Add all suppliers">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">Bringing in old data? Add every supplier of this company at once, instead of one by one.</p>
+        {plan === null && (
+          <Button size="sm" variant="outline" disabled={busy} onClick={readPlan}>Add all suppliers…</Button>
+        )}
+      </div>
+      {plan !== null && !nothing && (
+        <div className="flex flex-col gap-2" role="group" aria-label="Add all: confirm">
+          <p>
+            This adds <span className="font-medium">{plan.suppliers.toLocaleString("en-IN")} supplier{plan.suppliers === 1 ? "" : "s"}</span>:{" "}
+            {plan.create.toLocaleString("en-IN")} new vendor{plan.create === 1 ? "" : "s"} and {plan.link.toLocaleString("en-IN")} linked to a vendor you already have (same GSTIN or PAN).
+            {plan.skipped > 0 ? ` ${plan.skipped.toLocaleString("en-IN")} only look like an existing vendor by name: they are left for you.` : ""}
+          </p>
+          <div className="flex gap-2">
+            <AsyncButton size="sm" pending={busy} pendingLabel="Adding…" onClick={run}>Add all {plan.suppliers.toLocaleString("en-IN")}</AsyncButton>
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => setPlan(null)}>Cancel</Button>
+          </div>
+        </div>
+      )}
+      {nothing && (
+        <p className="text-xs text-muted-foreground" role="status">
+          Nothing to add: every supplier of this company is already a vendor{plan!.skipped > 0 ? `, except ${plan!.skipped} that only look like one by name (link them by hand below)` : ""}.
+        </p>
+      )}
+      {totals && (
+        <div role="status" className="text-xs">
+          <p className="text-success">{totals.created.toLocaleString("en-IN")} vendor{totals.created === 1 ? "" : "s"} created, {totals.linked.toLocaleString("en-IN")} linked to existing vendors{totals.failed > 0 ? `, ${totals.failed} could not be added` : ""}.</p>
+          {totals.skippedCount > 0 && (
+            <p className="text-muted-foreground">
+              {totals.skippedCount.toLocaleString("en-IN")} left for you, because only the name looks like a vendor you have
+              {totals.skipped.slice(0, 3).map((s) => ` (${s.name} ~ ${s.similar_to})`).join("")}{totals.skippedCount > 3 ? " …" : ""}.
+            </p>
+          )}
+        </div>
+      )}
+      {error !== null && <ErrorMessage className="text-sm text-destructive" error={error} message={error instanceof Error ? error.message : "That did not work."} />}
+    </section>
+  );
+}
 
 interface Company {
   id: number;
@@ -251,6 +362,7 @@ export function ErpVendorsDialog() {
               value={search} onChange={(e) => setSearch(e.target.value)}
             />
           </div>
+          {companyId !== undefined && <AddAllSuppliers key={companyId} companyId={Number(companyId)} onDone={changed} />}
           {listQ.isLoading && <p className="text-sm text-muted-foreground">Reading the ERP…</p>}
           {listQ.isError && (
             <ErrorMessage className="text-sm text-destructive" error={listQ.error} message={listQ.error instanceof Error ? listQ.error.message : "Could not read the ERP vendors."} />

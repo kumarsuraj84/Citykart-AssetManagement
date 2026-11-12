@@ -96,7 +96,7 @@ describe("ImportScreen", () => {
 
   it("commits and shows the imported count plus any commit-time row errors", async () => {
     (apiClient.post as any).mockImplementation((path: string) => {
-      if (path === "/imports/assets/preview?mode=add") return Promise.resolve({ valid_rows: [VALID_ROW], errors: [] });
+      if (path === "/imports/assets/preview?mode=add&check_erp=true") return Promise.resolve({ valid_rows: [VALID_ROW], errors: [] });
       if (path === "/imports/assets/commit?mode=add") return Promise.resolve({ imported: 1, errors: [{ row: 2, message: "no active code rule" }] });
       return Promise.reject(new Error("unexpected path"));
     });
@@ -113,7 +113,7 @@ describe("ImportScreen", () => {
 
   it("shows a commit error message when the commit request itself fails", async () => {
     (apiClient.post as any).mockImplementation((path: string) => {
-      if (path === "/imports/assets/preview?mode=add") return Promise.resolve({ valid_rows: [VALID_ROW], errors: [] });
+      if (path === "/imports/assets/preview?mode=add&check_erp=true") return Promise.resolve({ valid_rows: [VALID_ROW], errors: [] });
       if (path === "/imports/assets/commit?mode=add") return Promise.reject(new Error("Not permitted for this company"));
       return Promise.reject(new Error("unexpected path"));
     });
@@ -263,5 +263,82 @@ describe("ImportScreen", () => {
     clickTab(/edit existing assets/i);
     expect(screen.queryByText(/row ready/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^preview$/i })).toBeDisabled();
+  });
+});
+
+describe("ImportScreen: old-data import checked with the ERP", () => {
+  const ERP_ROW = {
+    ...VALID_ROW,
+    erp: {
+      status: "fill", po: { found: true, po_date: "2023-04-10", supplier_name: "VANSH ENTERPRISES" }, pi: { found: true, suggested: { pi_number: "SPI/000100/23-24", pi_date: "2026-09-28" } },
+      fill: { po_date: "2023-04-10", vendor_id: 3, vendor_name: "Vansh Enterprises", pi_number: "SPI/000100/23-24", pi_date: "2026-09-28" }, notes: [],
+    },
+  };
+  const NOTE_ROW = { ...VALID_ROW, row: 3, legacy_asset_code: "OLD-2", erp: { status: "check", po: { found: false }, pi: null, fill: {}, notes: ["PO SPO/NOT/THERE is not in the ERP for CKSPL."] } };
+  const SUMMARY = { po_copied: true, pi_copied: true, rows: 2, po_found: 1, po_missing: 1, pi_found: 1, pi_missing: 0, will_fill: 1, to_check: 1 };
+
+  function mockServer(summary: object = SUMMARY) {
+    vi.clearAllMocks();
+    (apiClient.post as any).mockImplementation((path: string) => {
+      if (path.startsWith("/imports/assets/preview")) return Promise.resolve({ valid_rows: [ERP_ROW, NOTE_ROW], errors: [], erp_summary: summary });
+      if (path.startsWith("/imports/assets/commit")) return Promise.resolve({ imported: 2, filled_from_erp: 1, errors: [] });
+      return Promise.reject(new Error(`unexpected path ${path}`));
+    });
+  }
+
+  it("checks with the ERP by default, shows what it found and what would be filled, and fills on commit", async () => {
+    mockServer();
+    render(<ImportScreen />);
+    selectFile();
+    fireEvent.click(screen.getByRole("button", { name: /^preview$/i }));
+
+    const box = await screen.findByLabelText("ERP check");
+    expect(apiClient.post).toHaveBeenCalledWith("/imports/assets/preview?mode=add&check_erp=true", expect.anything());
+    expect(box).toHaveTextContent("PO found for 1, not found for 1. PI found for 1, not found for 0. 1 row need a look");
+    expect(screen.getByRole("columnheader", { name: "From the ERP" })).toBeInTheDocument();
+    expect(screen.getByText("Will fill: PO date, vendor, PI number, PI date")).toBeInTheDocument();
+    expect(screen.getByText("PO SPO/NOT/THERE is not in the ERP for CKSPL.")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Fill the blank cells from the ERP" })).toBeChecked();
+
+    fireEvent.click(screen.getByRole("button", { name: /^commit/i }));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/imports/assets/commit?mode=add&fill_from_erp=true", expect.anything()));
+    expect(await screen.findByText(/Imported 2 assets\. Blank cells were filled from the ERP on 1 row\./)).toBeInTheDocument();
+  });
+
+  it("unticking 'fill' commits the sheet as it is", async () => {
+    mockServer();
+    render(<ImportScreen />);
+    selectFile();
+    fireEvent.click(screen.getByRole("button", { name: /^preview$/i }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Fill the blank cells from the ERP" }));
+    fireEvent.click(screen.getByRole("button", { name: /^commit/i }));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/imports/assets/commit?mode=add", expect.anything()));
+    expect(apiClient.post).not.toHaveBeenCalledWith(expect.stringContaining("fill_from_erp"), expect.anything());
+  });
+
+  it("unticking the check before the preview asks the server for the plain preview", async () => {
+    mockServer();
+    render(<ImportScreen />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Check the PO and bill numbers with the ERP" }));
+    selectFile();
+    fireEvent.click(screen.getByRole("button", { name: /^preview$/i }));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/imports/assets/preview?mode=add", expect.anything()));
+  });
+
+  it("says plainly when the ERP data has not been copied into CKAM yet", async () => {
+    mockServer({ ...SUMMARY, po_copied: false, will_fill: 0, po_found: 0, po_missing: 2 });
+    render(<ImportScreen />);
+    selectFile();
+    fireEvent.click(screen.getByRole("button", { name: /^preview$/i }));
+    const box = await screen.findByLabelText("ERP check");
+    expect(box).toHaveTextContent("purchase orders have not been copied into CKAM yet");
+    expect(screen.queryByRole("checkbox", { name: "Fill the blank cells from the ERP" })).not.toBeInTheDocument();
+  });
+
+  it("only Add mode offers the check", () => {
+    render(<ImportScreen />);
+    expect(screen.getByRole("checkbox", { name: "Check the PO and bill numbers with the ERP" })).toBeInTheDocument();
+    clickTab(/edit existing assets/i);
+    expect(screen.queryByRole("checkbox", { name: "Check the PO and bill numbers with the ERP" })).not.toBeInTheDocument();
   });
 });

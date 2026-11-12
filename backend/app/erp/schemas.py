@@ -116,6 +116,10 @@ class InboxVendorDecisionIn(InModel):
     name: str | None = Field(default=None, max_length=200)
 
 
+class AddAllVendorsIn(BaseModel):
+    company_id: int
+
+
 class PiApplyItemIn(BaseModel):
     pi_number: str
     ckam_invoice_number: str

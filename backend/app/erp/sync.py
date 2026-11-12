@@ -21,7 +21,10 @@ from app.observability import writer as obs_writer
 
 logger = logging.getLogger("ckam.erp.sync")
 
-HISTORY_DAYS = 548                      # about 18 months of POs, plus every PO that is still open
+# How far back the copy reads POs and PIs: the ERP's Fixed Assets history starts in 2016 (CKSPL) and 2019 (CKVPL), and the
+# old-data import needs the old POs, PIs and suppliers to tag the old assets, so this is "everything" (about 12 years;
+# about 60,000 PO lines and 12,000 PIs in all, measured 2026-11-12). Every PO that is still open is read however old.
+HISTORY_DAYS = 4500
 LOCK_KEY = 7731001                      # pg advisory lock: one copy at a time
 RENEW_AFTER = timedelta(hours=24)       # used when the warehouse cannot say when it last loaded
 

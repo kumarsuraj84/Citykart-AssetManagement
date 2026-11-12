@@ -49,6 +49,19 @@ def _amount_check(invoice_amount: float | None, pi: ErpPiCopy) -> str:
     return "differs"
 
 
+def vendor_check(pi: ErpPiCopy, linked: set[str]) -> tuple[bool, str | None]:
+    """Is this PI plausibly the PO vendor's? `linked` = the ERP supplier codes the CKAM vendor is linked to in this
+    company. (acceptable, note): the vendor itself is fine with no note; a catch-all vendor such as OTHER, or a vendor
+    with no ERP link, is acceptable with a note; a PI of another linked vendor is not acceptable."""
+    if pi.vendor_code in linked:
+        return True, None
+    if CATCH_ALL_VENDOR.match(pi.vendor_name or ""):
+        return True, NOTE_OTHER
+    if not linked:
+        return True, NOTE_UNLINKED
+    return False, None
+
+
 def _candidate(pi: ErpPiCopy, invoice_amount: float | None, note: str | None) -> dict:
     return {
         "pi_code": pi.pi_code, "pi_number": pi.pi_number, "pi_date": pi.pi_date.isoformat() if pi.pi_date else None,
@@ -166,13 +179,8 @@ async def invoice_states(
         candidates: list[dict] = []
         key = bill_key(inv["invoice_number"])
         for pi in pis.get((po["company_code"], key), []) if key else []:
-            if pi.vendor_code in linked:
-                note = None
-            elif CATCH_ALL_VENDOR.match(pi.vendor_name or ""):
-                note = NOTE_OTHER
-            elif not linked:
-                note = NOTE_UNLINKED
-            else:
+            acceptable, note = vendor_check(pi, linked)
+            if not acceptable:
                 continue                       # the bill number belongs to another vendor of this company
             c = _candidate(pi, inv["invoice_amount"], note)
             c["status"] = _row_status(inv, c)

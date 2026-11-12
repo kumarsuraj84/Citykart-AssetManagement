@@ -49,6 +49,7 @@ from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, 
 from app.numbering.models import CodeRule
 from app.numbering.service import build_code_tokens, generate_code, get_active_rule
 from app.assets.models import Asset
+from app.imports import erp_check
 
 # Exact column-name contract -- see docs/ai/DECISIONS.md for the full table
 # (backend mapping, format, requiredness, lookup rule). Order here is only
@@ -789,7 +790,7 @@ async def _validate_edit_rows(
 
 async def preview_import(
     session: AsyncSession, content: bytes, allowed_company_ids: list[int] | None = None, mode: str = "add",
-    domains: tuple[str, ...] | None = None,
+    domains: tuple[str, ...] | None = None, check_erp: bool = False,
 ) -> dict:
     if mode == "edit":
         valid_rows, errors, _ = await _validate_edit_rows(session, content, allowed_company_ids)
@@ -805,19 +806,22 @@ async def preview_import(
         }
 
     valid_rows, errors, _ = await _validate_add_rows(session, content, allowed_company_ids, domains)
-    return {
-        "valid_rows": [
-            {
-                "row": r["row"], "legacy_asset_code": r["legacy_asset_code"],
-                "item": r["item"].name if r["item"] is not None else None,          # S7 (additive)
-                "company": r["company"].name, "category": r["category"].name,
-                "subcategory": r["subcategory"].name if r["subcategory"] else None,
-                "description": r["description"], "asset_user": r["asset_user"].name, "quantity": r["quantity"],
-            }
-            for r in valid_rows
-        ],
-        "errors": errors,
-    }
+    checks = await erp_check.check_rows(session, valid_rows) if check_erp else None          # old-data import: what the ERP knows
+    out_rows = [
+        {
+            "row": r["row"], "legacy_asset_code": r["legacy_asset_code"],
+            "item": r["item"].name if r["item"] is not None else None,          # S7 (additive)
+            "company": r["company"].name, "category": r["category"].name,
+            "subcategory": r["subcategory"].name if r["subcategory"] else None,
+            "description": r["description"], "asset_user": r["asset_user"].name, "quantity": r["quantity"],
+            **({"erp": checks[r["row"]].public()} if checks is not None else {}),
+        }
+        for r in valid_rows
+    ]
+    result = {"valid_rows": out_rows, "errors": errors}
+    if checks is not None:
+        result["erp_summary"] = erp_check.summary(checks, await erp_check.erp_copy_state(session))
+    return result
 
 
 async def _commit_edit(session: AsyncSession, content: bytes, actor: AssetUser, allowed_company_ids: list[int] | None = None) -> dict:
@@ -879,7 +883,7 @@ async def _commit_edit(session: AsyncSession, content: bytes, actor: AssetUser, 
 
 async def _commit_add(
     session: AsyncSession, content: bytes, actor: AssetUser, allowed_company_ids: list[int] | None = None,
-    domains: tuple[str, ...] | None = None,
+    domains: tuple[str, ...] | None = None, fill_from_erp: bool = False,
 ) -> dict:
     """Raises ImportScopeError (-> 403) if any row targets a company outside
     `allowed_company_ids`, before writing anything -- this part of the batch
@@ -896,6 +900,13 @@ async def _commit_add(
     valid_rows, errors, scope_violations = await _validate_add_rows(session, content, allowed_company_ids, domains)
     if scope_violations:
         raise ImportScopeError("; ".join(f"row {v['row']}: {v['message']}" for v in scope_violations))
+
+    # Old-data import (the person ticked "fill from the ERP"): the ERP copy is asked AGAIN here, never trusting what the
+    # browser was shown, and only cells the sheet left blank are filled.
+    filled_from_erp = 0
+    if fill_from_erp:
+        checks = await erp_check.check_rows(session, valid_rows)
+        filled_from_erp = erp_check.apply_fills(valid_rows, checks, _derive_purchase_date)
 
     # Looked up per company (cached): applying one company's rule to every row
     # mis-codes a multi-company file.
@@ -987,13 +998,13 @@ async def _commit_add(
             errors.append({"row": r["row"], "message": str(exc)})
 
     await session.flush()
-    return {"imported": imported, "errors": errors}
+    return {"imported": imported, "errors": errors, **({"filled_from_erp": filled_from_erp} if fill_from_erp else {})}
 
 
 async def commit_import(
     session: AsyncSession, content: bytes, actor: AssetUser, allowed_company_ids: list[int] | None = None, mode: str = "add",
-    domains: tuple[str, ...] | None = None,
+    domains: tuple[str, ...] | None = None, fill_from_erp: bool = False,
 ) -> dict:
     if mode == "edit":
         return await _commit_edit(session, content, actor, allowed_company_ids)
-    return await _commit_add(session, content, actor, allowed_company_ids, domains)
+    return await _commit_add(session, content, actor, allowed_company_ids, domains, fill_from_erp)

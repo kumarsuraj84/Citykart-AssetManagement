@@ -126,9 +126,9 @@ class WarehouseReader(Protocol):
     async def vendors(self, codes: dict[str, set[str]]) -> list[WhVendor]:
         """The suppliers asked for: {company_code: {vendor codes}}."""
     async def fixed_asset_supplier_codes(self) -> dict[str, set[str]]:
-        """{company_code: {vendor codes}} of every supplier that has EVER been on a Fixed Assets PO line,
-        however old the PO. The copy keeps their vendor rows even when their POs are outside the PO window,
-        so Settings > Vendors > Add from ERP can offer them."""
+        """{company_code: {vendor codes}} of every supplier that has EVER been on a Fixed Assets PO line or a Fixed
+        Assets PI (a purchase booked without a PO still has its supplier), however old. The copy keeps their vendor
+        rows even when their POs are outside the PO window, so Settings > Vendors > Add from ERP can offer them."""
     async def pi_documents(self, since: date) -> list[WhPi]:
         """Every Fixed Assets purchase invoice dated `since` or later, one row per PI document (both companies)."""
     async def items(self, icodes: set[str]) -> list[WhItem]: ...
@@ -222,8 +222,11 @@ class PgWarehouseReader(PgReadOnly):
 
     async def fixed_asset_supplier_codes(self) -> dict[str, set[str]]:
         rows = await self._fetch(
-            f"""select distinct company, vendor_code::text vendor_code from {SCHEMA}.po_line
-                where division = 'FIXED ASSETS' and not coalesce(is_template, false) and vendor_code is not null""")
+            f"""select company, vendor_code::text vendor_code from {SCHEMA}.po_line
+                where division = 'FIXED ASSETS' and not coalesce(is_template, false) and vendor_code is not null
+                union
+                select company, vendor_code::text vendor_code from {SCHEMA}.pi_line
+                where division = 'FIXED ASSETS' and vendor_code is not null""")
         out: dict[str, set[str]] = {}
         for r in rows:
             out.setdefault(r["company"], set()).add(str(r["vendor_code"]))

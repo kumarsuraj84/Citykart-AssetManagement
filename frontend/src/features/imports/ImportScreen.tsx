@@ -22,6 +22,28 @@ function changedFieldLabel(name: string): string {
 
 type ImportMode = "add" | "edit" | "po" | "movement";
 
+/** Old-data import: what CKAM's copy of the ERP knows about a row's PO number and bill number. */
+export interface ErpRowCheck {
+  /** fill: blank cells would be filled; check: something differs or is missing; ok: found, nothing to do; none: nothing to look up */
+  status: "fill" | "check" | "ok" | "none";
+  po: { found: boolean; ambiguous?: boolean; po_date?: string | null; supplier_name?: string | null } | null;
+  pi: { found: boolean; suggested?: { pi_number: string; pi_date: string | null } } | null;
+  fill: Record<string, string | number>;
+  notes: string[];
+}
+
+export interface ErpSummary {
+  po_copied: boolean;
+  pi_copied: boolean;
+  rows: number;
+  po_found: number;
+  po_missing: number;
+  pi_found: number;
+  pi_missing: number;
+  will_fill: number;
+  to_check: number;
+}
+
 interface AddPreviewRow {
   row: number;
   legacy_asset_code: string | null;
@@ -33,6 +55,23 @@ interface AddPreviewRow {
   description: string;
   asset_user: string;
   quantity: number;
+  /** Present when the preview was asked to check with the ERP. */
+  erp?: ErpRowCheck;
+}
+
+const FILL_LABEL: Record<string, string> = { po_date: "PO date", vendor_name: "vendor", pi_number: "PI number", pi_date: "PI date", invoice_date: "invoice date" };
+
+/** What the ERP check says about one row, in the table's last column. */
+export function ErpCell({ erp }: { erp?: ErpRowCheck }) {
+  if (!erp || (erp.status === "none" && erp.notes.length === 0)) return <span className="text-muted-foreground">—</span>;
+  const fills = Object.keys(erp.fill).filter((k) => FILL_LABEL[k]).map((k) => FILL_LABEL[k]);
+  return (
+    <div className="flex flex-col gap-0.5 text-xs">
+      {fills.length > 0 && <span className="font-medium text-success">Will fill: {fills.join(", ")}</span>}
+      {fills.length === 0 && erp.status === "ok" && <span className="text-muted-foreground">Found in the ERP</span>}
+      {erp.notes.map((n) => <span key={n} className="text-warning-foreground">{n}</span>)}
+    </div>
+  );
 }
 
 interface EditPreviewRow {
@@ -72,9 +111,13 @@ interface RowError {
 interface PreviewResult<T> {
   valid_rows: T[];
   errors: RowError[];
+  /** Counts of the ERP check (old-data import, Add mode). */
+  erp_summary?: ErpSummary | null;
 }
 
 interface CommitResult {
+  /** Rows whose blank PO date / vendor / PI cells were filled from the ERP. */
+  filled_from_erp?: number;
   imported?: number;
   updated?: number;
   pos_created?: number;
@@ -97,6 +140,9 @@ const ADD_PREVIEW_COLUMNS: DataTableColumn<AddPreviewRow>[] = [
   { key: "asset_user", header: "Received Into", cell: (r) => r.asset_user },
   { key: "quantity", header: "Qty", cell: (r) => r.quantity },
 ];
+
+// Only when the preview checked the rows with the ERP.
+const ERP_COLUMN: DataTableColumn<AddPreviewRow> = { key: "erp", header: "From the ERP", cell: (r) => <ErpCell erp={r.erp} /> };
 
 const EDIT_PREVIEW_COLUMNS: DataTableColumn<EditPreviewRow>[] = [
   { key: "row", header: "Row", cell: (r) => r.row },
@@ -133,10 +179,10 @@ const ERROR_COLUMNS: DataTableColumn<RowError>[] = [
 // Every import type reduces to the same three requests (template/preview/
 // commit) against its own endpoint prefix -- "add"/"edit" share one prefix
 // (dispatched by `?mode=`), "po"/"movement" each have their own.
-function endpointPath(mode: ImportMode, action: "template" | "preview" | "commit"): string {
+function endpointPath(mode: ImportMode, action: "template" | "preview" | "commit", extra = ""): string {
   if (mode === "po") return `/imports/purchase-orders/${action}`;
   if (mode === "movement") return `/imports/movements/${action}`;
-  return `/imports/assets/${action}?mode=${mode}`;
+  return `/imports/assets/${action}?mode=${mode}${extra}`;
 }
 
 const TEMPLATE_FILENAMES: Record<ImportMode, string> = {
@@ -158,6 +204,9 @@ export function ImportScreen() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isCommitting, setIsCommitting] = useState(false);
+  // Old-data import (Add mode): look each row's PO number and bill number up in the ERP, and fill the blank cells from it.
+  const [checkErp, setCheckErp] = useState(true);
+  const [fillErp, setFillErp] = useState(true);
 
   // Switching modes mid-flow would leave a stale file/preview/result sitting
   // under a different mode's own column set -- clear everything downstream
@@ -180,8 +229,9 @@ export function ImportScreen() {
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await apiClient.post<PreviewResult<PreviewRow>>(endpointPath(mode, "preview"), form);
+      const res = await apiClient.post<PreviewResult<PreviewRow>>(endpointPath(mode, "preview", mode === "add" && checkErp ? "&check_erp=true" : ""), form);
       setPreview(res);
+      setFillErp(true);
     } catch (err) {
       setPreviewError(err instanceof Error ? err.message : "Preview failed.");
       setPreview(null);
@@ -197,7 +247,8 @@ export function ImportScreen() {
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await apiClient.post<CommitResult>(endpointPath(mode, "commit"), form);
+      const fills = mode === "add" && fillErp && (preview?.erp_summary?.will_fill ?? 0) > 0;
+      const res = await apiClient.post<CommitResult>(endpointPath(mode, "commit", fills ? "&fill_from_erp=true" : ""), form);
       setResult(res);
     } catch (err) {
       setCommitError(err instanceof Error ? err.message : "Commit failed.");
@@ -322,6 +373,15 @@ export function ImportScreen() {
             Preview
           </AsyncButton>
         </div>
+        {mode === "add" && (
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" className="mt-1" aria-label="Check the PO and bill numbers with the ERP" checked={checkErp} onChange={(e) => setCheckErp(e.target.checked)} />
+            <span>
+              Check each row's <span className="font-medium">PO Number</span> and the vendor's bill (<span className="font-medium">Invoice Number</span>) with the ERP.
+              <span className="block text-xs text-muted-foreground">For old assets: shows the PO, vendor and PI the ERP holds, and can fill the cells you left blank (never the ones you filled).</span>
+            </span>
+          </label>
+        )}
         {previewError && <ErrorMessage className="text-sm text-destructive" message={previewError} />}
       </div>
 
@@ -333,6 +393,29 @@ export function ImportScreen() {
             {preview.errors.length} row{preview.errors.length === 1 ? "" : "s"} with errors.
           </p>
 
+          {mode === "add" && preview.erp_summary && (
+            <section className="flex flex-col gap-1 rounded-md border bg-muted/30 p-3 text-sm" aria-label="ERP check">
+              <h3 className="font-medium">Checked with the ERP</h3>
+              {!preview.erp_summary.po_copied || !preview.erp_summary.pi_copied ? (
+                <p className="text-warning-foreground">
+                  The ERP's {!preview.erp_summary.po_copied ? "purchase orders" : "purchase invoices"} have not been copied into CKAM yet, so nothing could be found.
+                  Use Refresh now under Settings › ERP Data Sync, then preview again.
+                </p>
+              ) : (
+                <p>
+                  PO found for {preview.erp_summary.po_found}, not found for {preview.erp_summary.po_missing}. PI found for {preview.erp_summary.pi_found}, not found for {preview.erp_summary.pi_missing}.
+                  {" "}{preview.erp_summary.to_check} row{preview.erp_summary.to_check === 1 ? "" : "s"} need a look (see the last column).
+                </p>
+              )}
+              {preview.erp_summary.will_fill > 0 && (
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" aria-label="Fill the blank cells from the ERP" checked={fillErp} onChange={(e) => setFillErp(e.target.checked)} />
+                  Fill the blank PO Date, Vendor, PI Number / Date and Invoice Date of {preview.erp_summary.will_fill} row{preview.erp_summary.will_fill === 1 ? "" : "s"} from the ERP
+                </label>
+              )}
+            </section>
+          )}
+
           {preview.valid_rows.length > 0 && (
             <div className="flex flex-col gap-2">
               <h3 className="text-sm font-medium">Ready to {noun}</h3>
@@ -340,7 +423,7 @@ export function ImportScreen() {
                 <DataTable columns={EDIT_PREVIEW_COLUMNS} rows={editRows} rowKey={(r) => r.row} emptyState={<EmptyState title="No rows ready to update." />} />
               )}
               {mode === "add" && (
-                <DataTable columns={ADD_PREVIEW_COLUMNS} rows={addRows} rowKey={(r) => r.row} emptyState={<EmptyState title="No rows ready to import." />} />
+                <DataTable columns={preview.erp_summary ? [...ADD_PREVIEW_COLUMNS, ERP_COLUMN] : ADD_PREVIEW_COLUMNS} rows={addRows} rowKey={(r) => r.row} emptyState={<EmptyState title="No rows ready to import." />} />
               )}
               {mode === "po" && (
                 <DataTable columns={PO_PREVIEW_COLUMNS} rows={poRows} rowKey={(r) => r.row} emptyState={<EmptyState title="No rows ready to import." />} />
@@ -387,6 +470,7 @@ export function ImportScreen() {
           <p className="text-sm">
             {mode === "edit" && `Updated ${result.updated ?? 0} asset${(result.updated ?? 0) === 1 ? "" : "s"}.`}
             {mode === "add" && `Imported ${result.imported ?? 0} asset${(result.imported ?? 0) === 1 ? "" : "s"}.`}
+            {mode === "add" && (result.filled_from_erp ?? 0) > 0 && ` Blank cells were filled from the ERP on ${result.filled_from_erp} row${result.filled_from_erp === 1 ? "" : "s"}.`}
             {mode === "po" &&
               `Created ${result.pos_created ?? 0} purchase order${(result.pos_created ?? 0) === 1 ? "" : "s"} with ${result.lines_created ?? 0} line${(result.lines_created ?? 0) === 1 ? "" : "s"}.`}
             {mode === "movement" && `Applied ${result.moved ?? 0} movement${(result.moved ?? 0) === 1 ? "" : "s"}.`}

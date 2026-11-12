@@ -33,13 +33,15 @@ async def download_template(mode: str = ImportMode, _h=Depends(require_primary_o
 
 @router.post("/preview", response_model=ImportPreviewOut)
 async def preview(
-    file: UploadFile = File(...), mode: str = ImportMode, session: AsyncSession = Depends(get_session),
-    actor=Depends(require_primary_owner()),
+    file: UploadFile = File(...), mode: str = ImportMode, check_erp: bool = Query(False),
+    session: AsyncSession = Depends(get_session), actor=Depends(require_primary_owner()),
 ):
+    """`check_erp` (old-data import, add mode): each valid row also says what CKAM's copy of the ERP knows about its PO
+    number and bill number (PO date, vendor, PI) and what would be filled into the blank cells; `erp_summary` has the counts."""
     content = await read_upload_bounded(file)
     try:
         result = await preview_import(session, content, await scoped_company_ids(session, actor), mode,
-                                      await allowed_asset_domains(session, actor))
+                                      await allowed_asset_domains(session, actor), check_erp=check_erp and mode == "add")
     except ImportTemplateError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
     await _previewed(f"assets ({mode})", result, file, content)
@@ -48,14 +50,16 @@ async def preview(
 
 @router.post("/commit", response_model=ImportCommitOut)
 async def commit(
-    file: UploadFile = File(...), mode: str = ImportMode, session: AsyncSession = Depends(get_session),
-    actor=Depends(require_primary_owner()),
+    file: UploadFile = File(...), mode: str = ImportMode, fill_from_erp: bool = Query(False),
+    session: AsyncSession = Depends(get_session), actor=Depends(require_primary_owner()),
 ):
+    """`fill_from_erp` (old-data import, add mode): the blank PO Date, Vendor Code, PI Number / Date and Invoice Date of each
+    row are filled from CKAM's copy of the ERP (asked again here); what the sheet already says is never overwritten."""
     content = await read_upload_bounded(file)
     obs_audit.suppress(session, "asset")      # S8: one IMPORT_COMMIT row for the whole file
     try:
         result = await commit_import(session, content, actor, await scoped_company_ids(session, actor), mode,
-                                     await allowed_asset_domains(session, actor))
+                                     await allowed_asset_domains(session, actor), fill_from_erp=fill_from_erp and mode == "add")
     except ImportScopeError as exc:
         # A write aimed at a company the actor can't access: refuse the whole file
         # (nothing written) with 403, same as POST /api/assets for another company.
@@ -76,7 +80,7 @@ async def commit(
 
 def _counts(result) -> dict:
     data = result if isinstance(result, dict) else result.model_dump()
-    counts = {k: data.get(k) for k in ("imported", "updated", "pos_created", "lines_created", "moved")
+    counts = {k: data.get(k) for k in ("imported", "updated", "pos_created", "lines_created", "moved", "filled_from_erp")
               if data.get(k) is not None}
     counts["rows_with_errors"] = len(data.get("errors") or [])
     return counts

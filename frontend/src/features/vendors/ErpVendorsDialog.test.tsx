@@ -196,3 +196,56 @@ describe("Add from ERP: grouped by company PAN", () => {
     expect(screen.getByRole("listitem", { name: "BLUE STAR LIMITED group" })).toBeInTheDocument();
   });
 });
+
+describe("Add all suppliers (old-data import)", () => {
+  function withPlan(plan: object) {
+    const base = (apiClient.get as any).getMockImplementation();
+    (apiClient.get as any).mockImplementation((path: string) =>
+      path.startsWith("/erp/vendors/add-all/plan") ? Promise.resolve(plan) : base(path));
+  }
+
+  it("shows the plan first, and nothing is added until it is confirmed", async () => {
+    withPlan({ link: 1, create: 2, skipped: 1, suppliers: 4 });
+    renderDialog();
+    fireEvent.click(await screen.findByRole("button", { name: "Add all suppliers…" }));
+    const confirm = await screen.findByRole("group", { name: "Add all: confirm" });
+    expect(apiClient.get).toHaveBeenCalledWith("/erp/vendors/add-all/plan?company_id=1");
+    expect(confirm).toHaveTextContent("This adds 4 suppliers: 2 new vendors and 1 linked to a vendor you already have (same GSTIN or PAN). 1 only look like an existing vendor by name: they are left for you.");
+    expect(apiClient.post).not.toHaveBeenCalled();
+    fireEvent.click(within(confirm).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("group", { name: "Add all: confirm" })).not.toBeInTheDocument();
+    expect(apiClient.post).not.toHaveBeenCalled();
+  });
+
+  it("adds everything, calling again while the server says some are left, and reports the totals and the look-alikes", async () => {
+    withPlan({ link: 1, create: 2, skipped: 1, suppliers: 4 });
+    (apiClient.post as any)
+      .mockResolvedValueOnce({ created: 2, linked: 0, failed: [], failed_count: 0, remaining: 1, skipped: [], skipped_count: 0 })
+      .mockResolvedValueOnce({ created: 0, linked: 1, failed: [], failed_count: 0, remaining: 0, skipped: [{ name: "HARSHIT INFOSOLUTION", similar_to: "Harshit Infosolution", erp_vendor_codes: ["3002"] }], skipped_count: 1 });
+    renderDialog();
+    fireEvent.click(await screen.findByRole("button", { name: "Add all suppliers…" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Add all 4" }));
+    await waitFor(() => expect(screen.getByText(/2 vendors created, 1 linked to existing vendors/)).toBeInTheDocument());
+    expect(apiClient.post).toHaveBeenCalledTimes(2);
+    expect(apiClient.post).toHaveBeenCalledWith("/erp/vendors/add-all", { company_id: 1 });
+    expect(screen.getByText(/1 left for you, because only the name looks like a vendor you have \(HARSHIT INFOSOLUTION ~ Harshit Infosolution\)/)).toBeInTheDocument();
+  });
+
+  it("stops when a call moved nothing, and says how many could not be added", async () => {
+    withPlan({ link: 0, create: 2, skipped: 0, suppliers: 2 });
+    (apiClient.post as any).mockResolvedValue({ created: 0, linked: 0, failed: ["x"], failed_count: 2, remaining: 5, skipped: [], skipped_count: 0 });
+    renderDialog();
+    fireEvent.click(await screen.findByRole("button", { name: "Add all suppliers…" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Add all 2" }));
+    await waitFor(() => expect(screen.getByText(/2 could not be added/)).toBeInTheDocument());
+    expect(apiClient.post).toHaveBeenCalledTimes(1);
+  });
+
+  it("says so when every supplier is already a vendor", async () => {
+    withPlan({ link: 0, create: 0, skipped: 0, suppliers: 0 });
+    renderDialog();
+    fireEvent.click(await screen.findByRole("button", { name: "Add all suppliers…" }));
+    expect(await screen.findByText(/Nothing to add: every supplier of this company is already a vendor/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Add all \d/ })).not.toBeInTheDocument();
+  });
+});
