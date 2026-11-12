@@ -200,6 +200,10 @@ async def _copy_vendors(session, reader: WarehouseReader, lines: list[WhPoLine],
     wanted: dict[str, set[str]] = {}
     for l in lines:
         wanted.setdefault(l.company_code, set()).add(l.supplier_code)
+    # Also every supplier that has EVER been on a Fixed Assets PO, even when all its POs are older than the PO
+    # window: otherwise a known supplier with no recent order cannot be added from the ERP.
+    for company, codes in (await reader.fixed_asset_supplier_codes()).items():
+        wanted.setdefault(company, set()).update(codes)
     found = await reader.vendors(wanted)
     have = {(v.company_code, v.vendor_code): v for v in (await session.execute(select(ErpVendorCopy))).scalars().all()}
     for v in found:

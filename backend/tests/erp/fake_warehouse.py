@@ -48,6 +48,7 @@ class FakeWarehouse:
         self.companies_down: str | None = None          # the company table cannot be read (the rest still can)
         self.lines: list[WhPoLine] = []
         self.vendor_list: list[WhVendor] = []
+        self.ever_ordered: dict[str, set[str]] = {}     # suppliers that were once on a Fixed Assets PO, outside the PO window
         self.item_list: list[WhItem] = []
         self.stamp: datetime | None = LOADED
         self.down: str | None = None
@@ -66,6 +67,10 @@ class FakeWarehouse:
     async def vendors(self, codes):
         self._check()
         return [v for v in self.vendor_list if v.vendor_code in codes.get(v.company_code, set())]
+
+    async def fixed_asset_supplier_codes(self):
+        self._check()
+        return {company: set(codes) for company, codes in self.ever_ordered.items()}
 
     async def items(self, icodes):
         self._check()

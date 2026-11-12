@@ -38,6 +38,23 @@ async def test_the_first_run_copies_both_companies():
     assert sorted(i.icode for i in await rows(ErpItemCopy)) == ["CT2", "CT371487"]
 
 
+async def test_a_supplier_with_only_old_pos_is_still_copied_as_a_vendor():
+    # DEV IT SERV: ordered fixed assets in 2024 (outside the PO window, all closed), so no PO line reaches the copy,
+    # but Settings > Vendors > Add from ERP must still offer it, under each company it is registered in.
+    wh = seeded()
+    wh.vendor_list += [wh_vendor("CKSPL", "12445", name="DEV IT  SERV PRIVATE LIMITED", gstin="06AACCD2388K1ZH"),
+                       wh_vendor("CKVPL", "679", name="DEV IT SERV PRIVATE LIMITED", gstin="06AACCD2388K1ZH"),
+                       wh_vendor("CKSPL", "9999", name="NEVER ORDERED ASSETS")]
+    wh.ever_ordered = {"CKSPL": {"12445", "4431"}, "CKVPL": {"679"}}
+    run = await run_sync(SessionLocal, wh, "manual")
+    vendors = await rows(ErpVendorCopy)
+    assert sorted((v.company_code, v.vendor_code) for v in vendors) == [("CKSPL", "12445"), ("CKSPL", "4431"), ("CKVPL", "61"), ("CKVPL", "679")]
+    assert run.vendors == 4
+    assert all(v.is_present for v in vendors)
+    # still only the POs inside the window
+    assert sorted((l.company_code, l.po_line_key) for l in await rows(ErpPoLineCopy)) == [("CKSPL", "A1"), ("CKSPL", "A2"), ("CKVPL", "A1")]
+
+
 async def test_a_repeat_run_changes_nothing_but_remembers_it_saw_the_rows():
     wh = seeded()
     await run_sync(SessionLocal, wh, "manual")

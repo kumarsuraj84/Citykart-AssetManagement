@@ -106,6 +106,10 @@ class WarehouseReader(Protocol):
         ones the copy still holds as open, so a PO that closed today is seen closing)."""
     async def vendors(self, codes: dict[str, set[str]]) -> list[WhVendor]:
         """The suppliers asked for: {company_code: {vendor codes}}."""
+    async def fixed_asset_supplier_codes(self) -> dict[str, set[str]]:
+        """{company_code: {vendor codes}} of every supplier that has EVER been on a Fixed Assets PO line,
+        however old the PO. The copy keeps their vendor rows even when their POs are outside the PO window,
+        so Settings > Vendors > Add from ERP can offer them."""
     async def items(self, icodes: set[str]) -> list[WhItem]: ...
     async def source_stamp(self) -> datetime | None:
         """When the warehouse last finished loading the PO data (None if it cannot tell)."""
@@ -178,6 +182,15 @@ class PgWarehouseReader(PgReadOnly):
                      gstin=_text(r["gstin"]), city=_text(r["city"]), is_extinct=bool(r["is_extinct"]))
             for r in rows
         ]
+
+    async def fixed_asset_supplier_codes(self) -> dict[str, set[str]]:
+        rows = await self._fetch(
+            f"""select distinct company, vendor_code::text vendor_code from {SCHEMA}.po_line
+                where division = 'FIXED ASSETS' and not coalesce(is_template, false) and vendor_code is not null""")
+        out: dict[str, set[str]] = {}
+        for r in rows:
+            out.setdefault(r["company"], set()).add(str(r["vendor_code"]))
+        return out
 
     async def items(self, icodes: set[str]) -> list[WhItem]:
         if not icodes:

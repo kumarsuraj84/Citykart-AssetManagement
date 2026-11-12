@@ -151,6 +151,14 @@ The Item form is short — Name, Type of asset (one pick of "Group › Sub-categ
 
 **How to apply.** Never copy category, serial rule or defaults into a screen; read the Item. Sub-category is still required by the server, so the Item form chooses the group's only Sub-category itself or offers "New Sub-category".
 
+## 2026-11-12 — (20) The ERP copy keeps every supplier that has ever been on a Fixed Assets PO, not only those on recent POs
+
+**Decision.** The ERP copy's vendor table (`erp_vendor`, read by Settings › Vendors › Add from ERP) is built from the suppliers of the copied PO lines **plus every supplier that has ever been on a Fixed Assets PO line of either company** (`WarehouseReader.fixed_asset_supplier_codes()`, one `select distinct` over `gold_ckpost.po_line`, templates excluded). The PO copy itself is unchanged: POs of the last 18 months (548 days) plus every PO still open. Found when DEV IT SERV PRIVATE LIMITED (ERP codes 12445 in CKSPL and 679 in CKVPL, last PO 2024) was in the ERP but never offered: all its POs were older than the window, so it was never "wanted". On the real ERP this takes the copy from 194 to 492 vendors.
+
+**Why.** A known supplier with no recent order is still a real vendor a person may need to add (for a warranty, repair or an old asset). Suppliers that never sold fixed assets (security, housekeeping, ...) stay out on purpose.
+
+**How to apply.** Do not narrow `_copy_vendors` back to the POs in the window. A supplier with no Fixed Assets PO at all is still not in the copy; add it by hand in Settings › Vendors.
+
 ## 2026-11-11 — (19) Add Assets splits a set into its parts, and each part follows its own Item's serial rule
 
 **Decision.** Choosing a **set** Item (a Desktop, a Mouse+Keyboard combo) in Add Assets (`POST /api/assets/batch`) adds the set as its **parts**, exactly as a PO does: Quantity = number of **sets**, and each set adds one ordinary asset of every part's own Item (its category, brand and warranty defaults). Nothing of the set itself is saved on the assets. Before this, the manual add ignored `item.bundle_id` and created `quantity` assets of the set Item itself (found in production testing: a combo gave 1 asset, not a mouse and a keyboard).
