@@ -76,7 +76,7 @@ describe("add-assets model", () => {
 
   it("reasons come most important first; nothing about serials before an Item is chosen", () => {
     expect(checkAdd(emptyInput(), null, []).reasons).toEqual([
-      "Choose the Item.", "Choose where the assets are Received Into.", "Choose the Cost Centre.",
+      "Choose the Item.", "Choose where the assets go.", "Choose the Cost Centre.",
     ]);
     expect(checkAdd(ready(), item(), []).reasons).toEqual([]);
     expect(checkAdd(ready({ quantity: "1001" }), item(), []).reasons[0]).toBe("Quantity: At most 1,000 at a time.");

@@ -26,6 +26,24 @@ export interface SearchableSelectOption {
   /** A small chip shown at the end of the option and of the chosen value
    * (for example a Category's work area, "IT Team"). Also searchable. */
   badge?: string;
+  /** A heading to list this option under: options with the same group are listed together, in the order the
+   * groups first appear. Options without one are listed first, under no heading. */
+  group?: string;
+}
+
+/** The options as sections (one per group; a list with no groups is one section with no heading, as before). */
+function groupedOptions(options: SearchableSelectOption[]): { heading?: string; items: SearchableSelectOption[] }[] {
+  const order: string[] = [];
+  const by = new Map<string, SearchableSelectOption[]>();
+  for (const option of options) {
+    const key = option.group ?? "";
+    if (!by.has(key)) {
+      by.set(key, []);
+      order.push(key);
+    }
+    by.get(key)!.push(option);
+  }
+  return order.map((key) => ({ heading: key || undefined, items: by.get(key)! }));
 }
 
 function OptionBadge({ text }: { text?: string }) {
@@ -148,35 +166,37 @@ export function SearchableSelect({
           <CommandInput placeholder={searchPlaceholder} value={search} onValueChange={setSearch} />
           <CommandList>
             <CommandEmpty>{emptyText}</CommandEmpty>
-            <CommandGroup>
-              {options.map((option) => (
-                <CommandItem
-                  key={option.value}
-                  value={optionText(option)}
-                  keywords={option.badge ? [...(option.keywords ?? []), option.badge] : option.keywords}
-                  onSelect={() => {
-                    onValueChange(option.value);
-                    setOpen(false);
-                    setSearch("");
-                  }}
-                >
-                  <Check
-                    className={cn("h-4 w-4", option.value === value ? "opacity-100" : "opacity-0")}
-                    aria-hidden="true"
-                  />
-                  <span>
-                    {option.label}
-                    {option.detail && (
-                      <>
-                        {" "}
-                        <span className="text-muted-foreground">· {option.detail}</span>
-                      </>
-                    )}
-                  </span>
-                  <OptionBadge text={option.badge} />
-                </CommandItem>
-              ))}
-            </CommandGroup>
+            {groupedOptions(options).map((section) => (
+              <CommandGroup key={section.heading ?? ""} heading={section.heading}>
+                {section.items.map((option) => (
+                  <CommandItem
+                    key={option.value}
+                    value={optionText(option)}
+                    keywords={option.badge ? [...(option.keywords ?? []), option.badge] : option.keywords}
+                    onSelect={() => {
+                      onValueChange(option.value);
+                      setOpen(false);
+                      setSearch("");
+                    }}
+                  >
+                    <Check
+                      className={cn("h-4 w-4", option.value === value ? "opacity-100" : "opacity-0")}
+                      aria-hidden="true"
+                    />
+                    <span>
+                      {option.label}
+                      {option.detail && (
+                        <>
+                          {" "}
+                          <span className="text-muted-foreground">· {option.detail}</span>
+                        </>
+                      )}
+                    </span>
+                    <OptionBadge text={option.badge} />
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            ))}
             {onCreateNew && (
               // forceMount on the group too: cmdk hides a group none of whose items match the search,
               // which hid "+ New …" exactly when it was needed (S7 P2-1).

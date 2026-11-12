@@ -26,7 +26,7 @@ import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { NewBrandDialog, NewCostCenterDialog, NewVendorDialog } from "@/components/quick-create/masters";
-import { StockRoomSelect, useStockRooms } from "@/components/quick-create/StockRoomSelect";
+import { WhereSelect, useWherePlaces } from "@/components/quick-create/WhereSelect";
 import type { Item } from "../items/types";
 import { ItemFormDialog } from "../items/ItemFormDialog";
 import { PrintLabelsAction } from "../labels/PrintLabelsAction";
@@ -159,7 +159,7 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
   const brandsQ = useQuery({ queryKey: ["masters", "brands"], queryFn: () => apiClient.get<BrandLike[]>("/masters/brands") });
   const vendorsQ = useQuery({ queryKey: ["masters", "vendors"], queryFn: () => apiClient.get<Named[]>("/masters/vendors") });
   const customFieldsQ = useQuery({ queryKey: ["masters", "custom-fields"], queryFn: () => apiClient.get<CustomFieldDef[]>("/masters/custom-fields") });
-  const rooms = useStockRooms(companyId);
+  const places = useWherePlaces(companyId);
 
   const items = useMemo(() => {
     const listed = asArray<Item>(itemsQ.data);
@@ -204,7 +204,7 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
   });
   useRememberedDefault({
     kind: "stock_room", companyId, value: input.receivedInto,
-    setValue: (v) => setInput((s) => ({ ...s, receivedInto: v })), validIds: rooms.rows.map((r) => r.id), ready: rooms.isSuccess,
+    setValue: (v) => setInput((s) => ({ ...s, receivedInto: v })), validIds: places.ids, ready: places.isSuccess,
   });
 
   /** Changes part of the form; a refusal about that part is cleared (the rest stays marked). */
@@ -404,14 +404,13 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
             </div>
           </Field>
           <Field
-            id="received-into" label="Received Into" required problems={problemsAt("received")}
-            help="The Stock Room the assets go to. It can belong to another company: the assets stay owned by the company and cost centre chosen here."
+            id="received-into" label="Where do they go" required problems={problemsAt("received")}
+            help="A store (the assets are With Store), a head-office or warehouse site (Installed there) or a stock room (spare stock). It can belong to another company: the assets stay owned by the company and cost centre chosen here."
           >
-            <StockRoomSelect
+            <WhereSelect
               id="received-into"
-              aria-label="Received Into"
+              aria-label="Where do they go"
               companyId={companyId}
-              acrossCompanies
               value={input.receivedInto}
               onValueChange={(v) => edit({ receivedInto: v }, ["received"])}
             />

@@ -293,7 +293,7 @@ export function checkAdd(
   const reasons: string[] = [];
   if (input.itemId === "") reasons.push("Choose the Item.");
   if (qtyProblem) reasons.push(`Quantity: ${qtyProblem}`);
-  if (input.receivedInto === "") reasons.push("Choose where the assets are Received Into.");
+  if (input.receivedInto === "") reasons.push("Choose where the assets go.");
   if (input.costCenterId === "") reasons.push("Choose the Cost Centre.");
   if (serials.countProblem) reasons.push(serials.countProblem);
   if (serials.messages.length > 0) reasons.push(serials.messages[0]);

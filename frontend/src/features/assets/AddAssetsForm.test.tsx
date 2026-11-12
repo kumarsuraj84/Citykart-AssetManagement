@@ -51,6 +51,8 @@ const CUSTOM_FIELDS = [
 ];
 
 interface Setup {
+  stores?: unknown[];
+  sites?: unknown[];
   brands?: unknown[];
   items?: unknown[];
   rooms?: unknown[];
@@ -64,6 +66,7 @@ interface Setup {
 
 function mockApi(s: Setup = {}) {
   const {
+    stores = [], sites = [],
     brands = [{ id: 9, code: "DELL", name: "Dell" }],
     items = [LAPTOP, MOUSE, AMP], rooms = [{ id: 4, name: "HO Stock", location_name: "Head Office", company_code: "CKSPL", company_id: 1 }],
     costCentres = [{ id: 3, code: "HO01", name: "Head Office" }], vendors = [{ id: 7, name: "Acme Traders" }], customFields = [],
@@ -72,6 +75,8 @@ function mockApi(s: Setup = {}) {
   (apiClient.get as any).mockImplementation(withCapabilities(caps, (path: string) => {
     if (path.startsWith("/items")) return Promise.resolve(items);
     if (path.startsWith("/stock-rooms")) return Promise.resolve(rooms);
+    if (path.startsWith("/people?kind=stores")) return Promise.resolve(stores);
+    if (path.startsWith("/people?kind=install-points")) return Promise.resolve(sites);
     if (path === "/asset-users/me/companies") return Promise.resolve(companies);
     if (path.startsWith("/masters/categories")) return Promise.resolve([{ id: 1, code: "IT", name: "IT Equipment", asset_domain: "IT" }]);
     if (path.startsWith("/masters/subcategories")) return Promise.resolve([{ id: 2, code: "LAP", name: "Laptops", category_id: 1 }]);
@@ -120,7 +125,7 @@ async function fillEssentials(itemName = "Laptop", qty?: string) {
   await ready();
   await pick(/^item$/i, itemName);
   if (qty !== undefined) fireEvent.change(screen.getByLabelText("Quantity"), { target: { value: qty } });
-  await pick(/^received into$/i, "HO Stock");
+  await pick(/^where do they go$/i, "HO Stock");
   await pick(/^cost centre$/i, "HO01 · Head Office");
 }
 
@@ -145,7 +150,7 @@ describe("Add Assets: the batch form", () => {
     expect(await screen.findByRole("heading", { name: "Add Assets" })).toBeInTheDocument();
     await ready();
     expect(screen.getByLabelText("Quantity")).toHaveValue(1);
-    expect(screen.getByRole("combobox", { name: /^received into$/i })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /^where do they go$/i })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: /^cost centre$/i })).toBeInTheDocument();
     // Folded: nothing of them is on the page until opened.
     for (const label of ["Vendor", "PO No", "Invoice No", "Brand", "ERP Barcode", "Description", "Warranty years"]) {
@@ -283,6 +288,46 @@ describe("Add Assets: the batch form", () => {
     expect(screen.getByText("The ERP item code, for example CT123456. The same ERP Barcode goes on every part of a set.")).toBeInTheDocument();
   });
 
+  it("Where do they go lists Stores, Sites and Stock rooms in groups, leaves out a store's own rooms, and sends the chosen store", async () => {
+    const person = (id: number, kind: string, code: string, name: string, place: string) =>
+      ({ id, kind, code, name, company_id: 1, company_code: "CKSPL", location_name: place });
+    mockApi({
+      stores: [person(50, "STORE", "MMR", "Mamura Store", "Mamura")],
+      sites: [person(51, "INSTALLED", "INS-MMR", "Mamura Store", "Mamura"), person(52, "INSTALLED", "INS-HO", "Head Office Site", "Head Office")],
+      rooms: [
+        { id: 4, code: "STK-HO", name: "HO Stock", location_name: "Head Office", company_code: "CKSPL", company_id: 1 },
+        { id: 53, code: "STK-MMR", name: "Mamura Stock", location_name: "Mamura", company_code: "CKSPL", company_id: 1 },
+      ],
+    });
+    renderAt();
+    await ready();
+    await pick(/^item$/i, "Mouse");
+    fireEvent.click(screen.getByRole("combobox", { name: /^where do they go$/i }));
+    await screen.findByText("Stores · the store uses them (With Store)");
+    expect(screen.getByText("Head office and warehouse sites · installed there")).toBeInTheDocument();
+    expect(screen.getByText("Stock rooms · spare stock (In Stock)")).toBeInTheDocument();
+    const listed = screen.getAllByRole("option").map((o) => o.textContent).filter((t) => !/New Stock Room/.test(t ?? ""));
+    // the store, the real site and the real stock room; the store's own Install Point and Stock Room are not offered
+    expect(listed).toEqual(["MMR · Mamura Store · Mamura", "Head Office Site · Head Office", "HO Stock · Head Office"]);
+    fireEvent.click(screen.getByRole("option", { name: /Mamura Store/ }));
+    await pick(/^cost centre$/i, "HO01 · Head Office");
+    await waitFor(() => expect(addButton()).toBeEnabled());
+    fireEvent.click(addButton());
+    await waitFor(() => expect(lastBatchBody()).toMatchObject({ received_into_asset_user_id: 50 }));
+  });
+
+  it("a site and a stock room can still be chosen, and each is sent as the place", async () => {
+    mockApi({ sites: [{ id: 52, kind: "INSTALLED", code: "INS-HO", name: "Head Office Site", company_id: 1, company_code: "CKSPL", location_name: "Head Office" }] });
+    renderAt();
+    await ready();
+    await pick(/^item$/i, "Mouse");
+    await pick(/^where do they go$/i, "Head Office Site");
+    await pick(/^cost centre$/i, "HO01 · Head Office");
+    await waitFor(() => expect(addButton()).toBeEnabled());
+    fireEvent.click(addButton());
+    await waitFor(() => expect(lastBatchBody()).toMatchObject({ received_into_asset_user_id: 52 }));
+  });
+
   it("the Brand list shows only the brands used for the Item's work area, and a brand left over from another area is dropped", async () => {
     mockApi({
       brands: [
@@ -404,8 +449,8 @@ describe("Add Assets: the batch form", () => {
     await ready();
     await waitFor(() => expect(whyLine()).toHaveTextContent("Why can't I add? Choose the Item. (2 more things to fix)"));
     await pick(/^item$/i, "Mouse");
-    await waitFor(() => expect(whyLine()).toHaveTextContent("Choose where the assets are Received Into. (1 more thing to fix)"));
-    await pick(/^received into$/i, "HO Stock");
+    await waitFor(() => expect(whyLine()).toHaveTextContent("Choose where the assets go. (1 more thing to fix)"));
+    await pick(/^where do they go$/i, "HO Stock");
     await waitFor(() => expect(whyLine()).toHaveTextContent("Choose the Cost Centre."));
     await pick(/^cost centre$/i, "HO01 · Head Office");
     await waitFor(() => expect(whyLine()).toHaveTextContent("Ready. Ctrl+Enter also adds."));
@@ -561,7 +606,7 @@ describe("Add Assets: answers from the server", () => {
     expect(screen.getByLabelText("Quantity")).toHaveValue(1);
     expect(screen.getByRole("combobox", { name: /^item$/i })).toHaveTextContent("Choose the Item");
     // Where they went is remembered.
-    await waitFor(() => expect(screen.getByRole("combobox", { name: /^received into$/i })).toHaveTextContent("HO Stock"));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /^where do they go$/i })).toHaveTextContent("HO Stock"));
     expect(router.state.location.pathname).toBe("/assets/new");
   });
 
@@ -598,7 +643,7 @@ describe("Add Assets: company, smart defaults and creating what is missing", () 
     renderAt();
     await ready();
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/masters/cost-centers?company_id=1"));
-    expect(apiClient.get).toHaveBeenCalledWith("/stock-rooms?company_id=1");
+    expect(apiClient.get).toHaveBeenCalledWith("/stock-rooms");
     // Items of this person's own work areas only.
     expect(apiClient.get).toHaveBeenCalledWith("/items?work_area=mine");
     await fillEssentials("Mouse");
@@ -630,11 +675,11 @@ describe("Add Assets: company, smart defaults and creating what is missing", () 
     await waitFor(() => expect(screen.getByRole("combobox", { name: /^cost centre$/i })).toBeEnabled());
     await pick(/^cost centre$/i, "B Cost Centre");
     // company B is chosen: its stock room is listed FIRST, and the other company's is still there (release 2)
-    fireEvent.click(screen.getByRole("combobox", { name: /^received into$/i }));
+    fireEvent.click(screen.getByRole("combobox", { name: /^where do they go$/i }));
     const options = await screen.findAllByRole("option");
     expect(options.slice(0, 2).map((o) => o.textContent)).toEqual([expect.stringMatching(/^B Stock/), expect.stringMatching(/^A Stock/)]);
     fireEvent.click(options[0]);
-    expect(screen.getByRole("combobox", { name: /^received into$/i })).toHaveTextContent("B Stock");
+    expect(screen.getByRole("combobox", { name: /^where do they go$/i })).toHaveTextContent("B Stock");
   });
 
   it("Release 2: a stock room of the OTHER company can be chosen; the screen says the assets stay owned by the company chosen", async () => {
@@ -649,8 +694,8 @@ describe("Add Assets: company, smart defaults and creating what is missing", () 
     await waitFor(() => expect(screen.getByRole("combobox", { name: /^company$/i })).toBeInTheDocument());
     expect(screen.getByText(/It can belong to another company: the assets stay owned by the company and cost centre chosen here\./)).toBeInTheDocument();
     await pick(/^company$/i, "Company A");
-    await pick(/^received into$/i, "B Stock");                       // the other company's stock room
-    expect(screen.getByRole("combobox", { name: /^received into$/i })).toHaveTextContent("B Stock");
+    await pick(/^where do they go$/i, "B Stock");                       // the other company's stock room
+    expect(screen.getByRole("combobox", { name: /^where do they go$/i })).toHaveTextContent("B Stock");
   });
 
   it("the head-office admin (no home company) starts with the first of their companies", async () => {
@@ -669,7 +714,7 @@ describe("Add Assets: company, smart defaults and creating what is missing", () 
     renderAt();
     await ready();
     await pick(/^item$/i, "Mouse");
-    await pick(/^received into$/i, "WH Stock");
+    await pick(/^where do they go$/i, "WH Stock");
     await pick(/^cost centre$/i, "WH · Warehouse");
     await waitFor(() => expect(addButton()).toBeEnabled());
     fireEvent.click(addButton());
@@ -677,7 +722,7 @@ describe("Add Assets: company, smart defaults and creating what is missing", () 
     cleanup();
     renderAt();
     await waitFor(() => expect(screen.getByRole("combobox", { name: /^cost centre$/i })).toHaveTextContent("Warehouse"));
-    await waitFor(() => expect(screen.getByRole("combobox", { name: /^received into$/i })).toHaveTextContent("WH Stock"));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /^where do they go$/i })).toHaveTextContent("WH Stock"));
   });
 
   it("a remembered record that no longer exists is quietly forgotten", async () => {
@@ -685,10 +730,10 @@ describe("Add Assets: company, smart defaults and creating what is missing", () 
     mockApi({ costCentres: [{ id: 3, code: "HO01", name: "Head Office" }, { id: 8, code: "WH01", name: "Warehouse" }] });
     renderAt();
     await ready();
-    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/stock-rooms?company_id=1"));
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith("/stock-rooms"));
     await new Promise((r) => setTimeout(r, 30));
     expect(screen.getByRole("combobox", { name: /^cost centre$/i })).toHaveTextContent("Choose the Cost Centre");
-    expect(screen.getByRole("combobox", { name: /^received into$/i })).not.toHaveTextContent("HO Stock");
+    expect(screen.getByRole("combobox", { name: /^where do they go$/i })).not.toHaveTextContent("HO Stock");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
@@ -696,7 +741,7 @@ describe("Add Assets: company, smart defaults and creating what is missing", () 
     mockApi({ costCentres: [], rooms: [] });
     renderAt();
     expect(await screen.findByText("This company has no cost centre yet. Add one with “New Cost Centre…” in the list.")).toBeInTheDocument();
-    expect(await screen.findByText("This company has no stock room yet. Add one with “New Stock Room…” in the list.")).toBeInTheDocument();
+    expect(await screen.findByText("There is no store, site or stock room yet. Add a stock room with “New Stock Room…” in the list.")).toBeInTheDocument();
     expect(addButton()).toBeDisabled();
   });
 
@@ -704,7 +749,7 @@ describe("Add Assets: company, smart defaults and creating what is missing", () 
     mockApi({ caps: VIEWER, costCentres: [], rooms: [], vendors: [] });
     renderAt();
     expect(await screen.findByText(`This company has no cost centre yet. ${ASK_TO_ADD.cost_centre}`)).toBeInTheDocument();
-    expect(await screen.findByText(`This company has no stock room yet. ${ASK_TO_ADD.stock_room}`)).toBeInTheDocument();
+    expect(await screen.findByText(`There is no store, site or stock room yet. ${ASK_TO_ADD.stock_room}`)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /purchase details/i }));
     expect(await screen.findByText(ASK_TO_ADD.vendor)).toBeInTheDocument();
   });
@@ -720,7 +765,7 @@ describe("Add Assets: company, smart defaults and creating what is missing", () 
     const entries: [string, RegExp, RegExp][] = [
       ["item", /^item$/i, /new item/i],
       ["cost_centre", /^cost centre$/i, /new cost centre/i],
-      ["stock_room", /^received into$/i, /new stock room/i],
+      ["stock_room", /^where do they go$/i, /new stock room/i],
       ["vendor", /^vendor$/i, /new vendor/i],
       ["brand", /^brand$/i, /new brand/i],
     ];
@@ -801,7 +846,7 @@ describe("Add Assets: company, smart defaults and creating what is missing", () 
     });
     renderAt();
     await ready();
-    fireEvent.click(screen.getByRole("combobox", { name: /^received into$/i }));
+    fireEvent.click(screen.getByRole("combobox", { name: /^where do they go$/i }));
     fireEvent.click(await screen.findByRole("option", { name: /new stock room/i }));
     const dialog = await screen.findByRole("dialog", { name: /new stock room/i });
     fireEvent.change(within(dialog).getByLabelText(/^name/i), { target: { value: "Farukhnagar Stock" } });
@@ -810,7 +855,7 @@ describe("Add Assets: company, smart defaults and creating what is missing", () 
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/stock-rooms", {
       name: "Farukhnagar Stock", company_id: 1, location_name: "Farukhnagar Warehouse",
     }));
-    await waitFor(() => expect(screen.getByRole("combobox", { name: /^received into$/i })).toHaveTextContent("Farukhnagar Stock"));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /^where do they go$/i })).toHaveTextContent("Farukhnagar Stock"));
   });
 
   it("a load failure says so, with Try again", async () => {

@@ -151,6 +151,21 @@ The Item form is short — Name, Type of asset (one pick of "Group › Sub-categ
 
 **How to apply.** Never copy category, serial rule or defaults into a screen; read the Item. Sub-category is still required by the server, so the Item form chooses the group's only Sub-category itself or offers "New Sub-category".
 
+## 2026-11-12 — (26) Add Assets: "Where do they go" lists Stores, Sites and Stock rooms in one searchable list
+
+**Decision.** Add Assets used to ask "Received Into" and list only Stock Rooms: on the real system 232 of them, 226 being each store's own room named by code, and an asset put there was "In Stock", never "With Store". The picker is now **"Where do they go"**, one searchable list in three groups, the same places Move uses:
+* **Stores** (pick the store; the assets are **With Store**, as Give to Store does). Locally bought things for a store go straight to the store.
+* **Head office and warehouse sites** (a site's Install Point; the assets are **Installed** there).
+* **Stock rooms** (spare stock; **In Stock**).
+A store's own Stock Room and Install Point (`STK-<code>` / `INS-<code>`) are **not listed**, exactly as in Move (`storeOwnedRoomIds`); the store itself is the place. The person's own company's places come first, then the other companies' they work in (an asset may be kept at another company's place; it stays owned by its purchase company). "+ New Stock Room…" stays for whoever may add one. The last choice is still remembered per company.
+* **No server change:** `POST /api/assets/batch` already accepts any active place and the lifecycle sets the status from the place's type (Store → With Store, Install Point → Installed, Stock Room → In Stock); a test now pins this (`tests/assets/test_batch_places.py`).
+* **Data:** `GET /api/people?kind=stores|install-points` (up to 1,000 each; the real system has 226 stores) and `GET /api/stock-rooms`. `SearchableSelect` gained an optional `group` heading per option.
+* **Not changed:** PO delivery / Receive keep their own "Received Into" stock-room picker; applying the same list there is a separate step.
+
+**Why.** The owner: when assets are added by hand (often local purchases for a store) they should be put at the store site, as when moving, not at a store's stock room or install point.
+
+**How to apply.** Do not list a store's own `STK-` / `INS-` rooms as places to put things; use `WhereSelect` for a place picker that must offer stores.
+
 ## 2026-11-12 — (25) A brand says which work areas it is used for (IT / Non-IT / both); pickers list only the brands for the work area
 
 **Decision.** Brands used to be one flat list, so IT and Non-IT brands mixed in every dropdown. Each brand now has **Used for** (`brand.work_areas`, a list of work-area codes: IT, Non-IT or both), like groups already follow the work area. A brand used for both (Samsung) is **one** brand, one name, one code; names stay unique across all brands.
