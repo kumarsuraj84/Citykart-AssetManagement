@@ -17,7 +17,12 @@ interface PiRow {
   match: "invoice" | "single" | "none";
   assets: number;
   recorded: number;
-  status: "ready" | "done" | "different" | "no_match";
+  status: "ready" | "done" | "different" | "no_match" | "not_posted";
+  /** The amount typed on the invoice here against the PI's total: a hint, never a block. */
+  amount_check?: "matches" | "differs" | "unknown";
+  ckam_invoice_amount?: number | null;
+  /** Set when the PI's vendor could not be confirmed (booked under OTHER, or the vendor is not linked). */
+  vendor_note?: string | null;
 }
 
 interface PiPreview {
@@ -43,6 +48,13 @@ const STATUS_TEXT: Record<PiRow["status"], string> = {
   done: "Already recorded",
   different: "Different PI already recorded",
   no_match: "No matching invoice delivered here",
+  not_posted: "Not posted in the ERP yet (it can be added once it is)",
+};
+
+const AMOUNT_TEXT: Record<NonNullable<PiRow["amount_check"]>, string | null> = {
+  matches: "Amount matches the invoice",
+  differs: "Amount differs from the invoice entered here: check it",
+  unknown: null,
 };
 
 const keyOf = (r: PiRow) => `${r.pi_number}||${r.ckam_invoice_number}`;
@@ -95,6 +107,7 @@ export function ErpPiPanel({ poId, onClose, onTypeItIn }: {
       qc.invalidateQueries({ queryKey: ["purchase-order", poId] });
       qc.invalidateQueries({ queryKey: ["purchase-orders"] });
       qc.invalidateQueries({ queryKey: ["erp", "pi", poId] });
+      qc.invalidateQueries({ queryKey: ["erp", "pi-ready"] });
     },
   });
 
@@ -111,7 +124,7 @@ export function ErpPiPanel({ poId, onClose, onTypeItIn }: {
       )}
       {previewQ.data && !unavailable && rows.length === 0 && (
         <p className="text-sm text-muted-foreground">
-          The ERP has no PI for this purchase order yet{previewQ.data.not_booked > 0 ? ` (${previewQ.data.not_booked} invoice(s) are not booked)` : ""}.
+          The ERP has no PI for this purchase order yet{previewQ.data.not_booked > 0 ? ` (${previewQ.data.not_booked} invoice(s) are not booked)` : ""}. CKAM looks again after each ERP copy.
         </p>
       )}
       {rows.length > 0 && (
@@ -138,6 +151,13 @@ export function ErpPiPanel({ poId, onClose, onTypeItIn }: {
                     <p className={`text-xs ${r.status === "ready" ? "text-success" : r.status === "done" ? "text-muted-foreground" : "text-warning-foreground"}`}>
                       {STATUS_TEXT[r.status]}
                     </p>
+                    {r.status !== "done" && r.amount_check && AMOUNT_TEXT[r.amount_check] && (
+                      <p className={`text-xs ${r.amount_check === "matches" ? "text-muted-foreground" : "text-warning-foreground"}`}>
+                        {AMOUNT_TEXT[r.amount_check]}
+                        {r.amount_check === "differs" && r.ckam_invoice_amount != null ? ` (${r.ckam_invoice_amount.toLocaleString("en-IN")} here)` : ""}
+                      </p>
+                    )}
+                    {r.vendor_note && <p className="text-xs text-warning-foreground">{r.vendor_note}</p>}
                     {r.status === "different" && (
                       <label className="mt-1 flex items-center gap-1.5 text-xs">
                         <Checkbox

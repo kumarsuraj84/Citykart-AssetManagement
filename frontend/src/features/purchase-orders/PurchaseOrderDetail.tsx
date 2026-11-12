@@ -43,6 +43,8 @@ interface PurchaseOrderOut {
   warehouse_code?: string | null;
   erp_po_code?: number | null;
   vendor_name?: string | null;
+  /** Received invoices whose PI is posted in the ERP and not recorded here yet. */
+  pi_ready_invoices?: number;
 }
 
 /** AM-14: a compact KPI tile for the PO detail summary row (label + number). */
@@ -432,7 +434,9 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
         )}
       </section>
 
-      {invoices.length > 0 && <InvoicesCard poId={poId} invoices={invoices} fromErp={po?.erp_po_code != null} />}
+      {invoices.length > 0 && (
+        <InvoicesCard poId={poId} invoices={invoices} fromErp={po?.erp_po_code != null || (po?.pi_ready_invoices ?? 0) > 0} piReady={po?.pi_ready_invoices ?? 0} />
+      )}
 
       {/* De-emphasised and only offered while nothing has been received: once
           anything is received the server refuses (409) and the waiting items

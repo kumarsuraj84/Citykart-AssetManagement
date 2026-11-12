@@ -12,6 +12,7 @@ import { PO_STATUSES, poStatusLabel } from "@/lib/labels";
 import { DeliveryRemindersCard } from "../erp/DeliveryReminders";
 import { ErpChangedBadge, ErpChangesCard, useErpChangesSummary } from "../erp/ErpChanges";
 import { ErpSyncStatus } from "../erp/ErpSyncStatus";
+import { PiReadyCard } from "../erp/PiReady";
 import { PoStatusBadge } from "./PoStatusBadge";
 import { type PoListRow, loadedAndTotal, useDebounced, usePoPages } from "./po-list";
 
@@ -24,16 +25,24 @@ const PI_STATUS_LABEL: Record<PiStatus, string> = {
 };
 
 /** The Purchase Invoice (PI) of a PO, compact: status dot + word, then the PI No · Date when one is set. */
+/** What the PI column says: a pending PI that the ERP has already posted reads "PI ready in ERP". */
+export function piLabel(po: Pick<PoListRow, "pi_status" | "pi_ready_invoices">): string {
+  const status = po.pi_status ?? "NOT_DELIVERED";
+  if (status === "PENDING" && (po.pi_ready_invoices ?? 0) > 0) return "PI ready in ERP";
+  return PI_STATUS_LABEL[status];
+}
+
 function PiCell({ po }: { po: PoListRow }) {
   const status = po.pi_status ?? "NOT_DELIVERED";
   if (status === "NOT_DELIVERED") return <span className="text-muted-foreground">—</span>;
-  const dotClass = status === "RECORDED" ? "bg-success" : "bg-warning";
+  const ready = status === "PENDING" && (po.pi_ready_invoices ?? 0) > 0;
+  const dotClass = status === "RECORDED" || ready ? "bg-success" : "bg-warning";
   const detail = [po.pi_number, po.pi_date].filter(Boolean).join(" · ");
   return (
     <div className="flex flex-col">
-      <span className="inline-flex items-center gap-1.5 text-xs text-foreground">
+      <span className={`inline-flex items-center gap-1.5 text-xs ${ready ? "font-medium text-success" : "text-foreground"}`}>
         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}`} aria-hidden="true" />
-        {PI_STATUS_LABEL[status]}
+        {piLabel(po)}
       </span>
       {detail && <span className="text-[11px] text-muted-foreground">{detail}</span>}
     </div>
@@ -115,7 +124,7 @@ export function PurchaseOrdersList() {
     company: (po) => po.company_name ?? "",
     waiting: (po) => po.waiting_units ?? 0,
     status: (po) => poStatusLabel(po.status),
-    pi: (po) => PI_STATUS_LABEL[po.pi_status ?? "NOT_DELIVERED"],
+    pi: (po) => piLabel(po),
   });
 
   const filtered = search.trim() !== "" || status !== "";
@@ -142,6 +151,7 @@ export function PurchaseOrdersList() {
         <ErpSyncStatus />
         <ErpChangesCard />
         <DeliveryRemindersCard />
+        <PiReadyCard />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">

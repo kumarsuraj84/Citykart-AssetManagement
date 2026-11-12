@@ -26,6 +26,7 @@ from app.bundles.service import add_bundle_lines
 from app.lifecycle.state_machine import LifecycleError
 from app.observability import audit as obs_audit
 from app.observability import events as obs_events
+from app.erp.pi_ready import ready_counts
 from app.purchase_orders.service import (
     PO_STATUSES, UNIT_STATUS_FILTER,
     add_pending_asset_line, attach_asset_codes, cancel_pending_asset_line, cancel_waiting_units, compute_pi_status,
@@ -156,6 +157,14 @@ async def check_serials(
     ])
 
 
+async def _add_pi_ready(session: AsyncSession, pi_by_po: dict[int, dict], domains) -> None:
+    """Adds `pi_ready_invoices` (invoices whose PI is posted in the ERP and not recorded here yet) to each PO's PI facts.
+    Only POs that still have a PI pending can have one, so the lookup is limited to those."""
+    pending = [po_id for po_id, facts in pi_by_po.items() if facts.get("pi_status") == "PENDING"]
+    for po_id, n in (await ready_counts(session, pending, domains)).items():
+        pi_by_po[po_id]["pi_ready_invoices"] = n
+
+
 def _po_out(row: dict, pi: dict) -> PurchaseOrderOut:
     extra = {key: value for key, value in row.items() if key != "po"}
     return PurchaseOrderOut.model_validate(row["po"]).model_copy(update={**pi, **extra})
@@ -188,6 +197,7 @@ async def list_pos(
         waiting=waiting, q=q, limit=limit, offset=offset,
     )
     pi_by_po = await compute_pi_status(session, [row["po"].id for row in rows])
+    await _add_pi_ready(session, pi_by_po, domains)
     response.headers["X-Total-Count"] = str(total)
     return [_po_out(row, pi_by_po.get(row["po"].id, {})) for row in rows]
 
@@ -197,6 +207,7 @@ async def _po_with_progress(session: AsyncSession, po: PurchaseOrder, asset_user
         session, None, await allowed_asset_domains(session, asset_user), po_id=po.id,
     )
     pi_by_po = await compute_pi_status(session, [po.id])
+    await _add_pi_ready(session, pi_by_po, await allowed_asset_domains(session, asset_user))
     if not rows:            # cannot happen for a PO that passed _get_scoped_po
         return PurchaseOrderOut.model_validate(po).model_copy(update=pi_by_po.get(po.id, {}))
     return _po_out(rows[0], pi_by_po.get(po.id, {}))

@@ -54,6 +54,25 @@ class WhVendor:
 
 
 @dataclass
+class WhPi:
+    """One purchase invoice (PI) document of the ERP, all its Fixed Assets lines in one row. `pi_code` is the ERP's
+    internal id of the document (unique per company); `pi_number` is the printed number and is NOT unique in CKSPL
+    (the series repeats). `amount` is the header total (lines + tax + charges), `lines_amount` the lines before tax."""
+    company_code: str
+    pi_code: int
+    pi_number: str
+    pi_date: date | None
+    vendor_code: str
+    vendor_name: str | None
+    bill_no: str | None
+    bill_date: date | None
+    amount: float | None
+    lines_amount: float | None
+    release_status: str | None          # 'P' = posted, 'U' = not posted yet
+    lines: int
+
+
+@dataclass
 class WhItem:
     icode: str
     company_code: str
@@ -110,6 +129,8 @@ class WarehouseReader(Protocol):
         """{company_code: {vendor codes}} of every supplier that has EVER been on a Fixed Assets PO line,
         however old the PO. The copy keeps their vendor rows even when their POs are outside the PO window,
         so Settings > Vendors > Add from ERP can offer them."""
+    async def pi_documents(self, since: date) -> list[WhPi]:
+        """Every Fixed Assets purchase invoice dated `since` or later, one row per PI document (both companies)."""
     async def items(self, icodes: set[str]) -> list[WhItem]: ...
     async def source_stamp(self) -> datetime | None:
         """When the warehouse last finished loading the PO data (None if it cannot tell)."""
@@ -180,6 +201,22 @@ class PgWarehouseReader(PgReadOnly):
         return [
             WhVendor(company_code=r["company"], vendor_code=str(r["vendor_code"]), name=(r["vendor_name"] or "").strip(),
                      gstin=_text(r["gstin"]), city=_text(r["city"]), is_extinct=bool(r["is_extinct"]))
+            for r in rows
+        ]
+
+    async def pi_documents(self, since: date) -> list[WhPi]:
+        rows = await self._fetch(
+            f"""select company, pi_code, max(pi_number) pi_number, max(pi_date) pi_date, max(vendor_code)::text vendor_code,
+                       max(vendor_name) vendor_name, max(vendor_bill_no) vendor_bill_no, max(vendor_bill_date) vendor_bill_date,
+                       max(hdr_netamt) amount, sum(net_amt) lines_amount, max(release_status) release_status, count(*) lines
+                from {SCHEMA}.pi_line
+                where division = 'FIXED ASSETS' and pi_date >= $1
+                group by company, pi_code""", since)
+        return [
+            WhPi(company_code=r["company"], pi_code=int(r["pi_code"]), pi_number=(r["pi_number"] or "").strip(), pi_date=r["pi_date"],
+                 vendor_code=str(r["vendor_code"]), vendor_name=_text(r["vendor_name"]), bill_no=_text(r["vendor_bill_no"]),
+                 bill_date=r["vendor_bill_date"], amount=_f(r["amount"]), lines_amount=_f(r["lines_amount"]),
+                 release_status=_text(r["release_status"]), lines=int(r["lines"]))
             for r in rows
         ]
 

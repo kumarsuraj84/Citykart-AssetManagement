@@ -5,6 +5,7 @@ import asyncpg
 import pytest
 
 from app.erp.source import ErpReceipt, ErpUnavailable, ErpViewMissing, PgReadOnly
+from tests.erp.pi_helpers import copy_pi
 from tests.erp.s3a2_world import build_s3a2_world, create_body
 from tests.erp.test_erp_api import _headers, desktop_po, erp, line  # noqa: F401  (erp is a fixture)
 
@@ -143,31 +144,33 @@ async def test_reminders_keep_their_role_check(client, erp, erp_on):
     assert (await client.get("/api/erp/reminders", headers=await _headers(client, "VWR"))).status_code == 403
 
 
-async def test_pi_lookup_without_an_invoice_view_says_the_erp_does_not_provide_it(client, erp, erp_on):
+async def test_pi_lookup_before_the_erp_copy_has_any_purchase_invoice_says_not_copied_yet(client, erp, erp_on):
     _, h, po_id = await _world(client, erp)
-    erp.invoices = missing_view()
     resp = await client.get(f"/api/erp/purchase-orders/{po_id}/pi", headers=h)
     assert resp.status_code == 200
     body = resp.json()
-    assert (body["available"], body["message"], body["rows"], body["po_id"]) == (False, NO_INVOICES, [], po_id)
+    assert (body["available"], body["rows"], body["po_id"]) == (False, [], po_id) and "have not been copied yet" in body["message"]
+    # nothing in the copy: nothing can be recorded (a plain 422, not a 503: no live ERP read is involved any more)
     applied = await client.post(f"/api/erp/purchase-orders/{po_id}/pi/apply", headers=h,
                                 json={"items": [{"pi_number": "PI-1", "ckam_invoice_number": "INV-1"}]})
-    assert applied.status_code == 503 and applied.json()["detail"] == NO_INVOICES
+    assert applied.status_code == 422 and "is not an ERP PI" in applied.json()["detail"]
 
 
 async def test_pi_lookup_that_works_says_available(client, erp, erp_on):
     _, h, po_id = await _world(client, erp)
+    await copy_pi(pi_code=1, pi_number="PI-1", bill="SOME-BILL")
     body = (await client.get(f"/api/erp/purchase-orders/{po_id}/pi", headers=h)).json()
     assert body["available"] is True and body["message"] is None and body["rows"] == []
 
 
-async def test_pi_lookup_for_a_po_not_from_the_erp_keeps_its_422(client, erp, erp_on):
+async def test_pi_lookup_works_for_a_po_not_made_from_the_erp_too(client, erp, erp_on):
     ids, h, _ = await _world(client, erp)
+    await copy_pi(pi_code=1, pi_number="PI-1", bill="SOME-BILL")
     made = await client.post("/api/purchase-orders", headers=h, json={
         "company_id": ids["spl"], "po_number": "MAN-S7", "po_date": "2026-01-01", "cost_center_id": ids["cost_spl"]})
     assert made.status_code == 201, made.text
     resp = await client.get(f"/api/erp/purchase-orders/{made.json()['id']}/pi", headers=h)
-    assert resp.status_code == 422 and "not created from the ERP" in resp.json()["detail"]
+    assert resp.status_code == 200 and resp.json()["rows"] == [] and resp.json()["available"] is True
 
 
 async def test_a_missing_view_in_the_erp_is_told_apart_from_a_down_erp(monkeypatch):

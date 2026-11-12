@@ -18,8 +18,8 @@ async def test_startup_and_shutdown_are_recorded_with_version_and_safe_config():
     assert [(e.component, e.event) for e in events] == [("startup", "app_started"), ("shutdown", "app_stopped")]
     details = events[0].details
     assert details["environment"] == settings.environment_name and details["version"]
-    # Security migrations (intended change): the head is now e8a0c2d4f6b8 (release 3: repair vendor places; before it d7f9b1c3e5a7, release 2 owner correction marker; before that c6e8a0b2d4f6, OBS-STATUS asset guard).
-    assert details["migration"]["code_head"] == "e8a0c2d4f6b8" and details["migration"]["matches"] is True
+    # Migrations (intended change): the head is now a9c1e3b5d7f2 (2026-11-12: the ERP's purchase invoices copy; before it e8a0c2d4f6b8, release 3: repair vendor places; d7f9b1c3e5a7, release 2 owner correction marker; c6e8a0b2d4f6, OBS-STATUS asset guard).
+    assert details["migration"]["code_head"] == "a9c1e3b5d7f2" and details["migration"]["matches"] is True
     assert "database_url" not in str(details) and settings.jwt_secret not in str(details)
     assert details["config"]["jwt_signing_key_is_placeholder"] in (True, False)
 
@@ -29,7 +29,7 @@ async def test_a_migration_mismatch_is_a_warning(monkeypatch):
     await system.on_startup()
     [mismatch] = await system_events(SystemEvent.component == "migration")
     assert mismatch.level == "WARNING" and mismatch.event == "head_mismatch"
-    assert "ffffffffffff" in mismatch.message and "e8a0c2d4f6b8" in mismatch.message   # release 3 head
+    assert "ffffffffffff" in mismatch.message and "a9c1e3b5d7f2" in mismatch.message   # ERP purchase invoices copy head
 
 
 def test_the_version_comes_from_the_setting_the_environment_or_a_file(monkeypatch, tmp_path):

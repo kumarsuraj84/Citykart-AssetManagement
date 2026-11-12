@@ -49,7 +49,7 @@ function piText(inv: InvoiceSummary): string {
  * entry point records a PI -- typed in per invoice, or (for a PO from the ERP)
  * fetched from the ERP -- and the received units' labels can be printed here.
  */
-export function InvoicesCard({ poId, invoices, fromErp }: { poId: number; invoices: InvoiceSummary[]; fromErp: boolean }) {
+export function InvoicesCard({ poId, invoices, fromErp, piReady = 0 }: { poId: number; invoices: InvoiceSummary[]; fromErp: boolean; piReady?: number }) {
   const [piOpen, setPiOpen] = useState(false);
   const [round, setRound] = useState(0);
   const assetIds = [...new Set(invoices.flatMap((i) => i.asset_ids ?? []))];
@@ -75,6 +75,11 @@ export function InvoicesCard({ poId, invoices, fromErp }: { poId: number; invoic
         Purchase Invoice (PI) number and date arrive from Finance per invoice, not per PO: each invoice below gets its own PI.
         {truncated ? " Labels: the first 200 units of each invoice." : ""}
       </p>
+      {piReady > 0 && (
+        <p className="rounded-sm border border-success/50 bg-success/10 px-2 py-1 text-xs font-medium text-success" role="status">
+          The ERP has the PI for {plural(piReady, "invoice")} below. Use Record PI › Fetch from ERP to add {piReady === 1 ? "it" : "them"}.
+        </p>
+      )}
       <ul className="flex flex-col divide-y rounded-md border" aria-label="Invoices">
         {invoices.map((inv, i) => (
           <li key={`${inv.invoice_number ?? "none"}-${i}`} className="grid grid-cols-2 gap-x-3 gap-y-0.5 px-2 py-1.5 text-sm sm:grid-cols-[minmax(0,1fr)_6rem_7rem_4rem_minmax(0,12rem)] sm:items-center">

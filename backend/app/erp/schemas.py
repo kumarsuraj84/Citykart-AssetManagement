@@ -126,6 +126,18 @@ class PiApplyIn(BaseModel):
     items: list[PiApplyItemIn] = Field(min_length=1)
 
 
+class PiApplyManyItemIn(BaseModel):
+    """One PI ticked on the worklist: which PO's invoice it goes to (a PI number can repeat, so the PO and invoice name it)."""
+    po_id: int
+    pi_number: str = Field(max_length=100)
+    ckam_invoice_number: str = Field(max_length=100)
+    overwrite: bool = False
+
+
+class PiApplyManyIn(BaseModel):
+    items: list[PiApplyManyItemIn] = Field(min_length=1, max_length=200)
+
+
 class ErpVendorLinkIn(BaseModel):
     """An ERP supplier of one company (the same code means a different supplier in each company)."""
     company_id: int

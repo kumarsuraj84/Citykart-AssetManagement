@@ -4,8 +4,9 @@ from datetime import date
 from sqlalchemy import select
 from app.assets.models import Asset
 from app.core.db import SessionLocal
-from app.erp.source import ErpInvoice, ErpReceipt
+from app.erp.source import ErpReceipt
 from app.purchase_orders.models import PendingAsset
+from tests.erp.pi_helpers import copy_pi
 from tests.erp.test_erp_api import _headers, _setup, desktop_po, erp, line  # noqa: F401  (erp is a fixture)
 
 PO_CODE = 1133610106
@@ -131,12 +132,9 @@ async def test_reminders_are_only_for_pos_made_from_the_erp_and_respect_roles_an
     assert resp.headers["X-ERP-Available"] == "false" and "could not be reached" in resp.headers["X-ERP-Message"]
 
 
-# ---------- PI from the ERP ----------
 
-def invoice(vendor_no="INV-1", pi="PI-100", pi_day=28, amount=1000.0):
-    return ErpInvoice(po_code=PO_CODE, vendor_invoice_no=vendor_no, vendor_invoice_date=date(2026, 9, 20),
-                      pi_number=pi, pi_date=date(2026, 9, pi_day) if pi else None, pi_amount=amount)
 
+# ---------- PI from the ERP: found by the vendor's bill number, in CKAM's copy of the ERP's purchase invoices ----------
 
 async def _pi_numbers(po_id):
     async with SessionLocal() as session:
@@ -146,29 +144,63 @@ async def _pi_numbers(po_id):
     return rows
 
 
-async def test_the_pi_preview_matches_erp_pis_to_delivered_invoices_by_the_vendor_invoice_number(client, erp):
+async def _preview(client, h, po_id):
+    return (await client.get(f"/api/erp/purchase-orders/{po_id}/pi", headers=h)).json()
+
+
+async def test_the_pi_preview_finds_posted_pis_by_the_vendor_bill_number_and_checks_the_vendor(client, erp):
     ids = await _setup()
     h = await _headers(client, "OPR")
     po_id = await _create_desktop_po(client, ids, h)
-    await _deliver(client, h, po_id, 2, ids, invoice="INV/1")
-    erp.invoice_list = [invoice(vendor_no="inv-1", pi="PI-100"), invoice(vendor_no="OTHER-9", pi="PI-200"), invoice(pi=None)]
+    await _deliver(client, h, po_id, 2, ids, invoice="INV/1")                      # 8 assets, invoice amount 1000
+    await copy_pi(pi_code=1, pi_number="PI-100", bill="inv-1", amount=1000.0)         # same bill (case and punctuation ignored), the PO's vendor
+    await copy_pi(pi_code=2, pi_number="PI-200", bill="OTHER-9")                      # another bill: not this invoice
+    await copy_pi(pi_code=3, pi_number="PI-300", bill="INV/1", vendor_code="999", vendor_name="SOME OTHER SUPPLIER")  # same bill, a different linked-vendor world: ignored
+    await copy_pi(pi_code=4, pi_number="PI-400", bill="INV/1", company="CKVPL")      # same bill in the OTHER company: ignored
 
-    pv = (await client.get(f"/api/erp/purchase-orders/{po_id}/pi", headers=h)).json()
-    assert pv["not_booked"] == 1 and pv["ckam_invoices"] == ["INV/1"] and pv["delivered_assets"] == 8
-    by_pi = {r["pi_number"]: r for r in pv["rows"]}
-    assert (by_pi["PI-100"]["ckam_invoice_number"], by_pi["PI-100"]["match"], by_pi["PI-100"]["status"], by_pi["PI-100"]["assets"]) == ("INV/1", "invoice", "ready", 8)
-    assert (by_pi["PI-200"]["ckam_invoice_number"], by_pi["PI-200"]["match"], by_pi["PI-200"]["status"]) == (None, "none", "no_match")
+    pv = await _preview(client, h, po_id)
+    assert pv["available"] is True and pv["not_booked"] == 0 and pv["ckam_invoices"] == ["INV/1"] and pv["delivered_assets"] == 8
+    [row] = pv["rows"]
+    assert (row["pi_number"], row["ckam_invoice_number"], row["match"], row["status"], row["assets"], row["posted"]) == ("PI-100", "INV/1", "invoice", "ready", 8, True)
+    assert (row["amount_check"], row["vendor_note"], row["pi_date"]) == ("matches", None, "2026-09-28")
     assert all(pi is None for pi, _ in await _pi_numbers(po_id))                      # a preview records nothing
 
 
-async def test_with_one_delivered_invoice_and_one_erp_pi_they_are_paired_even_if_the_numbers_differ(client, erp):
+async def test_a_pi_booked_under_the_catch_all_vendor_other_is_offered_with_a_note_and_a_wrong_amount_is_flagged(client, erp):
     ids = await _setup()
     h = await _headers(client, "OPR")
     po_id = await _create_desktop_po(client, ids, h)
-    await _deliver(client, h, po_id, 1, ids, invoice="OUR-NUMBER")
-    erp.invoice_list = [invoice(vendor_no="THEIRS-77", pi="PI-300")]
-    [row] = (await client.get(f"/api/erp/purchase-orders/{po_id}/pi", headers=h)).json()["rows"]
-    assert (row["match"], row["ckam_invoice_number"], row["status"]) == ("single", "OUR-NUMBER", "ready")
+    await _deliver(client, h, po_id, 1, ids, invoice="INV-1")                      # 4 assets, invoice amount 1000
+    await copy_pi(pi_code=1, pi_number="PI-100", bill="INV-1", vendor_code="146", vendor_name="OTHER", amount=1234.0)
+    [row] = (await _preview(client, h, po_id))["rows"]
+    assert row["status"] == "ready" and "OTHER" in row["vendor_note"] and row["amount_check"] == "differs"
+
+
+async def test_a_pi_that_is_not_posted_yet_is_shown_but_never_recorded_and_no_pi_means_waiting(client, erp):
+    ids = await _setup()
+    h = await _headers(client, "OPR")
+    po_id = await _create_desktop_po(client, ids, h)
+    await _deliver(client, h, po_id, 1, ids, invoice="INV-1")
+    await copy_pi(pi_code=1, pi_number="PI-100", bill="INV-9")                         # copy has PIs, none for INV-1
+    waiting = await _preview(client, h, po_id)
+    assert waiting["rows"] == [] and waiting["not_booked"] == 1 and waiting["available"] is True
+
+    await copy_pi(pi_code=2, pi_number="PI-101", bill="INV-1", status="U")
+    [row] = (await _preview(client, h, po_id))["rows"]
+    assert (row["status"], row["posted"]) == ("not_posted", False)
+    refused = await client.post(f"/api/erp/purchase-orders/{po_id}/pi/apply", headers=h, json={
+        "items": [{"pi_number": "PI-101", "ckam_invoice_number": "INV-1"}]})
+    assert refused.status_code == 422 and "not posted in the ERP yet" in refused.json()["detail"]
+    assert all(pi is None for pi, _ in await _pi_numbers(po_id))
+
+
+async def test_until_the_erp_copy_has_any_purchase_invoice_the_dialog_says_not_copied_yet(client, erp):
+    ids = await _setup()
+    h = await _headers(client, "OPR")
+    po_id = await _create_desktop_po(client, ids, h)
+    await _deliver(client, h, po_id, 1, ids, invoice="INV-1")
+    pv = await _preview(client, h, po_id)
+    assert pv["available"] is False and "have not been copied yet" in pv["message"] and pv["rows"] == []
 
 
 async def test_applying_a_confirmed_pi_records_it_on_every_asset_of_that_invoice_and_keeps_existing_ones(client, erp):
@@ -176,20 +208,19 @@ async def test_applying_a_confirmed_pi_records_it_on_every_asset_of_that_invoice
     h = await _headers(client, "OPR")
     po_id = await _create_desktop_po(client, ids, h)
     await _deliver(client, h, po_id, 2, ids, invoice="INV-1")
-    erp.invoice_list = [invoice(vendor_no="INV-1", pi="PI-100", pi_day=28)]
+    await copy_pi(pi_code=1, pi_number="PI-100", bill="INV-1", pi_day=28)
 
     resp = await client.post(f"/api/erp/purchase-orders/{po_id}/pi/apply", headers=h, json={
         "items": [{"pi_number": "PI-100", "ckam_invoice_number": "INV-1"}]})
     assert resp.status_code == 200, resp.text
     assert len(resp.json()[0]["updated"]) == 8 and resp.json()[0]["skipped"] == []
     assert set(await _pi_numbers(po_id)) == {("PI-100", date(2026, 9, 28))}
+    assert (await _preview(client, h, po_id))["rows"][0]["status"] == "done"
 
-    again = (await client.get(f"/api/erp/purchase-orders/{po_id}/pi", headers=h)).json()["rows"][0]
-    assert again["status"] == "done" and again["recorded"] == 8
-
-    # The ERP later shows a different PI: shown as different, and not overwritten unless asked.
-    erp.invoice_list = [invoice(vendor_no="INV-1", pi="PI-101", pi_day=29)]
-    assert (await client.get(f"/api/erp/purchase-orders/{po_id}/pi", headers=h)).json()["rows"][0]["status"] == "different"
+    # The ERP later shows a second, different PI for the same bill: shown as different, not overwritten unless asked.
+    await copy_pi(pi_code=2, pi_number="PI-101", bill="INV-1", pi_day=29)
+    rows = {r["pi_number"]: r for r in (await _preview(client, h, po_id))["rows"]}
+    assert rows["PI-101"]["status"] == "different" and rows["PI-100"]["status"] == "done"
     kept = await client.post(f"/api/erp/purchase-orders/{po_id}/pi/apply", headers=h, json={
         "items": [{"pi_number": "PI-101", "ckam_invoice_number": "INV-1"}]})
     assert len(kept.json()[0]["skipped"]) == 8 and set(await _pi_numbers(po_id)) == {("PI-100", date(2026, 9, 28))}
@@ -198,34 +229,80 @@ async def test_applying_a_confirmed_pi_records_it_on_every_asset_of_that_invoice
     assert len(forced.json()[0]["updated"]) == 8 and set(await _pi_numbers(po_id)) == {("PI-101", date(2026, 9, 29))}
 
 
-async def test_a_pi_the_erp_does_not_hold_for_this_po_cannot_be_recorded(client, erp):
+async def test_a_pi_the_erp_copy_does_not_hold_for_this_invoice_cannot_be_recorded(client, erp):
     ids = await _setup()
     h = await _headers(client, "OPR")
     po_id = await _create_desktop_po(client, ids, h)
     await _deliver(client, h, po_id, 1, ids, invoice="INV-1")
-    erp.invoice_list = [invoice(vendor_no="INV-1", pi="PI-100")]
+    await copy_pi(pi_code=1, pi_number="PI-100", bill="INV-1")
     for item in ({"pi_number": "PI-FAKE", "ckam_invoice_number": "INV-1"}, {"pi_number": "PI-100", "ckam_invoice_number": "WRONG"}):
         resp = await client.post(f"/api/erp/purchase-orders/{po_id}/pi/apply", headers=h, json={"items": [item]})
         assert resp.status_code == 422 and "is not an ERP PI" in resp.json()["detail"]
     assert all(pi is None for pi, _ in await _pi_numbers(po_id))
 
 
-async def test_pi_needs_an_erp_po_a_known_po_the_right_role_and_a_reachable_erp(client, erp):
+async def test_pi_needs_a_known_po_and_the_right_role_and_a_manual_po_works_too(client, erp):
     ids = await _setup()
     h = await _headers(client, "OPR")
     po_id = await _create_desktop_po(client, ids, h)
+    await copy_pi(pi_code=1, pi_number="PI-100", bill="INV-1")
     from app.purchase_orders.models import PurchaseOrder
     async with SessionLocal() as session:
         manual = PurchaseOrder(company_id=ids["spl"], po_number="MANUAL-1", po_date=date(2026, 1, 1), cost_center_id=ids["cost_spl"])
         session.add(manual)
         await session.commit()
         manual_id = manual.id
-    plain = await client.get(f"/api/erp/purchase-orders/{manual_id}/pi", headers=h)
-    assert plain.status_code == 422 and "not created from the ERP" in plain.json()["detail"]
+    plain = await client.get(f"/api/erp/purchase-orders/{manual_id}/pi", headers=h)         # found by bill number: no ERP PO needed
+    assert plain.status_code == 200 and plain.json()["rows"] == [] and plain.json()["available"] is True
     assert (await client.get("/api/erp/purchase-orders/99999/pi", headers=h)).status_code == 404
     assert (await client.get(f"/api/erp/purchase-orders/{po_id}/pi", headers=await _headers(client, "VWR"))).status_code == 403
-    erp.down = "The ERP database could not be reached (OSError)."
-    # S7 (P1-1, intended change): 200 with available false and the reason, never a 503.
-    down = await client.get(f"/api/erp/purchase-orders/{po_id}/pi", headers=h)
-    assert down.status_code == 200
-    assert (down.json()["available"], down.json()["rows"]) == (False, []) and "could not be reached" in down.json()["message"]
+
+
+# ---------- the PI worklist: every received invoice and what the ERP says about its PI ----------
+
+async def test_the_worklist_counts_ready_not_posted_and_waiting_invoices_and_the_po_list_shows_ready(client, erp):
+    ids = await _setup()
+    h = await _headers(client, "OPR")
+    po_id = await _create_desktop_po(client, ids, h)
+    await _deliver(client, h, po_id, 1, ids, invoice="INV-READY")
+    await _deliver(client, h, po_id, 1, ids, invoice="INV-DRAFT", serial_prefix="T")
+    await _deliver(client, h, po_id, 1, ids, invoice="INV-WAIT", serial_prefix="U")
+    await copy_pi(pi_code=1, pi_number="PI-1", bill="INV-READY")
+    await copy_pi(pi_code=2, pi_number="PI-2", bill="INV-DRAFT", status="U")
+
+    data = (await client.get("/api/erp/pi/ready", headers=h)).json()
+    assert data["copied"] is True and data["counts"] == {"ready": 1, "not_posted": 1, "waiting": 1, "ready_pos": 1}
+    assert [(r["invoice_number"], r["state"]) for r in data["rows"]] == [("INV-READY", "ready"), ("INV-DRAFT", "not_posted")]
+    [ready, _] = data["rows"]
+    assert ready["po_id"] == po_id and ready["assets"] == 4 and ready["candidates"][0]["pi_number"] == "PI-1"
+
+    listed = {p["id"]: p for p in (await client.get("/api/purchase-orders", headers=h)).json()}
+    assert listed[po_id]["pi_status"] == "PENDING" and listed[po_id]["pi_ready_invoices"] == 1
+    assert (await client.get("/api/erp/pi/ready", headers=await _headers(client, "VWR"))).status_code == 403
+
+
+async def test_adding_ready_pis_from_the_worklist_each_entry_on_its_own(client, erp):
+    ids = await _setup()
+    h = await _headers(client, "OPR")
+    po_id = await _create_desktop_po(client, ids, h)
+    await _deliver(client, h, po_id, 1, ids, invoice="INV-A")
+    await _deliver(client, h, po_id, 1, ids, invoice="INV-B", serial_prefix="T")
+    await copy_pi(pi_code=1, pi_number="PI-A", bill="INV-A", pi_day=10)
+    await copy_pi(pi_code=2, pi_number="PI-B", bill="INV-B", status="U")
+
+    resp = await client.post("/api/erp/pi/apply", headers=h, json={"items": [
+        {"po_id": po_id, "pi_number": "PI-A", "ckam_invoice_number": "INV-A"},
+        {"po_id": po_id, "pi_number": "PI-B", "ckam_invoice_number": "INV-B"},          # not posted: refused, the first still goes through
+        {"po_id": 99999, "pi_number": "PI-X", "ckam_invoice_number": "INV-X"}]})
+    assert resp.status_code == 200, resp.text
+    first, second, third = resp.json()
+    assert (first["ok"], first["updated"]) == (True, 4)
+    assert second["ok"] is False and "not posted" in second["message"]
+    assert third["ok"] is False and "not found" in third["message"]
+    pis = {pi for pi, _ in await _pi_numbers(po_id)}
+    assert pis == {"PI-A", None}
+
+    after = (await client.get("/api/erp/pi/ready", headers=h)).json()
+    assert after["counts"]["ready"] == 0 and after["counts"]["not_posted"] == 1
+    assert (await client.post("/api/erp/pi/apply", headers=await _headers(client, "VWR"), json={"items": [
+        {"po_id": po_id, "pi_number": "PI-A", "ckam_invoice_number": "INV-A"}]})).status_code == 403

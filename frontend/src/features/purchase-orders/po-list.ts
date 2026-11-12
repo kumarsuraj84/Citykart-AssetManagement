@@ -18,6 +18,8 @@ export interface PoListRow {
   pi_status?: "NOT_DELIVERED" | "PENDING" | "RECORDED";
   pi_number?: string | null;
   pi_date?: string | null;
+  /** Received invoices whose PI is posted in the ERP and not recorded here yet (found by the vendor's bill number). */
+  pi_ready_invoices?: number;
   erp_po_code?: number | null;
   company_name?: string | null;
   vendor_name?: string | null;

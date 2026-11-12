@@ -10,12 +10,13 @@ from app.erp import stores as erp_stores
 from app.erp import vendors as erp_vendors
 from app.erp.changes import OutsideWorkArea, apply_changes, changes_summary, po_changes, snapshot_baseline
 from app.erp.invoices import apply_pi, pi_preview
+from app.erp.pi_ready import pi_copy_exists, worklist as pi_worklist
 from app.erp.reminders import delivery_reminders
 from app.erp.inbox import build_inbox, inbox_counts, resolve_items_batch, resolve_vendors_batch
 from app.erp.readiness import freshness
 from app.erp.schemas import (
     ChangesApplyIn, CompaniesCreateIn, DraftCreateIn, ErpVendorLinkIn, InboxItemDecisionIn, InboxVendorDecisionIn, NotTrackedIn,
-    PiApplyIn, PlacesCreateIn, StoresCreateIn, SyncRunOut, SyncStatusOut, VendorCodesIn,
+    PiApplyIn, PiApplyManyIn, PlacesCreateIn, StoresCreateIn, SyncRunOut, SyncStatusOut, VendorCodesIn,
 )
 from app.erp import setup_from_erp
 from app.erp.service import NotAllowed, build_draft, create_from_draft, erp_po_rows, mark_not_tracked, untracked_codes
@@ -494,31 +495,66 @@ async def erp_po_changes_apply(
     return report
 
 
+PI_NOT_COPIED = "The ERP's purchase invoices have not been copied yet. Use Refresh now under Settings › ERP Data Sync first."
+
+
 @router.get("/purchase-orders/{po_id}/pi")
 async def pi_lookup(
-    po_id: int, session: AsyncSession = Depends(get_session), source: ErpSource = Depends(get_erp_source),
-    actor=Depends(require_role(*WRITE_ROLES)),
+    po_id: int, session: AsyncSession = Depends(get_session), actor=Depends(require_role(*WRITE_ROLES)),
 ):
-    """The PIs the ERP holds for this PO, matched to the invoices delivered here.
-    Preview only: nothing is recorded.
-
-    S7 (P1-1, additive `available` / `message`): when the ERP cannot give purchase invoices (the view is not
-    created in the ERP: "The ERP does not provide purchase invoices yet."; or the ERP cannot be read) the
-    answer is 200 with `available: false`, the plain sentence in `message` and no rows -- never a 503."""
+    """The PIs the ERP holds for the invoices received under this PO (found by the vendor's bill number in CKAM's
+    copy of the ERP data). Preview only: nothing is recorded. `available: false` with a plain sentence while the copy
+    holds no purchase invoices at all (not copied yet); never an error."""
     po = await _scoped_erp_po(session, actor, po_id)
-    try:
-        return {**await pi_preview(session, source, po), "available": True, "message": None}
-    except ErpUnavailable as exc:
+    if not await pi_copy_exists(session):
         return {"po_id": po.id, "po_number": po.po_number, "rows": [], "not_booked": 0, "ckam_invoices": [],
-                "delivered_assets": 0, "available": False, "message": _erp_reason(exc, INVOICES_NOT_PROVIDED)}
-    except ValueError as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+                "delivered_assets": 0, "available": False, "message": PI_NOT_COPIED}
+    return {**await pi_preview(session, po, await allowed_asset_domains(session, actor)), "available": True, "message": None}
+
+
+@router.get("/pi/ready")
+async def pi_ready_list(session: AsyncSession = Depends(get_session), actor=Depends(require_role(*WRITE_ROLES))):
+    """The PI worklist: every invoice received here whose PI is not recorded yet and what the ERP copy says about it.
+    `rows` are the invoices with a posted PI in the ERP (`state: ready`) and those whose PI is started but not posted
+    (`not_posted`); `counts` also has how many still `waiting` for the ERP. Reads only CKAM's own copy."""
+    data = await pi_worklist(session, await scoped_company_ids(session, actor), await allowed_asset_domains(session, actor))
+    return {**data, "copied": await pi_copy_exists(session)}
+
+
+@router.post("/pi/apply")
+async def pi_apply_many(
+    body: PiApplyManyIn, session: AsyncSession = Depends(get_session), actor=Depends(require_role(*WRITE_ROLES)),
+):
+    """Records the PIs a person ticked on the worklist, each entry on its own: one that cannot be recorded (the ERP no
+    longer holds it, it is not posted, the PO is not visible) is reported and the others still go through. Every PI is
+    re-checked against the ERP copy and recorded through the same function as Record PI."""
+    domains = await allowed_asset_domains(session, actor)
+    obs_audit.suppress(session, "asset")      # S8: one PI_RECORDED row per PO, not one per asset
+    results = []
+    for item in body.items:
+        entry = {"po_id": item.po_id, "invoice_number": item.ckam_invoice_number, "pi_number": item.pi_number, "ok": False, "updated": 0, "message": None}
+        try:
+            po = await _scoped_erp_po(session, actor, item.po_id)
+            async with session.begin_nested():
+                done = await apply_pi(session, actor, po, [{"pi_number": item.pi_number, "ckam_invoice_number": item.ckam_invoice_number,
+                                                            "overwrite": item.overwrite}], allowed_domains=domains)
+            entry.update(ok=True, updated=sum(len(r["updated"]) for r in done))
+            obs_audit.record(session, "ERP", "PI_RECORDED",
+                             f"Purchase order {po.po_number}: {obs_events.who()} recorded PI {item.pi_number} from the ERP "
+                             f"for invoice {item.ckam_invoice_number}.", entity="purchase_order", entity_id=po.id, company_id=po.company_id,
+                             changes={"items": [{"pi_number": item.pi_number, "ckam_invoice_number": item.ckam_invoice_number}]})
+        except HTTPException as exc:
+            entry["message"] = str(exc.detail)
+        except ValueError as exc:
+            entry["message"] = str(exc)
+        results.append(entry)
+    await session.commit()
+    return results
 
 
 @router.post("/purchase-orders/{po_id}/pi/apply")
 async def pi_apply(
-    po_id: int, body: PiApplyIn, session: AsyncSession = Depends(get_session),
-    source: ErpSource = Depends(get_erp_source), actor=Depends(require_role(*WRITE_ROLES)),
+    po_id: int, body: PiApplyIn, session: AsyncSession = Depends(get_session), actor=Depends(require_role(*WRITE_ROLES)),
 ):
     """Records the PIs the user confirmed, through the same function as Record PI."""
     po = await _scoped_erp_po(session, actor, po_id)
@@ -526,7 +562,7 @@ async def pi_apply(
     try:
         items = [i.model_dump() for i in body.items]
         results = await apply_pi(
-            session, actor, source, po, items,
+            session, actor, po, items,
             allowed_domains=await allowed_asset_domains(session, actor),
         )
         obs_audit.record(session, "ERP", "PI_RECORDED",

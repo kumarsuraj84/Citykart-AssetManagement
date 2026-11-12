@@ -2,7 +2,7 @@
 from datetime import date, datetime, timezone
 
 from app.erp.source import ErpUnavailable
-from app.erp.warehouse import WhCompany, WhItem, WhPoLine, WhSite, WhVendor
+from app.erp.warehouse import WhCompany, WhItem, WhPi, WhPoLine, WhSite, WhVendor
 
 LOADED = datetime(2026, 10, 13, 5, 44, tzinfo=timezone.utc)
 
@@ -23,6 +23,14 @@ def wh_vendor(company="CKSPL", code="4431", name="TRAANS GLOBAL", gstin="07AAAAA
     base = dict(company_code=company, vendor_code=code, name=name, gstin=gstin, city="DELHI", is_extinct=False)
     base.update(over)
     return WhVendor(**base)
+
+
+def wh_pi(company="CKSPL", pi_code=5001, pi_number="SPI/000001/26-27", bill_no="INV-100", vendor_code="4431", **over) -> WhPi:
+    base = dict(company_code=company, pi_code=pi_code, pi_number=pi_number, pi_date=date(2026, 11, 3), vendor_code=vendor_code,
+                vendor_name="TRAANS GLOBAL", bill_no=bill_no, bill_date=date(2026, 10, 28), amount=5310.0, lines_amount=4500.0,
+                release_status="P", lines=1)
+    base.update(over)
+    return WhPi(**base)
 
 
 def wh_item(icode="CT371487", company="CKSPL", **over) -> WhItem:
@@ -48,6 +56,7 @@ class FakeWarehouse:
         self.companies_down: str | None = None          # the company table cannot be read (the rest still can)
         self.lines: list[WhPoLine] = []
         self.vendor_list: list[WhVendor] = []
+        self.pi_list: list[WhPi] = []
         self.ever_ordered: dict[str, set[str]] = {}     # suppliers that were once on a Fixed Assets PO, outside the PO window
         self.item_list: list[WhItem] = []
         self.stamp: datetime | None = LOADED
@@ -67,6 +76,10 @@ class FakeWarehouse:
     async def vendors(self, codes):
         self._check()
         return [v for v in self.vendor_list if v.vendor_code in codes.get(v.company_code, set())]
+
+    async def pi_documents(self, since):
+        self._check()
+        return [p for p in self.pi_list if p.pi_date is None or p.pi_date >= since]
 
     async def fixed_asset_supplier_codes(self):
         self._check()

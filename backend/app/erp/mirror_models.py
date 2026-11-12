@@ -6,12 +6,20 @@ vendors and the items they use into these tables. Rows are never deleted: one th
 returning is marked `is_present = false`, and `first_seen_at` / `last_seen_at` / `row_hash` say
 when it appeared, was last seen, and whether it changed. Every ERP code is the pair
 (company_code, code): vendor codes repeat across the two companies and mean different vendors."""
+import re
 from datetime import date, datetime
 
 from sqlalchemy import BigInteger, Boolean, Date, DateTime, Index, Integer, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
+
+
+def bill_key(text: str | None) -> str | None:
+    """A vendor's bill number as CKAM compares it: lower case, letters and digits only ('VE/26-27/034' = 've2627034').
+    None when nothing is left, so a blank number never matches anything."""
+    key = re.sub(r"[^a-z0-9]", "", (text or "").lower())
+    return key or None
 
 
 class ErpSyncRun(Base):
@@ -82,6 +90,30 @@ class ErpVendorCopy(Base, _Seen):
     gstin: Mapped[str | None] = mapped_column(String(30))
     city: Mapped[str | None] = mapped_column(String(100))
     is_extinct: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
+
+class ErpPiCopy(Base, _Seen):
+    """A purchase invoice (PI) booked in the ERP for Fixed Assets, one row per PI document. Keyed by the ERP's own
+    document id (`pi_code`): the printed `pi_number` repeats in CKSPL. `bill_no_norm` is the vendor's bill number in
+    lower case without punctuation: CKAM finds the PI of an invoice received here by (company, bill number)."""
+    __tablename__ = "erp_pi"
+    __table_args__ = (
+        Index("ix_erp_pi_bill", "company_code", "bill_no_norm"),
+    )
+
+    company_code: Mapped[str] = mapped_column(String(20), primary_key=True)
+    pi_code: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    pi_number: Mapped[str] = mapped_column(String(60))
+    pi_date: Mapped[date | None] = mapped_column(Date)
+    vendor_code: Mapped[str] = mapped_column(String(50))
+    vendor_name: Mapped[str | None] = mapped_column(String(300))
+    bill_no: Mapped[str | None] = mapped_column(String(100))
+    bill_no_norm: Mapped[str | None] = mapped_column(String(100))
+    bill_date: Mapped[date | None] = mapped_column(Date)
+    amount: Mapped[float | None] = mapped_column(Numeric(16, 2))          # header total: lines + tax + charges
+    lines_amount: Mapped[float | None] = mapped_column(Numeric(16, 2))    # the lines before tax
+    release_status: Mapped[str | None] = mapped_column(String(5))         # P = posted, U = not posted yet
+    lines: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 class ErpSiteCopy(Base, _Seen):

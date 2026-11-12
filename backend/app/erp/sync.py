@@ -13,9 +13,9 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import select, text
 
 from app.core.config import settings
-from app.erp.mirror_models import ErpItemCopy, ErpPoLineCopy, ErpSiteCopy, ErpSyncRun, ErpVendorCopy
+from app.erp.mirror_models import ErpItemCopy, ErpPiCopy, ErpPoLineCopy, ErpSiteCopy, ErpSyncRun, ErpVendorCopy, bill_key
 from app.erp.source import ErpUnavailable
-from app.erp.warehouse import WarehouseReader, WhItem, WhPoLine, WhSite, WhVendor
+from app.erp.warehouse import WarehouseReader, WhItem, WhPi, WhPoLine, WhSite, WhVendor
 from app.observability import context as obs_context
 from app.observability import writer as obs_writer
 
@@ -44,6 +44,11 @@ def line_hash(l: WhPoLine) -> str:
 
 def vendor_hash(v: WhVendor) -> str:
     return _digest(v.name, v.gstin, v.city, v.is_extinct)
+
+
+def pi_hash(p: WhPi) -> str:
+    return _digest(p.pi_number, p.pi_date, p.vendor_code, p.vendor_name, p.bill_no, p.bill_date, p.amount, p.lines_amount,
+                   p.release_status, p.lines)
 
 
 def site_hash(s: WhSite) -> str:
@@ -186,17 +191,66 @@ async def _copy(session, reader: WarehouseReader, trigger: str, started: datetim
             gone += 1
 
     logger.info("ERP copy: lines compared: %d new, %d changed, %d gone (%.1fs)", new, changed, gone, time.monotonic() - clock)
-    vendors = await _copy_vendors(session, reader, incoming, now)
-    logger.info("ERP copy: %d vendors (%.1fs)", vendors, time.monotonic() - clock)
-    items = await _copy_items(session, reader, incoming, now)
-    logger.info("ERP copy: %d items (%.1fs)", items, time.monotonic() - clock)
+    tally: dict[str, int] = {}
+    vendors = await _copy_vendors(session, reader, incoming, now, tally)
+    logger.info("ERP copy: %d vendors, %d new (%.1fs)", vendors, tally.get("vendors_new", 0), time.monotonic() - clock)
+    items = await _copy_items(session, reader, incoming, now, tally)
+    logger.info("ERP copy: %d items, %d new (%.1fs)", items, tally.get("items_new", 0), time.monotonic() - clock)
     sites = await _copy_sites(session, reader, now)
     logger.info("ERP copy: %d sites (%.1fs)", sites, time.monotonic() - clock)
+    pis = await _copy_pis(session, reader, now, since, tally)
+    logger.info("ERP copy: %d purchase invoices, %d new (%.1fs)", pis, tally.get("pis_new", 0), time.monotonic() - clock)
     return ErpSyncRun(started_at=started, finished_at=datetime.now(timezone.utc), status="success", trigger=trigger, source_stamp=stamp,
-                      po_lines_new=new, po_lines_changed=changed, po_lines_gone=gone, vendors=vendors, items=items)
+                      po_lines_new=new, po_lines_changed=changed, po_lines_gone=gone, vendors=vendors, items=items,
+                      message=_new_rows_sentence(tally.get("vendors_new", 0), tally.get("items_new", 0), tally.get("pis_new", 0)))
 
 
-async def _copy_vendors(session, reader: WarehouseReader, lines: list[WhPoLine], now: datetime) -> int:
+def _new_rows_sentence(vendors_new: int, items_new: int, pis_new: int = 0) -> str | None:
+    """What a refresh brought in besides PO lines (the screen used to say "nothing newer" when only suppliers or
+    items were new). None when there is nothing to add."""
+    parts = []
+    if vendors_new:
+        parts.append(f"{vendors_new} new supplier{'' if vendors_new == 1 else 's'}")
+    if items_new:
+        parts.append(f"{items_new} new item{'' if items_new == 1 else 's'}")
+    if pis_new:
+        parts.append(f"{pis_new} new purchase invoice{'' if pis_new == 1 else 's'} (PI)")
+    return ", ".join(parts) or None
+
+
+PI_FIELDS = ("pi_number", "pi_date", "vendor_code", "vendor_name", "bill_no", "bill_date", "amount", "lines_amount", "release_status", "lines")
+
+
+async def _copy_pis(session, reader: WarehouseReader, now: datetime, since: date, tally: dict[str, int]) -> int:
+    """The ERP's Fixed Assets purchase invoices (PI), one row per PI document, so CKAM can tell which invoices
+    received here already have their PI done in the ERP. A PI the warehouse stops returning is marked not present
+    (only while it is inside the window: an older one simply falls out of the question)."""
+    found = await reader.pi_documents(since)
+    have = {(p.company_code, p.pi_code): p for p in (await session.execute(select(ErpPiCopy))).scalars().all()}
+    seen: set[tuple[str, int]] = set()
+    for p in found:
+        key = (p.company_code, p.pi_code)
+        seen.add(key)
+        digest = pi_hash(p)
+        row = have.get(key)
+        if row is None:
+            session.add(ErpPiCopy(company_code=p.company_code, pi_code=p.pi_code, bill_no_norm=bill_key(p.bill_no), row_hash=digest,
+                                  first_seen_at=now, last_seen_at=now, is_present=True, **{f: getattr(p, f) for f in PI_FIELDS}))
+            tally["pis_new"] = tally.get("pis_new", 0) + 1
+            continue
+        if row.row_hash != digest:
+            for f in PI_FIELDS:
+                setattr(row, f, getattr(p, f))
+            row.bill_no_norm = bill_key(p.bill_no)
+            row.row_hash = digest
+        row.last_seen_at, row.is_present = now, True
+    for key, row in have.items():
+        if key not in seen and row.is_present and (row.pi_date is None or row.pi_date >= since):
+            row.is_present = False
+    return len(found)
+
+
+async def _copy_vendors(session, reader: WarehouseReader, lines: list[WhPoLine], now: datetime, tally: dict[str, int] | None = None) -> int:
     wanted: dict[str, set[str]] = {}
     for l in lines:
         wanted.setdefault(l.company_code, set()).add(l.supplier_code)
@@ -212,6 +266,8 @@ async def _copy_vendors(session, reader: WarehouseReader, lines: list[WhPoLine],
         if row is None:
             session.add(ErpVendorCopy(company_code=v.company_code, vendor_code=v.vendor_code, row_hash=digest, first_seen_at=now,
                                       last_seen_at=now, is_present=True, **{f: getattr(v, f) for f in VENDOR_FIELDS}))
+            if tally is not None:
+                tally["vendors_new"] = tally.get("vendors_new", 0) + 1
             continue
         if row.row_hash != digest:
             for f in VENDOR_FIELDS:
@@ -246,7 +302,7 @@ async def _copy_sites(session, reader: WarehouseReader, now: datetime) -> int:
     return len(found)
 
 
-async def _copy_items(session, reader: WarehouseReader, lines: list[WhPoLine], now: datetime) -> int:
+async def _copy_items(session, reader: WarehouseReader, lines: list[WhPoLine], now: datetime, tally: dict[str, int] | None = None) -> int:
     found = await reader.items({l.icode for l in lines if l.icode})
     have = {i.icode: i for i in (await session.execute(select(ErpItemCopy))).scalars().all()}
     for it in found:
@@ -255,6 +311,8 @@ async def _copy_items(session, reader: WarehouseReader, lines: list[WhPoLine], n
         if row is None:
             session.add(ErpItemCopy(icode=it.icode, row_hash=digest, first_seen_at=now, last_seen_at=now, is_present=True,
                                     **{f: getattr(it, f) for f in ITEM_FIELDS}))
+            if tally is not None:
+                tally["items_new"] = tally.get("items_new", 0) + 1
             continue
         if row.row_hash != digest:
             for f in ITEM_FIELDS:

@@ -86,6 +86,16 @@ describe("ERP data freshness", () => {
     expect(refreshResultSentence({ ...RUN, status: "running", finished_at: null } as never)).toMatch(/already running/);
   });
 
+  it("new suppliers or items count as news even when no PO line changed", () => {
+    const none = { ...RUN, po_lines_new: 0, po_lines_changed: 0, po_lines_gone: 0 };
+    expect(refreshResultSentence({ ...none, message: "298 new suppliers" } as never)).toMatch(/: copied 298 new suppliers\.$/);
+    expect(refreshResultSentence({ ...RUN, po_lines_new: 2, po_lines_changed: 0, message: "1 new supplier, 4 new items" } as never))
+      .toMatch(/: copied 2 new PO lines, 1 new supplier, 4 new items\.$/);
+    // a skipped run never claims news; a run with an empty message still says nothing newer
+    expect(refreshResultSentence({ ...none, status: "skipped", message: "5 new suppliers" } as never)).toMatch(/nothing newer/);
+    expect(refreshResultSentence({ ...none, message: null } as never)).toMatch(/nothing newer/);
+  });
+
   it("shows a failed manual refresh's message", async () => {
     asOwner(true);
     (apiClient.post as any).mockResolvedValue({ ...RUN, status: "failed", message: "Another copy of the ERP data is already running." });

@@ -26,7 +26,7 @@ interface SyncStatus {
 const lines = (n: number, what: string) => `${n} ${what} PO line${n === 1 ? "" : "s"}`;
 
 /** "Checked just now (6:46 pm): 3 new PO lines, 1 changed PO line." / "... the ERP had nothing newer." (pure; exported for tests) */
-export function refreshResultSentence(run: Pick<SyncRun, "status" | "finished_at" | "started_at" | "po_lines_new" | "po_lines_changed" | "po_lines_gone">): string {
+export function refreshResultSentence(run: Pick<SyncRun, "status" | "finished_at" | "started_at" | "po_lines_new" | "po_lines_changed" | "po_lines_gone"> & { message?: string | null }): string {
   const at = run.finished_at ?? run.started_at;
   const time = at ? new Date(at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }) : "";
   const head = `Checked just now${time ? ` (${time})` : ""}`;
@@ -36,6 +36,8 @@ export function refreshResultSentence(run: Pick<SyncRun, "status" | "finished_at
     run.po_lines_changed > 0 ? lines(run.po_lines_changed, "changed") : null,
     run.po_lines_gone > 0 ? lines(run.po_lines_gone, "removed") : null,
   ].filter(Boolean);
+  // Suppliers and items new to CKAM (a successful run's message): they count as news even when no PO line changed.
+  if (run.status === "success" && run.message) parts.push(run.message);
   if (run.status === "skipped" || parts.length === 0) return `${head}: the ERP had nothing newer to copy.`;
   return `${head}: copied ${parts.join(", ")}.`;
 }

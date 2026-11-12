@@ -109,6 +109,9 @@ class PurchaseOrderOut(BaseModel):
     pi_status: str = "NOT_DELIVERED"
     pi_number: str | None = None
     pi_date: date | None = None
+    # How many received invoices of this PO have a posted PI in the ERP that CKAM does not hold yet (found by the
+    # vendor's bill number in CKAM's copy of the ERP data; 0 for a PO with nothing to add).
+    pi_ready_invoices: int = 0
     # S2.3 (additive): names, and progress over the units the caller may see
     # (S0.3 work area). ordered = received + waiting (cancelled units are not
     # ordered any more). status: WAITING | PARTLY_RECEIVED | RECEIVED | CANCELLED.

@@ -4,9 +4,9 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import select
 
 from app.core.db import SessionLocal
-from app.erp.mirror_models import ErpItemCopy, ErpPoLineCopy, ErpSyncRun, ErpVendorCopy
+from app.erp.mirror_models import ErpItemCopy, ErpPiCopy, ErpPoLineCopy, ErpSyncRun, ErpVendorCopy
 from app.erp.sync import HISTORY_DAYS, latest_run, needs_sync, run_sync
-from tests.erp.fake_warehouse import FakeWarehouse, wh_item, wh_line, wh_vendor
+from tests.erp.fake_warehouse import FakeWarehouse, wh_item, wh_line, wh_pi, wh_vendor
 
 
 def seeded() -> FakeWarehouse:
@@ -51,8 +51,35 @@ async def test_a_supplier_with_only_old_pos_is_still_copied_as_a_vendor():
     assert sorted((v.company_code, v.vendor_code) for v in vendors) == [("CKSPL", "12445"), ("CKSPL", "4431"), ("CKVPL", "61"), ("CKVPL", "679")]
     assert run.vendors == 4
     assert all(v.is_present for v in vendors)
+    # the run says what was new (the screen used to say "nothing newer" because it only counted PO lines)
+    assert run.message == "4 new suppliers, 2 new items"
+    # a second copy of the same data has nothing new to say
+    again = await run_sync(SessionLocal, wh, "manual")
+    assert again.status == "success" and again.message is None and again.vendors == 4
     # still only the POs inside the window
     assert sorted((l.company_code, l.po_line_key) for l in await rows(ErpPoLineCopy)) == [("CKSPL", "A1"), ("CKSPL", "A2"), ("CKVPL", "A1")]
+
+
+async def test_purchase_invoices_are_copied_keyed_by_the_erp_document_not_the_printed_number():
+    # In CKSPL the printed PI number repeats across documents (the real ERP has 60 such numbers), so the key is pi_code.
+    wh = seeded()
+    wh.pi_list = [wh_pi("CKSPL", 5001, "SPI/001716/26-27", bill_no="VE/26-27/034"),
+                  wh_pi("CKSPL", 5002, "SPI/001716/26-27", bill_no="HS/1008/26-27", vendor_code="4658"),     # same number, another bill
+                  wh_pi("CKVPL", 71, "PI/00000106/26-27", bill_no="EP/0687/26-27", release_status="U")]
+    run = await run_sync(SessionLocal, wh, "manual")
+    pis = await rows(ErpPiCopy)
+    assert sorted((p.company_code, p.pi_code) for p in pis) == [("CKSPL", 5001), ("CKSPL", 5002), ("CKVPL", 71)]
+    by_code = {p.pi_code: p for p in pis}
+    assert by_code[5001].bill_no_norm == "ve2627034" and by_code[71].release_status == "U"      # the bill number CKAM compares by
+    assert run.message == "2 new suppliers, 2 new items, 3 new purchase invoices (PI)"
+
+    # the ERP posts the draft PI and drops one: changed in place, the gone one is marked not present (never deleted)
+    wh.pi_list = [wh_pi("CKSPL", 5001, "SPI/001716/26-27", bill_no="VE/26-27/034"),
+                  wh_pi("CKVPL", 71, "PI/00000106/26-27", bill_no="EP/0687/26-27", release_status="P")]
+    again = await run_sync(SessionLocal, wh, "manual")
+    by_code = {p.pi_code: p for p in await rows(ErpPiCopy)}
+    assert by_code[71].release_status == "P" and by_code[5002].is_present is False and by_code[5001].is_present is True
+    assert again.message is None
 
 
 async def test_a_repeat_run_changes_nothing_but_remembers_it_saw_the_rows():
