@@ -1,5 +1,7 @@
 # CKAM — Current Stage
 
+> **Update 2026-11-12:** production runs release **`89d377b`** (= `7ea352d` + Add Assets splits a set Item into its parts, decision 19; no database change). Record: `docs/security/CKAM_PRODUCTION_DEPLOYMENT_RECORD_89d377b.md`. The paragraph below describes `7ea352d`.
+>
 > **Update 2026-11-11:** production runs release **`7ea352d`** (= `0df67d3` + company switch-on-again + Add from the ERP; the movement redesign: releases 1, 2 and 3 — simple Move, moves between companies with *Owned by* / *Currently at* and an admin owner correction, repair vendors with a Repairs screen). Database head `e8a0c2d4f6b8`. See `docs/security/CKAM_PRODUCTION_DEPLOYMENT_RECORD_0df67d3.md` and decisions 13-15 in `DECISIONS.md`. The sections below are history: the security programme and the Level-3 work they describe have long been deployed.
 
 ## Security assurance and closure (2026-10-15/16)
