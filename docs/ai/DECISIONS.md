@@ -151,6 +151,20 @@ The Item form is short — Name, Type of asset (one pick of "Group › Sub-categ
 
 **How to apply.** Never copy category, serial rule or defaults into a screen; read the Item. Sub-category is still required by the server, so the Item form chooses the group's only Sub-category itself or offers "New Sub-category".
 
+## 2026-11-12 — (25) A brand says which work areas it is used for (IT / Non-IT / both); pickers list only the brands for the work area
+
+**Decision.** Brands used to be one flat list, so IT and Non-IT brands mixed in every dropdown. Each brand now has **Used for** (`brand.work_areas`, a list of work-area codes: IT, Non-IT or both), like groups already follow the work area. A brand used for both (Samsung) is **one** brand, one name, one code; names stay unique across all brands.
+* **Existing setup is protected.** Migration `b3d5f7a9c1e4` is additive: no brand, code, name or Item link changes. Each brand is filled in from where it is already used (the work area of the Items that default to it, of its assets and PO lines); a brand used nowhere yet starts as **both**, so nothing disappears from a list that has it today. On the real system (checked read-only 2026-11-12): 38 brands, 74 Items all IT, 46 with a default brand, 21 brands used by IT Items only, 17 brands used by no Item yet, no assets.
+* **Pickers** (Add Assets, the Item form, PO lines and sets, the ERP review, Edit line, Asset 360 edit) list only the brands for the Item's / line's / asset's work area; the brand already held stays listed. "+ New Brand…" made from a screen that knows the work area creates the brand for that area.
+* **Server rules** (`app/masters/brand_areas.py`): a brand must be used for the work area of what it is given to: an Item's default brand, Add Assets, PO lines (manual, set and ERP), asset edit, the Excel asset import (Brand Code). Only a brand that is being **set or changed** is checked, so an old asset or Item holding a brand that no longer fits is never blocked by an unrelated edit. The ERP draft only suggests a brand named in the ERP text when it fits.
+* **Who:** creating a brand follows the creator's own work areas (a limited admin / operator cannot make a brand for the other area; left out, a new brand starts as the creator's areas, both for the head-office admin). Editing is head-office only (unchanged). Taking an area off a brand is **refused while an active Item of that area has it as its default brand** (the sentence names the Items); assets and PO lines already holding the brand are history and never block.
+* **Settings › Catalogue › Brands** has a "Used for" column and field, and "Set used for (N)" for ticked brands (`POST /api/masters/brands/work-areas`, head-office only, all or nothing).
+* **Not done:** the Excel brand import/export sheet has no Used-for column (imported brands start as both); a third work area later needs the area list extended where Categories keep theirs (`ASSET_DOMAINS`), nothing more in brands.
+
+**Why.** The owner: groups differ per work area, brands should too, otherwise the list gets long and mixes IT and Non-IT, and the brands already linked to Items on production must not be misconfigured.
+
+**How to apply.** New write paths that give something a brand call `ensure_brand_fits` with the work area of that thing; new pickers use `brandChoicesFor` (`frontend/src/lib/brand-areas.ts`).
+
 ## 2026-11-12 — (24) The "Barcode" field is called "ERP Barcode" on every screen
 
 **Decision.** In CityKart the barcode people type is always the **ERP item code** (`CT123456`), so every screen that fills in or shows the asset's `barcode` field now says **ERP Barcode** (Add Assets, manual PO lines and sets, the ERP review, edit-a-line, Asset 360 Identity and edit, the register column and search hint, the PO lines table, the change history). The old Add Assets help ("Labels use the Asset Code unless a barcode is given here") was wrong (the printed label's bars and QR always come from the asset code) and is replaced by "The ERP item code, for example CT123456. The same ERP Barcode goes on every part of a set."

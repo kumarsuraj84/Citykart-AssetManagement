@@ -30,6 +30,7 @@ from app.items.lookup import fill_from_item
 from app.asset_users.models import AssetUser
 from app.lifecycle.service import apply_event
 from app.lifecycle.state_machine import LifecycleError
+from app.masters.brand_areas import brand_fit_problem
 from app.masters.models import AssetCategory, Brand, Vendor
 from app.purchase_orders.models import PendingAsset
 from app.repairs.service import ensure_repair_place, origins_of
@@ -444,6 +445,10 @@ async def _check_edit_values(session: AsyncSession, asset: Asset, data: dict) ->
                 refuse(f"The {what} you chose does not exist.")
             if not obj.is_active:
                 refuse(f"The {what} {obj.name} is no longer active; choose another.")
+            if field == "brand_id":
+                fit = await brand_fit_problem(session, obj.id, asset.asset_domain)
+                if fit:
+                    refuse(fit)
 
 
 @router.put("/serials", response_model=SerialBulkOut)

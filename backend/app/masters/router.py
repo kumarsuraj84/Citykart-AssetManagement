@@ -8,7 +8,7 @@ from app.core.validation import check_email, check_gstin
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.capabilities import (
     AREA_WORDS, TEAM_WORDS, ensure_company_for_create, ensure_domain_manage, ensure_work_area_change,
-    require_domain_admin, require_head_office, require_small_create,
+    item_create_areas, outside_area_message, require_domain_admin, require_head_office, require_small_create,
 )
 from app.core.codes import unique_code
 from app.core.uploads import read_upload_bounded
@@ -20,7 +20,7 @@ from app.masters.bulk_import_export import (
 )
 from app.masters.custom_fields_router import router as custom_fields_router
 from app.masters.service import MasterCRUDService
-from app.masters import audit, models, schemas
+from app.masters import audit, brand_areas, models, schemas
 from app.observability import events as obs_events
 
 router = APIRouter(prefix="/api/masters", tags=["masters"])
@@ -417,6 +417,35 @@ AUTO_VENDOR_CODE_LENGTH = 30
 
 VENDOR_POLICY = _small_master_policy(models.Vendor, "a vendor", "vendors", AUTO_VENDOR_CODE_LENGTH, "VENDOR", unique_name=True)
 BRAND_POLICY = _small_master_policy(models.Brand, "a brand", "brands", 20, "BRAND", unique_name=True)
+
+
+async def _brand_before_create(session: AsyncSession, user, data: dict) -> None:
+    """A new brand says which work areas it is used for. Left out, it starts as the creator's own work areas
+    (both for the head-office admin); someone limited to one work area cannot make a brand for the other."""
+    mine = await item_create_areas(session, user)
+    areas = data.get("work_areas") or list(mine) or list(models.ASSET_DOMAINS)
+    outside = [a for a in areas if a not in mine]
+    if outside:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, outside_area_message(outside[0], mine))
+    data["work_areas"] = areas
+    await _brand_base_before_create(session, user, data)
+
+
+async def _brand_before_edit(session: AsyncSession, user, existing, data: dict) -> None:
+    """Only the head-office admin edits a brand. Where it is used may grow freely, but an area cannot be taken off
+    while an active Item of that area still has this brand as its default (the Item's link must keep fitting)."""
+    areas = data.get("work_areas")
+    if areas is None:
+        data.pop("work_areas", None)                # not sent: leave it as it is
+        return
+    problem = await brand_areas.removal_problem(session, existing, set(existing.work_areas or []) - set(areas))
+    if problem:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, problem)
+
+
+_brand_base_before_create = BRAND_POLICY.before_create
+BRAND_POLICY.before_create = _brand_before_create
+BRAND_POLICY.before_edit = _brand_before_edit
 COST_CENTER_POLICY = _small_master_policy(models.CostCenter, "a cost centre", "cost centres", 20, "CC", per_company=True)
 
 DOMAIN_ADMIN_WHAT = "add or change categories and sub-categories"
@@ -728,6 +757,39 @@ router.include_router(build_master_router(
         FieldSpec("Name", "name", required=True, max_length=200),
     ],
 ))
+
+
+@router.post("/brands/work-areas")
+async def set_brand_work_areas(
+    body: schemas.BrandWorkAreasIn,
+    session: AsyncSession = Depends(get_session),
+    user=Depends(require_head_office("change where brands are used")),
+):
+    """Sets where several brands are used (IT / Non-IT / both) in one go -- head-office admin. All or nothing: if
+    taking an area off any of them would leave an active Item's default brand not fitting, nothing is changed and
+    the first few reasons are given."""
+    ids = sorted(set(body.ids))
+    brands = (await session.execute(select(models.Brand).where(models.Brand.id.in_(ids)))).scalars().all()
+    if len(brands) != len(ids):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "One of these brands does not exist.")
+    problems = []
+    for brand in sorted(brands, key=lambda b: b.name):
+        problem = await brand_areas.removal_problem(session, brand, set(brand.work_areas or []) - set(body.work_areas))
+        if problem:
+            problems.append(problem)
+    if problems:
+        shown = " ".join(problems[:3]) + (f" ({len(problems) - 3} more brands are blocked too.)" if len(problems) > 3 else "")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, shown)
+    changed = 0
+    for brand in brands:
+        if list(brand.work_areas or []) != body.work_areas:
+            brand.work_areas = list(body.work_areas)
+            brand.updated_by = user.id
+            changed += 1
+    await session.commit()
+    return {"updated": changed, "unchanged": len(brands) - changed}
+
+
 router.include_router(build_master_router(
     "/vendors", models.Vendor, schemas.VendorIn, schemas.VendorOut,
     schema_edit=schemas.VendorEditIn,

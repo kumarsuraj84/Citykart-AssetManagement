@@ -1,4 +1,5 @@
-import { useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
+import { brandsForArea, type BrandLike } from "@/lib/brand-areas";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ChevronDown, ChevronRight, Minus, Plus } from "lucide-react";
@@ -155,7 +156,7 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
     queryFn: () => apiClient.get<Named[]>(`/masters/cost-centers?company_id=${companyId}`),
     enabled: companyId != null,
   });
-  const brandsQ = useQuery({ queryKey: ["masters", "brands"], queryFn: () => apiClient.get<Named[]>("/masters/brands") });
+  const brandsQ = useQuery({ queryKey: ["masters", "brands"], queryFn: () => apiClient.get<BrandLike[]>("/masters/brands") });
   const vendorsQ = useQuery({ queryKey: ["masters", "vendors"], queryFn: () => apiClient.get<Named[]>("/masters/vendors") });
   const customFieldsQ = useQuery({ queryKey: ["masters", "custom-fields"], queryFn: () => apiClient.get<CustomFieldDef[]>("/masters/custom-fields") });
   const rooms = useStockRooms(companyId);
@@ -167,7 +168,7 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
   const categories = asArray<CategoryRow>(categoriesQ.data);
   const subcategories = asArray<Named>(subcategoriesQ.data);
   const costCenters = asArray<Named>(costCentersQ.data);
-  const brands = asArray<Named>(brandsQ.data);
+  const brands = asArray<BrandLike>(brandsQ.data);
   const vendors = asArray<Named>(vendorsQ.data);
   const categoryNames = useMemo(() => namesById(categories), [categories]);
   const subcategoryNames = useMemo(() => namesById(subcategories), [subcategories]);
@@ -183,6 +184,17 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
   const brandName = brands.find((b) => String(b.id) === input.brandId)?.name ?? null;
 
   const loadError = [itemsQ, costCentersQ, customFieldsQ].some((q) => q.isError);
+
+  // Only the brands used for this Item's work area (IT / Non-IT) are offered. (Hooks stay above the early return below.)
+  const itemArea = item ? (item.work_area ?? categories.find((c) => c.id === item.category_id)?.asset_domain ?? null) : null;
+  const areaBrands = useMemo(() => brandsForArea(brands, itemArea), [brands, itemArea]);
+  // A brand left over from another Item (another work area) is dropped instead of being sent and refused.
+  useEffect(() => {
+    if (input.brandId && brands.length > 0 && itemArea && !areaBrands.some((b) => String(b.id) === input.brandId)) {
+      edit({ brandId: "" }, ["advanced"]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemArea, areaBrands, input.brandId, brands.length]);
 
   // Smart defaults: the Cost Centre and stock room this person used last for this company.
   const rememberChoice = useRemember();
@@ -295,13 +307,11 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
     );
   }
 
-  const category = item ? categories.find((c) => c.id === item.category_id) : undefined;
   const groupText = item
     ? [item.category_name ?? categoryNames[item.category_id], item.subcategory_name ?? (item.subcategory_id ? subcategoryNames[item.subcategory_id] : undefined)]
         .filter((p, i, all) => p && (i === 0 || p !== all[0]))
         .join(" › ")
     : "";
-  const itemArea = item ? (item.work_area ?? category?.asset_domain ?? null) : null;
   const qtyNum = Number(input.quantity);
   const step = (delta: number) => {
     const base = Number.isInteger(qtyNum) ? qtyNum : 1;
@@ -612,7 +622,7 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
                 aria-label="Brand"
                 value={input.brandId || undefined}
                 onValueChange={(v) => edit({ brandId: v }, ["advanced"])}
-                options={brandOptions(brands)}
+                options={brandOptions(areaBrands)}
                 placeholder="No brand"
                 onCreateNew={may(caps, "brand") ? opener(setNewBrand) : undefined}
                 createLabel="New Brand…"
@@ -668,7 +678,7 @@ function AddAssetsForm({ homeCompanyId, onAdded }: { homeCompanyId: number | nul
           chooseItem(saved);
         }}
       />
-      <NewBrandDialog open={newBrand} initialName={typedName} onOpenChange={setNewBrand} onCreated={(row) => edit({ brandId: String(row.id) })} />
+      <NewBrandDialog workArea={itemArea} open={newBrand} initialName={typedName} onOpenChange={setNewBrand} onCreated={(row) => edit({ brandId: String(row.id) })} />
       <NewVendorDialog open={newVendor} initialName={typedName} onOpenChange={setNewVendor} onCreated={(row) => edit({ vendorId: String(row.id) })} />
       {companyId != null && (
         <NewCostCenterDialog

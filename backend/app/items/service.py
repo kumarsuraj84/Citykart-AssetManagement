@@ -9,6 +9,7 @@ from app.bundles.models import Bundle, BundlePart
 from app.erp.source import ErpItem, ErpSource
 from app.items.models import Item, ItemMap, LEVEL_TYPES, MATCH_TYPES
 from app.items.suggest import SUGGESTION_THRESHOLD, ItemMatcher  # noqa: F401  (S7: re-exported, one scoring)
+from app.masters.brand_areas import ensure_brand_fits
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company
 from app.masters.serial_rule import serial_mode_of
 
@@ -100,6 +101,10 @@ async def _validate_item(session: AsyncSession, data: dict, item_id: int | None)
         brand = await session.get(Brand, brand_id)
         if brand is not None and not brand.is_active and (current is None or current.default_brand_id != brand_id):
             raise ValueError(f"The brand {brand.name} is no longer active; choose another.")
+        # The default brand must be used for the Item's work area (IT / Non-IT). Only checked when the brand or the
+        # group is being set or changed, so an Item saved earlier is never blocked by an unrelated edit.
+        if current is None or current.default_brand_id != brand_id or current.category_id != category.id:
+            await ensure_brand_fits(session, brand_id, category.asset_domain)
     if data.get("bundle_id") is not None:
         bundle = await session.get(Bundle, data["bundle_id"])
         if bundle is None or not bundle.is_active:

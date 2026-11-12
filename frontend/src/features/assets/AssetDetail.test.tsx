@@ -983,7 +983,8 @@ describe("AssetDetail -- S3b-1 brand / vendor added in Edit", () => {
     const dialog = await screen.findByRole("dialog", { name: /new brand/i });
     fireEvent.change(within(dialog).getByLabelText(/^name/i), { target: { value: "Lenovo" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/masters/brands", { name: "Lenovo" }));
+    // made from an IT asset's screen, the new brand is used for IT
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith("/masters/brands", { name: "Lenovo", work_areas: ["IT"] }));
     await waitFor(() => expect(screen.getByRole("combobox", { name: /^brand$/i })).toHaveTextContent("Lenovo"));
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     await waitFor(() => expect(apiClient.put).toHaveBeenCalledWith("/assets/1", expect.objectContaining({ brand_id: 12 })));

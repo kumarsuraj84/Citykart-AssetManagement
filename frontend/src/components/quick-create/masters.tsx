@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "../../lib/api-client";
 import { suggestCode } from "../../lib/code-suggest";
 import { WORK_AREA_OPTIONS } from "../../lib/labels";
+import { BRAND_AREA_WORDS } from "../../lib/brand-areas";
 import { categoryOptions, companyOptions } from "../../lib/option-labels";
 import { canCreate, domainManageAreas, inAreas, useCapabilities } from "../../lib/capabilities";
 import { QuickCreateDialog, type CreatedRecord, type QuickCreateProps } from "./QuickCreateDialog";
@@ -147,18 +148,27 @@ export function NewSubcategoryDialog({ defaultCategoryId, ...props }: QuickCreat
   );
 }
 
-/** New Brand: just its name (the server makes the code). */
-export function NewBrandDialog(props: QuickCreateProps) {
-  const rows = useMasterList<Named>("brands", props.open);
+/** New Brand: just its name (the server makes the code). Made from a screen that knows the work area (an Item's, a
+ * PO line's), the new brand is used for that work area; "Use the existing" is only offered when the brand of that name
+ * is already used for it. */
+export function NewBrandDialog({ workArea, ...props }: QuickCreateProps & { workArea?: string | null }) {
+  const rows = useMasterList<Named & { work_areas?: string[] | null }>("brands", props.open);
+  const existing = byName(rows);
   return (
     <QuickCreateDialog
       {...props}
       title="New Brand"
       endpoint="/masters/brands"
       refresh={[["masters", "brands"]]}
-      fields={[{ key: "name", label: "Name", required: true, placeholder: "Dell" }]}
-      toBody={(v) => ({ name: trimmed(v.name) })}
-      findExisting={byName(rows)}
+      fields={[{
+        key: "name", label: "Name", required: true, placeholder: "Dell",
+        helperText: workArea ? `Used for ${BRAND_AREA_WORDS[workArea] ?? workArea} things. A brand used for both is set by the head-office admin.` : undefined,
+      }]}
+      toBody={(v) => ({ name: trimmed(v.name), ...(workArea ? { work_areas: [workArea] } : {}) })}
+      findExisting={(v) => {
+        const found = existing(v) as (CreatedRecord & { work_areas?: string[] | null }) | undefined;
+        return found && (!workArea || !found.work_areas || found.work_areas.includes(workArea)) ? found : undefined;
+      }}
     />
   );
 }

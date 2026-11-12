@@ -491,7 +491,10 @@ async def build_draft(session: AsyncSession, actor: AssetUser, po: ErpPo, source
             brand_id, warranty = item.default_brand_id, item.default_warranty_years
         if brand_id is None:
             words = set(re.findall(r"[a-z0-9]+", ln.description.lower()))
-            brand_hits = [b for b in brands if _norm(b.name) and set(re.findall(r"[a-z0-9]+", b.name.lower())) <= words]
+            # a brand named in the ERP text is only suggested when it is used for this Item's work area
+            line_domain = cat_rows[item.category_id].asset_domain if item is not None and item.category_id in cat_rows else None
+            brand_hits = [b for b in brands if _norm(b.name) and set(re.findall(r"[a-z0-9]+", b.name.lower())) <= words
+                          and (line_domain is None or line_domain in (b.work_areas or []))]
             if len(brand_hits) == 1:
                 brand_id = brand_hits[0].id
         if erp is None:

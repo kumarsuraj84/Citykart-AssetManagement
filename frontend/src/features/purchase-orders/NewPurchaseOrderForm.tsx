@@ -18,7 +18,8 @@ import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { NewBrandDialog, NewCostCenterDialog, NewVendorDialog } from "@/components/quick-create/masters";
 import { StockRoomSelect, useStockRooms } from "@/components/quick-create/StockRoomSelect";
-import { brandOptions, companyOptions, costCentreOptions, itemOptions, namesById, vendorOptions } from "@/lib/option-labels";
+import { brandChoicesFor, type BrandLike } from "@/lib/brand-areas";
+import { companyOptions, costCentreOptions, itemOptions, namesById, vendorOptions } from "@/lib/option-labels";
 import { ASK_TO_ADD, canCreate as may, canManage, useCapabilities } from "@/lib/capabilities";
 import { useRemember, useRememberedDefault } from "@/lib/remembered-defaults";
 import { MAX_QUANTITY, quantityProblem } from "@/lib/limits";
@@ -227,7 +228,9 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
     () => itemOptions(items, { categories: namesById(categories), subcategories: namesById(subcategories) }),
     [items, categories, subcategories],
   );
-  const brandSelectOptions = useMemo(() => brandOptions(Array.isArray(brandsQ.data) ? brandsQ.data : []), [brandsQ.data]);
+  const allBrands: BrandLike[] = Array.isArray(brandsQ.data) ? brandsQ.data : [];
+  /** The brands for one line: only those used for the line's work area (its Item's), plus the one already chosen. */
+  const brandChoices = (area: string | null | undefined, selected: string) => brandChoicesFor(allBrands, area, selected);
   const itemById = (id: string) => items.find((i) => String(i.id) === id);
   const bundleById = (id: string) => bundles.find((b) => String(b.id) === id);
 
@@ -560,7 +563,8 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
                           <FormField htmlFor={`${id}-brand`} label="Brand">
                             <SearchableSelect
                               id={`${id}-brand`} value={l.brandId || undefined}
-                              onValueChange={(v) => patchLine(l.key, { brandId: v, brandTouched: true })} options={brandSelectOptions}
+                              onValueChange={(v) => patchLine(l.key, { brandId: v, brandTouched: true })}
+                              options={brandChoices(item?.work_area ?? category?.asset_domain, l.brandId)}
                               onCreateNew={may(caps, "brand") ? withName(() => setNewBrandFor(l.key)) : undefined} createLabel="New Brand…"
                             />
                           </FormField>
@@ -708,6 +712,7 @@ export function NewPurchaseOrderForm({ companyId }: { companyId: number | null }
         }}
       />
       <NewBrandDialog
+        workArea={newBrandFor !== null ? itemById(lines.find((l) => l.key === newBrandFor)?.itemId ?? "")?.work_area : undefined}
         open={newBrandFor !== null}
         initialName={typedName}
         onOpenChange={(open) => !open && setNewBrandFor(null)}

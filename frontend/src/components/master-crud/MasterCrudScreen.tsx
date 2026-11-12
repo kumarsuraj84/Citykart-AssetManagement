@@ -170,6 +170,7 @@ export function MasterCrudScreen<T extends object>({
   extraActions,
   embedded = false,
   onCreated,
+  bulkActions,
 }: {
   config: MasterConfig<T>;
   /** Extra buttons in the page header, before "Add <singular>" (e.g. Vendors' "Add from ERP"). */
@@ -178,6 +179,8 @@ export function MasterCrudScreen<T extends object>({
   embedded?: boolean;
   /** Told about a record just added (the server's answer), e.g. so a guide can choose it (S7 fix 2, N3). */
   onCreated?: (created: T & { id: number }) => void;
+  /** Extra actions for the ticked rows, shown beside "Deactivate N selected" (e.g. Brands' "Used for"). */
+  bulkActions?: (selectedRows: (T & { id: number })[], clear: () => void) => ReactNode;
 }) {
   const qc = useQueryClient();
   const singular = config.singular ?? config.title;
@@ -387,6 +390,7 @@ export function MasterCrudScreen<T extends object>({
       {selected.length > 0 && (
         <div className="flex items-center gap-3 rounded-md border bg-muted/40 px-3 py-2 text-sm">
           <span>{selected.length} selected</span>
+          {bulkActions?.(selectedRows, () => setSelected([]))}
           <Button variant="destructive" size="sm" onClick={() => setBulkConfirmOpen(true)}>
             Deactivate {selected.length} selected
           </Button>

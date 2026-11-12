@@ -28,7 +28,8 @@ import { MAX_QUANTITY, quantityHint, quantityProblem } from "@/lib/limits";
 import { DeliveryReminderBanner } from "../erp/DeliveryReminders";
 import { ErpChangesPanel } from "../erp/ErpChanges";
 import { workAreaLabel } from "@/lib/labels";
-import { brandOptions, itemOptions, namesById } from "@/lib/option-labels";
+import { brandChoicesFor } from "@/lib/brand-areas";
+import { itemOptions, namesById } from "@/lib/option-labels";
 import { ErrorMessage } from "@/components/shared/ErrorMessage";
 import { RecordHistoryButton } from "@/features/system/RecordHistory";
 
@@ -144,7 +145,6 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
   const vendorName = (id: number | null) =>
     id == null ? "—" : vendors.find((v) => v.id === id)?.name ?? poQ.data?.vendor_name ?? String(id);
   const itemSelectOptions = itemOptions(items, { categories: namesById(categories), subcategories: namesById(subcategories) });
-  const brandSelectOptions = brandOptions(brands);
 
   // Summary: units, counted by the server per line (the caller's work area).
   // S7 (P3-7): "Ordered" keeps what was ordered, cancelled units included, so a cancelled PO still
@@ -175,6 +175,9 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
     purchaseCost: "0", taxPercent: "0", quantity: "1",
   });
   const lineItem = items.find((i) => i.id === Number(lineForm.itemId));
+  // Brands are listed per work area: the Add Line form by the chosen Item's, the edit dialog by the line's own.
+  const addLineArea = lineItem?.work_area;
+  const addBrandOptions = brandChoicesFor(brands, addLineArea, lineForm.brandId);
   const lineCategory = lineItem ? categories.find((c) => c.id === lineItem.category_id) : undefined;
   const lineSubcategory = lineItem ? subcategories.find((s) => s.id === lineItem.subcategory_id) : undefined;
   // Picking an Item starts the brand and warranty from the Item's defaults (still editable).
@@ -389,7 +392,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
                   id="line-brand"
                   value={selectValue(lineForm.brandId)}
                   onValueChange={(v) => setLineForm((f) => ({ ...f, brandId: v }))}
-                  options={brandSelectOptions}
+                  options={addBrandOptions}
                   onCreateNew={may(caps, "brand") ? (typed) => { setTypedName(typed); setNewBrandForAdd(true); } : undefined}
                   createLabel="New Brand…"
                 />
@@ -457,7 +460,11 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
           onClose={() => setEditTarget(null)}
           onSaved={setNotice}
           itemSelectOptions={itemSelectOptions}
-          brandSelectOptions={brandSelectOptions}
+          brandSelectOptions={(() => {
+            const src = editTarget.kind === "line" ? editTarget.line : editTarget.unit;
+            const area = (src as { work_area?: string | null }).work_area ?? items.find((i) => i.id === src.item_id)?.work_area;
+            return brandChoicesFor(brands, area, src.brand_id != null ? String(src.brand_id) : "");
+          })()}
         />
       )}
 
@@ -482,6 +489,7 @@ export function PurchaseOrderDetail({ poId }: { poId: number }) {
         onSaved={(saved) => pickLineItem(saved)}
       />
       <NewBrandDialog
+        workArea={addLineArea}
         open={newBrandForAdd}
         initialName={typedName}
         onOpenChange={setNewBrandForAdd}

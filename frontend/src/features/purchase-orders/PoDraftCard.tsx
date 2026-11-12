@@ -19,7 +19,8 @@ import { SearchableSelect } from "@/components/shared/SearchableSelect";
 import { ItemFormDialog } from "../items/ItemFormDialog";
 import { NewBrandDialog, NewCostCenterDialog } from "@/components/quick-create/masters";
 import { StockRoomSelect, useStockRooms } from "@/components/quick-create/StockRoomSelect";
-import { brandOptions, companyOptions, costCentreOptions, itemOptions, namesById, placeOption, stockRoomOption, vendorOptions } from "@/lib/option-labels";
+import { brandChoicesFor, type BrandLike } from "@/lib/brand-areas";
+import { companyOptions, costCentreOptions, itemOptions, namesById, placeOption, stockRoomOption, vendorOptions } from "@/lib/option-labels";
 import { ASK_TO_ADD, canCreate as may, useCapabilities } from "@/lib/capabilities";
 import { useRemember, useRememberedDefault } from "@/lib/remembered-defaults";
 import { MAX_QUANTITY, quantityHint } from "@/lib/limits";
@@ -352,7 +353,9 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
     () => itemOptions(items, { categories: namesById(categoriesQ.data), subcategories: namesById(subcategoriesQ.data) }),
     [items, categoriesQ.data, subcategoriesQ.data],
   );
-  const brandSelectOptions = useMemo(() => brandOptions(brandsQ.data), [brandsQ.data]);
+  const allBrands: BrandLike[] = Array.isArray(brandsQ.data) ? brandsQ.data : [];
+  /** The brands for one line: only those used for the line's work area (its Item's), plus the one already chosen. */
+  const brandChoices = (area: string | null | undefined, selected: string) => brandChoicesFor(allBrands, area, selected);
 
   function setLine(uid: number, patch: Partial<LineForm>) {
     setLines((ls) => ls.map((l) => (l.uid === uid ? { ...l, ...patch } : l)));
@@ -687,7 +690,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
             <FormField htmlFor={`${id}-brand`} label="Brand" className="col-span-2">
               <SearchableSelect
                 id={`${id}-brand`} value={l.brandId || undefined} onValueChange={(v) => setLine(l.uid, { brandId: v })}
-                options={brandSelectOptions}
+                options={brandChoices(item?.work_area, l.brandId)}
                 onCreateNew={may(caps, "brand") ? withName(() => setNewBrandFor(l.uid)) : undefined} createLabel="New Brand…"
               />
             </FormField>
@@ -1044,6 +1047,7 @@ export function PoDraftCard({ draft, bundles, items }: { draft: Draft; bundles: 
         onSaved={(saved) => newItemFor !== null && changeItem(newItemFor, String(saved.id))}
       />
       <NewBrandDialog
+        workArea={newBrandFor !== null ? items.find((i) => String(i.id) === (lines.find((l) => l.uid === newBrandFor)?.itemId ?? ""))?.work_area : undefined}
         open={newBrandFor !== null}
         initialName={typedName}
         onOpenChange={(open) => !open && setNewBrandFor(null)}

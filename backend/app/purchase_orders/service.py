@@ -9,6 +9,7 @@ from app.asset_users.models import AssetUser
 from app.core.deps import check_work_area
 from app.core.validation import MAX_QUANTITY, escape_like
 from app.items.models import Item
+from app.masters.brand_areas import ensure_brand_fits
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Vendor
 from app.items.lookup import fill_from_item
 from app.masters.serial_rule import serial_default
@@ -199,6 +200,12 @@ async def _validate_line_masters(
             raise ValueError("The sub-category does not belong to the selected category.")
     await active_or_error(session, Brand, data.get("brand_id"), "brand",
                           allow_inactive_id=current.brand_id if current else None)
+    # The brand must be used for the line's work area (IT / Non-IT); only checked when the brand or the group is
+    # being set or changed, so a line saved earlier never blocks an unrelated edit.
+    if data.get("brand_id") is not None and (
+        current is None or current.brand_id != data.get("brand_id") or current.category_id != category.id
+    ):
+        await ensure_brand_fits(session, data["brand_id"], category.asset_domain)
     return category, subcategory
 
 

@@ -31,6 +31,7 @@ from app.bundles.service import split_amounts
 from app.core.deps import check_work_area
 from app.core.problems import Refused, collapse_units, plural
 from app.items.models import Item
+from app.masters.brand_areas import brand_fit_problem, domain_of_category
 from app.masters.models import AssetCategory, Brand, CostCenter
 from app.masters.serial_rule import serial_mode_of
 
@@ -203,6 +204,11 @@ async def add_assets_batch(
     # Defaults from the Item.
     brand_id = body.get("brand_id")
     brand = await session.get(Brand, brand_id) if brand_id is not None else None
+    if brand_id is not None:
+        # a brand chosen here must be used for this Item's work area (IT / Non-IT)
+        fit = await brand_fit_problem(session, brand_id, await domain_of_category(session, item.category_id))
+        if fit:
+            problem(fit)
     if brand_id is None and item.default_brand_id is not None:
         default = await session.get(Brand, item.default_brand_id)
         if default is not None and default.is_active:      # a retired default brand is just not used

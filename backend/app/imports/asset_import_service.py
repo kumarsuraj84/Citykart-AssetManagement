@@ -45,6 +45,7 @@ from app.asset_users.models import AssetUser
 from app.lifecycle.service import apply_event
 from app.lifecycle.state_machine import LifecycleError
 from app.items.models import Item
+from app.masters.brand_areas import brand_fit_problem, domain_of_category
 from app.masters.models import AssetCategory, AssetSubcategory, Brand, Company, CostCenter, Location, Vendor
 from app.numbering.models import CodeRule
 from app.numbering.service import build_code_tokens, generate_code, get_active_rule
@@ -471,6 +472,10 @@ async def _validate_add_rows(
                 continue
             if _inactive(brand):
                 errors.append(inactive_error(row_idx, "Brand Code", brand_code, brand.name))
+                continue
+            fit = await brand_fit_problem(session, brand.id, await domain_of_category(session, item.category_id if item is not None else category.id))
+            if fit:
+                errors.append({"row": row_idx, "field": "Brand Code", "message": fit})
                 continue
         elif item is not None and item.default_brand_id is not None:
             # S7: the Item's default brand when none is given and it is still active (as on Add Assets).

@@ -1,5 +1,6 @@
 from datetime import datetime
-from sqlalchemy import BigInteger, DateTime, ForeignKey, JSON, String, UniqueConstraint, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, JSON, String, UniqueConstraint, func, text
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.db import Base
 from app.core.models import AuditMixin, SoftDeleteMixin
@@ -80,6 +81,12 @@ class Brand(Base, AuditMixin, SoftDeleteMixin):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     code: Mapped[str] = mapped_column(String(20), unique=True)
     name: Mapped[str] = mapped_column(String(200))
+    # The work areas (IT / NON_IT, app.assets.models.ASSET_DOMAINS) this brand is used for. A brand can serve more
+    # than one (Samsung), so it stays one row; pickers list the brands whose list has the Item's work area.
+    work_areas: Mapped[list[str]] = mapped_column(
+        ARRAY(String(10)), nullable=False, default=lambda: ["IT", "NON_IT"],
+        server_default=text("ARRAY['IT','NON_IT']::varchar[]"),
+    )
 
 
 class Vendor(Base, AuditMixin, SoftDeleteMixin):

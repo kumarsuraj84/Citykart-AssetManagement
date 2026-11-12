@@ -25,15 +25,11 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { AsyncButton } from "@/components/shared/AsyncButton";
 import { FormField } from "@/components/shared/FormField";
 import { SearchableSelect } from "@/components/shared/SearchableSelect";
+import { brandsForArea, type BrandLike } from "@/lib/brand-areas";
 import { brandOptions, nameOptions, namesById } from "@/lib/option-labels";
 import { workAreaLabel } from "@/lib/labels";
 import { ErrorMessage } from "@/components/shared/ErrorMessage";
 import { RecordHistoryButton } from "@/features/system/RecordHistory";
-
-interface Named {
-  id: number;
-  name: string;
-}
 
 /** The three serial behaviours, in plain words. The Item is the only place this lives. */
 export type SerialMode = "has" | "none" | "later";
@@ -104,7 +100,7 @@ export function ItemFormDialog({
   const categoriesQ = useQuery({ queryKey: ["masters", "categories"], queryFn: () => apiClient.get<TypeCategory[]>("/masters/categories"), enabled: open });
   const subsQ = useQuery({ queryKey: ["masters", "subcategories"], queryFn: () => apiClient.get<TypeSubcategory[]>("/masters/subcategories"), enabled: open });
   const bundlesQ = useQuery({ queryKey: ["bundles"], queryFn: () => apiClient.get<Bundle[]>("/bundles"), enabled: open && allowSet });
-  const brandsQ = useQuery({ queryKey: ["masters", "brands"], queryFn: () => apiClient.get<Named[]>("/masters/brands"), enabled: open });
+  const brandsQ = useQuery({ queryKey: ["masters", "brands"], queryFn: () => apiClient.get<BrandLike[]>("/masters/brands"), enabled: open });
   const itemsQ = useQuery({ queryKey: ["items"], queryFn: () => apiClient.get<Item[]>("/items"), enabled: open && allowSet });
   const asList = <T,>(d: unknown): T[] => (Array.isArray(d) ? (d as T[]) : []);
   const categories = asList<TypeCategory>(categoriesQ.data);
@@ -114,7 +110,7 @@ export function ItemFormDialog({
   const allowedAreas = item ? domainManageAreas(caps) : itemCreateAreas(caps);
   const pickableCategories = categories.filter((c) => inAreas(c.asset_domain, allowedAreas) || c.id === item?.category_id);
   const bundles = asList<Bundle>(bundlesQ.data);
-  const brands = asList<Named>(brandsQ.data);
+  const brands = asList<BrandLike>(brandsQ.data);
 
   const [draft, setDraft] = useState<Draft>(BLANK);
   const [parts, setParts] = useState<DraftPart[]>([]);
@@ -174,6 +170,9 @@ export function ItemFormDialog({
     subs,
   );
   const chosenCategory = categories.find((c) => String(c.id) === draft.categoryId);
+  // Only the brands used for this Item's work area; the brand already chosen always stays listed.
+  const areaBrands = brandsForArea(brands, chosenCategory?.asset_domain).concat(
+    brands.filter((b) => String(b.id) === draft.brandId && !brandsForArea(brands, chosenCategory?.asset_domain).includes(b)));
   const categoryWithoutSub = draft.categoryId !== "" && effectiveSubId === "";
 
   function chooseType(value: string) {
@@ -349,7 +348,7 @@ export function ItemFormDialog({
                     <FormField htmlFor="item-brand" label="Default brand">
                       <SearchableSelect
                         id="item-brand" value={draft.brandId || undefined} onValueChange={(v) => set({ brandId: v })}
-                        options={[{ value: "", label: "None" }, ...brandOptions(brands)]}
+                        options={[{ value: "", label: "None" }, ...brandOptions(areaBrands)]}
                         placeholder="None"
                         onCreateNew={may(caps, "brand") ? () => setNewBrand(true) : undefined} createLabel="New Brand…"
                       />
@@ -466,7 +465,7 @@ export function ItemFormDialog({
         defaultCategoryId={draft.categoryId || undefined}
         onCreated={(row) => set({ categoryId: String(row.category_id), subcategoryId: String(row.id) })}
       />
-      <NewBrandDialog open={newBrand} onOpenChange={setNewBrand} onCreated={(row) => set({ brandId: String(row.id) })} />
+      <NewBrandDialog workArea={chosenCategory?.asset_domain} open={newBrand} onOpenChange={setNewBrand} onCreated={(row) => set({ brandId: String(row.id) })} />
       {allowSet && newPartItemFor !== null && (
         <ItemFormDialog
           open

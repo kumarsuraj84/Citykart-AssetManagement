@@ -22,9 +22,9 @@ def test_the_master_audit_migration_is_the_only_head():
     # guard trigger, OBS-STATUS) on top of that; release 2 (intended change, 2026-11-11): d7f9b1c3e5a7 (the owner
     # company / cost centre may change only through the audited owner correction) on top of that; release 3
     # (intended change, 2026-11-12): e8a0c2d4f6b8 (a repair vendor is a place) on top of that; the ERP's purchase
-    # invoices copy (intended change, 2026-11-12): a9c1e3b5d7f2 (erp_pi) on top of that.
-    assert script.get_heads() == ["a9c1e3b5d7f2"]
-    assert script.get_revision("a9c1e3b5d7f2").down_revision == "e8a0c2d4f6b8"
+    # invoices copy (2026-11-12): a9c1e3b5d7f2 (erp_pi); and brand work areas (2026-11-12): b3d5f7a9c1e4 (brand.work_areas) on top of that.
+    assert script.get_heads() == ["b3d5f7a9c1e4"]
+    assert script.get_revision("b3d5f7a9c1e4").down_revision == "a9c1e3b5d7f2"
     assert script.get_revision("e8a0c2d4f6b8").down_revision == "d7f9b1c3e5a7"
     assert script.get_revision("d7f9b1c3e5a7").down_revision == "c6e8a0b2d4f6"
     assert script.get_revision("c6e8a0b2d4f6").down_revision == "b5d7f9a1c3e5"

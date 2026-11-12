@@ -22,18 +22,34 @@ def _optional_code(value: str | None) -> str | None:
     return None if value is None else require_text(value, "Code")
 
 
+def _brand_work_areas(value: list[str] | None) -> list[str] | None:
+    """The work areas a brand is used for: each one of IT / NON_IT, at least one, no repeats, in a fixed order.
+    None = not given (a new brand then starts as its creator's work areas; an edit leaves them as they are)."""
+    if value is None:
+        return None
+    from app.masters.models import ASSET_DOMAINS          # local: models import nothing from schemas
+    wanted = {str(v).strip().upper().replace("-", "_") for v in value}
+    if not wanted or not wanted <= set(ASSET_DOMAINS):
+        raise ValueError("Choose where this brand is used: IT, Non-IT or both.")
+    return [a for a in ASSET_DOMAINS if a in wanted]
+
+
 class BrandIn(InModel):
     code: str | None = Field(default=None, max_length=20)
     name: str = Field(max_length=200)
+    work_areas: list[str] | None = Field(default=None, max_length=5)
 
     _code = field_validator("code")(_optional_code)
     _name = field_validator("name")(_required_name)
+    _areas = field_validator("work_areas")(_brand_work_areas)
 
 
 class BrandEditIn(InModel):
     name: str = Field(max_length=200)
+    work_areas: list[str] | None = Field(default=None, max_length=5)
 
     _name = field_validator("name")(_required_name)
+    _areas = field_validator("work_areas")(_brand_work_areas)
 
 
 class BrandOut(BaseModel):
@@ -42,6 +58,15 @@ class BrandOut(BaseModel):
     is_active: bool
     code: str
     name: str
+    work_areas: list[str] = []
+
+
+class BrandWorkAreasIn(InModel):
+    """Set where several brands are used, in one go (head-office admin)."""
+    ids: list[int] = Field(min_length=1, max_length=500)
+    work_areas: list[str] = Field(min_length=1, max_length=5)
+
+    _areas = field_validator("work_areas")(_brand_work_areas)
 
 
 class VendorIn(InModel):

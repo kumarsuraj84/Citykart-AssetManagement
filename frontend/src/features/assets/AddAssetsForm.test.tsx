@@ -51,6 +51,7 @@ const CUSTOM_FIELDS = [
 ];
 
 interface Setup {
+  brands?: unknown[];
   items?: unknown[];
   rooms?: unknown[];
   costCentres?: unknown[];
@@ -63,6 +64,7 @@ interface Setup {
 
 function mockApi(s: Setup = {}) {
   const {
+    brands = [{ id: 9, code: "DELL", name: "Dell" }],
     items = [LAPTOP, MOUSE, AMP], rooms = [{ id: 4, name: "HO Stock", location_name: "Head Office", company_code: "CKSPL", company_id: 1 }],
     costCentres = [{ id: 3, code: "HO01", name: "Head Office" }], vendors = [{ id: 7, name: "Acme Traders" }], customFields = [],
     companies = [{ id: 1, name: "Company A" }], caps = ADMIN_BOTH, conflicts = [],
@@ -75,7 +77,7 @@ function mockApi(s: Setup = {}) {
     if (path.startsWith("/masters/subcategories")) return Promise.resolve([{ id: 2, code: "LAP", name: "Laptops", category_id: 1 }]);
     if (path.startsWith("/masters/cost-centers")) return Promise.resolve(costCentres);
     if (path.startsWith("/masters/vendors")) return Promise.resolve(vendors);
-    if (path.startsWith("/masters/brands")) return Promise.resolve([{ id: 9, code: "DELL", name: "Dell" }]);
+    if (path.startsWith("/masters/brands")) return Promise.resolve(brands);
     if (path.startsWith("/masters/custom-fields")) return Promise.resolve(customFields);
     return Promise.resolve([]);
   }));
@@ -279,6 +281,28 @@ describe("Add Assets: the batch form", () => {
     fireEvent.change(screen.getByLabelText("Model"), { target: { value: "Latitude 5440" } });
     expect(screen.getByLabelText("Description")).toHaveAttribute("placeholder", "Laptop Dell Latitude 5440");
     expect(screen.getByText("The ERP item code, for example CT123456. The same ERP Barcode goes on every part of a set.")).toBeInTheDocument();
+  });
+
+  it("the Brand list shows only the brands used for the Item's work area, and a brand left over from another area is dropped", async () => {
+    mockApi({
+      brands: [
+        { id: 9, code: "DELL", name: "Dell", work_areas: ["IT"] },
+        { id: 10, code: "GODREJ", name: "Godrej", work_areas: ["NON_IT"] },
+        { id: 11, code: "SAMSUNG", name: "Samsung", work_areas: ["IT", "NON_IT"] },
+      ],
+    });
+    renderAt();
+    await ready();
+    await pick(/^item$/i, "Laptop");                                           // an IT Item
+    fireEvent.click(screen.getByRole("button", { name: /advanced/i }));
+    fireEvent.click(screen.getByRole("combobox", { name: /^brand$/i }));
+    expect((await screen.findAllByRole("option")).map((o) => o.textContent).filter((t) => t !== "New Brand…")).toEqual(["Dell", "Samsung"]);
+    fireEvent.click(screen.getByRole("option", { name: "Dell" }));
+    expect(screen.getByRole("combobox", { name: /^brand$/i })).toHaveTextContent("Dell");
+    await pick(/^item$/i, "Amplifier");                                        // a Non-IT Item: Dell no longer fits
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /^brand$/i })).not.toHaveTextContent("Dell"));
+    fireEvent.click(screen.getByRole("combobox", { name: /^brand$/i }));
+    expect((await screen.findAllByRole("option")).map((o) => o.textContent).filter((t) => t !== "New Brand…")).toEqual(["Godrej", "Samsung"]);
   });
 
   it("Advanced values are sent only when typed; the old asset code only for one asset", async () => {

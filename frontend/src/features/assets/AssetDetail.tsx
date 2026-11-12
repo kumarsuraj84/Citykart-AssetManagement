@@ -9,6 +9,7 @@ import { computeWarrantyUpto } from "../../lib/warranty";
 import { useKeyedMutation } from "../../lib/submit-key";
 import { choicesFor, type MoveChoice } from "./actionRules";
 import { fieldLabel, humanizeCode, placeTypeLabel, workAreaLabel } from "../../lib/labels";
+import { brandsForArea, type BrandLike } from "../../lib/brand-areas";
 import { brandOptions, categoryOptions, nameOptions, vendorOptions } from "../../lib/option-labels";
 import { canCreate as may, useCapabilities } from "../../lib/capabilities";
 import { NewBrandDialog, NewVendorDialog } from "@/components/quick-create/masters";
@@ -348,7 +349,7 @@ export function AssetDetail({ assetId }: { assetId: number }) {
   });
   const { data: brands = [] } = useQuery({
     queryKey: ["masters", "brands"],
-    queryFn: () => apiClient.get<MasterOption[]>("/masters/brands"),
+    queryFn: () => apiClient.get<(MasterOption & BrandLike)[]>("/masters/brands"),
     enabled: editing,
   });
   // A missing brand or vendor is added right here by whoever may (capabilities endpoint).
@@ -765,11 +766,11 @@ export function AssetDetail({ assetId }: { assetId: number }) {
                 aria-label="Brand"
                 value={selectValue(editForm.brandId)}
                 onValueChange={(v) => setEditField("brandId", v)}
-                options={brandOptions(brands)}
+                options={brandOptions(brands.filter((b) => String(b.id) === editForm.brandId || brandsForArea([b], asset?.asset_domain).length > 0))}
                 onCreateNew={may(caps, "brand") ? (typed) => { setTypedName(typed); setNewBrand(true); } : undefined}
                 createLabel="New Brand…"
               />
-              <NewBrandDialog open={newBrand} initialName={typedName} onOpenChange={setNewBrand} onCreated={(row) => setEditField("brandId", String(row.id))} />
+              <NewBrandDialog workArea={asset?.asset_domain} open={newBrand} initialName={typedName} onOpenChange={setNewBrand} onCreated={(row) => setEditField("brandId", String(row.id))} />
             </FormField>
             <FormField htmlFor="edit-model" label="Model"><Input id="edit-model" aria-label="Model" value={editForm.model} onChange={(e) => setEditField("model", e.target.value)} /></FormField>
             <FormField
